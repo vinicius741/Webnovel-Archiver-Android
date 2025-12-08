@@ -1,7 +1,7 @@
-import React from 'react';
-import { StyleSheet, View, Alert } from 'react-native';
+import React, { useEffect, useCallback, useState } from 'react';
+import { StyleSheet, View, Alert, FlatList, RefreshControl } from 'react-native';
 import { Text, FAB, useTheme, Button } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
 import { fetchPage } from '../src/services/network/fetcher';
@@ -9,37 +9,84 @@ import { parseMetadata } from '../src/services/parser/metadata';
 import { parseChapterList } from '../src/services/parser/chapterList';
 import { parseChapterContent } from '../src/services/parser/content';
 import { saveChapter, saveMetadata } from '../src/services/storage/fileSystem';
+import { storageService } from '../src/services/StorageService';
+import { Story } from '../src/types';
 
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const [stories, setStories] = useState<Story[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadLibrary = async () => {
+    try {
+      setRefreshing(true);
+      const library = await storageService.getLibrary();
+      setStories(library);
+    } catch (e) {
+      console.error(e);
+    } finally {
+        setRefreshing(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadLibrary();
+    }, [])
+  );
+
+  const onRefresh = useCallback(() => {
+    loadLibrary();
+  }, []);
+
+  const addTestStory = async () => {
+      const newStory: Story = {
+          id: 'test_story_' + Date.now(),
+          title: 'Test Story ' + new Date().toLocaleTimeString(),
+          author: 'Test Author',
+          coverUrl: 'https://via.placeholder.com/150',
+          sourceUrl: 'https://example.com',
+          status: 'idle',
+          totalChapters: 10,
+          downloadedChapters: 0,
+          chapters: []
+      };
+      await storageService.addStory(newStory);
+      loadLibrary();
+  };
 
   const runTestScrape = async () => {
     try {
-      const url = 'https://www.royalroad.com/fiction/21220/mother-of-learning';
+      const url = 'https://www.royalroad.com/fiction/21220/mother-of-learning'; // Use a small one if possible
       console.log('[Test] Starting scrape for:', url);
       
       const html = await fetchPage(url);
       const metadata = parseMetadata(html);
-      console.log('[Test] Metadata:', metadata);
       
       const chapters = parseChapterList(html, url);
-      console.log('[Test] Chapters found:', chapters.length);
       
       if (chapters.length > 0) {
-        const firstChapter = chapters[0];
-        console.log('[Test] Fetching First Chapter:', firstChapter.url);
-        
-        const chapterHtml = await fetchPage(firstChapter.url);
-        const content = parseChapterContent(chapterHtml);
-        
-        const novelId = 'test_novel_mol';
-        await saveMetadata(novelId, metadata);
-        const path = await saveChapter(novelId, 1, firstChapter.title, content);
-        
-        Alert.alert('Scrape Success', `Saved chapter to:\n${path}`);
-      } else {
-        Alert.alert('Scrape Error', 'No chapters found');
+        // Save to Library
+        const story: Story = {
+            id: 'rr_21220', // simple ID generation
+            title: metadata.title,
+            author: metadata.author,
+            coverUrl: metadata.coverUrl,
+            sourceUrl: url,
+            status: 'downloading',
+            totalChapters: chapters.length,
+            downloadedChapters: 0,
+            chapters: chapters.map(c => ({
+                id: c.url,
+                title: c.title,
+                url: c.url,
+            })),
+            lastUpdated: Date.now()
+        };
+        await storageService.addStory(story);
+        loadLibrary();
+        Alert.alert('Library Updated', `Added ${metadata.title}`);
       }
     } catch (e) {
       console.error(e);
@@ -49,27 +96,40 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer>
-      <View style={styles.content}>
-        <Text variant="headlineMedium" style={styles.title}>Library</Text>
-        
-        <Button mode="contained" onPress={runTestScrape} style={{ marginBottom: 20 }}>
-            Test Scrape Engine
-        </Button>
-
-        {/* Placeholder List */}
-        {true ? (
-             <StoryCard 
-                title="The Beginning After The End" 
-                author="TurtleMe" 
-                progress={0.7} 
-                onPress={() => {}} 
-             />
-        ) : (
-            <Text variant="bodyLarge" style={styles.placeholder}>
-            No stories archived yet. Tap + to add one.
-            </Text>
-        )}
+      <View style={styles.header}>
+         <Text variant="headlineMedium">Library</Text>
       </View>
+      
+      <FlatList
+        data={stories}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />
+        }
+        renderItem={({ item }) => (
+            <StoryCard 
+            title={item.title} 
+            author={item.author} 
+            coverUrl={item.coverUrl}
+            progress={item.totalChapters > 0 ? item.downloadedChapters / item.totalChapters : 0} 
+            onPress={() => router.push(`/details/${item.id}`)} 
+            />
+        )}
+        ListEmptyComponent={
+            <View style={styles.emptyState}>
+                <Text variant="bodyLarge" style={styles.placeholder}>
+                    No stories archived yet.
+                </Text>
+                <Button mode="outlined" onPress={addTestStory} style={{ marginTop: 20 }}>
+                    Add Dummy Story
+                </Button>
+                 <Button mode="contained" onPress={runTestScrape} style={{ marginTop: 10 }}>
+                    Test Real Scrape (RR)
+                </Button>
+            </View>
+        }
+      />
       
       <FAB
         icon="plus"
@@ -82,15 +142,20 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: {
-    flex: 1,
+  header: {
     padding: 16,
-    // justifyContent: 'center', // Removed to separate Button and List
-    alignItems: 'center', 
     paddingTop: 60,
+    backgroundColor: 'transparent',
   },
-  title: {
-    marginBottom: 20,
+  listContent: {
+    padding: 16,
+    paddingBottom: 80,
+  },
+  emptyState: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 100,
   },
   placeholder: {
     opacity: 0.6,

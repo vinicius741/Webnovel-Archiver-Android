@@ -3,7 +3,7 @@ import { load } from 'cheerio';
 export interface NovelMetadata {
     title: string;
     author: string;
-    coverUrl: string | null;
+    coverUrl?: string;
 }
 
 export const parseMetadata = (html: string): NovelMetadata => {
@@ -18,13 +18,13 @@ export const parseMetadata = (html: string): NovelMetadata => {
     if (rrAuthor) author = rrAuthor;
 
     // Cover image
-    let coverUrl: string | null = null;
+    let coverUrl: string | undefined;
     const rrCover = $('.page-content-inner .col-md-3 img').first().attr('src');
     if (rrCover) coverUrl = rrCover;
 
     // Generic fallback for cover
     if (!coverUrl) {
-        coverUrl = $('meta[property="og:image"]').attr('content') || null;
+        coverUrl = $('meta[property="og:image"]').attr('content') || undefined;
     }
 
     return {
