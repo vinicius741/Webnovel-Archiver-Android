@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Story, Chapter, DownloadStatus } from '../types';
+import * as fileSystem from './storage/fileSystem';
 
 const STORAGE_KEYS = {
     LIBRARY: 'wa_library_v1',
@@ -47,6 +48,12 @@ class StorageService {
     }
 
     async deleteStory(id: string): Promise<void> {
+        try {
+            await fileSystem.deleteNovel(id);
+        } catch (e) {
+            console.warn('Failed to delete files for story', id, e);
+        }
+
         const library = await this.getLibrary();
         const newLibrary = library.filter((s) => s.id !== id);
         await this.saveLibrary(newLibrary);

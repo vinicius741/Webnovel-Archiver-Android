@@ -40,3 +40,11 @@ export const listNovelFiles = async (novelId: string) => {
     if (!novelDir.exists) return [];
     return novelDir.list().map(item => item.name);
 };
+
+export const deleteNovel = async (novelId: string): Promise<void> => {
+    const novelDir = new Directory(Paths.document, BASE_DIR_NAME, novelId);
+    if (novelDir.exists) {
+        await novelDir.delete();
+        console.log(`[Storage] Deleted novel directory: ${novelId}`);
+    }
+};

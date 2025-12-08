@@ -14,8 +14,27 @@ export const parseMetadata = (html: string): NovelMetadata => {
 
     // Attempt to find author in common spots
     let author = 'Unknown Author';
-    const rrAuthor = $('h4.margin-bottom-20 span a').first().text().trim(); // RR often has this
-    if (rrAuthor) author = rrAuthor;
+
+    // 1. Common Royal Road Author Link (often in h4)
+    const rrAuthorLink = $('h4 a').first().text().trim();
+    if (rrAuthorLink) {
+        author = rrAuthorLink;
+    }
+    // 2. Different RR layout (sometimes just text in h4 or similar)
+    else {
+        const rrAuthorText = $('h4').first().text().replace('Author:', '').trim();
+        if (rrAuthorText && rrAuthorText.length > 0 && rrAuthorText !== 'Unknown Author') {
+            author = rrAuthorText;
+        }
+    }
+
+    // 3. Meta tags fallback (Generic)
+    if (author === 'Unknown Author') {
+        const metaAuthor = $('meta[name="author"]').attr('content') ||
+            $('meta[property="article:author"]').attr('content') ||
+            $('meta[name="twitter:creator"]').attr('content');
+        if (metaAuthor) author = metaAuthor;
+    }
 
     // Cover image
     let coverUrl: string | undefined;

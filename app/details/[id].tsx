@@ -62,6 +62,22 @@ export default function StoryDetailsScreen() {
             {story.downloadedChapters === story.totalChapters ? 'Read' : 'Download All'}
         </Button>
 
+        <Button 
+            mode="outlined" 
+            textColor={theme.colors.error} 
+            style={[styles.actionBtn, { borderColor: theme.colors.error }]}
+            onPress={async () => {
+                await storageService.deleteStory(story.id);
+                if (router.canDismiss()) {
+                    router.dismiss();
+                } else {
+                    router.replace('/');
+                }
+            }}
+        >
+            Delete Novel
+        </Button>
+
         <List.Section title="Chapters">
             {story.chapters.map((chapter, index) => (
                 <List.Item
