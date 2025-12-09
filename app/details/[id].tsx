@@ -3,8 +3,12 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
+
 import { storageService } from '../../src/services/StorageService';
+import { epubGenerator } from '../../src/services/EpubGenerator';
 import { Story } from '../../src/types';
+
+import { Alert } from 'react-native';
 
 export default function StoryDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -60,6 +64,25 @@ export default function StoryDetailsScreen() {
 
         <Button mode="contained" style={styles.actionBtn} onPress={() => {}}>
             {story.downloadedChapters === story.totalChapters ? 'Read' : 'Download All'}
+
+        </Button>
+
+        <Button 
+            mode="outlined" 
+            style={styles.actionBtn}
+            onPress={async () => {
+                try {
+                    setLoading(true);
+                    const uri = await epubGenerator.generateEpub(story, story.chapters);
+                    Alert.alert('Success', `EPUB exported to: ${uri}`);
+                    setLoading(false);
+                } catch (error: any) {
+                    Alert.alert('Error', error.message);
+                    setLoading(false);
+                }
+            }}
+        >
+            Export EPUB
         </Button>
 
         <Button 
