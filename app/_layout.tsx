@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useTheme as usePaperTheme } from 'react-native-paper';
 import { registerBackgroundFetchAsync } from '../src/services/BackgroundTaskService';
 import { ThemeProvider } from '../src/theme/ThemeContext';
+import { AlertProvider } from '../src/context/AlertContext';
 
 function AppLayout() {
   const theme = usePaperTheme();
@@ -35,7 +36,9 @@ function AppLayout() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AppLayout />
+      <AlertProvider>
+        <AppLayout />
+      </AlertProvider>
     </ThemeProvider>
   );
 }

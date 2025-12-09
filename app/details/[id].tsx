@@ -12,10 +12,11 @@ import { Story, Chapter, DownloadStatus } from '../../src/types';
 import { fetchPage } from '../../src/services/network/fetcher';
 import { parseChapterList } from '../../src/services/parser/chapterList';
 
-import { Alert } from 'react-native';
+import { useAppAlert } from '../../src/context/AlertContext';
 
 export default function StoryDetailsScreen() {
   const { id } = useLocalSearchParams();
+  const { showAlert } = useAppAlert();
   const theme = useTheme();
   const router = useRouter();
   const [story, setStory] = useState<Story | null>(null);
@@ -112,13 +113,13 @@ export default function StoryDetailsScreen() {
                              
                              await storageService.addStory(updatedStory);
                              setStory(updatedStory);
-                             Alert.alert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
+                             showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
                         } else {
-                             Alert.alert('No Updates', 'No new chapters found.');
+                             showAlert('No Updates', 'No new chapters found.');
                         }
 
                     } catch (error: any) {
-                        Alert.alert('Update Error', error.message);
+                        showAlert('Update Error', error.message);
                     } finally {
                         setCheckingUpdates(false);
                     }
@@ -137,11 +138,11 @@ export default function StoryDetailsScreen() {
                     });
                     
                     setStory(updatedStory); // Update UI with new state
-                    Alert.alert('Download Complete', 'All chapters have been downloaded.');
+                    showAlert('Download Complete', 'All chapters have been downloaded.');
                     
                 } catch (error) {
                     console.error('Download error', error);
-                    Alert.alert('Download Error', 'Failed to download chapters. Check logs.');
+                    showAlert('Download Error', 'Failed to download chapters. Check logs.');
                 } finally {
                     setDownloading(false);
                     await deactivateKeepAwake();
@@ -167,10 +168,10 @@ export default function StoryDetailsScreen() {
                 try {
                     setLoading(true);
                     const uri = await epubGenerator.generateEpub(story, story.chapters);
-                    Alert.alert('Success', `EPUB exported to: ${uri}`);
+                    showAlert('Success', `EPUB exported to: ${uri}`);
                     setLoading(false);
                 } catch (error: any) {
-                    Alert.alert('Error', error.message);
+                    showAlert('Error', error.message);
                     setLoading(false);
                 }
             }}

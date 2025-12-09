@@ -9,11 +9,12 @@ import { parseMetadata } from '../src/services/parser/metadata';
 import { parseChapterList } from '../src/services/parser/chapterList';
 import { storageService } from '../src/services/StorageService';
 import { Story } from '../src/types';
-import { Alert } from 'react-native';
+import { useAppAlert } from '../src/context/AlertContext';
 
 export default function AddStoryScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const { showAlert } = useAppAlert();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +36,7 @@ export default function AddStoryScreen() {
         const chapters = parseChapterList(html, url);
 
         if (chapters.length === 0) {
-            Alert.alert('Error', 'No chapters found. Please check the URL.');
+            showAlert('Error', 'No chapters found. Please check the URL.');
             setLoading(false);
             return;
         }
@@ -67,13 +68,13 @@ export default function AddStoryScreen() {
 
         await storageService.addStory(story);
         setLoading(false);
-        Alert.alert('Success', `Added "${metadata.title}" to library.`, [
+        showAlert('Success', `Added "${metadata.title}" to library.`, [
             { text: 'OK', onPress: () => router.back() }
         ]);
 
     } catch (e) {
         console.error(e);
-        Alert.alert('Error', 'Failed to fetch the novel. ' + (e as Error).message);
+        showAlert('Error', 'Failed to fetch the novel. ' + (e as Error).message);
         setLoading(false);
     }
   };

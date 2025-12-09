@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { StyleSheet, View, Alert, FlatList, RefreshControl } from 'react-native';
+import { StyleSheet, View, FlatList, RefreshControl } from 'react-native';
 import { Text, FAB, useTheme, Button, IconButton } from 'react-native-paper';
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,11 +12,13 @@ import { parseChapterContent } from '../src/services/parser/content';
 import { saveChapter, saveMetadata } from '../src/services/storage/fileSystem';
 import { storageService } from '../src/services/StorageService';
 import { Story } from '../src/types';
+import { useAppAlert } from '../src/context/AlertContext';
 
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAppAlert();
   const [stories, setStories] = useState<Story[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -92,11 +94,11 @@ export default function HomeScreen() {
         };
         await storageService.addStory(story);
         loadLibrary();
-        Alert.alert('Library Updated', `Added ${metadata.title}`);
+        showAlert('Library Updated', `Added ${metadata.title}`);
       }
     } catch (e) {
       console.error(e);
-      Alert.alert('Scrape Unknown Error', (e as Error).message);
+      showAlert('Scrape Unknown Error', (e as Error).message);
     }
   };
 
