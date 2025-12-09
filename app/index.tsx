@@ -96,10 +96,6 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer>
-      <View style={styles.header}>
-         <Text variant="headlineMedium">Library</Text>
-      </View>
-      
       <FlatList
         data={stories}
         keyExtractor={(item) => item.id}
@@ -148,7 +144,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   listContent: {
-    padding: 16,
+    padding: 8,
     paddingBottom: 80,
   },
   emptyState: {
