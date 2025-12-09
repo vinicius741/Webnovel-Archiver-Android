@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { storageService } from '../../src/services/StorageService';
 import { epubGenerator } from '../../src/services/EpubGenerator';
@@ -16,6 +17,7 @@ export default function StoryDetailsScreen() {
   const router = useRouter();
   const [story, setStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     const loadStory = async () => {
@@ -62,9 +64,35 @@ export default function StoryDetailsScreen() {
              <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
         </View>
 
-        <Button mode="contained" style={styles.actionBtn} onPress={() => {}}>
-            {story.downloadedChapters === story.totalChapters ? 'Read' : 'Download All'}
-
+        <Button 
+            mode="contained" 
+            style={styles.actionBtn} 
+            loading={downloading}
+            disabled={downloading}
+            onPress={async () => {
+                if (story.downloadedChapters === story.totalChapters) return; // Already read
+                
+                try {
+                    setDownloading(true);
+                    await activateKeepAwakeAsync();
+                    
+                    // TODO: Implement actual download logic here or call a service
+                    // For now, simulate a long download
+                    console.log('Starting download...');
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    console.log('Download complete (simulated)');
+                    
+                    Alert.alert('Download Started', 'Background download logic would run here.');
+                    
+                } catch (error) {
+                    console.error('Download error', error);
+                } finally {
+                    setDownloading(false);
+                    await deactivateKeepAwake();
+                }
+            }}
+        >
+            {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? 'Read' : 'Download All')}
         </Button>
 
         <Button 

@@ -1,12 +1,20 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { PaperProvider } from 'react-native-paper';
 import { useColorScheme } from 'react-native';
 import { LightTheme } from '../src/theme/light';
 import { DarkTheme } from '../src/theme/dark';
+import { registerBackgroundFetchAsync } from '../src/services/BackgroundTaskService';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const theme = colorScheme === 'dark' ? DarkTheme : LightTheme;
+
+  useEffect(() => {
+    registerBackgroundFetchAsync().catch(err => 
+      console.error("Failed to register background fetch", err)
+    );
+  }, []);
 
   return (
     <PaperProvider theme={theme}>
