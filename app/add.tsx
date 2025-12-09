@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { TextInput, Button, Text } from 'react-native-paper';
+import { TextInput, Button, Text, IconButton, useTheme } from 'react-native-paper';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { fetchPage } from '../src/services/network/fetcher';
 import { parseMetadata } from '../src/services/parser/metadata';
@@ -12,8 +13,16 @@ import { Alert } from 'react-native';
 
 export default function AddStoryScreen() {
   const router = useRouter();
+  const theme = useTheme();
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const handlePaste = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) {
+      setUrl(text);
+    }
+  };
 
   const handleAdd = async () => {
     if (!url) return;
@@ -73,15 +82,23 @@ export default function AddStoryScreen() {
     <ScreenContainer>
       <View style={styles.form}>
         <Text variant="titleMedium" style={styles.label}>Webnovel URL</Text>
-        <TextInput
-          mode="outlined"
-          placeholder="https://www.royalroad.com/fiction/..."
-          value={url}
-          onChangeText={setUrl}
-          autoCapitalize="none"
-          keyboardType="url"
-          style={styles.input}
-        />
+        <View style={styles.inputContainer}>
+            <TextInput
+            mode="outlined"
+            placeholder="https://www.royalroad.com/fiction/..."
+            value={url}
+            onChangeText={setUrl}
+            autoCapitalize="none"
+            keyboardType="url"
+            style={styles.input}
+            />
+            <IconButton
+                icon="content-paste"
+                mode="contained-tonal"
+                onPress={handlePaste}
+                style={styles.pasteButton}
+            />
+        </View>
         <Button 
           mode="contained" 
           onPress={handleAdd} 
@@ -103,8 +120,17 @@ const styles = StyleSheet.create({
   label: {
     marginBottom: 8,
   },
-  input: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
+  },
+  input: {
+    flex: 1,
+    marginRight: 8,
+  },
+  pasteButton: {
+    margin: 0,
   },
   button: {
     marginTop: 8,
