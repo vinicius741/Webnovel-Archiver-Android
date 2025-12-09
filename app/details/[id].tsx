@@ -7,6 +7,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
 import { storageService } from '../../src/services/StorageService';
 import { epubGenerator } from '../../src/services/EpubGenerator';
+import { downloadService } from '../../src/services/DownloadService';
 import { Story } from '../../src/types';
 
 import { Alert } from 'react-native';
@@ -76,16 +77,19 @@ export default function StoryDetailsScreen() {
                     setDownloading(true);
                     await activateKeepAwakeAsync();
                     
-                    // TODO: Implement actual download logic here or call a service
-                    // For now, simulate a long download
-                    console.log('Starting download...');
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    console.log('Download complete (simulated)');
+                    // Use the DownloadService
+                    const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
+                         // Optional: You could add a state to show "Downloading 5/100: Chapter Title" 
+                         // For now, the activity indicator shows activity.
+                         console.log(`Downloading ${current}/${total}: ${title}`);
+                    });
                     
-                    Alert.alert('Download Started', 'Background download logic would run here.');
+                    setStory(updatedStory); // Update UI with new state
+                    Alert.alert('Download Complete', 'All chapters have been downloaded.');
                     
                 } catch (error) {
                     console.error('Download error', error);
+                    Alert.alert('Download Error', 'Failed to download chapters. Check logs.');
                 } finally {
                     setDownloading(false);
                     await deactivateKeepAwake();

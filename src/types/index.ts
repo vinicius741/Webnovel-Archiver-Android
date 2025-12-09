@@ -5,9 +5,19 @@ export interface Chapter {
     content?: string; // HTML content, loaded only when needed? Or maybe path to file?
     // Ideally content is stored in file, not here. Here we track metadata.
     filePath?: string; // Path to local HTML file
+    downloaded?: boolean;
 }
 
-export type DownloadStatus = 'idle' | 'downloading' | 'completed' | 'failed' | 'paused';
+export const DownloadStatus = {
+    Idle: 'idle',
+    Downloading: 'downloading',
+    Completed: 'completed',
+    Failed: 'failed',
+    Paused: 'paused',
+    Partial: 'partial',
+} as const;
+
+export type DownloadStatus = typeof DownloadStatus[keyof typeof DownloadStatus];
 
 export interface Story {
     id: string;
