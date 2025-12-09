@@ -41,6 +41,25 @@ npx expo start
 
 4. **Wait for Bundle**: The app will build the JavaScript bundle and transfer it to your phone. Once confident, the app will launch.
 
+## How to Build a Local APK
+
+To generate an APK file directly on your machine (without using EAS Cloud), follow these steps:
+
+1. **Install EAS CLI** (if not already installed):
+   ```bash
+   npm install -g eas-cli
+   ```
+
+2. **Setup Local Environment**:
+   Ensure you have **Android Studio** and **Java (JDK)** installed and configured on your machine. The local build process requires the Android SDK to compile the native code.
+
+3. **Run the Build Command**:
+   ```bash
+   npx eas build -p android --profile preview --local
+   ```
+   - This will compile the app and output an `.apk` file in your project directory.
+   - You can then transfer this file to your Android device to install.
+
 ## Troubleshooting
 
 - **Network Issues**: If the app fails to connect even on the same Wi-Fi, you can try using a tunnel connection. Run:
