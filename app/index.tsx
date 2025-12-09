@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, useState } from 'react';
 import { StyleSheet, View, Alert, FlatList, RefreshControl } from 'react-native';
 import { Text, FAB, useTheme, Button } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
 import { fetchPage } from '../src/services/network/fetcher';
@@ -15,6 +16,7 @@ import { Story } from '../src/types';
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const [stories, setStories] = useState<Story[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -95,7 +97,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={{ paddingTop: 0, paddingBottom: 0 }}>
       <FlatList
         data={stories}
         keyExtractor={(item) => item.id}
@@ -129,7 +131,7 @@ export default function HomeScreen() {
       
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        style={[styles.fab, { backgroundColor: theme.colors.primary, bottom: insets.bottom + 16 }]}
         onPress={() => router.push('/add')}
         color={theme.colors.onPrimary}
       />

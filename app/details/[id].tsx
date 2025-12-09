@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 
@@ -56,6 +56,7 @@ export default function StoryDetailsScreen() {
 
   return (
     <ScreenContainer>
+      <Stack.Screen options={{ title: story ? story.title : 'Details' }} />
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
         <Text variant="titleMedium" style={{ color: theme.colors.secondary }}>{story.author}</Text>
@@ -156,7 +157,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingTop: 60,
   },
   title: {
       marginBottom: 8,
