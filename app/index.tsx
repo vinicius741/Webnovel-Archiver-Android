@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { StyleSheet, View, Alert, FlatList, RefreshControl } from 'react-native';
-import { Text, FAB, useTheme, Button } from 'react-native-paper';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { Text, FAB, useTheme, Button, IconButton } from 'react-native-paper';
+import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
@@ -102,6 +102,17 @@ export default function HomeScreen() {
 
   return (
     <ScreenContainer style={{ paddingTop: 0, paddingBottom: 0 }}>
+      <Stack.Screen 
+        options={{
+          headerRight: () => (
+            <IconButton 
+              icon="cog" 
+              iconColor={theme.colors.onSurface}
+              onPress={() => router.push('/settings')} 
+            />
+          ),
+        }} 
+      />
       <FlatList
         data={stories}
         keyExtractor={(item) => item.id}
