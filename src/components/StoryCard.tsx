@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Card, Text, useTheme, ProgressBar } from 'react-native-paper';
 
 interface Props {
@@ -17,10 +17,9 @@ export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props)
     <Card style={styles.card} onPress={onPress}>
       <Card.Content style={styles.content}>
         <View style={styles.textContainer}>
-            <Text variant="titleMedium" numberOfLines={2}>{title}</Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{author}</Text>
+            <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 8 }}>{title}</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: 8 }}>{author}</Text>
         </View>
-        {/* Placeholder for cover image if needed later */}
       </Card.Content>
       {progress !== undefined && (
         <ProgressBar progress={progress} style={styles.progress} />
@@ -28,9 +27,6 @@ export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props)
     </Card>
   );
 };
-
-// Need to import View since I used it above
-import { View } from 'react-native';
 
 const styles = StyleSheet.create({
   card: {
