@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { load } from 'cheerio';
 import { Story, Chapter } from '../types';
 import { saveEpub, readChapterFile } from './storage/fileSystem';
 
@@ -140,11 +141,19 @@ p { margin-bottom: 1em; line-height: 1.6; }
 
         if (chapter.filePath) {
             const text = await readChapterFile(chapter.filePath);
-            if (text) return text;
+            if (text) return this.sanitizeContent(text);
             return `<p>[Error loading content for "${chapter.title}"]</p>`;
         }
 
         return `<p>[No content available]</p>`;
+    }
+
+    private sanitizeContent(html: string): string {
+        // Load HTML in loose mode (HTML5)
+        const $ = load(html, { xmlMode: false });
+        // Retrieve the inner XML of the body, which converts void tags (br, img) to self-closing (br/, img/)
+        // We wrap map/get/join to get the string representation of the nodes
+        return $('body').contents().map((_, el) => $.xml(el)).get().join('');
     }
 
     private escapeXml(unsafe: string): string {
