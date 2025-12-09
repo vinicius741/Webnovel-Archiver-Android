@@ -8,6 +8,12 @@ export class EpubGenerator {
      * Generates an EPUB file for the given story and returns the local URI of the generated file.
      */
     async generateEpub(story: Story, chapters: Chapter[]): Promise<string> {
+        // Clean titles for the EPUB metadata/display
+        const cleanChapters = chapters.map(c => ({
+            ...c,
+            title: this.cleanChapterTitle(c.title)
+        }));
+
         const zip = new JSZip();
 
         // 1. Mimetype (must be first and uncompressed)
@@ -23,17 +29,20 @@ export class EpubGenerator {
         // Add CSS
         oebps.file('style.css', this.generateCss());
 
+        // Add Table of Contents (HTML)
+        oebps.file('toc.xhtml', this.generateTocHtml(story, cleanChapters));
+
         // Add Chapters
-        for (let i = 0; i < chapters.length; i++) {
-            const chapter = chapters[i];
+        for (let i = 0; i < cleanChapters.length; i++) {
+            const chapter = cleanChapters[i];
             const content = await this.readChapterContent(chapter);
             const xhtml = this.generateChapterHtml(chapter, content);
             oebps.file(`chapter_${i + 1}.xhtml`, xhtml);
         }
 
         // Add TF-IDF / Metadata / Navigation
-        oebps.file('content.opf', this.generateOpf(story, chapters));
-        oebps.file('toc.ncx', this.generateNcx(story, chapters));
+        oebps.file('content.opf', this.generateOpf(story, cleanChapters));
+        oebps.file('toc.ncx', this.generateNcx(story, cleanChapters));
 
         // 4. Generate Zip
         const base64 = await zip.generateAsync({ type: 'base64' });
@@ -41,6 +50,12 @@ export class EpubGenerator {
         // 5. Save to file system
         const filename = `${this.sanitizeFilename(story.title)}.epub`;
         return await saveEpub(filename, base64);
+    }
+
+    private cleanChapterTitle(title: string): string {
+        // Removes time-ago suffixes like "2 days ago", "5 hours ago", etc.
+        // Handles optional separators like " - " or " | " or parens.
+        return title.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\s*\)?\s*$/i, '').trim();
     }
 
     private generateContainerXml(): string {
@@ -74,11 +89,16 @@ export class EpubGenerator {
     <manifest>
         <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
         <item id="style" href="style.css" media-type="text/css"/>
+        <item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>
         ${manifestItems}
     </manifest>
     <spine toc="ncx">
+        <itemref idref="toc"/>
         ${spineItems}
     </spine>
+    <guide>
+        <reference type="toc" title="Table of Contents" href="toc.xhtml"/>
+    </guide>
 </package>`;
     }
 
@@ -110,6 +130,28 @@ export class EpubGenerator {
 </ncx>`;
     }
 
+    private generateTocHtml(story: Story, chapters: Chapter[]): string {
+        const listItems = chapters.map((c, i) =>
+            `<li><a href="chapter_${i + 1}.xhtml">${this.escapeXml(c.title)}</a></li>`
+        ).join('\n        ');
+
+        return `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+  "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Table of Contents</title>
+    <link href="style.css" type="text/css" rel="stylesheet"/>
+</head>
+<body>
+    <h1>Table of Contents</h1>
+    <ul>
+        ${listItems}
+    </ul>
+</body>
+</html>`;
+    }
+
     private generateChapterHtml(chapter: Chapter, content: string): string {
         return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
@@ -131,8 +173,12 @@ export class EpubGenerator {
     private generateCss(): string {
         return `
 body { font-family: sans-serif; margin: 1em; }
-h2 { text-align: center; border-bottom: 1px solid #ccc; padding-bottom: 0.5em; }
+h1, h2 { text-align: center; border-bottom: 1px solid #ccc; padding-bottom: 0.5em; }
 p { margin-bottom: 1em; line-height: 1.6; }
+ul { list-style-type: none; padding: 0; }
+li { margin-bottom: 0.5em; }
+a { text-decoration: none; color: #000; }
+a:hover { text-decoration: underline; }
         `;
     }
 
