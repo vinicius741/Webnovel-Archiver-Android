@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Image } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
@@ -63,8 +63,9 @@ export default function StoryDetailsScreen() {
     <ScreenContainer>
       <Stack.Screen options={{ title: story ? story.title : 'Details' }} />
       <ScrollView contentContainerStyle={styles.content}>
+        {story.coverUrl && <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />}
         <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
-        <Text variant="titleMedium" style={{ color: theme.colors.secondary }}>{story.author}</Text>
+        <Text variant="titleMedium" style={[styles.author, { color: theme.colors.secondary }]}>{story.author}</Text>
         
         <View style={styles.stats}>
              <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
@@ -217,14 +218,27 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
   },
+  coverImage: {
+    width: 150,
+    height: 225,
+    borderRadius: 8,
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
   title: {
       marginBottom: 8,
+      textAlign: 'center',
+  },
+  author: {
+    textAlign: 'center',
+    marginBottom: 16,
   },
   stats: {
       flexDirection: 'row',
       gap: 16,
       marginTop: 8,
       marginBottom: 16,
+      justifyContent: 'center',
   },
   actionBtn: {
       marginBottom: 20,

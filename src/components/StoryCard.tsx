@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { Card, Text, useTheme, ProgressBar } from 'react-native-paper';
 
 interface Props {
@@ -16,6 +16,7 @@ export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props)
   return (
     <Card style={styles.card} onPress={onPress}>
       <Card.Content style={styles.content}>
+        {coverUrl && <Image source={{ uri: coverUrl }} style={styles.coverImage} />}
         <View style={styles.textContainer}>
             <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 8 }}>{title}</Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: 8 }}>{author}</Text>
@@ -31,17 +32,26 @@ export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props)
 const styles = StyleSheet.create({
   card: {
     marginBottom: 8,
+    borderRadius: 12,
   },
   content: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    padding: 16,
+  },
+  coverImage: {
+    width: 80,
+    height: 120,
+    borderRadius: 8,
+    marginRight: 16,
   },
   textContainer: {
     flex: 1,
+    justifyContent: 'center',
   },
   progress: {
     height: 4,
-    borderBottomLeftRadius: 12, // Match card radius
+    borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
   },
 });
