@@ -8,7 +8,9 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { storageService } from '../../src/services/StorageService';
 import { epubGenerator } from '../../src/services/EpubGenerator';
 import { downloadService } from '../../src/services/DownloadService';
-import { Story } from '../../src/types';
+import { Story, Chapter, DownloadStatus } from '../../src/types';
+import { fetchPage } from '../../src/services/network/fetcher';
+import { parseChapterList } from '../../src/services/parser/chapterList';
 
 import { Alert } from 'react-native';
 
@@ -19,6 +21,7 @@ export default function StoryDetailsScreen() {
   const [story, setStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState('');
 
@@ -74,7 +77,52 @@ export default function StoryDetailsScreen() {
             loading={downloading}
             disabled={downloading}
             onPress={async () => {
-                if (story.downloadedChapters === story.totalChapters) return; // Already read
+                // If already downloaded, check for updates
+                if (story.downloadedChapters === story.totalChapters) {
+                    try {
+                        setCheckingUpdates(true);
+                        const html = await fetchPage(story.sourceUrl);
+                        const newChapters = parseChapterList(html, story.sourceUrl);
+                        
+                        // Merge logic
+                        let hasUpdates = false;
+                        const updatedChapters: Chapter[] = newChapters.map(newChap => {
+                            const existing = story.chapters.find(c => c.url === newChap.url);
+                            if (existing) {
+                                return existing; // Keep existing state (downloaded, filePath)
+                            }
+                            hasUpdates = true;
+                            return {
+                                id: newChap.url,
+                                title: newChap.title,
+                                url: newChap.url,
+                                downloaded: false,
+                            };
+                        });
+
+                        if (hasUpdates || updatedChapters.length > story.chapters.length) {
+                             const updatedStory: Story = {
+                                 ...story,
+                                 chapters: updatedChapters,
+                                 totalChapters: updatedChapters.length,
+                                 status: DownloadStatus.Partial, // Reset to partial so user can download new stuff
+                                 lastUpdated: Date.now(),
+                             };
+                             
+                             await storageService.addStory(updatedStory);
+                             setStory(updatedStory);
+                             Alert.alert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
+                        } else {
+                             Alert.alert('No Updates', 'No new chapters found.');
+                        }
+
+                    } catch (error: any) {
+                        Alert.alert('Update Error', error.message);
+                    } finally {
+                        setCheckingUpdates(false);
+                    }
+                    return; 
+                }
                 
                 try {
                     setDownloading(true);
@@ -99,7 +147,7 @@ export default function StoryDetailsScreen() {
                 }
             }}
         >
-            {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? 'Read' : 'Download All')}
+            {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking...' : 'Update') : 'Download All')}
         </Button>
 
         {downloading && (
