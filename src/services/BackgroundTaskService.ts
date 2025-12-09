@@ -1,4 +1,4 @@
-import * as BackgroundFetch from 'expo-background-fetch';
+import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { storageService } from './StorageService';
 
@@ -23,10 +23,10 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
 
         console.log('Background fetch completed');
         // Be sure to return the successful result type!
-        return BackgroundFetch.BackgroundFetchResult.NewData;
+        return BackgroundTask.BackgroundTaskResult.Success;
     } catch (error) {
         console.error('Background fetch failed:', error);
-        return BackgroundFetch.BackgroundFetchResult.Failed;
+        return BackgroundTask.BackgroundTaskResult.Failed;
     }
 });
 
@@ -35,10 +35,8 @@ TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
 // Note: This does NOT work on Expo Go for Android/iOS in the background efficiently, 
 // but does in development builds / production.
 export async function registerBackgroundFetchAsync() {
-    return BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
-        minimumInterval: 60 * 60 * 6, // 6 hours
-        stopOnTerminate: false, // android only,
-        startOnBoot: true, // android only
+    return BackgroundTask.registerTaskAsync(BACKGROUND_FETCH_TASK, {
+        minimumInterval: 60 * 6, // 6 hours (in minutes)
     });
 }
 
@@ -46,5 +44,5 @@ export async function registerBackgroundFetchAsync() {
 // This would usually be called when the user logs out or
 // if you want to skip updates
 export async function unregisterBackgroundFetchAsync() {
-    return BackgroundFetch.unregisterTaskAsync(BACKGROUND_FETCH_TASK);
+    return BackgroundTask.unregisterTaskAsync(BACKGROUND_FETCH_TASK);
 }
