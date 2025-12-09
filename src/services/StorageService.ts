@@ -31,8 +31,16 @@ class StorageService {
         // Check if distinct
         const index = library.findIndex((s) => s.id === story.id);
         if (index >= 0) {
+            // Preserve original dateAdded if it exists on the old one, unless the new one already has it?
+            // Usually updates don't change dateAdded. 
+            // If the incoming object doesn't have dateAdded, we should copy it from the old one to be safe.
+            const existing = library[index];
+            story.dateAdded = existing.dateAdded || story.dateAdded;
+
             library[index] = story;
         } else {
+            // New story
+            story.dateAdded = Date.now();
             library.push(story);
         }
         await this.saveLibrary(library);

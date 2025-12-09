@@ -30,4 +30,5 @@ export interface Story {
     downloadedChapters: number;
     chapters: Chapter[];
     lastUpdated?: number; // timestamp
+    dateAdded?: number; // timestamp for initial addition
 }

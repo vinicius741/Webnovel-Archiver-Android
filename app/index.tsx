@@ -24,6 +24,10 @@ export default function HomeScreen() {
     try {
       setRefreshing(true);
       const library = await storageService.getLibrary();
+      // Sort by dateAdded desc (newest first)
+      // Fallback to 0 if undefined (older items)
+      library.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
+      
       setStories(library);
     } catch (e) {
       console.error(e);
