@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
+import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -19,6 +19,8 @@ export default function StoryDetailsScreen() {
   const [story, setStory] = useState<Story | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatus, setDownloadStatus] = useState('');
 
   useEffect(() => {
     const loadStory = async () => {
@@ -80,9 +82,9 @@ export default function StoryDetailsScreen() {
                     
                     // Use the DownloadService
                     const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
-                         // Optional: You could add a state to show "Downloading 5/100: Chapter Title" 
-                         // For now, the activity indicator shows activity.
-                         console.log(`Downloading ${current}/${total}: ${title}`);
+                         const progress = total > 0 ? current / total : 0;
+                         setDownloadProgress(progress);
+                         setDownloadStatus(`Downloading ${current}/${total}: ${title}`);
                     });
                     
                     setStory(updatedStory); // Update UI with new state
@@ -99,6 +101,15 @@ export default function StoryDetailsScreen() {
         >
             {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? 'Read' : 'Download All')}
         </Button>
+
+        {downloading && (
+            <View style={{ marginBottom: 20 }}>
+                <ProgressBar progress={downloadProgress} color={theme.colors.primary} style={{ height: 8, borderRadius: 4 }} />
+                <Text variant="bodySmall" style={{ marginTop: 8, textAlign: 'center' }}>
+                    {downloadStatus}
+                </Text>
+            </View>
+        )}
 
         <Button 
             mode="outlined" 
