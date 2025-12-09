@@ -51,15 +51,11 @@ This plan outlines the phased development implementation for porting the Webnove
 - **Packaging**: Use `JSZip` to bundle files.
 - **Output**: Save `.epub` file to scoped storage or export via `Storage Access Framework` (Sharing Intent).
 
-### Phase 5: Cloud Backup & Background Tasks
+### Phase 5: Background Tasks
 **Goal**: Ensure data safety and reliable long-running operations.
 - **Background Tasks**:
     - Implement `expo-task-manager` / `expo-background-fetch` for periodic sync.
     - (Note: For long downloads while app is open, use `expo-keep-awake`).
-- **Google Drive Sync**:
-    - Integrate Google Sign-In.
-    - Implement REST API client for Drive (upload/check timestamps).
-    - Logic for "Smart Sync" (compare `modifiedTime`).
 
 ### Phase 6: Optimization & Polish
 **Goal**: Ensure a smooth, premium user experience.
