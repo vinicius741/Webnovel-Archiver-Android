@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
-import { View, StyleSheet, ScrollView, Image, Alert, FlatList } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar, IconButton } from 'react-native-paper';
-import * as Clipboard from 'expo-clipboard';
+import { View, StyleSheet, ScrollView, Alert, FlatList } from 'react-native';
+import { Text, Button, List, useTheme, ActivityIndicator, IconButton } from 'react-native-paper';
+import { StoryHeader } from '../../src/components/details/StoryHeader';
+import { StoryActions } from '../../src/components/details/StoryActions';
+import { StoryDescription } from '../../src/components/details/StoryDescription';
+import { ChapterListItem } from '../../src/components/details/ChapterListItem';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -94,187 +97,143 @@ export default function StoryDetailsScreen() {
       );
   }
 
-  const renderHeader = () => (
-    <View style={styles.fullWidth}>
-        {story.coverUrl && <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />}
-        <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
-        <Text variant="titleMedium" style={[styles.author, { color: theme.colors.secondary }]}>{story.author}</Text>
-        
-        <View style={styles.stats}>
-            <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
-            <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
-        </View>
+  const handleDownloadOrUpdate = async () => {
+    if (!story) return;
 
-        <Button 
-            mode="contained" 
-            style={styles.actionBtn} 
-            loading={downloading}
-            disabled={downloading}
-            onPress={async () => {
-                // If already downloaded, check for updates
-                if (story.downloadedChapters === story.totalChapters) {
-                    try {
-                        setCheckingUpdates(true);
-                        const html = await fetchPage(story.sourceUrl);
-                        const newChapters = parseChapterList(html, story.sourceUrl);
-                        
-                        // Merge logic
-                        let hasUpdates = false;
-                        const updatedChapters: Chapter[] = newChapters.map(newChap => {
-                            const existing = story.chapters.find(c => c.url === newChap.url);
-                            if (existing) {
-                                return existing; // Keep existing state (downloaded, filePath)
-                            }
-                            hasUpdates = true;
-                            return {
-                                id: newChap.url,
-                                title: newChap.title,
-                                url: newChap.url,
-                                downloaded: false,
-                            };
-                        });
-
-                        if (hasUpdates || updatedChapters.length > story.chapters.length) {
-                            const updatedStory: Story = {
-                                ...story,
-                                chapters: updatedChapters,
-                                totalChapters: updatedChapters.length,
-                                status: DownloadStatus.Partial, // Reset to partial so user can download new stuff
-                                lastUpdated: Date.now(),
-                            };
-                            
-                            await storageService.addStory(updatedStory);
-                            setStory(updatedStory);
-                            showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
-                        } else {
-                            showAlert('No Updates', 'No new chapters found.');
-                        }
-
-                    } catch (error: any) {
-                        showAlert('Update Error', error.message);
-                    } finally {
-                        setCheckingUpdates(false);
-                    }
-                    return; 
+    // If already downloaded, check for updates
+    if (story.downloadedChapters === story.totalChapters) {
+        try {
+            setCheckingUpdates(true);
+            const html = await fetchPage(story.sourceUrl);
+            const newChapters = parseChapterList(html, story.sourceUrl);
+            
+            // Merge logic
+            let hasUpdates = false;
+            const updatedChapters: Chapter[] = newChapters.map(newChap => {
+                const existing = story.chapters.find(c => c.url === newChap.url);
+                if (existing) {
+                    return existing; // Keep existing state (downloaded, filePath)
                 }
+                hasUpdates = true;
+                return {
+                    id: newChap.url,
+                    title: newChap.title,
+                    url: newChap.url,
+                    downloaded: false,
+                };
+            });
+
+            if (hasUpdates || updatedChapters.length > story.chapters.length) {
+                const updatedStory: Story = {
+                    ...story,
+                    chapters: updatedChapters,
+                    totalChapters: updatedChapters.length,
+                    status: DownloadStatus.Partial, // Reset to partial so user can download new stuff
+                    lastUpdated: Date.now(),
+                };
                 
-                try {
-                    setDownloading(true);
-                    await activateKeepAwakeAsync();
-                    
-                    // Use the DownloadService
-                    const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
-                        const progress = total > 0 ? current / total : 0;
-                        setDownloadProgress(progress);
-                        setDownloadStatus(`${current}/${total}: ${title}`);
-                    });
-                    
-                    setStory(updatedStory); // Update UI with new state
-                    showAlert('Download Complete', 'All chapters have been downloaded.');
-                    
-                } catch (error) {
-                    console.error('Download error', error);
-                    showAlert('Download Error', 'Failed to download chapters. Check logs.');
-                } finally {
-                    setDownloading(false);
-                    await deactivateKeepAwake();
-                }
-            }}
-        >
-            {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking...' : 'Update') : 'Download All')}
-        </Button>
+                await storageService.addStory(updatedStory);
+                setStory(updatedStory);
+                showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
+            } else {
+                showAlert('No Updates', 'No new chapters found.');
+            }
 
-        {downloading && (
-            <View style={{ marginBottom: 20 }}>
-                <ProgressBar progress={downloadProgress} color={theme.colors.primary} style={{ height: 8, borderRadius: 4 }} />
-                <Text variant="bodySmall" style={{ marginTop: 8, textAlign: 'center' }}>
-                    {downloadStatus}
-                </Text>
-            </View>
-        )}
+        } catch (error: any) {
+            showAlert('Update Error', error.message);
+        } finally {
+            setCheckingUpdates(false);
+        }
+        return; 
+    }
+    
+    try {
+        setDownloading(true);
+        await activateKeepAwakeAsync();
+        
+        // Use the DownloadService
+        const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
+            const progress = total > 0 ? current / total : 0;
+            setDownloadProgress(progress);
+            setDownloadStatus(`${current}/${total}: ${title}`);
+        });
+        
+        setStory(updatedStory); // Update UI with new state
+        showAlert('Download Complete', 'All chapters have been downloaded.');
+        
+    } catch (error) {
+        console.error('Download error', error);
+        showAlert('Download Error', 'Failed to download chapters. Check logs.');
+    } finally {
+        setDownloading(false);
+        await deactivateKeepAwake();
+    }
+  };
 
-        <Button
-            mode="outlined"
-            style={styles.actionBtn}
-            disabled={story.downloadedChapters === 0 && !story.epubPath}
-            onPress={async () => {
-                if (story.epubPath) {
-                try {
-                    // Optimistic check: if it's a content URI, we assume it exists if we have permission (which SAF should have persisted).
-                    // For file URIs, we can check.
-                    const fileInfo = await getInfoAsync(story.epubPath);
-                    if (!fileInfo.exists) {
-                        // Invalid path, clear it
-                            const updated = { ...story, epubPath: undefined };
-                            await storageService.addStory(updated);
-                            setStory(updated);
-                            showAlert('Error', 'EPUB file not found. Please regenerate.');
-                            return;
-                    }
+  const handleGenerateOrRead = async () => {
+      if (!story) return;
 
-                    let contentUri = story.epubPath;
-                    if (!contentUri.startsWith('content://')) {
-                            contentUri = await getContentUriAsync(story.epubPath);
-                    }
-                    
-                    await startActivityAsync('android.intent.action.VIEW', {
-                        data: contentUri,
-                        flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
-                        type: 'application/epub+zip',
-                    });
+      if (story.epubPath) {
+        try {
+            // Optimistic check: if it's a content URI, we assume it exists if we have permission (which SAF should have persisted).
+            // For file URIs, we can check.
+            const fileInfo = await getInfoAsync(story.epubPath);
+            if (!fileInfo.exists) {
+                // Invalid path, clear it
+                    const updated = { ...story, epubPath: undefined };
+                    await storageService.addStory(updated);
+                    setStory(updated);
+                    showAlert('Error', 'EPUB file not found. Please regenerate.');
+                    return;
+            }
 
-                } catch (e: any) {
-                    showAlert('Read Error', 'Could not open EPUB: ' + e.message);
-                }
-                return;
-                }
+            let contentUri = story.epubPath;
+            if (!contentUri.startsWith('content://')) {
+                    contentUri = await getContentUriAsync(story.epubPath);
+            }
+            
+            await startActivityAsync('android.intent.action.VIEW', {
+                data: contentUri,
+                flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+                type: 'application/epub+zip',
+            });
 
-                try {
-                    setLoading(true);
-                    const uri = await epubGenerator.generateEpub(story, story.chapters);
-                    
-                    const updatedStory = { ...story, epubPath: uri };
-                    await storageService.addStory(updatedStory);
-                    setStory(updatedStory);
+        } catch (e: any) {
+            showAlert('Read Error', 'Could not open EPUB: ' + e.message);
+        }
+        return;
+      }
 
-                    showAlert('Success', `EPUB exported to: ${uri}`);
-                    setLoading(false);
-                } catch (error: any) {
-                    showAlert('Error', error.message);
-                    setLoading(false);
-                }
-            }}
-        >
-            {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
-        </Button>
+      try {
+          setLoading(true);
+          const uri = await epubGenerator.generateEpub(story, story.chapters);
+          
+          const updatedStory = { ...story, epubPath: uri };
+          await storageService.addStory(updatedStory);
+          setStory(updatedStory);
 
-        {story.description && (
-            <View style={styles.descriptionContainer}>
-                <Text 
-                    variant="bodyMedium" 
-                    style={styles.description}
-                    onPress={async () => {
-                        const now = Date.now();
-                        const DOUBLE_PRESS_DELAY = 300;
-                        if (now - lastTap.current < DOUBLE_PRESS_DELAY) {
-                            await Clipboard.setStringAsync(story.description || '');
-                        }
-                        lastTap.current = now;
-                    }}
-                >
-                    {story.description}
-                </Text>
-            </View>
-        )}
+          showAlert('Success', `EPUB exported to: ${uri}`);
+          setLoading(false);
+      } catch (error: any) {
+          showAlert('Error', error.message);
+          setLoading(false);
+      }
+  };
+
+  const renderStoryInfo = () => (
+    <View style={styles.fullWidth}>
+        <StoryHeader story={story} />
+        <StoryActions 
+            story={story}
+            downloading={downloading}
+            checkingUpdates={checkingUpdates}
+            downloadProgress={downloadProgress}
+            downloadStatus={downloadStatus}
+            onDownloadOrUpdate={handleDownloadOrUpdate}
+            onGenerateOrRead={handleGenerateOrRead}
+        />
+        <StoryDescription description={story.description} />
     </View>
-  );
-
-  const renderChapterItem = ({ item }: { item: Chapter }) => (
-    <List.Item
-        title={item.title}
-        left={props => <List.Icon {...props} icon="file-document-outline" />}
-        onPress={() => {}}
-    />
   );
 
   return (
@@ -296,7 +255,7 @@ export default function StoryDetailsScreen() {
           <View style={styles.largeScreenContainer}>
               <View style={styles.leftColumn}>
                   <ScrollView contentContainerStyle={{ padding: 16 }}>
-                      {renderHeader()}
+                      {renderStoryInfo()}
                   </ScrollView>
               </View>
               <View style={styles.rightColumn}>
@@ -304,7 +263,7 @@ export default function StoryDetailsScreen() {
                        {/* Header for list included in section title, but FlatList needs data */}
                        <FlatList
                           data={story.chapters}
-                          renderItem={renderChapterItem}
+                          renderItem={({ item }) => <ChapterListItem item={item} />}
                           keyExtractor={(item: Chapter) => item.id}
                           // Remove inner scroll if we want the whole right column to scroll, 
                           // but requirement is to make chapters scrollable. FlatList does this by default.
@@ -316,9 +275,9 @@ export default function StoryDetailsScreen() {
           <FlatList
               contentContainerStyle={styles.content}
               data={story.chapters}
-              renderItem={renderChapterItem}
+              renderItem={({ item }) => <ChapterListItem item={item} />}
               keyExtractor={(item: Chapter) => item.id}
-              ListHeaderComponent={renderHeader()}
+              ListHeaderComponent={renderStoryInfo()}
               ListHeaderComponentStyle={{ marginBottom: 16 }}
           />
       )}
@@ -355,40 +314,4 @@ const styles = StyleSheet.create({
   fullWidth: {
       width: '100%',
   },
-  coverImage: {
-    width: 150,
-    height: 225,
-    borderRadius: 8,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  title: {
-      marginBottom: 8,
-      textAlign: 'center',
-  },
-  author: {
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  stats: {
-      flexDirection: 'row',
-      gap: 16,
-      marginTop: 8,
-      marginBottom: 16,
-      justifyContent: 'center',
-  },
-  actionBtn: {
-      marginBottom: 20,
-  },
-  descriptionContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 20,
-      paddingHorizontal: 16,
-  },
-  description: {
-      flex: 1,
-      textAlign: 'center',
-  }
 });
