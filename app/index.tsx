@@ -1,31 +1,25 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { StyleSheet, View, FlatList, RefreshControl } from 'react-native';
-import { Text, FAB, useTheme, Button, IconButton } from 'react-native-paper';
+import { Text, FAB, useTheme, Button, IconButton, Searchbar } from 'react-native-paper';
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
-import { fetchPage } from '../src/services/network/fetcher';
-import { parseMetadata } from '../src/services/parser/metadata';
-import { parseChapterList } from '../src/services/parser/chapterList';
 import { storageService } from '../src/services/StorageService';
 import { Story } from '../src/types';
-import { useAppAlert } from '../src/context/AlertContext';
 
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { showAlert } = useAppAlert();
   const [stories, setStories] = useState<Story[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const loadLibrary = async () => {
     try {
       setRefreshing(true);
       const library = await storageService.getLibrary();
-      // Sort by dateAdded desc (newest first)
-      // Fallback to 0 if undefined (older items)
       library.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
       
       setStories(library);
@@ -46,6 +40,11 @@ export default function HomeScreen() {
     loadLibrary();
   }, []);
 
+  const filteredStories = stories.filter(story => 
+    story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (story.author && story.author.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
 
 
   return (
@@ -61,8 +60,19 @@ export default function HomeScreen() {
           ),
         }} 
       />
+      <View style={styles.searchContainer}>
+        <Searchbar
+          placeholder="Search stories"
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={styles.searchBar}
+          placeholderTextColor={theme.colors.onSurfaceVariant}
+          iconColor={theme.colors.onSurfaceVariant}
+          inputStyle={{ color: theme.colors.onSurface }}
+        />
+      </View>
       <FlatList
-        data={stories}
+        data={filteredStories}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         refreshControl={
@@ -120,5 +130,15 @@ const styles = StyleSheet.create({
     margin: 16,
     right: 0,
     bottom: 0,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  searchBar: {
+    elevation: 2,
+    borderRadius: 8,
   },
 });
