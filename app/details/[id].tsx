@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
-import { View, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar, IconButton } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -43,6 +43,32 @@ export default function StoryDetailsScreen() {
     loadStory();
   }, [id]);
 
+  const confirmDelete = () => {
+      if (!story) return;
+      Alert.alert(
+          'Delete Novel',
+          `Are you sure you want to delete "${story.title}"? This action cannot be undone.`,
+          [
+              {
+                  text: 'Cancel',
+                  style: 'cancel',
+              },
+              {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: async () => {
+                      await storageService.deleteStory(story.id);
+                      if (router.canDismiss()) {
+                          router.dismiss();
+                      } else {
+                          router.replace('/');
+                      }
+                  },
+              },
+          ]
+      );
+  };
+
   if (loading) {
     return (
         <ScreenContainer>
@@ -56,17 +82,28 @@ export default function StoryDetailsScreen() {
   if (!story) {
       return (
           <ScreenContainer>
-            <View style={styles.center}>
-                <Text variant="headlineSmall">Story not found</Text>
-                <Button onPress={() => router.back()}>Go Back</Button>
-            </View>
+              <View style={styles.center}>
+                  <Text variant="headlineSmall">Story not found</Text>
+                  <Button onPress={() => router.back()}>Go Back</Button>
+              </View>
           </ScreenContainer>
       );
   }
 
   return (
     <ScreenContainer>
-      <Stack.Screen options={{ title: story ? story.title : 'Details' }} />
+      <Stack.Screen 
+        options={{ 
+            title: story ? story.title : 'Details',
+            headerRight: () => (
+                <IconButton 
+                    icon="delete" 
+                    iconColor={theme.colors.error}
+                    onPress={confirmDelete}
+                />
+            )
+        }} 
+      />
       <ScrollView contentContainerStyle={styles.content}>
         {story.coverUrl && <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />}
         <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
@@ -168,6 +205,7 @@ export default function StoryDetailsScreen() {
         <Button
             mode="outlined"
             style={styles.actionBtn}
+            disabled={story.downloadedChapters === 0 && !story.epubPath}
             onPress={async () => {
                 if (story.epubPath) {
                    try {
@@ -217,22 +255,6 @@ export default function StoryDetailsScreen() {
             }}
         >
             {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
-        </Button>
-
-        <Button 
-            mode="outlined" 
-            textColor={theme.colors.error} 
-            style={[styles.actionBtn, { borderColor: theme.colors.error }]}
-            onPress={async () => {
-                await storageService.deleteStory(story.id);
-                if (router.canDismiss()) {
-                    router.dismiss();
-                } else {
-                    router.replace('/');
-                }
-            }}
-        >
-            Delete Novel
         </Button>
 
         {story.description && (
