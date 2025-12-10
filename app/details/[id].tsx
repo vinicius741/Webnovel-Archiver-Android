@@ -128,32 +128,34 @@ export default function StoryDetailsScreen() {
 
             // Check if tags changed
             const tagsChanged = JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
+            const meaningfulChange = hasUpdates || updatedChapters.length > story.chapters.length || tagsChanged;
 
-            if (hasUpdates || updatedChapters.length > story.chapters.length || tagsChanged) {
-                const updatedStory: Story = {
-                    ...story,
-                    chapters: updatedChapters,
-                    totalChapters: updatedChapters.length,
-                    status: hasUpdates ? DownloadStatus.Partial : story.status, // Only reset status if new chapters
-                    lastUpdated: Date.now(),
-                    tags: metadata.tags, // Update tags
-                    // Update other metadata if desirable
-                    title: metadata.title || story.title,
-                    author: metadata.author || story.author,
-                    coverUrl: metadata.coverUrl || story.coverUrl,
-                    description: metadata.description || story.description,
-                };
-                
-                await storageService.addStory(updatedStory);
-                setStory(updatedStory);
-                
+            const updatedStory: Story = {
+                ...story,
+                chapters: updatedChapters,
+                totalChapters: updatedChapters.length,
+                status: hasUpdates ? DownloadStatus.Partial : story.status, // Only reset status if new chapters
+                lastUpdated: Date.now(),
+                tags: metadata.tags, // Update tags
+                // Update other metadata if desirable
+                title: metadata.title || story.title,
+                author: metadata.author || story.author,
+                coverUrl: metadata.coverUrl || story.coverUrl,
+                description: metadata.description || story.description,
+            };
+            
+            await storageService.addStory(updatedStory);
+            setStory(updatedStory);
+            
+            if (meaningfulChange) {
                 if (hasUpdates) {
                     showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
                 } else if (tagsChanged) {
                     showAlert('Metadata Updated', 'Tags and details updated.');
                 }
             } else {
-                showAlert('No Updates', 'No new chapters or changes found.');
+                // Still update timestamp even if no content changes
+                showAlert('No Updates', 'No new chapters found. Updated last checked time.');
             }
 
         } catch (error: any) {

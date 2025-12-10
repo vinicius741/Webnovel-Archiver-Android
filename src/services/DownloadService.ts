@@ -62,9 +62,7 @@ class DownloadService {
 
             await notificationService.startForegroundService(
                 `Downloading ${story.title}`,
-                `Starting download... (${initialDownloadedCount}/${chapters.length})`,
-                chapters.length,
-                initialDownloadedCount
+                `Starting download... (${initialDownloadedCount}/${chapters.length})`
             );
 
             // Get settings for concurrency and delay

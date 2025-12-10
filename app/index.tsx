@@ -32,7 +32,11 @@ export default function HomeScreen() {
     try {
       setRefreshing(true);
       const library = await storageService.getLibrary();
-      library.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
+      library.sort((a, b) => {
+        const dateA = Math.max(a.lastUpdated || 0, a.dateAdded || 0);
+        const dateB = Math.max(b.lastUpdated || 0, b.dateAdded || 0);
+        return dateB - dateA;
+      });
       
       setStories(library);
     } catch (e) {
