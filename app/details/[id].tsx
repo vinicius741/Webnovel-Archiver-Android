@@ -6,6 +6,7 @@ import { Text, Button, List, useTheme, ActivityIndicator, IconButton } from 'rea
 import { StoryHeader } from '../../src/components/details/StoryHeader';
 import { StoryActions } from '../../src/components/details/StoryActions';
 import { StoryDescription } from '../../src/components/details/StoryDescription';
+import { StoryTags } from '../../src/components/details/StoryTags';
 import { ChapterListItem } from '../../src/components/details/ChapterListItem';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
@@ -17,6 +18,7 @@ import { downloadService } from '../../src/services/DownloadService';
 import { Story, Chapter, DownloadStatus } from '../../src/types';
 import { fetchPage } from '../../src/services/network/fetcher';
 import { parseChapterList } from '../../src/services/parser/chapterList';
+import { parseMetadata } from '../../src/services/parser/metadata';
 import { useScreenLayout } from '../../src/hooks/useScreenLayout';
 
 import { useAppAlert } from '../../src/context/AlertContext';
@@ -106,6 +108,7 @@ export default function StoryDetailsScreen() {
             setCheckingUpdates(true);
             const html = await fetchPage(story.sourceUrl);
             const newChapters = parseChapterList(html, story.sourceUrl);
+            const metadata = parseMetadata(html);
             
             // Merge logic
             let hasUpdates = false;
@@ -123,20 +126,34 @@ export default function StoryDetailsScreen() {
                 };
             });
 
-            if (hasUpdates || updatedChapters.length > story.chapters.length) {
+            // Check if tags changed
+            const tagsChanged = JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
+
+            if (hasUpdates || updatedChapters.length > story.chapters.length || tagsChanged) {
                 const updatedStory: Story = {
                     ...story,
                     chapters: updatedChapters,
                     totalChapters: updatedChapters.length,
-                    status: DownloadStatus.Partial, // Reset to partial so user can download new stuff
+                    status: hasUpdates ? DownloadStatus.Partial : story.status, // Only reset status if new chapters
                     lastUpdated: Date.now(),
+                    tags: metadata.tags, // Update tags
+                    // Update other metadata if desirable
+                    title: metadata.title || story.title,
+                    author: metadata.author || story.author,
+                    coverUrl: metadata.coverUrl || story.coverUrl,
+                    description: metadata.description || story.description,
                 };
                 
                 await storageService.addStory(updatedStory);
                 setStory(updatedStory);
-                showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
+                
+                if (hasUpdates) {
+                    showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
+                } else if (tagsChanged) {
+                    showAlert('Metadata Updated', 'Tags and details updated.');
+                }
             } else {
-                showAlert('No Updates', 'No new chapters found.');
+                showAlert('No Updates', 'No new chapters or changes found.');
             }
 
         } catch (error: any) {
@@ -232,6 +249,7 @@ export default function StoryDetailsScreen() {
             onDownloadOrUpdate={handleDownloadOrUpdate}
             onGenerateOrRead={handleGenerateOrRead}
         />
+        <StoryTags tags={story.tags} />
         <StoryDescription description={story.description} />
     </View>
   );

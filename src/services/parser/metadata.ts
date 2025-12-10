@@ -6,6 +6,7 @@ export interface NovelMetadata {
     author: string;
     coverUrl?: string;
     description?: string;
+    tags?: string[];
 }
 
 export const parseMetadata = (html: string): NovelMetadata => {
@@ -62,10 +63,25 @@ export const parseMetadata = (html: string): NovelMetadata => {
             $('meta[property="og:description"]').attr('content');
     }
 
+    // Tags
+    const tags: string[] = [];
+    // RoyalRoad tags are usually in .tags class, inside spans or anchors with class .label or similar
+    $('.tags .label, .tags a, .tag').each((_, el) => {
+        const tag = $(el).text().trim();
+        // Avoid adding empty tags or "Tags" label itself
+        if (tag && tag.toLowerCase() !== 'tags') {
+            tags.push(tag);
+        }
+    });
+    
+    // Deduplicate tags
+    const uniqueTags = Array.from(new Set(tags));
+
     return {
         title,
         author,
         coverUrl,
-        description
+        description,
+        tags: uniqueTags.length > 0 ? uniqueTags : undefined
     };
 };

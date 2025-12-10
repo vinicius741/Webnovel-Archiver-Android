@@ -1,6 +1,6 @@
-import React, { useEffect, useCallback, useState } from 'react';
-import { StyleSheet, View, FlatList, RefreshControl } from 'react-native';
-import { Text, FAB, useTheme, Button, IconButton, Searchbar } from 'react-native-paper';
+import React, { useEffect, useCallback, useState, useMemo } from 'react';
+import { StyleSheet, View, FlatList, RefreshControl, ScrollView } from 'react-native';
+import { Text, FAB, useTheme, Button, IconButton, Searchbar, Chip } from 'react-native-paper';
 import { useRouter, useFocusEffect, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../src/components/ScreenContainer';
@@ -16,6 +16,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [stories, setStories] = useState<Story[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
 
@@ -44,10 +45,35 @@ export default function HomeScreen() {
     loadLibrary();
   }, []);
 
-  const filteredStories = stories.filter(story => 
-    story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (story.author && story.author.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    stories.forEach(story => {
+      story.tags?.forEach(tag => tags.add(tag));
+    });
+    return Array.from(tags).sort();
+  }, [stories]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const filteredStories = stories.filter(story => {
+    const matchesSearch = story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (story.author && story.author.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    if (!matchesSearch) return false;
+
+    if (selectedTags.length > 0) {
+      const storyTags = story.tags || [];
+      // Check if story has ALL selected tags (AND logic)
+      const hasAllTags = selectedTags.every(tag => storyTags.includes(tag));
+      return hasAllTags;
+    }
+
+    return true;
+  });
 
 
 
@@ -74,6 +100,27 @@ export default function HomeScreen() {
           iconColor={theme.colors.onSurfaceVariant}
           inputStyle={{ color: theme.colors.onSurface }}
         />
+        {allTags.length > 0 && (
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={styles.tagsContainer}
+            style={styles.tagsScroll}
+          >
+            {allTags.map(tag => (
+              <Chip
+                key={tag}
+                selected={selectedTags.includes(tag)}
+                onPress={() => toggleTag(tag)}
+                style={styles.tagChip}
+                showSelectedOverlay
+                compact
+              >
+                {tag}
+              </Chip>
+            ))}
+          </ScrollView>
+        )}
       </View>
       <FlatList
         key={numColumns} // Force re-render when columns change
@@ -151,5 +198,15 @@ const styles = StyleSheet.create({
   searchBar: {
     elevation: 2,
     borderRadius: 8,
+  },
+  tagsScroll: {
+    marginTop: 8,
+  },
+  tagsContainer: {
+    gap: 8,
+    paddingHorizontal: 4, // subtle padding
+  },
+  tagChip: {
+    height: 32,
   },
 });
