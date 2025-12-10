@@ -1,71 +1,99 @@
 # Webnovel Archiver (Android)
 
-This is the Android mobile version of the Webnovel Archiver, built with React Native and Expo.
+Webnovel Archiver is a powerful, local-first Android application designed to download, archive, and export webnovels for offline reading. Built with **React Native** and **Expo**, it brings the power of Python-based scrapers to your mobile device, allowing you to build a personal library of your favorite stories.
 
-## Prerequisites
+## 🚀 Key Features
 
-Before you begin, ensure you have the following installed on your computer:
+-   **Webnovel Scraping**: Automatically fetches chapters from supported sites (currently optimized for RoyalRoad).
+-   **Offline Reading**: Downloaded chapters are stored locally, accessible anytime without an internet connection.
+-   **EPUB Export**: Generate high-quality, standard-compliant EPUB files directly on your device. Compatible with Moon+ Reader, Kindle, and other e-reader apps.
+-   **Background Downloads**: Supports long-running background tasks to download hundreds of chapters while you use other apps or turn off your screen.
+-   **Library Management**: Organize your collection, track reading progress, and manage updates for ongoing stories.
+-   **Smart Updates**: Checks for new chapters and updates your archive efficiently.
+-   **Privacy Focused**: All data lives on your device. No external servers or accounts required.
 
-- **Node.js** (LTS version recommended)
-- **npm** (comes with Node.js)
+## 🛠 Tech Stack
 
-### On your Phone
+This project leverages a modern mobile stack optimized for performance and local file handling:
 
-- Install the **Expo Go** app from the Google Play Store (Android) or App Store (iOS).
-  - [Expo Go for Android](https://play.google.com/store/apps/details?id=host.exp.exponent)
-  - [Expo Go for iOS](https://apps.apple.com/us/app/expo-go/id982107779)
+-   **Framework**: [React Native](https://reactnative.dev/) (via [Expo SDK 52+](https://expo.dev/))
+-   **Navigation**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based routing)
+-   **UI Library**: [React Native Paper](https://callstack.github.io/react-native-paper/) (Material Design)
+-   **Parsing Engine**: `cheerio` (Fast HTML parsing)
+-   **Networking**: Native `fetch` API + `react-native-webview` (Headless mode for Cloudflare bypass)
+-   **Storage**: `expo-file-system` (Content) & `@react-native-async-storage/async-storage` (Metadata)
+-   **EPUB Engine**: Custom implementation using `jszip` and XML templating (Platform-agnostic)
 
-## Installation
+## 📦 Prerequisites
 
-1. Open your terminal in the project directory.
-2. Install the dependencies:
+Before running the project, ensure you have the following installed:
+
+-   **Node.js** (LTS version recommended)
+-   **npm** (comes with Node.js)
+-   **Expo Go** app on your Android/iOS device (Available on Play Store/App Store).
+
+## 💿 Installation
+
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/vinicius741/Webnovel-Archiver-Android.git
+    cd Webnovel-Archiver-Android
+    ```
+
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+
+## 🏃‍♂️ How to Run
+
+### on Development (Expo Go)
+
+1.  Start the development server:
+    ```bash
+    npx expo start
+    ```
+
+2.  **Android**: Scan the QR code with the **Expo Go** app.
+3.  **iOS**: Scan the QR code with the **Camera** app.
+
+### Build Local APK
+
+To generate an installable APK file directly on your machine (requires Android SDK):
 
 ```bash
-npm install
+npm install -g eas-cli
+npx eas build -p android --profile preview --local
 ```
 
-## How to Run on Your Phone
+## 📖 Usage Guide
 
-1. **Connect to the same Wi-Fi**: Ensure your computer and your phone are connected to the exact same Wi-Fi network.
+### 1. Adding a Story
+-   Tap the **"+" (Add)** button on the home screen.
+-   Paste the URL of the webnovel (e.g., a RoyalRoad fiction page).
+-   Tap **"Add"**. The app will fetch metadata and add it to your library.
 
-2. **Start the Development Server**:
-   Run the following command in your terminal:
+### 2. Downloading Content
+-   Open a story from your library.
+-   Tap **"Download All"** or **"Update"**.
+-   The app will start downloading chapters in the background. You can monitor progress on the dashboard.
 
-```bash
-npx expo start
-```
+### 3. Reading & Exporting
+-   Once downloaded, simple tap **"Read"** to open the generated EPUB if available.
+-   To create/update the ebook file, tap **"Generate EPUB"**.
+-   The EPUB file is saved to your device's Documents folder and can be opened with any standard e-reader.
 
-3. **Open on Phone**:
-   - **Android**: Open the **Expo Go** app on your phone. You should see "Recently in development" if you've logged in, or you can tap "Scan QR code" and scan the QR code displayed in your computer's terminal.
-   - **iOS**: Open the standard **Camera** app on your iPhone and scan the QR code from the terminal. Tap the notification to open it in Expo Go.
+## 📂 Project Structure
 
-4. **Wait for Bundle**: The app will build the JavaScript bundle and transfer it to your phone. Once confident, the app will launch.
+-   `src/app`: Screens and navigation logic (Expo Router).
+-   `src/components`: Reusable UI components (StoryCard, ProgressBar, etc.).
+-   `src/services`: Core business logic.
+    -   `FetcherFactory.ts`: Handles URL parsing and fetcher selection.
+    -   `EpubGenerator.ts`: Logic for constructing EPUB files.
+    -   `BackgroundTaskService.ts`: Manages background download jobs.
+-   `src/theme`: App theming and styling.
+-   `documentation`: Detailed tech docs and decision logs.
 
-## How to Build a Local APK
+## 🤝 Contributing
 
-To generate an APK file directly on your machine (without using EAS Cloud), follow these steps:
-
-1. **Install EAS CLI** (if not already installed):
-   ```bash
-   npm install -g eas-cli
-   ```
-
-2. **Setup Local Environment**:
-   Ensure you have **Android Studio** and **Java (JDK)** installed and configured on your machine. The local build process requires the Android SDK to compile the native code.
-
-3. **Run the Build Command**:
-   ```bash
-   npx eas build -p android --profile preview --local
-   ```
-   - This will compile the app and output an `.apk` file in your project directory.
-   - You can then transfer this file to your Android device to install.
-
-## Troubleshooting
-
-- **Network Issues**: If the app fails to connect even on the same Wi-Fi, you can try using a tunnel connection. Run:
-  ```bash
-  npx expo start --tunnel
-  ```
-  Note: This may be slower than a direct LAN connection.
-
-- **Background Tasks**: This app uses background tasks for downloading. On some Android devices, aggressive battery optimization might kill the app. Ensure you allow the app to run in the background in your phone's settings if downloads are interrupted.
+Contributions are welcome! Please read the `documentation/` folder to understand the architecture before submitting a PR.
