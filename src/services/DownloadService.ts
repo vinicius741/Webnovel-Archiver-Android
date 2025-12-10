@@ -48,7 +48,7 @@ class DownloadService {
         story: Story,
         onProgress?: (total: number, current: number, currentChapter: string) => void
     ): Promise<Story> {
-        const chapters = [...story.chapters];
+        let chapters = [...story.chapters];
         let downloadedCount = 0;
 
         // Reset status to downloading if not already
@@ -62,45 +62,74 @@ class DownloadService {
                 'Starting download...'
             );
 
-            // Sequential download to avoid overwhelming the target site (and memory)
-            // In a real app we might do batches of 3-5
-            for (let i = 0; i < chapters.length; i++) {
-                const chapter = chapters[i];
+            // Get settings for concurrency and delay
+            const settings = await storageService.getSettings();
+            const CONCURRENCY = settings.downloadConcurrency || 1;
+            const DELAY = settings.downloadDelay || 500;
 
-                // Skip if already downloaded (basic check)
-                if (chapter.downloaded && chapter.filePath) {
-                    downloadedCount++;
-                    onProgress?.(chapters.length, downloadedCount, `Skipping ${chapter.title}`);
-                    continue;
+            console.log(`[DownloadService] Starting download with concurrency: ${CONCURRENCY}, delay: ${DELAY}ms`);
+
+            // Filter chapters needed to download
+            // We keep the original index to update the correct chapter in the main array
+            const chaptersToDownload = chapters
+                .map((ch, index) => ({ chapter: ch, index }))
+                .filter(({ chapter }) => !chapter.downloaded || !chapter.filePath);
+
+            // Already downloaded ones count towards progress
+            downloadedCount = chapters.length - chaptersToDownload.length;
+
+            if (chaptersToDownload.length === 0) {
+                // All done already
+            } else {
+                // Worker Pool Implementation
+                let currentIndex = 0;
+                const activeWorkers: Promise<void>[] = [];
+
+                const worker = async () => {
+                    while (currentIndex < chaptersToDownload.length) {
+                        const jobIndex = currentIndex++;
+                        const { chapter, index: originalIndex } = chaptersToDownload[jobIndex];
+
+                        onProgress?.(chapters.length, downloadedCount + 1, `Downloading ${chapter.title}`);
+                        await notificationService.updateProgress(
+                            downloadedCount + 1,
+                            chapters.length,
+                            `Downloading ${originalIndex + 1}/${chapters.length}: ${chapter.title}`
+                        );
+
+                        const updatedChapter = await this.downloadChapter(story.id, chapter, originalIndex);
+                        chapters[originalIndex] = updatedChapter;
+
+                        if (updatedChapter.downloaded) {
+                            downloadedCount++;
+                        }
+
+                        // Save progress periodically (handled safely despite concurrency?)
+                        // With concurrency, maybe safer to save less often or use a mutex?
+                        // For now, let's save every 5 *downloads* completed, triggered by one worker
+                        if (downloadedCount % 5 === 0) {
+                            const updatedStory: Story = {
+                                ...story,
+                                chapters,
+                                downloadedChapters: downloadedCount,
+                                lastUpdated: Date.now(),
+                            };
+                            await storageService.updateStory(updatedStory);
+                        }
+
+                        // Delay before picking next task
+                        if (DELAY > 0) {
+                            await new Promise(resolve => setTimeout(resolve, DELAY));
+                        }
+                    }
+                };
+
+                // Start initial workers
+                for (let i = 0; i < CONCURRENCY; i++) {
+                    activeWorkers.push(worker());
                 }
 
-                onProgress?.(chapters.length, downloadedCount + 1, `Downloading ${chapter.title}`);
-                await notificationService.updateProgress(
-                    downloadedCount + 1,
-                    chapters.length,
-                    `Downloading ${i + 1}/${chapters.length}: ${chapter.title}`
-                );
-
-                const updatedChapter = await this.downloadChapter(story.id, chapter, i);
-                chapters[i] = updatedChapter;
-
-                if (updatedChapter.downloaded) {
-                    downloadedCount++;
-                }
-
-                // Save progress every 5 chapters or on the last one
-                if ((i + 1) % 5 === 0 || i === chapters.length - 1) {
-                    const updatedStory: Story = {
-                        ...story,
-                        chapters,
-                        downloadedChapters: downloadedCount,
-                        lastUpdated: Date.now(),
-                    };
-                    await storageService.updateStory(updatedStory);
-                }
-
-                // Small delay to be nice to servers
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await Promise.all(activeWorkers);
             }
 
             const finalStatus = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;

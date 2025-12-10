@@ -4,6 +4,17 @@ import * as fileSystem from './storage/fileSystem';
 
 const STORAGE_KEYS = {
     LIBRARY: 'wa_library_v1',
+    SETTINGS: 'wa_settings_v1',
+};
+
+export interface AppSettings {
+    downloadConcurrency: number;
+    downloadDelay: number; // in milliseconds
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+    downloadConcurrency: 1,
+    downloadDelay: 500,
 };
 
 class StorageService {
@@ -84,6 +95,25 @@ class StorageService {
             console.log('[StorageService] All data cleared.');
         } catch (e) {
             console.error('Failed to clear all data', e);
+        }
+    }
+
+    async getSettings(): Promise<AppSettings> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
+            return jsonValue != null ? { ...DEFAULT_SETTINGS, ...JSON.parse(jsonValue) } : DEFAULT_SETTINGS;
+        } catch (e) {
+            console.error('Failed to load settings', e);
+            return DEFAULT_SETTINGS;
+        }
+    }
+
+    async saveSettings(settings: AppSettings): Promise<void> {
+        try {
+            const jsonValue = JSON.stringify(settings);
+            await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, jsonValue);
+        } catch (e) {
+            console.error('Failed to save settings', e);
         }
     }
 }
