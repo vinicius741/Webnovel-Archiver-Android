@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { load } from 'cheerio';
 import { Story, Chapter } from '../types';
 import { saveEpub, readChapterFile } from './storage/fileSystem';
+import SENTENCE_REMOVAL_LIST from '../constants/default_sentence_removal.json';
 
 export class EpubGenerator {
     /**
@@ -187,11 +188,24 @@ a:hover { text-decoration: underline; }
 
         if (chapter.filePath) {
             const text = await readChapterFile(chapter.filePath);
-            if (text) return this.sanitizeContent(text);
+            if (text) {
+                const sanitized = this.sanitizeContent(text);
+                return this.removeUnwantedSentences(sanitized);
+            }
             return `<p>[Error loading content for "${chapter.title}"]</p>`;
         }
 
         return `<p>[No content available]</p>`;
+    }
+
+    private removeUnwantedSentences(content: string): string {
+        let cleanContent = content;
+        for (const sentence of SENTENCE_REMOVAL_LIST) {
+            // Escape special characters in the sentence to be safe for regex, although simple string replace could work if we don't need case insensitivity.
+            // Using split/join for global replacement of exact string.
+            cleanContent = cleanContent.split(sentence).join('');
+        }
+        return cleanContent;
     }
 
     private sanitizeContent(html: string): string {
