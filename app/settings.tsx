@@ -1,7 +1,8 @@
 import React from 'react';
 import { Text, SegmentedButtons, List } from 'react-native-paper';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, Alert } from 'react-native';
 import { ScreenContainer } from '../src/components/ScreenContainer';
+import { storageService } from '../src/services/StorageService';
 import { useTheme } from '../src/theme/ThemeContext';
 
 export default function SettingsScreen() {
@@ -40,7 +41,27 @@ export default function SettingsScreen() {
       <List.Section>
          <List.Subheader>Data</List.Subheader> 
          <View style={styles.container}>
-           <Text variant="bodyMedium">Backup & Config coming soon.</Text>
+           <List.Item
+              title="Clear Local Storage"
+              description="Delete all novels and reset app data"
+              left={props => <List.Icon {...props} icon="delete-outline" />}
+              onPress={() => {
+                Alert.alert(
+                  'Clear Data',
+                  'Are you sure you want to delete all novels and settings? This action cannot be undone.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Delete', 
+                      style: 'destructive',
+                      onPress: async () => {
+                        await storageService.clearAll();
+                      }
+                    }
+                  ]
+                );
+              }}
+           />
          </View>
       </List.Section>
     </ScreenContainer>

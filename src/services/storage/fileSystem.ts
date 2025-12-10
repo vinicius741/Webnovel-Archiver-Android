@@ -68,6 +68,14 @@ export const deleteNovel = async (novelId: string): Promise<void> => {
     }
 };
 
+export const clearAllFiles = async (): Promise<void> => {
+    const baseDir = new Directory(Paths.document, BASE_DIR_NAME);
+    if (baseDir.exists) {
+        await baseDir.delete();
+        console.log(`[Storage] Deleted base directory: ${BASE_DIR_NAME}`);
+    }
+};
+
 export const saveEpub = async (filename: string, base64: string): Promise<string> => {
     // 1. Request permissions to access the logical "Downloads" folder or let user pick.
     // In Android 11+ we can't just access a path string. We must use SAF.

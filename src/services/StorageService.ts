@@ -76,6 +76,16 @@ class StorageService {
             await this.saveLibrary(library);
         }
     }
+
+    async clearAll(): Promise<void> {
+        try {
+            await AsyncStorage.clear();
+            await fileSystem.clearAllFiles();
+            console.log('[StorageService] All data cleared.');
+        } catch (e) {
+            console.error('Failed to clear all data', e);
+        }
+    }
 }
 
 export const storageService = new StorageService();

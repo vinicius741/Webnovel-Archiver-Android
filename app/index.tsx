@@ -8,8 +8,6 @@ import { StoryCard } from '../src/components/StoryCard';
 import { fetchPage } from '../src/services/network/fetcher';
 import { parseMetadata } from '../src/services/parser/metadata';
 import { parseChapterList } from '../src/services/parser/chapterList';
-import { parseChapterContent } from '../src/services/parser/content';
-import { saveChapter, saveMetadata } from '../src/services/storage/fileSystem';
 import { storageService } from '../src/services/StorageService';
 import { Story } from '../src/types';
 import { useAppAlert } from '../src/context/AlertContext';
@@ -48,59 +46,7 @@ export default function HomeScreen() {
     loadLibrary();
   }, []);
 
-  const addTestStory = async () => {
-      const newStory: Story = {
-          id: 'test_story_' + Date.now(),
-          title: 'Test Story ' + new Date().toLocaleTimeString(),
-          author: 'Test Author',
-          coverUrl: 'https://via.placeholder.com/150',
-          sourceUrl: 'https://example.com',
-          status: 'idle',
-          totalChapters: 10,
-          downloadedChapters: 0,
-          chapters: []
-      };
-      await storageService.addStory(newStory);
-      loadLibrary();
-  };
 
-  const runTestScrape = async () => {
-    try {
-      const url = 'https://www.royalroad.com/fiction/21220/mother-of-learning'; // Use a small one if possible
-      console.log('[Test] Starting scrape for:', url);
-      
-      const html = await fetchPage(url);
-      const metadata = parseMetadata(html);
-      
-      const chapters = parseChapterList(html, url);
-      
-      if (chapters.length > 0) {
-        // Save to Library
-        const story: Story = {
-            id: 'rr_21220', // simple ID generation
-            title: metadata.title,
-            author: metadata.author,
-            coverUrl: metadata.coverUrl,
-            sourceUrl: url,
-            status: 'downloading',
-            totalChapters: chapters.length,
-            downloadedChapters: 0,
-            chapters: chapters.map(c => ({
-                id: c.url,
-                title: c.title,
-                url: c.url,
-            })),
-            lastUpdated: Date.now()
-        };
-        await storageService.addStory(story);
-        loadLibrary();
-        showAlert('Library Updated', `Added ${metadata.title}`);
-      }
-    } catch (e) {
-      console.error(e);
-      showAlert('Scrape Unknown Error', (e as Error).message);
-    }
-  };
 
   return (
     <ScreenContainer style={{ paddingTop: 0, paddingBottom: 0 }}>
@@ -136,12 +82,6 @@ export default function HomeScreen() {
                 <Text variant="bodyLarge" style={styles.placeholder}>
                     No stories archived yet.
                 </Text>
-                <Button mode="outlined" onPress={addTestStory} style={{ marginTop: 20 }}>
-                    Add Dummy Story
-                </Button>
-                 <Button mode="contained" onPress={runTestScrape} style={{ marginTop: 10 }}>
-                    Test Real Scrape (RR)
-                </Button>
             </View>
         }
       />
