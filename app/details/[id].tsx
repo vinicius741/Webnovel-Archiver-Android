@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
+import { startActivityAsync } from 'expo-intent-launcher';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -161,13 +163,49 @@ export default function StoryDetailsScreen() {
             </View>
         )}
 
-        <Button 
-            mode="outlined" 
+        <Button
+            mode="outlined"
             style={styles.actionBtn}
             onPress={async () => {
+                if (story.epubPath) {
+                   try {
+                       // Optimistic check: if it's a content URI, we assume it exists if we have permission (which SAF should have persisted).
+                       // For file URIs, we can check.
+                       const fileInfo = await getInfoAsync(story.epubPath);
+                       if (!fileInfo.exists) {
+                           // Invalid path, clear it
+                            const updated = { ...story, epubPath: undefined };
+                            await storageService.addStory(updated);
+                            setStory(updated);
+                            showAlert('Error', 'EPUB file not found. Please regenerate.');
+                            return;
+                       }
+
+                       let contentUri = story.epubPath;
+                       if (!contentUri.startsWith('content://')) {
+                            contentUri = await getContentUriAsync(story.epubPath);
+                       }
+                       
+                       await startActivityAsync('android.intent.action.VIEW', {
+                           data: contentUri,
+                           flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+                           type: 'application/epub+zip',
+                       });
+
+                   } catch (e: any) {
+                       showAlert('Read Error', 'Could not open EPUB: ' + e.message);
+                   }
+                   return;
+                }
+
                 try {
                     setLoading(true);
                     const uri = await epubGenerator.generateEpub(story, story.chapters);
+                    
+                    const updatedStory = { ...story, epubPath: uri };
+                    await storageService.addStory(updatedStory);
+                    setStory(updatedStory);
+
                     showAlert('Success', `EPUB exported to: ${uri}`);
                     setLoading(false);
                 } catch (error: any) {
@@ -176,7 +214,7 @@ export default function StoryDetailsScreen() {
                 }
             }}
         >
-            Export EPUB
+            {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
         </Button>
 
         <Button 
