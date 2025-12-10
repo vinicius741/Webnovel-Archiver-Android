@@ -138,7 +138,7 @@ export default function StoryDetailsScreen() {
                     const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
                          const progress = total > 0 ? current / total : 0;
                          setDownloadProgress(progress);
-                         setDownloadStatus(`Downloading ${current}/${total}: ${title}`);
+                         setDownloadStatus(`${current}/${total}: ${title}`);
                     });
                     
                     setStory(updatedStory); // Update UI with new state

@@ -90,7 +90,6 @@ npx eas build -p android --profile preview --local
 -   `src/services`: Core business logic.
     -   `FetcherFactory.ts`: Handles URL parsing and fetcher selection.
     -   `EpubGenerator.ts`: Logic for constructing EPUB files.
-    -   `BackgroundTaskService.ts`: Manages background download jobs.
 -   `src/theme`: App theming and styling.
 -   `documentation`: Detailed tech docs and decision logs.
 
