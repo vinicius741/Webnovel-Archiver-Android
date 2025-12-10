@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
@@ -28,6 +28,7 @@ export default function StoryDetailsScreen() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState('');
+  const lastTap = useRef(0);
 
   useEffect(() => {
     const loadStory = async () => {
@@ -236,17 +237,20 @@ export default function StoryDetailsScreen() {
 
         {story.description && (
             <View style={styles.descriptionContainer}>
-                <Text variant="bodyMedium" style={styles.description}>
+                <Text 
+                    variant="bodyMedium" 
+                    style={styles.description}
+                    onPress={async () => {
+                        const now = Date.now();
+                        const DOUBLE_PRESS_DELAY = 300;
+                        if (now - lastTap.current < DOUBLE_PRESS_DELAY) {
+                            await Clipboard.setStringAsync(story.description || '');
+                        }
+                        lastTap.current = now;
+                    }}
+                >
                     {story.description}
                 </Text>
-                <IconButton
-                    icon="content-copy"
-                    size={20}
-                    onPress={async () => {
-                        await Clipboard.setStringAsync(story.description || '');
-                        showAlert('Copied', 'Description copied to clipboard.');
-                    }}
-                />
             </View>
         )}
 
@@ -309,6 +313,5 @@ const styles = StyleSheet.create({
   description: {
       flex: 1,
       textAlign: 'center',
-      marginRight: 8,
   }
 });
