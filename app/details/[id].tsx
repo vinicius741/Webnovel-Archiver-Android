@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 import { View, StyleSheet, ScrollView, Image } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar } from 'react-native-paper';
+import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar, IconButton } from 'react-native-paper';
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
@@ -233,6 +234,22 @@ export default function StoryDetailsScreen() {
             Delete Novel
         </Button>
 
+        {story.description && (
+            <View style={styles.descriptionContainer}>
+                <Text variant="bodyMedium" style={styles.description}>
+                    {story.description}
+                </Text>
+                <IconButton
+                    icon="content-copy"
+                    size={20}
+                    onPress={async () => {
+                        await Clipboard.setStringAsync(story.description || '');
+                        showAlert('Copied', 'Description copied to clipboard.');
+                    }}
+                />
+            </View>
+        )}
+
         <List.Section title="Chapters">
             {story.chapters.map((chapter, index) => (
                 <List.Item
@@ -281,5 +298,17 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
       marginBottom: 20,
+  },
+  descriptionContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+      paddingHorizontal: 16,
+  },
+  description: {
+      flex: 1,
+      textAlign: 'center',
+      marginRight: 8,
   }
 });

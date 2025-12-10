@@ -24,6 +24,7 @@ export interface Story {
     title: string;
     author: string;
     coverUrl?: string;
+    description?: string;
     sourceUrl: string;
     status: DownloadStatus;
     totalChapters: number;

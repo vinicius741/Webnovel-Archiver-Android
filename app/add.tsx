@@ -54,6 +54,7 @@ export default function AddStoryScreen() {
             title: metadata.title,
             author: metadata.author,
             coverUrl: metadata.coverUrl,
+            description: metadata.description,
             sourceUrl: url,
             status: 'idle', // Ready to download
             totalChapters: chapters.length,

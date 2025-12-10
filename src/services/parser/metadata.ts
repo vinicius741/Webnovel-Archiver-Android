@@ -1,9 +1,11 @@
 import { load } from 'cheerio';
 
+
 export interface NovelMetadata {
     title: string;
     author: string;
     coverUrl?: string;
+    description?: string;
 }
 
 export const parseMetadata = (html: string): NovelMetadata => {
@@ -46,9 +48,24 @@ export const parseMetadata = (html: string): NovelMetadata => {
         coverUrl = $('meta[property="og:image"]').attr('content') || undefined;
     }
 
+    // Description
+    let description: string | undefined;
+
+    // RoyalRoad description
+    const rrDescription = $('.description').first().text().trim();
+    if (rrDescription) {
+        description = rrDescription;
+    }
+    // Generic meta description
+    else {
+        description = $('meta[name="description"]').attr('content') ||
+            $('meta[property="og:description"]').attr('content');
+    }
+
     return {
         title,
         author,
-        coverUrl
+        coverUrl,
+        description
     };
 };
