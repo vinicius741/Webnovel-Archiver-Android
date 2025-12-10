@@ -3,6 +3,7 @@ import { fetchPage } from './network/fetcher';
 import { parseChapterContent } from './parser/content';
 import { saveChapter } from './storage/fileSystem';
 import { storageService } from './StorageService';
+import { notificationService } from './NotificationService';
 
 class DownloadService {
     /**
@@ -55,54 +56,88 @@ class DownloadService {
             await storageService.updateStoryStatus(story.id, DownloadStatus.Downloading);
         }
 
-        // Sequential download to avoid overwhelming the target site (and memory)
-        // In a real app we might do batches of 3-5
-        for (let i = 0; i < chapters.length; i++) {
-            const chapter = chapters[i];
+        try {
+            await notificationService.startForegroundService(
+                `Downloading ${story.title}`,
+                'Starting download...'
+            );
 
-            // Skip if already downloaded (basic check)
-            if (chapter.downloaded && chapter.filePath) {
-                downloadedCount++;
-                onProgress?.(chapters.length, downloadedCount, `Skipping ${chapter.title}`);
-                continue;
+            // Sequential download to avoid overwhelming the target site (and memory)
+            // In a real app we might do batches of 3-5
+            for (let i = 0; i < chapters.length; i++) {
+                const chapter = chapters[i];
+
+                // Skip if already downloaded (basic check)
+                if (chapter.downloaded && chapter.filePath) {
+                    downloadedCount++;
+                    onProgress?.(chapters.length, downloadedCount, `Skipping ${chapter.title}`);
+                    continue;
+                }
+
+                onProgress?.(chapters.length, downloadedCount + 1, `Downloading ${chapter.title}`);
+                await notificationService.updateProgress(
+                    downloadedCount + 1,
+                    chapters.length,
+                    `Downloading ${i + 1}/${chapters.length}: ${chapter.title}`
+                );
+
+                const updatedChapter = await this.downloadChapter(story.id, chapter, i);
+                chapters[i] = updatedChapter;
+
+                if (updatedChapter.downloaded) {
+                    downloadedCount++;
+                }
+
+                // Save progress every 5 chapters or on the last one
+                if ((i + 1) % 5 === 0 || i === chapters.length - 1) {
+                    const updatedStory: Story = {
+                        ...story,
+                        chapters,
+                        downloadedChapters: downloadedCount,
+                        lastUpdated: Date.now(),
+                    };
+                    await storageService.updateStory(updatedStory);
+                }
+
+                // Small delay to be nice to servers
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
 
-            onProgress?.(chapters.length, downloadedCount + 1, `Downloading ${chapter.title}`);
+            const finalStatus = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
 
-            const updatedChapter = await this.downloadChapter(story.id, chapter, i);
-            chapters[i] = updatedChapter;
+            const finalStory: Story = {
+                ...story,
+                chapters,
+                downloadedChapters: downloadedCount,
+                status: finalStatus,
+                lastUpdated: Date.now(),
+            };
 
-            if (updatedChapter.downloaded) {
-                downloadedCount++;
+            await storageService.updateStory(finalStory);
+
+            if (finalStatus === DownloadStatus.Completed) {
+                await notificationService.showCompletionNotification(
+                    'Download Complete',
+                    `${story.title} has been downloaded successfully.`
+                );
+            } else {
+                await notificationService.showCompletionNotification(
+                    'Download Paused',
+                    `${story.title} download stopped or partial.`
+                );
             }
 
-            // Save progress every 5 chapters or on the last one
-            if ((i + 1) % 5 === 0 || i === chapters.length - 1) {
-                const updatedStory: Story = {
-                    ...story,
-                    chapters,
-                    downloadedChapters: downloadedCount,
-                    lastUpdated: Date.now(),
-                };
-                await storageService.updateStory(updatedStory);
-            }
-
-            // Small delay to be nice to servers
-            await new Promise(resolve => setTimeout(resolve, 500));
+            return finalStory;
+        } catch (error) {
+            console.error('[DownloadService] Error downloading chapters:', error);
+            await notificationService.showCompletionNotification(
+                'Download Failed',
+                'An error occurred while downloading.'
+            );
+            return story;
+        } finally {
+            await notificationService.stopForegroundService();
         }
-
-        const finalStatus = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
-
-        const finalStory: Story = {
-            ...story,
-            chapters,
-            downloadedChapters: downloadedCount,
-            status: finalStatus,
-            lastUpdated: Date.now(),
-        };
-
-        await storageService.updateStory(finalStory);
-        return finalStory;
     }
 }
 

@@ -9,12 +9,14 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "buffer": "^6.0.3",
     "cheerio": "^1.0.0-rc.10",
     "events": "^3.3.0",
     "expo": "~54.0.27",
     "expo-background-task": "~1.0.10",
+    "expo-build-properties": "^1.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.11",
     "expo-file-system": "~19.0.20",

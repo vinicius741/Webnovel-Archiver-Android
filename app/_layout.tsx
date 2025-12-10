@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { useTheme as usePaperTheme } from 'react-native-paper';
 import { registerBackgroundFetchAsync } from '../src/services/BackgroundTaskService';
+import { notificationService } from '../src/services/NotificationService';
 import { ThemeProvider } from '../src/theme/ThemeContext';
 import { AlertProvider } from '../src/context/AlertContext';
 
@@ -12,6 +13,8 @@ function AppLayout() {
     registerBackgroundFetchAsync().catch(err => 
       console.error("Failed to register background fetch", err)
     );
+    // Request notification permissions
+    notificationService.requestPermissions();
   }, []);
 
   return (
