@@ -34,6 +34,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginBottom: 0, // Handled by parent container now for grid gaps
     borderRadius: 12,
+    marginTop: 8,
   },
   content: {
     flexDirection: 'row',

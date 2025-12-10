@@ -20,6 +20,13 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
 
+  // Calculate strict item width to prevent last item from stretching in grid
+  const GAP = 8;
+  const containerPadding = 16; // 8 * 2 (ScreenContainer)
+  const listPadding = isLargeScreen ? 32 : 16; // 16 * 2 or 8 * 2
+  const totalPadding = containerPadding + listPadding;
+  const availableWidth = screenWidth - totalPadding - ((numColumns - 1) * GAP);
+  const itemWidth = availableWidth / numColumns;
 
   const loadLibrary = async () => {
     try {
@@ -133,7 +140,7 @@ export default function HomeScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />
         }
         renderItem={({ item }) => (
-            <View style={{ flex: 1, height: '100%', marginBottom: 8 }}>
+            <View style={{ width: numColumns > 1 ? itemWidth : undefined, flex: numColumns === 1 ? 1 : undefined, height: '100%', marginBottom: 8 }}>
                 <StoryCard 
                     title={item.title} 
                     author={item.author} 
@@ -200,11 +207,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   tagsScroll: {
-    marginTop: 8,
+    marginTop: 12,
+    marginHorizontal: -16, // Pull to edges to override parent padding
   },
   tagsContainer: {
     gap: 8,
-    paddingHorizontal: 4, // subtle padding
+    paddingHorizontal: 16, // Align content with search bar
+    paddingRight: 16, // Ensure last item has padding
   },
   tagChip: {
     height: 32,
