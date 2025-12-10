@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
       alignItems: 'center',
   },
   content: {
-    padding: 16,
+    padding: 8,
   },
   coverImage: {
     width: 150,

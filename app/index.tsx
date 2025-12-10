@@ -133,7 +133,6 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingTop: 8,
     paddingBottom: 8,
     backgroundColor: 'transparent',
   },
