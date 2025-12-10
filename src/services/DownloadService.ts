@@ -57,9 +57,14 @@ class DownloadService {
         }
 
         try {
+            // Calculate initial downloadedCount before starting foreground service
+            const initialDownloadedCount = chapters.filter(ch => ch.downloaded || ch.filePath).length;
+
             await notificationService.startForegroundService(
                 `Downloading ${story.title}`,
-                'Starting download...'
+                `Starting download... (${initialDownloadedCount}/${chapters.length})`,
+                chapters.length,
+                initialDownloadedCount
             );
 
             // Get settings for concurrency and delay

@@ -4,6 +4,7 @@ import { useTheme as usePaperTheme } from 'react-native-paper';
 import { notificationService } from '../src/services/NotificationService';
 import { ThemeProvider } from '../src/theme/ThemeContext';
 import { AlertProvider } from '../src/context/AlertContext';
+import { backgroundServiceInitializer } from '../src/services/BackgroundService';
 
 function AppLayout() {
   const theme = usePaperTheme();
@@ -11,6 +12,9 @@ function AppLayout() {
   useEffect(() => {
     // Request notification permissions
     notificationService.requestPermissions();
+    // Ensure background service initializer is called
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = backgroundServiceInitializer;
   }, []);
 
   return (
