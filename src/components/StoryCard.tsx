@@ -31,7 +31,8 @@ export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props)
 
 const styles = StyleSheet.create({
   card: {
-    marginBottom: 8,
+    flex: 1,
+    marginBottom: 0, // Handled by parent container now for grid gaps
     borderRadius: 12,
   },
   content: {

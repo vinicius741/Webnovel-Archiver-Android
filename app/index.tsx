@@ -7,6 +7,8 @@ import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
 import { storageService } from '../src/services/StorageService';
 import { Story } from '../src/types';
+import { useScreenLayout } from '../src/hooks/useScreenLayout';
+
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -15,6 +17,8 @@ export default function HomeScreen() {
   const [stories, setStories] = useState<Story[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
+
 
   const loadLibrary = async () => {
     try {
@@ -72,20 +76,25 @@ export default function HomeScreen() {
         />
       </View>
       <FlatList
+        key={numColumns} // Force re-render when columns change
         data={filteredStories}
+        numColumns={numColumns}
+        columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, isLargeScreen && { paddingHorizontal: 16 }]}
         refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />
         }
         renderItem={({ item }) => (
-            <StoryCard 
-            title={item.title} 
-            author={item.author} 
-            coverUrl={item.coverUrl}
-            progress={item.totalChapters > 0 ? item.downloadedChapters / item.totalChapters : 0} 
-            onPress={() => router.push(`/details/${item.id}`)} 
-            />
+            <View style={{ flex: 1, height: '100%', marginBottom: 8 }}>
+                <StoryCard 
+                    title={item.title} 
+                    author={item.author} 
+                    coverUrl={item.coverUrl}
+                    progress={item.totalChapters > 0 ? item.downloadedChapters / item.totalChapters : 0} 
+                    onPress={() => router.push(`/details/${item.id}`)} 
+                />
+            </View>
         )}
         ListEmptyComponent={
             <View style={styles.emptyState}>
@@ -135,6 +144,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 8,
     backgroundColor: 'transparent',
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
   },
   searchBar: {
     elevation: 2,

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
-import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Alert, FlatList } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator, ProgressBar, IconButton } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -14,8 +14,10 @@ import { downloadService } from '../../src/services/DownloadService';
 import { Story, Chapter, DownloadStatus } from '../../src/types';
 import { fetchPage } from '../../src/services/network/fetcher';
 import { parseChapterList } from '../../src/services/parser/chapterList';
+import { useScreenLayout } from '../../src/hooks/useScreenLayout';
 
 import { useAppAlert } from '../../src/context/AlertContext';
+
 
 export default function StoryDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -29,6 +31,8 @@ export default function StoryDetailsScreen() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState('');
   const lastTap = useRef(0);
+  const { isLargeScreen } = useScreenLayout();
+
 
   useEffect(() => {
     const loadStory = async () => {
@@ -90,28 +94,15 @@ export default function StoryDetailsScreen() {
       );
   }
 
-  return (
-    <ScreenContainer>
-      <Stack.Screen 
-        options={{ 
-            title: story ? story.title : 'Details',
-            headerRight: () => (
-                <IconButton 
-                    icon="delete" 
-                    iconColor={theme.colors.error}
-                    onPress={confirmDelete}
-                />
-            )
-        }} 
-      />
-      <ScrollView contentContainerStyle={styles.content}>
+  const renderHeader = () => (
+    <View style={styles.fullWidth}>
         {story.coverUrl && <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />}
         <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
         <Text variant="titleMedium" style={[styles.author, { color: theme.colors.secondary }]}>{story.author}</Text>
         
         <View style={styles.stats}>
-             <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
-             <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
+            <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
+            <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
         </View>
 
         <Button 
@@ -144,19 +135,19 @@ export default function StoryDetailsScreen() {
                         });
 
                         if (hasUpdates || updatedChapters.length > story.chapters.length) {
-                             const updatedStory: Story = {
-                                 ...story,
-                                 chapters: updatedChapters,
-                                 totalChapters: updatedChapters.length,
-                                 status: DownloadStatus.Partial, // Reset to partial so user can download new stuff
-                                 lastUpdated: Date.now(),
-                             };
-                             
-                             await storageService.addStory(updatedStory);
-                             setStory(updatedStory);
-                             showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
+                            const updatedStory: Story = {
+                                ...story,
+                                chapters: updatedChapters,
+                                totalChapters: updatedChapters.length,
+                                status: DownloadStatus.Partial, // Reset to partial so user can download new stuff
+                                lastUpdated: Date.now(),
+                            };
+                            
+                            await storageService.addStory(updatedStory);
+                            setStory(updatedStory);
+                            showAlert('Update Found', `Found ${updatedChapters.length - story.chapters.length} new chapters!`);
                         } else {
-                             showAlert('No Updates', 'No new chapters found.');
+                            showAlert('No Updates', 'No new chapters found.');
                         }
 
                     } catch (error: any) {
@@ -173,9 +164,9 @@ export default function StoryDetailsScreen() {
                     
                     // Use the DownloadService
                     const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
-                         const progress = total > 0 ? current / total : 0;
-                         setDownloadProgress(progress);
-                         setDownloadStatus(`${current}/${total}: ${title}`);
+                        const progress = total > 0 ? current / total : 0;
+                        setDownloadProgress(progress);
+                        setDownloadStatus(`${current}/${total}: ${title}`);
                     });
                     
                     setStory(updatedStory); // Update UI with new state
@@ -208,34 +199,34 @@ export default function StoryDetailsScreen() {
             disabled={story.downloadedChapters === 0 && !story.epubPath}
             onPress={async () => {
                 if (story.epubPath) {
-                   try {
-                       // Optimistic check: if it's a content URI, we assume it exists if we have permission (which SAF should have persisted).
-                       // For file URIs, we can check.
-                       const fileInfo = await getInfoAsync(story.epubPath);
-                       if (!fileInfo.exists) {
-                           // Invalid path, clear it
+                try {
+                    // Optimistic check: if it's a content URI, we assume it exists if we have permission (which SAF should have persisted).
+                    // For file URIs, we can check.
+                    const fileInfo = await getInfoAsync(story.epubPath);
+                    if (!fileInfo.exists) {
+                        // Invalid path, clear it
                             const updated = { ...story, epubPath: undefined };
                             await storageService.addStory(updated);
                             setStory(updated);
                             showAlert('Error', 'EPUB file not found. Please regenerate.');
                             return;
-                       }
+                    }
 
-                       let contentUri = story.epubPath;
-                       if (!contentUri.startsWith('content://')) {
+                    let contentUri = story.epubPath;
+                    if (!contentUri.startsWith('content://')) {
                             contentUri = await getContentUriAsync(story.epubPath);
-                       }
-                       
-                       await startActivityAsync('android.intent.action.VIEW', {
-                           data: contentUri,
-                           flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
-                           type: 'application/epub+zip',
-                       });
+                    }
+                    
+                    await startActivityAsync('android.intent.action.VIEW', {
+                        data: contentUri,
+                        flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+                        type: 'application/epub+zip',
+                    });
 
-                   } catch (e: any) {
-                       showAlert('Read Error', 'Could not open EPUB: ' + e.message);
-                   }
-                   return;
+                } catch (e: any) {
+                    showAlert('Read Error', 'Could not open EPUB: ' + e.message);
+                }
+                return;
                 }
 
                 try {
@@ -275,18 +266,62 @@ export default function StoryDetailsScreen() {
                 </Text>
             </View>
         )}
+    </View>
+  );
 
-        <List.Section title="Chapters">
-            {story.chapters.map((chapter, index) => (
-                <List.Item
-                    key={index}
-                    title={chapter.title}
-                    left={props => <List.Icon {...props} icon="file-document-outline" />}
-                    onPress={() => {}}
+  const renderChapterItem = ({ item }: { item: Chapter }) => (
+    <List.Item
+        title={item.title}
+        left={props => <List.Icon {...props} icon="file-document-outline" />}
+        onPress={() => {}}
+    />
+  );
+
+  return (
+    <ScreenContainer>
+      <Stack.Screen 
+        options={{ 
+            title: story ? story.title : 'Details',
+            headerRight: () => (
+                <IconButton 
+                    icon="delete" 
+                    iconColor={theme.colors.error}
+                    onPress={confirmDelete}
                 />
-            ))}
-        </List.Section>
-      </ScrollView>
+            )
+        }} 
+      />
+
+      {isLargeScreen ? (
+          <View style={styles.largeScreenContainer}>
+              <View style={styles.leftColumn}>
+                  <ScrollView contentContainerStyle={{ padding: 16 }}>
+                      {renderHeader()}
+                  </ScrollView>
+              </View>
+              <View style={styles.rightColumn}>
+                  <List.Section title="Chapters">
+                       {/* Header for list included in section title, but FlatList needs data */}
+                       <FlatList
+                          data={story.chapters}
+                          renderItem={renderChapterItem}
+                          keyExtractor={(item: Chapter) => item.id}
+                          // Remove inner scroll if we want the whole right column to scroll, 
+                          // but requirement is to make chapters scrollable. FlatList does this by default.
+                       />
+                  </List.Section>
+              </View>
+          </View>
+      ) : (
+          <FlatList
+              contentContainerStyle={styles.content}
+              data={story.chapters}
+              renderItem={renderChapterItem}
+              keyExtractor={(item: Chapter) => item.id}
+              ListHeaderComponent={renderHeader()}
+              ListHeaderComponentStyle={{ marginBottom: 16 }}
+          />
+      )}
     </ScreenContainer>
   );
 }
@@ -298,7 +333,27 @@ const styles = StyleSheet.create({
       alignItems: 'center',
   },
   content: {
-    padding: 8,
+    padding: 16,
+    flexGrow: 1,
+  },
+  largeScreenContainer: {
+    flexDirection: 'row',
+    gap: 32,
+  },
+  normalContainer: {
+    flexDirection: 'column',
+  },
+  leftColumn: {
+      flex: 1,
+      minWidth: 200,
+      maxWidth: 500,
+      alignItems: 'stretch',
+  },
+  rightColumn: {
+      flex: 2,
+  },
+  fullWidth: {
+      width: '100%',
   },
   coverImage: {
     width: 150,
