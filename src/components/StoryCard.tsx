@@ -7,10 +7,11 @@ interface Props {
   author: string;
   coverUrl?: string;
   progress?: number; // 0 to 1
+  lastReadChapterName?: string;
   onPress: () => void;
 }
 
-export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props) => {
+export const StoryCard = ({ title, author, coverUrl, progress, lastReadChapterName, onPress }: Props) => {
   const theme = useTheme();
 
   return (
@@ -19,7 +20,12 @@ export const StoryCard = ({ title, author, coverUrl, progress, onPress }: Props)
         {coverUrl && <Image source={{ uri: coverUrl }} style={styles.coverImage} />}
         <View style={styles.textContainer}>
             <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 8 }}>{title}</Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: 8 }}>{author}</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: 4 }}>{author}</Text>
+            {lastReadChapterName && (
+                <Text variant="labelSmall" style={{ color: theme.colors.primary }} numberOfLines={1}>
+                    Last read: {lastReadChapterName}
+                </Text>
+            )}
         </View>
       </Card.Content>
       {progress !== undefined && (

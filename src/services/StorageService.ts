@@ -78,12 +78,22 @@ class StorageService {
         await this.saveLibrary(newLibrary);
     }
 
-    // Helper to quickly update status
     async updateStoryStatus(id: string, status: DownloadStatus): Promise<void> {
         const library = await this.getLibrary();
         const story = library.find((s) => s.id === id);
         if (story) {
             story.status = status;
+            await this.saveLibrary(library);
+        }
+    }
+
+    async updateLastRead(storyId: string, chapterId: string): Promise<void> {
+        const library = await this.getLibrary();
+        const story = library.find((s) => s.id === storyId);
+        if (story) {
+            story.lastReadChapterId = chapterId;
+            // Also update timestamp to bubble it up in sort
+            story.lastUpdated = Date.now();
             await this.saveLibrary(library);
         }
     }

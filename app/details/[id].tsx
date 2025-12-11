@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 import { View, StyleSheet, ScrollView, Alert, FlatList } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator, IconButton } from 'react-native-paper';
+import { Text, Button, List, useTheme, ActivityIndicator, IconButton, Searchbar } from 'react-native-paper';
 import { StoryHeader } from '../../src/components/details/StoryHeader';
 import { StoryActions } from '../../src/components/details/StoryActions';
 import { StoryDescription } from '../../src/components/details/StoryDescription';
@@ -35,6 +35,7 @@ export default function StoryDetailsScreen() {
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatus, setDownloadStatus] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const lastTap = useRef(0);
   const { isLargeScreen } = useScreenLayout();
 
@@ -77,6 +78,32 @@ export default function StoryDetailsScreen() {
           ]
       );
   };
+
+  const handleMarkChapterAsRead = async (chapter: Chapter) => {
+      if (!story) return;
+      
+      const newLastReadId = story.lastReadChapterId === chapter.id ? undefined : chapter.id;
+      
+      // Optimistic update
+      const updatedStory = { ...story, lastReadChapterId: newLastReadId };
+      setStory(updatedStory);
+      
+      if (newLastReadId) {
+          await storageService.updateLastRead(story.id, newLastReadId);
+          const cleanTitle = chapter.title.replace(/\n/g, ' ').trim();
+          showAlert('Marked as Read', `Marked "${cleanTitle}" as your last read location.`);
+      } else {
+           // If we toggle off, currently StorageService doesn't have a clearLastRead, but updateLastRead with empty string or similar logic could work.
+           // However, for now let's just re-save the whole story if we strictly need to clear it, or add clear method.
+           // Simplest: just save the updated story using addStory which overwrites.
+           await storageService.addStory(updatedStory);
+           showAlert('Cleared', 'Reading progress cleared.');
+      }
+  };
+
+  const filteredChapters = story?.chapters.filter(c => 
+      c.title.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
 
   if (loading) {
     return (
@@ -253,6 +280,12 @@ export default function StoryDetailsScreen() {
         />
         <StoryTags tags={story.tags} />
         <StoryDescription description={story.description} />
+        <Searchbar
+            placeholder="Search chapters"
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={{ margin: 16, marginBottom: 8 }}
+        />
     </View>
   );
 
@@ -282,8 +315,14 @@ export default function StoryDetailsScreen() {
                   <List.Section title="Chapters">
                        {/* Header for list included in section title, but FlatList needs data */}
                        <FlatList
-                          data={story.chapters}
-                          renderItem={({ item }) => <ChapterListItem item={item} />}
+                          data={filteredChapters}
+                          renderItem={({ item }) => (
+                            <ChapterListItem 
+                                item={item} 
+                                isLastRead={story.lastReadChapterId === item.id}
+                                onLongPress={() => handleMarkChapterAsRead(item)}
+                            />
+                          )}
                           keyExtractor={(item: Chapter) => item.id}
                           // Remove inner scroll if we want the whole right column to scroll, 
                           // but requirement is to make chapters scrollable. FlatList does this by default.
@@ -294,8 +333,14 @@ export default function StoryDetailsScreen() {
       ) : (
           <FlatList
               contentContainerStyle={styles.content}
-              data={story.chapters}
-              renderItem={({ item }) => <ChapterListItem item={item} />}
+              data={filteredChapters}
+              renderItem={({ item }) => (
+                <ChapterListItem 
+                    item={item} 
+                    isLastRead={story.lastReadChapterId === item.id}
+                    onLongPress={() => handleMarkChapterAsRead(item)}
+                />
+              )}
               keyExtractor={(item: Chapter) => item.id}
               ListHeaderComponent={renderStoryInfo()}
               ListHeaderComponentStyle={{ marginBottom: 16 }}

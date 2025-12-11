@@ -34,4 +34,5 @@ export interface Story {
     dateAdded?: number; // timestamp for initial addition
     epubPath?: string; // Local URI to generated EPUB
     tags?: string[];
+    lastReadChapterId?: string;
 }
