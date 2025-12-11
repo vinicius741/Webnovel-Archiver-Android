@@ -4,7 +4,8 @@ Webnovel Archiver is a powerful, local-first Android application designed to dow
 
 ## 🚀 Key Features
 
--   **Webnovel Scraping**: Automatically fetches chapters from supported sites (currently optimized for RoyalRoad).
+-   **Multi-Source Support**: Designed to seamlessly integrate with various webnovel platforms (currently RoyalRoad, ScribbleHub, and easily extensible for more).
+-   **Webnovel Scraping**: Automatically fetches chapters from supported sites.
 -   **Offline Reading**: Downloaded chapters are stored locally, accessible anytime without an internet connection.
 -   **EPUB Export**: Generate high-quality, standard-compliant EPUB files directly on your device. Compatible with Moon+ Reader, Kindle, and other e-reader apps.
 -   **Background Downloads**: Supports long-running background tasks to download hundreds of chapters while you use other apps or turn off your screen.
@@ -20,7 +21,7 @@ This project leverages a modern mobile stack optimized for performance and local
 -   **Navigation**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based routing)
 -   **UI Library**: [React Native Paper](https://callstack.github.io/react-native-paper/) (Material Design)
 -   **Parsing Engine**: `cheerio` (Fast HTML parsing)
--   **Networking**: Native `fetch` API + `react-native-webview` (Headless mode for Cloudflare bypass)
+-   **Networking**: Native `fetch` API + `SourceProvider` pattern for site-specific parsing logic.
 -   **Storage**: `expo-file-system` (Content) & `@react-native-async-storage/async-storage` (Metadata)
 -   **EPUB Engine**: Custom implementation using `jszip` and XML templating (Platform-agnostic)
 
@@ -70,7 +71,7 @@ npx eas build -p android --profile preview --local
 
 ### 1. Adding a Story
 -   Tap the **"+" (Add)** button on the home screen.
--   Paste the URL of the webnovel (e.g., a RoyalRoad fiction page).
+-   Paste the URL of the webnovel (e.g., a RoyalRoad fiction page, or a ScribbleHub series page).
 -   Tap **"Add"**. The app will fetch metadata and add it to your library.
 
 ### 2. Downloading Content
@@ -88,7 +89,7 @@ npx eas build -p android --profile preview --local
 -   `src/app`: Screens and navigation logic (Expo Router).
 -   `src/components`: Reusable UI components (StoryCard, ProgressBar, etc.).
 -   `src/services`: Core business logic.
-    -   `FetcherFactory.ts`: Handles URL parsing and fetcher selection.
+    -   `src/services/source`: Contains the `SourceProvider` interface, `SourceRegistry`, and individual provider implementations (e.g., `RoyalRoadProvider`, `ScribbleHubProvider`).
     -   `EpubGenerator.ts`: Logic for constructing EPUB files.
 -   `src/theme`: App theming and styling.
 -   `documentation`: Detailed tech docs and decision logs.
