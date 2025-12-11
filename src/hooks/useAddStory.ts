@@ -12,6 +12,7 @@ export const useAddStory = () => {
     const { showAlert } = useAppAlert();
     const [url, setUrl] = useState('');
     const [loading, setLoading] = useState(false);
+    const [statusMessage, setStatusMessage] = useState('');
 
     const handlePaste = async () => {
         const text = await Clipboard.getStringAsync();
@@ -23,6 +24,7 @@ export const useAddStory = () => {
     const handleAdd = async () => {
         if (!url) return;
         setLoading(true);
+        setStatusMessage('Initializing...');
         try {
             console.log('[AddStory] Processing:', url);
             const provider = sourceRegistry.getProvider(url);
@@ -34,10 +36,15 @@ export const useAddStory = () => {
             }
 
             console.log('[AddStory] Fetching with provider:', provider.name);
+            setStatusMessage(`Fetching from ${provider.name}...`);
             const html = await fetchPage(url);
 
             const metadata = provider.parseMetadata(html);
-            const chapters = await provider.getChapterList(html, url);
+            
+            setStatusMessage('Parsing chapters...');
+            const chapters = await provider.getChapterList(html, url, (msg) => {
+                setStatusMessage(msg);
+            });
 
             if (chapters.length === 0) {
                 showAlert('Error', 'No chapters found. Please check the URL.');
@@ -45,6 +52,7 @@ export const useAddStory = () => {
                 return;
             }
 
+            setStatusMessage('Saving story...');
             const storyId = provider.getStoryId(url);
 
             const story: Story = {
@@ -68,6 +76,7 @@ export const useAddStory = () => {
 
             await storageService.addStory(story);
             setLoading(false);
+            setStatusMessage('');
             showAlert('Success', `Added "${metadata.title}" to library.`, [
                 { text: 'OK', onPress: () => router.back() }
             ]);
@@ -76,6 +85,7 @@ export const useAddStory = () => {
             console.error(e);
             showAlert('Error', 'Failed to fetch the novel. ' + (e as Error).message);
             setLoading(false);
+            setStatusMessage('');
         }
     };
 
@@ -83,6 +93,7 @@ export const useAddStory = () => {
         url,
         setUrl,
         loading,
+        statusMessage,
         handlePaste,
         handleAdd,
     };

@@ -19,6 +19,6 @@ export interface SourceProvider {
     isSource(url: string): boolean;
     getStoryId(url: string): string;
     parseMetadata(html: string): NovelMetadata;
-    getChapterList(html: string, url: string): Promise<ChapterInfo[]>;
+    getChapterList(html: string, url: string, onProgress?: (message: string) => void): Promise<ChapterInfo[]>;
     parseChapterContent(html: string): string;
 }

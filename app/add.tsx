@@ -9,6 +9,7 @@ export default function AddStoryScreen() {
       url,
       setUrl,
       loading,
+      statusMessage,
       handlePaste,
       handleAdd,
   } = useAddStory();
@@ -43,6 +44,9 @@ export default function AddStoryScreen() {
         >
           Fetch Story
         </Button>
+        {loading && statusMessage ? (
+            <Text style={styles.status} variant="bodySmall">{statusMessage}</Text>
+        ) : null}
       </View>
     </ScreenContainer>
   );
@@ -70,4 +74,9 @@ const styles = StyleSheet.create({
   button: {
     marginTop: 8,
   },
+  status: {
+    marginTop: 12,
+    textAlign: 'center',
+    color: '#666',
+  }
 });

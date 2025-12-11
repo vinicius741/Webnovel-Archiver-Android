@@ -51,11 +51,13 @@ export const ScribbleHubProvider: SourceProvider = {
         };
     },
 
-    getChapterList: async (html: string, baseUrl: string): Promise<ChapterInfo[]> => {
+    getChapterList: async (html: string, baseUrl: string, onProgress?: (message: string) => void): Promise<ChapterInfo[]> => {
         let allChapters: ChapterInfo[] = [];
         let currentHtml = html;
         let pageCount = 1;
         const MAX_PAGES = 100;
+
+        if (onProgress) onProgress('Parsing page 1...');
 
         // Helper to parse a single page
         const parsePage = (htmlContent: string) => {
@@ -147,6 +149,7 @@ export const ScribbleHubProvider: SourceProvider = {
 
             if (nextUrl) {
                 console.log(`[ScribbleHub] Fetching page ${pageCount + 1}: ${nextUrl}`);
+                if (onProgress) onProgress(`Fetching page ${pageCount + 1}...`);
                 try {
                     const nextHtml = await fetchPage(nextUrl);
                     const newChapters = parsePage(nextHtml);

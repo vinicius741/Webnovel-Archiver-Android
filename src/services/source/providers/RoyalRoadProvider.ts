@@ -76,7 +76,8 @@ export const RoyalRoadProvider: SourceProvider = {
         };
     },
 
-    getChapterList: async (html: string, baseUrl: string): Promise<ChapterInfo[]> => {
+    getChapterList: async (html: string, baseUrl: string, onProgress?: (message: string) => void): Promise<ChapterInfo[]> => {
+        if (onProgress) onProgress('Parsing chapter list...');
         const $ = load(html);
         const chapters: ChapterInfo[] = [];
 
