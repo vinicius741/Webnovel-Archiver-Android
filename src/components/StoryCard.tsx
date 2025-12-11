@@ -6,12 +6,13 @@ interface Props {
   title: string;
   author: string;
   coverUrl?: string;
+  sourceName?: string;
   progress?: number; // 0 to 1
   lastReadChapterName?: string;
   onPress: () => void;
 }
 
-export const StoryCard = ({ title, author, coverUrl, progress, lastReadChapterName, onPress }: Props) => {
+export const StoryCard = ({ title, author, coverUrl, sourceName, progress, lastReadChapterName, onPress }: Props) => {
   const theme = useTheme();
 
   return (
@@ -19,10 +20,15 @@ export const StoryCard = ({ title, author, coverUrl, progress, lastReadChapterNa
       <Card.Content style={styles.content}>
         {coverUrl && <Image source={{ uri: coverUrl }} style={styles.coverImage} />}
         <View style={styles.textContainer}>
-            <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 8 }}>{title}</Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: 4 }}>{author}</Text>
+            <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 4 }}>{title}</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>{author}</Text>
+            {sourceName && (
+                <Text variant="labelSmall" style={{ color: theme.colors.primary, marginBottom: 4 }}>
+                    {sourceName}
+                </Text>
+            )}
             {lastReadChapterName && (
-                <Text variant="labelSmall" style={{ color: theme.colors.primary }} numberOfLines={1}>
+                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
                     Last read: {lastReadChapterName}
                 </Text>
             )}

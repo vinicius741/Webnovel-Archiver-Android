@@ -8,6 +8,7 @@ import { StoryCard } from '../src/components/StoryCard';
 import { SortButton } from '../src/components/SortButton';
 import { useScreenLayout } from '../src/hooks/useScreenLayout';
 import { useLibrary, SortOption } from '../src/hooks/useLibrary';
+import { sourceRegistry } from '../src/services/source/SourceRegistry';
 
 
 export default function HomeScreen() {
@@ -133,6 +134,7 @@ export default function HomeScreen() {
                     title={item.title} 
                     author={item.author} 
                     coverUrl={item.coverUrl}
+                    sourceName={sourceRegistry.getProvider(item.sourceUrl)?.name}
                     progress={item.totalChapters > 0 ? item.downloadedChapters / item.totalChapters : 0} 
                     lastReadChapterName={item.lastReadChapterId ? item.chapters.find(c => c.id === item.lastReadChapterId)?.title : undefined}
                     onPress={() => router.push(`/details/${item.id}`)} 

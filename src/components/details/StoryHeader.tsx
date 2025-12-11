@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, StyleSheet, Image } from 'react-native';
-import { Text, useTheme } from 'react-native-paper';
+import { Text, useTheme, Chip } from 'react-native-paper';
 import { Story } from '../../types';
+import { sourceRegistry } from '../../services/source/SourceRegistry';
 
 interface StoryHeaderProps {
     story: Story;
@@ -9,6 +10,7 @@ interface StoryHeaderProps {
 
 export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
     const theme = useTheme();
+    const sourceName = sourceRegistry.getProvider(story.sourceUrl)?.name;
 
     return (
         <View style={styles.container}>
@@ -16,6 +18,10 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
             <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
             <Text variant="titleMedium" style={[styles.author, { color: theme.colors.secondary }]}>{story.author}</Text>
             
+            {sourceName && (
+                <Chip icon="web" style={styles.sourceChip} textStyle={{ fontSize: 12 }}>{sourceName}</Chip>
+            )}
+
             <View style={styles.stats}>
                 <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
                 <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
@@ -41,7 +47,10 @@ const styles = StyleSheet.create({
     },
     author: {
       textAlign: 'center',
-      marginBottom: 16,
+      marginBottom: 8,
+    },
+    sourceChip: {
+        marginBottom: 16,
     },
     stats: {
         flexDirection: 'row',
