@@ -5,8 +5,9 @@ import { useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
+import { SortButton } from '../src/components/SortButton';
 import { useScreenLayout } from '../src/hooks/useScreenLayout';
-import { useLibrary } from '../src/hooks/useLibrary';
+import { useLibrary, SortOption } from '../src/hooks/useLibrary';
 
 
 export default function HomeScreen() {
@@ -24,7 +25,32 @@ export default function HomeScreen() {
       selectedTags,
       toggleTag,
       allTags,
+      sortOption,
+      setSortOption,
+      sortDirection,
+      setSortDirection,
   } = useLibrary();
+
+  const handleSortSelect = (option: SortOption) => {
+    if (sortOption === option) {
+        // If clicking same option, we could toggle, but adhering to the component's explicit toggle button is cleaner.
+        // Or we can keep the "click again to toggle" behavior if we want.
+        // The previous logic did: if same, toggle.
+        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+        setSortOption(option);
+        // Set default direction based on option
+        if (option === 'title') {
+            setSortDirection('asc');
+        } else {
+            setSortDirection('desc');
+        }
+    }
+  };
+
+  const handleToggleDirection = () => {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  };
 
   // Calculate strict item width to prevent last item from stretching in grid
   const GAP = 8;
@@ -51,15 +77,24 @@ export default function HomeScreen() {
         }} 
       />
       <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="Search stories"
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={styles.searchBar}
-          placeholderTextColor={theme.colors.onSurfaceVariant}
-          iconColor={theme.colors.onSurfaceVariant}
-          inputStyle={{ color: theme.colors.onSurface }}
-        />
+        <View style={styles.searchRow}>
+            <Searchbar
+            placeholder="Search stories"
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={styles.searchBar}
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            iconColor={theme.colors.onSurfaceVariant}
+            inputStyle={{ color: theme.colors.onSurface }}
+            />
+            <SortButton 
+                sortOption={sortOption}
+                sortDirection={sortDirection}
+                onSortSelect={handleSortSelect}
+                onToggleDirection={handleToggleDirection}
+            />
+        </View>
+
         {allTags.length > 0 && (
           <ScrollView 
             horizontal 
@@ -156,7 +191,13 @@ const styles = StyleSheet.create({
     maxWidth: 600,
     alignSelf: 'center',
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBar: {
+    flex: 1,
     elevation: 2,
     borderRadius: 8,
   },

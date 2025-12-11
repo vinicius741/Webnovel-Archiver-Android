@@ -3,22 +3,26 @@ import { useFocusEffect } from 'expo-router';
 import { storageService } from '../services/StorageService';
 import { Story } from '../types';
 
+export type SortOption = 'default' | 'title' | 'dateAdded' | 'lastUpdated' | 'totalChapters';
+export type SortDirection = 'asc' | 'desc';
+
 export const useLibrary = () => {
     const [stories, setStories] = useState<Story[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [refreshing, setRefreshing] = useState(false);
+    
+    // Sorting state
+    const [sortOption, setSortOption] = useState<SortOption>('default');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     const loadLibrary = async () => {
         try {
             setRefreshing(true);
             const library = await storageService.getLibrary();
-            library.sort((a, b) => {
-                const dateA = Math.max(a.lastUpdated || 0, a.dateAdded || 0);
-                const dateB = Math.max(b.lastUpdated || 0, b.dateAdded || 0);
-                return dateB - dateA;
-            });
-
+            // We'll handle sorting in the useMemo below, so we just set raw data here
+            // But to keep initial state consistent or if useMemo is expensive, we could sort here.
+            // However, dynamic sorting is requested.
             setStories(library);
         } catch (e) {
             console.error(e);
@@ -51,8 +55,9 @@ export const useLibrary = () => {
         );
     };
 
-    const filteredStories = useMemo(() => {
-        return stories.filter(story => {
+    const filteredAndSortedStories = useMemo(() => {
+        // First filter
+        const filtered = stories.filter(story => {
             const matchesSearch = story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (story.author && story.author.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -60,18 +65,65 @@ export const useLibrary = () => {
 
             if (selectedTags.length > 0) {
                 const storyTags = story.tags || [];
-                // Check if story has ALL selected tags (AND logic)
                 const hasAllTags = selectedTags.every(tag => storyTags.includes(tag));
                 return hasAllTags;
             }
 
             return true;
         });
-    }, [stories, searchQuery, selectedTags]);
+
+        // Then sort
+        return filtered.sort((a, b) => {
+            let comparison = 0;
+
+            switch (sortOption) {
+                case 'title':
+                    comparison = a.title.localeCompare(b.title);
+                    break;
+                case 'dateAdded':
+                    comparison = (a.dateAdded || 0) - (b.dateAdded || 0);
+                    break;
+                case 'lastUpdated':
+                    comparison = (a.lastUpdated || 0) - (b.lastUpdated || 0);
+                    break;
+                case 'totalChapters':
+                    comparison = a.totalChapters - b.totalChapters;
+                    break;
+                case 'default':
+                default:
+                    // Default logic: Smart sort by recent activity (max of lastUpdated or dateAdded)
+                    const dateA = Math.max(a.lastUpdated || 0, a.dateAdded || 0);
+                    const dateB = Math.max(b.lastUpdated || 0, b.dateAdded || 0);
+                    comparison = dateA - dateB;
+                    break;
+            }
+
+            // Apply direction (Ascending is default for numbers in subtraction a-b, but we want Descending usually for dates)
+            // Wait, standard sort:
+            // a - b is Ascending (Small to Large)
+            // b - a is Descending (Large to Small)
+            
+            // For strings (localeCompare): 'a'.localeCompare('b') is -1 (Ascending)
+            
+            // So 'comparison' above is calculated as Ascending (except default which we might want to verify).
+            // Actually, for 'default', I calculated dateA - dateB.
+            // If dateA (today) > dateB (yesterday), dateA - dateB > 0.
+            // In Ascending sort, positive means b comes first? No.
+            // sort((a,b) => a-b):
+            // 2 - 1 = 1 (>0), so b (1) comes before a (2). Sorted: 1, 2. ASC.
+            
+            // So my calculations above are all ASCENDING.
+            
+            // If user wants ASC, we return comparison.
+            // If user wants DESC, we return -comparison.
+            
+            return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [stories, searchQuery, selectedTags, sortOption, sortDirection]);
 
     return {
-        stories: filteredStories, // Return filtered stories as primary 'stories'
-        allStories: stories, // Return all stories if needed
+        stories: filteredAndSortedStories,
+        allStories: stories,
         loading: refreshing,
         refreshing,
         onRefresh,
@@ -80,5 +132,9 @@ export const useLibrary = () => {
         selectedTags,
         toggleTag,
         allTags,
+        sortOption,
+        setSortOption,
+        sortDirection,
+        setSortDirection
     };
 };
