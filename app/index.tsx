@@ -1,24 +1,30 @@
-import React, { useEffect, useCallback, useState, useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, View, FlatList, RefreshControl, ScrollView } from 'react-native';
-import { Text, FAB, useTheme, Button, IconButton, Searchbar, Chip } from 'react-native-paper';
-import { useRouter, useFocusEffect, Stack } from 'expo-router';
+import { Text, FAB, useTheme, IconButton, Searchbar, Chip } from 'react-native-paper';
+import { useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { StoryCard } from '../src/components/StoryCard';
-import { storageService } from '../src/services/StorageService';
-import { Story } from '../src/types';
 import { useScreenLayout } from '../src/hooks/useScreenLayout';
+import { useLibrary } from '../src/hooks/useLibrary';
 
 
 export default function HomeScreen() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const [stories, setStories] = useState<Story[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
   const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
+  
+  const {
+      stories: filteredStories,
+      refreshing,
+      onRefresh,
+      searchQuery,
+      setSearchQuery,
+      selectedTags,
+      toggleTag,
+      allTags,
+  } = useLibrary();
 
   // Calculate strict item width to prevent last item from stretching in grid
   const GAP = 8;
@@ -29,65 +35,6 @@ export default function HomeScreen() {
   const safeAreaHorizontal = insets.left + insets.right;
   const availableWidth = screenWidth - safeAreaHorizontal - totalPadding - ((numColumns - 1) * GAP);
   const itemWidth = availableWidth / numColumns;
-
-  const loadLibrary = async () => {
-    try {
-      setRefreshing(true);
-      const library = await storageService.getLibrary();
-      library.sort((a, b) => {
-        const dateA = Math.max(a.lastUpdated || 0, a.dateAdded || 0);
-        const dateB = Math.max(b.lastUpdated || 0, b.dateAdded || 0);
-        return dateB - dateA;
-      });
-      
-      setStories(library);
-    } catch (e) {
-      console.error(e);
-    } finally {
-        setRefreshing(false);
-    }
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      loadLibrary();
-    }, [])
-  );
-
-  const onRefresh = useCallback(() => {
-    loadLibrary();
-  }, []);
-
-  const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    stories.forEach(story => {
-      story.tags?.forEach(tag => tags.add(tag));
-    });
-    return Array.from(tags).sort();
-  }, [stories]);
-
-  const toggleTag = (tag: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
-
-  const filteredStories = stories.filter(story => {
-    const matchesSearch = story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (story.author && story.author.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    if (!matchesSearch) return false;
-
-    if (selectedTags.length > 0) {
-      const storyTags = story.tags || [];
-      // Check if story has ALL selected tags (AND logic)
-      const hasAllTags = selectedTags.every(tag => storyTags.includes(tag));
-      return hasAllTags;
-    }
-
-    return true;
-  });
-
 
 
   return (
