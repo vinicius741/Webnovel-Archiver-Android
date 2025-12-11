@@ -15,7 +15,7 @@ export default function AddStoryScreen() {
   } = useAddStory();
 
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={['bottom', 'left', 'right']} style={{ padding: 8 }}>
       <View style={styles.form}>
         <Text variant="titleMedium" style={styles.label}>Webnovel URL</Text>
         <View style={styles.inputContainer}>

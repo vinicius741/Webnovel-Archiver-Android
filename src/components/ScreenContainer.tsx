@@ -1,18 +1,20 @@
 import React from 'react';
 import { StyleSheet, ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, Edge } from 'react-native-safe-area-context';
 import { useTheme } from 'react-native-paper';
 
 interface Props {
   children: React.ReactNode;
   style?: ViewStyle;
+  edges?: Edge[];
 }
 
-export const ScreenContainer = ({ children, style }: Props) => {
+export const ScreenContainer = ({ children, style, edges }: Props) => {
   const theme = useTheme();
 
   return (
     <SafeAreaView
+      edges={edges}
       style={[
         styles.container,
         { backgroundColor: theme.colors.background },
@@ -27,6 +29,5 @@ export const ScreenContainer = ({ children, style }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 8,
   },
 });

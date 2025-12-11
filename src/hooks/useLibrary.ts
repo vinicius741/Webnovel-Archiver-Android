@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { storageService } from '../services/StorageService';
 import { Story } from '../types';
+import { sourceRegistry } from '../services/source/SourceRegistry';
 
 export type SortOption = 'default' | 'title' | 'dateAdded' | 'lastUpdated' | 'totalChapters';
 export type SortDirection = 'asc' | 'desc';
@@ -41,18 +42,58 @@ export const useLibrary = () => {
         loadLibrary();
     }, []);
 
-    const allTags = useMemo(() => {
+    const { allTags, sourceNames } = useMemo(() => {
+        const sources = new Set<string>();
+        // Always collect all sources first to allow switching
+        stories.forEach(story => {
+            const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
+            if (providerName) {
+                sources.add(providerName);
+            }
+        });
+        const sortedSources = Array.from(sources).sort();
+
+        // Determine if a source is currently selected
+        const activeSource = selectedTags.find(tag => sortedSources.includes(tag));
+
         const tags = new Set<string>();
         stories.forEach(story => {
+            const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
+            
+            // If a source is selected, only collect tags from stories of that source
+            if (activeSource && providerName !== activeSource) {
+                return;
+            }
+
             story.tags?.forEach(tag => tags.add(tag));
         });
-        return Array.from(tags).sort();
-    }, [stories]);
+
+        const sortedTags = Array.from(tags).sort();
+
+        return {
+            allTags: [...sortedSources, ...sortedTags],
+            sourceNames: sortedSources
+        };
+    }, [stories, selectedTags]);
 
     const toggleTag = (tag: string) => {
-        setSelectedTags(prev =>
-            prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-        );
+        setSelectedTags(prev => {
+            const isSourceTag = sourceNames.includes(tag);
+            
+            if (isSourceTag) {
+                // If it's already selected, toggle it off
+                if (prev.includes(tag)) {
+                    return prev.filter(t => t !== tag);
+                }
+                
+                // If adding a source tag, remove any other source tags from selection first
+                const nonSourceTags = prev.filter(t => !sourceNames.includes(t));
+                return [...nonSourceTags, tag];
+            }
+            
+            // Standard toggle for regular tags
+            return prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag];
+        });
     };
 
     const filteredAndSortedStories = useMemo(() => {
@@ -65,7 +106,15 @@ export const useLibrary = () => {
 
             if (selectedTags.length > 0) {
                 const storyTags = story.tags || [];
-                const hasAllTags = selectedTags.every(tag => storyTags.includes(tag));
+                const storySourceName = sourceRegistry.getProvider(story.sourceUrl)?.name;
+
+                const hasAllTags = selectedTags.every(tag => {
+                    // Check if the selected tag is actually a source name
+                    if (sourceNames.includes(tag)) {
+                        return storySourceName === tag;
+                    }
+                    return storyTags.includes(tag);
+                });
                 return hasAllTags;
             }
 
@@ -119,7 +168,7 @@ export const useLibrary = () => {
             
             return sortDirection === 'asc' ? comparison : -comparison;
         });
-    }, [stories, searchQuery, selectedTags, sortOption, sortDirection]);
+    }, [stories, searchQuery, selectedTags, sortOption, sortDirection, sourceNames]);
 
     return {
         stories: filteredAndSortedStories,

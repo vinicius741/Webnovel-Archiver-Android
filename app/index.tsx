@@ -55,8 +55,8 @@ export default function HomeScreen() {
 
   // Calculate strict item width to prevent last item from stretching in grid
   const GAP = 8;
-  const containerPadding = 16; // 8 * 2 (ScreenContainer)
-  const listPadding = isLargeScreen ? 32 : 16; // 16 * 2 or 8 * 2
+  const containerPadding = 0; // ScreenContainer padding removed
+  const listPadding = isLargeScreen ? 32 : 32; // 16 * 2
   const totalPadding = containerPadding + listPadding;
   // Account for safe area insets which ScreenContainer (SafeAreaView) enforces
   const safeAreaHorizontal = insets.left + insets.right;
@@ -65,7 +65,7 @@ export default function HomeScreen() {
 
 
   return (
-    <ScreenContainer style={{ paddingTop: 0, paddingBottom: 0 }}>
+    <ScreenContainer edges={['bottom', 'left', 'right']} style={{ paddingTop: 16, paddingBottom: 0 }}>
       <Stack.Screen 
         options={{
           headerRight: () => (
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   listContent: {
-    padding: 8,
+    padding: 16,
     paddingBottom: 80,
   },
   emptyState: {

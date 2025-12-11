@@ -16,7 +16,7 @@ export default function SettingsScreen() {
   } = useSettings();
 
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={['bottom', 'left', 'right']} style={{ padding: 8 }}>
       <List.Section>
         <List.Subheader>Appearance</List.Subheader>
         <View style={styles.container}>

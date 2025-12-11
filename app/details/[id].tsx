@@ -83,7 +83,7 @@ export default function StoryDetailsScreen() {
   );
 
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={['bottom', 'left', 'right']}>
       <Stack.Screen 
         options={{ 
             title: story ? story.title : 'Details',
