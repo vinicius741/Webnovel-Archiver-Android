@@ -25,7 +25,9 @@ export default function HomeScreen() {
   const containerPadding = 16; // 8 * 2 (ScreenContainer)
   const listPadding = isLargeScreen ? 32 : 16; // 16 * 2 or 8 * 2
   const totalPadding = containerPadding + listPadding;
-  const availableWidth = screenWidth - totalPadding - ((numColumns - 1) * GAP);
+  // Account for safe area insets which ScreenContainer (SafeAreaView) enforces
+  const safeAreaHorizontal = insets.left + insets.right;
+  const availableWidth = screenWidth - safeAreaHorizontal - totalPadding - ((numColumns - 1) * GAP);
   const itemWidth = availableWidth / numColumns;
 
   const loadLibrary = async () => {
