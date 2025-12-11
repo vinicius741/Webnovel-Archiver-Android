@@ -3,10 +3,9 @@ import { useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { useAppAlert } from '../context/AlertContext';
 import { fetchPage } from '../services/network/fetcher';
-import { parseMetadata } from '../services/parser/metadata';
-import { parseChapterList } from '../services/parser/chapterList';
 import { storageService } from '../services/StorageService';
 import { Story } from '../types';
+import { sourceRegistry } from '../services/source/SourceRegistry';
 
 export const useAddStory = () => {
     const router = useRouter();
@@ -25,11 +24,20 @@ export const useAddStory = () => {
         if (!url) return;
         setLoading(true);
         try {
-            console.log('[AddStory] Fetching:', url);
+            console.log('[AddStory] Processing:', url);
+            const provider = sourceRegistry.getProvider(url);
+
+            if (!provider) {
+                showAlert('Error', 'Unsupported source URL.');
+                setLoading(false);
+                return;
+            }
+
+            console.log('[AddStory] Fetching with provider:', provider.name);
             const html = await fetchPage(url);
 
-            const metadata = parseMetadata(html);
-            const chapters = parseChapterList(html, url);
+            const metadata = provider.parseMetadata(html);
+            const chapters = await provider.getChapterList(html, url);
 
             if (chapters.length === 0) {
                 showAlert('Error', 'No chapters found. Please check the URL.');
@@ -37,13 +45,7 @@ export const useAddStory = () => {
                 return;
             }
 
-            // Generate a simple ID logic (in real app, use uuid or hash)
-            // For RoyalRoad: https://www.royalroad.com/fiction/12345/name -> 12345
-            let storyId = 'custom_' + Date.now();
-            const rrMatch = url.match(/fiction\/(\d+)/);
-            if (rrMatch) {
-                storyId = 'rr_' + rrMatch[1];
-            }
+            const storyId = provider.getStoryId(url);
 
             const story: Story = {
                 id: storyId,

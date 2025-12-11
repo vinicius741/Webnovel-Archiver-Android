@@ -1,9 +1,9 @@
 import { Story, Chapter, DownloadStatus } from '../types';
 import { fetchPage } from './network/fetcher';
-import { parseChapterContent } from './parser/content';
 import { saveChapter } from './storage/fileSystem';
 import { storageService } from './StorageService';
 import { notificationService } from './NotificationService';
+import { sourceRegistry } from './source/SourceRegistry';
 
 class DownloadService {
     /**
@@ -11,22 +11,28 @@ class DownloadService {
      * Updates the chapter object with file path and status, but does NOT save the story to storage.
      * Returns the updated chapter.
      */
-    async downloadChapter(storyId: string, chapter: Chapter, index: number): Promise<Chapter> {
+    async downloadChapter(story: Story, chapter: Chapter, index: number): Promise<Chapter> {
         if (!chapter.url) {
             console.warn(`[Download] Chapter ${index} has no URL`);
             return chapter;
         }
 
+        const provider = sourceRegistry.getProvider(story.sourceUrl);
+        if (!provider) {
+             console.error(`[Download] No provider found for story source: ${story.sourceUrl}`);
+             return chapter;
+        }
+
         try {
             console.log(`[Download] fetching ${chapter.url}`);
             const html = await fetchPage(chapter.url);
-            const content = parseChapterContent(html);
+            const content = provider.parseChapterContent(html);
 
             if (!content || content.length < 50) {
                 console.warn(`[Download] Content seems empty for ${chapter.title}`);
             }
 
-            const filePath = await saveChapter(storyId, index, chapter.title, content);
+            const filePath = await saveChapter(story.id, index, chapter.title, content);
 
             return {
                 ...chapter,
@@ -117,7 +123,7 @@ class DownloadService {
                             `Downloading ${currentProgress}/${chapters.length}: ${chapter.title}`
                         );
 
-                        const updatedChapter = await this.downloadChapter(story.id, chapter, originalIndex);
+                        const updatedChapter = await this.downloadChapter(story, chapter, originalIndex);
                         chapters[originalIndex] = updatedChapter;
 
                         if (updatedChapter.downloaded) {

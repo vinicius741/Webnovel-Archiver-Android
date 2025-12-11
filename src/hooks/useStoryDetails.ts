@@ -9,8 +9,7 @@ import { storageService } from '../services/StorageService';
 import { epubGenerator } from '../services/EpubGenerator';
 import { downloadService } from '../services/DownloadService';
 import { fetchPage } from '../services/network/fetcher';
-import { parseChapterList } from '../services/parser/chapterList';
-import { parseMetadata } from '../services/parser/metadata';
+import { sourceRegistry } from '../services/source/SourceRegistry';
 import { useAppAlert } from '../context/AlertContext';
 import { Story, Chapter, DownloadStatus } from '../types';
 
@@ -89,9 +88,14 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         if (story.downloadedChapters === story.totalChapters) {
             try {
                 setCheckingUpdates(true);
+                const provider = sourceRegistry.getProvider(story.sourceUrl);
+                if (!provider) {
+                    throw new Error('Unsupported source URL.');
+                }
+                
                 const html = await fetchPage(story.sourceUrl);
-                const newChapters = parseChapterList(html, story.sourceUrl);
-                const metadata = parseMetadata(html);
+                const newChapters = await provider.getChapterList(html, story.sourceUrl);
+                const metadata = provider.parseMetadata(html);
 
                 // Merge logic
                 let hasUpdates = false;
