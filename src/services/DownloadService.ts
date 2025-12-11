@@ -83,6 +83,19 @@ class DownloadService {
             // Already downloaded ones count towards progress
             downloadedCount = chapters.length - chaptersToDownload.length;
 
+            // Track progress monotonically for UI/Notification
+            let progressCount = downloadedCount;
+            let lastReportedProgress = 0;
+
+            const updateProgressSafe = async (current: number, total: number, message: string) => {
+                // Ensure we never move the progress bar backwards
+                if (current > lastReportedProgress) {
+                    lastReportedProgress = current;
+                    onProgress?.(total, current, message);
+                    await notificationService.updateProgress(current, total, message);
+                }
+            };
+
             if (chaptersToDownload.length === 0) {
                 // All done already
             } else {
@@ -93,13 +106,17 @@ class DownloadService {
                 const worker = async () => {
                     while (currentIndex < chaptersToDownload.length) {
                         const jobIndex = currentIndex++;
-                        const { chapter, index: originalIndex } = chaptersToDownload[jobIndex];
+                        const { chapter } = chaptersToDownload[jobIndex];
+                        const { index: originalIndex } = chaptersToDownload[jobIndex];
 
-                        onProgress?.(chapters.length, downloadedCount + 1, `Downloading ${chapter.title}`);
-                        await notificationService.updateProgress(
-                            downloadedCount + 1,
+                        // Increment progress counter (started work)
+                        progressCount++;
+                        const currentProgress = progressCount;
+
+                        await updateProgressSafe(
+                            currentProgress,
                             chapters.length,
-                            `Downloading ${originalIndex + 1}/${chapters.length}: ${chapter.title}`
+                            `Downloading ${currentProgress}/${chapters.length}: ${chapter.title}`
                         );
 
                         const updatedChapter = await this.downloadChapter(story.id, chapter, originalIndex);

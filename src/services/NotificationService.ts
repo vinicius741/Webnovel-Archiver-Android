@@ -44,7 +44,7 @@ class NotificationService {
         }
     }
 
-    async startForegroundService(title: string, body: string) {
+    async startForegroundService(title: string, body: string, max: number = 100, current: number = 0) {
         if (!this.notifee) return;
 
         try {
@@ -58,9 +58,9 @@ class NotificationService {
                     color: this.androidColor?.BLUE,
                     ongoing: true,
                     progress: {
-                        max: 100,
-                        current: 0,
-                        indeterminate: true,
+                        max: max,
+                        current: current,
+                        indeterminate: false,
                     },
                     actions: [
                         {
