@@ -1,12 +1,13 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Button, Text, ProgressBar, useTheme } from 'react-native-paper';
+import { Button, Text, ProgressBar, useTheme, ActivityIndicator } from 'react-native-paper';
 import { Story } from '../../types';
 
 interface StoryActionsProps {
     story: Story;
     downloading: boolean;
     checkingUpdates: boolean;
+    updateStatus?: string;
     downloadProgress: number;
     downloadStatus: string;
     onDownloadOrUpdate: () => void;
@@ -17,6 +18,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
     story,
     downloading,
     checkingUpdates,
+    updateStatus,
     downloadProgress,
     downloadStatus,
     onDownloadOrUpdate,
@@ -29,8 +31,8 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             <Button 
                 mode="contained" 
                 style={styles.actionBtn} 
-                loading={downloading}
-                disabled={downloading}
+                loading={downloading || checkingUpdates}
+                disabled={downloading || checkingUpdates}
                 onPress={onDownloadOrUpdate}
             >
                 {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking...' : 'Update') : 'Download All')}
@@ -41,6 +43,15 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                     <ProgressBar progress={downloadProgress} color={theme.colors.primary} style={styles.progressBar} />
                     <Text variant="bodySmall" style={styles.progressText}>
                         {downloadStatus}
+                    </Text>
+                </View>
+            )}
+
+            {checkingUpdates && updateStatus && (
+                <View style={styles.progressContainer}>
+                     <ActivityIndicator size="small" style={{ marginBottom: 8 }} />
+                    <Text variant="bodySmall" style={styles.progressText}>
+                        {updateStatus}
                     </Text>
                 </View>
             )}

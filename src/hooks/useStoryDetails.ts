@@ -20,6 +20,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     const [loading, setLoading] = useState(true);
     const [downloading, setDownloading] = useState(false);
     const [checkingUpdates, setCheckingUpdates] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState('');
     const [downloadProgress, setDownloadProgress] = useState(0);
     const [downloadStatus, setDownloadStatus] = useState('');
 
@@ -88,15 +89,19 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         if (story.downloadedChapters === story.totalChapters) {
             try {
                 setCheckingUpdates(true);
+                setUpdateStatus('Initializing...');
                 const provider = sourceRegistry.getProvider(story.sourceUrl);
                 if (!provider) {
                     throw new Error('Unsupported source URL.');
                 }
                 
                 const html = await fetchPage(story.sourceUrl);
-                const newChapters = await provider.getChapterList(html, story.sourceUrl);
+                const newChapters = await provider.getChapterList(html, story.sourceUrl, (msg) => {
+                    setUpdateStatus(msg);
+                });
                 const metadata = provider.parseMetadata(html);
 
+                setUpdateStatus('Merging...');
                 // Merge logic
                 let hasUpdates = false;
                 const updatedChapters: Chapter[] = newChapters.map(newChap => {
@@ -149,6 +154,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                 showAlert('Update Error', error.message);
             } finally {
                 setCheckingUpdates(false);
+                setUpdateStatus('');
             }
             return;
         }
@@ -228,6 +234,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         loading,
         downloading,
         checkingUpdates,
+        updateStatus,
         downloadProgress,
         downloadStatus,
         deleteStory,
