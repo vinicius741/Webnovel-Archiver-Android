@@ -63,7 +63,7 @@ export const ScribbleHubProvider: SourceProvider = {
         const parsePage = (htmlContent: string) => {
             const $ = load(htmlContent);
             const pageChapters: ChapterInfo[] = [];
-            
+
             $('li.toc_w').each((_, element) => {
                 const link = $(element).find('a.toc_a');
                 if (link.length > 0) {
@@ -71,7 +71,7 @@ export const ScribbleHubProvider: SourceProvider = {
                     let relativeUrl = link.attr('href') || '';
 
                     if (relativeUrl && !relativeUrl.startsWith('http')) {
-                       if (relativeUrl.startsWith('/')) {
+                        if (relativeUrl.startsWith('/')) {
                             const urlObj = new URL(baseUrl);
                             relativeUrl = `${urlObj.origin}${relativeUrl}`;
                         } else {
@@ -108,26 +108,26 @@ export const ScribbleHubProvider: SourceProvider = {
             if (nextLink.length > 0) {
                 const href = nextLink.attr('href');
                 if (href) {
-                     if (href.startsWith('http')) {
-                         nextUrl = href;
-                     } else {
-                         // Resolve relative URL
-                         const urlObj = new URL(baseUrl);
-                         // Handle if href is just query param like "?toc=2"
-                         if (href.startsWith('?')) {
-                             // We need to be careful not to double up if baseUrl already has query
-                             // But usually the href on the page is relative to the current path.
-                             // Let's use the URL constructor with the CURRENT url context if possible, 
-                             // but we only have baseUrl (which is the starting URL).
-                             // Ideally we track 'currentUrl'.
-                             // For simplicity, let's append to the origin + pathname of baseUrl.
-                             nextUrl = `${urlObj.origin}${urlObj.pathname}${href}`;
-                         } else if (href.startsWith('/')) {
-                             nextUrl = `${urlObj.origin}${href}`;
-                         } else {
-                             nextUrl = `${urlObj.origin}${urlObj.pathname}/${href}`; // This might be wrong if no trailing slash
-                         }
-                     }
+                    if (href.startsWith('http')) {
+                        nextUrl = href;
+                    } else {
+                        // Resolve relative URL
+                        const urlObj = new URL(baseUrl);
+                        // Handle if href is just query param like "?toc=2"
+                        if (href.startsWith('?')) {
+                            // We need to be careful not to double up if baseUrl already has query
+                            // But usually the href on the page is relative to the current path.
+                            // Let's use the URL constructor with the CURRENT url context if possible, 
+                            // but we only have baseUrl (which is the starting URL).
+                            // Ideally we track 'currentUrl'.
+                            // For simplicity, let's append to the origin + pathname of baseUrl.
+                            nextUrl = `${urlObj.origin}${urlObj.pathname}${href}`;
+                        } else if (href.startsWith('/')) {
+                            nextUrl = `${urlObj.origin}${href}`;
+                        } else {
+                            nextUrl = `${urlObj.origin}${urlObj.pathname}/${href}`; // This might be wrong if no trailing slash
+                        }
+                    }
                 }
             }
 
@@ -170,10 +170,10 @@ export const ScribbleHubProvider: SourceProvider = {
                     allChapters = [...allChapters, ...newChapters];
                     currentHtml = nextHtml;
                     pageCount++;
-                    
+
                     // Safety break if we fetched a page with very few chapters, implying end of list?
                     // Not necessarily, sometimes last page has 1 item.
-                    
+
                 } catch (e) {
                     console.error(`[ScribbleHub] Failed to fetch page ${pageCount + 1}`, e);
                     break;
@@ -183,12 +183,12 @@ export const ScribbleHubProvider: SourceProvider = {
             }
         }
 
-        return allChapters;
+        return allChapters.reverse();
     },
 
     parseChapterContent: (html: string): string => {
         const $ = load(html);
-        
+
         // Content container
         const content = $('#chp_raw');
 
@@ -196,7 +196,7 @@ export const ScribbleHubProvider: SourceProvider = {
         content.find('div.rv_ad').remove();
         content.find('.wi_author_notes').remove(); // Optional: remove author notes if desired? usually people want them.
         // Let's keep author notes for now, or maybe make it optional later.
-        
+
         return content.html() || 'No content found';
     }
 };
