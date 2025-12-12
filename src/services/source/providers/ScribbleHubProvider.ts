@@ -183,7 +183,7 @@ export const ScribbleHubProvider: SourceProvider = {
             }
         }
 
-        return allChapters;
+        return allChapters.reverse();
     },
 
     parseChapterContent: (html: string): string => {
