@@ -6,6 +6,8 @@ import { notificationService } from './NotificationService';
 import { sourceRegistry } from './source/SourceRegistry';
 
 class DownloadService {
+    private activeDownloads = new Set<string>();
+
     /**
      * Downloads a single chapter.
      * Updates the chapter object with file path and status, but does NOT save the story to storage.
@@ -54,6 +56,13 @@ class DownloadService {
         story: Story,
         onProgress?: (total: number, current: number, currentChapter: string) => void
     ): Promise<Story> {
+        if (this.activeDownloads.has(story.id)) {
+            console.warn(`[DownloadService] Download already in progress for story: ${story.title} (${story.id})`);
+            return story;
+        }
+
+        this.activeDownloads.add(story.id);
+
         let chapters = [...story.chapters];
         let downloadedCount = 0;
 
@@ -191,6 +200,7 @@ class DownloadService {
             );
             return story;
         } finally {
+            this.activeDownloads.delete(story.id);
             await notificationService.stopForegroundService();
         }
     }
