@@ -24,6 +24,7 @@ export default function StoryDetailsScreen() {
       loading,
       downloading,
       checkingUpdates,
+      updateStatus,
       downloadProgress,
       downloadStatus,
       deleteStory,
@@ -66,6 +67,7 @@ export default function StoryDetailsScreen() {
             story={story}
             downloading={downloading}
             checkingUpdates={checkingUpdates}
+            updateStatus={updateStatus}
             downloadProgress={downloadProgress}
             downloadStatus={downloadStatus}
             onDownloadOrUpdate={downloadOrUpdate}
