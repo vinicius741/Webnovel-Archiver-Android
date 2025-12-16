@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import React, { useRef } from 'react';
+import { View, StyleSheet, Image, Linking, Pressable } from 'react-native';
 import { Text, useTheme, Chip } from 'react-native-paper';
 import { Story } from '../../types';
 import { sourceRegistry } from '../../services/source/SourceRegistry';
@@ -11,11 +11,25 @@ interface StoryHeaderProps {
 export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
     const theme = useTheme();
     const sourceName = sourceRegistry.getProvider(story.sourceUrl)?.name;
+    const lastTap = useRef<number | null>(null);
+
+    const handleTitlePress = () => {
+        const now = Date.now();
+        const DOUBLE_PRESS_DELAY = 300;
+        if (lastTap.current && (now - lastTap.current < DOUBLE_PRESS_DELAY)) {
+             Linking.openURL(story.sourceUrl).catch(err => console.error("Couldn't load page", err));
+             lastTap.current = null;
+        } else {
+            lastTap.current = now;
+        }
+    };
 
     return (
         <View style={styles.container}>
             {story.coverUrl && <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />}
-            <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
+            <Pressable onPress={handleTitlePress}>
+                <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
+            </Pressable>
             <Text variant="titleMedium" style={[styles.author, { color: theme.colors.secondary }]}>{story.author}</Text>
             
             {sourceName && (
