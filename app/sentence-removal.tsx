@@ -19,6 +19,8 @@ import { ScreenContainer } from '../src/components/ScreenContainer';
 import { storageService } from '../src/services/StorageService';
 import { useTheme } from '../src/theme/ThemeContext';
 import * as Clipboard from 'expo-clipboard';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 
 export default function SentenceRemovalScreen() {
   const insets = useSafeAreaInsets();
@@ -47,10 +49,26 @@ export default function SentenceRemovalScreen() {
   const handleExport = async () => {
     try {
       const json = JSON.stringify(sentences, null, 4);
-      await Clipboard.setStringAsync(json);
-      Alert.alert('Export Successful', 'Sentence list copied to clipboard.');
+      const file = new File(Paths.cache, 'sentence_removal_list.json');
+
+      if (!file.exists) {
+        file.create();
+      }
+      
+      file.write(json);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, {
+            mimeType: 'application/json',
+            dialogTitle: 'Export Sentence Removal List',
+            UTI: 'public.json'
+        });
+      } else {
+        Alert.alert('Error', 'Sharing is not available on this device');
+      }
     } catch (error) {
-      Alert.alert('Export Failed', 'Failed to copy to clipboard.');
+      console.error(error);
+      Alert.alert('Export Failed', 'Failed to export the file.');
     }
   };
 
