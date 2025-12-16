@@ -67,12 +67,25 @@ export const RoyalRoadProvider: SourceProvider = {
 
         const uniqueTags = Array.from(new Set(tags));
 
+        let score: string | undefined;
+        // Find the Overall Score list item, then get the score from the next list item
+        const overallScoreLabel = $('.list-unstyled li.list-item:contains("Overall Score")').first();
+        if (overallScoreLabel.length > 0) {
+            const scoreItem = overallScoreLabel.next('li.list-item');
+            const scoreSpan = scoreItem.find('span.star');
+            const scoreText = scoreSpan.attr('data-content'); // e.g., "4.6 / 5"
+            if (scoreText) {
+                score = scoreText;
+            }
+        }
+
         return {
             title,
             author,
             coverUrl,
             description,
-            tags: uniqueTags.length > 0 ? uniqueTags : undefined
+            tags: uniqueTags.length > 0 ? uniqueTags : undefined,
+            score
         };
     },
 

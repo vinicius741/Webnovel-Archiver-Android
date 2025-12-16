@@ -4,6 +4,7 @@ export interface NovelMetadata {
     coverUrl?: string;
     description?: string;
     tags?: string[];
+    score?: string;
 }
 
 export interface ChapterInfo {
