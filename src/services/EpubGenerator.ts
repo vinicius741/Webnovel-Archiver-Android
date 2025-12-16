@@ -42,8 +42,9 @@ export class EpubGenerator {
         }
 
         // Add TF-IDF / Metadata / Navigation
-        oebps.file('content.opf', this.generateOpf(story, cleanChapters));
-        oebps.file('toc.ncx', this.generateNcx(story, cleanChapters));
+        const uid = this.getUniqueBookId(story);
+        oebps.file('content.opf', this.generateOpf(story, cleanChapters, uid));
+        oebps.file('toc.ncx', this.generateNcx(story, cleanChapters, uid));
 
         // 4. Generate Zip
         const base64 = await zip.generateAsync({ type: 'base64' });
@@ -56,7 +57,20 @@ export class EpubGenerator {
     private cleanChapterTitle(title: string): string {
         // Removes time-ago suffixes like "2 days ago", "5 hours ago", etc.
         // Handles optional separators like " - " or " | " or parens.
-        return title.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\s*\)?\s*$/i, '').trim();
+        let cleaned = title.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\s*\)?\s*$/i, '');
+
+        // Remove absolute dates if at the end, e.g. "Title Nov 25, 2025" or "Title - Nov 25, 2025"
+        // Matches "Nov 25, 2025", "25 Nov 2025", "2025-11-25" roughly
+        cleaned = cleaned.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})\s*\)?\s*$/i, '');
+
+        return cleaned.trim();
+    }
+
+    private getUniqueBookId(story: Story): string {
+        // Generates a valid URN for the book ID.
+        // We avoid "urn:uuid:" unless it's a real UUID to prevent validation errors in strict readers.
+        // We use the story ID which is unique per provider.
+        return `urn:webnovel:${story.id}`;
     }
 
     private generateContainerXml(): string {
@@ -68,8 +82,7 @@ export class EpubGenerator {
 </container>`;
     }
 
-    private generateOpf(story: Story, chapters: Chapter[]): string {
-        const uid = `urn:uuid:${story.id}`; // Simple UUID simulation
+    private generateOpf(story: Story, chapters: Chapter[], uid: string): string {
         const manifestItems = chapters.map((_, i) =>
             `<item id="chapter_${i + 1}" href="chapter_${i + 1}.xhtml" media-type="application/xhtml+xml"/>`
         ).join('\n        ');
@@ -84,7 +97,7 @@ export class EpubGenerator {
         <dc:title>${this.escapeXml(story.title)}</dc:title>
         <dc:creator opf:role="aut">${this.escapeXml(story.author)}</dc:creator>
         <dc:language>en</dc:language>
-        <dc:identifier id="BookId" opf:scheme="UUID">${uid}</dc:identifier>
+        <dc:identifier id="BookId">${uid}</dc:identifier>
         <meta name="generator" content="Webnovel Archiver Android" />
     </metadata>
     <manifest>
@@ -103,7 +116,7 @@ export class EpubGenerator {
 </package>`;
     }
 
-    private generateNcx(story: Story, chapters: Chapter[]): string {
+    private generateNcx(story: Story, chapters: Chapter[], uid: string): string {
         const navPoints = chapters.map((c, i) => `
         <navPoint id="navPoint-${i + 1}" playOrder="${i + 1}">
             <navLabel>
@@ -117,7 +130,7 @@ export class EpubGenerator {
    "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
     <head>
-        <meta name="dtb:uid" content="urn:uuid:${story.id}"/>
+        <meta name="dtb:uid" content="${uid}"/>
         <meta name="dtb:depth" content="1"/>
         <meta name="dtb:totalPageCount" content="0"/>
         <meta name="dtb:maxPageNumber" content="0"/>
