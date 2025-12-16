@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, FlatList, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Appbar,
   List,
@@ -13,12 +14,13 @@ import {
   ActivityIndicator,
   Divider
 } from 'react-native-paper';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { storageService } from '../src/services/StorageService';
 import { useTheme } from '../src/theme/ThemeContext';
 
 export default function SentenceRemovalScreen() {
+  const insets = useSafeAreaInsets();
   const [sentences, setSentences] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(false);
@@ -103,7 +105,8 @@ export default function SentenceRemovalScreen() {
   );
 
   return (
-    <ScreenContainer edges={['top', 'bottom', 'left', 'right']}>
+    <ScreenContainer edges={['bottom', 'left', 'right']}>
+      <Stack.Screen options={{ headerShown: false }} />
       <Appbar.Header>
         <Appbar.BackAction onPress={() => router.back()} />
         <Appbar.Content title="Sentence Removal" />
@@ -130,7 +133,7 @@ export default function SentenceRemovalScreen() {
 
       <FAB
         icon="plus"
-        style={styles.fab}
+        style={[styles.fab, { bottom: insets.bottom + 16 }]}
         onPress={() => openDialog()}
         label="Add Sentence"
       />
@@ -166,7 +169,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   listContent: {
-    paddingBottom: 80,
+    paddingBottom: 120,
   },
   listItem: {
     paddingVertical: 8,
