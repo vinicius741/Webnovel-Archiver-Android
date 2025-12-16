@@ -73,13 +73,22 @@ export default function SentenceRemovalScreen() {
   };
 
   const handleAdd = () => {
-    if (!newSentence.trim()) return;
+    const trimmed = newSentence.trim();
+    if (!trimmed) return;
+
+    const existingIndex = sentences.indexOf(trimmed);
+    if (existingIndex !== -1) {
+      if (editingIndex === null || existingIndex !== editingIndex) {
+        Alert.alert('Duplicate', 'This sentence is already in the removal list.');
+        return;
+      }
+    }
 
     const list = [...sentences];
     if (editingIndex !== null) {
-      list[editingIndex] = newSentence.trim();
+      list[editingIndex] = trimmed;
     } else {
-      list.push(newSentence.trim());
+      list.unshift(trimmed);
     }
 
     saveSentences(list);
