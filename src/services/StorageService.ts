@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Story, Chapter, DownloadStatus } from '../types';
 import * as fileSystem from './storage/fileSystem';
+import DEFAULT_SENTENCE_REMOVAL_LIST from '../constants/default_sentence_removal.json';
 
 const STORAGE_KEYS = {
     LIBRARY: 'wa_library_v1',
     SETTINGS: 'wa_settings_v1',
+    SENTENCE_REMOVAL: 'wa_sentence_removal_v1',
 };
 
 export interface AppSettings {
@@ -124,6 +126,25 @@ class StorageService {
             await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, jsonValue);
         } catch (e) {
             console.error('Failed to save settings', e);
+        }
+    }
+
+    async getSentenceRemovalList(): Promise<string[]> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.SENTENCE_REMOVAL);
+            return jsonValue != null ? JSON.parse(jsonValue) : DEFAULT_SENTENCE_REMOVAL_LIST;
+        } catch (e) {
+            console.error('Failed to load sentence removal list', e);
+            return DEFAULT_SENTENCE_REMOVAL_LIST;
+        }
+    }
+
+    async saveSentenceRemovalList(list: string[]): Promise<void> {
+        try {
+            const jsonValue = JSON.stringify(list);
+            await AsyncStorage.setItem(STORAGE_KEYS.SENTENCE_REMOVAL, jsonValue);
+        } catch (e) {
+            console.error('Failed to save sentence removal list', e);
         }
     }
 }

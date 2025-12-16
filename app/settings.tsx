@@ -3,6 +3,7 @@ import { Text, SegmentedButtons, List, TextInput } from 'react-native-paper';
 import { StyleSheet, View } from 'react-native';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { useSettings } from '../src/hooks/useSettings';
+import { router } from 'expo-router';
 
 export default function SettingsScreen() {
   const {
@@ -72,6 +73,12 @@ export default function SettingsScreen() {
       <List.Section>
          <List.Subheader>Data</List.Subheader> 
          <View style={styles.container}>
+           <List.Item
+              title="Sentence Removal List"
+              description="Manage sentences to automatically remove from chapters"
+              left={props => <List.Icon {...props} icon="text-box-remove-outline" />}
+              onPress={() => router.push('/sentence-removal')}
+           />
            <List.Item
               title="Clear Local Storage"
               description="Delete all novels and reset app data"

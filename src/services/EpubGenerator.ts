@@ -2,13 +2,15 @@ import JSZip from 'jszip';
 import { load } from 'cheerio';
 import { Story, Chapter } from '../types';
 import { saveEpub, readChapterFile } from './storage/fileSystem';
-import SENTENCE_REMOVAL_LIST from '../constants/default_sentence_removal.json';
+import { storageService } from './StorageService';
 
 export class EpubGenerator {
     /**
      * Generates an EPUB file for the given story and returns the local URI of the generated file.
      */
     async generateEpub(story: Story, chapters: Chapter[]): Promise<string> {
+        const sentenceRemovalList = await storageService.getSentenceRemovalList();
+
         // Clean titles for the EPUB metadata/display
         const cleanChapters = chapters.map(c => ({
             ...c,
@@ -36,7 +38,7 @@ export class EpubGenerator {
         // Add Chapters
         for (let i = 0; i < cleanChapters.length; i++) {
             const chapter = cleanChapters[i];
-            const content = await this.readChapterContent(chapter);
+            const content = await this.readChapterContent(chapter, sentenceRemovalList);
             const xhtml = this.generateChapterHtml(chapter, content);
             oebps.file(`chapter_${i + 1}.xhtml`, xhtml);
         }
@@ -196,14 +198,14 @@ a:hover { text-decoration: underline; }
         `;
     }
 
-    private async readChapterContent(chapter: Chapter): Promise<string> {
+    private async readChapterContent(chapter: Chapter, sentenceRemovalList: string[]): Promise<string> {
         if (chapter.content) return chapter.content;
 
         if (chapter.filePath) {
             const text = await readChapterFile(chapter.filePath);
             if (text) {
                 const sanitized = this.sanitizeContent(text);
-                return this.removeUnwantedSentences(sanitized);
+                return this.removeUnwantedSentences(sanitized, sentenceRemovalList);
             }
             return `<p>[Error loading content for "${chapter.title}"]</p>`;
         }
@@ -211,9 +213,9 @@ a:hover { text-decoration: underline; }
         return `<p>[No content available]</p>`;
     }
 
-    private removeUnwantedSentences(content: string): string {
+    private removeUnwantedSentences(content: string, sentenceRemovalList: string[]): string {
         let cleanContent = content;
-        for (const sentence of SENTENCE_REMOVAL_LIST) {
+        for (const sentence of sentenceRemovalList) {
             // Escape special characters in the sentence to be safe for regex, although simple string replace could work if we don't need case insensitivity.
             // Using split/join for global replacement of exact string.
             cleanContent = cleanContent.split(sentence).join('');
