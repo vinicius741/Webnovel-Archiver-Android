@@ -35,4 +35,5 @@ export interface Story {
     epubPath?: string; // Local URI to generated EPUB
     tags?: string[];
     lastReadChapterId?: string;
+    score?: string;
 }

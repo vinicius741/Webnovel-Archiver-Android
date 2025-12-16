@@ -37,6 +37,7 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
             )}
 
             <View style={styles.stats}>
+                {story.score && <Text variant="bodyMedium">Score: {story.score}</Text>}
                 <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
                 <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
             </View>
