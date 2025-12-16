@@ -18,6 +18,7 @@ import { router, Stack } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { storageService } from '../src/services/StorageService';
 import { useTheme } from '../src/theme/ThemeContext';
+import * as Clipboard from 'expo-clipboard';
 
 export default function SentenceRemovalScreen() {
   const insets = useSafeAreaInsets();
@@ -41,6 +42,16 @@ export default function SentenceRemovalScreen() {
   const saveSentences = async (list: string[]) => {
     setSentences(list);
     await storageService.saveSentenceRemovalList(list);
+  };
+
+  const handleExport = async () => {
+    try {
+      const json = JSON.stringify(sentences, null, 4);
+      await Clipboard.setStringAsync(json);
+      Alert.alert('Export Successful', 'Sentence list copied to clipboard.');
+    } catch (error) {
+      Alert.alert('Export Failed', 'Failed to copy to clipboard.');
+    }
   };
 
   const handleAdd = () => {
@@ -110,6 +121,7 @@ export default function SentenceRemovalScreen() {
       <Appbar.Header>
         <Appbar.BackAction onPress={() => router.back()} />
         <Appbar.Content title="Sentence Removal" />
+        <Appbar.Action icon="export-variant" onPress={handleExport} accessibilityLabel="Export JSON" />
       </Appbar.Header>
 
       {loading ? (
