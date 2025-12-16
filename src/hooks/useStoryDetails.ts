@@ -134,6 +134,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                     author: metadata.author || story.author,
                     coverUrl: metadata.coverUrl || story.coverUrl,
                     description: metadata.description || story.description,
+                    epubPath: hasUpdates ? undefined : story.epubPath,
                 };
 
                 await storageService.addStory(updatedStory);
@@ -170,7 +171,13 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                 setDownloadStatus(`${current}/${total}: ${title}`);
             });
 
-            setStory(updatedStory); // Update UI with new state
+            const finalStory = {
+                ...updatedStory,
+                epubPath: undefined
+            };
+
+            await storageService.addStory(finalStory);
+            setStory(finalStory); // Update UI with new state
             showAlert('Download Complete', 'All chapters have been downloaded.');
 
         } catch (error) {
