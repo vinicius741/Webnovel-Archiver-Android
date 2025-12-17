@@ -1,6 +1,7 @@
 import React from 'react';
 import { List, useTheme } from 'react-native-paper';
 import { Chapter } from '../../types';
+import { sanitizeTitle } from '../../utils/stringUtils';
 
 interface ChapterListItemProps {
     item: Chapter;
@@ -8,11 +9,6 @@ interface ChapterListItemProps {
     onPress?: () => void;
     onLongPress?: () => void;
 }
-
-const sanitizeTitle = (title: string) => {
-    // Remove trailing dots (standard ellipsis ... or Unicode …)
-    return title.replace(/\s*(\.{3}|…)$/, '').trim();
-};
 
 export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRead, onPress, onLongPress }) => {
     const theme = useTheme();

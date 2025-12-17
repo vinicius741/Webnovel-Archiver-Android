@@ -12,6 +12,7 @@ import { fetchPage } from '../services/network/fetcher';
 import { sourceRegistry } from '../services/source/SourceRegistry';
 import { useAppAlert } from '../context/AlertContext';
 import { Story, Chapter, DownloadStatus } from '../types';
+import { sanitizeTitle } from '../utils/stringUtils';
 
 export const useStoryDetails = (id: string | string[] | undefined) => {
     const router = useRouter();
@@ -112,7 +113,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                     hasUpdates = true;
                     return {
                         id: newChap.url,
-                        title: newChap.title,
+                        title: sanitizeTitle(newChap.title),
                         url: newChap.url,
                         downloaded: false,
                     };

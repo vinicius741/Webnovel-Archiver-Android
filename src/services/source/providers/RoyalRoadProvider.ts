@@ -1,5 +1,6 @@
 import { load } from 'cheerio';
 import { SourceProvider, NovelMetadata, ChapterInfo } from '../types';
+import { sanitizeTitle } from '../../../utils/stringUtils';
 
 export const RoyalRoadProvider: SourceProvider = {
     name: 'RoyalRoad',
@@ -110,7 +111,7 @@ export const RoyalRoadProvider: SourceProvider = {
                 }
 
                 chapters.push({
-                    title,
+                    title: sanitizeTitle(title),
                     url: relativeUrl
                 });
             }

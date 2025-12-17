@@ -1,6 +1,7 @@
 import { load } from 'cheerio';
 import { SourceProvider, NovelMetadata, ChapterInfo } from '../types';
 import { fetchPage } from '../../network/fetcher';
+import { sanitizeTitle } from '../../../utils/stringUtils';
 
 export const ScribbleHubProvider: SourceProvider = {
     name: 'ScribbleHub',
@@ -80,7 +81,7 @@ export const ScribbleHubProvider: SourceProvider = {
                     }
 
                     pageChapters.push({
-                        title,
+                        title: sanitizeTitle(title),
                         url: relativeUrl
                     });
                 }

@@ -6,6 +6,7 @@ import { fetchPage } from '../services/network/fetcher';
 import { storageService } from '../services/StorageService';
 import { Story } from '../types';
 import { sourceRegistry } from '../services/source/SourceRegistry';
+import { sanitizeTitle } from '../utils/stringUtils';
 
 export const useAddStory = () => {
     const router = useRouter();
@@ -69,7 +70,7 @@ export const useAddStory = () => {
                 downloadedChapters: 0,
                 chapters: chapters.map(c => ({
                     id: c.url, // Using URL as ID for chapters for now
-                    title: c.title,
+                    title: sanitizeTitle(c.title),
                     url: c.url,
                 })),
                 lastUpdated: Date.now()

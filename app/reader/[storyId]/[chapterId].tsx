@@ -8,6 +8,7 @@ import { readChapterFile } from '../../../src/services/storage/fileSystem';
 import { Story, Chapter } from '../../../src/types';
 import { ScreenContainer } from '../../../src/components/ScreenContainer';
 import { useAppAlert } from '../../../src/context/AlertContext';
+import { sanitizeTitle } from '../../../src/utils/stringUtils';
 
 export default function ReaderScreen() {
     const { storyId, chapterId } = useLocalSearchParams<{ storyId: string; chapterId: string }>();
@@ -120,7 +121,7 @@ export default function ReaderScreen() {
         <ScreenContainer edges={['bottom', 'left', 'right']}>
             <Stack.Screen 
                 options={{ 
-                    title: chapter?.title || 'Reader',
+                    title: chapter ? sanitizeTitle(chapter.title) : 'Reader',
                     headerRight: () => (
                         <IconButton 
                             icon={isLastRead ? "bookmark" : "bookmark-outline"} 
