@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, StyleSheet, Image, Linking, Pressable } from 'react-native';
 import { Text, useTheme, Chip } from 'react-native-paper';
+import ImageView from "react-native-image-viewing";
 import { Story } from '../../types';
 import { sourceRegistry } from '../../services/source/SourceRegistry';
 
@@ -12,6 +13,7 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
     const theme = useTheme();
     const sourceName = sourceRegistry.getProvider(story.sourceUrl)?.name;
     const lastTap = useRef<number | null>(null);
+    const [viewerVisible, setViewerVisible] = useState(false);
 
     const handleTitlePress = () => {
         const now = Date.now();
@@ -24,9 +26,23 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
         }
     };
 
+    const images = story.coverUrl ? [{ uri: story.coverUrl }] : [];
+
     return (
         <View style={styles.container}>
-            {story.coverUrl && <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />}
+            {story.coverUrl && (
+                <>
+                    <Pressable onPress={() => setViewerVisible(true)}>
+                        <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />
+                    </Pressable>
+                    <ImageView
+                        images={images}
+                        imageIndex={0}
+                        visible={viewerVisible}
+                        onRequestClose={() => setViewerVisible(false)}
+                    />
+                </>
+            )}
             <Pressable onPress={handleTitlePress}>
                 <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
             </Pressable>
