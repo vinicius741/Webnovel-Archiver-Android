@@ -7,10 +7,11 @@ import { useTheme } from 'react-native-paper';
 interface ChapterListItemProps {
     item: Chapter;
     isLastRead?: boolean;
+    onPress?: () => void;
     onLongPress?: () => void;
 }
 
-export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRead, onLongPress }) => {
+export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRead, onPress, onLongPress }) => {
     const theme = useTheme();
     
     return (
@@ -20,7 +21,7 @@ export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRe
             description={isLastRead ? "Last Read" : undefined}
             descriptionStyle={{ color: theme.colors.primary }}
             left={props => <List.Icon {...props} icon={isLastRead ? "bookmark" : "file-document-outline"} color={isLastRead ? theme.colors.primary : undefined} />}
-            onPress={() => {}}
+            onPress={onPress}
             onLongPress={onLongPress}
             style={isLastRead ? { backgroundColor: theme.colors.primaryContainer + '20' } : undefined}
         />

@@ -114,6 +114,7 @@ export default function StoryDetailsScreen() {
                             <ChapterListItem 
                                 item={item} 
                                 isLastRead={story.lastReadChapterId === item.id}
+                                onPress={() => router.push(`/reader/${story.id}/${encodeURIComponent(item.id)}`)}
                                 onLongPress={() => markChapterAsRead(item)}
                             />
                           )}
@@ -130,6 +131,7 @@ export default function StoryDetailsScreen() {
                 <ChapterListItem 
                     item={item} 
                     isLastRead={story.lastReadChapterId === item.id}
+                    onPress={() => router.push(`/reader/${story.id}/${encodeURIComponent(item.id)}`)}
                     onLongPress={() => markChapterAsRead(item)}
                 />
               )}
