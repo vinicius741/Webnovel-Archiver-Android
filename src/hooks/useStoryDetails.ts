@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
@@ -39,7 +38,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
 
     const deleteStory = () => {
         if (!story) return;
-        Alert.alert(
+        showAlert(
             'Delete Novel',
             `Are you sure you want to delete "${story.title}"? This action cannot be undone.`, // Corrected: escaped double quotes within template literal
             [
