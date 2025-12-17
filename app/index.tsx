@@ -135,6 +135,7 @@ export default function HomeScreen() {
                     author={item.author} 
                     coverUrl={item.coverUrl}
                     sourceName={sourceRegistry.getProvider(item.sourceUrl)?.name}
+                    score={item.score}
                     progress={item.totalChapters > 0 ? item.downloadedChapters / item.totalChapters : 0} 
                     lastReadChapterName={item.lastReadChapterId ? item.chapters.find(c => c.id === item.lastReadChapterId)?.title : undefined}
                     onPress={() => router.push(`/details/${item.id}`)} 

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, StyleSheet, Image, Linking, Pressable } from 'react-native';
-import { Text, useTheme, Chip } from 'react-native-paper';
+import { Text, useTheme, Chip, IconButton } from 'react-native-paper';
 import ImageView from "react-native-image-viewing";
 import { Story } from '../../types';
 import { sourceRegistry } from '../../services/source/SourceRegistry';
@@ -53,9 +53,20 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
             )}
 
             <View style={styles.stats}>
-                {story.score && <Text variant="bodyMedium">Score: {story.score}</Text>}
-                <Text variant="bodyMedium">Chapters: {story.totalChapters}</Text>
-                <Text variant="bodyMedium">Downloaded: {story.downloadedChapters}</Text>
+                {story.score && (
+                    <View style={styles.statItem}>
+                        <IconButton icon="star" iconColor="#FFD700" size={16} style={styles.statIcon} />
+                        <Text variant="bodyMedium" style={styles.scoreText}>{story.score}</Text>
+                    </View>
+                )}
+                <View style={styles.statItem}>
+                    <IconButton icon="book-open-variant" size={16} style={styles.statIcon} />
+                    <Text variant="bodyMedium">{story.totalChapters} Chs</Text>
+                </View>
+                <View style={styles.statItem}>
+                    <IconButton icon="download" size={16} style={styles.statIcon} />
+                    <Text variant="bodyMedium">{story.downloadedChapters} Saved</Text>
+                </View>
             </View>
         </View>
     );
@@ -85,9 +96,25 @@ const styles = StyleSheet.create({
     },
     stats: {
         flexDirection: 'row',
-        gap: 16,
+        flexWrap: 'wrap',
+        gap: 8,
         marginTop: 8,
         marginBottom: 16,
         justifyContent: 'center',
+    },
+    statItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        borderRadius: 20,
+        paddingRight: 12,
+        height: 32,
+    },
+    statIcon: {
+        margin: 0,
+        marginRight: -4,
+    },
+    scoreText: {
+        fontWeight: 'bold',
     },
 });

@@ -88,6 +88,11 @@ export const SortButton: React.FC<SortButtonProps> = ({
                     title="Chapter Count" 
                     leadingIcon={sortOption === 'totalChapters' ? 'check' : undefined}
                 />
+                <Menu.Item 
+                    onPress={() => handleSelect('score')} 
+                    title="Score" 
+                    leadingIcon={sortOption === 'score' ? 'check' : undefined}
+                />
                 <Divider />
                 <Menu.Item 
                     onPress={handleToggle} 

@@ -4,7 +4,7 @@ import { storageService } from '../services/StorageService';
 import { Story } from '../types';
 import { sourceRegistry } from '../services/source/SourceRegistry';
 
-export type SortOption = 'default' | 'title' | 'dateAdded' | 'lastUpdated' | 'totalChapters';
+export type SortOption = 'default' | 'title' | 'dateAdded' | 'lastUpdated' | 'totalChapters' | 'score';
 export type SortDirection = 'asc' | 'desc';
 
 export const useLibrary = () => {
@@ -12,7 +12,7 @@ export const useLibrary = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [refreshing, setRefreshing] = useState(false);
-    
+
     // Sorting state
     const [sortOption, setSortOption] = useState<SortOption>('default');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -59,7 +59,7 @@ export const useLibrary = () => {
         const tags = new Set<string>();
         stories.forEach(story => {
             const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
-            
+
             // If a source is selected, only collect tags from stories of that source
             if (activeSource && providerName !== activeSource) {
                 return;
@@ -79,18 +79,18 @@ export const useLibrary = () => {
     const toggleTag = (tag: string) => {
         setSelectedTags(prev => {
             const isSourceTag = sourceNames.includes(tag);
-            
+
             if (isSourceTag) {
                 // If it's already selected, toggle it off
                 if (prev.includes(tag)) {
                     return prev.filter(t => t !== tag);
                 }
-                
+
                 // If adding a source tag, remove any other source tags from selection first
                 const nonSourceTags = prev.filter(t => !sourceNames.includes(t));
                 return [...nonSourceTags, tag];
             }
-            
+
             // Standard toggle for regular tags
             return prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag];
         });
@@ -138,6 +138,14 @@ export const useLibrary = () => {
                 case 'totalChapters':
                     comparison = a.totalChapters - b.totalChapters;
                     break;
+                case 'score':
+                    const parseScore = (s?: string) => {
+                        if (!s) return 0;
+                        const match = s.match(/(\d+\.?\d*)/);
+                        return match ? parseFloat(match[1]) : 0;
+                    };
+                    comparison = parseScore(a.score) - parseScore(b.score);
+                    break;
                 case 'default':
                 default:
                     // Default logic: Smart sort by recent activity (max of lastUpdated or dateAdded)
@@ -151,21 +159,21 @@ export const useLibrary = () => {
             // Wait, standard sort:
             // a - b is Ascending (Small to Large)
             // b - a is Descending (Large to Small)
-            
+
             // For strings (localeCompare): 'a'.localeCompare('b') is -1 (Ascending)
-            
+
             // So 'comparison' above is calculated as Ascending (except default which we might want to verify).
             // Actually, for 'default', I calculated dateA - dateB.
             // If dateA (today) > dateB (yesterday), dateA - dateB > 0.
             // In Ascending sort, positive means b comes first? No.
             // sort((a,b) => a-b):
             // 2 - 1 = 1 (>0), so b (1) comes before a (2). Sorted: 1, 2. ASC.
-            
+
             // So my calculations above are all ASCENDING.
-            
+
             // If user wants ASC, we return comparison.
             // If user wants DESC, we return -comparison.
-            
+
             return sortDirection === 'asc' ? comparison : -comparison;
         });
     }, [stories, searchQuery, selectedTags, sortOption, sortDirection, sourceNames]);
