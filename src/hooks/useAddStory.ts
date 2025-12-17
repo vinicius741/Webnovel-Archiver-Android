@@ -40,7 +40,7 @@ export const useAddStory = () => {
             const html = await fetchPage(url);
 
             const metadata = provider.parseMetadata(html);
-            
+
             setStatusMessage('Parsing chapters...');
             const chapters = await provider.getChapterList(html, url, (msg) => {
                 setStatusMessage(msg);
@@ -62,6 +62,7 @@ export const useAddStory = () => {
                 coverUrl: metadata.coverUrl,
                 description: metadata.description,
                 tags: metadata.tags,
+                score: metadata.score,
                 sourceUrl: url,
                 status: 'idle', // Ready to download
                 totalChapters: chapters.length,

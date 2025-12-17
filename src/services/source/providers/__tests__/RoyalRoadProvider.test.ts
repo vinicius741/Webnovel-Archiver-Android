@@ -27,7 +27,7 @@ describe('RoyalRoadProvider', () => {
                 <ul class="list-unstyled">
                     <li class="bold uppercase list-item">Overall Score</li>
                     <li class="list-item">
-                        <span class="font-red-sunglo popovers star" data-content="4.6 / 5" aria-label="4.6 stars"></span>
+                        <span class="font-red-sunglo popovers star" data-content=" 4.84 / 5 " aria-label="4.84 stars"></span>
                     </li>
                 </ul>
             </div>
@@ -46,7 +46,7 @@ describe('RoyalRoadProvider', () => {
 
         expect(metadata.title).toBe('Gunwitch: LitRPG Adventure');
         expect(metadata.author).toBe('Test Author');
-        expect(metadata.score).toBe('4.6 / 5');
+        expect(metadata.score).toBe('4.84 / 5');
         expect(metadata.tags).toContain('LitRPG');
         expect(metadata.tags).toContain('Fantasy');
     });

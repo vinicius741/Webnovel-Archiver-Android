@@ -94,7 +94,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                 if (!provider) {
                     throw new Error('Unsupported source URL.');
                 }
-                
+
                 const html = await fetchPage(story.sourceUrl);
                 const newChapters = await provider.getChapterList(html, story.sourceUrl, (msg) => {
                     setUpdateStatus(msg);
@@ -134,6 +134,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                     author: metadata.author || story.author,
                     coverUrl: metadata.coverUrl || story.coverUrl,
                     description: metadata.description || story.description,
+                    score: metadata.score || story.score,
                     epubPath: hasUpdates ? undefined : story.epubPath,
                 };
 

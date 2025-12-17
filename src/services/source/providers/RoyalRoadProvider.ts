@@ -75,7 +75,7 @@ export const RoyalRoadProvider: SourceProvider = {
             const scoreSpan = scoreItem.find('span.star');
             const scoreText = scoreSpan.attr('data-content'); // e.g., "4.6 / 5"
             if (scoreText) {
-                score = scoreText;
+                score = scoreText.trim();
             }
         }
 
