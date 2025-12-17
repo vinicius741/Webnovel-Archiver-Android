@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Alert } from 'react-native';
 import { storageService } from '../services/StorageService';
 import { useTheme } from '../theme/ThemeContext';
+import { useAppAlert } from '../context/AlertContext';
 
 export const useSettings = () => {
+    const { showAlert } = useAppAlert();
     const { themeMode, setThemeMode } = useTheme();
     const [concurrency, setConcurrency] = useState('1');
     const [delay, setDelay] = useState('500');
@@ -43,7 +44,7 @@ export const useSettings = () => {
     };
 
     const clearData = () => {
-        Alert.alert(
+        showAlert(
             'Clear Data',
             'Are you sure you want to delete all novels and settings? This action cannot be undone.',
             [
