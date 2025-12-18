@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Text, useTheme } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
 
 interface StoryDescriptionProps {
@@ -8,6 +8,7 @@ interface StoryDescriptionProps {
 }
 
 export const StoryDescription: React.FC<StoryDescriptionProps> = ({ description }) => {
+    const theme = useTheme();
     const lastTap = useRef(0);
 
     if (!description) {
@@ -27,7 +28,7 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({ description 
         <View style={styles.descriptionContainer}>
             <Text 
                 variant="bodyMedium" 
-                style={styles.description}
+                style={[styles.description, { color: theme.colors.onSurfaceVariant }]}
                 onPress={handlePress}
             >
                 {description}
@@ -38,14 +39,12 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({ description 
 
 const styles = StyleSheet.create({
     descriptionContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 20,
-        paddingHorizontal: 16,
+        paddingHorizontal: 24,
+        marginBottom: 24,
     },
     description: {
-        flex: 1,
         textAlign: 'center',
+        lineHeight: 22,
+        fontWeight: '500',
     }
 });

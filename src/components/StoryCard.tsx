@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
-import { Card, Text, useTheme, ProgressBar, IconButton } from 'react-native-paper';
+import { Card, Text, useTheme, ProgressBar, IconButton, Chip } from 'react-native-paper';
 
 interface Props {
   title: string;
@@ -17,32 +17,51 @@ export const StoryCard = ({ title, author, coverUrl, sourceName, score, progress
   const theme = useTheme();
 
   return (
-    <Card style={styles.card} onPress={onPress}>
+    <Card style={[styles.card, { backgroundColor: theme.colors.surface }]} onPress={onPress} mode="elevated" elevation={1}>
       <Card.Content style={styles.content}>
-        {coverUrl && <Image source={{ uri: coverUrl }} style={styles.coverImage} />}
+        <View style={styles.imageContainer}>
+          {coverUrl ? (
+            <Image source={{ uri: coverUrl }} style={styles.coverImage as any} />
+          ) : (
+            <View style={[styles.coverImage as any, { backgroundColor: theme.colors.surfaceVariant, justifyContent: 'center', alignItems: 'center' }]}>
+               <IconButton icon="book" size={32} iconColor={theme.colors.onSurfaceVariant} />
+            </View>
+          )}
+        </View>
         <View style={styles.textContainer}>
-            <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 4 }}>{title}</Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>{author}</Text>
-            {sourceName && (
-                <Text variant="labelSmall" style={{ color: theme.colors.primary, marginBottom: 4 }}>
-                    {sourceName}
-                </Text>
-            )}
-            {score && (
-                <View style={styles.scoreContainer}>
-                    <IconButton icon="star" iconColor="#FFD700" size={12} style={styles.scoreIcon} />
-                    <Text variant="labelSmall" style={styles.scoreText}>{score}</Text>
-                </View>
-            )}
+            <Text variant="titleMedium" numberOfLines={2} style={[styles.title, { color: theme.colors.onSurface }]}>{title}</Text>
+            <Text variant="bodySmall" style={[styles.author, { color: theme.colors.onSurfaceVariant }]}>{author}</Text>
+            
+            <View style={styles.metaContainer}>
+              {sourceName && (
+                  <Chip compact style={styles.sourceChip} textStyle={styles.chipText}>
+                      {sourceName}
+                  </Chip>
+              )}
+              {score && (
+                  <View style={styles.scoreBadge}>
+                      <IconButton icon="star" iconColor="#F59E0B" size={14} style={styles.scoreIcon} />
+                      <Text variant="labelSmall" style={[styles.scoreText, { color: theme.colors.onSurface }]}>{score}</Text>
+                  </View>
+              )}
+            </View>
+
             {lastReadChapterName && (
-                <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
-                    Last read: {lastReadChapterName}
-                </Text>
+                <View style={styles.lastReadContainer}>
+                  <IconButton icon="history" size={14} style={styles.historyIcon} iconColor={theme.colors.onSurfaceVariant} />
+                  <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, flex: 1 }} numberOfLines={1}>
+                      {lastReadChapterName}
+                  </Text>
+                </View>
             )}
         </View>
       </Card.Content>
-      {progress !== undefined && (
-        <ProgressBar progress={progress} style={styles.progress} />
+      {progress !== undefined && progress > 0 && (
+        <ProgressBar 
+          progress={progress} 
+          style={[styles.progress, { backgroundColor: theme.colors.surfaceVariant }]} 
+          color={theme.colors.primary}
+        />
       )}
     </Card>
   );
@@ -50,42 +69,89 @@ export const StoryCard = ({ title, author, coverUrl, sourceName, score, progress
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    marginBottom: 0, // Handled by parent container now for grid gaps
-    borderRadius: 12,
-    marginTop: 8,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   content: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
+    padding: 12,
+  },
+  imageContainer: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
   },
   coverImage: {
-    width: 80,
-    height: 120,
-    borderRadius: 8,
-    marginRight: 16,
+    width: 90,
+    height: 130,
+    borderRadius: 12,
   },
   textContainer: {
     flex: 1,
-    justifyContent: 'center',
+    marginLeft: 16,
+    justifyContent: 'space-between',
+    paddingVertical: 2,
   },
-  progress: {
-    height: 4,
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+  title: {
+    fontWeight: '700',
+    lineHeight: 20,
+    marginBottom: 2,
   },
-  scoreContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 4,
-      marginLeft: -8, // Adjust for IconButton margin
+  author: {
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  metaContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  sourceChip: {
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+  },
+  chipText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#4F46E5',
+    marginVertical: 0,
+    paddingVertical: 0,
+  },
+  scoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    borderRadius: 6,
+    paddingRight: 8,
+    height: 24,
   },
   scoreIcon: {
-      margin: 0,
+    margin: 0,
+    padding: 0,
+    width: 24,
+    height: 24,
   },
   scoreText: {
-      fontWeight: 'bold',
-      marginLeft: -4,
-  }
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
+  lastReadContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 'auto',
+  },
+  historyIcon: {
+    margin: 0,
+    marginLeft: -8,
+  },
+  progress: {
+    height: 3,
+  },
 });

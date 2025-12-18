@@ -83,10 +83,12 @@ export default function HomeScreen() {
             placeholder="Search stories"
             onChangeText={setSearchQuery}
             value={searchQuery}
-            style={styles.searchBar}
+            style={[styles.searchBar, { backgroundColor: theme.colors.surface }]}
             placeholderTextColor={theme.colors.onSurfaceVariant}
             iconColor={theme.colors.onSurfaceVariant}
-            inputStyle={{ color: theme.colors.onSurface }}
+            inputStyle={{ color: theme.colors.onSurface, minHeight: 0 }}
+            mode="bar"
+            elevation={1}
             />
             <SortButton 
                 sortOption={sortOption}
@@ -108,7 +110,11 @@ export default function HomeScreen() {
                 key={tag}
                 selected={selectedTags.includes(tag)}
                 onPress={() => toggleTag(tag)}
-                style={styles.tagChip}
+                style={[
+                  styles.tagChip, 
+                  selectedTags.includes(tag) ? { backgroundColor: theme.colors.primary } : { borderWidth: 0 }
+                ]}
+                selectedColor={theme.colors.onPrimary}
                 showSelectedOverlay
                 compact
               >
@@ -122,14 +128,14 @@ export default function HomeScreen() {
         key={numColumns} // Force re-render when columns change
         data={filteredStories}
         numColumns={numColumns}
-        columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
+        columnWrapperStyle={numColumns > 1 ? { gap: 12 } : undefined}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, isLargeScreen && { paddingHorizontal: 16 }]}
         refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} tintColor={theme.colors.primary} />
         }
         renderItem={({ item }) => (
-            <View style={{ width: numColumns > 1 ? itemWidth : undefined, flex: numColumns === 1 ? 1 : undefined, height: '100%', marginBottom: 8 }}>
+            <View style={{ width: numColumns > 1 ? itemWidth : undefined, flex: numColumns === 1 ? 1 : undefined, height: '100%', marginBottom: 12 }}>
                 <StoryCard 
                     title={item.title} 
                     author={item.author} 
@@ -144,7 +150,8 @@ export default function HomeScreen() {
         )}
         ListEmptyComponent={
             <View style={styles.emptyState}>
-                <Text variant="bodyLarge" style={styles.placeholder}>
+                <IconButton icon="book-off-outline" size={64} iconColor={theme.colors.onSurfaceVariant} style={{ opacity: 0.3 }} />
+                <Text variant="bodyLarge" style={[styles.placeholder, { color: theme.colors.onSurfaceVariant }]}>
                     No stories archived yet.
                 </Text>
             </View>
@@ -156,6 +163,7 @@ export default function HomeScreen() {
         style={[styles.fab, { backgroundColor: theme.colors.primary, bottom: insets.bottom + 16 }]}
         onPress={() => router.push('/add')}
         color={theme.colors.onPrimary}
+        label={isLargeScreen ? "Add Story" : undefined}
       />
     </ScreenContainer>
   );
@@ -169,7 +177,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 100,
   },
   emptyState: {
       flex: 1,
@@ -178,13 +186,16 @@ const styles = StyleSheet.create({
       marginTop: 100,
   },
   placeholder: {
-    opacity: 0.6,
+    opacity: 0.8,
+    fontWeight: '600',
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
     bottom: 0,
+    borderRadius: 16,
+    elevation: 4,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -197,23 +208,23 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   searchBar: {
     flex: 1,
-    elevation: 2,
-    borderRadius: 8,
+    borderRadius: 12,
+    height: 48,
   },
   tagsScroll: {
     marginTop: 12,
-    marginHorizontal: -16, // Pull to edges to override parent padding
+    marginHorizontal: -16, 
   },
   tagsContainer: {
     gap: 8,
-    paddingHorizontal: 16, // Align content with search bar
-    paddingRight: 16, // Ensure last item has padding
+    paddingHorizontal: 16,
   },
   tagChip: {
     height: 32,
+    borderRadius: 8,
   },
 });

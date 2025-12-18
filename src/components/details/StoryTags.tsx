@@ -18,8 +18,8 @@ export const StoryTags: React.FC<StoryTagsProps> = ({ tags }) => {
             {tags.map((tag, index) => (
                 <Chip 
                     key={`${tag}-${index}`} 
-                    style={styles.chip} 
-                    textStyle={styles.chipText}
+                    style={[styles.chip, { backgroundColor: theme.colors.primaryContainer }]} 
+                    textStyle={[styles.chipText, { color: theme.colors.onPrimaryContainer }]}
                     compact
                 >
                     {tag}
@@ -34,15 +34,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        gap: 8,
+        gap: 6,
         paddingHorizontal: 16,
-        marginBottom: 16,
+        marginBottom: 20,
     },
     chip: {
-        height: 32,
+        height: 26,
+        borderRadius: 6,
     },
     chipText: {
-        fontSize: 12,
-        lineHeight: 20,
+        fontSize: 10,
+        fontWeight: 'bold',
     }
 });

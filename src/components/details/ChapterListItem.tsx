@@ -1,5 +1,6 @@
 import React from 'react';
 import { List, useTheme } from 'react-native-paper';
+import { StyleSheet } from 'react-native';
 import { Chapter } from '../../types';
 import { sanitizeTitle } from '../../utils/stringUtils';
 
@@ -18,32 +19,33 @@ export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRe
         <List.Item
             title={sanitizedTitle}
             titleStyle={[
-                { fontSize: 16 },
-                isLastRead ? { color: theme.colors.primary, fontWeight: 'bold' } : undefined
+                { fontSize: 15, fontWeight: '500' },
+                isLastRead ? { color: theme.colors.primary, fontWeight: '700' } : { color: theme.colors.onSurface }
             ]}
-            description={item.downloaded ? "Available Offline" : undefined}
-            descriptionStyle={{ fontSize: 12, color: theme.colors.secondary }}
+            description={item.downloaded ? "Offline" : undefined}
+            descriptionStyle={{ fontSize: 11, color: theme.colors.onSurfaceVariant }}
             left={props => (
                 <List.Icon 
                     {...props} 
-                    icon={isLastRead ? "bookmark" : (item.downloaded ? "file-check-outline" : "file-outline")} 
-                    color={isLastRead ? theme.colors.primary : (item.downloaded ? theme.colors.secondary : theme.colors.outline)} 
+                    icon={isLastRead ? "bookmark" : (item.downloaded ? "check-decagram-outline" : "circle-outline")} 
+                    color={isLastRead ? theme.colors.primary : (item.downloaded ? theme.colors.primary : theme.colors.outline)} 
                 />
             )}
-            right={props => item.downloaded ? (
-                <List.Icon 
-                    {...props} 
-                    icon="check-circle-outline" 
-                    color={theme.colors.secondary} 
-                    style={{ marginVertical: 0, alignSelf: 'center' }}
-                />
-            ) : null}
             onPress={onPress}
             onLongPress={onLongPress}
             style={[
-                { borderRadius: 8, marginVertical: 2, marginHorizontal: 8 },
-                isLastRead ? { backgroundColor: theme.colors.primaryContainer + '30' } : undefined
+                styles.item,
+                isLastRead ? { backgroundColor: theme.colors.primaryContainer } : undefined
             ]}
         />
     );
 };
+
+const styles = StyleSheet.create({
+    item: {
+        borderRadius: 12,
+        marginVertical: 1,
+        marginHorizontal: 12,
+        paddingVertical: 4,
+    }
+});

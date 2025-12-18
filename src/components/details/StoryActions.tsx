@@ -28,42 +28,53 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
 
     return (
         <View style={styles.container}>
-            <Button 
-                mode="contained" 
-                style={styles.actionBtn} 
-                loading={downloading || checkingUpdates}
-                disabled={downloading || checkingUpdates}
-                onPress={onDownloadOrUpdate}
-            >
-                {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking...' : 'Update') : 'Download All')}
-            </Button>
+            <View style={styles.buttonRow}>
+                <Button 
+                    mode="contained" 
+                    icon={downloading ? undefined : (story.downloadedChapters === story.totalChapters ? 'refresh' : 'download')}
+                    style={[styles.actionBtn, { flex: 1, borderRadius: 12 }]} 
+                    loading={downloading || checkingUpdates}
+                    disabled={downloading || checkingUpdates}
+                    onPress={onDownloadOrUpdate}
+                >
+                    {downloading ? 'Downloading' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking' : 'Update') : 'Download All')}
+                </Button>
+
+                <Button
+                    mode="outlined"
+                    icon={story.epubPath ? 'book-open-page-variant' : 'file-export'}
+                    style={[styles.actionBtn, { flex: 1, borderRadius: 12 }]}
+                    disabled={story.downloadedChapters === 0 && !story.epubPath}
+                    onPress={onGenerateOrRead}
+                >
+                    {story.epubPath ? 'Read EPUB' : 'Generate'}
+                </Button>
+            </View>
 
             {downloading && (
                 <View style={styles.progressContainer}>
                     <ProgressBar progress={downloadProgress} color={theme.colors.primary} style={styles.progressBar} />
-                    <Text variant="bodySmall" style={styles.progressText}>
-                        {downloadStatus}
-                    </Text>
+                    <View style={styles.progressLabelRow}>
+                        <Text variant="labelSmall" style={[styles.progressText, { color: theme.colors.onSurfaceVariant }]}>
+                            {downloadStatus}
+                        </Text>
+                        <Text variant="labelSmall" style={[styles.progressText, { color: theme.colors.primary, fontWeight: 'bold' }]}>
+                            {Math.round(downloadProgress * 100)}%
+                        </Text>
+                    </View>
                 </View>
             )}
 
-            {checkingUpdates && updateStatus && (
+            {checkingUpdates && updateStatus && !downloading && (
                 <View style={styles.progressContainer}>
-                     <ActivityIndicator size="small" style={{ marginBottom: 8 }} />
-                    <Text variant="bodySmall" style={styles.progressText}>
-                        {updateStatus}
-                    </Text>
+                     <View style={styles.checkingRow}>
+                        <ActivityIndicator size={12} color={theme.colors.primary} />
+                        <Text variant="labelSmall" style={[styles.progressText, { color: theme.colors.onSurfaceVariant, marginLeft: 8 }]}>
+                            {updateStatus}
+                        </Text>
+                     </View>
                 </View>
             )}
-
-            <Button
-                mode="outlined"
-                style={styles.actionBtn}
-                disabled={story.downloadedChapters === 0 && !story.epubPath}
-                onPress={onGenerateOrRead}
-            >
-                {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
-            </Button>
         </View>
     );
 };
@@ -71,19 +82,39 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
 const styles = StyleSheet.create({
     container: {
         width: '100%',
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+    },
+    buttonRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 16,
     },
     actionBtn: {
-        marginBottom: 20,
+        height: 48,
+        justifyContent: 'center',
     },
     progressContainer: {
-        marginBottom: 20,
+        marginBottom: 16,
+        backgroundColor: 'rgba(79, 70, 229, 0.05)',
+        padding: 12,
+        borderRadius: 12,
     },
     progressBar: {
-        height: 8,
-        borderRadius: 4,
+        height: 6,
+        borderRadius: 3,
+    },
+    progressLabelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 8,
     },
     progressText: {
-        marginTop: 8, 
         textAlign: 'center',
+    },
+    checkingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     }
 });

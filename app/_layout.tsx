@@ -21,11 +21,13 @@ function AppLayout() {
     <Stack
       screenOptions={{
         headerStyle: {
-          backgroundColor: theme.colors.elevation.level2,
+          backgroundColor: theme.colors.background,
         },
+        headerShadowVisible: false,
         headerTintColor: theme.colors.onSurface,
         headerTitleStyle: {
-          fontWeight: 'bold',
+          fontWeight: '800',
+          fontSize: 18,
         },
       }}
     >

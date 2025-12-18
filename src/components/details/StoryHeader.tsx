@@ -32,8 +32,8 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
         <View style={styles.container}>
             {story.coverUrl && (
                 <>
-                    <Pressable onPress={() => setViewerVisible(true)}>
-                        <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />
+                    <Pressable onPress={() => setViewerVisible(true)} style={styles.imageContainer}>
+                        <Image source={{ uri: story.coverUrl }} style={styles.coverImage as any} />
                     </Pressable>
                     <ImageView
                         images={images}
@@ -44,28 +44,28 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
                 </>
             )}
             <Pressable onPress={handleTitlePress}>
-                <Text variant="headlineMedium" style={styles.title}>{story.title}</Text>
+                <Text variant="headlineSmall" style={[styles.title, { color: theme.colors.onSurface }]}>{story.title}</Text>
             </Pressable>
-            <Text variant="titleMedium" style={[styles.author, { color: theme.colors.secondary }]}>{story.author}</Text>
+            <Text variant="titleMedium" style={[styles.author, { color: theme.colors.primary }]}>{story.author}</Text>
             
             {sourceName && (
-                <Chip icon="web" style={styles.sourceChip} textStyle={{ fontSize: 12 }}>{sourceName}</Chip>
+                <Chip mode="outlined" style={styles.sourceChip} textStyle={{ fontSize: 11, fontWeight: '600' }}>{sourceName}</Chip>
             )}
 
             <View style={styles.stats}>
                 {story.score && (
-                    <View style={styles.statItem}>
-                        <IconButton icon="star" iconColor="#FFD700" size={16} style={styles.statIcon} />
-                        <Text variant="bodyMedium" style={styles.scoreText}>{story.score}</Text>
+                    <View style={[styles.statItem, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+                        <IconButton icon="star" iconColor="#F59E0B" size={14} style={styles.statIcon} />
+                        <Text variant="labelSmall" style={[styles.scoreText, { color: theme.colors.onSurface }]}>{story.score}</Text>
                     </View>
                 )}
-                <View style={styles.statItem}>
-                    <IconButton icon="book-open-variant" size={16} style={styles.statIcon} />
-                    <Text variant="bodyMedium">{story.totalChapters} Chs</Text>
+                <View style={[styles.statItem, { backgroundColor: theme.colors.surfaceVariant }]}>
+                    <IconButton icon="book-open-variant" size={14} style={styles.statIcon} iconColor={theme.colors.onSurfaceVariant} />
+                    <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>{story.totalChapters} Chapters</Text>
                 </View>
-                <View style={styles.statItem}>
-                    <IconButton icon="download" size={16} style={styles.statIcon} />
-                    <Text variant="bodyMedium">{story.downloadedChapters} Saved</Text>
+                <View style={[styles.statItem, { backgroundColor: theme.colors.surfaceVariant }]}>
+                    <IconButton icon="download" size={14} style={styles.statIcon} iconColor={theme.colors.onSurfaceVariant} />
+                    <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>{story.downloadedChapters} Saved</Text>
                 </View>
             </View>
         </View>
@@ -76,43 +76,56 @@ const styles = StyleSheet.create({
     container: {
         width: '100%',
         alignItems: 'center',
+        paddingVertical: 16,
+    },
+    imageContainer: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2,
+        shadowRadius: 15,
+        elevation: 10,
+        marginBottom: 24,
     },
     coverImage: {
-      width: 150,
-      height: 225,
-      borderRadius: 8,
-      marginBottom: 20,
+      width: 160,
+      height: 240,
+      borderRadius: 16,
     },
     title: {
-        marginBottom: 8,
+        fontWeight: 'bold',
+        marginBottom: 4,
         textAlign: 'center',
+        paddingHorizontal: 20,
     },
     author: {
       textAlign: 'center',
-      marginBottom: 8,
+      fontWeight: '600',
+      marginBottom: 12,
     },
     sourceChip: {
         marginBottom: 16,
+        height: 28,
+        borderRadius: 8,
     },
     stats: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 8,
-        marginTop: 8,
-        marginBottom: 16,
+        marginTop: 4,
+        marginBottom: 8,
         justifyContent: 'center',
     },
     statItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.05)',
-        borderRadius: 20,
-        paddingRight: 12,
-        height: 32,
+        borderRadius: 8,
+        paddingRight: 10,
+        height: 28,
     },
     statIcon: {
         margin: 0,
-        marginRight: -4,
+        width: 28,
+        height: 28,
     },
     scoreText: {
         fontWeight: 'bold',
