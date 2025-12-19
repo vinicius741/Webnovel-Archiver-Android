@@ -3,7 +3,7 @@ import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { IconButton, useTheme, Text, Appbar } from 'react-native-paper';
-import { storageService } from '../../../src/services/StorageService';
+import { storageService, TTSSettings } from '../../../src/services/StorageService';
 import { readChapterFile } from '../../../src/services/storage/fileSystem';
 import { Story, Chapter } from '../../../src/types';
 import { ScreenContainer } from '../../../src/components/ScreenContainer';
@@ -11,6 +11,7 @@ import { useAppAlert } from '../../../src/context/AlertContext';
 import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import * as Speech from 'expo-speech';
 import { extractPlainText } from '../../../src/utils/htmlUtils';
+import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 
 
 export default function ReaderScreen() {
@@ -25,11 +26,24 @@ export default function ReaderScreen() {
     const [loading, setLoading] = useState(true);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+    const [ttsSettings, setTtsSettings] = useState<TTSSettings>({ pitch: 1.0, rate: 1.0 });
+    const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+
+    const loadTtsSettings = async () => {
+        const settings = await storageService.getTTSSettings();
+        setTtsSettings(settings);
+    };
+
+    const handleSettingsChange = async (newSettings: TTSSettings) => {
+        setTtsSettings(newSettings);
+        await storageService.saveTTSSettings(newSettings);
+    };
 
 
 
     useEffect(() => {
         loadData();
+        loadTtsSettings();
     }, [storyId, chapterId]);
 
     const loadData = async () => {
@@ -108,6 +122,9 @@ export default function ReaderScreen() {
 
                 setCurrentChunkIndex(index);
                 Speech.speak(chunks[index], {
+                    pitch: ttsSettings.pitch,
+                    rate: ttsSettings.rate,
+                    voice: ttsSettings.voiceIdentifier,
                     onDone: () => speakChunk(index + 1),
                     onStopped: () => {
                         setIsSpeaking(false);
@@ -209,6 +226,11 @@ export default function ReaderScreen() {
                             />
 
                             <IconButton 
+                                icon="cog-outline" 
+                                onPress={() => setIsSettingsVisible(true)}
+                            />
+
+                            <IconButton 
                                 icon={isLastRead ? "bookmark" : "bookmark-outline"} 
                                 iconColor={isLastRead ? theme.colors.primary : undefined}
                                 onPress={markAsRead}
@@ -216,6 +238,13 @@ export default function ReaderScreen() {
                         </View>
                     )
                 }} 
+            />
+
+            <TTSSettingsModal 
+                visible={isSettingsVisible}
+                onDismiss={() => setIsSettingsVisible(false)}
+                settings={ttsSettings}
+                onSettingsChange={handleSettingsChange}
             />
 
             

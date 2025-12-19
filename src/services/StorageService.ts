@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
     LIBRARY: 'wa_library_v1',
     SETTINGS: 'wa_settings_v1',
     SENTENCE_REMOVAL: 'wa_sentence_removal_v1',
+    TTS_SETTINGS: 'wa_tts_settings_v1',
 };
 
 export interface AppSettings {
@@ -17,6 +18,17 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
     downloadConcurrency: 1,
     downloadDelay: 500,
+};
+
+export interface TTSSettings {
+    pitch: number;
+    rate: number;
+    voiceIdentifier?: string;
+}
+
+const DEFAULT_TTS_SETTINGS: TTSSettings = {
+    pitch: 1.0,
+    rate: 1.0,
 };
 
 class StorageService {
@@ -145,6 +157,25 @@ class StorageService {
             await AsyncStorage.setItem(STORAGE_KEYS.SENTENCE_REMOVAL, jsonValue);
         } catch (e) {
             console.error('Failed to save sentence removal list', e);
+        }
+    }
+
+    async getTTSSettings(): Promise<TTSSettings> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.TTS_SETTINGS);
+            return jsonValue != null ? { ...DEFAULT_TTS_SETTINGS, ...JSON.parse(jsonValue) } : DEFAULT_TTS_SETTINGS;
+        } catch (e) {
+            console.error('Failed to load TTS settings', e);
+            return DEFAULT_TTS_SETTINGS;
+        }
+    }
+
+    async saveTTSSettings(settings: TTSSettings): Promise<void> {
+        try {
+            const jsonValue = JSON.stringify(settings);
+            await AsyncStorage.setItem(STORAGE_KEYS.TTS_SETTINGS, jsonValue);
+        } catch (e) {
+            console.error('Failed to save TTS settings', e);
         }
     }
 }
