@@ -12,6 +12,7 @@ interface StoryActionsProps {
     downloadStatus: string;
     onDownloadOrUpdate: () => void;
     onGenerateOrRead: () => void;
+    onPartialDownload: () => void;
 }
 
 export const StoryActions: React.FC<StoryActionsProps> = ({
@@ -22,7 +23,8 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
     downloadProgress,
     downloadStatus,
     onDownloadOrUpdate,
-    onGenerateOrRead
+    onGenerateOrRead,
+    onPartialDownload
 }) => {
     const theme = useTheme();
 
@@ -63,6 +65,15 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                 onPress={onGenerateOrRead}
             >
                 {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
+            </Button>
+
+            <Button
+                mode="outlined"
+                onPress={onPartialDownload}
+                disabled={downloading || checkingUpdates}
+                style={styles.actionBtn}
+            >
+                Partial Download
             </Button>
         </View>
     );

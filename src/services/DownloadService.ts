@@ -21,8 +21,8 @@ class DownloadService {
 
         const provider = sourceRegistry.getProvider(story.sourceUrl);
         if (!provider) {
-             console.error(`[Download] No provider found for story source: ${story.sourceUrl}`);
-             return chapter;
+            console.error(`[Download] No provider found for story source: ${story.sourceUrl}`);
+            return chapter;
         }
 
         try {
@@ -49,11 +49,42 @@ class DownloadService {
     }
 
     /**
+     * Downloads a specific range of chapters.
+     */
+    async downloadRange(
+        story: Story,
+        startIndex: number,
+        endIndex: number,
+        onProgress?: (total: number, current: number, currentChapter: string) => void
+    ): Promise<Story> {
+        // Create a list of chapters within the range (inclusive)
+        // startIndex and endIndex are 0-based indices from the full chapters array
+        const chaptersToDownload = story.chapters
+            .map((ch, index) => ({ chapter: ch, index }))
+            .filter(({ index }) => index >= startIndex && index <= endIndex);
+
+        return this.processDownloadQueue(story, chaptersToDownload, onProgress);
+    }
+
+    /**
      * Downloads all chapters for a story.
-     * Updates storage periodically.
      */
     async downloadAllChapters(
         story: Story,
+        onProgress?: (total: number, current: number, currentChapter: string) => void
+    ): Promise<Story> {
+        const chaptersToDownload = story.chapters
+            .map((ch, index) => ({ chapter: ch, index }));
+
+        return this.processDownloadQueue(story, chaptersToDownload, onProgress);
+    }
+
+    /**
+     * Internal method to process a queue of chapters to download.
+     */
+    private async processDownloadQueue(
+        story: Story,
+        allChaptersWithIndex: { chapter: Chapter, index: number }[],
         onProgress?: (total: number, current: number, currentChapter: string) => void
     ): Promise<Story> {
         if (this.activeDownloads.has(story.id)) {
@@ -64,7 +95,7 @@ class DownloadService {
         this.activeDownloads.add(story.id);
 
         let chapters = [...story.chapters];
-        let downloadedCount = 0;
+        let downloadedCount = story.downloadedChapters || 0;
 
         // Reset status to downloading if not already
         if (story.status !== DownloadStatus.Completed) {
@@ -72,77 +103,77 @@ class DownloadService {
         }
 
         try {
-            // Calculate initial downloadedCount before starting foreground service
-            const initialDownloadedCount = chapters.filter(ch => ch.downloaded || ch.filePath).length;
+            // Filter only those that need downloading from the provided list
+            const queue = allChaptersWithIndex
+                .filter(({ chapter }) => !chapter.downloaded || !chapter.filePath);
+
+            // The total we are trying to reach for this session relates to the *queue* size + already downloaded in this set?
+            // Actually, usually progress is shown relative to the *total chapters in story* or *total requested*?
+            // existing logic used `chapters.length` (total in story). Let's stick to that for "All", 
+            // but for "Range", it might be confusing if we say "Downloading 5/1000" when we only acted on 10.
+            // However, the internal logic below updates the *whole story* object.
+
+            // Let's stick to showing progress relative to the *selection* if it's a range, or total if it's all?
+            // "Starting download... (X/Y)"
+
+            // For simplicity and consistency with `downloadAllChapters` behavior in UI (which expects total progress),
+            // let's define "total" as the number of items we are *attempting* to process in this call plus what's already done in this subset?
+            // Or just use the queue.length.
+
+            // Existing logic used `chapters.length` as the denominator.
+            // If I download a range 10-20 (11 chars), and story has 100.
+            // If I return progress 1/11, that's fine for the modal.
+            // But if `StoryActions` expects whole story progress...
+
+            // The `useStoryDetails` hook uses the progress to show a bar.
+            // If the user selects a range, the bar should probably reflect that range's progress?
+            // Let's pass the valid "total" for this operation.
+
+            const totalToProcess = queue.length;
+            let processedInThisSession = 0;
 
             await notificationService.startForegroundService(
                 `Downloading ${story.title}`,
-                `Starting download... (${initialDownloadedCount}/${chapters.length})`
+                `Starting download... (0/${totalToProcess})`
             );
 
-            // Get settings for concurrency and delay
             const settings = await storageService.getSettings();
             const CONCURRENCY = settings.downloadConcurrency || 1;
             const DELAY = settings.downloadDelay || 500;
 
-            console.log(`[DownloadService] Starting download with concurrency: ${CONCURRENCY}, delay: ${DELAY}ms`);
+            console.log(`[DownloadService] Starting download. Queue size: ${totalToProcess}, Concurrency: ${CONCURRENCY}`);
 
-            // Filter chapters needed to download
-            // We keep the original index to update the correct chapter in the main array
-            const chaptersToDownload = chapters
-                .map((ch, index) => ({ chapter: ch, index }))
-                .filter(({ chapter }) => !chapter.downloaded || !chapter.filePath);
-
-            // Already downloaded ones count towards progress
-            downloadedCount = chapters.length - chaptersToDownload.length;
-
-            // Track progress monotonically for UI/Notification
-            let progressCount = downloadedCount;
-            let lastReportedProgress = 0;
-
-            const updateProgressSafe = async (current: number, total: number, message: string) => {
-                // Ensure we never move the progress bar backwards
-                if (current > lastReportedProgress) {
-                    lastReportedProgress = current;
-                    onProgress?.(total, current, message);
-                    await notificationService.updateProgress(current, total, message);
-                }
-            };
-
-            if (chaptersToDownload.length === 0) {
-                // All done already
+            if (totalToProcess === 0) {
+                // Nothing to do
             } else {
-                // Worker Pool Implementation
-                let currentIndex = 0;
+                let queueIndex = 0;
                 const activeWorkers: Promise<void>[] = [];
 
+                const updateProgressSafe = async (completed: number, currentTitle: string) => {
+                    // We report: Total items = totalToProcess
+                    // Current items = processedInThisSession
+                    onProgress?.(totalToProcess, completed, currentTitle);
+                    await notificationService.updateProgress(completed, totalToProcess, `Downloading: ${currentTitle}`);
+                };
+
                 const worker = async () => {
-                    while (currentIndex < chaptersToDownload.length) {
-                        const jobIndex = currentIndex++;
-                        const { chapter } = chaptersToDownload[jobIndex];
-                        const { index: originalIndex } = chaptersToDownload[jobIndex];
+                    while (queueIndex < queue.length) {
+                        const job = queue[queueIndex++];
+                        const { chapter, index: originalIndex } = job;
 
-                        // Increment progress counter (started work)
-                        progressCount++;
-                        const currentProgress = progressCount;
-
-                        await updateProgressSafe(
-                            currentProgress,
-                            chapters.length,
-                            `Downloading ${currentProgress}/${chapters.length}: ${chapter.title}`
-                        );
+                        // Notify start
+                        processedInThisSession++;
+                        await updateProgressSafe(processedInThisSession, chapter.title);
 
                         const updatedChapter = await this.downloadChapter(story, chapter, originalIndex);
                         chapters[originalIndex] = updatedChapter;
 
-                        if (updatedChapter.downloaded) {
-                            downloadedCount++;
-                        }
+                        // Update global downloaded count for the story
+                        // Recalculate from source of truth to be safe
+                        downloadedCount = chapters.filter(c => c.downloaded).length;
 
-                        // Save progress periodically (handled safely despite concurrency?)
-                        // With concurrency, maybe safer to save less often or use a mutex?
-                        // For now, let's save every 5 *downloads* completed, triggered by one worker
-                        if (downloadedCount % 5 === 0) {
+                        // Save periodically
+                        if (processedInThisSession % 5 === 0) {
                             const updatedStory: Story = {
                                 ...story,
                                 chapters,
@@ -152,14 +183,12 @@ class DownloadService {
                             await storageService.updateStory(updatedStory);
                         }
 
-                        // Delay before picking next task
                         if (DELAY > 0) {
                             await new Promise(resolve => setTimeout(resolve, DELAY));
                         }
                     }
                 };
 
-                // Start initial workers
                 for (let i = 0; i < CONCURRENCY; i++) {
                     activeWorkers.push(worker());
                 }
@@ -167,6 +196,10 @@ class DownloadService {
                 await Promise.all(activeWorkers);
             }
 
+            // Final save
+            downloadedCount = chapters.filter(c => c.downloaded).length;
+            // Determine status: if we downloaded *everything* in the story, it's Completed.
+            // Otherwise it is Partial.
             const finalStatus = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
 
             const finalStory: Story = {
@@ -179,19 +212,13 @@ class DownloadService {
 
             await storageService.updateStory(finalStory);
 
-            if (finalStatus === DownloadStatus.Completed) {
-                await notificationService.showCompletionNotification(
-                    'Download Complete',
-                    `${story.title} has been downloaded successfully.`
-                );
-            } else {
-                await notificationService.showCompletionNotification(
-                    'Download Paused',
-                    `${story.title} download stopped or partial.`
-                );
-            }
+            await notificationService.showCompletionNotification(
+                'Download Finished',
+                `${story.title}: processed ${totalToProcess} chapters.`
+            );
 
             return finalStory;
+
         } catch (error) {
             console.error('[DownloadService] Error downloading chapters:', error);
             await notificationService.showCompletionNotification(

@@ -191,6 +191,55 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         }
     };
 
+    const downloadRange = async (start: number, end: number) => {
+        if (!story) return;
+
+        // start and end are 1-based indices from the UI (probably), or 0-based?
+        // Let's assume the UI passes 1-based chapter numbers, as that's what users see.
+        // We will convert to 0-based array indices.
+
+        const startIndex = start - 1;
+        const endIndex = end - 1;
+
+        if (startIndex < 0 || endIndex >= story.totalChapters || startIndex > endIndex) {
+            showAlert('Invalid Range', 'Please enter a valid range of chapters.');
+            return;
+        }
+
+        try {
+            setDownloading(true);
+            await activateKeepAwakeAsync();
+
+            const updatedStory = await downloadService.downloadRange(
+                story,
+                startIndex,
+                endIndex,
+                (total: number, current: number, title: string) => {
+                    // Update progress relative to the batch
+                    const progress = total > 0 ? current / total : 0;
+                    setDownloadProgress(progress);
+                    setDownloadStatus(`${current}/${total}: ${title}`);
+                }
+            );
+
+            const finalStory = {
+                ...updatedStory,
+                epubPath: undefined
+            };
+
+            await storageService.addStory(finalStory);
+            setStory(finalStory);
+            showAlert('Download Complete', 'Selected chapters have been downloaded.');
+
+        } catch (error) {
+            console.error('Download error', error);
+            showAlert('Download Error', 'Failed to download chapters. Check logs.');
+        } finally {
+            setDownloading(false);
+            await deactivateKeepAwake();
+        }
+    };
+
     const generateOrRead = async () => {
         if (!story) return;
 
@@ -249,6 +298,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         deleteStory,
         markChapterAsRead,
         downloadOrUpdate,
+        downloadRange,
         generateOrRead,
     };
 };

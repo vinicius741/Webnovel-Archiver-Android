@@ -8,6 +8,7 @@ import { StoryActions } from '../../src/components/details/StoryActions';
 import { StoryDescription } from '../../src/components/details/StoryDescription';
 import { StoryTags } from '../../src/components/details/StoryTags';
 import { ChapterListItem } from '../../src/components/details/ChapterListItem';
+import { DownloadRangeDialog } from '../../src/components/details/DownloadRangeDialog';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { useScreenLayout } from '../../src/hooks/useScreenLayout';
 import { useStoryDetails } from '../../src/hooks/useStoryDetails';
@@ -31,9 +32,11 @@ export default function StoryDetailsScreen() {
       markChapterAsRead,
       downloadOrUpdate,
       generateOrRead,
+      downloadRange,
   } = useStoryDetails(id);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [showDownloadRange, setShowDownloadRange] = useState(false);
 
   const filteredChapters = story?.chapters.filter(c => 
       c.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -72,6 +75,13 @@ export default function StoryDetailsScreen() {
             downloadStatus={downloadStatus}
             onDownloadOrUpdate={downloadOrUpdate}
             onGenerateOrRead={generateOrRead}
+            onPartialDownload={() => setShowDownloadRange(true)}
+        />
+        <DownloadRangeDialog 
+            visible={showDownloadRange}
+            onDismiss={() => setShowDownloadRange(false)}
+            onDownload={downloadRange}
+            totalChapters={story.totalChapters}
         />
         <StoryTags tags={story.tags} />
         <StoryDescription description={story.description} />
