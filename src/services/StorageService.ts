@@ -24,11 +24,13 @@ export interface TTSSettings {
     pitch: number;
     rate: number;
     voiceIdentifier?: string;
+    chunkSize: number;
 }
 
 const DEFAULT_TTS_SETTINGS: TTSSettings = {
     pitch: 1.0,
     rate: 1.0,
+    chunkSize: 1000,
 };
 
 class StorageService {

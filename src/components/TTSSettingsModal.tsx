@@ -82,6 +82,24 @@ export const TTSSettingsModal: React.FC<Props> = ({ visible, onDismiss, settings
                         />
                     </View>
 
+                    <View style={styles.section}>
+                        <Text variant="labelLarge">Chunk Size: {settings.chunkSize}</Text>
+                        <Slider
+                            style={styles.slider}
+                            minimumValue={200}
+                            maximumValue={2000}
+                            step={50}
+                            value={settings.chunkSize}
+                            onSlidingComplete={(val) => updateSetting('chunkSize', Math.round(val))}
+                            minimumTrackTintColor={theme.colors.primary}
+                            maximumTrackTintColor={theme.colors.surfaceVariant}
+                            thumbTintColor={theme.colors.primary}
+                        />
+                        <Text variant="bodySmall" style={styles.infoText}>
+                            Larger chunks read more text at once but may be slower to start.
+                        </Text>
+                    </View>
+
                     <Divider style={styles.divider} />
 
                     <View style={styles.voiceHeader}>

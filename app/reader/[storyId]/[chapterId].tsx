@@ -12,6 +12,7 @@ import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import * as Speech from 'expo-speech';
 import { extractPlainText } from '../../../src/utils/htmlUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
+import { TTSController } from '../../../src/components/TTSController';
 
 
 export default function ReaderScreen() {
@@ -25,9 +26,12 @@ export default function ReaderScreen() {
     const [content, setContent] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [isSpeaking, setIsSpeaking] = useState(false);
+    const [isPaused, setIsPaused] = useState(false);
+    const [chunks, setChunks] = useState<string[]>([]);
     const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-    const [ttsSettings, setTtsSettings] = useState<TTSSettings>({ pitch: 1.0, rate: 1.0 });
+    const [ttsSettings, setTtsSettings] = useState<TTSSettings>({ pitch: 1.0, rate: 1.0, chunkSize: 3500 });
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+    const [isControllerVisible, setIsControllerVisible] = useState(false);
 
     const loadTtsSettings = async () => {
         const settings = await storageService.getTTSSettings();
@@ -81,64 +85,88 @@ export default function ReaderScreen() {
         setIsSpeaking(false);
     }, [chapterId]);
 
+    const stopSpeech = async () => {
+        await Speech.stop();
+        setIsSpeaking(false);
+        setIsPaused(false);
+        setIsControllerVisible(false);
+        setCurrentChunkIndex(0);
+        setChunks([]);
+    };
+
+    const speakChunk = (index: number, chunksArray: string[]) => {
+        if (index >= chunksArray.length) {
+            stopSpeech();
+            return;
+        }
+
+        setCurrentChunkIndex(index);
+        setIsPaused(false);
+        
+        Speech.speak(chunksArray[index], {
+            pitch: ttsSettings.pitch,
+            rate: ttsSettings.rate,
+            voice: ttsSettings.voiceIdentifier,
+            onDone: () => speakChunk(index + 1, chunksArray),
+            onError: (error) => {
+                console.error('Speech error:', error);
+                stopSpeech();
+            },
+        });
+    };
+
+    const handlePlayPause = async () => {
+        if (isPaused) {
+            speakChunk(currentChunkIndex, chunks);
+        } else {
+            await Speech.stop();
+            setIsPaused(true);
+        }
+    };
+
+    const handleNextChunk = async () => {
+        await Speech.stop();
+        speakChunk(currentChunkIndex + 1, chunks);
+    };
+
+    const handlePreviousChunk = async () => {
+        await Speech.stop();
+        speakChunk(Math.max(0, currentChunkIndex - 1), chunks);
+    };
+
     const toggleSpeech = async () => {
-        if (isSpeaking) {
-            Speech.stop();
-            setIsSpeaking(false);
-            setCurrentChunkIndex(0);
+        if (isSpeaking || isControllerVisible) {
+            stopSpeech();
         } else {
             const plainText = extractPlainText(content);
             if (!plainText) return;
 
-            // Split text into chunks of ~3500 characters
-            const chunks: string[] = [];
+            // Split text into chunks
+            const newChunks: string[] = [];
             let currentText = plainText;
+            const chunkSize = ttsSettings.chunkSize;
+            
             while (currentText.length > 0) {
-                if (currentText.length <= 3500) {
-                    chunks.push(currentText);
+                if (currentText.length <= chunkSize) {
+                    newChunks.push(currentText);
                     break;
                 }
                 
                 // Find a good splitting point (period followed by space)
-                let splitIndex = currentText.lastIndexOf('. ', 3500);
-                if (splitIndex === -1) splitIndex = currentText.lastIndexOf(' ', 3500);
-                if (splitIndex === -1) splitIndex = 3500;
+                let splitIndex = currentText.lastIndexOf('. ', chunkSize);
+                if (splitIndex === -1) splitIndex = currentText.lastIndexOf(' ', chunkSize);
+                if (splitIndex === -1) splitIndex = chunkSize;
 
-                chunks.push(currentText.substring(0, splitIndex + 1).trim());
+                newChunks.push(currentText.substring(0, splitIndex + 1).trim());
                 currentText = currentText.substring(splitIndex + 1).trim();
             }
 
-            if (chunks.length === 0) return;
+            if (newChunks.length === 0) return;
 
+            setChunks(newChunks);
             setIsSpeaking(true);
-            setCurrentChunkIndex(0);
-            
-            const speakChunk = (index: number) => {
-                if (index >= chunks.length) {
-                    setIsSpeaking(false);
-                    setCurrentChunkIndex(0);
-                    return;
-                }
-
-                setCurrentChunkIndex(index);
-                Speech.speak(chunks[index], {
-                    pitch: ttsSettings.pitch,
-                    rate: ttsSettings.rate,
-                    voice: ttsSettings.voiceIdentifier,
-                    onDone: () => speakChunk(index + 1),
-                    onStopped: () => {
-                        setIsSpeaking(false);
-                        setCurrentChunkIndex(0);
-                    },
-                    onError: (error) => {
-                        console.error('Speech error:', error);
-                        setIsSpeaking(false);
-                        setCurrentChunkIndex(0);
-                    },
-                });
-            };
-
-            speakChunk(0);
+            setIsControllerVisible(true);
+            speakChunk(0, newChunks);
         }
     };
 
@@ -245,6 +273,18 @@ export default function ReaderScreen() {
                 onDismiss={() => setIsSettingsVisible(false)}
                 settings={ttsSettings}
                 onSettingsChange={handleSettingsChange}
+            />
+
+            <TTSController 
+                visible={isControllerVisible}
+                isSpeaking={isSpeaking}
+                isPaused={isPaused}
+                currentChunk={currentChunkIndex}
+                totalChunks={chunks.length}
+                onPlayPause={handlePlayPause}
+                onStop={stopSpeech}
+                onNext={handleNextChunk}
+                onPrevious={handlePreviousChunk}
             />
 
             
