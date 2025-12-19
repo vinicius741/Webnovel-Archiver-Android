@@ -7,7 +7,6 @@ import { storageService } from '../../../src/services/StorageService';
 import { readChapterFile } from '../../../src/services/storage/fileSystem';
 import { Story, Chapter } from '../../../src/types';
 import { ScreenContainer } from '../../../src/components/ScreenContainer';
-import { useAppAlert } from '../../../src/context/AlertContext';
 import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 import { TTSController } from '../../../src/components/TTSController';
@@ -19,7 +18,6 @@ export default function ReaderScreen() {
     const { storyId, chapterId, autoplay } = useLocalSearchParams<{ storyId: string; chapterId: string; autoplay?: string }>();
     const theme = useTheme();
     const router = useRouter();
-    const { showAlert } = useAppAlert();
     const webViewRef = useRef<WebView>(null);
     
     // Data state
@@ -47,6 +45,7 @@ export default function ReaderScreen() {
     } = useTTS({
         onFinish: () => {
             if (hasNext) {
+                markAsRead();
                 navigateToChapter(currentIndex + 1, { autoplay: 'true' });
             }
         }
@@ -113,7 +112,6 @@ export default function ReaderScreen() {
         await storageService.updateLastRead(story.id, chapter.id);
         const updatedStory = { ...story, lastReadChapterId: chapter.id };
         setStory(updatedStory);
-        showAlert('Marked as Read', `Marked "${chapter.title}" as your last read location.`);
     };
 
     const currentIndex = useMemo(() => {
@@ -190,6 +188,7 @@ export default function ReaderScreen() {
                 padding: 16px;
                 line-height: 1.6;
                 font-size: 18px;
+                padding-bottom: 64px;
             }
             img {
                 max-width: 100%;
