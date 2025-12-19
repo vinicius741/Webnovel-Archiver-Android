@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
@@ -12,6 +12,7 @@ import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 import { TTSController } from '../../../src/components/TTSController';
 import { useTTS } from '../../../src/hooks/useTTS';
+import { prepareTTSContent } from '../../../src/utils/htmlUtils';
 import { ReaderNavigation } from '../../../src/components/ReaderNavigation';
 
 export default function ReaderScreen() {
@@ -19,6 +20,7 @@ export default function ReaderScreen() {
     const theme = useTheme();
     const router = useRouter();
     const { showAlert } = useAppAlert();
+    const webViewRef = useRef<WebView>(null);
     
     // Data state
     const [story, setStory] = useState<Story | null>(null);
@@ -102,8 +104,54 @@ export default function ReaderScreen() {
 
     const isLastRead = story?.lastReadChapterId === chapter?.id;
 
+    // Prepare content for TTS
+    const { processedHtml: processedContent, chunks: ttsChunks } = useMemo(() => {
+        return prepareTTSContent(content, ttsSettings.chunkSize);
+    }, [content, ttsSettings.chunkSize]);
+
+    // Handle Active Highlight
+    useEffect(() => {
+        if (!webViewRef.current) return;
+
+        if (!isControllerVisible) {
+            // Clear highlights when controller is closed
+            webViewRef.current.injectJavaScript(`
+                (function() {
+                    const actives = document.querySelectorAll('.tts-active');
+                    for (let i = 0; i < actives.length; i++) {
+                        actives[i].classList.remove('tts-active');
+                    }
+                })();
+            `);
+            return;
+        }
+
+        const js = `
+            (function() {
+                try {
+                    const actives = document.querySelectorAll('.tts-active');
+                    for (let i = 0; i < actives.length; i++) {
+                        actives[i].classList.remove('tts-active');
+                    }
+                    
+                    const elements = document.querySelectorAll('[data-tts-group="${currentChunkIndex}"]');
+                    for (let i = 0; i < elements.length; i++) {
+                        elements[i].classList.add('tts-active');
+                    }
+                    
+                    if (elements.length > 0) {
+                        elements[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                } catch (e) {
+                    // ignore error
+                }
+            })();
+        `;
+        webViewRef.current.injectJavaScript(js);
+    }, [currentChunkIndex, isControllerVisible]);
+
     const htmlContent = useMemo(() => {
-        if (!content) return '';
+        if (!processedContent) return '';
         
         // Basic CSS for better reading experience
         const css = `
@@ -119,6 +167,11 @@ export default function ReaderScreen() {
                 max-width: 100%;
                 height: auto;
             }
+            .tts-active {
+                background-color: rgba(255, 235, 59, 0.3);
+                border-left: 3px solid ${theme.colors.primary};
+                padding-left: 4px;
+            }
         `;
 
         return `
@@ -129,7 +182,7 @@ export default function ReaderScreen() {
                 <style>${css}</style>
             </head>
             <body>
-                ${content}
+                ${processedContent}
             </body>
             </html>
         `;
@@ -155,7 +208,7 @@ export default function ReaderScreen() {
                             <IconButton 
                                 icon={isSpeaking ? "stop" : "volume-high"} 
                                 iconColor={isSpeaking ? theme.colors.error : undefined}
-                                onPress={() => toggleSpeech(content)}
+                                onPress={() => toggleSpeech(ttsChunks)}
                             />
 
                             <IconButton 
@@ -195,6 +248,7 @@ export default function ReaderScreen() {
             
             <View style={styles.container}>
                 <WebView
+                    ref={webViewRef}
                     originWhitelist={['*']}
                     source={{ html: htmlContent }}
                     style={{ backgroundColor: theme.colors.surface }}
