@@ -16,7 +16,7 @@ import { prepareTTSContent } from '../../../src/utils/htmlUtils';
 import { ReaderNavigation } from '../../../src/components/ReaderNavigation';
 
 export default function ReaderScreen() {
-    const { storyId, chapterId } = useLocalSearchParams<{ storyId: string; chapterId: string }>();
+    const { storyId, chapterId, autoplay } = useLocalSearchParams<{ storyId: string; chapterId: string; autoplay?: string }>();
     const theme = useTheme();
     const router = useRouter();
     const { showAlert } = useAppAlert();
@@ -44,16 +44,44 @@ export default function ReaderScreen() {
         handleNextChunk, 
         handlePreviousChunk, 
         handleSettingsChange 
-    } = useTTS();
+    } = useTTS({
+        onFinish: () => {
+            if (hasNext) {
+                navigateToChapter(currentIndex + 1, { autoplay: 'true' });
+            }
+        }
+    });
+
+    // Prepare content for TTS - Moved up to be available for useEffect
+    const { processedHtml: processedContent, chunks: ttsChunks } = useMemo(() => {
+        return prepareTTSContent(content, ttsSettings.chunkSize);
+    }, [content, ttsSettings.chunkSize]);
 
     useEffect(() => {
         loadData();
     }, [storyId, chapterId]);
 
-    // Stop speech when changing chapters
+    // Stop speech when changing chapters (unless it's an auto-play transition handled elsewhere, 
+    // but the hook cleans up anyway. We need to be careful not to conflict with auto-play)
     useEffect(() => {
+        // If we simply stop speech here, it might interfere if we want to start it immediately after.
+        // However, useTTS stopSpeech resets state. 
+        // The auto-play logic should run after content is loaded.
         stopSpeech();
     }, [chapterId]);
+
+    // Handle Auto-Play
+    useEffect(() => {
+        if (autoplay === 'true' && !loading && content && ttsChunks.length > 0 && !isSpeaking) {
+            // Slight delay to ensure everything is ready and previous TTS is fully stopped
+            const timer = setTimeout(() => {
+                toggleSpeech(ttsChunks);
+                // Clear the param so it doesn't re-trigger when user manually hits stop
+                router.setParams({ autoplay: undefined }); 
+            }, 500); 
+            return () => clearTimeout(timer);
+        }
+    }, [autoplay, loading, content, ttsChunks, isSpeaking]);
 
     const loadData = async () => {
         setLoading(true);
@@ -96,18 +124,18 @@ export default function ReaderScreen() {
     const hasNext = currentIndex < (story?.chapters.length || 0) - 1;
     const hasPrevious = currentIndex > 0;
 
-    const navigateToChapter = (index: number) => {
+    const navigateToChapter = (index: number, params?: { autoplay?: string }) => {
         if (!story) return;
         const target = story.chapters[index];
-        router.setParams({ chapterId: encodeURIComponent(target.id) });
+        router.setParams({ 
+            chapterId: encodeURIComponent(target.id),
+            ...(params || {})
+        });
     };
 
     const isLastRead = story?.lastReadChapterId === chapter?.id;
 
-    // Prepare content for TTS
-    const { processedHtml: processedContent, chunks: ttsChunks } = useMemo(() => {
-        return prepareTTSContent(content, ttsSettings.chunkSize);
-    }, [content, ttsSettings.chunkSize]);
+
 
     // Handle Active Highlight
     useEffect(() => {

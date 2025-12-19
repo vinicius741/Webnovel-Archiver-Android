@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Speech from 'expo-speech';
 import { storageService, TTSSettings } from '../services/StorageService';
 
-export const useTTS = () => {
+export const useTTS = (options?: { onFinish?: () => void }) => {
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [chunks, setChunks] = useState<string[]>([]);
@@ -42,6 +42,7 @@ export const useTTS = () => {
     const speakChunk = (index: number, chunksArray: string[]) => {
         if (index >= chunksArray.length) {
             stopSpeech();
+            options?.onFinish?.();
             return;
         }
 
