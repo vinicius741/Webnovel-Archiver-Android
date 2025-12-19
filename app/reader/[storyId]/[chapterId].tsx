@@ -9,6 +9,9 @@ import { Story, Chapter } from '../../../src/types';
 import { ScreenContainer } from '../../../src/components/ScreenContainer';
 import { useAppAlert } from '../../../src/context/AlertContext';
 import { sanitizeTitle } from '../../../src/utils/stringUtils';
+import * as Speech from 'expo-speech';
+import { extractPlainText } from '../../../src/utils/htmlUtils';
+
 
 export default function ReaderScreen() {
     const { storyId, chapterId } = useLocalSearchParams<{ storyId: string; chapterId: string }>();
@@ -20,6 +23,10 @@ export default function ReaderScreen() {
     const [chapter, setChapter] = useState<Chapter | null>(null);
     const [content, setContent] = useState<string>('');
     const [loading, setLoading] = useState(true);
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+
+
 
     useEffect(() => {
         loadData();
@@ -48,6 +55,77 @@ export default function ReaderScreen() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        return () => {
+            Speech.stop();
+        };
+    }, []);
+
+    useEffect(() => {
+        Speech.stop();
+        setIsSpeaking(false);
+    }, [chapterId]);
+
+    const toggleSpeech = async () => {
+        if (isSpeaking) {
+            Speech.stop();
+            setIsSpeaking(false);
+            setCurrentChunkIndex(0);
+        } else {
+            const plainText = extractPlainText(content);
+            if (!plainText) return;
+
+            // Split text into chunks of ~3500 characters
+            const chunks: string[] = [];
+            let currentText = plainText;
+            while (currentText.length > 0) {
+                if (currentText.length <= 3500) {
+                    chunks.push(currentText);
+                    break;
+                }
+                
+                // Find a good splitting point (period followed by space)
+                let splitIndex = currentText.lastIndexOf('. ', 3500);
+                if (splitIndex === -1) splitIndex = currentText.lastIndexOf(' ', 3500);
+                if (splitIndex === -1) splitIndex = 3500;
+
+                chunks.push(currentText.substring(0, splitIndex + 1).trim());
+                currentText = currentText.substring(splitIndex + 1).trim();
+            }
+
+            if (chunks.length === 0) return;
+
+            setIsSpeaking(true);
+            setCurrentChunkIndex(0);
+            
+            const speakChunk = (index: number) => {
+                if (index >= chunks.length) {
+                    setIsSpeaking(false);
+                    setCurrentChunkIndex(0);
+                    return;
+                }
+
+                setCurrentChunkIndex(index);
+                Speech.speak(chunks[index], {
+                    onDone: () => speakChunk(index + 1),
+                    onStopped: () => {
+                        setIsSpeaking(false);
+                        setCurrentChunkIndex(0);
+                    },
+                    onError: (error) => {
+                        console.error('Speech error:', error);
+                        setIsSpeaking(false);
+                        setCurrentChunkIndex(0);
+                    },
+                });
+            };
+
+            speakChunk(0);
+        }
+    };
+
+
 
     const markAsRead = async () => {
         if (!story || !chapter) return;
@@ -123,14 +201,23 @@ export default function ReaderScreen() {
                 options={{ 
                     title: chapter ? sanitizeTitle(chapter.title) : 'Reader',
                     headerRight: () => (
-                        <IconButton 
-                            icon={isLastRead ? "bookmark" : "bookmark-outline"} 
-                            iconColor={isLastRead ? theme.colors.primary : undefined}
-                            onPress={markAsRead}
-                        />
+                        <View style={{ flexDirection: 'row' }}>
+                            <IconButton 
+                                icon={isSpeaking ? "stop" : "volume-high"} 
+                                iconColor={isSpeaking ? theme.colors.error : undefined}
+                                onPress={toggleSpeech}
+                            />
+
+                            <IconButton 
+                                icon={isLastRead ? "bookmark" : "bookmark-outline"} 
+                                iconColor={isLastRead ? theme.colors.primary : undefined}
+                                onPress={markAsRead}
+                            />
+                        </View>
                     )
                 }} 
             />
+
             
             <View style={styles.container}>
                 <WebView
