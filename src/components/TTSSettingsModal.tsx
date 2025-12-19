@@ -86,8 +86,8 @@ export const TTSSettingsModal: React.FC<Props> = ({ visible, onDismiss, settings
                         <Text variant="labelLarge">Chunk Size: {settings.chunkSize}</Text>
                         <Slider
                             style={styles.slider}
-                            minimumValue={200}
-                            maximumValue={2000}
+                            minimumValue={20}
+                            maximumValue={1000}
                             step={50}
                             value={settings.chunkSize}
                             onSlidingComplete={(val) => updateSetting('chunkSize', Math.round(val))}

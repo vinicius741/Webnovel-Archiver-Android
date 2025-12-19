@@ -7,7 +7,7 @@ export const useTTS = () => {
     const [isPaused, setIsPaused] = useState(false);
     const [chunks, setChunks] = useState<string[]>([]);
     const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
-    const [ttsSettings, setTtsSettings] = useState<TTSSettings>({ pitch: 1.0, rate: 1.0, chunkSize: 3500 });
+    const [ttsSettings, setTtsSettings] = useState<TTSSettings>({ pitch: 1.0, rate: 1.0, chunkSize: 500 });
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
     const [isControllerVisible, setIsControllerVisible] = useState(false);
 

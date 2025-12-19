@@ -22,7 +22,7 @@ export const extractPlainText = (html: string): string => {
  * Prepares HTML content for TTS by grouping elements into chunks
  * and adding data attributes for highlighting.
  */
-export const prepareTTSContent = (html: string, chunkSize: number = 3500): { processedHtml: string, chunks: string[] } => {
+export const prepareTTSContent = (html: string, chunkSize: number = 500): { processedHtml: string, chunks: string[] } => {
     if (!html) return { processedHtml: '', chunks: [] };
 
     const $ = cheerio.load(html);

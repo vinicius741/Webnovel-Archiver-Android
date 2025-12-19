@@ -30,7 +30,7 @@ export interface TTSSettings {
 const DEFAULT_TTS_SETTINGS: TTSSettings = {
     pitch: 1.0,
     rate: 1.0,
-    chunkSize: 1000,
+    chunkSize: 500,
 };
 
 class StorageService {
