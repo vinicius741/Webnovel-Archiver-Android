@@ -36,7 +36,6 @@ export default function ReaderScreen() {
         isSettingsVisible, 
         isControllerVisible, 
         setIsSettingsVisible, 
-        setIsControllerVisible,
         toggleSpeech, 
         stopSpeech, 
         handlePlayPause, 
