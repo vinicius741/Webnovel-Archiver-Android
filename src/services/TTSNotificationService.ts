@@ -1,18 +1,16 @@
-import { Platform, DeviceEventEmitter } from 'react-native';
+import { Platform } from 'react-native';
 
-export const TTS_EVENTS = {
-    PLAY: 'tts-play',
-    PAUSE: 'tts-pause',
-    NEXT: 'tts-next',
-    PREVIOUS: 'tts-prev',
-    STOP: 'tts-stop'
-};
-
+/**
+ * Service responsible for displaying the TTS media notification.
+ * 
+ * This service ONLY handles the notification display - all TTS state
+ * and control logic lives in TTSStateManager.
+ */
 class TTSNotificationService {
-    private channelId = 'tts_channel_v1';
+    private channelId = 'tts_channel_v2';
     private notifee: any = null;
     private androidImportance: any = null;
-    private androidStyle: any = null;
+    private androidCategory: any = null;
     private initialized = false;
 
     constructor() {
@@ -26,8 +24,7 @@ class TTSNotificationService {
             const notifeeModule = require('@notifee/react-native');
             this.notifee = notifeeModule.default;
             this.androidImportance = notifeeModule.AndroidImportance;
-            // Handle potentially missing properties safely
-            this.androidStyle = notifeeModule.AndroidStyle || { MEDIA: 2 };
+            this.androidCategory = notifeeModule.AndroidCategory;
 
             this.createChannel();
             this.initialized = true;
@@ -42,8 +39,8 @@ class TTSNotificationService {
         try {
             await this.notifee.createChannel({
                 id: this.channelId,
-                name: 'Audio Player',
-                importance: this.androidImportance.LOW, // Low importance for media controls usually
+                name: 'TTS Audio Player',
+                importance: this.androidImportance.LOW,
             });
         } catch (e) {
             console.warn('[TTSNotificationService] Failed to create channel:', e);
@@ -52,12 +49,12 @@ class TTSNotificationService {
 
     async startService(title: string, body: string) {
         if (!this.initialized) return;
-        this.displayNotification(true, title, body);
+        await this.displayNotification(true, title, body);
     }
 
     async updateNotification(isPlaying: boolean, title: string, body: string) {
         if (!this.initialized) return;
-        this.displayNotification(isPlaying, title, body);
+        await this.displayNotification(isPlaying, title, body);
     }
 
     async stopService() {
@@ -82,36 +79,25 @@ class TTSNotificationService {
                     channelId: this.channelId,
                     asForegroundService: true,
                     ongoing: true,
-                    // Use standard actions for now if we can't fully construct media style object easily without more imports
-                    // But actually Notifee supports pressAction.id which we will map in background service
+                    category: this.androidCategory?.SERVICE,
                     actions: [
                         {
                             title: 'Prev',
                             pressAction: { id: 'tts_prev' },
-                            icon: 'ic_skip_previous', // Assuming these exist or fallback
                         },
                         {
                             title: isPlaying ? 'Pause' : 'Play',
                             pressAction: { id: isPlaying ? 'tts_pause' : 'tts_play' },
-                            icon: isPlaying ? 'ic_pause' : 'ic_play_arrow',
                         },
                         {
                             title: 'Next',
                             pressAction: { id: 'tts_next' },
-                            icon: 'ic_skip_next',
                         },
                         {
                             title: 'Stop',
                             pressAction: { id: 'tts_stop' },
-
-                        }
+                        },
                     ],
-                    // Attempt to use media style if likely valid
-                    style: this.androidStyle ? {
-                        type: this.androidStyle.MEDIA,
-                        actions: [0, 1, 2], // Indices of actions to show in compact view
-                        artwork: 'ic_launcher' // Fallback
-                    } : undefined
                 },
             });
         } catch (e) {

@@ -1,61 +1,56 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DeviceEventEmitter, Platform } from 'react-native';
-import * as Speech from 'expo-speech';
-import { storageService, TTSSettings } from '../services/StorageService';
-import { ttsNotificationService, TTS_EVENTS } from '../services/TTSNotificationService';
+import { ttsStateManager, TTS_STATE_EVENTS, TTSState } from '../services/TTSStateManager';
+import { TTSSettings } from '../services/StorageService';
 
 export const useTTS = (options?: { onFinish?: () => void }) => {
+    // UI state synchronized from TTSStateManager
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [chunks, setChunks] = useState<string[]>([]);
     const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+
+    // Local UI state
     const [ttsSettings, setTtsSettings] = useState<TTSSettings>({ pitch: 1.0, rate: 1.0, chunkSize: 500 });
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
     const [isControllerVisible, setIsControllerVisible] = useState(false);
 
+    // Sync state from TTSStateManager
+    const syncState = useCallback((state: TTSState) => {
+        setIsSpeaking(state.isSpeaking);
+        setIsPaused(state.isPaused);
+        setChunks(state.chunks);
+        setCurrentChunkIndex(state.currentChunkIndex);
 
-    // We need to keep track of title for the notification
-    const currentTitleRef = useRef('Chapter Reading');
-
-    // We need refs to access latest state in event listeners without re-binding
-    const stateRef = useRef({
-        isSpeaking: false,
-        isPaused: false,
-        chunks: [] as string[],
-        currentChunkIndex: 0
-    });
+        // Update controller visibility based on speaking state
+        if (state.isSpeaking) {
+            setIsControllerVisible(true);
+        } else if (!state.isSpeaking && !state.isPaused) {
+            // Only hide controller when fully stopped (not just paused)
+            setIsControllerVisible(false);
+        }
+    }, []);
 
     useEffect(() => {
-        stateRef.current = { isSpeaking, isPaused, chunks, currentChunkIndex };
-    }, [isSpeaking, isPaused, chunks, currentChunkIndex]);
+        // Load initial settings
+        const settings = ttsStateManager.getSettings();
+        if (settings) {
+            setTtsSettings(settings);
+        }
 
-    useEffect(() => {
-        loadTtsSettings();
+        // Sync initial state
+        syncState(ttsStateManager.getState());
 
-        const playSub = DeviceEventEmitter.addListener(TTS_EVENTS.PLAY, () => {
-            // Logic to play: if paused, resume. 
-            if (stateRef.current.isPaused) {
-                speakChunk(stateRef.current.currentChunkIndex, stateRef.current.chunks);
-            }
-        });
-        const pauseSub = DeviceEventEmitter.addListener(TTS_EVENTS.PAUSE, async () => {
-            await Speech.stop();
-            setIsPaused(true);
-            ttsNotificationService.updateNotification(false, currentTitleRef.current, `Paused: Chunk ${stateRef.current.currentChunkIndex + 1}`);
-        });
-        const nextSub = DeviceEventEmitter.addListener(TTS_EVENTS.NEXT, async () => {
-            await Speech.stop();
-            speakChunk(stateRef.current.currentChunkIndex + 1, stateRef.current.chunks);
-        });
-        const prevSub = DeviceEventEmitter.addListener(TTS_EVENTS.PREVIOUS, async () => {
-            await Speech.stop();
-            speakChunk(Math.max(0, stateRef.current.currentChunkIndex - 1), stateRef.current.chunks);
-        });
-        const stopSub = DeviceEventEmitter.addListener(TTS_EVENTS.STOP, async () => {
-            await stopSpeech();
-        });
+        // Set up finish callback
+        ttsStateManager.setOnFinishCallback(options?.onFinish || null);
 
-        // Handle Notifee Background Events (if possible) or Foreground events via dynamic require
+        // Subscribe to state changes from TTSStateManager
+        const subscription = DeviceEventEmitter.addListener(
+            TTS_STATE_EVENTS.STATE_CHANGED,
+            syncState
+        );
+
+        // Also handle foreground notification events (for when app is in foreground)
         let unsubscribeNotifee: (() => void) | undefined;
 
         if (Platform.OS === 'android') {
@@ -68,19 +63,19 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
                         const actionId = detail.pressAction.id;
                         switch (actionId) {
                             case 'tts_play':
-                                DeviceEventEmitter.emit(TTS_EVENTS.PLAY);
+                                ttsStateManager.resume();
                                 break;
                             case 'tts_pause':
-                                DeviceEventEmitter.emit(TTS_EVENTS.PAUSE);
+                                ttsStateManager.pause();
                                 break;
                             case 'tts_next':
-                                DeviceEventEmitter.emit(TTS_EVENTS.NEXT);
+                                ttsStateManager.next();
                                 break;
                             case 'tts_prev':
-                                DeviceEventEmitter.emit(TTS_EVENTS.PREVIOUS);
+                                ttsStateManager.previous();
                                 break;
                             case 'tts_stop':
-                                DeviceEventEmitter.emit(TTS_EVENTS.STOP);
+                                ttsStateManager.stop();
                                 break;
                         }
                     }
@@ -91,101 +86,40 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         }
 
         return () => {
-            Speech.stop();
-            playSub.remove();
-            pauseSub.remove();
-            nextSub.remove();
-            prevSub.remove();
-            stopSub.remove();
+            subscription.remove();
             if (unsubscribeNotifee) unsubscribeNotifee();
-            ttsNotificationService.stopService();
+            ttsStateManager.setOnFinishCallback(null);
         };
-    }, []);
-
-    const loadTtsSettings = async () => {
-        const settings = await storageService.getTTSSettings();
-        if (settings) {
-            setTtsSettings(settings); // Ensure we don't set undefined if storage returns nothing, though service usually defaults
-        }
-    };
+    }, [options?.onFinish, syncState]);
 
     const handleSettingsChange = async (newSettings: TTSSettings) => {
         setTtsSettings(newSettings);
-        await storageService.saveTTSSettings(newSettings);
+        await ttsStateManager.updateSettings(newSettings);
     };
 
     const stopSpeech = async () => {
-        await Speech.stop();
-        setIsSpeaking(false);
-        setIsPaused(false);
-        setIsControllerVisible(false);
-        setCurrentChunkIndex(0);
-        setChunks([]);
-        ttsNotificationService.stopService();
-    };
-
-    const speakChunk = (index: number, chunksArray: string[]) => {
-        if (index >= chunksArray.length) {
-            stopSpeech();
-            options?.onFinish?.();
-            return;
-        }
-
-        setCurrentChunkIndex(index);
-        setIsPaused(false);
-        setIsSpeaking(true); // Ensure speaking is true
-
-        // Update notification
-        const msg = `Reading chunk ${index + 1} / ${chunksArray.length}`;
-        if (stateRef.current.isSpeaking) {
-            ttsNotificationService.updateNotification(true, currentTitleRef.current, msg);
-        } else {
-            ttsNotificationService.startService(currentTitleRef.current, msg);
-        }
-
-        Speech.speak(chunksArray[index], {
-            pitch: ttsSettings.pitch,
-            rate: ttsSettings.rate,
-            voice: ttsSettings.voiceIdentifier,
-            onDone: () => speakChunk(index + 1, chunksArray),
-            onError: (error) => {
-                console.error('Speech error:', error);
-                stopSpeech();
-            },
-        });
+        await ttsStateManager.stop();
     };
 
     const handlePlayPause = async () => {
-        if (isPaused) {
-            speakChunk(currentChunkIndex, chunks);
-        } else {
-            await Speech.stop();
-            setIsPaused(true);
-            ttsNotificationService.updateNotification(false, currentTitleRef.current, `Paused: Chunk ${currentChunkIndex + 1}`);
-        }
+        await ttsStateManager.playPause();
     };
 
     const handleNextChunk = async () => {
-        await Speech.stop();
-        speakChunk(currentChunkIndex + 1, chunks);
+        await ttsStateManager.next();
     };
 
     const handlePreviousChunk = async () => {
-        await Speech.stop();
-        speakChunk(Math.max(0, currentChunkIndex - 1), chunks);
+        await ttsStateManager.previous();
     };
 
     const toggleSpeech = async (newChunks: string[], title: string = 'Reading') => {
         if (isSpeaking || isControllerVisible) {
-            stopSpeech();
+            await stopSpeech();
         } else {
             if (!newChunks || newChunks.length === 0) return;
-
-            currentTitleRef.current = title;
-            setChunks(newChunks);
-            setIsSpeaking(true);
+            ttsStateManager.start(newChunks, title);
             setIsControllerVisible(true);
-            speakChunk(0, newChunks);
         }
     };
 
@@ -197,13 +131,13 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         ttsSettings,
         isSettingsVisible,
         isControllerVisible,
-        setIsSettingsVisible, // Exposed setter
-        setIsControllerVisible, // Exposed setter
+        setIsSettingsVisible,
+        setIsControllerVisible,
         toggleSpeech,
         stopSpeech,
         handlePlayPause,
         handleNextChunk,
         handlePreviousChunk,
-        handleSettingsChange
+        handleSettingsChange,
     };
 };

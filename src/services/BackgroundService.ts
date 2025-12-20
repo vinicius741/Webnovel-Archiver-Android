@@ -1,4 +1,5 @@
 import { notificationService } from './NotificationService';
+import { ttsStateManager } from './TTSStateManager';
 
 // Safely initialize background service to handle environments without Notifee (e.g. Expo Go)
 try {
@@ -18,33 +19,26 @@ try {
         await notifee.cancelNotification('download_progress');
       }
 
-      // TTS Actions
-      // We probably need to simply emit these to the JS side if the app is effectively awake, 
-      // or handle them via standard mechanism. Since useTTS hook will listen to DeviceEventEmitter,
-      // we can relay them. But be aware: if the app is KILLED, the hook isn't running.
-      // For a foreground service, the app process usually stays alive.
+      // TTS Actions - directly call the state manager
       else if (actionId === 'tts_play') {
-        const { DeviceEventEmitter } = require('react-native');
-        DeviceEventEmitter.emit('tts-play');
+        console.log('[BackgroundService] TTS play action pressed');
+        ttsStateManager.resume();
       }
       else if (actionId === 'tts_pause') {
-        const { DeviceEventEmitter } = require('react-native');
-        DeviceEventEmitter.emit('tts-pause');
+        console.log('[BackgroundService] TTS pause action pressed');
+        await ttsStateManager.pause();
       }
       else if (actionId === 'tts_next') {
-        const { DeviceEventEmitter } = require('react-native');
-        DeviceEventEmitter.emit('tts-next');
+        console.log('[BackgroundService] TTS next action pressed');
+        await ttsStateManager.next();
       }
       else if (actionId === 'tts_prev') {
-        const { DeviceEventEmitter } = require('react-native');
-        DeviceEventEmitter.emit('tts-prev');
+        console.log('[BackgroundService] TTS prev action pressed');
+        await ttsStateManager.previous();
       }
       else if (actionId === 'tts_stop') {
-        const { DeviceEventEmitter } = require('react-native');
-        DeviceEventEmitter.emit('tts-stop');
-        // Also forcefully stop service in case JS logic fails
-        await notifee.stopForegroundService();
-        await notifee.cancelNotification('tts_service');
+        console.log('[BackgroundService] TTS stop action pressed');
+        await ttsStateManager.stop();
       }
     }
   });

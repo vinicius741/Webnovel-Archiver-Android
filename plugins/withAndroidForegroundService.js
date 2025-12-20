@@ -14,11 +14,13 @@ function withAndroidForegroundService(config) {
       mainApplication.service = [];
     }
 
+    // Check for existing Notifee service and update it to support multiple types
     let notifeeServiceFound = false;
 
     mainApplication.service.forEach((service) => {
       if (service['$']['android:name'] === 'app.notifee.core.ForegroundService') {
-        service['$']['android:foregroundServiceType'] = 'dataSync';
+        // Update to support both dataSync (for downloads) and mediaPlayback (for TTS)
+        service['$']['android:foregroundServiceType'] = 'dataSync|mediaPlayback';
         notifeeServiceFound = true;
       }
     });
@@ -27,7 +29,7 @@ function withAndroidForegroundService(config) {
       mainApplication.service.push({
         $: {
           'android:name': 'app.notifee.core.ForegroundService',
-          'android:foregroundServiceType': 'dataSync',
+          'android:foregroundServiceType': 'dataSync|mediaPlayback',
         },
       });
     }
