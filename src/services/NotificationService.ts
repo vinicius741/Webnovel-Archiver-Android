@@ -11,12 +11,17 @@ class NotificationService {
     }
 
     private init() {
+        if (Platform.OS !== 'android') return;
+
         try {
             // Lazy load the module to prevent crashes if the native module isn't linked (e.g. Expo Go)
-            const notifeeModule = require('@notifee/react-native');
-            this.notifee = notifeeModule.default;
-            this.androidImportance = notifeeModule.AndroidImportance;
-            this.androidColor = notifeeModule.AndroidColor;
+            const notifeeModule = require('@notifee/react-native').default;
+            this.notifee = notifeeModule;
+
+            // Re-require to get named exports safely
+            const notifeeNamed = require('@notifee/react-native');
+            this.androidImportance = notifeeNamed.AndroidImportance;
+            this.androidColor = notifeeNamed.AndroidColor;
 
             this.createChannel();
         } catch (e) {

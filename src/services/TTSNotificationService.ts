@@ -20,6 +20,8 @@ class TTSNotificationService {
     }
 
     private init() {
+        if (Platform.OS !== 'android') return;
+
         try {
             const notifeeModule = require('@notifee/react-native');
             this.notifee = notifeeModule.default;

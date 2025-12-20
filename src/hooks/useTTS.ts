@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { DeviceEventEmitter, AppState } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import * as Speech from 'expo-speech';
-import notifee, { EventType } from '@notifee/react-native';
 import { storageService, TTSSettings } from '../services/StorageService';
 import { ttsNotificationService, TTS_EVENTS } from '../services/TTSNotificationService';
 
@@ -56,6 +55,41 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
             await stopSpeech();
         });
 
+        // Handle Notifee Background Events (if possible) or Foreground events via dynamic require
+        let unsubscribeNotifee: (() => void) | undefined;
+
+        if (Platform.OS === 'android') {
+            try {
+                const notifee = require('@notifee/react-native').default;
+                const { EventType } = require('@notifee/react-native');
+
+                unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }: any) => {
+                    if (type === EventType.ACTION_PRESS && detail.pressAction) {
+                        const actionId = detail.pressAction.id;
+                        switch (actionId) {
+                            case 'tts_play':
+                                DeviceEventEmitter.emit(TTS_EVENTS.PLAY);
+                                break;
+                            case 'tts_pause':
+                                DeviceEventEmitter.emit(TTS_EVENTS.PAUSE);
+                                break;
+                            case 'tts_next':
+                                DeviceEventEmitter.emit(TTS_EVENTS.NEXT);
+                                break;
+                            case 'tts_prev':
+                                DeviceEventEmitter.emit(TTS_EVENTS.PREVIOUS);
+                                break;
+                            case 'tts_stop':
+                                DeviceEventEmitter.emit(TTS_EVENTS.STOP);
+                                break;
+                        }
+                    }
+                });
+            } catch (e) {
+                // Notifee not available
+            }
+        }
+
         return () => {
             Speech.stop();
             playSub.remove();
@@ -63,34 +97,9 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
             nextSub.remove();
             prevSub.remove();
             stopSub.remove();
+            if (unsubscribeNotifee) unsubscribeNotifee();
             ttsNotificationService.stopService();
         };
-    }, []);
-
-    // Handle Foreground Notification Events (when app is open/visible)
-    useEffect(() => {
-        return notifee.onForegroundEvent(({ type, detail }) => {
-            if (type === EventType.ACTION_PRESS && detail.pressAction) {
-                const actionId = detail.pressAction.id;
-                switch (actionId) {
-                    case 'tts_play':
-                        DeviceEventEmitter.emit(TTS_EVENTS.PLAY);
-                        break;
-                    case 'tts_pause':
-                        DeviceEventEmitter.emit(TTS_EVENTS.PAUSE);
-                        break;
-                    case 'tts_next':
-                        DeviceEventEmitter.emit(TTS_EVENTS.NEXT);
-                        break;
-                    case 'tts_prev':
-                        DeviceEventEmitter.emit(TTS_EVENTS.PREVIOUS);
-                        break;
-                    case 'tts_stop':
-                        DeviceEventEmitter.emit(TTS_EVENTS.STOP);
-                        break;
-                }
-            }
-        });
     }, []);
 
     const loadTtsSettings = async () => {
