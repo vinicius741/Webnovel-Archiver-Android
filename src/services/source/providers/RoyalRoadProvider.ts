@@ -96,7 +96,7 @@ export const RoyalRoadProvider: SourceProvider = {
         const chapters: ChapterInfo[] = [];
 
         $('.chapter-row').each((_, element) => {
-            const link = $(element).find('a[href*="/fiction/"]');
+            const link = $(element).find('a[href*="/fiction/"]').first();
             if (link.length > 0) {
                 const title = link.text().trim();
                 let relativeUrl = link.attr('href') || '';

@@ -56,4 +56,28 @@ describe('RoyalRoadProvider', () => {
         const metadata = RoyalRoadProvider.parseMetadata(htmlNoScore);
         expect(metadata.score).toBeUndefined();
     });
+
+    it('should parse chapter list correctly and exclude post time', async () => {
+        const chapterHtml = `
+            <table>
+                <tr class="chapter-row">
+                    <td>
+                        <a href="/fiction/140335/i-became-a-paladin-girl/chapter/2768745/chapter-1-hope-armstrong">
+                            Chapter 1. Hope Armstrong
+                        </a>
+                    </td>
+                    <td>
+                        <a href="/fiction/140335/i-became-a-paladin-girl/chapter/2768745/chapter-1-hope-armstrong">
+                            <time>1 month </time> ago
+                        </a>
+                    </td>
+                </tr>
+            </table>
+        `;
+        const chapters = await RoyalRoadProvider.getChapterList(chapterHtml, 'https://www.royalroad.com');
+
+        expect(chapters).toHaveLength(1);
+        expect(chapters[0].title).toBe('Chapter 1. Hope Armstrong');
+        expect(chapters[0].url).toBe('https://www.royalroad.com/fiction/140335/i-became-a-paladin-girl/chapter/2768745/chapter-1-hope-armstrong');
+    });
 });
