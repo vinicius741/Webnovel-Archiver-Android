@@ -14,16 +14,26 @@ import { useAppAlert } from '../context/AlertContext';
 import { Story, Chapter, DownloadStatus } from '../types';
 import { sanitizeTitle } from '../utils/stringUtils';
 
+import { useDownloadProgress } from './useDownloadProgress';
+
 export const useStoryDetails = (id: string | string[] | undefined) => {
     const router = useRouter();
     const { showAlert } = useAppAlert();
     const [story, setStory] = useState<Story | null>(null);
     const [loading, setLoading] = useState(true);
-    const [downloading, setDownloading] = useState(false);
+    // Remove local downloading state as it's now managed by the hook (mostly)
+    // Actually, keep it for simple loading spinners if needed, but the hook provides isDownloading.
+    // Let's replace the local state with the hook's state.
+
+    // We need a stable ID string
+    const storyId = typeof id === 'string' ? id : '';
+    const { progress: downloadProgress, status: downloadStatus, isDownloading: isDownloadingHook } = useDownloadProgress(storyId);
+
+    const [downloading, setDownloading] = useState(false); // keep for "adding to queue" spinner if needed
     const [checkingUpdates, setCheckingUpdates] = useState(false);
     const [updateStatus, setUpdateStatus] = useState('');
-    const [downloadProgress, setDownloadProgress] = useState(0);
-    const [downloadStatus, setDownloadStatus] = useState('');
+    // const [downloadProgress, setDownloadProgress] = useState(0); // Removing
+    // const [downloadStatus, setDownloadStatus] = useState(''); // Removing
 
     useEffect(() => {
         const loadStory = async () => {
@@ -167,11 +177,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
             await activateKeepAwakeAsync();
 
             // Use the DownloadService
-            const updatedStory = await downloadService.downloadAllChapters(story, (total: number, current: number, title: string) => {
-                const progress = total > 0 ? current / total : 0;
-                setDownloadProgress(progress);
-                setDownloadStatus(`${current}/${total}: ${title}`);
-            });
+            const updatedStory = await downloadService.downloadAllChapters(story);
 
             const finalStory = {
                 ...updatedStory,
@@ -180,7 +186,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
 
             await storageService.addStory(finalStory);
             setStory(finalStory); // Update UI with new state
-            showAlert('Download Complete', 'All chapters have been downloaded.');
+            showAlert('Download Started', 'Chapters have been added to the download queue.');
 
         } catch (error) {
             console.error('Download error', error);
@@ -213,13 +219,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
             const updatedStory = await downloadService.downloadRange(
                 story,
                 startIndex,
-                endIndex,
-                (total: number, current: number, title: string) => {
-                    // Update progress relative to the batch
-                    const progress = total > 0 ? current / total : 0;
-                    setDownloadProgress(progress);
-                    setDownloadStatus(`${current}/${total}: ${title}`);
-                }
+                endIndex
             );
 
             const finalStory = {
@@ -229,7 +229,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
 
             await storageService.addStory(finalStory);
             setStory(finalStory);
-            showAlert('Download Complete', 'Selected chapters have been downloaded.');
+            showAlert('Download Started', 'Selected chapters have been queued.');
 
         } catch (error) {
             console.error('Download error', error);
@@ -290,7 +290,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     return {
         story,
         loading,
-        downloading,
+        downloading: downloading || isDownloadingHook, // Show busy if queueing OR downloading
         checkingUpdates,
         updateStatus,
         downloadProgress,
