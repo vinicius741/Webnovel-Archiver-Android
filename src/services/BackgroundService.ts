@@ -8,16 +8,45 @@ try {
 
   notifee.onBackgroundEvent(async ({ type, detail }: any) => {
     console.log(`[BackgroundService] Received event type: ${type}`);
-    if (type === EventType.ACTION_PRESS && detail.pressAction?.id === 'cancel') {
-      console.log('[BackgroundService] Cancel action pressed, stopping download.');
-      // Implement actual cancellation logic in your DownloadService if possible
-      // This will stop the Notifee foreground service and cancel the progress notification
-      await notificationService.stopForegroundService();
-      await notifee.cancelNotification('download_progress');
-      // If you need to stop the download process itself, you'd need a way to signal it.
-      // For example, by having a `cancelDownload` method in DownloadService.
+    const actionId = detail.pressAction?.id;
+
+    if (type === EventType.ACTION_PRESS) {
+      // Download Actions
+      if (actionId === 'cancel') {
+        console.log('[BackgroundService] Cancel action pressed, stopping download.');
+        await notificationService.stopForegroundService();
+        await notifee.cancelNotification('download_progress');
+      }
+
+      // TTS Actions
+      // We probably need to simply emit these to the JS side if the app is effectively awake, 
+      // or handle them via standard mechanism. Since useTTS hook will listen to DeviceEventEmitter,
+      // we can relay them. But be aware: if the app is KILLED, the hook isn't running.
+      // For a foreground service, the app process usually stays alive.
+      else if (actionId === 'tts_play') {
+        const { DeviceEventEmitter } = require('react-native');
+        DeviceEventEmitter.emit('tts-play');
+      }
+      else if (actionId === 'tts_pause') {
+        const { DeviceEventEmitter } = require('react-native');
+        DeviceEventEmitter.emit('tts-pause');
+      }
+      else if (actionId === 'tts_next') {
+        const { DeviceEventEmitter } = require('react-native');
+        DeviceEventEmitter.emit('tts-next');
+      }
+      else if (actionId === 'tts_prev') {
+        const { DeviceEventEmitter } = require('react-native');
+        DeviceEventEmitter.emit('tts-prev');
+      }
+      else if (actionId === 'tts_stop') {
+        const { DeviceEventEmitter } = require('react-native');
+        DeviceEventEmitter.emit('tts-stop');
+        // Also forcefully stop service in case JS logic fails
+        await notifee.stopForegroundService();
+        await notifee.cancelNotification('tts_service');
+      }
     }
-    // Add other background event handlers as needed
   });
 
   console.log('[BackgroundService] Notifee background event handler registered.');

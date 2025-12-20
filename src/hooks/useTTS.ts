@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { DeviceEventEmitter, AppState } from 'react-native';
 import * as Speech from 'expo-speech';
+import notifee, { EventType } from '@notifee/react-native';
 import { storageService, TTSSettings } from '../services/StorageService';
+import { ttsNotificationService, TTS_EVENTS } from '../services/TTSNotificationService';
 
 export const useTTS = (options?: { onFinish?: () => void }) => {
     const [isSpeaking, setIsSpeaking] = useState(false);
@@ -11,11 +14,83 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
     const [isSettingsVisible, setIsSettingsVisible] = useState(false);
     const [isControllerVisible, setIsControllerVisible] = useState(false);
 
+
+    // We need to keep track of title for the notification
+    const currentTitleRef = useRef('Chapter Reading');
+
+    // We need refs to access latest state in event listeners without re-binding
+    const stateRef = useRef({
+        isSpeaking: false,
+        isPaused: false,
+        chunks: [] as string[],
+        currentChunkIndex: 0
+    });
+
+    useEffect(() => {
+        stateRef.current = { isSpeaking, isPaused, chunks, currentChunkIndex };
+    }, [isSpeaking, isPaused, chunks, currentChunkIndex]);
+
     useEffect(() => {
         loadTtsSettings();
+
+        const playSub = DeviceEventEmitter.addListener(TTS_EVENTS.PLAY, () => {
+            // Logic to play: if paused, resume. 
+            if (stateRef.current.isPaused) {
+                speakChunk(stateRef.current.currentChunkIndex, stateRef.current.chunks);
+            }
+        });
+        const pauseSub = DeviceEventEmitter.addListener(TTS_EVENTS.PAUSE, async () => {
+            await Speech.stop();
+            setIsPaused(true);
+            ttsNotificationService.updateNotification(false, currentTitleRef.current, `Paused: Chunk ${stateRef.current.currentChunkIndex + 1}`);
+        });
+        const nextSub = DeviceEventEmitter.addListener(TTS_EVENTS.NEXT, async () => {
+            await Speech.stop();
+            speakChunk(stateRef.current.currentChunkIndex + 1, stateRef.current.chunks);
+        });
+        const prevSub = DeviceEventEmitter.addListener(TTS_EVENTS.PREVIOUS, async () => {
+            await Speech.stop();
+            speakChunk(Math.max(0, stateRef.current.currentChunkIndex - 1), stateRef.current.chunks);
+        });
+        const stopSub = DeviceEventEmitter.addListener(TTS_EVENTS.STOP, async () => {
+            await stopSpeech();
+        });
+
         return () => {
             Speech.stop();
+            playSub.remove();
+            pauseSub.remove();
+            nextSub.remove();
+            prevSub.remove();
+            stopSub.remove();
+            ttsNotificationService.stopService();
         };
+    }, []);
+
+    // Handle Foreground Notification Events (when app is open/visible)
+    useEffect(() => {
+        return notifee.onForegroundEvent(({ type, detail }) => {
+            if (type === EventType.ACTION_PRESS && detail.pressAction) {
+                const actionId = detail.pressAction.id;
+                switch (actionId) {
+                    case 'tts_play':
+                        DeviceEventEmitter.emit(TTS_EVENTS.PLAY);
+                        break;
+                    case 'tts_pause':
+                        DeviceEventEmitter.emit(TTS_EVENTS.PAUSE);
+                        break;
+                    case 'tts_next':
+                        DeviceEventEmitter.emit(TTS_EVENTS.NEXT);
+                        break;
+                    case 'tts_prev':
+                        DeviceEventEmitter.emit(TTS_EVENTS.PREVIOUS);
+                        break;
+                    case 'tts_stop':
+                        DeviceEventEmitter.emit(TTS_EVENTS.STOP);
+                        break;
+                }
+            }
+        });
     }, []);
 
     const loadTtsSettings = async () => {
@@ -37,6 +112,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         setIsControllerVisible(false);
         setCurrentChunkIndex(0);
         setChunks([]);
+        ttsNotificationService.stopService();
     };
 
     const speakChunk = (index: number, chunksArray: string[]) => {
@@ -48,6 +124,15 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
 
         setCurrentChunkIndex(index);
         setIsPaused(false);
+        setIsSpeaking(true); // Ensure speaking is true
+
+        // Update notification
+        const msg = `Reading chunk ${index + 1} / ${chunksArray.length}`;
+        if (stateRef.current.isSpeaking) {
+            ttsNotificationService.updateNotification(true, currentTitleRef.current, msg);
+        } else {
+            ttsNotificationService.startService(currentTitleRef.current, msg);
+        }
 
         Speech.speak(chunksArray[index], {
             pitch: ttsSettings.pitch,
@@ -67,6 +152,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         } else {
             await Speech.stop();
             setIsPaused(true);
+            ttsNotificationService.updateNotification(false, currentTitleRef.current, `Paused: Chunk ${currentChunkIndex + 1}`);
         }
     };
 
@@ -80,12 +166,13 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         speakChunk(Math.max(0, currentChunkIndex - 1), chunks);
     };
 
-    const toggleSpeech = async (newChunks: string[]) => {
+    const toggleSpeech = async (newChunks: string[], title: string = 'Reading') => {
         if (isSpeaking || isControllerVisible) {
             stopSpeech();
         } else {
             if (!newChunks || newChunks.length === 0) return;
 
+            currentTitleRef.current = title;
             setChunks(newChunks);
             setIsSpeaking(true);
             setIsControllerVisible(true);

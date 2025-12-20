@@ -74,7 +74,7 @@ export default function ReaderScreen() {
         if (autoplay === 'true' && !loading && content && ttsChunks.length > 0 && !isSpeaking) {
             // Slight delay to ensure everything is ready and previous TTS is fully stopped
             const timer = setTimeout(() => {
-                toggleSpeech(ttsChunks);
+                toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading');
                 // Clear the param so it doesn't re-trigger when user manually hits stop
                 router.setParams({ autoplay: undefined }); 
             }, 500); 
@@ -235,7 +235,7 @@ export default function ReaderScreen() {
                             <IconButton 
                                 icon={isSpeaking ? "stop" : "volume-high"} 
                                 iconColor={isSpeaking ? theme.colors.error : undefined}
-                                onPress={() => toggleSpeech(ttsChunks)}
+                                onPress={() => toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading')}
                             />
 
                             <IconButton 
