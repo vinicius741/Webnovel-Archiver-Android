@@ -86,3 +86,30 @@ export const prepareTTSContent = (html: string, chunkSize: number = 500): { proc
         chunks
     };
 };
+
+/**
+ * Removes unwanted sentences from content.
+ */
+export const removeUnwantedSentences = (content: string, sentenceRemovalList: string[]): string => {
+    let cleanContent = content;
+    for (const sentence of sentenceRemovalList) {
+        // Using split/join for global replacement of exact string.
+        cleanContent = cleanContent.split(sentence).join('');
+    }
+    return cleanContent;
+};
+
+/**
+ * Cleans chapter titles by removing time-ago suffixes and absolute dates.
+ */
+export const cleanChapterTitle = (title: string): string => {
+    if (!title) return '';
+
+    // Removes time-ago suffixes like "2 days ago", "5 hours ago", etc.
+    let cleaned = title.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\s*\)?\s*$/i, '');
+
+    // Remove absolute dates if at the end, e.g. "Title Nov 25, 2025" or "Title - Nov 25, 2025"
+    cleaned = cleaned.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})\s*\)?\s*$/i, '');
+
+    return cleaned.trim();
+};

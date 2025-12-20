@@ -3,6 +3,7 @@ import { load } from 'cheerio';
 import { Story, Chapter } from '../types';
 import { saveEpub, readChapterFile } from './storage/fileSystem';
 import { storageService } from './StorageService';
+import { cleanChapterTitle, removeUnwantedSentences } from '../utils/htmlUtils';
 
 export class EpubGenerator {
     /**
@@ -14,7 +15,7 @@ export class EpubGenerator {
         // Clean titles for the EPUB metadata/display
         const cleanChapters = chapters.map(c => ({
             ...c,
-            title: this.cleanChapterTitle(c.title)
+            title: cleanChapterTitle(c.title)
         }));
 
         const zip = new JSZip();
@@ -55,19 +56,6 @@ export class EpubGenerator {
         const filename = `${this.sanitizeFilename(story.title)}.epub`;
         return await saveEpub(filename, base64);
     }
-
-    private cleanChapterTitle(title: string): string {
-        // Removes time-ago suffixes like "2 days ago", "5 hours ago", etc.
-        // Handles optional separators like " - " or " | " or parens.
-        let cleaned = title.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:\d+|an?)\s+(?:second|minute|hour|day|week|month|year)s?\s+ago\s*\)?\s*$/i, '');
-
-        // Remove absolute dates if at the end, e.g. "Title Nov 25, 2025" or "Title - Nov 25, 2025"
-        // Matches "Nov 25, 2025", "25 Nov 2025", "2025-11-25" roughly
-        cleaned = cleaned.replace(/\s*(?:[-–|]\s*)?\(?\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})\s*\)?\s*$/i, '');
-
-        return cleaned.trim();
-    }
-
     private getUniqueBookId(story: Story): string {
         // Generates a valid URN for the book ID.
         // We avoid "urn:uuid:" unless it's a real UUID to prevent validation errors in strict readers.
@@ -205,22 +193,12 @@ a:hover { text-decoration: underline; }
             const text = await readChapterFile(chapter.filePath);
             if (text) {
                 const sanitized = this.sanitizeContent(text);
-                return this.removeUnwantedSentences(sanitized, sentenceRemovalList);
+                return removeUnwantedSentences(sanitized, sentenceRemovalList);
             }
             return `<p>[Error loading content for "${chapter.title}"]</p>`;
         }
 
         return `<p>[No content available]</p>`;
-    }
-
-    private removeUnwantedSentences(content: string, sentenceRemovalList: string[]): string {
-        let cleanContent = content;
-        for (const sentence of sentenceRemovalList) {
-            // Escape special characters in the sentence to be safe for regex, although simple string replace could work if we don't need case insensitivity.
-            // Using split/join for global replacement of exact string.
-            cleanContent = cleanContent.split(sentence).join('');
-        }
-        return cleanContent;
     }
 
     private sanitizeContent(html: string): string {

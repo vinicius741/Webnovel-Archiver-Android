@@ -11,7 +11,7 @@ import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 import { TTSController } from '../../../src/components/TTSController';
 import { useTTS } from '../../../src/hooks/useTTS';
-import { prepareTTSContent } from '../../../src/utils/htmlUtils';
+import { prepareTTSContent, removeUnwantedSentences } from '../../../src/utils/htmlUtils';
 import { ReaderNavigation } from '../../../src/components/ReaderNavigation';
 
 export default function ReaderScreen() {
@@ -93,7 +93,9 @@ export default function ReaderScreen() {
                     setChapter(c);
                     if (c.filePath) {
                         const html = await readChapterFile(c.filePath);
-                        setContent(html);
+                        const removalList = await storageService.getSentenceRemovalList();
+                        const cleanHtml = removeUnwantedSentences(html, removalList);
+                        setContent(cleanHtml);
                     } else {
                         setContent('Chapter not downloaded yet.');
                     }
