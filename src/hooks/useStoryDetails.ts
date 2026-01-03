@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
@@ -28,6 +28,9 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     // We need a stable ID string
     const storyId = typeof id === 'string' ? id : '';
     const { progress: downloadProgress, status: downloadStatus, isDownloading: isDownloadingHook } = useDownloadProgress(storyId);
+    
+    // Track previous downloading state to detect completion
+    const prevDownloading = useRef(isDownloadingHook);
 
     const [downloading, setDownloading] = useState(false); // keep for "adding to queue" spinner if needed
     const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -47,6 +50,20 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         };
         loadStory();
     }, [id]);
+
+    // Refresh story when download finishes
+    useEffect(() => {
+        if (prevDownloading.current && !isDownloadingHook && storyId) {
+            const reloadStory = async () => {
+                const data = await storageService.getStory(storyId);
+                if (data) {
+                    setStory(data);
+                }
+            };
+            reloadStory();
+        }
+        prevDownloading.current = isDownloadingHook;
+    }, [isDownloadingHook, storyId]);
 
     const deleteStory = () => {
         if (!story) return;
