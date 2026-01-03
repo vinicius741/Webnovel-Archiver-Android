@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 class NotificationService {
     private channelId = 'download_channel';
@@ -12,6 +13,12 @@ class NotificationService {
 
     private init() {
         if (Platform.OS !== 'android') return;
+
+        // Skip initialization in Expo Go
+        if (Constants.executionEnvironment === 'storeClient') {
+            console.log('[NotificationService] Expo Go detected. Notifications disabled.');
+            return;
+        }
 
         try {
             // Lazy load the module to prevent crashes if the native module isn't linked (e.g. Expo Go)

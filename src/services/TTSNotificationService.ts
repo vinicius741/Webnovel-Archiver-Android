@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 /**
  * Service responsible for displaying the TTS media notification.
@@ -19,6 +20,12 @@ class TTSNotificationService {
 
     private init() {
         if (Platform.OS !== 'android') return;
+
+        // Skip initialization in Expo Go
+        if (Constants.executionEnvironment === 'storeClient') {
+            console.log('[TTSNotificationService] Expo Go detected. Notifications disabled.');
+            return;
+        }
 
         try {
             const notifeeModule = require('@notifee/react-native');

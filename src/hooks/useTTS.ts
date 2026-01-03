@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DeviceEventEmitter, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { ttsStateManager, TTS_STATE_EVENTS, TTSState } from '../services/TTSStateManager';
 import { TTSSettings } from '../services/StorageService';
 
@@ -53,7 +54,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         // Also handle foreground notification events (for when app is in foreground)
         let unsubscribeNotifee: (() => void) | undefined;
 
-        if (Platform.OS === 'android') {
+        if (Platform.OS === 'android' && Constants.executionEnvironment !== 'storeClient') {
             try {
                 const notifee = require('@notifee/react-native').default;
                 const { EventType } = require('@notifee/react-native');
