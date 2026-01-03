@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.9)',
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'fixed', // Ensure it covers the whole web viewport
+    position: 'absolute', // React Native Web treats fixed/absolute similarly for full screen modals, or use 'fixed' as any
     top: 0,
     left: 0,
     right: 0,
