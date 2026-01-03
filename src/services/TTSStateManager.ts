@@ -29,6 +29,8 @@ class TTSStateManager {
     private _isPaused = false;
     private _chunks: string[] = [];
     private _currentChunkIndex = 0;
+    private _bufferedChunkIndex = 0;
+    private _queueSessionId = 0;
     private _title = 'Reading';
     private _settings: TTSSettings = { pitch: 1.0, rate: 1.0, chunkSize: 500 };
     private _onFinishCallback: (() => void) | null = null;
@@ -99,10 +101,20 @@ class TTSStateManager {
         this._chunks = chunks;
         this._title = title;
         this._currentChunkIndex = 0;
+        this._bufferedChunkIndex = 0;
         this._isSpeaking = true;
         this._isPaused = false;
 
-        this.speakCurrentChunk();
+        // increment session ID to invalidate any previous async callbacks
+        this._queueSessionId++;
+
+        // Initial notification
+        this.getNotificationService().startService(
+            this._title,
+            `Reading chunk 1 / ${this._chunks.length}`
+        );
+
+        this.processQueue();
         this.emitStateChange();
     }
 
@@ -110,10 +122,12 @@ class TTSStateManager {
      * Stop TTS completely and reset state.
      */
     public async stop() {
+        this._queueSessionId++; // Invalidate callbacks
         await Speech.stop();
         this._isSpeaking = false;
         this._isPaused = false;
         this._currentChunkIndex = 0;
+        this._bufferedChunkIndex = 0;
         this._chunks = [];
 
         this.getNotificationService().stopService();
@@ -126,8 +140,12 @@ class TTSStateManager {
     public async pause() {
         if (!this._isSpeaking || this._isPaused) return;
 
+        this._queueSessionId++; // Invalidate callbacks
         await Speech.stop();
         this._isPaused = true;
+
+        // Reset buffered index to current so we resume incorrectly
+        this._bufferedChunkIndex = this._currentChunkIndex;
 
         this.getNotificationService().updateNotification(
             false,
@@ -144,7 +162,10 @@ class TTSStateManager {
         if (!this._isPaused) return;
 
         this._isPaused = false;
-        this.speakCurrentChunk();
+        this._queueSessionId++;
+        this._bufferedChunkIndex = this._currentChunkIndex; // ensure we queue from current
+
+        this.processQueue();
         this.emitStateChange();
     }
 
@@ -165,10 +186,14 @@ class TTSStateManager {
     public async next() {
         if (!this._isSpeaking) return;
 
+        this._queueSessionId++;
         await Speech.stop();
         this._isPaused = false;
         this._currentChunkIndex = Math.min(this._currentChunkIndex + 1, this._chunks.length - 1);
-        this.speakCurrentChunk();
+        this._bufferedChunkIndex = this._currentChunkIndex;
+
+        this.updateNotification();
+        this.processQueue();
         this.emitStateChange();
     }
 
@@ -178,47 +203,69 @@ class TTSStateManager {
     public async previous() {
         if (!this._isSpeaking) return;
 
+        this._queueSessionId++;
         await Speech.stop();
         this._isPaused = false;
         this._currentChunkIndex = Math.max(0, this._currentChunkIndex - 1);
-        this.speakCurrentChunk();
+        this._bufferedChunkIndex = this._currentChunkIndex;
+
+        this.updateNotification();
+        this.processQueue();
         this.emitStateChange();
     }
 
-    private speakCurrentChunk() {
-        if (this._currentChunkIndex >= this._chunks.length) {
-            // Finished all chunks
-            this.stop();
-            this._onFinishCallback?.();
-            return;
-        }
-
-        const chunk = this._chunks[this._currentChunkIndex];
+    private updateNotification() {
         const msg = `Reading chunk ${this._currentChunkIndex + 1} / ${this._chunks.length}`;
+        this.getNotificationService().updateNotification(true, this._title, msg);
+    }
 
-        // Update or start notification
-        if (this._isSpeaking) {
-            this.getNotificationService().updateNotification(true, this._title, msg);
-        } else {
-            this.getNotificationService().startService(this._title, msg);
-            this._isSpeaking = true;
+    private processQueue() {
+        if (!this._isSpeaking || this._isPaused) return;
+
+        // Keep a buffer of chunks queued
+        const BUFFER_SIZE = 3;
+        const currentSessionId = this._queueSessionId;
+
+        while (
+            this._bufferedChunkIndex < this._chunks.length &&
+            this._bufferedChunkIndex < this._currentChunkIndex + BUFFER_SIZE
+        ) {
+            const index = this._bufferedChunkIndex;
+            const chunk = this._chunks[index];
+            this._bufferedChunkIndex++;
+
+            Speech.speak(chunk, {
+                pitch: this._settings.pitch,
+                rate: this._settings.rate,
+                voice: this._settings.voiceIdentifier,
+                onStart: () => {
+                    if (this._queueSessionId !== currentSessionId) return;
+
+                    this._currentChunkIndex = index;
+                    this.updateNotification();
+                    this.emitStateChange();
+                },
+                onDone: () => {
+                    if (this._queueSessionId !== currentSessionId) return;
+
+                    // If this was the last chunk
+                    if (index >= this._chunks.length - 1) {
+                        this.stop();
+                        this._onFinishCallback?.();
+                    } else {
+                        // Top up the queue
+                        this.processQueue();
+                    }
+                },
+                onError: (error) => {
+                    console.error('[TTSStateManager] Speech error:', error);
+                    // Only stop if error is from current session
+                    if (this._queueSessionId === currentSessionId) {
+                        this.stop();
+                    }
+                },
+            });
         }
-
-        Speech.speak(chunk, {
-            pitch: this._settings.pitch,
-            rate: this._settings.rate,
-            voice: this._settings.voiceIdentifier,
-            onDone: () => {
-                // Move to next chunk automatically
-                this._currentChunkIndex++;
-                this.speakCurrentChunk();
-                this.emitStateChange();
-            },
-            onError: (error) => {
-                console.error('[TTSStateManager] Speech error:', error);
-                this.stop();
-            },
-        });
     }
 }
 

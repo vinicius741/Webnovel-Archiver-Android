@@ -12,6 +12,11 @@ export const extractPlainText = (html: string): string => {
     // Remove unwanted elements
     $('script, style, iframe, noscript').remove();
 
+    // Add spaces after block elements to ensure they don't run together
+    $('p, div, br, h1, h2, h3, h4, h5, h6, li').each((_, elem) => {
+        $(elem).append(' ');
+    });
+
     // Get text and clean up whitespace
     return $('body').text()
         .replace(/\s+/g, ' ')

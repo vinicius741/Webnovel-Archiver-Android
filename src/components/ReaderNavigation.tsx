@@ -9,6 +9,7 @@ interface ReaderNavigationProps {
     hasNext: boolean;
     onPrevious: () => void;
     onNext: () => void;
+    onCopy?: () => void;
 }
 
 export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
@@ -17,7 +18,8 @@ export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
     hasPrevious,
     hasNext,
     onPrevious,
-    onNext
+    onNext,
+    onCopy
 }) => {
     const theme = useTheme();
 
@@ -28,6 +30,14 @@ export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
                 disabled={!hasPrevious} 
                 onPress={onPrevious} 
             />
+            <View style={styles.spacer} />
+            
+            <Appbar.Action 
+                icon="content-copy"
+                onPress={onCopy}
+                accessibilityLabel="Copy chapter text"
+            />
+
             <View style={styles.spacer} />
             <Text variant="labelLarge" style={{ color: theme.colors.onSurfaceVariant }}>
                 {currentChapterIndex + 1} / {totalChapters}

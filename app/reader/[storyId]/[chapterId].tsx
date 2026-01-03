@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
-import { IconButton, useTheme } from 'react-native-paper';
+import { IconButton, useTheme, Snackbar } from 'react-native-paper';
+import * as Clipboard from 'expo-clipboard';
 import { storageService } from '../../../src/services/StorageService';
 import { readChapterFile } from '../../../src/services/storage/fileSystem';
 import { Story, Chapter } from '../../../src/types';
@@ -11,7 +12,7 @@ import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 import { TTSController } from '../../../src/components/TTSController';
 import { useTTS } from '../../../src/hooks/useTTS';
-import { prepareTTSContent, removeUnwantedSentences } from '../../../src/utils/htmlUtils';
+import { prepareTTSContent, removeUnwantedSentences, extractPlainText } from '../../../src/utils/htmlUtils';
 import { ReaderNavigation } from '../../../src/components/ReaderNavigation';
 
 export default function ReaderScreen() {
@@ -25,6 +26,7 @@ export default function ReaderScreen() {
     const [chapter, setChapter] = useState<Chapter | null>(null);
     const [content, setContent] = useState<string>('');
     const [loading, setLoading] = useState(true);
+    const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
 
     // TTS Hook
     const { 
@@ -134,6 +136,13 @@ export default function ReaderScreen() {
     };
 
     const isLastRead = story?.lastReadChapterId === chapter?.id;
+
+    const handleCopy = async () => {
+        if (!content) return;
+        const plainText = extractPlainText(content);
+        await Clipboard.setStringAsync(plainText);
+        setCopyFeedbackVisible(true);
+    };
 
 
 
@@ -290,8 +299,22 @@ export default function ReaderScreen() {
                     hasNext={hasNext}
                     onPrevious={() => navigateToChapter(currentIndex - 1)}
                     onNext={() => navigateToChapter(currentIndex + 1)}
+                    onCopy={handleCopy}
                 />
             </View>
+
+            <Snackbar
+                visible={copyFeedbackVisible}
+                onDismiss={() => setCopyFeedbackVisible(false)}
+                duration={2000}
+                style={{ backgroundColor: theme.colors.inverseSurface }}
+                action={{
+                    label: 'OK',
+                    onPress: () => setCopyFeedbackVisible(false),
+                }}
+            >
+                Chapter copied to clipboard
+            </Snackbar>
         </ScreenContainer>
     );
 }
