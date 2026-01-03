@@ -43,7 +43,7 @@ describe('StorageService', () => {
     describe('addStory', () => {
         it('should add a new story', async () => {
             (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([]));
-            const newStory: Story = { id: '1', title: 'New Story', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [] };
+            const newStory: Story = { id: '1', title: 'New Story', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], status: DownloadStatus.Idle, totalChapters: 0, downloadedChapters: 0 };
 
             await storageService.addStory(newStory);
 
@@ -54,7 +54,7 @@ describe('StorageService', () => {
         });
 
         it('should update existing story', async () => {
-            const existingStory: Story = { id: '1', title: 'Old Title', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], dateAdded: 12345 };
+            const existingStory: Story = { id: '1', title: 'Old Title', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], dateAdded: 12345, status: DownloadStatus.Idle, totalChapters: 0, downloadedChapters: 0 };
             (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([existingStory]));
 
             const updatedStory: Story = { ...existingStory, title: 'New Title' };
@@ -70,7 +70,7 @@ describe('StorageService', () => {
 
     describe('deleteStory', () => {
         it('should delete story from library and file system', async () => {
-            const story: Story = { id: '1', title: 'Delete Me', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [] };
+            const story: Story = { id: '1', title: 'Delete Me', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], status: DownloadStatus.Idle, totalChapters: 0, downloadedChapters: 0 };
             (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([story]));
 
             await storageService.deleteStory('1');
@@ -82,7 +82,7 @@ describe('StorageService', () => {
 
     describe('updateStoryStatus', () => {
         it('should update status', async () => {
-            const story: Story = { id: '1', title: 'Status Test', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], status: DownloadStatus.Idle };
+            const story: Story = { id: '1', title: 'Status Test', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], status: DownloadStatus.Idle, totalChapters: 0, downloadedChapters: 0 };
             (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([story]));
 
             await storageService.updateStoryStatus('1', DownloadStatus.Downloading);
@@ -95,7 +95,7 @@ describe('StorageService', () => {
 
     describe('updateLastRead', () => {
         it('should update last read chapter and timestamp', async () => {
-            const story: Story = { id: '1', title: 'Read Test', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [] };
+            const story: Story = { id: '1', title: 'Read Test', author: 'Me', sourceUrl: 'http://test', coverUrl: 'http://cover', chapters: [], status: DownloadStatus.Idle, totalChapters: 0, downloadedChapters: 0 };
             (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([story]));
 
             await storageService.updateLastRead('1', 'chap1');

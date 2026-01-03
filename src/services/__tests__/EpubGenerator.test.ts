@@ -35,11 +35,14 @@ describe('EpubGenerator', () => {
         sourceUrl: 'http://test',
         coverUrl: 'http://cover',
         chapters: [],
+        status: 'idle',
+        totalChapters: 0,
+        downloadedChapters: 0,
     };
 
     const mockChapters: Chapter[] = [
-        { id: 'c1', title: 'Chapter 1', path: 'c1.html', filePath: 'path/to/c1.html' },
-        { id: 'c2', title: 'Chapter 2', path: 'c2.html', filePath: 'path/to/c2.html' },
+        { id: 'c1', title: 'Chapter 1', filePath: 'path/to/c1.html', url: 'http://url1' },
+        { id: 'c2', title: 'Chapter 2', filePath: 'path/to/c2.html', url: 'http://url2' },
     ];
 
     beforeEach(() => {
@@ -76,8 +79,8 @@ describe('EpubGenerator', () => {
         (JSZip as unknown as jest.Mock).mockImplementation(() => mockZip);
 
         const dirtyChapters: Chapter[] = [
-            { id: 'c1', title: 'Chapter 1 (2 hours ago)', path: 'c1', filePath: 'c1' },
-            { id: 'c2', title: 'Chapter 2 - Nov 25, 2025', path: 'c2', filePath: 'c2' },
+            { id: 'c1', title: 'Chapter 1 (2 hours ago)', filePath: 'c1', url: 'http://url1' },
+            { id: 'c2', title: 'Chapter 2 - Nov 25, 2025', filePath: 'c2', url: 'http://url2' },
         ];
 
         (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('<p>content</p>');
