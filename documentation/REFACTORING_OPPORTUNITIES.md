@@ -4,7 +4,7 @@ This document identifies files in the codebase that are good candidates for refa
 
 ## Priority 1: High Impact Refactoring Candidates
 
-### 1. Reader Screen (`app/reader/[storyId]/[chapterId].tsx`) - 332 lines
+### 1. Reader Screen (`app/reader/[storyId]/[chapterId].tsx`) - 201 lines ✅ COMPLETED
 **Issues:**
 - Multiple responsibilities: content loading, TTS management, navigation, highlighting, and UI rendering
 - Complex state management with 8+ state variables
@@ -27,7 +27,7 @@ This document identifies files in the codebase that are good candidates for refa
 
 ---
 
-### 2. Story Details Hook (`src/hooks/useStoryDetails.ts`) - 322 lines
+### 2. Story Details Hook (`src/hooks/useStoryDetails.ts`) - 102 lines ✅ COMPLETED
 **Issues:**
 - Handles 6+ different operations: delete, mark read, download, update, range download, EPUB generation
 - Complex download/update logic mixed with state management
@@ -52,7 +52,7 @@ This document identifies files in the codebase that are good candidates for refa
 
 ---
 
-### 3. TTS State Manager (`src/services/TTSStateManager.ts`) - 273 lines
+### 3. TTS State Manager (`src/services/TTSStateManager.ts`) - 147 lines ✅ COMPLETED
 **Issues:**
 - Monolithic singleton class managing multiple concerns
 - Complex queue processing logic embedded in the manager
@@ -75,7 +75,7 @@ This document identifies files in the codebase that are good candidates for refa
 
 ---
 
-### 4. EPUB Generator (`src/services/EpubGenerator.ts`) - 231 lines
+### 4. EPUB Generator (`src/services/EpubGenerator.ts`) - 48 lines ✅ COMPLETED
 **Issues:**
 - Multiple XML generation methods in a single class
 - File I/O, XML generation, and content processing mixed together
@@ -269,18 +269,50 @@ This document identifies files in the codebase that are good candidates for refa
 
 ## Refactoring Priority Matrix
 
-| File | Lines | Complexity | Impact | Priority |
-|------|-------|------------|--------|----------|
-| `app/reader/[storyId]/[chapterId].tsx` | 332 | High | High | 1 |
-| `src/hooks/useStoryDetails.ts` | 322 | High | High | 1 |
-| `src/services/TTSStateManager.ts` | 273 | High | Medium | 1 |
-| `src/services/EpubGenerator.ts` | 231 | Medium | High | 1 |
-| `app/sentence-removal.tsx` | 227 | Medium | Medium | 2 |
-| `app/index.tsx` | 219 | Medium | Medium | 2 |
-| `src/services/download/DownloadManager.ts` | 217 | High | Medium | 2 |
-| `src/services/source/providers/ScribbleHubProvider.ts` | 204 | Medium | Low | 2 |
-| `src/hooks/useLibrary.ts` | 197 | Medium | Medium | 2 |
-| `src/components/TTSSettingsModal.tsx` | 191 | Low | Low | 3 |
+| File | Lines | Complexity | Impact | Priority | Status |
+|------|-------|------------|--------|----------|--------|
+| `app/reader/[storyId]/[chapterId].tsx` | 201 | High | High | 1 | ✅ |
+| `src/hooks/useStoryDetails.ts` | 102 | High | High | 1 | ✅ |
+| `src/services/TTSStateManager.ts` | 147 | High | Medium | 1 | ✅ |
+| `src/services/EpubGenerator.ts` | 48 | Medium | High | 1 | ✅ |
+| `app/sentence-removal.tsx` | 226 | Medium | Medium | 2 | ❌ |
+| `app/index.tsx` | 218 | Medium | Medium | 2 | ❌ |
+| `src/services/download/DownloadManager.ts` | 216 | High | Medium | 2 | ❌ |
+| `src/services/source/providers/ScribbleHubProvider.ts` | 203 | Medium | Low | 2 | ❌ |
+| `src/hooks/useLibrary.ts` | 196 | Medium | Medium | 2 | ❌ |
+| `src/components/TTSSettingsModal.tsx` | 190 | Low | Low | 3 | ❌ |
+
+## Completed Refactorings Summary
+
+### Priority 1: COMPLETED (4/4)
+
+**1. Reader Screen** - Reduced 332 → 201 lines (39% reduction)
+- Created `useReaderContent` hook for content loading and processing
+- Created `useReaderNavigation` hook for navigation logic
+- Created `useWebViewHighlight` hook for WebView highlighting
+- Created `ReaderContent` component for WebView display
+- Created `ReaderNavigation` component for navigation controls
+- Created `TTSController` component for TTS controls
+
+**2. Story Details Hook** - Reduced 322 → 102 lines (68% reduction)
+- Created `useStoryActions` hook for delete and mark read operations
+- Created `useStoryDownload` hook for download, range download, and update logic
+- Created `useStoryEPUB` hook for EPUB generation and reading
+- Created `storyValidation.ts` utility for input validation
+
+**3. TTS State Manager** - Reduced 273 → 147 lines (46% reduction)
+- Created `TTSPlaybackController` for playback control
+- Created `TTSQueue` for queue management
+- Created `TTSNotificationService` for notification integration
+- Simplified singleton to use composition of focused modules
+
+**4. EPUB Generator** - Reduced 231 → 48 lines (79% reduction)
+- Created `EpubFileSystem` for file operations
+- Created `EpubMetadataGenerator` for metadata and XML generation
+- Created `EpubContentProcessor` for content processing and HTML generation
+- Simplified to orchestrate the specialized modules
+
+### Progress: 4/10 items completed (40%)
 
 ## Next Steps
 
