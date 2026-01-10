@@ -6,7 +6,18 @@ This document identifies areas of the codebase that require additional automated
 
 ## 1. Executive Summary
 
-**Current Test Coverage:** < 10% (5 test files out of ~70 total files)
+**Current Test Coverage:** ~17% (9 test files out of ~70 total files)
+
+**Recently Completed (P0):**
+- DownloadManager.test.ts (23 tests)
+- DownloadQueue.test.ts (30 tests)
+- DownloadService.test.ts (29 tests)
+- TTSPlaybackController.test.ts (48 tests)
+
+**Remaining High-Priority Test Opportunities:**
+- Library filtering and sorting logic (P0)
+- Backup/restore functionality (P1)
+- Storage and file system operations (P1)
 
 **High-Priority Test Opportunities:**
 - Download orchestration and queue management (P0)
@@ -40,7 +51,7 @@ This document identifies areas of the codebase that require additional automated
 
 ## 3. Priority 0 (P0) - Critical Path Testing
 
-### 3.1 DownloadManager.test.ts
+### 3.1 DownloadManager.test.ts ~~COMPLETED~~
 
 **Location:** `src/services/download/DownloadManager.ts` (218 lines)
 
@@ -91,7 +102,7 @@ This document identifies areas of the codebase that require additional automated
 
 ---
 
-### 3.2 DownloadQueue.test.ts
+### 3.2 DownloadQueue.test.ts ~~COMPLETED~~
 
 **Location:** `src/services/download/DownloadQueue.ts` (104 lines)
 
@@ -123,7 +134,7 @@ This document identifies areas of the codebase that require additional automated
 
 ---
 
-### 3.3 DownloadService.test.ts
+### 3.3 DownloadService.test.ts ~~COMPLETED~~
 
 **Location:** `src/services/DownloadService.ts` (130 lines)
 
@@ -163,7 +174,7 @@ This document identifies areas of the codebase that require additional automated
 
 ---
 
-### 3.4 TTSPlaybackController.test.ts
+### 3.4 TTSPlaybackController.test.ts ~~COMPLETED~~
 
 **Location:** `src/services/tts/TTSPlaybackController.ts` (214 lines)
 
@@ -694,11 +705,11 @@ For pure utility functions:
 
 ## 11. Implementation Roadmap
 
-### Phase 1: Critical Services (Week 1-2)
-1. DownloadManager.test.ts
-2. DownloadQueue.test.ts
-3. DownloadService.test.ts
-4. TTSPlaybackController.test.ts
+### Phase 1: Critical Services (Week 1-2) ~~COMPLETED~~
+1. ~~DownloadManager.test.ts~~ (23 tests)
+2. ~~DownloadQueue.test.ts~~ (30 tests)
+3. ~~DownloadService.test.ts~~ (29 tests)
+4. ~~TTSPlaybackController.test.ts~~ (48 tests)
 
 ### Phase 2: Critical Hooks (Week 3)
 5. useStoryDownload.test.ts
@@ -737,11 +748,17 @@ For pure utility functions:
 |----------|-------|--------|----------|
 | Components | 18 | 0 | 0% |
 | Hooks | 13 | 0 | 0% |
-| Services | 24 | 4 | 17% |
+| Services | 24 | 8 | 33% |
 | Utils | 3 | 1 | 33% |
 | Context | 1 | 0 | 0% |
-| **Total** | **~70** | **5** | **<10%** |
+| **Total** | **~70** | **9** | **~17%** |
 
-**Estimated Test Files to Add:** 25-30
-**Estimated Total Test Lines:** 2,500-3,500
+**Recently Completed:**
+- DownloadManager.test.ts: 23 tests
+- DownloadQueue.test.ts: 30 tests
+- DownloadService.test.ts: 29 tests
+- TTSPlaybackController.test.ts: 48 tests
+
+**Estimated Test Files to Add:** 20-25
+**Estimated Total Test Lines:** 2,000-2,800
 **Target Coverage:** 80%+ for critical paths
