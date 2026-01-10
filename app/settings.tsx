@@ -14,6 +14,8 @@ export default function SettingsScreen() {
       handleConcurrencyChange,
       handleDelayChange,
       clearData,
+      handleExportBackup,
+      handleImportBackup,
   } = useSettings();
 
   return (
@@ -71,20 +73,38 @@ export default function SettingsScreen() {
       </List.Section>
       
       <List.Section>
-         <List.Subheader>Data</List.Subheader> 
+         <List.Subheader>Data</List.Subheader>
          <View style={styles.container}>
            <List.Item
-              title="Sentence Removal List"
-              description="Manage sentences to automatically remove from chapters"
-              left={props => <List.Icon {...props} icon="text-box-remove-outline" />}
-              onPress={() => router.push('/sentence-removal')}
-           />
+               title="Sentence Removal List"
+               description="Manage sentences to automatically remove from chapters"
+               left={props => <List.Icon {...props} icon="text-box-remove-outline" />}
+               onPress={() => router.push('/sentence-removal')}
+            />
            <List.Item
-              title="Clear Local Storage"
-              description="Delete all novels and reset app data"
-              left={props => <List.Icon {...props} icon="delete-outline" />}
-              onPress={clearData}
-           />
+               title="Clear Local Storage"
+               description="Delete all novels and reset app data"
+               left={props => <List.Icon {...props} icon="delete-outline" />}
+               onPress={clearData}
+            />
+         </View>
+      </List.Section>
+
+      <List.Section>
+         <List.Subheader>Backup</List.Subheader>
+         <View style={styles.container}>
+           <List.Item
+               title="Export Backup"
+               description="Export your library to a JSON file"
+               left={props => <List.Icon {...props} icon="export-variant" />}
+               onPress={handleExportBackup}
+            />
+           <List.Item
+               title="Import Backup"
+               description="Merge library from a backup file"
+               left={props => <List.Icon {...props} icon="import" />}
+               onPress={handleImportBackup}
+            />
          </View>
       </List.Section>
     </ScreenContainer>

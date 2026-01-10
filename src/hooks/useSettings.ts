@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Alert } from 'react-native';
+import { router } from 'expo-router';
 import { storageService } from '../services/StorageService';
+import { backupService } from '../services/BackupService';
 import { useTheme } from '../theme/ThemeContext';
 
 export const useSettings = () => {
@@ -53,7 +55,40 @@ export const useSettings = () => {
                     style: 'destructive',
                     onPress: async () => {
                         await storageService.clearAll();
-                        // Potentially reload or reset state if needed, but storage clear is global
+                        Alert.alert('Data Cleared', 'All data has been deleted.', [
+                            { text: 'OK', onPress: () => router.back() }
+                        ]);
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleExportBackup = async () => {
+        const result = await backupService.exportBackup();
+        Alert.alert(
+            result.success ? 'Export Complete' : 'Export Failed',
+            result.message
+        );
+    };
+
+    const handleImportBackup = async () => {
+        Alert.alert(
+            'Import Backup',
+            'This will merge the backup with your existing library. Continue?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Import',
+                    onPress: async () => {
+                        const result = await backupService.importBackup();
+                        Alert.alert(
+                            result.success ? 'Import Complete' : 'Import Failed',
+                            result.message,
+                            result.success ? [
+                                { text: 'OK', onPress: () => router.back() }
+                            ] : undefined
+                        );
                     }
                 }
             ]
@@ -68,5 +103,7 @@ export const useSettings = () => {
         handleConcurrencyChange,
         handleDelayChange,
         clearData,
+        handleExportBackup,
+        handleImportBackup,
     };
 };
