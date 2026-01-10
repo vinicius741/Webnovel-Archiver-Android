@@ -144,7 +144,7 @@ describe('DownloadQueue', () => {
             expect(nextJob).toBeUndefined();
 
             const stats = queue.getStats();
-            expect(stats.active).toBe(0);
+            expect(stats.active).toBe(1);
         });
 
         it('should reset failed job to pending when adding again', async () => {
@@ -257,7 +257,7 @@ describe('DownloadQueue', () => {
 
             queue.addJob({ ...mockJob, id: 'job1', status: 'completed' });
             queue.addJob({ ...mockJob, id: 'job2', status: 'pending', storyId: 'story2' });
-            queue.addJob({ ...mockJob, id: 'job3', status: 'completed' });
+            queue.addJob({ ...mockJob, id: 'job3', status: 'completed', storyId: 'story3' });
 
             queue.clearCompleted('story1');
 

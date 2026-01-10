@@ -147,9 +147,9 @@ describe('TTSPlaybackController', () => {
             stopSpy.mockRestore();
         });
 
-        it('should resume playback', () => {
+        it('should resume playback', async () => {
             controller.start(chunks, 'Test Title');
-            controller.pause();
+            await controller.pause();
             const stateChangeSpy = jest.spyOn(controller as any, 'emitStateChange');
 
             controller.resume();
@@ -284,9 +284,10 @@ describe('TTSPlaybackController', () => {
         });
 
         it('should handle empty queue during playback', () => {
-            controller.start([], 'Empty');
+            const newController = new TTSPlaybackController([], 'Empty', mockSettings, mockConfig);
+            newController.start([], 'Empty');
 
-            const state = controller.getState();
+            const state = newController.getState();
             expect(state.chunks).toEqual([]);
             expect(state.currentChunkIndex).toBe(0);
         });
@@ -382,6 +383,7 @@ describe('TTSPlaybackController', () => {
             (TTSQueue as jest.Mock).mockImplementation(() => queueMock);
 
             const newController = new TTSPlaybackController(chunks, 'Title', mockSettings, mockConfig);
+            newController.start(chunks, 'Title');
 
             const configArg = (TTSQueue as jest.Mock).mock.calls[0][2];
 
@@ -402,7 +404,7 @@ describe('TTSPlaybackController', () => {
     });
 
     describe('Error Handling', () => {
-        it('should handle speech synthesis errors', () => {
+        it('should handle speech synthesis errors', async () => {
             const queueMock = {
                 processQueue: jest.fn(),
                 resetBuffer: jest.fn(),
@@ -412,19 +414,22 @@ describe('TTSPlaybackController', () => {
             (TTSQueue as jest.Mock).mockImplementation(() => queueMock);
 
             const newController = new TTSPlaybackController(chunks, 'Title', mockSettings, mockConfig);
+            newController.start(chunks, 'Title');
 
             const configArg = (TTSQueue as jest.Mock).mock.calls[0][2];
 
             configArg.onError(new Error('Speech error'));
+            await new Promise(resolve => setTimeout(resolve, 0));
 
             const state = newController.getState();
             expect(state.chunks).toEqual([]);
         });
 
         it('should handle empty content chunks', () => {
-            controller.start([], 'Empty');
+            const newController = new TTSPlaybackController([], 'Empty', mockSettings, mockConfig);
+            newController.start([], 'Empty');
 
-            const state = controller.getState();
+            const state = newController.getState();
             expect(state.chunks).toEqual([]);
             expect(state.currentChunkIndex).toBe(0);
         });

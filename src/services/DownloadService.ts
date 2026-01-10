@@ -51,15 +51,15 @@ class DownloadService {
                 retryCount: 0
             }));
 
-        if (jobs.length === 0) return story;
-
-        // Set status to Downloading
         const updatedStory = {
             ...story,
             status: DownloadStatus.Downloading,
             lastUpdated: Date.now()
         };
-        await storageService.updateStory(updatedStory);
+
+        if (jobs.length > 0) {
+            await storageService.updateStory(updatedStory);
+        }
 
         await downloadManager.addJobs(jobs);
 
@@ -96,14 +96,14 @@ class DownloadService {
                         const cleanedContent = removeUnwantedSentences(html, sentenceRemovalList);
                         await saveChapter(story.id, i, chapter.title, cleanedContent);
                         processed++;
+
+                        if (onProgress) {
+                            onProgress(processed, story.chapters.length, chapter.title);
+                        }
                     }
                 } catch (error) {
                     console.error(`Failed to process chapter ${i}: ${chapter.title}`, error);
                     errors++;
-                }
-
-                if (onProgress) {
-                    onProgress(i + 1, story.chapters.length, chapter.title);
                 }
             }
         }

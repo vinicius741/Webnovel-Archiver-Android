@@ -80,12 +80,13 @@ describe('DownloadManager', () => {
     };
 
     const mockProvider = {
-        parseChapterContent: jest.fn().mockReturnValue('<p>Chapter content</p>'),
+        parseChapterContent: jest.fn().mockReturnValue('<p>This is a much longer chapter content that exceeds the minimum length requirement of fifty characters</p>'),
     };
 
     beforeEach(() => {
         jest.clearAllMocks();
         manager = new DownloadManager();
+        mockProvider.parseChapterContent.mockReturnValue('<p>This is a much longer chapter content that exceeds the minimum length requirement of fifty characters</p>');
     });
 
     describe('Initialization', () => {
@@ -496,7 +497,7 @@ describe('DownloadManager', () => {
             (storageService.getStory as jest.Mock).mockResolvedValue(mockStory);
             (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
             (fetchPage as jest.Mock).mockResolvedValue('<html>content</html>');
-            mockProvider.parseChapterContent.mockReturnValue('short');
+            mockProvider.parseChapterContent.mockReturnValue('');
 
             await (manager as any).processJob(job);
 

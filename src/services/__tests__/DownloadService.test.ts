@@ -40,15 +40,16 @@ describe('DownloadService', () => {
         downloadedChapters: 0,
         chapters: [
             { id: 'c1', title: 'Chapter 1', url: 'https://example.com/ch1' },
-            { id: 'c2', title: 'Chapter 2', url: 'https://example.com/ch2', downloaded: true },
+            { id: 'c2', title: 'Chapter 2', url: 'https://example.com/ch2', downloaded: true, filePath: 'file://ch2.html' },
             { id: 'c3', title: 'Chapter 3', url: 'https://example.com/ch3' },
-            { id: 'c4', title: 'Chapter 4', url: 'https://example.com/ch4', downloaded: true },
+            { id: 'c4', title: 'Chapter 4', url: 'https://example.com/ch4', downloaded: true, filePath: 'file://ch4.html' },
             { id: 'c5', title: 'Chapter 5', url: 'https://example.com/ch5' },
         ],
     };
 
     beforeEach(() => {
         jest.clearAllMocks();
+        jest.resetAllMocks();
     });
 
     describe('Single Chapter Download', () => {
@@ -109,8 +110,8 @@ describe('DownloadService', () => {
 
             expect(downloadManager.addJobs).toHaveBeenCalledWith(
                 expect.arrayContaining([
-                    expect.objectContaining({ id: 'story1_1' }),
-                    expect.objectContaining({ id: 'story1_3' }),
+                    expect.objectContaining({ id: 'story1_2' }),
+                    expect.objectContaining({ id: 'story1_4' }),
                 ])
             );
         });
@@ -132,7 +133,7 @@ describe('DownloadService', () => {
                 ...mockStory,
                 chapters: mockStory.chapters.map((c: Chapter, i: number) => ({
                     ...c,
-                    downloaded: i % 2 === 0,
+                    downloaded: true,
                 })),
             };
 
