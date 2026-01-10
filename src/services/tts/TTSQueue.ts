@@ -3,7 +3,6 @@ import { TTSSettings } from '../StorageService';
 
 export interface TTSQueueConfig {
     bufferSize?: number;
-    sessionId: number;
     onChunkStart: (index: number) => void;
     onChunkComplete: (index: number) => void;
     onError: (error: any) => void;
@@ -47,15 +46,12 @@ export class TTSQueue {
                 rate: this.settings.rate,
                 voice: this.settings.voiceIdentifier,
                 onStart: () => {
-                    if (this.config.sessionId !== this.config.sessionId) return;
                     this.config.onChunkStart(index);
                 },
                 onDone: () => {
-                    if (this.config.sessionId !== this.config.sessionId) return;
                     this.config.onChunkComplete(index);
                 },
                 onError: (error) => {
-                    if (this.config.sessionId !== this.config.sessionId) return;
                     this.config.onError(error);
                 },
             });
