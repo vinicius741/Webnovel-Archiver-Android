@@ -174,18 +174,18 @@ export class TTSPlaybackController {
     }
 
     private initializeQueue(chunks: string[]): void {
+        const currentSessionId = this.sessionId;
         const queueConfig: TTSQueueConfig = {
             bufferSize: 3,
-            sessionId: this.sessionId,
             onChunkStart: (index: number) => {
-                if (this.sessionId !== this.sessionId) return;
+                if (this.sessionId !== currentSessionId) return;
 
                 this.state.currentChunkIndex = index;
                 this.emitStateChange();
                 this.config.onChunkChange(index);
             },
             onChunkComplete: (index: number) => {
-                if (this.sessionId !== this.sessionId) return;
+                if (this.sessionId !== currentSessionId) return;
 
                 if (index >= chunks.length - 1) {
                     this.stop();
@@ -197,7 +197,7 @@ export class TTSPlaybackController {
                 }
             },
             onError: (error: any) => {
-                if (this.sessionId === this.sessionId) {
+                if (this.sessionId === currentSessionId) {
                     console.error('[TTSPlaybackController] Speech error:', error);
                     this.stop();
                 }
