@@ -1,5 +1,4 @@
 import { Story, Chapter } from '../types';
-import { storageService } from './StorageService';
 import { cleanChapterTitle } from '../utils/htmlUtils';
 import { EpubFileSystem } from './epub/EpubFileSystem';
 import { EpubMetadataGenerator } from './epub/EpubMetadataGenerator';
@@ -8,8 +7,6 @@ import { saveEpub } from './storage/fileSystem';
 
 export class EpubGenerator {
     async generateEpub(story: Story, chapters: Chapter[]): Promise<string> {
-        const sentenceRemovalList = await storageService.getSentenceRemovalList();
-
         const cleanChapters = chapters.map(c => ({
             ...c,
             title: cleanChapterTitle(c.title)
@@ -28,7 +25,7 @@ export class EpubGenerator {
 
         for (let i = 0; i < cleanChapters.length; i++) {
             const chapter = cleanChapters[i];
-            const content = await EpubContentProcessor.readChapterContent(chapter, sentenceRemovalList);
+            const content = await EpubContentProcessor.readChapterContent(chapter);
             const xhtml = EpubContentProcessor.generateChapterHtml(chapter, content);
             oebps.file(`chapter_${i + 1}.xhtml`, xhtml);
         }

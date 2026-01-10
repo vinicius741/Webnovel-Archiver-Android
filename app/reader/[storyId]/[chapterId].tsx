@@ -4,7 +4,6 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { IconButton, useTheme, Snackbar } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
-import { Story, Chapter } from '../../../src/types';
 import { ScreenContainer } from '../../../src/components/ScreenContainer';
 import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
@@ -120,8 +119,7 @@ export default function ReaderScreen() {
 
     const handleCopy = async () => {
         if (!content) return;
-        const plainText = extractPlainText(content);
-        await Clipboard.setStringAsync(plainText);
+        await Clipboard.setStringAsync(extractPlainText(content));
         setCopyFeedbackVisible(true);
     };
 

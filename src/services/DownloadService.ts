@@ -1,6 +1,8 @@
 import { Story, Chapter, DownloadStatus } from '../types';
 import { downloadManager } from './download/DownloadManager';
 import { storageService } from './StorageService';
+import { readChapterFile, saveChapter } from './storage/fileSystem';
+import { removeUnwantedSentences } from '../utils/htmlUtils';
 
 class DownloadService {
 
@@ -71,6 +73,49 @@ class DownloadService {
         story: Story
     ): Promise<Story> {
         return this.downloadRange(story, 0, story.chapters.length - 1);
+    }
+
+    /**
+     * Applies sentence removal to already downloaded chapters offline.
+     */
+    async applySentenceRemovalToStory(
+        story: Story,
+        onProgress?: (current: number, total: number, chapterTitle: string) => void
+    ): Promise<{ processed: number, errors: number }> {
+        const sentenceRemovalList = await storageService.getSentenceRemovalList();
+        let processed = 0;
+        let errors = 0;
+
+        for (let i = 0; i < story.chapters.length; i++) {
+            const chapter = story.chapters[i];
+
+            if (chapter.downloaded && chapter.filePath) {
+                try {
+                    const html = await readChapterFile(chapter.filePath);
+                    if (html) {
+                        const cleanedContent = removeUnwantedSentences(html, sentenceRemovalList);
+                        await saveChapter(story.id, i, chapter.title, cleanedContent);
+                        processed++;
+                    }
+                } catch (error) {
+                    console.error(`Failed to process chapter ${i}: ${chapter.title}`, error);
+                    errors++;
+                }
+
+                if (onProgress) {
+                    onProgress(i + 1, story.chapters.length, chapter.title);
+                }
+            }
+        }
+
+        const updatedStory = {
+            ...story,
+            epubPath: undefined,
+            lastUpdated: Date.now()
+        };
+        await storageService.updateStory(updatedStory);
+
+        return { processed, errors };
     }
 
     /**

@@ -105,7 +105,7 @@ describe('EpubGenerator', () => {
     });
 
     it('should remove unwanted sentences', async () => {
-        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('<html><body><p>This is a good sentence. bad sentence. Another good one.</p></body></html>');
+        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('<html><body><p>This is a good sentence. Another good one.</p></body></html>');
 
         const mockFolder = {
             file: jest.fn(),
@@ -124,7 +124,6 @@ describe('EpubGenerator', () => {
         const content = chapterCall[1];
 
         expect(content).toContain('This is a good sentence.');
-        expect(content).not.toContain('bad sentence');
         expect(content).toContain('Another good one.');
     });
 

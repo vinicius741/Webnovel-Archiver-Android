@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback } from 'react';
 import { Story, Chapter } from '../types';
 import { storageService } from '../services/StorageService';
 import { readChapterFile } from '../services/storage/fileSystem';
-import { removeUnwantedSentences, extractPlainText } from '../utils/htmlUtils';
 
 export const useReaderContent = (storyId: string, chapterId: string) => {
     const [story, setStory] = useState<Story | null>(null);
@@ -23,9 +22,7 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
                     setChapter(c);
                     if (c.filePath) {
                         const html = await readChapterFile(c.filePath);
-                        const removalList = await storageService.getSentenceRemovalList();
-                        const cleanHtml = removeUnwantedSentences(html, removalList);
-                        setContent(cleanHtml);
+                        setContent(html);
                     } else {
                         setContent('Chapter not downloaded yet.');
                     }

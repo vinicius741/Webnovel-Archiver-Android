@@ -1,8 +1,6 @@
 import { load } from 'cheerio';
 import { Story, Chapter } from '../../types';
 import { readChapterFile } from '../storage/fileSystem';
-import { storageService } from '../StorageService';
-import { removeUnwantedSentences } from '../../utils/htmlUtils';
 import { EpubMetadataGenerator } from './EpubMetadataGenerator';
 
 export class EpubContentProcessor {
@@ -63,14 +61,13 @@ a:hover { text-decoration: underline; }
         return $('body').contents().map((_, el) => $.xml(el)).get().join('');
     }
 
-    public static async readChapterContent(chapter: Chapter, sentenceRemovalList: string[]): Promise<string> {
+    public static async readChapterContent(chapter: Chapter): Promise<string> {
         if (chapter.content) return chapter.content;
 
         if (chapter.filePath) {
             const text = await readChapterFile(chapter.filePath);
             if (text) {
-                const sanitized = this.sanitizeContent(text);
-                return removeUnwantedSentences(sanitized, sentenceRemovalList);
+                return this.sanitizeContent(text);
             }
             return `<p>[Error loading content for "${chapter.title}"]</p>`;
         }

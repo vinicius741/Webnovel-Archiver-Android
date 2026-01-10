@@ -183,11 +183,73 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
         }
     };
 
+    const applySentenceRemoval = async () => {
+        if (!story) return;
+
+        const downloadedChapters = story.chapters.filter(c => c.downloaded);
+        if (downloadedChapters.length === 0) {
+            showAlert('No Chapters', 'No downloaded chapters to process.');
+            return;
+        }
+
+        showAlert(
+            'Apply Sentence Removal',
+            `This will apply the current sentence removal list to ${downloadedChapters.length} downloaded chapters. The EPUB will need to be regenerated after.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Apply',
+                    onPress: async () => {
+                        try {
+                            setCheckingUpdates(true);
+                            setUpdateStatus('Processing...');
+
+                            let currentChapterTitle = '';
+
+                            const { processed, errors } = await downloadService.applySentenceRemovalToStory(
+                                story,
+                                (current, total, title) => {
+                                    currentChapterTitle = title;
+                                    setUpdateStatus(`Processing ${current}/${total}: ${title}`);
+                                }
+                            );
+
+                            setCheckingUpdates(false);
+                            setUpdateStatus('');
+
+                            if (errors > 0) {
+                                showAlert(
+                                    'Processing Complete with Errors',
+                                    `Processed ${processed} chapters, ${errors} had errors.`
+                                );
+                            } else {
+                                showAlert(
+                                    'Processing Complete',
+                                    `Successfully applied sentence removal to ${processed} chapters. Please regenerate the EPUB.`
+                                );
+                            }
+
+                            const reloadedStory = await storageService.getStory(story.id);
+                            if (reloadedStory) {
+                                onStoryUpdated(reloadedStory);
+                            }
+                        } catch (error: any) {
+                            setCheckingUpdates(false);
+                            setUpdateStatus('');
+                            showAlert('Error', error.message || 'Failed to apply sentence removal.');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     return {
         checkingUpdates,
         updateStatus,
         queueing,
         downloadOrUpdate,
         downloadRange,
+        applySentenceRemoval,
     };
 };

@@ -71,6 +71,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         queueing,
         downloadOrUpdate,
         downloadRange,
+        applySentenceRemoval,
     } = useStoryDownload({
         story,
         onStoryUpdated: setStory,
@@ -97,5 +98,6 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         downloadOrUpdate,
         downloadRange,
         generateOrRead,
+        applySentenceRemoval,
     };
 };
