@@ -1,34 +1,59 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { IconButton, useTheme, Snackbar } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
-import { storageService } from '../../../src/services/StorageService';
-import { readChapterFile } from '../../../src/services/storage/fileSystem';
-import { Story, Chapter } from '../../../src/types';
 import { ScreenContainer } from '../../../src/components/ScreenContainer';
 import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 import { TTSController } from '../../../src/components/TTSController';
 import { useTTS } from '../../../src/hooks/useTTS';
-import { prepareTTSContent, removeUnwantedSentences, extractPlainText } from '../../../src/utils/htmlUtils';
+import { prepareTTSContent, extractPlainText } from '../../../src/utils/htmlUtils';
 import { ReaderNavigation } from '../../../src/components/ReaderNavigation';
+import { ReaderContent } from '../../../src/components/ReaderContent';
+import { useReaderContent } from '../../../src/hooks/useReaderContent';
+import { useReaderNavigation } from '../../../src/hooks/useReaderNavigation';
+import { useWebViewHighlight } from '../../../src/hooks/useWebViewHighlight';
 
 export default function ReaderScreen() {
     const { storyId, chapterId, autoplay } = useLocalSearchParams<{ storyId: string; chapterId: string; autoplay?: string }>();
     const theme = useTheme();
     const router = useRouter();
     const webViewRef = useRef<WebView>(null);
-    
-    // Data state
-    const [story, setStory] = useState<Story | null>(null);
-    const [chapter, setChapter] = useState<Chapter | null>(null);
-    const [content, setContent] = useState<string>('');
-    const [loading, setLoading] = useState(true);
+
     const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
 
-    // TTS Hook
+    const currentTtsChunksRef = useRef<string[]>([]);
+    const currentChapterTitleRef = useRef<string>('');
+    const isSpeakingRef = useRef(false);
+    const isLastReadRef = useRef(false);
+    const themeColorsRef = useRef(theme.colors);
+
+    const {
+        story,
+        chapter,
+        content,
+        loading,
+        loadData,
+        markAsRead,
+        currentIndex,
+        isLastRead,
+    } = useReaderContent(storyId, chapterId);
+
+    const {
+        hasNext,
+        hasPrevious,
+        navigateToChapter,
+    } = useReaderNavigation(story, chapter, currentIndex);
+
+    const handleTTSFinish = useCallback(() => {
+        if (hasNext) {
+            markAsRead();
+            navigateToChapter(currentIndex + 1, { autoplay: 'true' });
+        }
+    }, [hasNext, markAsRead, navigateToChapter, currentIndex]);
+
     const { 
         isSpeaking, 
         isPaused, 
@@ -45,186 +70,92 @@ export default function ReaderScreen() {
         handlePreviousChunk, 
         handleSettingsChange 
     } = useTTS({
-        onFinish: () => {
-            if (hasNext) {
-                markAsRead();
-                navigateToChapter(currentIndex + 1, { autoplay: 'true' });
-            }
-        }
+        onFinish: handleTTSFinish
     });
 
-    // Prepare content for TTS - Moved up to be available for useEffect
     const { processedHtml: processedContent, chunks: ttsChunks } = useMemo(() => {
         return prepareTTSContent(content, ttsSettings.chunkSize);
     }, [content, ttsSettings.chunkSize]);
+
+    useWebViewHighlight(webViewRef as React.RefObject<WebView>, currentChunkIndex, isControllerVisible);
+
+    useEffect(() => {
+        currentTtsChunksRef.current = ttsChunks;
+    }, [ttsChunks]);
+
+    useEffect(() => {
+        currentChapterTitleRef.current = chapter ? sanitizeTitle(chapter.title) : 'Reading';
+    }, [chapter]);
+
+    useEffect(() => {
+        isSpeakingRef.current = isSpeaking;
+    }, [isSpeaking]);
+
+    useEffect(() => {
+        isLastReadRef.current = isLastRead;
+    }, [isLastRead]);
+
+    useEffect(() => {
+        themeColorsRef.current = theme.colors;
+    }, [theme]);
 
     useEffect(() => {
         loadData();
     }, [storyId, chapterId]);
 
-    // Stop speech when changing chapters (unless it's an auto-play transition handled elsewhere, 
-    // but the hook cleans up anyway. We need to be careful not to conflict with auto-play)
     useEffect(() => {
-        // If we simply stop speech here, it might interfere if we want to start it immediately after.
-        // However, useTTS stopSpeech resets state. 
-        // The auto-play logic should run after content is loaded.
         stopSpeech();
     }, [chapterId]);
 
-    // Handle Auto-Play
     useEffect(() => {
         if (autoplay === 'true' && !loading && content && ttsChunks.length > 0 && !isSpeaking) {
-            // Slight delay to ensure everything is ready and previous TTS is fully stopped
             const timer = setTimeout(() => {
                 toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading');
-                // Clear the param so it doesn't re-trigger when user manually hits stop
-                router.setParams({ autoplay: undefined }); 
-            }, 500); 
+                router.setParams({ autoplay: undefined });
+            }, 500);
             return () => clearTimeout(timer);
         }
     }, [autoplay, loading, content, ttsChunks, isSpeaking]);
 
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            const s = await storageService.getStory(storyId);
-            if (s) {
-                setStory(s);
-                const c = s.chapters.find(chap => chap.id === decodeURIComponent(chapterId));
-                if (c) {
-                    setChapter(c);
-                    if (c.filePath) {
-                        const html = await readChapterFile(c.filePath);
-                        const removalList = await storageService.getSentenceRemovalList();
-                        const cleanHtml = removeUnwantedSentences(html, removalList);
-                        setContent(cleanHtml);
-                    } else {
-                        setContent('Chapter not downloaded yet.');
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('Failed to load chapter content', e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const markAsRead = async () => {
-        if (!story || !chapter) return;
-        
-        await storageService.updateLastRead(story.id, chapter.id);
-        const updatedStory = { ...story, lastReadChapterId: chapter.id };
-        setStory(updatedStory);
-    };
-
-    const currentIndex = useMemo(() => {
-        if (!story || !chapter) return -1;
-        return story.chapters.findIndex(c => c.id === chapter.id);
-    }, [story, chapter]);
-
-    const hasNext = currentIndex < (story?.chapters.length || 0) - 1;
-    const hasPrevious = currentIndex > 0;
-
-    const navigateToChapter = (index: number, params?: { autoplay?: string }) => {
-        if (!story) return;
-        const target = story.chapters[index];
-        router.setParams({ 
-            chapterId: encodeURIComponent(target.id),
-            ...(params || {})
-        });
-    };
-
-    const isLastRead = story?.lastReadChapterId === chapter?.id;
-
     const handleCopy = async () => {
         if (!content) return;
-        const plainText = extractPlainText(content);
-        await Clipboard.setStringAsync(plainText);
+        await Clipboard.setStringAsync(extractPlainText(content));
         setCopyFeedbackVisible(true);
     };
 
+    const handleToggleSpeech = useCallback(() => {
+        toggleSpeech(currentTtsChunksRef.current, currentChapterTitleRef.current);
+    }, [toggleSpeech]);
 
+    const HeaderRight = useMemo(() => () => (
+        <View style={{ flexDirection: 'row' }}>
+            <IconButton
+                icon={isSpeakingRef.current ? "stop" : "volume-high"}
+                iconColor={isSpeakingRef.current ? themeColorsRef.current.error : undefined}
+                onPress={handleToggleSpeech}
+            />
 
-    // Handle Active Highlight
-    useEffect(() => {
-        if (!webViewRef.current) return;
+            <IconButton
+                icon="cog-outline"
+                onPress={() => setIsSettingsVisible(true)}
+            />
 
-        if (!isControllerVisible) {
-            // Clear highlights when controller is closed
-            webViewRef.current.injectJavaScript(`
-                (function() {
-                    const actives = document.querySelectorAll('.tts-active');
-                    for (let i = 0; i < actives.length; i++) {
-                        actives[i].classList.remove('tts-active');
-                    }
-                })();
-            `);
-            return;
-        }
+            <IconButton
+                icon={isLastReadRef.current ? "bookmark" : "bookmark-outline"}
+                iconColor={isLastReadRef.current ? themeColorsRef.current.primary : undefined}
+                onPress={markAsRead}
+            />
+        </View>
+    ), [handleToggleSpeech, markAsRead]);
 
-        const js = `
-            (function() {
-                try {
-                    const actives = document.querySelectorAll('.tts-active');
-                    for (let i = 0; i < actives.length; i++) {
-                        actives[i].classList.remove('tts-active');
-                    }
-                    
-                    const elements = document.querySelectorAll('[data-tts-group="${currentChunkIndex}"]');
-                    for (let i = 0; i < elements.length; i++) {
-                        elements[i].classList.add('tts-active');
-                    }
-                    
-                    if (elements.length > 0) {
-                        elements[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                } catch (e) {
-                    // ignore error
-                }
-            })();
-        `;
-        webViewRef.current.injectJavaScript(js);
-    }, [currentChunkIndex, isControllerVisible]);
+    const screenOptions = useMemo(() => ({
+        title: chapter ? sanitizeTitle(chapter.title) : 'Reader',
+        headerRight: HeaderRight
+    }), [chapter, HeaderRight]);
 
-    const htmlContent = useMemo(() => {
-        if (!processedContent) return '';
-        
-        // Basic CSS for better reading experience
-        const css = `
-            body {
-                background-color: ${theme.colors.surface};
-                color: ${theme.colors.onSurface};
-                font-family: sans-serif;
-                padding: 16px;
-                line-height: 1.6;
-                font-size: 18px;
-                padding-bottom: 64px;
-            }
-            img {
-                max-width: 100%;
-                height: auto;
-            }
-            .tts-active {
-                background-color: rgba(255, 235, 59, 0.3);
-                border-left: 3px solid ${theme.colors.primary};
-                padding-left: 4px;
-            }
-        `;
-
-        return `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-                <style>${css}</style>
-            </head>
-            <body>
-                ${processedContent}
-            </body>
-            </html>
-        `;
-    }, [content, theme]);
+    const handleDismissSettings = useCallback(() => {
+        setIsSettingsVisible(false);
+    }, []);
 
     if (loading && !content) {
         return (
@@ -239,34 +170,12 @@ export default function ReaderScreen() {
     return (
         <ScreenContainer edges={['bottom', 'left', 'right']}>
             <Stack.Screen 
-                options={{ 
-                    title: chapter ? sanitizeTitle(chapter.title) : 'Reader',
-                    headerRight: () => (
-                        <View style={{ flexDirection: 'row' }}>
-                            <IconButton 
-                                icon={isSpeaking ? "stop" : "volume-high"} 
-                                iconColor={isSpeaking ? theme.colors.error : undefined}
-                                onPress={() => toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading')}
-                            />
-
-                            <IconButton 
-                                icon="cog-outline" 
-                                onPress={() => setIsSettingsVisible(true)}
-                            />
-
-                            <IconButton 
-                                icon={isLastRead ? "bookmark" : "bookmark-outline"} 
-                                iconColor={isLastRead ? theme.colors.primary : undefined}
-                                onPress={markAsRead}
-                            />
-                        </View>
-                    )
-                }} 
+                options={screenOptions}
             />
 
-            <TTSSettingsModal 
+            <TTSSettingsModal
                 visible={isSettingsVisible}
-                onDismiss={() => setIsSettingsVisible(false)}
+                onDismiss={handleDismissSettings}
                 settings={ttsSettings}
                 onSettingsChange={handleSettingsChange}
             />
@@ -285,11 +194,9 @@ export default function ReaderScreen() {
 
             
             <View style={styles.container}>
-                <WebView
-                    ref={webViewRef}
-                    originWhitelist={['*']}
-                    source={{ html: htmlContent }}
-                    style={{ backgroundColor: theme.colors.surface }}
+                <ReaderContent 
+                    webViewRef={webViewRef as React.RefObject<WebView>}
+                    processedContent={processedContent}
                 />
                 
                 <ReaderNavigation 

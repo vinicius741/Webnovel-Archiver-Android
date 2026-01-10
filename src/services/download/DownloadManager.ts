@@ -7,6 +7,7 @@ import { saveChapter } from '../storage/fileSystem';
 import { storageService } from '../StorageService';
 import { notificationService } from '../NotificationService';
 import { DownloadStatus, Story, Chapter } from '../../types';
+import { removeUnwantedSentences } from '../../utils/htmlUtils';
 
 export class DownloadManager extends EventEmitter {
     private isRunning = false;
@@ -191,8 +192,6 @@ export class DownloadManager extends EventEmitter {
     }
 
     private async executeDownload(job: DownloadJob): Promise<string> {
-        // Fetch Story to get source URL only once? Or cached? 
-        // We do it here to be safe and stateless.
         const story = await storageService.getStory(job.storyId);
         if (!story) throw new Error('Story not found');
 
@@ -201,7 +200,6 @@ export class DownloadManager extends EventEmitter {
 
         if (!job.chapter.url) throw new Error('Chapter has no URL');
 
-        // Fetch
         const html = await fetchPage(job.chapter.url);
         const content = provider.parseChapterContent(html);
 
@@ -209,7 +207,10 @@ export class DownloadManager extends EventEmitter {
             throw new Error('Content empty or too short');
         }
 
-        return await saveChapter(job.storyId, job.chapterIndex, job.chapter.title, content);
+        const sentenceRemovalList = await storageService.getSentenceRemovalList();
+        const cleanedContent = removeUnwantedSentences(content, sentenceRemovalList);
+
+        return await saveChapter(job.storyId, job.chapterIndex, job.chapter.title, cleanedContent);
     }
 }
 

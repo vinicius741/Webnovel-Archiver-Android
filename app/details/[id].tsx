@@ -33,6 +33,7 @@ export default function StoryDetailsScreen() {
       downloadOrUpdate,
       generateOrRead,
       downloadRange,
+      applySentenceRemoval,
   } = useStoryDetails(id);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,6 +77,7 @@ export default function StoryDetailsScreen() {
             onDownloadOrUpdate={downloadOrUpdate}
             onGenerateOrRead={generateOrRead}
             onPartialDownload={() => setShowDownloadRange(true)}
+            onApplySentenceRemoval={applySentenceRemoval}
         />
         <DownloadRangeDialog 
             visible={showDownloadRange}
