@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Story, Chapter } from '../types';
 import { storageService } from '../services/StorageService';
 import { readChapterFile } from '../services/storage/fileSystem';
@@ -43,13 +43,13 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
         }
     };
 
-    const markAsRead = async () => {
+    const markAsRead = useCallback(async () => {
         if (!story || !chapter) return;
         
         await storageService.updateLastRead(story.id, chapter.id);
         const updatedStory = { ...story, lastReadChapterId: chapter.id };
         setStory(updatedStory);
-    };
+    }, [story, chapter]);
 
     const currentIndex = useMemo(() => {
         if (!story || !chapter) return -1;

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { Story, Chapter } from '../types';
 
 export const useReaderNavigation = (
@@ -18,7 +18,7 @@ export const useReaderNavigation = (
     const hasNext = calculatedIndex < (story?.chapters.length || 0) - 1;
     const hasPrevious = calculatedIndex > 0;
 
-    const navigateToChapter = (index: number, params?: { autoplay?: string }) => {
+    const navigateToChapter = useCallback((index: number, params?: { autoplay?: string }) => {
         if (!story) return;
         if (index < 0 || index >= story.chapters.length) return;
         const target = story.chapters[index];
@@ -26,7 +26,7 @@ export const useReaderNavigation = (
             chapterId: encodeURIComponent(target.id),
             ...(params || {})
         });
-    };
+    }, [story, router]);
 
     return {
         currentIndex: calculatedIndex,

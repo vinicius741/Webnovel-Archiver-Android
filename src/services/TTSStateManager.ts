@@ -1,6 +1,8 @@
 import { storageService, TTSSettings } from './StorageService';
 import { TTSPlaybackController, TTSState, TTSPlaybackConfig, TTSPlaybackState } from './tts/TTSPlaybackController';
 
+export type { TTSState } from './tts/TTSPlaybackController';
+
 export const TTS_STATE_EVENTS = {
     STATE_CHANGED: 'tts-state-changed',
 };

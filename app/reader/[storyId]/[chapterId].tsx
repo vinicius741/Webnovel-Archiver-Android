@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import { IconButton, useTheme, Snackbar } from 'react-native-paper';
 import * as Clipboard from 'expo-clipboard';
@@ -22,8 +22,14 @@ export default function ReaderScreen() {
     const theme = useTheme();
     const router = useRouter();
     const webViewRef = useRef<WebView>(null);
-    
+
     const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
+
+    const currentTtsChunksRef = useRef<string[]>([]);
+    const currentChapterTitleRef = useRef<string>('');
+    const isSpeakingRef = useRef(false);
+    const isLastReadRef = useRef(false);
+    const themeColorsRef = useRef(theme.colors);
 
     const {
         story,
@@ -42,6 +48,13 @@ export default function ReaderScreen() {
         navigateToChapter,
     } = useReaderNavigation(story, chapter, currentIndex);
 
+    const handleTTSFinish = useCallback(() => {
+        if (hasNext) {
+            markAsRead();
+            navigateToChapter(currentIndex + 1, { autoplay: 'true' });
+        }
+    }, [hasNext, markAsRead, navigateToChapter, currentIndex]);
+
     const { 
         isSpeaking, 
         isPaused, 
@@ -58,12 +71,7 @@ export default function ReaderScreen() {
         handlePreviousChunk, 
         handleSettingsChange 
     } = useTTS({
-        onFinish: () => {
-            if (hasNext) {
-                markAsRead();
-                navigateToChapter(currentIndex + 1, { autoplay: 'true' });
-            }
-        }
+        onFinish: handleTTSFinish
     });
 
     const { processedHtml: processedContent, chunks: ttsChunks } = useMemo(() => {
@@ -71,6 +79,26 @@ export default function ReaderScreen() {
     }, [content, ttsSettings.chunkSize]);
 
     useWebViewHighlight(webViewRef as React.RefObject<WebView>, currentChunkIndex, isControllerVisible);
+
+    useEffect(() => {
+        currentTtsChunksRef.current = ttsChunks;
+    }, [ttsChunks]);
+
+    useEffect(() => {
+        currentChapterTitleRef.current = chapter ? sanitizeTitle(chapter.title) : 'Reading';
+    }, [chapter]);
+
+    useEffect(() => {
+        isSpeakingRef.current = isSpeaking;
+    }, [isSpeaking]);
+
+    useEffect(() => {
+        isLastReadRef.current = isLastRead;
+    }, [isLastRead]);
+
+    useEffect(() => {
+        themeColorsRef.current = theme.colors;
+    }, [theme]);
 
     useEffect(() => {
         loadData();
@@ -84,8 +112,8 @@ export default function ReaderScreen() {
         if (autoplay === 'true' && !loading && content && ttsChunks.length > 0 && !isSpeaking) {
             const timer = setTimeout(() => {
                 toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading');
-                router.setParams({ autoplay: undefined }); 
-            }, 500); 
+                router.setParams({ autoplay: undefined });
+            }, 500);
             return () => clearTimeout(timer);
         }
     }, [autoplay, loading, content, ttsChunks, isSpeaking]);
@@ -96,6 +124,40 @@ export default function ReaderScreen() {
         await Clipboard.setStringAsync(plainText);
         setCopyFeedbackVisible(true);
     };
+
+    const handleToggleSpeech = useCallback(() => {
+        toggleSpeech(currentTtsChunksRef.current, currentChapterTitleRef.current);
+    }, [toggleSpeech]);
+
+    const HeaderRight = useMemo(() => () => (
+        <View style={{ flexDirection: 'row' }}>
+            <IconButton
+                icon={isSpeakingRef.current ? "stop" : "volume-high"}
+                iconColor={isSpeakingRef.current ? themeColorsRef.current.error : undefined}
+                onPress={handleToggleSpeech}
+            />
+
+            <IconButton
+                icon="cog-outline"
+                onPress={() => setIsSettingsVisible(true)}
+            />
+
+            <IconButton
+                icon={isLastReadRef.current ? "bookmark" : "bookmark-outline"}
+                iconColor={isLastReadRef.current ? themeColorsRef.current.primary : undefined}
+                onPress={markAsRead}
+            />
+        </View>
+    ), [handleToggleSpeech, markAsRead]);
+
+    const screenOptions = useMemo(() => ({
+        title: chapter ? sanitizeTitle(chapter.title) : 'Reader',
+        headerRight: HeaderRight
+    }), [chapter, HeaderRight]);
+
+    const handleDismissSettings = useCallback(() => {
+        setIsSettingsVisible(false);
+    }, []);
 
     if (loading && !content) {
         return (
@@ -110,34 +172,12 @@ export default function ReaderScreen() {
     return (
         <ScreenContainer edges={['bottom', 'left', 'right']}>
             <Stack.Screen 
-                options={{ 
-                    title: chapter ? sanitizeTitle(chapter.title) : 'Reader',
-                    headerRight: () => (
-                        <View style={{ flexDirection: 'row' }}>
-                            <IconButton 
-                                icon={isSpeaking ? "stop" : "volume-high"} 
-                                iconColor={isSpeaking ? theme.colors.error : undefined}
-                                onPress={() => toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading')}
-                            />
-
-                            <IconButton 
-                                icon="cog-outline" 
-                                onPress={() => setIsSettingsVisible(true)}
-                            />
-
-                            <IconButton 
-                                icon={isLastRead ? "bookmark" : "bookmark-outline"} 
-                                iconColor={isLastRead ? theme.colors.primary : undefined}
-                                onPress={markAsRead}
-                            />
-                        </View>
-                    )
-                }} 
+                options={screenOptions}
             />
 
-            <TTSSettingsModal 
+            <TTSSettingsModal
                 visible={isSettingsVisible}
-                onDismiss={() => setIsSettingsVisible(false)}
+                onDismiss={handleDismissSettings}
                 settings={ttsSettings}
                 onSettingsChange={handleSettingsChange}
             />
