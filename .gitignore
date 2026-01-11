@@ -40,5 +40,8 @@ yarn-error.*
 /ios
 /android
 
+# Android build artifacts
+*.apk
+
 # Jest
 coverage/
