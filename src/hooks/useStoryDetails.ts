@@ -79,6 +79,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
 
     const {
         generating,
+        progress: epubProgress,
         generateOrRead,
     } = useStoryEPUB({
         story,
@@ -93,6 +94,8 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         updateStatus,
         downloadProgress,
         downloadStatus,
+        generating,
+        epubProgress,
         deleteStory,
         markChapterAsRead,
         downloadOrUpdate,

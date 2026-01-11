@@ -3,7 +3,7 @@ import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 
 import { storageService } from '../services/StorageService';
-import { epubGenerator } from '../services/EpubGenerator';
+import { epubGenerator, EpubProgress } from '../services/EpubGenerator';
 import { useAppAlert } from '../context/AlertContext';
 import { Story } from '../types';
 import { validateStory } from '../utils/storyValidation';
@@ -13,9 +13,18 @@ interface UseStoryEPUBParams {
     onStoryUpdated: (updatedStory: Story) => void;
 }
 
+interface EpubGenerationProgress {
+    current: number;
+    total: number;
+    percentage: number;
+    stage: string;
+    status: string;
+}
+
 export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
     const { showAlert } = useAppAlert();
     const [generating, setGenerating] = useState(false);
+    const [progress, setProgress] = useState<EpubGenerationProgress | null>(null);
 
     const readExistingEpub = async (epubPath: string): Promise<boolean> => {
         if (!validateStory(story)) return false;
@@ -53,7 +62,35 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
 
         try {
             setGenerating(true);
-            const uri = await epubGenerator.generateEpub(story, story.chapters);
+            const startTime = Date.now();
+            setProgress({ current: 0, total: story.chapters.length, percentage: 0, stage: 'Starting...', status: 'Initializing' });
+
+            const uri = await epubGenerator.generateEpub(story, story.chapters, (progressData: EpubProgress) => {
+                const elapsed = (Date.now() - startTime) / 1000;
+                const remaining = progressData.percentage > 0 ? (elapsed / progressData.percentage) * (100 - progressData.percentage) : 0;
+                const timeString = remaining > 60 ? `${Math.ceil(remaining / 60)}m ${Math.ceil(remaining % 60)}s` : `${Math.ceil(remaining)}s`;
+
+                let status = '';
+                switch (progressData.stage) {
+                    case 'filtering':
+                        status = `Filtering chapters: ${progressData.current}/${progressData.total}`;
+                        break;
+                    case 'processing':
+                        status = `Processing: ${progressData.current}/${progressData.total} chapters (${timeString} remaining)`;
+                        break;
+                    case 'finalizing':
+                        status = 'Finalizing EPUB...';
+                        break;
+                }
+
+                setProgress({
+                    current: progressData.current,
+                    total: progressData.total,
+                    percentage: progressData.percentage,
+                    stage: progressData.stage,
+                    status
+                });
+            });
 
             const updatedStory: Story = { ...story, epubPath: uri };
             await storageService.addStory(updatedStory);
@@ -66,6 +103,7 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
             return false;
         } finally {
             setGenerating(false);
+            setProgress(null);
         }
     };
 
@@ -81,6 +119,7 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
 
     return {
         generating,
+        progress,
         generateOrRead,
     };
 };

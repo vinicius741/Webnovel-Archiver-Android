@@ -7,6 +7,8 @@ interface StoryActionsProps {
     story: Story;
     downloading: boolean;
     checkingUpdates: boolean;
+    generating: boolean;
+    epubProgress: { current: number; total: number; percentage: number; stage: string; status: string } | null;
     updateStatus?: string;
     downloadProgress: number;
     downloadStatus: string;
@@ -19,6 +21,8 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
     story,
     downloading,
     checkingUpdates,
+    generating,
+    epubProgress,
     updateStatus,
     downloadProgress,
     downloadStatus,
@@ -61,16 +65,26 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             <Button
                 mode="outlined"
                 style={styles.actionBtn}
-                disabled={story.downloadedChapters === 0 && !story.epubPath}
+                disabled={(story.downloadedChapters === 0 && !story.epubPath) || generating}
+                loading={generating}
                 onPress={onGenerateOrRead}
             >
                 {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
             </Button>
 
+            {generating && epubProgress && (
+                <View style={styles.progressContainer}>
+                    <ProgressBar progress={epubProgress.percentage / 100} color={theme.colors.primary} style={styles.progressBar} />
+                    <Text variant="bodySmall" style={styles.progressText}>
+                        {epubProgress.status}
+                    </Text>
+                </View>
+            )}
+
             <Button
                 mode="outlined"
                 onPress={onPartialDownload}
-                disabled={downloading || checkingUpdates}
+                disabled={downloading || checkingUpdates || generating}
                 style={styles.actionBtn}
             >
                 Partial Download

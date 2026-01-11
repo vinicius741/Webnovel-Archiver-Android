@@ -26,6 +26,8 @@ export default function StoryDetailsScreen() {
       loading,
       downloading,
       checkingUpdates,
+      generating,
+      epubProgress,
       updateStatus,
       downloadProgress,
       downloadStatus,
@@ -75,6 +77,8 @@ export default function StoryDetailsScreen() {
             story={story}
             downloading={downloading}
             checkingUpdates={checkingUpdates}
+            generating={generating}
+            epubProgress={epubProgress}
             updateStatus={updateStatus}
             downloadProgress={downloadProgress}
             downloadStatus={downloadStatus}
