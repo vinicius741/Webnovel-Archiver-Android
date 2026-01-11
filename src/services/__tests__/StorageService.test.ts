@@ -3,12 +3,6 @@ import { storageService } from '../StorageService';
 import * as fileSystem from '../storage/fileSystem';
 import { Story, DownloadStatus } from '../../types';
 
-jest.mock('@react-native-async-storage/async-storage', () => ({
-    getItem: jest.fn(),
-    setItem: jest.fn(),
-    clear: jest.fn(),
-}));
-
 jest.mock('../storage/fileSystem', () => ({
     deleteNovel: jest.fn(),
     clearAllFiles: jest.fn(),
