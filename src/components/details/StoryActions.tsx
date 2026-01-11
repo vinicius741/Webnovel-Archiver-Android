@@ -13,7 +13,6 @@ interface StoryActionsProps {
     onDownloadOrUpdate: () => void;
     onGenerateOrRead: () => void;
     onPartialDownload: () => void;
-    onApplySentenceRemoval: () => void;
 }
 
 export const StoryActions: React.FC<StoryActionsProps> = ({
@@ -25,8 +24,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
     downloadStatus,
     onDownloadOrUpdate,
     onGenerateOrRead,
-    onPartialDownload,
-    onApplySentenceRemoval
+    onPartialDownload
 }) => {
     const theme = useTheme();
 
@@ -76,15 +74,6 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                 style={styles.actionBtn}
             >
                 Partial Download
-            </Button>
-
-            <Button
-                mode="outlined"
-                onPress={onApplySentenceRemoval}
-                disabled={downloading || checkingUpdates || story.downloadedChapters === 0}
-                style={styles.actionBtn}
-            >
-                Apply Sentence Removal
             </Button>
         </View>
     );

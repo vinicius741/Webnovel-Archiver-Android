@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator, IconButton, Searchbar } from 'react-native-paper';
+import { Text, Button, List, useTheme, ActivityIndicator, IconButton, Searchbar, Switch } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 
 import { StoryHeader } from '../../src/components/details/StoryHeader';
 import { StoryActions } from '../../src/components/details/StoryActions';
+import { StoryMenu } from '../../src/components/details/StoryMenu';
 import { StoryDescription } from '../../src/components/details/StoryDescription';
 import { StoryTags } from '../../src/components/details/StoryTags';
 import { ChapterListItem } from '../../src/components/details/ChapterListItem';
@@ -38,10 +39,13 @@ export default function StoryDetailsScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showDownloadRange, setShowDownloadRange] = useState(false);
+  const [hideNonDownloaded, setHideNonDownloaded] = useState(false);
 
-  const filteredChapters = story?.chapters.filter(c => 
-      c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
+  const filteredChapters = story?.chapters.filter(c => {
+      const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = !hideNonDownloaded || c.downloaded;
+      return matchesSearch && matchesFilter;
+  }) || [];
 
   if (loading) {
     return (
@@ -77,7 +81,6 @@ export default function StoryDetailsScreen() {
             onDownloadOrUpdate={downloadOrUpdate}
             onGenerateOrRead={generateOrRead}
             onPartialDownload={() => setShowDownloadRange(true)}
-            onApplySentenceRemoval={applySentenceRemoval}
         />
         <DownloadRangeDialog 
             visible={showDownloadRange}
@@ -87,12 +90,22 @@ export default function StoryDetailsScreen() {
         />
         <StoryTags tags={story.tags} />
         <StoryDescription description={story.description} />
-        <Searchbar
-            placeholder="Search chapters"
-            onChangeText={setSearchQuery}
-            value={searchQuery}
-            style={{ margin: 16, marginBottom: 8 }}
-        />
+        
+        <View style={styles.filterContainer}>
+            <Searchbar
+                placeholder="Search chapters"
+                onChangeText={setSearchQuery}
+                value={searchQuery}
+                style={styles.searchbar}
+            />
+             <View style={styles.toggleContainer}>
+                <Text variant="bodyMedium">Hide non-downloaded</Text>
+                <Switch
+                    value={hideNonDownloaded}
+                    onValueChange={setHideNonDownloaded}
+                />
+            </View>
+        </View>
     </View>
   );
 
@@ -102,10 +115,10 @@ export default function StoryDetailsScreen() {
         options={{ 
             title: story ? story.title : 'Details',
             headerRight: () => (
-                <IconButton 
-                    icon="delete" 
-                    iconColor={theme.colors.error}
-                    onPress={deleteStory}
+                <StoryMenu 
+                    onApplySentenceRemoval={applySentenceRemoval}
+                    onDelete={deleteStory}
+                    disabled={loading}
                 />
             )
         }} 
@@ -184,5 +197,18 @@ const styles = StyleSheet.create({
   },
   fullWidth: {
       width: '100%',
+  },
+  filterContainer: {
+    margin: 16,
+    marginBottom: 8,
+    gap: 8,
+  },
+  searchbar: {
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
   },
 });
