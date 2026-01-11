@@ -1,6 +1,6 @@
 import { load } from 'cheerio';
 import { Story, Chapter } from '../../types';
-import { readChapterFile } from '../storage/fileSystem';
+import { readChapterFile, checkFileExists } from '../storage/fileSystem';
 import { EpubMetadataGenerator } from './EpubMetadataGenerator';
 
 export class EpubContentProcessor {
@@ -73,5 +73,15 @@ a:hover { text-decoration: underline; }
         }
 
         return `<p>[No content available]</p>`;
+    }
+
+    public static async checkChapterContentAvailability(chapter: Chapter): Promise<boolean> {
+        if (chapter.content) return true;
+
+        if (chapter.filePath) {
+            return await checkFileExists(chapter.filePath);
+        }
+
+        return false;
     }
 }

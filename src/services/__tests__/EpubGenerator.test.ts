@@ -19,6 +19,7 @@ jest.mock('jszip', () => {
 jest.mock('../storage/fileSystem', () => ({
     saveEpub: jest.fn().mockResolvedValue('file://test.epub'),
     readChapterFile: jest.fn(),
+    checkFileExists: jest.fn(),
 }));
 
 jest.mock('../StorageService', () => ({
@@ -47,6 +48,7 @@ describe('EpubGenerator', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (fileSystem.checkFileExists as jest.Mock).mockResolvedValue(true);
     });
 
     it('should generate epub and save it', async () => {
@@ -128,11 +130,48 @@ describe('EpubGenerator', () => {
     });
 
     it('should handle missing chapter content gracefully', async () => {
-         (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('');
-         // or null/undefined if readChapterFile can return that (it returns empty string on catch)
+        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('');
+        // or null/undefined if readChapterFile can return that (it returns empty string on catch)
 
-         await epubGenerator.generateEpub(mockStory, [mockChapters[0]]);
-         // Should not throw
-         expect(fileSystem.saveEpub).toHaveBeenCalled();
+        await epubGenerator.generateEpub(mockStory, [mockChapters[0]]);
+        // Should not throw
+        expect(fileSystem.saveEpub).toHaveBeenCalled();
+    });
+
+    it('should skip chapters that do not have content or file', async () => {
+        const partialChapters: Chapter[] = [
+            { id: 'c1', title: 'Chapter 1', filePath: 'path/to/c1.html', url: 'http://url1', content: 'Some content' },
+            { id: 'c2', title: 'Chapter 2', filePath: 'path/to/c2.html', url: 'http://url2' }, // Missing content/file
+        ];
+
+        // Mock checkFileExists to return false for c2
+        (fileSystem.checkFileExists as jest.Mock).mockResolvedValue(false);
+        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('Some content');
+
+        const mockFolder = {
+            file: jest.fn(),
+        };
+        const mockZip = {
+            file: jest.fn(),
+            folder: jest.fn().mockReturnValue(mockFolder),
+            generateAsync: jest.fn().mockResolvedValue('base64data'),
+        };
+        (JSZip as unknown as jest.Mock).mockImplementation(() => mockZip);
+
+        await epubGenerator.generateEpub(mockStory, partialChapters);
+
+        // Check TOC only has Chapter 1
+        const tocCall = mockFolder.file.mock.calls.find(call => call[0] === 'toc.xhtml');
+        expect(tocCall).toBeDefined();
+        const tocContent = tocCall[1];
+
+        expect(tocContent).toContain('Chapter 1');
+        expect(tocContent).not.toContain('Chapter 2');
+
+        // Check OEBPS files
+        // Should have chapter_1.xhtml
+        expect(mockFolder.file).toHaveBeenCalledWith('chapter_1.xhtml', expect.any(String));
+        // Should NOT have chapter_2.xhtml
+        expect(mockFolder.file).not.toHaveBeenCalledWith('chapter_2.xhtml', expect.any(String));
     });
 });

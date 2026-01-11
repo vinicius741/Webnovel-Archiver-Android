@@ -7,7 +7,15 @@ import { saveEpub } from './storage/fileSystem';
 
 export class EpubGenerator {
     async generateEpub(story: Story, chapters: Chapter[]): Promise<string> {
-        const cleanChapters = chapters.map(c => ({
+        // Filter chapters to only include those with available content
+        const availableChapters: Chapter[] = [];
+        for (const chapter of chapters) {
+            if (await EpubContentProcessor.checkChapterContentAvailability(chapter)) {
+                availableChapters.push(chapter);
+            }
+        }
+
+        const cleanChapters = availableChapters.map(c => ({
             ...c,
             title: cleanChapterTitle(c.title)
         }));

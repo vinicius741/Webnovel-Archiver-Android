@@ -123,3 +123,12 @@ export const readChapterFile = async (uri: string): Promise<string> => {
     return '';
 };
 
+export const checkFileExists = async (uri: string): Promise<boolean> => {
+    try {
+        const file = new File(uri);
+        return file.exists;
+    } catch (e) {
+        return false;
+    }
+};
+

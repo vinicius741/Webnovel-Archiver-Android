@@ -119,7 +119,7 @@ export default function ReaderScreen() {
 
     const handleCopy = async () => {
         if (!content) return;
-        await Clipboard.setStringAsync(extractPlainText(content));
+        await Clipboard.setStringAsync(content);
         setCopyFeedbackVisible(true);
     };
 
