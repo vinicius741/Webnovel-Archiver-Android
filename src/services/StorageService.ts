@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
     SETTINGS: 'wa_settings_v1',
     SENTENCE_REMOVAL: 'wa_sentence_removal_v1',
     TTS_SETTINGS: 'wa_tts_settings_v1',
+    CHAPTER_FILTER_SETTINGS: 'wa_chapter_filter_settings_v1',
 };
 
 export interface AppSettings {
@@ -31,6 +32,16 @@ const DEFAULT_TTS_SETTINGS: TTSSettings = {
     pitch: 1.0,
     rate: 1.0,
     chunkSize: 500,
+};
+
+export type ChapterFilterMode = 'all' | 'hideNonDownloaded' | 'hideAboveBookmark';
+
+export interface ChapterFilterSettings {
+    filterMode: ChapterFilterMode;
+}
+
+const DEFAULT_CHAPTER_FILTER_SETTINGS: ChapterFilterSettings = {
+    filterMode: 'all',
 };
 
 class StorageService {
@@ -178,6 +189,25 @@ class StorageService {
             await AsyncStorage.setItem(STORAGE_KEYS.TTS_SETTINGS, jsonValue);
         } catch (e) {
             console.error('Failed to save TTS settings', e);
+        }
+    }
+
+    async getChapterFilterSettings(): Promise<ChapterFilterSettings> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.CHAPTER_FILTER_SETTINGS);
+            return jsonValue != null ? { ...DEFAULT_CHAPTER_FILTER_SETTINGS, ...JSON.parse(jsonValue) } : DEFAULT_CHAPTER_FILTER_SETTINGS;
+        } catch (e) {
+            console.error('Failed to load chapter filter settings', e);
+            return DEFAULT_CHAPTER_FILTER_SETTINGS;
+        }
+    }
+
+    async saveChapterFilterSettings(settings: ChapterFilterSettings): Promise<void> {
+        try {
+            const jsonValue = JSON.stringify(settings);
+            await AsyncStorage.setItem(STORAGE_KEYS.CHAPTER_FILTER_SETTINGS, jsonValue);
+        } catch (e) {
+            console.error('Failed to save chapter filter settings', e);
         }
     }
 }
