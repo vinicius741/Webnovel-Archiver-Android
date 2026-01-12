@@ -32,7 +32,8 @@ export interface Story {
     chapters: Chapter[];
     lastUpdated?: number; // timestamp
     dateAdded?: number; // timestamp for initial addition
-    epubPath?: string; // Local URI to generated EPUB
+    epubPath?: string; // Local URI to generated EPUB (deprecated, use epubPaths)
+    epubPaths?: string[]; // Local URIs to generated EPUBs (supports split files)
     tags?: string[];
     lastReadChapterId?: string;
     score?: string;

@@ -10,14 +10,33 @@ export interface EpubProgress {
     total: number;
     percentage: number;
     stage: 'filtering' | 'processing' | 'finalizing';
+    currentFile?: number; // Current file being generated when splitting
+    totalFiles?: number; // Total number of files when splitting
+}
+
+export interface EpubResult {
+    uri: string;
+    filename: string;
+    chapterRange: { start: number; end: number };
+}
+
+interface GenerateEpubResult {
+    uri: string;
+    filename: string;
 }
 
 export class EpubGenerator {
+    /**
+     * Generates a single EPUB file for a story.
+     * @returns { uri: string, filename: string } - The file URI and generated filename
+     */
     async generateEpub(
         story: Story,
         chapters: Chapter[],
-        onProgress?: (progress: EpubProgress) => void
-    ): Promise<string> {
+        onProgress?: (progress: EpubProgress) => void,
+        fileNumber?: number,
+        totalFiles?: number
+    ): Promise<GenerateEpubResult> {
         onProgress?.({ current: 0, total: chapters.length, percentage: 0, stage: 'filtering' });
 
         const availableChapters: Chapter[] = [];
@@ -90,12 +109,86 @@ export class EpubGenerator {
 
         onProgress?.({ current: 2, total: 3, percentage: 96, stage: 'finalizing' });
 
-        const filename = `${EpubMetadataGenerator.sanitizeFilename(story.title)}.epub`;
+        const baseFilename = EpubMetadataGenerator.sanitizeFilename(story.title);
+        const filename = fileNumber
+            ? `${baseFilename}_Vol${fileNumber}.epub`
+            : `${baseFilename}.epub`;
         const uri = await saveEpub(filename, base64);
 
         onProgress?.({ current: 3, total: 3, percentage: 100, stage: 'finalizing' });
 
-        return uri;
+        return { uri, filename };
+    }
+
+    /**
+     * Generates one or more EPUB files for a story, splitting if necessary.
+     * Returns an array of EpubResult objects containing URI, filename, and chapter range.
+     */
+    async generateEpubs(
+        story: Story,
+        chapters: Chapter[],
+        maxChaptersPerEpub: number,
+        onProgress?: (progress: EpubProgress) => void
+    ): Promise<EpubResult[]> {
+        if (chapters.length <= maxChaptersPerEpub) {
+            // Single EPUB is sufficient
+            const result = await this.generateEpub(story, chapters, onProgress);
+            return [{
+                uri: result.uri,
+                filename: result.filename,
+                chapterRange: { start: 1, end: chapters.length }
+            }];
+        }
+
+        // Need to split into multiple EPUBs
+        const results: EpubResult[] = [];
+        const totalFiles = Math.ceil(chapters.length / maxChaptersPerEpub);
+        let globalChapterIndex = 0; // For overall progress tracking
+        const totalChapters = chapters.length;
+
+        for (let fileIndex = 0; fileIndex < totalFiles; fileIndex++) {
+            const startIndex = fileIndex * maxChaptersPerEpub;
+            const endIndex = Math.min(startIndex + maxChaptersPerEpub, chapters.length);
+            const fileChapters = chapters.slice(startIndex, endIndex);
+
+            // Create a modified story for this volume
+            // Add "Vol N" to all volumes for consistency
+            const volumeStory: Story = {
+                ...story,
+                title: `${story.title} (Vol ${fileIndex + 1})`
+            };
+
+            // Wrap the progress callback to add file information and adjust percentage
+            const wrappedProgress = (progress: EpubProgress) => {
+                const basePercentage = (fileIndex / totalFiles) * 100;
+                const fileProgressWeight = (progress.current / progress.total) * (100 / totalFiles);
+                const adjustedPercentage = Math.min(100, basePercentage + fileProgressWeight);
+
+                onProgress?.({
+                    ...progress,
+                    percentage: Math.round(adjustedPercentage),
+                    currentFile: fileIndex + 1,
+                    totalFiles,
+                    current: globalChapterIndex + progress.current,
+                    total: totalChapters
+                });
+
+                // Update global chapter index as chapters are processed
+                if (progress.stage === 'processing' && progress.current === progress.total) {
+                    globalChapterIndex = startIndex + fileChapters.length;
+                }
+            };
+
+            const { uri, filename } = await this.generateEpub(volumeStory, fileChapters, wrappedProgress, fileIndex + 1, totalFiles);
+
+            results.push({
+                uri,
+                filename,
+                chapterRange: { start: startIndex + 1, end: endIndex }
+            });
+        }
+
+        return results;
     }
 }
 

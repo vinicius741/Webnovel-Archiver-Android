@@ -66,12 +66,12 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             <Button
                 mode="outlined"
                 style={styles.actionBtn}
-                disabled={(story.downloadedChapters === 0 && !story.epubPath) || generating}
+                disabled={(story.downloadedChapters === 0 && !story.epubPath && !story.epubPaths) || generating}
                 loading={generating}
                 onPress={onGenerateOrRead}
                 testID="generate-button"
             >
-                {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
+                {(story.epubPath || story.epubPaths) ? 'Read EPUB' : 'Generate EPUB'}
             </Button>
 
             {generating && epubProgress && (

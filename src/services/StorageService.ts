@@ -13,11 +13,13 @@ const STORAGE_KEYS = {
 export interface AppSettings {
     downloadConcurrency: number;
     downloadDelay: number; // in milliseconds
+    maxChaptersPerEpub: number; // Maximum chapters per EPUB before splitting
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
     downloadConcurrency: 1,
     downloadDelay: 500,
+    maxChaptersPerEpub: 150,
 };
 
 export interface TTSSettings {

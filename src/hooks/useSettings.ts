@@ -1,15 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { router } from 'expo-router';
 import { storageService } from '../services/StorageService';
 import { backupService } from '../services/BackupService';
 import { useTheme } from '../theme/ThemeContext';
 import { useAppAlert } from '../context/AlertContext';
 
+// Validation boundary constants
+const CONCURRENCY_MIN = 1;
+const CONCURRENCY_MAX = 10;
+const DELAY_MIN = 0;
+const MAX_CHAPTERS_MIN = 10;
+const MAX_CHAPTERS_MAX = 1000;
+const MAX_CHAPTERS_DEFAULT = 150;
+
+// Validation functions
+const validateConcurrency = (value: string): { valid: string; actual: number } => {
+    const num = parseInt(value) || CONCURRENCY_MIN;
+    const clamped = Math.max(CONCURRENCY_MIN, Math.min(CONCURRENCY_MAX, num));
+    return { valid: clamped.toString(), actual: clamped };
+};
+
+const validateDelay = (value: string): { valid: string; actual: number } => {
+    const num = parseInt(value) || DELAY_MIN;
+    const clamped = Math.max(DELAY_MIN, num);
+    return { valid: clamped.toString(), actual: clamped };
+};
+
+const validateMaxChapters = (value: string): { valid: string; actual: number } => {
+    const num = parseInt(value) || MAX_CHAPTERS_DEFAULT;
+    const clamped = Math.max(MAX_CHAPTERS_MIN, Math.min(MAX_CHAPTERS_MAX, num));
+    return { valid: clamped.toString(), actual: clamped };
+};
+
 export const useSettings = () => {
     const { themeMode, setThemeMode } = useTheme();
     const { showAlert } = useAppAlert();
     const [concurrency, setConcurrency] = useState('1');
     const [delay, setDelay] = useState('500');
+    const [maxChaptersPerEpub, setMaxChaptersPerEpub] = useState('150');
+    const [concurrencyError, setConcurrencyError] = useState<string | undefined>();
+    const [delayError, setDelayError] = useState<string | undefined>();
+    const [maxChaptersError, setMaxChaptersError] = useState<string | undefined>();
 
     useEffect(() => {
         loadSettings();
@@ -19,30 +50,77 @@ export const useSettings = () => {
         const settings = await storageService.getSettings();
         setConcurrency(settings.downloadConcurrency.toString());
         setDelay(settings.downloadDelay.toString());
+        setMaxChaptersPerEpub(settings.maxChaptersPerEpub.toString());
+        // Clear any errors on load
+        setConcurrencyError(undefined);
+        setDelayError(undefined);
+        setMaxChaptersError(undefined);
     };
 
-    const saveSettings = async (newConcurrency: string, newDelay: string) => {
-        const downloadConcurrency = parseInt(newConcurrency) || 1;
-        const downloadDelay = parseInt(newDelay) || 0;
+    const saveSettings = useCallback(async () => {
+        const concurrencyResult = validateConcurrency(concurrency);
+        const delayResult = validateDelay(delay);
+        const maxChaptersResult = validateMaxChapters(maxChaptersPerEpub);
 
-        // Validate limits if needed
-        const finalConcurrency = Math.max(1, Math.min(10, downloadConcurrency));
-        const finalDelay = Math.max(0, downloadDelay);
+        // Update state with validated values
+        setConcurrency(concurrencyResult.valid);
+        setDelay(delayResult.valid);
+        setMaxChaptersPerEpub(maxChaptersResult.valid);
+
+        // Clear errors since we're applying validated values
+        setConcurrencyError(undefined);
+        setDelayError(undefined);
+        setMaxChaptersError(undefined);
 
         await storageService.saveSettings({
-            downloadConcurrency: finalConcurrency,
-            downloadDelay: finalDelay
+            downloadConcurrency: concurrencyResult.actual,
+            downloadDelay: delayResult.actual,
+            maxChaptersPerEpub: maxChaptersResult.actual
         });
-    };
+    }, [concurrency, delay, maxChaptersPerEpub]);
 
     const handleConcurrencyChange = (text: string) => {
         setConcurrency(text);
-        saveSettings(text, delay);
+        // Validate immediately for feedback
+        const num = parseInt(text);
+        if (isNaN(num) || num < CONCURRENCY_MIN || num > CONCURRENCY_MAX) {
+            setConcurrencyError(`Must be between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`);
+        } else {
+            setConcurrencyError(undefined);
+        }
+        // Debounced save will be triggered on blur
     };
 
     const handleDelayChange = (text: string) => {
         setDelay(text);
-        saveSettings(concurrency, text);
+        const num = parseInt(text);
+        if (isNaN(num) || num < DELAY_MIN) {
+            setDelayError(`Must be ${DELAY_MIN} or greater`);
+        } else {
+            setDelayError(undefined);
+        }
+    };
+
+    const handleMaxChaptersPerEpubChange = (text: string) => {
+        setMaxChaptersPerEpub(text);
+        const num = parseInt(text);
+        if (isNaN(num) || num < MAX_CHAPTERS_MIN || num > MAX_CHAPTERS_MAX) {
+            setMaxChaptersError(`Must be between ${MAX_CHAPTERS_MIN} and ${MAX_CHAPTERS_MAX}`);
+        } else {
+            setMaxChaptersError(undefined);
+        }
+    };
+
+    const handleConcurrencyBlur = () => {
+        saveSettings();
+    };
+
+    const handleDelayBlur = () => {
+        saveSettings();
+    };
+
+    const handleMaxChaptersBlur = () => {
+        saveSettings();
     };
 
     const clearData = () => {
@@ -101,8 +179,16 @@ export const useSettings = () => {
         setThemeMode,
         concurrency,
         delay,
+        maxChaptersPerEpub,
+        concurrencyError,
+        delayError,
+        maxChaptersError,
         handleConcurrencyChange,
         handleDelayChange,
+        handleMaxChaptersPerEpubChange,
+        handleConcurrencyBlur,
+        handleDelayBlur,
+        handleMaxChaptersBlur,
         clearData,
         handleExportBackup,
         handleImportBackup,
