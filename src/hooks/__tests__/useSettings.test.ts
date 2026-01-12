@@ -4,28 +4,13 @@ import { storageService } from '../../services/StorageService';
 import { backupService } from '../../services/BackupService';
 import { useTheme } from '../../theme/ThemeContext';
 import { router } from 'expo-router';
+import { findAndPressButton, getLastAlertCall } from '../../test-utils';
 
 jest.mock('../../services/StorageService');
 jest.mock('../../services/BackupService');
 jest.mock('../../theme/ThemeContext');
 jest.mock('expo-router');
 jest.mock('../../context/AlertContext');
-
-// Helper function to find and press a button in an alert dialog
-const findAndPressButton = (mockFn: jest.Mock, alertTitle: string, buttonText: string) => {
-    const alertCall = mockFn.mock.calls.find(call => call[0] === alertTitle);
-    if (!alertCall) {
-        throw new Error(`No alert found with title "${alertTitle}"`);
-    }
-    const button = alertCall[2].find((b: any) => b.text === buttonText);
-    if (!button) {
-        throw new Error(`No button found with text "${buttonText}" in alert "${alertTitle}"`);
-    }
-    return button.onPress;
-};
-
-// Helper function to get the last alert call
-const getLastAlertCall = (mockFn: jest.Mock) => mockFn.mock.calls.slice(-1)[0];
 
 describe('useSettings', () => {
     const mockSetThemeMode = jest.fn();
@@ -257,7 +242,7 @@ describe('useSettings', () => {
 
         const importButtonPress = findAndPressButton(mockShowAlert, 'Import Backup', 'Import');
         await act(async () => {
-            importButtonPress();
+            await importButtonPress();
         });
 
         expect(backupService.importBackup).toHaveBeenCalled();
@@ -272,7 +257,7 @@ describe('useSettings', () => {
 
         const importButtonPress = findAndPressButton(mockShowAlert, 'Import Backup', 'Import');
         await act(async () => {
-            importButtonPress();
+            await importButtonPress();
         });
 
         const successCall = getLastAlertCall(mockShowAlert);
@@ -300,7 +285,7 @@ describe('useSettings', () => {
 
         const importButtonPress = findAndPressButton(mockShowAlert, 'Import Backup', 'Import');
         await act(async () => {
-            importButtonPress();
+            await importButtonPress();
         });
 
         const failCall = getLastAlertCall(mockShowAlert);
@@ -339,7 +324,7 @@ describe('useSettings', () => {
 
         const deleteButtonPress = findAndPressButton(mockShowAlert, 'Clear Data', 'Delete');
         await act(async () => {
-            deleteButtonPress();
+            await deleteButtonPress();
         });
 
         const okButtonPress = findAndPressButton(mockShowAlert, 'Data Cleared', 'OK');

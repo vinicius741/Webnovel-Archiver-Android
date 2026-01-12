@@ -3,6 +3,7 @@ import { useStoryActions } from '../useStoryActions';
 import { storageService } from '../../services/StorageService';
 import { useAppAlert } from '../../context/AlertContext';
 import { Story, Chapter, DownloadStatus } from '../../types';
+import { findAndPressButton } from '../../test-utils';
 
 jest.mock('../../services/StorageService');
 jest.mock('../../context/AlertContext');
@@ -93,11 +94,8 @@ describe('useStoryActions', () => {
 
             result.current.deleteStory();
 
-            const deleteCall = mockShowAlert.mock.calls.find(
-                call => call[0] === 'Delete Novel'
-            );
-            const deleteButton = deleteCall![2].find((b: any) => b.text === 'Delete');
-            await deleteButton.onPress();
+            const deleteButtonPress = findAndPressButton(mockShowAlert, 'Delete Novel', 'Delete');
+            await deleteButtonPress();
 
             expect(storageService.deleteStory).toHaveBeenCalledWith(mockStory.id);
             expect(mockOnStoryDeleted).toHaveBeenCalled();
