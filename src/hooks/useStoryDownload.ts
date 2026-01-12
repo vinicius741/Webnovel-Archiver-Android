@@ -8,17 +8,11 @@ import { sourceRegistry } from '../services/source/SourceRegistry';
 import { useAppAlert } from '../context/AlertContext';
 import { Story, Chapter, DownloadStatus } from '../types';
 import { sanitizeTitle } from '../utils/stringUtils';
-import { validateStory, validateDownloadRange, hasAllChaptersDownloaded, hasUpdatesAvailable } from '../utils/storyValidation';
+import { validateStory, validateDownloadRange } from '../utils/storyValidation';
 
 interface UseStoryDownloadParams {
     story: Story | null;
     onStoryUpdated: (updatedStory: Story) => void;
-}
-
-interface UpdateCheckResult {
-    updatedStory: Story;
-    hasNewChapters: number;
-    tagsChanged: boolean;
 }
 
 export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadParams) => {
@@ -27,8 +21,34 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
     const [updateStatus, setUpdateStatus] = useState('');
     const [queueing, setQueueing] = useState(false);
 
-    const checkForUpdates = async (): Promise<UpdateCheckResult | null> => {
-        if (!validateStory(story)) return null;
+    const downloadAll = async () => {
+        if (!validateStory(story)) return;
+
+        try {
+            setQueueing(true);
+            await activateKeepAwakeAsync();
+
+            const updatedStory = await downloadService.downloadAllChapters(story);
+            const finalStory = {
+                ...updatedStory,
+                epubPath: undefined
+            };
+
+            await storageService.addStory(finalStory);
+            onStoryUpdated(finalStory);
+            showAlert('Download Started', 'Chapters have been added to the download queue.');
+
+        } catch (error) {
+            console.error('Download error', error);
+            showAlert('Download Error', 'Failed to download chapters. Check logs.');
+        } finally {
+            setQueueing(false);
+            await deactivateKeepAwake();
+        }
+    };
+
+    const updateNovel = async () => {
+        if (!validateStory(story)) return;
 
         try {
             setCheckingUpdates(true);
@@ -78,68 +98,25 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                 epubPath: newChapterCount > 0 ? undefined : story.epubPath,
             };
 
-            return {
-                updatedStory,
-                hasNewChapters: newChapterCount,
-                tagsChanged,
-            };
-        } catch (error: any) {
-            throw error;
-        }
-    };
+            await storageService.addStory(updatedStory);
+            onStoryUpdated(updatedStory);
 
-    const downloadOrUpdate = async () => {
-        if (!validateStory(story)) return;
-
-        if (hasAllChaptersDownloaded(story)) {
-            try {
-                const result = await checkForUpdates();
-                if (!result) return;
-
-                const { updatedStory, hasNewChapters, tagsChanged } = result;
-
-                await storageService.addStory(updatedStory);
-                onStoryUpdated(updatedStory);
-
-                if (hasUpdatesAvailable(story, hasNewChapters, tagsChanged)) {
-                    if (hasNewChapters > 0) {
-                        showAlert('Update Found', `Found ${hasNewChapters} new chapters!`);
-                    } else if (tagsChanged) {
-                        showAlert('Metadata Updated', 'Tags and details updated.');
-                    }
-                } else {
-                    showAlert('No Updates', 'No new chapters found. Updated last checked time.');
+            if (hasUpdates) {
+                if (newChapterCount > 0) {
+                    showAlert('Update Found', `Found ${newChapterCount} new chapters!`);
+                } else if (tagsChanged) {
+                    showAlert('Metadata Updated', 'Tags and details updated.');
                 }
-
-            } catch (error: any) {
-                showAlert('Update Error', error.message);
-            } finally {
-                setCheckingUpdates(false);
-                setUpdateStatus('');
+            } else {
+                showAlert('No Updates', 'No new chapters found. Updated last checked time.');
             }
-            return;
-        }
 
-        try {
-            setQueueing(true);
-            await activateKeepAwakeAsync();
-
-            const updatedStory = await downloadService.downloadAllChapters(story);
-            const finalStory = {
-                ...updatedStory,
-                epubPath: undefined
-            };
-
-            await storageService.addStory(finalStory);
-            onStoryUpdated(finalStory);
-            showAlert('Download Started', 'Chapters have been added to the download queue.');
-
-        } catch (error) {
-            console.error('Download error', error);
-            showAlert('Download Error', 'Failed to download chapters. Check logs.');
+        } catch (error: any) {
+            console.error('Update error', error);
+            showAlert('Update Error', error.message || 'Failed to check for updates. Check logs.');
         } finally {
-            setQueueing(false);
-            await deactivateKeepAwake();
+            setCheckingUpdates(false);
+            setUpdateStatus('');
         }
     };
 
@@ -248,7 +225,8 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
         checkingUpdates,
         updateStatus,
         queueing,
-        downloadOrUpdate,
+        downloadAll,
+        updateNovel,
         downloadRange,
         applySentenceRemoval,
     };
