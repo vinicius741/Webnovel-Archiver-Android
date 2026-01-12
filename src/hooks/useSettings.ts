@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { storageService } from '../services/StorageService';
 import { backupService } from '../services/BackupService';
 import { useTheme } from '../theme/ThemeContext';
+import { useAppAlert } from '../context/AlertContext';
 
 export const useSettings = () => {
     const { themeMode, setThemeMode } = useTheme();
+    const { showAlert } = useAppAlert();
     const [concurrency, setConcurrency] = useState('1');
     const [delay, setDelay] = useState('500');
 
@@ -45,7 +46,7 @@ export const useSettings = () => {
     };
 
     const clearData = () => {
-        Alert.alert(
+        showAlert(
             'Clear Data',
             'Are you sure you want to delete all novels and settings? This action cannot be undone.',
             [
@@ -55,7 +56,7 @@ export const useSettings = () => {
                     style: 'destructive',
                     onPress: async () => {
                         await storageService.clearAll();
-                        Alert.alert('Data Cleared', 'All data has been deleted.', [
+                        showAlert('Data Cleared', 'All data has been deleted.', [
                             { text: 'OK', onPress: () => router.back() }
                         ]);
                     }
@@ -66,14 +67,14 @@ export const useSettings = () => {
 
     const handleExportBackup = async () => {
         const result = await backupService.exportBackup();
-        Alert.alert(
+        showAlert(
             result.success ? 'Export Complete' : 'Export Failed',
             result.message
         );
     };
 
     const handleImportBackup = async () => {
-        Alert.alert(
+        showAlert(
             'Import Backup',
             'This will merge the backup with your existing library. Continue?',
             [
@@ -82,7 +83,7 @@ export const useSettings = () => {
                     text: 'Import',
                     onPress: async () => {
                         const result = await backupService.importBackup();
-                        Alert.alert(
+                        showAlert(
                             result.success ? 'Import Complete' : 'Import Failed',
                             result.message,
                             result.success ? [

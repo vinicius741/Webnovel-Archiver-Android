@@ -3,6 +3,7 @@ import { useStoryActions } from '../useStoryActions';
 import { storageService } from '../../services/StorageService';
 import { useAppAlert } from '../../context/AlertContext';
 import { Story, Chapter, DownloadStatus } from '../../types';
+import { findAndPressButton } from '../../test-utils';
 
 jest.mock('../../services/StorageService');
 jest.mock('../../context/AlertContext');
@@ -40,17 +41,8 @@ describe('useStoryActions', () => {
 
     describe('deleteStory', () => {
         it('should show confirmation dialog', () => {
-            const Alert = require('react-native').Alert;
-            const alertSpy = jest.spyOn(Alert, 'alert');
-
             const { validateStory } = require('../../utils/storyValidation');
             validateStory.mockReturnValue(true);
-
-            renderHook(() => useStoryActions({
-                story: mockStory,
-                onStoryUpdated: mockOnStoryUpdated,
-                onStoryDeleted: mockOnStoryDeleted,
-            }));
 
             const { result } = renderHook(() => useStoryActions({
                 story: mockStory,
@@ -60,7 +52,7 @@ describe('useStoryActions', () => {
 
             result.current.deleteStory();
 
-            expect(alertSpy).toHaveBeenCalledWith(
+            expect(mockShowAlert).toHaveBeenCalledWith(
                 'Delete Novel',
                 expect.stringContaining(mockStory.title),
                 expect.arrayContaining([
@@ -75,9 +67,6 @@ describe('useStoryActions', () => {
         });
 
         it('should not delete if validation fails', () => {
-            const Alert = require('react-native').Alert;
-            const alertSpy = jest.spyOn(Alert, 'alert');
-
             const { validateStory } = require('../../utils/storyValidation');
             validateStory.mockReturnValue(false);
 
@@ -89,21 +78,11 @@ describe('useStoryActions', () => {
 
             result.current.deleteStory();
 
-            expect(alertSpy).not.toHaveBeenCalled();
+            expect(mockShowAlert).not.toHaveBeenCalled();
             expect(storageService.deleteStory).not.toHaveBeenCalled();
         });
 
         it('should call deleteStory and onStoryDeleted on confirmation', async () => {
-            const Alert = require('react-native').Alert;
-            jest.spyOn(Alert, 'alert').mockImplementation((title: any, msg: any, buttons: any) => {
-                if (buttons) {
-                    const deleteButton = buttons.find((b: any) => b.text === 'Delete');
-                    if (deleteButton && deleteButton.onPress) {
-                        deleteButton.onPress();
-                    }
-                }
-            });
-
             const { validateStory } = require('../../utils/storyValidation');
             validateStory.mockReturnValue(true);
 
@@ -115,7 +94,8 @@ describe('useStoryActions', () => {
 
             result.current.deleteStory();
 
-            await new Promise(resolve => setTimeout(resolve, 0));
+            const deleteButtonPress = findAndPressButton(mockShowAlert, 'Delete Novel', 'Delete');
+            await deleteButtonPress();
 
             expect(storageService.deleteStory).toHaveBeenCalledWith(mockStory.id);
             expect(mockOnStoryDeleted).toHaveBeenCalled();

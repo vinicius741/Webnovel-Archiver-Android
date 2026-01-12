@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, FlatList, Alert } from 'react-native';
+import { StyleSheet, View, FlatList } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Appbar,
@@ -16,6 +16,7 @@ import {
 } from 'react-native-paper';
 import { router, Stack } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
+import { useAppAlert } from '../src/context/AlertContext';
 import { storageService } from '../src/services/StorageService';
 import { useTheme } from '../src/theme/ThemeContext';
 import * as Clipboard from 'expo-clipboard';
@@ -24,6 +25,7 @@ import * as Sharing from 'expo-sharing';
 
 export default function SentenceRemovalScreen() {
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAppAlert();
   const [sentences, setSentences] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [visible, setVisible] = useState(false);
@@ -64,11 +66,11 @@ export default function SentenceRemovalScreen() {
             UTI: 'public.json'
         });
       } else {
-        Alert.alert('Error', 'Sharing is not available on this device');
+        showAlert('Error', 'Sharing is not available on this device');
       }
     } catch (error) {
       console.error(error);
-      Alert.alert('Export Failed', 'Failed to export the file.');
+      showAlert('Export Failed', 'Failed to export the file.');
     }
   };
 
@@ -79,7 +81,7 @@ export default function SentenceRemovalScreen() {
     const existingIndex = sentences.indexOf(trimmed);
     if (existingIndex !== -1) {
       if (editingIndex === null || existingIndex !== editingIndex) {
-        Alert.alert('Duplicate', 'This sentence is already in the removal list.');
+        showAlert('Duplicate', 'This sentence is already in the removal list.');
         return;
       }
     }
@@ -98,7 +100,7 @@ export default function SentenceRemovalScreen() {
   };
 
   const confirmDelete = (index: number) => {
-    Alert.alert(
+    showAlert(
       'Remove Sentence',
       'Are you sure you want to remove this sentence from the blocklist?',
       [
