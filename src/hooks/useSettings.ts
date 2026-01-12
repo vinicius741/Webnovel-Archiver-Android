@@ -5,22 +5,30 @@ import { backupService } from '../services/BackupService';
 import { useTheme } from '../theme/ThemeContext';
 import { useAppAlert } from '../context/AlertContext';
 
+// Validation boundary constants
+const CONCURRENCY_MIN = 1;
+const CONCURRENCY_MAX = 10;
+const DELAY_MIN = 0;
+const MAX_CHAPTERS_MIN = 10;
+const MAX_CHAPTERS_MAX = 1000;
+const MAX_CHAPTERS_DEFAULT = 150;
+
 // Validation functions
 const validateConcurrency = (value: string): { valid: string; actual: number } => {
-    const num = parseInt(value) || 1;
-    const clamped = Math.max(1, Math.min(10, num));
+    const num = parseInt(value) || CONCURRENCY_MIN;
+    const clamped = Math.max(CONCURRENCY_MIN, Math.min(CONCURRENCY_MAX, num));
     return { valid: clamped.toString(), actual: clamped };
 };
 
 const validateDelay = (value: string): { valid: string; actual: number } => {
-    const num = parseInt(value) || 0;
-    const clamped = Math.max(0, num);
+    const num = parseInt(value) || DELAY_MIN;
+    const clamped = Math.max(DELAY_MIN, num);
     return { valid: clamped.toString(), actual: clamped };
 };
 
 const validateMaxChapters = (value: string): { valid: string; actual: number } => {
-    const num = parseInt(value) || 150;
-    const clamped = Math.max(10, Math.min(1000, num));
+    const num = parseInt(value) || MAX_CHAPTERS_DEFAULT;
+    const clamped = Math.max(MAX_CHAPTERS_MIN, Math.min(MAX_CHAPTERS_MAX, num));
     return { valid: clamped.toString(), actual: clamped };
 };
 
@@ -75,8 +83,8 @@ export const useSettings = () => {
         setConcurrency(text);
         // Validate immediately for feedback
         const num = parseInt(text);
-        if (isNaN(num) || num < 1 || num > 10) {
-            setConcurrencyError('Must be between 1 and 10');
+        if (isNaN(num) || num < CONCURRENCY_MIN || num > CONCURRENCY_MAX) {
+            setConcurrencyError(`Must be between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`);
         } else {
             setConcurrencyError(undefined);
         }
@@ -86,8 +94,8 @@ export const useSettings = () => {
     const handleDelayChange = (text: string) => {
         setDelay(text);
         const num = parseInt(text);
-        if (isNaN(num) || num < 0) {
-            setDelayError('Must be 0 or greater');
+        if (isNaN(num) || num < DELAY_MIN) {
+            setDelayError(`Must be ${DELAY_MIN} or greater`);
         } else {
             setDelayError(undefined);
         }
@@ -96,8 +104,8 @@ export const useSettings = () => {
     const handleMaxChaptersPerEpubChange = (text: string) => {
         setMaxChaptersPerEpub(text);
         const num = parseInt(text);
-        if (isNaN(num) || num < 10 || num > 1000) {
-            setMaxChaptersError('Must be between 10 and 1000');
+        if (isNaN(num) || num < MAX_CHAPTERS_MIN || num > MAX_CHAPTERS_MAX) {
+            setMaxChaptersError(`Must be between ${MAX_CHAPTERS_MIN} and ${MAX_CHAPTERS_MAX}`);
         } else {
             setMaxChaptersError(undefined);
         }

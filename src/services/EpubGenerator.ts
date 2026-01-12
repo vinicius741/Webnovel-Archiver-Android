@@ -20,9 +20,15 @@ export interface EpubResult {
     chapterRange: { start: number; end: number };
 }
 
+interface GenerateEpubResult {
+    uri: string;
+    filename: string;
+}
+
 export class EpubGenerator {
     /**
      * Generates a single EPUB file for a story.
+     * @returns { uri: string, filename: string } - The file URI and generated filename
      */
     async generateEpub(
         story: Story,
@@ -30,7 +36,7 @@ export class EpubGenerator {
         onProgress?: (progress: EpubProgress) => void,
         fileNumber?: number,
         totalFiles?: number
-    ): Promise<string> {
+    ): Promise<GenerateEpubResult> {
         onProgress?.({ current: 0, total: chapters.length, percentage: 0, stage: 'filtering' });
 
         const availableChapters: Chapter[] = [];
@@ -111,7 +117,7 @@ export class EpubGenerator {
 
         onProgress?.({ current: 3, total: 3, percentage: 100, stage: 'finalizing' });
 
-        return uri;
+        return { uri, filename };
     }
 
     /**
@@ -126,10 +132,10 @@ export class EpubGenerator {
     ): Promise<EpubResult[]> {
         if (chapters.length <= maxChaptersPerEpub) {
             // Single EPUB is sufficient
-            const uri = await this.generateEpub(story, chapters, onProgress);
+            const result = await this.generateEpub(story, chapters, onProgress);
             return [{
-                uri,
-                filename: `${EpubMetadataGenerator.sanitizeFilename(story.title)}.epub`,
+                uri: result.uri,
+                filename: result.filename,
                 chapterRange: { start: 1, end: chapters.length }
             }];
         }
@@ -146,12 +152,10 @@ export class EpubGenerator {
             const fileChapters = chapters.slice(startIndex, endIndex);
 
             // Create a modified story for this volume
-            // Keep the base title for the first volume, add "Vol N" for subsequent volumes
+            // Add "Vol N" to all volumes for consistency
             const volumeStory: Story = {
                 ...story,
-                title: fileIndex === 0
-                    ? story.title
-                    : `${story.title} (Vol ${fileIndex + 1})`
+                title: `${story.title} (Vol ${fileIndex + 1})`
             };
 
             // Wrap the progress callback to add file information and adjust percentage
@@ -175,10 +179,7 @@ export class EpubGenerator {
                 }
             };
 
-            const uri = await this.generateEpub(volumeStory, fileChapters, wrappedProgress, fileIndex + 1, totalFiles);
-
-            const baseFilename = EpubMetadataGenerator.sanitizeFilename(story.title);
-            const filename = `${baseFilename}_Vol${fileIndex + 1}.epub`;
+            const { uri, filename } = await this.generateEpub(volumeStory, fileChapters, wrappedProgress, fileIndex + 1, totalFiles);
 
             results.push({
                 uri,
