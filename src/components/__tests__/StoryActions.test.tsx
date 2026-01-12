@@ -41,7 +41,8 @@ describe('StoryActions', () => {
         updateStatus: undefined,
         downloadProgress: 0.5,
         downloadStatus: 'Downloading chapter 50/100',
-        onDownloadOrUpdate: jest.fn(),
+        onDownloadAll: jest.fn(),
+        onUpdate: jest.fn(),
         onGenerateOrRead: jest.fn(),
         onPartialDownload: jest.fn(),
     };
@@ -60,14 +61,10 @@ describe('StoryActions', () => {
         expect(getByTestId('download-button')).toBeTruthy();
     });
 
-    it('should render Update button when all chapters downloaded', () => {
-        const props = {
-            ...defaultProps,
-            story: { ...defaultProps.story, downloadedChapters: 100 },
-        };
-        const { getByTestId } = renderWithTheme(<StoryActions {...props} />);
+    it('should render Update button', () => {
+        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
-        expect(getByTestId('download-button')).toBeTruthy();
+        expect(getByTestId('update-button')).toBeTruthy();
     });
 
     it('should render Downloading... button when downloading', () => {
@@ -79,20 +76,23 @@ describe('StoryActions', () => {
     });
 
     it('should render Checking... button when checking updates', () => {
-        const props = {
-            ...defaultProps,
-            story: { ...defaultProps.story, downloadedChapters: 100 },
-        };
-        const { getByTestId } = renderWithTheme(<StoryActions {...props} checkingUpdates={true} />);
+        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} checkingUpdates={true} />);
 
-        expect(getByTestId('download-button')).toBeTruthy();
+        expect(getByTestId('update-button')).toBeTruthy();
     });
 
-    it('should call onDownloadOrUpdate when Download All button is pressed', () => {
+    it('should call onDownloadAll when Download All button is pressed', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
         fireEvent.press(getByTestId('download-button'));
-        expect(defaultProps.onDownloadOrUpdate).toHaveBeenCalledTimes(1);
+        expect(defaultProps.onDownloadAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('should call onUpdate when Update button is pressed', () => {
+        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
+
+        fireEvent.press(getByTestId('update-button'));
+        expect(defaultProps.onUpdate).toHaveBeenCalledTimes(1);
     });
 
     it('should render progress bar when downloading', () => {
@@ -114,7 +114,6 @@ describe('StoryActions', () => {
     it('should render checking updates status when checking', () => {
         const props = {
             ...defaultProps,
-            story: { ...defaultProps.story, downloadedChapters: 100 },
             updateStatus: 'Checking for updates...',
         };
         const { getByText } = renderWithTheme(<StoryActions {...props} checkingUpdates={true} />);
@@ -192,10 +191,11 @@ describe('StoryActions', () => {
         expect(defaultProps.onPartialDownload).toHaveBeenCalledTimes(1);
     });
 
-    it('should render all three action buttons', () => {
+    it('should render all four action buttons', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
         expect(getByTestId('download-button')).toBeTruthy();
+        expect(getByTestId('update-button')).toBeTruthy();
         expect(getByTestId('generate-button')).toBeTruthy();
         expect(getByTestId('partial-download-button')).toBeTruthy();
     });

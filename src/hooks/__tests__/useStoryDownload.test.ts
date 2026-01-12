@@ -60,7 +60,7 @@ describe('useStoryDownload', () => {
         });
     });
 
-    it('should handle update check when all chapters downloaded', async () => {
+    it('should handle update check with updateNovel', async () => {
         // Setup Mocks for update check
         const mockProvider = {
             getChapterList: jest.fn().mockResolvedValue([
@@ -75,7 +75,7 @@ describe('useStoryDownload', () => {
         const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
 
         await act(async () => {
-            await result.current.downloadOrUpdate();
+            await result.current.updateNovel();
         });
 
         expect(result.current.checkingUpdates).toBe(false);
@@ -84,7 +84,7 @@ describe('useStoryDownload', () => {
         expect(mockShowAlert).toHaveBeenCalledWith('Update Found', expect.stringContaining('1 new chapters'));
     });
 
-    it('should start download if chapters missing', async () => {
+    it('should start download all with downloadAll', async () => {
         const uncompletedStory = {
             ...mockStory,
             status: DownloadStatus.Partial,
@@ -101,7 +101,7 @@ describe('useStoryDownload', () => {
         (downloadService.downloadAllChapters as jest.Mock).mockResolvedValue(uncompletedStory);
 
         await act(async () => {
-            await result.current.downloadOrUpdate();
+            await result.current.downloadAll();
         });
 
         expect(downloadService.downloadAllChapters).toHaveBeenCalledWith(uncompletedStory);
@@ -123,7 +123,7 @@ describe('useStoryDownload', () => {
         const { result } = renderHook(() => useStoryDownload({ story: uncompletedStory, onStoryUpdated: mockOnStoryUpdated }));
 
         await act(async () => {
-            await result.current.downloadOrUpdate();
+            await result.current.downloadAll();
         });
 
         expect(mockShowAlert).toHaveBeenCalledWith('Download Error', expect.anything());

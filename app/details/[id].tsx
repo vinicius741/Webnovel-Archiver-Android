@@ -33,7 +33,8 @@ export default function StoryDetailsScreen() {
       downloadStatus,
       deleteStory,
       markChapterAsRead,
-      downloadOrUpdate,
+      downloadAll,
+      updateNovel,
       generateOrRead,
       downloadRange,
       applySentenceRemoval,
@@ -73,7 +74,7 @@ export default function StoryDetailsScreen() {
   const renderStoryInfo = () => (
     <View style={styles.fullWidth}>
         <StoryHeader story={story} />
-        <StoryActions 
+        <StoryActions
             story={story}
             downloading={downloading}
             checkingUpdates={checkingUpdates}
@@ -82,7 +83,8 @@ export default function StoryDetailsScreen() {
             updateStatus={updateStatus}
             downloadProgress={downloadProgress}
             downloadStatus={downloadStatus}
-            onDownloadOrUpdate={downloadOrUpdate}
+            onDownloadAll={downloadAll}
+            onUpdate={updateNovel}
             onGenerateOrRead={generateOrRead}
             onPartialDownload={() => setShowDownloadRange(true)}
         />

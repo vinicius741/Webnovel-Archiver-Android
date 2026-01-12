@@ -12,7 +12,8 @@ interface StoryActionsProps {
     updateStatus?: string;
     downloadProgress: number;
     downloadStatus: string;
-    onDownloadOrUpdate: () => void;
+    onDownloadAll: () => void;
+    onUpdate: () => void;
     onGenerateOrRead: () => void;
     onPartialDownload: () => void;
 }
@@ -26,7 +27,8 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
     updateStatus,
     downloadProgress,
     downloadStatus,
-    onDownloadOrUpdate,
+    onDownloadAll,
+    onUpdate,
     onGenerateOrRead,
     onPartialDownload
 }) => {
@@ -37,12 +39,12 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             <Button
                 mode="contained"
                 style={styles.actionBtn}
-                loading={downloading || checkingUpdates}
-                disabled={downloading || checkingUpdates}
-                onPress={onDownloadOrUpdate}
+                loading={downloading}
+                disabled={downloading || checkingUpdates || story.downloadedChapters === story.totalChapters}
+                onPress={onDownloadAll}
                 testID="download-button"
             >
-                {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking...' : 'Update') : 'Download All')}
+                {downloading ? 'Downloading...' : 'Download All'}
             </Button>
 
             {downloading && (
@@ -53,6 +55,17 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                     </Text>
                 </View>
             )}
+
+            <Button
+                mode="outlined"
+                style={styles.actionBtn}
+                loading={checkingUpdates}
+                disabled={downloading || checkingUpdates || generating}
+                onPress={onUpdate}
+                testID="update-button"
+            >
+                {checkingUpdates ? 'Checking...' : 'Update'}
+            </Button>
 
             {checkingUpdates && updateStatus && (
                 <View style={styles.progressContainer}>
