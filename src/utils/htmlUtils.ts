@@ -104,6 +104,97 @@ export const removeUnwantedSentences = (content: string, sentenceRemovalList: st
     return cleanContent;
 };
 
+// Block elements that should create line breaks (tr is handled separately for table cells)
+const BLOCK_ELEMENTS = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote'];
+// Block elements that end with extra blank line
+const MAJOR_BLOCK_ELEMENTS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'];
+
+/**
+ * Extracts formatted text from HTML content, preserving paragraph breaks and structure.
+ * Removes HTML tags while keeping the text layout intact.
+ */
+export const extractFormattedText = (html: string): string => {
+    if (!html) return '';
+
+    const $ = cheerio.load(html);
+
+    // Remove unwanted elements
+    $('script, style, iframe, noscript').remove();
+
+    // Clone the body to work with it
+    const $body = $('body').clone();
+
+    // Replace br tags with newlines
+    $body.find('br').replaceWith('\n');
+
+    // Handle table cells: insert separator between adjacent cells
+    $body.find('tr').each((_, tr) => {
+        const $tr = $(tr);
+        const cells = $tr.find('td, th');
+        // Insert separator after each cell except the last (to avoid space before \n)
+        cells.slice(0, -1).after(' | ');
+        // Unwrap cells (replace with their contents)
+        cells.each((_, cell) => {
+            const $cell = $(cell);
+            const contents = $cell.contents();
+            // For empty cells, add a space to preserve formatting
+            if (contents.length === 0) {
+                $cell.replaceWith(' ');
+            } else {
+                $cell.replaceWith(contents);
+            }
+        });
+        // Append newline to the row and unwrap it
+        $tr.append('\n').replaceWith($tr.contents());
+    });
+
+    // Mark container divs before processing (divs that only contain block children).
+    // These will be unwrapped without adding extra newlines.
+    const blockSelector = BLOCK_ELEMENTS.join(',');
+    $body.find('div').each((_, div) => {
+        const $div = $(div);
+        const children = $div.children();
+        if (children.length === 0) return;
+        // Check if all children are block elements (no direct text content)
+        const allBlock = children.filter((_, child) => $(child).is(blockSelector)).length === children.length;
+        if (allBlock) {
+            $div.addClass('_container-div');
+        }
+    });
+
+    // Process block elements from innermost to outermost to correctly handle nesting.
+    const selector = BLOCK_ELEMENTS.join(',');
+    $body.find(selector).get().reverse().forEach(el => {
+        const $el = $(el);
+        // Skip container divs - they just unwrap without adding newlines
+        if ($el.hasClass('_container-div')) {
+            $el.replaceWith($el.contents());
+            return;
+        }
+        const tag = el.tagName.toLowerCase();
+        const isMajor = MAJOR_BLOCK_ELEMENTS.includes(tag);
+        const suffix = isMajor ? '\n\n' : '\n';
+        // For major block elements, also add \n before to create spacing
+        if (isMajor) {
+            $el.before('\n');
+        }
+        // Append suffix and then unwrap the element by replacing it with its contents.
+        $el.append(suffix);
+        const contents = $el.contents();
+        $el.replaceWith(contents);
+    });
+
+    // Get text and clean up while preserving structure
+    let result = $body.text()
+        .replace(/[ \t]+/g, ' ')           // Collapse multiple spaces/tabs to single space
+        .replace(/ \n/g, '\n')             // Remove space before newline
+        .replace(/\n +/g, '\n')            // Remove spaces after newline
+        .replace(/\n{3,}/g, '\n\n')        // Limit consecutive newlines to 2
+        .replace(/\s+$/g, '');             // Remove trailing whitespace only (preserve leading)
+
+    return result;
+};
+
 /**
  * Cleans chapter titles by removing time-ago suffixes and absolute dates.
  */

@@ -9,7 +9,7 @@ import { sanitizeTitle } from '../../../src/utils/stringUtils';
 import { TTSSettingsModal } from '../../../src/components/TTSSettingsModal';
 import { TTSController } from '../../../src/components/TTSController';
 import { useTTS } from '../../../src/hooks/useTTS';
-import { prepareTTSContent, extractPlainText } from '../../../src/utils/htmlUtils';
+import { prepareTTSContent, extractFormattedText } from '../../../src/utils/htmlUtils';
 import { ReaderNavigation } from '../../../src/components/ReaderNavigation';
 import { ReaderContent } from '../../../src/components/ReaderContent';
 import { useReaderContent } from '../../../src/hooks/useReaderContent';
@@ -119,7 +119,7 @@ export default function ReaderScreen() {
 
     const handleCopy = async () => {
         if (!content) return;
-        await Clipboard.setStringAsync(content);
+        await Clipboard.setStringAsync(extractFormattedText(content));
         setCopyFeedbackVisible(true);
     };
 
