@@ -40,7 +40,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                 mode="contained"
                 style={styles.actionBtn}
                 loading={downloading}
-                disabled={downloading || checkingUpdates}
+                disabled={downloading || checkingUpdates || story.downloadedChapters === story.totalChapters}
                 onPress={onDownloadAll}
                 testID="download-button"
             >
