@@ -9,12 +9,32 @@ jest.mock('../../services/StorageService');
 jest.mock('../../services/BackupService');
 jest.mock('../../theme/ThemeContext');
 jest.mock('expo-router');
+jest.mock('../../context/AlertContext');
+
+// Helper function to find and press a button in an alert dialog
+const findAndPressButton = (mockFn: jest.Mock, alertTitle: string, buttonText: string) => {
+    const alertCall = mockFn.mock.calls.find(call => call[0] === alertTitle);
+    if (!alertCall) {
+        throw new Error(`No alert found with title "${alertTitle}"`);
+    }
+    const button = alertCall[2].find((b: any) => b.text === buttonText);
+    if (!button) {
+        throw new Error(`No button found with text "${buttonText}" in alert "${alertTitle}"`);
+    }
+    return button.onPress;
+};
+
+// Helper function to get the last alert call
+const getLastAlertCall = (mockFn: jest.Mock) => mockFn.mock.calls.slice(-1)[0];
 
 describe('useSettings', () => {
     const mockSetThemeMode = jest.fn();
+    const mockShowAlert = jest.fn();
 
     beforeEach(() => {
         jest.clearAllMocks();
+        const { useAppAlert } = require('../../context/AlertContext');
+        useAppAlert.mockReturnValue({ showAlert: mockShowAlert });
         (useTheme as jest.Mock).mockReturnValue({
             themeMode: 'dark',
             setThemeMode: mockSetThemeMode,
@@ -177,9 +197,6 @@ describe('useSettings', () => {
     });
 
     it('should handle export backup', async () => {
-        const Alert = require('react-native').Alert;
-        jest.spyOn(Alert, 'alert');
-
         const { result } = renderHook(() => useSettings());
 
         await act(async () => {
@@ -187,16 +204,13 @@ describe('useSettings', () => {
         });
 
         expect(backupService.exportBackup).toHaveBeenCalled();
-        expect(Alert.alert).toHaveBeenCalledWith(
+        expect(mockShowAlert).toHaveBeenCalledWith(
             'Export Complete',
             'Export successful'
         );
     });
 
     it('should handle failed export backup', async () => {
-        const Alert = require('react-native').Alert;
-        jest.spyOn(Alert, 'alert');
-
         (backupService.exportBackup as jest.Mock).mockResolvedValue({
             success: false,
             message: 'Export failed',
@@ -208,23 +222,20 @@ describe('useSettings', () => {
             await result.current.handleExportBackup();
         });
 
-        expect(Alert.alert).toHaveBeenCalledWith(
+        expect(mockShowAlert).toHaveBeenCalledWith(
             'Export Failed',
             'Export failed'
         );
     });
 
     it('should handle import backup with confirmation', async () => {
-        const Alert = require('react-native').Alert;
-        const alertSpy = jest.spyOn(Alert, 'alert');
-
         const { result } = renderHook(() => useSettings());
 
         await act(async () => {
             result.current.handleImportBackup();
         });
 
-        expect(alertSpy).toHaveBeenCalledWith(
+        expect(mockShowAlert).toHaveBeenCalledWith(
             'Import Backup',
             expect.stringContaining('merge'),
             expect.arrayContaining([
@@ -238,65 +249,44 @@ describe('useSettings', () => {
     });
 
     it('should call backupService import on import confirm', async () => {
-        const Alert = require('react-native').Alert;
-        jest.spyOn(Alert, 'alert').mockImplementation((title: any, msg: any, buttons: any) => {
-            if (buttons) {
-                const importButton = buttons.find((b: any) => b.text === 'Import');
-                if (importButton && importButton.onPress) {
-                    importButton.onPress();
-                }
-            }
-        });
-
         const { result } = renderHook(() => useSettings());
 
         await act(async () => {
             result.current.handleImportBackup();
+        });
+
+        const importButtonPress = findAndPressButton(mockShowAlert, 'Import Backup', 'Import');
+        await act(async () => {
+            importButtonPress();
         });
 
         expect(backupService.importBackup).toHaveBeenCalled();
     });
 
     it('should handle successful import backup', async () => {
-        const Alert = require('react-native').Alert;
-        jest.spyOn(Alert, 'alert').mockImplementation((title: any, msg: any, buttons: any) => {
-            if (buttons) {
-                const importButton = buttons.find((b: any) => b.text === 'Import');
-                if (importButton && importButton.onPress) {
-                    importButton.onPress();
-                }
-            }
-        });
-
         const { result } = renderHook(() => useSettings());
 
         await act(async () => {
             result.current.handleImportBackup();
         });
 
-        expect(Alert.alert).toHaveBeenCalledWith(
-            'Import Complete',
-            'Import successful',
-            expect.arrayContaining([
-                expect.objectContaining({
-                    text: 'OK',
-                    onPress: expect.any(Function),
-                }),
-            ])
-        );
+        const importButtonPress = findAndPressButton(mockShowAlert, 'Import Backup', 'Import');
+        await act(async () => {
+            importButtonPress();
+        });
+
+        const successCall = getLastAlertCall(mockShowAlert);
+        expect(successCall[0]).toBe('Import Complete');
+        expect(successCall[1]).toBe('Import successful');
+        expect(successCall[2]).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                text: 'OK',
+                onPress: expect.any(Function),
+            }),
+        ]));
     });
 
     it('should handle failed import backup', async () => {
-        const Alert = require('react-native').Alert;
-        jest.spyOn(Alert, 'alert').mockImplementation((title: any, msg: any, buttons: any) => {
-            if (buttons) {
-                const importButton = buttons.find((b: any) => b.text === 'Import');
-                if (importButton && importButton.onPress) {
-                    importButton.onPress();
-                }
-            }
-        });
-
         (backupService.importBackup as jest.Mock).mockResolvedValue({
             success: false,
             message: 'Import failed',
@@ -308,24 +298,25 @@ describe('useSettings', () => {
             result.current.handleImportBackup();
         });
 
-        expect(Alert.alert).toHaveBeenLastCalledWith(
-            'Import Failed',
-            'Import failed',
-            undefined
-        );
+        const importButtonPress = findAndPressButton(mockShowAlert, 'Import Backup', 'Import');
+        await act(async () => {
+            importButtonPress();
+        });
+
+        const failCall = getLastAlertCall(mockShowAlert);
+        expect(failCall[0]).toBe('Import Failed');
+        expect(failCall[1]).toBe('Import failed');
+        expect(failCall[2]).toBeUndefined();
     });
 
     it('should handle clear data with confirmation', async () => {
-        const Alert = require('react-native').Alert;
-        const alertSpy = jest.spyOn(Alert, 'alert');
-
         const { result } = renderHook(() => useSettings());
 
         await act(async () => {
             result.current.clearData();
         });
 
-        expect(alertSpy).toHaveBeenCalledWith(
+        expect(mockShowAlert).toHaveBeenCalledWith(
             'Clear Data',
             expect.stringContaining('delete all novels'),
             expect.arrayContaining([
@@ -340,30 +331,19 @@ describe('useSettings', () => {
     });
 
     it('should call clearAll and navigate back on delete confirm', async () => {
-        const Alert = require('react-native').Alert;
-        let nestedCallback: (() => void) | null = null;
-        jest.spyOn(Alert, 'alert').mockImplementation((title: any, msg: any, buttons: any) => {
-            if (buttons) {
-                const deleteButton = buttons.find((b: any) => b.text === 'Delete');
-                if (deleteButton && deleteButton.onPress) {
-                    deleteButton.onPress();
-                }
-                const okButton = buttons.find((b: any) => b.text === 'OK');
-                if (okButton && okButton.onPress) {
-                    nestedCallback = okButton.onPress;
-                }
-            }
-        });
-
         const { result } = renderHook(() => useSettings());
 
         await act(async () => {
             result.current.clearData();
         });
 
+        const deleteButtonPress = findAndPressButton(mockShowAlert, 'Clear Data', 'Delete');
         await act(async () => {
-            if (nestedCallback) nestedCallback();
+            deleteButtonPress();
         });
+
+        const okButtonPress = findAndPressButton(mockShowAlert, 'Data Cleared', 'OK');
+        okButtonPress();
 
         expect(storageService.clearAll).toHaveBeenCalled();
         expect(router.back).toHaveBeenCalled();

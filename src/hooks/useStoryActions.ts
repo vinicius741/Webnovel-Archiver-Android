@@ -1,5 +1,3 @@
-import { Alert } from 'react-native';
-
 import { storageService } from '../services/StorageService';
 import { useAppAlert } from '../context/AlertContext';
 import { Story, Chapter } from '../types';
@@ -17,7 +15,7 @@ export const useStoryActions = ({ story, onStoryUpdated, onStoryDeleted }: UseSt
     const deleteStory = () => {
         if (!validateStory(story)) return;
 
-        Alert.alert(
+        showAlert(
             'Delete Novel',
             `Are you sure you want to delete "${story.title}"? This action cannot be undone.`,
             [
