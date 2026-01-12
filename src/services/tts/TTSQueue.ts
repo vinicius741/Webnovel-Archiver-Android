@@ -32,10 +32,11 @@ export class TTSQueue {
 
     public processQueue(currentIndex: number): void {
         const bufferSize = this.config.bufferSize || 3;
+        const targetBufferIndex = currentIndex + bufferSize;
 
         while (
             this.bufferedIndex < this.chunks.length &&
-            this.bufferedIndex < currentIndex + bufferSize
+            this.bufferedIndex < targetBufferIndex
         ) {
             const index = this.bufferedIndex;
             const chunk = this.chunks[index];

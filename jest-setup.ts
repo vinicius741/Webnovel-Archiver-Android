@@ -14,3 +14,15 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
     multiRemove: jest.fn(),
     multiMerge: jest.fn(),
 }));
+
+jest.mock('expo-router', () => ({
+    useFocusEffect: jest.fn((callback) => {
+        const { useEffect } = require('react');
+        useEffect(callback, []);
+    }),
+    router: {
+        back: jest.fn(),
+        push: jest.fn(),
+        replace: jest.fn(),
+    },
+}));

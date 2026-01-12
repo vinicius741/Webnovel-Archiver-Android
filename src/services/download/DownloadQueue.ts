@@ -13,12 +13,16 @@ export class DownloadQueue {
             const json = await AsyncStorage.getItem(QUEUE_STORAGE_KEY);
             if (json) {
                 this.jobs = JSON.parse(json);
-                // Reset stuck jobs
+                let needsSave = false;
                 this.jobs.forEach(job => {
                     if (job.status === 'downloading') {
                         job.status = 'pending';
+                        needsSave = true;
                     }
                 });
+                if (needsSave) {
+                    await this._save();
+                }
             }
         } catch (e) {
             console.error('[DownloadQueue] Failed to load queue', e);
@@ -26,7 +30,7 @@ export class DownloadQueue {
         this.initialized = true;
     }
 
-    private async save(): Promise<void> {
+    private async _save(): Promise<void> {
         try {
             await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(this.jobs));
         } catch (e) {
@@ -34,24 +38,27 @@ export class DownloadQueue {
         }
     }
 
+    async save(): Promise<void> {
+        await this._save();
+    }
+
     addJob(job: DownloadJob): void {
         const existingIndex = this.jobs.findIndex(j => j.id === job.id);
         if (existingIndex !== -1) {
             const existing = this.jobs[existingIndex];
-            // If it was failed or completed (re-download), reset it
             if (existing.status === 'failed' || existing.status === 'completed') {
                 this.jobs[existingIndex] = { ...job, status: 'pending', retryCount: 0 };
-                this.save();
+                this._save();
             }
             return;
         }
         this.jobs.push(job);
-        this.save();
+        this._save();
     }
 
     removeJob(id: string): void {
         this.jobs = this.jobs.filter(j => j.id !== id);
-        this.save();
+        this._save();
     }
 
     updateJobStatus(id: string, status: JobStatus, error?: string): void {
@@ -59,7 +66,7 @@ export class DownloadQueue {
         if (job) {
             job.status = status;
             if (error) job.error = error;
-            this.save();
+            this._save();
         }
     }
 
@@ -67,7 +74,7 @@ export class DownloadQueue {
         const index = this.jobs.findIndex(j => j.id === updatedJob.id);
         if (index !== -1) {
             this.jobs[index] = updatedJob;
-            this.save();
+            this._save();
         }
     }
 
@@ -91,12 +98,12 @@ export class DownloadQueue {
         } else {
             this.jobs = this.jobs.filter(j => j.status !== 'completed');
         }
-        this.save();
+        this._save();
     }
 
     clearAll(): void {
         this.jobs = [];
-        this.save();
+        this._save();
     }
 }
 

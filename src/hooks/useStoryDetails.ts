@@ -14,15 +14,15 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     const [story, setStory] = useState<Story | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const storyId = typeof id === 'string' ? id : '';
+    const storyId = Array.isArray(id) ? id[0] : (typeof id === 'string' ? id : '');
     const { progress: downloadProgress, status: downloadStatus, isDownloading: isDownloadingHook } = useDownloadProgress(storyId);
 
     const prevDownloading = useRef(isDownloadingHook);
 
     useEffect(() => {
         const loadStory = async () => {
-            if (typeof id === 'string') {
-                const data = await storageService.getStory(id);
+            if (storyId) {
+                const data = await storageService.getStory(storyId);
                 if (data) {
                     setStory(data);
                 }
@@ -30,7 +30,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
             setLoading(false);
         };
         loadStory();
-    }, [id]);
+    }, [storyId]);
 
     useEffect(() => {
         if (prevDownloading.current && !isDownloadingHook && storyId) {

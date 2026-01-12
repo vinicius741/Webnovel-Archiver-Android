@@ -55,7 +55,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         // Sync initial state
         syncState(ttsStateManager.getState());
 
-        // Set up finish callback
+        // Set up finish callback - always call this, even if onFinish is undefined
         const finishWrapper = () => {
             if (onFinishRef.current) {
                 onFinishRef.current();
@@ -109,7 +109,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
             if (unsubscribeNotifee) unsubscribeNotifee();
             ttsStateManager.setOnFinishCallback(null);
         };
-    }, [syncState]);
+    }, [options?.onFinish, syncState]);
 
     const handleSettingsChange = useCallback(async (newSettings: TTSSettings) => {
         setTtsSettings(newSettings);
