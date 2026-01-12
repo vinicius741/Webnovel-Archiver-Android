@@ -17,9 +17,9 @@ export const StoryCard = ({ title, author, coverUrl, sourceName, score, progress
   const theme = useTheme();
 
   return (
-    <Card style={styles.card} onPress={onPress}>
+    <Card style={styles.card} onPress={onPress} testID="story-card">
       <Card.Content style={styles.content}>
-        {coverUrl && <Image source={{ uri: coverUrl }} style={styles.coverImage} />}
+        {coverUrl && <Image source={{ uri: coverUrl }} style={styles.coverImage} testID="story-card-cover" />}
         <View style={styles.textContainer}>
             <Text variant="titleMedium" numberOfLines={2} style={{ marginBottom: 4 }}>{title}</Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>{author}</Text>
@@ -30,7 +30,7 @@ export const StoryCard = ({ title, author, coverUrl, sourceName, score, progress
             )}
             {score && (
                 <View style={styles.scoreContainer}>
-                    <IconButton icon="star" iconColor="#FFD700" size={12} style={styles.scoreIcon} />
+                    <IconButton icon="star" iconColor="#FFD700" size={12} style={styles.scoreIcon} testID="story-card-score-icon" />
                     <Text variant="labelSmall" style={styles.scoreText}>{score}</Text>
                 </View>
             )}
@@ -42,7 +42,7 @@ export const StoryCard = ({ title, author, coverUrl, sourceName, score, progress
         </View>
       </Card.Content>
       {progress !== undefined && (
-        <ProgressBar progress={progress} style={styles.progress} />
+        <ProgressBar progress={progress} style={styles.progress} testID="story-card-progress" />
       )}
     </Card>
   );
