@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Story, Chapter } from '../types';
 import { storageService } from '../services/StorageService';
 import { readChapterFile } from '../services/storage/fileSystem';
@@ -10,7 +10,7 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
@@ -38,7 +38,7 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [storyId, chapterId, storageService, readChapterFile]);
 
     const markAsRead = useCallback(async () => {
         if (!story || !chapter) return;
@@ -53,7 +53,11 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
         return story.chapters.findIndex((c: Chapter) => c.id === chapter.id);
     }, [story, chapter]);
 
-    const isLastRead = story?.lastReadChapterId === chapter?.id;
+    const isLastRead = Boolean(story && chapter && story.lastReadChapterId === chapter.id);
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]);
 
     return {
         story,

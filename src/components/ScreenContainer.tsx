@@ -15,6 +15,7 @@ export const ScreenContainer = ({ children, style, edges }: Props) => {
   return (
     <SafeAreaView
       edges={edges}
+      testID="safe-area-view"
       style={[
         styles.container,
         { backgroundColor: theme.colors.background },

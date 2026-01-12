@@ -54,6 +54,7 @@ const ModalContent = React.memo(({ settings, onSettingsChange, onDismiss, theme 
 
         return (
             <List.Item
+                testID={`voice-item-${voice.identifier}`}
                 key={voice.identifier}
                 title={voice.name}
                 description={`${voice.language} ${voice.quality === 'Enhanced' ? '(High Quality)' : ''}`}
@@ -72,6 +73,7 @@ const ModalContent = React.memo(({ settings, onSettingsChange, onDismiss, theme 
                 <View style={styles.section}>
                     <Text variant="labelLarge">Pitch: {settings.pitch.toFixed(1)}</Text>
                     <Slider
+                        testID="pitch-slider"
                         style={styles.slider}
                         minimumValue={0.5}
                         maximumValue={2.0}
@@ -87,6 +89,7 @@ const ModalContent = React.memo(({ settings, onSettingsChange, onDismiss, theme 
                 <View style={styles.section}>
                     <Text variant="labelLarge">Rate: {settings.rate.toFixed(1)}</Text>
                     <Slider
+                        testID="rate-slider"
                         style={styles.slider}
                         minimumValue={0.1}
                         maximumValue={2.0}
@@ -102,6 +105,7 @@ const ModalContent = React.memo(({ settings, onSettingsChange, onDismiss, theme 
                 <View style={styles.section}>
                     <Text variant="labelLarge">Chunk Size: {settings.chunkSize}</Text>
                     <Slider
+                        testID="chunk-slider"
                         style={styles.slider}
                         minimumValue={20}
                         maximumValue={1000}
@@ -157,6 +161,7 @@ export const TTSSettingsModal: React.FC<Props> = ({ visible, onDismiss, settings
             visible={visible}
             onDismiss={onDismiss}
             contentContainerStyle={[styles.modalContent, { backgroundColor: theme.colors.surface }]}
+            testID="modal"
         >
             <ModalContent
                 settings={settings}

@@ -29,11 +29,11 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
     const images = story.coverUrl ? [{ uri: story.coverUrl }] : [];
 
     return (
-        <View style={styles.container}>
+        <View testID="story-header" style={styles.container}>
             {story.coverUrl && (
                 <>
                     <Pressable onPress={() => setViewerVisible(true)}>
-                        <Image source={{ uri: story.coverUrl }} style={styles.coverImage} />
+                        <Image testID="image" source={{ uri: story.coverUrl }} style={styles.coverImage} />
                     </Pressable>
                     <ImageView
                         images={images}

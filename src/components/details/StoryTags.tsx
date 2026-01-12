@@ -14,11 +14,12 @@ export const StoryTags: React.FC<StoryTagsProps> = ({ tags }) => {
     }
 
     return (
-        <View style={styles.container}>
+        <View testID="tags-container" style={styles.container}>
             {tags.map((tag, index) => (
-                <Chip 
-                    key={`${tag}-${index}`} 
-                    style={styles.chip} 
+                <Chip
+                    testID={`chip-${index}`}
+                    key={`${tag}-${index}`}
+                    style={styles.chip}
                     textStyle={styles.chipText}
                     compact
                 >

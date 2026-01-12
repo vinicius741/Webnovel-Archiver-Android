@@ -6,6 +6,7 @@ jest.mock('@react-native-async-storage/async-storage');
 
 describe('DownloadQueue', () => {
     const QUEUE_STORAGE_KEY = 'wa_download_queue_v2';
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     const mockJob: DownloadJob = {
         id: 'job1',
@@ -59,6 +60,11 @@ describe('DownloadQueue', () => {
         jest.clearAllMocks();
         (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
         (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+        consoleErrorSpy.mockClear();
+    });
+
+    afterAll(() => {
+        consoleErrorSpy.mockRestore();
     });
 
     it('should initialize with empty queue', async () => {

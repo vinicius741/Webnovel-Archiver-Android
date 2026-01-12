@@ -8,9 +8,18 @@ jest.mock('../../../network/fetcher', () => ({
 
 describe('ScribbleHubProvider', () => {
   const mockFetchPage = fetchPage as jest.Mock;
+  const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockClear();
+  });
+
+  afterAll(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   describe('isSource', () => {

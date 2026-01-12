@@ -27,7 +27,7 @@ export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRe
                 <List.Icon 
                     {...props} 
                     icon={isLastRead ? "bookmark" : (item.downloaded ? "file-check-outline" : "file-outline")} 
-                    color={isLastRead ? theme.colors.primary : (item.downloaded ? theme.colors.secondary : theme.colors.outline)} 
+                    color={isLastRead ? theme.colors.primary : (item.downloaded ? theme.colors.secondary : theme.colors.outline)}
                 />
             )}
             right={props => item.downloaded ? (
@@ -38,6 +38,7 @@ export const ChapterListItem: React.FC<ChapterListItemProps> = ({ item, isLastRe
                     style={{ marginVertical: 0, alignSelf: 'center' }}
                 />
             ) : null}
+            testID="list-item"
             onPress={onPress}
             onLongPress={onLongPress}
             style={[

@@ -18,16 +18,20 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
     const openMenu = () => setVisible(true);
     const closeMenu = () => setVisible(false);
 
+    const MenuButton = (
+        <IconButton
+            icon="dots-vertical"
+            onPress={openMenu}
+            accessibilityLabel="More options"
+            testID="story-menu-button"
+        />
+    );
+
     return (
         <Menu
             visible={visible}
             onDismiss={closeMenu}
-            anchor={
-                <IconButton 
-                    icon="dots-vertical" 
-                    onPress={openMenu}
-                />
-            }
+            anchor={MenuButton}
         >
             <Menu.Item 
                 onPress={() => {

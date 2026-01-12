@@ -34,12 +34,13 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
 
     return (
         <View style={styles.container}>
-            <Button 
-                mode="contained" 
-                style={styles.actionBtn} 
+            <Button
+                mode="contained"
+                style={styles.actionBtn}
                 loading={downloading || checkingUpdates}
                 disabled={downloading || checkingUpdates}
                 onPress={onDownloadOrUpdate}
+                testID="download-button"
             >
                 {downloading ? 'Downloading...' : (story.downloadedChapters === story.totalChapters ? (checkingUpdates ? 'Checking...' : 'Update') : 'Download All')}
             </Button>
@@ -68,6 +69,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                 disabled={(story.downloadedChapters === 0 && !story.epubPath) || generating}
                 loading={generating}
                 onPress={onGenerateOrRead}
+                testID="generate-button"
             >
                 {story.epubPath ? 'Read EPUB' : 'Generate EPUB'}
             </Button>
@@ -86,6 +88,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
                 onPress={onPartialDownload}
                 disabled={downloading || checkingUpdates || generating}
                 style={styles.actionBtn}
+                testID="partial-download-button"
             >
                 Partial Download
             </Button>

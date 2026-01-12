@@ -55,11 +55,12 @@ export const SortButton: React.FC<SortButtonProps> = ({
                 visible={visible}
                 onDismiss={closeMenu}
                 anchor={
-                    <IconButton 
-                        icon={sortDirection === 'asc' ? 'sort-ascending' : 'sort-descending'} 
-                        onPress={openMenu} 
+                    <IconButton
+                        icon={sortDirection === 'asc' ? 'sort-ascending' : 'sort-descending'}
+                        onPress={openMenu}
                         mode="contained-tonal"
                         style={{ margin: 0 }}
+                        testID="icon-button"
                     />
                 }
             >

@@ -52,7 +52,7 @@ export const TTSController: React.FC<TTSControllerProps> = ({
     if (!isRendered) return null;
 
     return (
-        <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+        <Animated.View testID="animated-view" style={[styles.container, { opacity: fadeAnim }]}>
             <Surface style={[styles.surface, { backgroundColor: theme.colors.elevation.level3 }]} elevation={4}>
                 <View style={styles.content}>
                     <View style={styles.info}>
@@ -70,6 +70,7 @@ export const TTSController: React.FC<TTSControllerProps> = ({
                             size={24}
                             disabled={currentChunk === 0}
                             onPress={onPrevious}
+                            testID="previous-button"
                         />
                         <IconButton
                             icon={isPaused ? "play" : "pause"}
@@ -78,17 +79,20 @@ export const TTSController: React.FC<TTSControllerProps> = ({
                             containerColor={theme.colors.primary}
                             iconColor={theme.colors.onPrimary}
                             onPress={onPlayPause}
+                            testID="play-pause-button"
                         />
                         <IconButton
                             icon="skip-next"
                             size={24}
                             disabled={currentChunk >= totalChunks - 1}
                             onPress={onNext}
+                            testID="next-button"
                         />
                         <IconButton
                             icon="stop"
                             size={24}
                             onPress={onStop}
+                            testID="stop-button"
                         />
                     </View>
                 </View>
