@@ -105,6 +105,50 @@ export const removeUnwantedSentences = (content: string, sentenceRemovalList: st
 };
 
 /**
+ * Extracts formatted text from HTML content, preserving paragraph breaks and structure.
+ * Removes HTML tags while keeping the text layout intact.
+ */
+export const extractFormattedText = (html: string): string => {
+    if (!html) return '';
+
+    const $ = cheerio.load(html);
+
+    // Remove unwanted elements
+    $('script, style, iframe, noscript').remove();
+
+    // Block elements that should create line breaks
+    const blockElements = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'tr'];
+    // Block elements that end with extra blank line
+    const majorBlockElements = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote'];
+
+    // Clone the body to work with it
+    const $body = $('body').clone();
+
+    // Replace br tags with newlines
+    $body.find('br').replaceWith('\n');
+
+    // Replace block elements with their content plus newlines
+    blockElements.forEach(tag => {
+        $body.find(tag).each((_, el) => {
+            const $el = $(el);
+            const content = $el.html() || '';
+            const suffix = majorBlockElements.includes(tag) ? '\n\n' : '\n';
+            $el.replaceWith(content + suffix);
+        });
+    });
+
+    // Get text and clean up while preserving structure
+    let result = $body.text()
+        .replace(/[ \t]+/g, ' ')           // Collapse multiple spaces/tabs to single space
+        .replace(/ \n/g, '\n')             // Remove space before newline
+        .replace(/\n +/g, '\n')            // Remove spaces after newline
+        .replace(/\n{3,}/g, '\n\n')        // Limit consecutive newlines to 2
+        .trim();
+
+    return result;
+};
+
+/**
  * Cleans chapter titles by removing time-ago suffixes and absolute dates.
  */
 export const cleanChapterTitle = (title: string): string => {
