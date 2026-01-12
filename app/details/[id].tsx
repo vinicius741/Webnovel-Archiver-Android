@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator, IconButton, Searchbar, Switch } from 'react-native-paper';
+import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 
 import { StoryHeader } from '../../src/components/details/StoryHeader';
@@ -9,10 +9,12 @@ import { StoryMenu } from '../../src/components/details/StoryMenu';
 import { StoryDescription } from '../../src/components/details/StoryDescription';
 import { StoryTags } from '../../src/components/details/StoryTags';
 import { ChapterListItem } from '../../src/components/details/ChapterListItem';
+import { ChapterFilterMenu } from '../../src/components/details/ChapterFilterMenu';
 import { DownloadRangeDialog } from '../../src/components/details/DownloadRangeDialog';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { useScreenLayout } from '../../src/hooks/useScreenLayout';
 import { useStoryDetails } from '../../src/hooks/useStoryDetails';
+import { storageService, ChapterFilterMode } from '../../src/services/StorageService';
 import { Chapter } from '../../src/types';
 
 export default function StoryDetailsScreen() {
@@ -42,13 +44,42 @@ export default function StoryDetailsScreen() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showDownloadRange, setShowDownloadRange] = useState(false);
-  const [hideNonDownloaded, setHideNonDownloaded] = useState(false);
+  const [filterMode, setFilterMode] = useState<ChapterFilterMode>('all');
 
-  const filteredChapters = story?.chapters.filter(c => {
-      const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFilter = !hideNonDownloaded || c.downloaded;
-      return matchesSearch && matchesFilter;
-  }) || [];
+  useEffect(() => {
+    const loadFilterSettings = async () => {
+      const settings = await storageService.getChapterFilterSettings();
+      setFilterMode(settings.filterMode);
+    };
+    loadFilterSettings();
+  }, []);
+
+  const filteredChapters = useMemo(() => {
+    if (!story) return [];
+
+    const bookmarkIndex = story.lastReadChapterId && filterMode === 'hideAboveBookmark'
+        ? story.chapters.findIndex(ch => ch.id === story.lastReadChapterId)
+        : -1;
+
+    return story.chapters.filter((c, index) => {
+        const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase());
+        if (!matchesSearch) return false;
+
+        switch (filterMode) {
+            case 'hideNonDownloaded':
+                return c.downloaded === true;
+            case 'hideAboveBookmark':
+                return bookmarkIndex !== -1 ? index >= bookmarkIndex : true;
+            default:
+                return true;
+        }
+    });
+  }, [story, searchQuery, filterMode]);
+
+  const handleFilterSelect = async (mode: ChapterFilterMode) => {
+      setFilterMode(mode);
+      await storageService.saveChapterFilterSettings({ filterMode: mode });
+  };
 
   if (loading) {
     return (
@@ -98,19 +129,13 @@ export default function StoryDetailsScreen() {
         <StoryDescription description={story.description} />
         
         <View style={styles.filterContainer}>
-            <Searchbar
-                placeholder="Search chapters"
-                onChangeText={setSearchQuery}
-                value={searchQuery}
-                style={styles.searchbar}
+            <ChapterFilterMenu
+                filterMode={filterMode}
+                hasBookmark={!!story.lastReadChapterId}
+                onFilterSelect={handleFilterSelect}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
             />
-             <View style={styles.toggleContainer}>
-                <Text variant="bodyMedium">Hide non-downloaded</Text>
-                <Switch
-                    value={hideNonDownloaded}
-                    onValueChange={setHideNonDownloaded}
-                />
-            </View>
         </View>
     </View>
   );
@@ -207,14 +232,5 @@ const styles = StyleSheet.create({
   filterContainer: {
     margin: 16,
     marginBottom: 8,
-    gap: 8,
-  },
-  searchbar: {
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
   },
 });
