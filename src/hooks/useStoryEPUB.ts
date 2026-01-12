@@ -3,7 +3,7 @@ import { getInfoAsync, getContentUriAsync } from 'expo-file-system/legacy';
 import { startActivityAsync } from 'expo-intent-launcher';
 
 import { storageService } from '../services/StorageService';
-import { epubGenerator, EpubProgress } from '../services/EpubGenerator';
+import { epubGenerator, EpubProgress, EpubResult } from '../services/EpubGenerator';
 import { useAppAlert } from '../context/AlertContext';
 import { Story } from '../types';
 import { validateStory } from '../utils/storyValidation';
@@ -19,6 +19,8 @@ interface EpubGenerationProgress {
     percentage: number;
     stage: string;
     status: string;
+    currentFile?: number;
+    totalFiles?: number;
 }
 
 export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
@@ -26,16 +28,51 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
     const [generating, setGenerating] = useState(false);
     const [progress, setProgress] = useState<EpubGenerationProgress | null>(null);
 
-    const readExistingEpub = async (epubPath: string): Promise<boolean> => {
+    const readExistingEpub = async (epubPath: string, isFromMultiple: boolean = false): Promise<boolean> => {
         if (!validateStory(story)) return false;
 
         try {
             const fileInfo = await getInfoAsync(epubPath);
             if (!fileInfo.exists) {
-                const updated: Story = { ...story, epubPath: undefined };
-                await storageService.addStory(updated);
-                onStoryUpdated(updated);
-                showAlert('Error', 'EPUB file not found. Please regenerate.');
+                // If this is from multiple EPUBs, check which files still exist
+                if (isFromMultiple && story.epubPaths && story.epubPaths.length > 1) {
+                    const existingPaths: string[] = [];
+                    for (const path of story.epubPaths) {
+                        try {
+                            const info = await getInfoAsync(path);
+                            if (info.exists) {
+                                existingPaths.push(path);
+                            }
+                        } catch {
+                            // File doesn't exist, skip it
+                        }
+                    }
+
+                    // Update story with only the existing paths
+                    const updated: Story = {
+                        ...story,
+                        epubPaths: existingPaths.length > 0 ? existingPaths : undefined,
+                        epubPath: existingPaths.length > 0 ? existingPaths[0] : undefined
+                    };
+                    await storageService.addStory(updated);
+                    onStoryUpdated(updated);
+
+                    if (existingPaths.length === 0) {
+                        showAlert('Error', 'All EPUB files not found. Please regenerate.');
+                    } else {
+                        showAlert('Warning', `Some EPUB files were missing. ${existingPaths.length} file(s) remain.`);
+                    }
+                } else {
+                    // Clear missing EPUB paths (single file or all files missing)
+                    const updated: Story = {
+                        ...story,
+                        epubPath: undefined,
+                        epubPaths: undefined
+                    };
+                    await storageService.addStory(updated);
+                    onStoryUpdated(updated);
+                    showAlert('Error', 'EPUB file not found. Please regenerate.');
+                }
                 return false;
             }
 
@@ -57,46 +94,119 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
         }
     };
 
+    const readFirstEpub = async (): Promise<boolean> => {
+        if (!validateStory(story)) return false;
+
+        // Check for new epubPaths array first, fall back to old epubPath
+        const epubPaths = story.epubPaths;
+        const epubPath = story.epubPath;
+
+        // Explicitly check for non-empty array
+        const pathToRead = (epubPaths && epubPaths.length > 0) ? epubPaths[0] : epubPath;
+
+        if (!pathToRead) {
+            return false;
+        }
+
+        // Track if this is from multiple files for better error handling
+        const isFromMultiple = epubPaths && epubPaths.length > 1;
+        return await readExistingEpub(pathToRead, isFromMultiple);
+    };
+
     const generateEpub = async (): Promise<boolean> => {
         if (!validateStory(story)) return false;
 
         try {
             setGenerating(true);
             const startTime = Date.now();
-            setProgress({ current: 0, total: story.chapters.length, percentage: 0, stage: 'Starting...', status: 'Initializing' });
-
-            const uri = await epubGenerator.generateEpub(story, story.chapters, (progressData: EpubProgress) => {
-                const elapsed = (Date.now() - startTime) / 1000;
-                const remaining = progressData.percentage > 0 ? (elapsed / progressData.percentage) * (100 - progressData.percentage) : 0;
-                const timeString = remaining > 60 ? `${Math.ceil(remaining / 60)}m ${Math.ceil(remaining % 60)}s` : `${Math.ceil(remaining)}s`;
-
-                let status = '';
-                switch (progressData.stage) {
-                    case 'filtering':
-                        status = `Filtering chapters: ${progressData.current}/${progressData.total}`;
-                        break;
-                    case 'processing':
-                        status = `Processing: ${progressData.current}/${progressData.total} chapters (${timeString} remaining)`;
-                        break;
-                    case 'finalizing':
-                        status = 'Finalizing EPUB...';
-                        break;
-                }
-
-                setProgress({
-                    current: progressData.current,
-                    total: progressData.total,
-                    percentage: progressData.percentage,
-                    stage: progressData.stage,
-                    status
-                });
+            const totalChapters = story.chapters.length;
+            setProgress({
+                current: 0,
+                total: totalChapters,
+                percentage: 0,
+                stage: 'Starting...',
+                status: 'Initializing'
             });
 
-            const updatedStory: Story = { ...story, epubPath: uri };
+            // Get the max chapters per EPUB setting
+            const maxChaptersPerEpub = await storageService.getSettings()
+                .then(settings => settings.maxChaptersPerEpub)
+                .catch(() => 150); // Use default if settings fail to load
+
+            const results: EpubResult[] = await epubGenerator.generateEpubs(
+                story,
+                story.chapters,
+                maxChaptersPerEpub,
+                (progressData: EpubProgress) => {
+                    const elapsed = (Date.now() - startTime) / 1000;
+                    const remaining = progressData.percentage > 0
+                        ? (elapsed / progressData.percentage) * (100 - progressData.percentage)
+                        : 0;
+                    const timeString = remaining > 60
+                        ? `${Math.ceil(remaining / 60)}m ${Math.ceil(remaining % 60)}s`
+                        : `${Math.ceil(remaining)}s`;
+
+                    let status = '';
+                    const { currentFile, totalFiles } = progressData;
+
+                    switch (progressData.stage) {
+                        case 'filtering':
+                            if (totalFiles && totalFiles > 1) {
+                                status = `Filtering: File ${currentFile}/${totalFiles} - ${progressData.current}/${progressData.total} chapters`;
+                            } else {
+                                status = `Filtering chapters: ${progressData.current}/${progressData.total}`;
+                            }
+                            break;
+                        case 'processing':
+                            if (totalFiles && totalFiles > 1) {
+                                status = `Processing: File ${currentFile}/${totalFiles} - ${progressData.current}/${progressData.total} chapters (${timeString} remaining)`;
+                            } else {
+                                status = `Processing: ${progressData.current}/${progressData.total} chapters (${timeString} remaining)`;
+                            }
+                            break;
+                        case 'finalizing':
+                            if (totalFiles && totalFiles > 1) {
+                                status = `Finalizing file ${currentFile}/${totalFiles}...`;
+                            } else {
+                                status = 'Finalizing EPUB...';
+                            }
+                            break;
+                    }
+
+                    setProgress({
+                        current: progressData.current,
+                        total: progressData.total,
+                        percentage: progressData.percentage,
+                        stage: progressData.stage,
+                        status,
+                        currentFile: progressData.currentFile,
+                        totalFiles: progressData.totalFiles
+                    });
+                }
+            );
+
+            // Extract URIs and update story with epubPaths
+            const epubUris = results.map(r => r.uri);
+
+            const updatedStory: Story = {
+                ...story,
+                epubPaths: epubUris,
+                // Keep epubPath for backward compatibility
+                epubPath: epubUris[0]
+            };
             await storageService.addStory(updatedStory);
             onStoryUpdated(updatedStory);
 
-            showAlert('Success', `EPUB exported to: ${uri}`);
+            if (results.length > 1) {
+                showAlert(
+                    'Success',
+                    `Generated ${results.length} EPUB files:\n${results.map(r =>
+                        `• ${r.filename} (Chapters ${r.chapterRange.start}-${r.chapterRange.end})`
+                    ).join('\n')}`
+                );
+            } else {
+                showAlert('Success', `EPUB exported to: ${results[0].uri}`);
+            }
             return true;
         } catch (error: any) {
             showAlert('Error', error.message);
@@ -110,8 +220,15 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
     const generateOrRead = async (): Promise<void> => {
         if (!validateStory(story)) return;
 
-        if (story.epubPath) {
-            await readExistingEpub(story.epubPath);
+        // Check for new epubPaths array first, fall back to old epubPath
+        const epubPaths = story.epubPaths;
+        const epubPath = story.epubPath;
+
+        // Explicitly check for non-empty array before using it
+        const hasEpubPaths = epubPaths && epubPaths.length > 0;
+
+        if (hasEpubPaths || epubPath) {
+            await readFirstEpub();
         } else {
             await generateEpub();
         }

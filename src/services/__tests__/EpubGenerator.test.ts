@@ -174,4 +174,87 @@ describe('EpubGenerator', () => {
         // Should NOT have chapter_2.xhtml
         expect(mockFolder.file).not.toHaveBeenCalledWith('chapter_2.xhtml', expect.any(String));
     });
+
+    it('should generate single epub when chapters <= maxChaptersPerEpub', async () => {
+        const mockFolder = {
+            file: jest.fn(),
+        };
+        const mockZip = {
+            file: jest.fn(),
+            folder: jest.fn().mockReturnValue(mockFolder),
+            generateAsync: jest.fn().mockResolvedValue('base64data'),
+        };
+        (JSZip as unknown as jest.Mock).mockImplementation(() => mockZip);
+        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('<p>content</p>');
+
+        const results = await epubGenerator.generateEpubs(mockStory, mockChapters, 150);
+
+        expect(results).toHaveLength(1);
+        expect(results[0].filename).toBe('test_story.epub');
+        expect(results[0].chapterRange).toEqual({ start: 1, end: 2 });
+        expect(fileSystem.saveEpub).toHaveBeenCalledTimes(1);
+    });
+
+    it('should generate multiple epubs when chapters > maxChaptersPerEpub', async () => {
+        const mockFolder = {
+            file: jest.fn(),
+        };
+        const mockZip = {
+            file: jest.fn(),
+            folder: jest.fn().mockReturnValue(mockFolder),
+            generateAsync: jest.fn().mockResolvedValue('base64data'),
+        };
+        (JSZip as unknown as jest.Mock).mockImplementation(() => mockZip);
+        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('<p>content</p>');
+
+        // Create 5 chapters, max 2 per epub = 3 files
+        const fiveChapters: Chapter[] = [
+            { id: 'c1', title: 'Chapter 1', filePath: 'path/to/c1.html', url: 'http://url1' },
+            { id: 'c2', title: 'Chapter 2', filePath: 'path/to/c2.html', url: 'http://url2' },
+            { id: 'c3', title: 'Chapter 3', filePath: 'path/to/c3.html', url: 'http://url3' },
+            { id: 'c4', title: 'Chapter 4', filePath: 'path/to/c4.html', url: 'http://url4' },
+            { id: 'c5', title: 'Chapter 5', filePath: 'path/to/c5.html', url: 'http://url5' },
+        ];
+
+        const results = await epubGenerator.generateEpubs(mockStory, fiveChapters, 2);
+
+        expect(results).toHaveLength(3);
+        expect(results[0].filename).toBe('test_story_Vol1.epub');
+        expect(results[0].chapterRange).toEqual({ start: 1, end: 2 });
+        expect(results[1].filename).toBe('test_story_Vol2.epub');
+        expect(results[1].chapterRange).toEqual({ start: 3, end: 4 });
+        expect(results[2].filename).toBe('test_story_Vol3.epub');
+        expect(results[2].chapterRange).toEqual({ start: 5, end: 5 });
+        expect(fileSystem.saveEpub).toHaveBeenCalledTimes(3);
+    });
+
+    it('should report progress with currentFile and totalFiles when splitting', async () => {
+        const mockFolder = {
+            file: jest.fn(),
+        };
+        const mockZip = {
+            file: jest.fn(),
+            folder: jest.fn().mockReturnValue(mockFolder),
+            generateAsync: jest.fn().mockResolvedValue('base64data'),
+        };
+        (JSZip as unknown as jest.Mock).mockImplementation(() => mockZip);
+        (fileSystem.readChapterFile as jest.Mock).mockResolvedValue('<p>content</p>');
+
+        const threeChapters: Chapter[] = [
+            { id: 'c1', title: 'Chapter 1', filePath: 'path/to/c1.html', url: 'http://url1' },
+            { id: 'c2', title: 'Chapter 2', filePath: 'path/to/c2.html', url: 'http://url2' },
+            { id: 'c3', title: 'Chapter 3', filePath: 'path/to/c3.html', url: 'http://url3' },
+        ];
+
+        const progressCalls: any[] = [];
+        await epubGenerator.generateEpubs(mockStory, threeChapters, 2, (progress) => {
+            progressCalls.push(progress);
+        });
+
+        // Check that we have progress with file information
+        const fileProgressCalls = progressCalls.filter(p => p.currentFile !== undefined);
+        expect(fileProgressCalls.length).toBeGreaterThan(0);
+        expect(fileProgressCalls[0].currentFile).toBeDefined();
+        expect(fileProgressCalls[0].totalFiles).toBe(2);
+    });
 });
