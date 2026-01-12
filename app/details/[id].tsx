@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
 import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -53,26 +53,27 @@ export default function StoryDetailsScreen() {
     loadFilterSettings();
   }, []);
 
-  const filteredChapters = story?.chapters.filter(c => {
-      const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase());
-      let matchesFilter = true;
+  const filteredChapters = useMemo(() => {
+    if (!story) return [];
 
-      if (filterMode === 'hideNonDownloaded') {
-          matchesFilter = c.downloaded === true;
-      } else if (filterMode === 'hideAboveBookmark') {
-          if (story.lastReadChapterId) {
-              const bookmarkIndex = story.chapters.findIndex(ch => ch.id === story.lastReadChapterId);
-              if (bookmarkIndex >= 0) {
-                  const chapterIndex = story.chapters.findIndex(ch => ch.id === c.id);
-                  matchesFilter = chapterIndex >= bookmarkIndex;
-              }
-          } else {
-              matchesFilter = true;
-          }
-      }
+    const bookmarkIndex = story.lastReadChapterId && filterMode === 'hideAboveBookmark'
+        ? story.chapters.findIndex(ch => ch.id === story.lastReadChapterId)
+        : -1;
 
-      return matchesSearch && matchesFilter;
-  }) || [];
+    return story.chapters.filter((c, index) => {
+        const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase());
+        if (!matchesSearch) return false;
+
+        switch (filterMode) {
+            case 'hideNonDownloaded':
+                return c.downloaded === true;
+            case 'hideAboveBookmark':
+                return bookmarkIndex !== -1 ? index >= bookmarkIndex : true;
+            default:
+                return true;
+        }
+    });
+  }, [story, searchQuery, filterMode]);
 
   const handleFilterSelect = async (mode: ChapterFilterMode) => {
       setFilterMode(mode);
