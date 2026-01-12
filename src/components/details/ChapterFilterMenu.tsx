@@ -31,6 +31,8 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
         setVisible(false);
     }, []);
 
+    // Delay callback to allow menu close animation to complete.
+    // Without this, the menu can briefly re-open if the user taps quickly.
     const handleSelect = useCallback((mode: ChapterFilterMode) => {
         isClosingRef.current = true;
         setVisible(false);
@@ -81,7 +83,6 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
                 title="Hide chapters above bookmark"
                 leadingIcon={filterMode === 'hideAboveBookmark' ? 'check' : undefined}
                 disabled={!hasBookmark}
-                titleStyle={!hasBookmark ? { color: theme.colors.outline } : undefined}
             />
         </Menu>
     );
