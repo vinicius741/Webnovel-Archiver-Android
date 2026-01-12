@@ -1,11 +1,11 @@
 # Test Coverage Gap Analysis
 
 ## Executive Summary
-This document outlines the current state of test coverage in the Webnovel Archiver project. **Phases 1 and 2 of the action plan have been completed**, with critical services, all custom hooks, and most core functionality now tested. Remaining gaps exist in notification services, useStoryEPUB hook, and comprehensive UI component testing.
+This document outlines the current state of test coverage in the Webnovel Archiver project. **Phase 1, Phase 2, and Phase 3 (partial) of the action plan have been completed**, with critical services, most custom hooks, core functionality, and initial UI component testing now in place. Remaining gaps exist in notification services, useStoryEPUB hook, some reader hooks, and comprehensive UI component testing.
 
 ## 1. Current Test Coverage Status
 
-### A. Custom Hooks (`src/hooks`) - **~85% Coverage** (COMPLETED)
+### A. Custom Hooks (`src/hooks`) - **~80% Coverage**
 The application relies heavily on custom hooks for logic separation. Most critical hooks now have comprehensive tests.
 
 **Completed:**
@@ -25,7 +25,7 @@ The application relies heavily on custom hooks for logic separation. Most critic
 - **`useAddStory.ts`**: Story addition flow.
 - **`useWebViewHighlight.ts`**: WebView highlighting functionality.
 
-### B. Core Services (`src/services`) - **~80% Coverage**
+### B. Core Services (`src/services`) - **~90% Coverage**
 Most critical services now have test coverage.
 
 **Completed:**
@@ -50,22 +50,30 @@ Most critical services now have test coverage.
 - **`NotificationService.ts`**: User feedback mechanisms.
 - **`TTSNotificationService.ts`**: TTS-specific notifications.
 
+### C. UI Components (`src/components`) - **~15% Coverage**
+Initial component testing infrastructure has been established.
 
-- **`TTSPlaybackController.ts`**: TTS playback control logic.
-- **`DownloadManager.ts`**: Download management logic.
-- **`DownloadQueue.ts`**: Download queue implementation.
-- **EpubContentProcessor.ts`**: EPUB content processing.
-- **EpubFileSystem.ts`**: EPUB file system operations.
-- **EpubMetadataGenerator.ts`**: EPUB metadata generation.
-- **Network/fetcher.ts`**: HTTP client for fetching content.
+**Completed:**
+- ✓ **`StoryCard.test.tsx`**: Tests for story card rendering, optional props (cover image, source, score, progress), and user interactions.
+- ✓ **`ReaderContent.test.tsx`**: Tests for WebView HTML generation with CSS styling, content processing, empty content handling, and large content support.
 
-### C. UI Components (`src/components`) - **0% Coverage**
-No component tests exist. Logic embedded in components (e.g., `TTSController.tsx`, `ReaderContent.tsx`) is currently unverified by automated tests.
+**Remaining Components:**
+- **`TTSController.tsx`**: Complex TTS playback UI with controls.
+- **`TTSSettingsModal.tsx`**: TTS settings configuration.
+- **`ProgressBar.tsx`**: Progress bar component.
+- **`ScreenContainer.tsx`**: Screen layout container.
+- **`details/`**: All detail page components (ChapterListItem, DownloadRangeDialog, StoryActions, StoryDescription, StoryHeader, StoryMenu, StoryTags).
+- **`ImageViewer.tsx`**: Image viewing component.
+- **`HeadlessWebView.tsx`**: WebView component without UI.
+- **`SortButton.tsx`**: Sorting button component.
 
-### D. Utils (`src/utils`) - **~50% Coverage**
+### D. Utils (`src/utils`) - **~100% Coverage**
+All utility functions now have comprehensive tests.
+
+**Completed:**
 - ✓ **`htmlUtils.test.ts`**: Tests for HTML parsing utilities.
-- **`storyValidation.ts`**: No tests.
-- **`stringUtils.ts`**: No tests.
+- ✓ **`storyValidation.test.ts`**: Tests for story/chapter validation, download range validation, and update checking.
+- ✓ **`stringUtils.test.ts`**: Tests for title sanitization including ellipsis removal and whitespace handling.
 
 ## 2. Existing Coverage (Maintain & Expand)
 
@@ -75,6 +83,7 @@ The following areas have baseline tests but should be expanded:
 - **`src/services/EpubGenerator.test.ts`**: Test with different content types and edge cases.
 - **`src/hooks/__tests__/useStoryDownload.test.ts`**: Expand error scenarios and concurrent downloads.
 - **`src/services/source/providers/__tests__/`**: Add more provider tests and edge cases (malformed HTML, missing content).
+- **`src/components/__tests__/`**: Expand UI component tests for more scenarios and edge cases.
 
 ## 3. Recommended Action Plan
 
@@ -84,12 +93,27 @@ The following areas have baseline tests but should be expanded:
 - ✓ **Test `BackgroundService`**
 - ✓ **Added tests for novel source providers**
 
-### Phase 2: Feature Stability (Short-term)
-1. Add tests for `useLibrary` and `useSettings` to ensure state consistency.
-2. Add tests for `TTSStateManager` and `useTTS`.
-3. Test remaining TTS services (`TTSQueue`, `TTSPlaybackController`).
+### ✅ Phase 2: Feature Stability (COMPLETED)
+- ✓ **Added tests for `useLibrary` and `useSettings`** to ensure state consistency
+- ✓ **Added tests for `TTSStateManager` and `useTTS`**
+- ✓ **Tested remaining TTS services** (`TTSQueue`, `TTSPlaybackController`)
+- ✓ **Added tests for `useStoryActions` and `useStoryDetails`**
+- ✓ **Added tests for EPUB services** (`EpubContentProcessor`, `EpubFileSystem`, `EpubMetadataGenerator`)
+- ✓ **Added tests for download services** (`DownloadManager`, `DownloadQueue`)
+- ✓ **Added tests for network utilities** (`network/fetcher`)
+- ✓ **Added tests for utility functions** (`storyValidation`, `stringUtils`)
 
-### Phase 3: UI & Integration (Medium-term)
-1. Add component testing (using React Native Testing Library) for `ReaderContent` and `StoryCard`.
-2. Create integration tests for the main flows (Add Novel -> Download -> Read).
-3. Test utility functions (`storyValidation`, `stringUtils`).
+### Phase 3: UI & Integration (IN PROGRESS)
+1. ✅ **Added component testing infrastructure** for `ReaderContent` and `StoryCard`
+2. **Add component tests for TTS-related components** (`TTSController`, `TTSSettingsModal`)
+3. **Add component tests for details page components** (`StoryActions`, `StoryMenu`, `ChapterListItem`, etc.)
+4. **Add component tests for remaining UI components** (`ProgressBar`, `ScreenContainer`, `SortButton`, `ImageViewer`)
+5. **Create integration tests for the main flows** (Add Novel -> Download -> Read)
+
+### Phase 4: Coverage Completion (Future)
+1. **Add tests for `useStoryEPUB` hook** - EPUB generation logic
+2. **Add tests for remaining reader hooks** (`useReaderContent`, `useReaderNavigation`, `useScreenLayout`, `useDownloadProgress`)
+3. **Add tests for `useAddStory` hook** - Story addition flow
+4. **Add tests for `useWebViewHighlight` hook** - WebView highlighting
+5. **Add tests for `NotificationService.ts`** - User feedback mechanisms
+6. **Add tests for `TTSNotificationService.ts`** - TTS-specific notifications
