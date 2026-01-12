@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { useTheme as usePaperTheme } from 'react-native-paper';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { notificationService } from '../src/services/NotificationService';
 import { ThemeProvider } from '../src/theme/ThemeContext';
 import { AlertProvider } from '../src/context/AlertContext';
@@ -38,10 +39,12 @@ function AppLayout() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <AlertProvider>
-        <AppLayout />
-      </AlertProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AlertProvider>
+          <AppLayout />
+        </AlertProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
