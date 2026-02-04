@@ -1,7 +1,7 @@
 
 import Constants from 'expo-constants';
-import { notificationService } from '../NotificationService';
 import { ttsStateManager } from '../TTSStateManager';
+import { registerForegroundService } from '../ForegroundServiceCoordinator';
 
 // Mock dependencies BEFORE importing the service because it runs code on import.
 jest.mock('expo-constants', () => ({
@@ -21,8 +21,16 @@ jest.mock('@notifee/react-native', () => ({
     },
 }));
 
-jest.mock('../NotificationService'); // Auto-mock
 jest.mock('../TTSStateManager'); // Auto-mock
+jest.mock('../ForegroundServiceCoordinator', () => ({
+    registerForegroundService: jest.fn(),
+    clearDownloadState: jest.fn(),
+}));
+jest.mock('../download/DownloadManager', () => ({
+    downloadManager: {
+        cancelAll: jest.fn().mockResolvedValue(undefined),
+    },
+}));
 
 describe('BackgroundService', () => {
     beforeEach(() => {
@@ -40,6 +48,7 @@ describe('BackgroundService', () => {
         });
 
         expect(mockOnBackgroundEvent).toHaveBeenCalled();
+        expect(registerForegroundService).toHaveBeenCalled();
     });
 
     it('should handle cancel action', async () => {
@@ -56,11 +65,14 @@ describe('BackgroundService', () => {
 
         await handler({ type: 1, detail: { pressAction: { id: 'cancel' } } });
 
-        expect(notificationService.stopForegroundService).toHaveBeenCalled();
+        const { downloadManager } = require('../download/DownloadManager');
+        const { clearDownloadState } = require('../ForegroundServiceCoordinator');
+        expect(downloadManager.cancelAll).toHaveBeenCalled();
+        expect(clearDownloadState).toHaveBeenCalled();
         // Check if notifee.cancelNotification was called? 
         // We need to access the mock.
         const notifee = require('@notifee/react-native').default;
-        expect(notifee.cancelNotification).toHaveBeenCalledWith('download_progress');
+        expect(notifee.cancelNotification).toHaveBeenCalledWith('foreground_service');
     });
 
     it('should handle TTS actions', async () => {

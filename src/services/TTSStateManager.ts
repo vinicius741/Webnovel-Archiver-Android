@@ -1,5 +1,6 @@
 import { storageService, TTSSettings } from './StorageService';
-import { TTSPlaybackController, TTSState, TTSPlaybackConfig, TTSPlaybackState } from './tts/TTSPlaybackController';
+import { TTSPlaybackController, TTSState, TTSPlaybackConfig } from './tts/TTSPlaybackController';
+import { clearTtsState, setTtsState } from './ForegroundServiceCoordinator';
 
 export type { TTSState } from './tts/TTSPlaybackController';
 
@@ -11,7 +12,6 @@ class TTSStateManager {
     private static instance: TTSStateManager;
     private controller: TTSPlaybackController | null = null;
     private _settings: TTSSettings = { pitch: 1.0, rate: 1.0, chunkSize: 500 };
-    private notificationService: any = null;
 
     private constructor() {
         this.loadSettings();
@@ -31,17 +31,19 @@ class TTSStateManager {
         }
     }
 
-    private getNotificationService() {
-        if (!this.notificationService) {
-            const { ttsNotificationService } = require('./TTSNotificationService');
-            this.notificationService = ttsNotificationService;
-        }
-        return this.notificationService;
-    }
-
     private emitStateChange(state: TTSState) {
         const { DeviceEventEmitter } = require('react-native');
         DeviceEventEmitter.emit(TTS_STATE_EVENTS.STATE_CHANGED, state);
+    }
+
+    private async updateForegroundNotification(isPlaying: boolean, body: string) {
+        const state = this.getState();
+        if (!state) return;
+        await setTtsState({
+            title: state.title,
+            body,
+            isPlaying,
+        });
     }
 
     public getState(): TTSState | null {
@@ -73,16 +75,13 @@ class TTSStateManager {
 
         const state = this.getState();
         if (state) {
-            this.getNotificationService().startService(
-                state.title,
-                `Reading chunk 1 / ${state.chunks.length}`
-            );
+            this.updateForegroundNotification(true, `Reading chunk 1 / ${state.chunks.length}`);
         }
     }
 
     public async stop() {
         await this.controller?.stop();
-        this.getNotificationService().stopService();
+        await clearTtsState();
     }
 
     public async pause() {
@@ -90,9 +89,8 @@ class TTSStateManager {
 
         const state = this.getState();
         if (state) {
-            this.getNotificationService().updateNotification(
+            await this.updateForegroundNotification(
                 false,
-                state.title,
                 `Paused: Chunk ${state.currentChunkIndex + 1}`
             );
         }
@@ -100,10 +98,25 @@ class TTSStateManager {
 
     public resume() {
         this.controller?.resume();
+        const state = this.getState();
+        if (state) {
+            this.updateForegroundNotification(
+                true,
+                `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`
+            );
+        }
     }
 
     public async playPause() {
         await this.controller?.playPause();
+        const state = this.getState();
+        if (state) {
+            const isPlaying = state.isSpeaking && !state.isPaused;
+            const msg = isPlaying
+                ? `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`
+                : `Paused: Chunk ${state.currentChunkIndex + 1}`;
+            await this.updateForegroundNotification(isPlaying, msg);
+        }
     }
 
     public async next() {
@@ -112,7 +125,7 @@ class TTSStateManager {
         const state = this.getState();
         if (state) {
             const msg = `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`;
-            this.getNotificationService().updateNotification(true, state.title, msg);
+            await this.updateForegroundNotification(true, msg);
         }
     }
 
@@ -122,7 +135,7 @@ class TTSStateManager {
         const state = this.getState();
         if (state) {
             const msg = `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`;
-            this.getNotificationService().updateNotification(true, state.title, msg);
+            await this.updateForegroundNotification(true, msg);
         }
     }
 
@@ -135,7 +148,7 @@ class TTSStateManager {
                 const state = this.getState();
                 if (state) {
                     const msg = `Reading chunk ${currentIndex + 1} / ${state.chunks.length}`;
-                    this.getNotificationService().updateNotification(true, state.title, msg);
+                    this.updateForegroundNotification(true, msg);
                 }
             },
             onFinish: null,

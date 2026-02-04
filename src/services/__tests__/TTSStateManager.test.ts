@@ -10,7 +10,8 @@ jest.mock('../StorageService', () => ({
 jest.mock('../tts/TTSPlaybackController', () => {
     const mockController = {
         getState: jest.fn().mockReturnValue({
-            isPlaying: true,
+            isSpeaking: true,
+            isPaused: false,
             currentChunkIndex: 0,
             chunks: ['chunk1', 'chunk2'],
             title: 'Test Story',
@@ -63,6 +64,11 @@ jest.mock('../TTSNotificationService', () => ({
     },
 }));
 
+jest.mock('../ForegroundServiceCoordinator', () => ({
+    setTtsState: jest.fn().mockResolvedValue(undefined),
+    clearTtsState: jest.fn().mockResolvedValue(undefined),
+}));
+
 describe('TTSStateManager', () => {
     let mockController: any;
 
@@ -103,8 +109,8 @@ describe('TTSStateManager', () => {
             ttsStateManager.start(chunks, 'Test Story');
 
             expect(mockController.start).toHaveBeenCalledWith(chunks, 'Test Story');
-            const { ttsNotificationService } = require('../TTSNotificationService');
-            expect(ttsNotificationService.startService).toHaveBeenCalled();
+            const { setTtsState } = require('../ForegroundServiceCoordinator');
+            expect(setTtsState).toHaveBeenCalled();
         });
 
         it('should not start with empty chunks', () => {
@@ -116,20 +122,16 @@ describe('TTSStateManager', () => {
             await ttsStateManager.stop();
 
             expect(mockController.stop).toHaveBeenCalled();
-            const { ttsNotificationService } = require('../TTSNotificationService');
-            expect(ttsNotificationService.stopService).toHaveBeenCalled();
+            const { clearTtsState } = require('../ForegroundServiceCoordinator');
+            expect(clearTtsState).toHaveBeenCalled();
         });
 
         it('should pause playback and update notification', async () => {
             await ttsStateManager.pause();
 
             expect(mockController.pause).toHaveBeenCalled();
-            const { ttsNotificationService } = require('../TTSNotificationService');
-            expect(ttsNotificationService.updateNotification).toHaveBeenCalledWith(
-                false,
-                'Test Story',
-                'Paused: Chunk 1'
-            );
+            const { setTtsState } = require('../ForegroundServiceCoordinator');
+            expect(setTtsState).toHaveBeenCalled();
         });
 
         it('should resume playback', () => {
@@ -146,16 +148,16 @@ describe('TTSStateManager', () => {
             await ttsStateManager.next();
 
             expect(mockController.next).toHaveBeenCalled();
-            const { ttsNotificationService } = require('../TTSNotificationService');
-            expect(ttsNotificationService.updateNotification).toHaveBeenCalled();
+            const { setTtsState } = require('../ForegroundServiceCoordinator');
+            expect(setTtsState).toHaveBeenCalled();
         });
 
         it('should play previous chunk and update notification', async () => {
             await ttsStateManager.previous();
 
             expect(mockController.previous).toHaveBeenCalled();
-            const { ttsNotificationService } = require('../TTSNotificationService');
-            expect(ttsNotificationService.updateNotification).toHaveBeenCalled();
+            const { setTtsState } = require('../ForegroundServiceCoordinator');
+            expect(setTtsState).toHaveBeenCalled();
         });
 
         it('should set on finish callback', () => {
@@ -166,4 +168,3 @@ describe('TTSStateManager', () => {
     });
 
 });
-

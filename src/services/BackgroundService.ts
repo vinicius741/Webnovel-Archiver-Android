@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
-import { notificationService } from './NotificationService';
 import { ttsStateManager } from './TTSStateManager';
+import { clearDownloadState, registerForegroundService } from './ForegroundServiceCoordinator';
 
 // Safely initialize background service to handle environments without Notifee (e.g. Expo Go)
 const initializeBackgroundService = () => {
@@ -10,6 +10,8 @@ const initializeBackgroundService = () => {
   }
 
   try {
+    registerForegroundService();
+
     const notifeeModule = require('@notifee/react-native');
     const notifee = notifeeModule.default;
     const EventType = notifeeModule.EventType;
@@ -22,8 +24,10 @@ const initializeBackgroundService = () => {
         // Download Actions
         if (actionId === 'cancel') {
           console.log('[BackgroundService] Cancel action pressed, stopping download.');
-          await notificationService.stopForegroundService();
-          await notifee.cancelNotification('download_progress');
+          const { downloadManager } = require('./download/DownloadManager');
+          await downloadManager.cancelAll();
+          await clearDownloadState();
+          await notifee.cancelNotification('foreground_service');
         }
 
         // TTS Actions - directly call the state manager

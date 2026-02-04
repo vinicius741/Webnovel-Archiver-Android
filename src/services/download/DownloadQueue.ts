@@ -105,6 +105,20 @@ export class DownloadQueue {
         this.jobs = [];
         this._save();
     }
+
+    cancelPending(reason: string = 'cancelled'): void {
+        let changed = false;
+        this.jobs.forEach(job => {
+            if (job.status === 'pending') {
+                job.status = 'failed';
+                job.error = reason;
+                changed = true;
+            }
+        });
+        if (changed) {
+            this._save();
+        }
+    }
 }
 
 export const downloadQueue = new DownloadQueue();

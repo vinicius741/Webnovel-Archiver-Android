@@ -5,7 +5,11 @@ import { sourceRegistry } from '../source/SourceRegistry';
 import { fetchPage } from '../network/fetcher';
 import { saveChapter } from '../storage/fileSystem';
 import { storageService } from '../StorageService';
-import { notificationService } from '../NotificationService';
+import {
+    clearDownloadState,
+    setDownloadState,
+    showDownloadCompletionNotification
+} from '../ForegroundServiceCoordinator';
 import { DownloadStatus, Story, Chapter } from '../../types';
 import { removeUnwantedSentences } from '../../utils/htmlUtils';
 
@@ -15,6 +19,7 @@ export class DownloadManager extends EventEmitter {
     private concurrency = 3;
     private storyLocks = new Map<string, Promise<void>>();
     private lastNotificationUpdate = 0;
+    private cancelRequested = false;
 
     constructor() {
         super();
@@ -48,6 +53,7 @@ export class DownloadManager extends EventEmitter {
 
     async start() {
         if (this.isRunning) return;
+        this.cancelRequested = false;
         this.isRunning = true;
         this.processLoop();
         this.startNotification();
@@ -57,29 +63,35 @@ export class DownloadManager extends EventEmitter {
         // Initial notification
         const stats = downloadQueue.getStats();
         if (stats.pending > 0 || stats.active > 0) {
-            await notificationService.startForegroundService(
-                'Downloading chapters',
-                `Remaining: ${stats.pending}`
-            );
+            const completed = Math.max(0, stats.total - stats.pending - stats.active);
+            await setDownloadState({
+                title: 'Downloading chapters',
+                message: `Active: ${stats.active}, Pending: ${stats.pending}`,
+                current: completed,
+                total: stats.total
+            });
         }
     }
 
     private async updateNotification() {
+        if (this.cancelRequested) return;
         const now = Date.now();
         if (now - this.lastNotificationUpdate < 1000) return; // Throttle 1s
         this.lastNotificationUpdate = now;
 
         const stats = downloadQueue.getStats();
         if (stats.pending === 0 && stats.active === 0) {
-            await notificationService.stopForegroundService();
+            await clearDownloadState();
             return;
         }
 
-        await notificationService.updateProgress(
-            stats.total - stats.pending, // completed (roughly, doesn't account for failures well but ok)
-            stats.total,
-            `Active: ${stats.active}, Pending: ${stats.pending}`
-        );
+        const completed = Math.max(0, stats.total - stats.pending - stats.active);
+        await setDownloadState({
+            title: 'Downloading...',
+            message: `Active: ${stats.active}, Pending: ${stats.pending}`,
+            current: completed,
+            total: stats.total
+        });
     }
 
     private async processLoop() {
@@ -87,6 +99,14 @@ export class DownloadManager extends EventEmitter {
         while (true) {
             // Check concurrency
             if (this.activeWorkers >= this.concurrency) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                continue;
+            }
+
+            if (this.cancelRequested) {
+                if (this.activeWorkers === 0) {
+                    break;
+                }
                 await new Promise(resolve => setTimeout(resolve, 200));
                 continue;
             }
@@ -117,12 +137,21 @@ export class DownloadManager extends EventEmitter {
         }
 
         this.isRunning = false;
-        await notificationService.stopForegroundService();
-        await notificationService.showCompletionNotification(
-            'Downloads Completed',
-            'All queued chapters have been processed.'
-        );
+        await clearDownloadState();
+        if (!this.cancelRequested) {
+            await showDownloadCompletionNotification(
+                'Downloads Completed',
+                'All queued chapters have been processed.'
+            );
+        }
         this.emit('all-complete');
+    }
+
+    async cancelAll() {
+        this.cancelRequested = true;
+        downloadQueue.cancelPending('cancelled');
+        this.emit('queue-updated');
+        await clearDownloadState();
     }
 
     private async processJob(job: DownloadJob) {

@@ -1,156 +1,49 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import {
+    clearDownloadState,
+    requestPermissions,
+    setDownloadState,
+    showDownloadCompletionNotification,
+} from './ForegroundServiceCoordinator';
 
 class NotificationService {
-    private channelId = 'download_channel';
-    private notifee: any = null;
-    private androidImportance: any = null;
-    private androidColor: any = null;
-
     constructor() {
-        this.init();
-    }
-
-    private init() {
         if (Platform.OS !== 'android') return;
-
-        // Skip initialization in Expo Go
         if (Constants.executionEnvironment === 'storeClient') {
             console.log('[NotificationService] Expo Go detected. Notifications disabled.');
-            return;
-        }
-
-        try {
-            // Lazy load the module to prevent crashes if the native module isn't linked (e.g. Expo Go)
-            const notifeeModule = require('@notifee/react-native').default;
-            this.notifee = notifeeModule;
-
-            // Re-require to get named exports safely
-            const notifeeNamed = require('@notifee/react-native');
-            this.androidImportance = notifeeNamed.AndroidImportance;
-            this.androidColor = notifeeNamed.AndroidColor;
-
-            this.createChannel();
-        } catch (e) {
-            console.warn('[NotificationService] Notifee native module not found. Notifications will be disabled.');
-        }
-    }
-
-    private async createChannel() {
-        if (!this.notifee) return;
-
-        try {
-            await this.notifee.createChannel({
-                id: this.channelId,
-                name: 'Download Service',
-                importance: this.androidImportance.LOW,
-            });
-
-            await this.notifee.createChannel({
-                id: 'download_complete',
-                name: 'Download Complete',
-                importance: this.androidImportance.MEDIUM,
-            });
-        } catch (e) {
-            console.warn('[NotificationService] Failed to create channel:', e);
         }
     }
 
     async startForegroundService(title: string, body: string, max: number = 100, current: number = 0) {
-        if (!this.notifee) return;
-
-        try {
-            await this.notifee.displayNotification({
-                id: 'download_progress',
-                title: title,
-                body: body,
-                android: {
-                    channelId: this.channelId,
-                    asForegroundService: true,
-                    color: this.androidColor?.BLUE,
-                    ongoing: true,
-                    progress: {
-                        max: max,
-                        current: current,
-                        indeterminate: false,
-                    },
-                    actions: [
-                        {
-                            title: 'Cancel',
-                            pressAction: {
-                                id: 'cancel',
-                            },
-                        },
-                    ],
-                },
-            });
-        } catch (e) {
-            console.warn('[NotificationService] Failed to start foreground service:', e);
-        }
+        await setDownloadState({
+            title,
+            message: body,
+            total: max,
+            current,
+        });
     }
 
     async updateProgress(current: number, total: number, message: string) {
-        if (!this.notifee || total <= 0) return;
-
-        try {
-            await this.notifee.displayNotification({
-                id: 'download_progress',
-                title: 'Downloading...',
-                body: message,
-                android: {
-                    channelId: this.channelId,
-                    asForegroundService: true,
-                    onlyAlertOnce: true,
-                    progress: {
-                        max: total,
-                        current: current,
-                    },
-                },
-            });
-        } catch (e) {
-            console.warn('[NotificationService] Failed to update progress:', e);
-        }
+        if (total <= 0) return;
+        await setDownloadState({
+            title: 'Downloading...',
+            message,
+            total,
+            current,
+        });
     }
 
     async stopForegroundService() {
-        if (!this.notifee) return;
-        try {
-            await this.notifee.stopForegroundService();
-        } catch (e) {
-            console.warn('[NotificationService] Failed to stop foreground service:', e);
-        }
+        await clearDownloadState();
     }
 
     async showCompletionNotification(title: string, body: string) {
-        if (!this.notifee) return;
-
-        try {
-            await this.stopForegroundService();
-            await this.notifee.cancelNotification('download_progress');
-
-            await this.notifee.displayNotification({
-                title: title,
-                body: body,
-                android: {
-                    channelId: 'download_complete',
-                    smallIcon: 'ic_launcher',
-                    pressAction: {
-                        id: 'default',
-                    },
-                },
-            });
-        } catch (e) {
-            console.warn('[NotificationService] Failed to show completion notification:', e);
-        }
+        await showDownloadCompletionNotification(title, body);
     }
 
     async requestPermissions() {
-        if (!this.notifee) return;
-        try {
-            await this.notifee.requestPermission();
-        } catch (e) {
-            console.warn('[NotificationService] Failed to request permissions:', e);
-        }
+        await requestPermissions();
     }
 }
 export const notificationService = new NotificationService();

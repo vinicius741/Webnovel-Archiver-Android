@@ -34,13 +34,10 @@ jest.mock('../StorageService', () => ({
     },
 }));
 
-jest.mock('../NotificationService', () => ({
-    notificationService: {
-        startForegroundService: jest.fn().mockResolvedValue(undefined),
-        updateProgress: jest.fn().mockResolvedValue(undefined),
-        stopForegroundService: jest.fn().mockResolvedValue(undefined),
-        showCompletionNotification: jest.fn().mockResolvedValue(undefined),
-    },
+jest.mock('../ForegroundServiceCoordinator', () => ({
+    setDownloadState: jest.fn().mockResolvedValue(undefined),
+    clearDownloadState: jest.fn().mockResolvedValue(undefined),
+    showDownloadCompletionNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../../utils/htmlUtils', () => ({
