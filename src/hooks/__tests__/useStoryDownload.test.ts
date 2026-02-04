@@ -40,7 +40,7 @@ describe('useStoryDownload', () => {
         sourceUrl: 'http://test.com/story',
         coverUrl: 'http://cover',
         chapters: [
-            { id: 'c1', title: 'Chapter 1', url: 'http://test.com/c1', downloaded: true, filePath: 'path/c1' }
+            { id: 'http://test.com/c1', title: 'Chapter 1', url: 'http://test.com/c1', downloaded: true, filePath: 'path/c1' }
         ],
         status: DownloadStatus.Completed,
         totalChapters: 1,
@@ -82,6 +82,55 @@ describe('useStoryDownload', () => {
         expect(storageService.addStory).toHaveBeenCalled();
         expect(mockOnStoryUpdated).toHaveBeenCalled();
         expect(mockShowAlert).toHaveBeenCalledWith('Update Found', expect.stringContaining('1 new chapters'));
+    });
+
+    it('should preserve downloaded chapters when RoyalRoad slug changes', async () => {
+        const storyWithOldSlug: Story = {
+            ...mockStory,
+            sourceUrl: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now',
+            chapters: [
+                {
+                    id: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
+                    title: 'Chapter 1',
+                    url: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
+                    downloaded: true,
+                    filePath: 'file://chapter-1.html'
+                }
+            ],
+            lastReadChapterId: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
+            totalChapters: 1,
+            downloadedChapters: 1
+        };
+
+        const mockProvider = {
+            getChapterId: (url: string) => {
+                const match = url.match(/\/chapter\/(\d+)/);
+                return match ? match[1] : undefined;
+            },
+            getChapterList: jest.fn().mockResolvedValue([
+                {
+                    url: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug',
+                    title: 'Chapter 1'
+                }
+            ]),
+            parseMetadata: jest.fn().mockReturnValue({ tags: ['tag1'] })
+        };
+
+        (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
+        (fetcher.fetchPage as jest.Mock).mockResolvedValue('<html></html>');
+
+        const { result } = renderHook(() => useStoryDownload({ story: storyWithOldSlug, onStoryUpdated: mockOnStoryUpdated }));
+
+        await act(async () => {
+            await result.current.updateNovel();
+        });
+
+        const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
+        expect(savedStory.chapters[0].downloaded).toBe(true);
+        expect(savedStory.chapters[0].filePath).toBe('file://chapter-1.html');
+        expect(savedStory.chapters[0].url).toBe('https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug');
+        expect(savedStory.chapters[0].id).toBe('111');
+        expect(savedStory.lastReadChapterId).toBe('111');
     });
 
     it('should start download all with downloadAll', async () => {

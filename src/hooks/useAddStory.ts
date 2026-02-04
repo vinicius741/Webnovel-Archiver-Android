@@ -4,9 +4,9 @@ import * as Clipboard from 'expo-clipboard';
 import { useAppAlert } from '../context/AlertContext';
 import { fetchPage } from '../services/network/fetcher';
 import { storageService } from '../services/StorageService';
-import { Story } from '../types';
+import { Story, DownloadStatus } from '../types';
 import { sourceRegistry } from '../services/source/SourceRegistry';
-import { sanitizeTitle } from '../utils/stringUtils';
+import { mergeChapters } from '../utils/mergeChapters';
 
 export const useAddStory = () => {
     const router = useRouter();
@@ -55,6 +55,19 @@ export const useAddStory = () => {
 
             setStatusMessage('Saving story...');
             const storyId = provider.getStoryId(url);
+            const existingStory = await storageService.getStory(storyId);
+            const canonicalUrl = metadata.canonicalUrl ?? url;
+
+            const mergeResult = mergeChapters(
+                existingStory?.chapters ?? [],
+                chapters,
+                provider,
+                existingStory?.lastReadChapterId
+            );
+
+            const status = existingStory
+                ? (mergeResult.newChaptersCount > 0 ? DownloadStatus.Partial : existingStory.status)
+                : DownloadStatus.Idle;
 
             const story: Story = {
                 id: storyId,
@@ -64,17 +77,19 @@ export const useAddStory = () => {
                 description: metadata.description,
                 tags: metadata.tags,
                 score: metadata.score,
-                sourceUrl: url,
-                status: 'idle', // Ready to download
-                totalChapters: chapters.length,
-                downloadedChapters: 0,
-                chapters: chapters.map(c => ({
-                    id: c.url, // Using URL as ID for chapters for now
-                    title: sanitizeTitle(c.title),
-                    url: c.url,
-                })),
+                sourceUrl: canonicalUrl,
+                status,
+                totalChapters: mergeResult.chapters.length,
+                downloadedChapters: mergeResult.downloadedCount,
+                chapters: mergeResult.chapters,
                 lastUpdated: Date.now()
             };
+
+            if (existingStory) {
+                story.lastReadChapterId = mergeResult.lastReadChapterId;
+                story.epubPath = mergeResult.newChaptersCount > 0 ? undefined : existingStory.epubPath;
+                story.epubPaths = mergeResult.newChaptersCount > 0 ? undefined : existingStory.epubPaths;
+            }
 
             await storageService.addStory(story);
             setLoading(false);

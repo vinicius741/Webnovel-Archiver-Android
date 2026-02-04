@@ -5,6 +5,7 @@ import { storageService } from '../../services/StorageService';
 import { fetchPage } from '../../services/network/fetcher';
 import { sourceRegistry } from '../../services/source/SourceRegistry';
 import * as Clipboard from 'expo-clipboard';
+import { DownloadStatus } from '../../types';
 
 jest.mock('../../services/StorageService');
 jest.mock('../../services/network/fetcher');
@@ -45,6 +46,7 @@ describe('useAddStory', () => {
         (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
         (fetchPage as jest.Mock).mockResolvedValue(mockHtml);
         (storageService.addStory as jest.Mock).mockResolvedValue(undefined);
+        (storageService.getStory as jest.Mock).mockResolvedValue(undefined);
     });
 
     it('should paste URL from clipboard', async () => {
@@ -196,6 +198,59 @@ describe('useAddStory', () => {
         const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
         expect(savedStory.chapters[0].title).toBe('Chapter 1');
         expect(savedStory.chapters[1].title).toBe('Chapter 2');
+    });
+
+    it('should merge and preserve downloaded chapters when re-adding existing story', async () => {
+        const existingStory = {
+            id: 'story1',
+            title: 'Existing Novel',
+            author: 'Test Author',
+            sourceUrl: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now',
+            status: DownloadStatus.Completed,
+            totalChapters: 1,
+            downloadedChapters: 1,
+            chapters: [
+                {
+                    id: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
+                    title: 'Chapter 1',
+                    url: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
+                    downloaded: true,
+                    filePath: 'file://chapter-1.html'
+                }
+            ],
+            lastReadChapterId: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug'
+        };
+
+        (storageService.getStory as jest.Mock).mockResolvedValue(existingStory);
+
+        mockProvider.getStoryId = jest.fn().mockReturnValue('story1');
+        (mockProvider as any).getChapterId = (url: string) => {
+            const match = url.match(/\/chapter\/(\d+)/);
+            return match ? match[1] : undefined;
+        };
+        mockProvider.getChapterList = jest.fn().mockResolvedValue([
+            {
+                url: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug',
+                title: 'Chapter 1'
+            }
+        ]);
+
+        const { result } = renderHook(() => useAddStory());
+
+        act(() => {
+            result.current.setUrl(existingStory.sourceUrl);
+        });
+
+        await act(async () => {
+            await result.current.handleAdd();
+        });
+
+        const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
+        expect(savedStory.chapters[0].downloaded).toBe(true);
+        expect(savedStory.chapters[0].filePath).toBe('file://chapter-1.html');
+        expect(savedStory.chapters[0].url).toBe('https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug');
+        expect(savedStory.chapters[0].id).toBe('111');
+        expect(savedStory.lastReadChapterId).toBe('111');
     });
 
     it('should handle OK button press after successful add', async () => {

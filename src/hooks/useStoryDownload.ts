@@ -6,8 +6,8 @@ import { downloadService } from '../services/DownloadService';
 import { fetchPage } from '../services/network/fetcher';
 import { sourceRegistry } from '../services/source/SourceRegistry';
 import { useAppAlert } from '../context/AlertContext';
-import { Story, Chapter, DownloadStatus } from '../types';
-import { sanitizeTitle } from '../utils/stringUtils';
+import { Story, DownloadStatus } from '../types';
+import { mergeChapters } from '../utils/mergeChapters';
 import { validateStory, validateDownloadRange } from '../utils/storyValidation';
 
 interface UseStoryDownloadParams {
@@ -66,27 +66,22 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
 
             setUpdateStatus('Merging...');
 
-            const updatedChapters: Chapter[] = newChapters.map(newChap => {
-                const existing = story.chapters.find(c => c.url === newChap.url);
-                if (existing) {
-                    return existing;
-                }
-                return {
-                    id: newChap.url,
-                    title: sanitizeTitle(newChap.title),
-                    url: newChap.url,
-                    downloaded: false,
-                };
-            });
+            const mergeResult = mergeChapters(
+                story.chapters,
+                newChapters,
+                provider,
+                story.lastReadChapterId
+            );
 
             const tagsChanged = JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
-            const hasUpdates = updatedChapters.length > story.chapters.length || tagsChanged;
-            const newChapterCount = Math.max(0, updatedChapters.length - story.chapters.length);
+            const hasUpdates = mergeResult.newChaptersCount > 0 || tagsChanged;
+            const newChapterCount = mergeResult.newChaptersCount;
 
             const updatedStory: Story = {
                 ...story,
-                chapters: updatedChapters,
-                totalChapters: updatedChapters.length,
+                chapters: mergeResult.chapters,
+                totalChapters: mergeResult.chapters.length,
+                downloadedChapters: mergeResult.downloadedCount,
                 status: newChapterCount > 0 ? DownloadStatus.Partial : story.status,
                 lastUpdated: Date.now(),
                 tags: metadata.tags,
@@ -95,7 +90,10 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                 coverUrl: metadata.coverUrl || story.coverUrl,
                 description: metadata.description || story.description,
                 score: metadata.score || story.score,
+                sourceUrl: metadata.canonicalUrl || story.sourceUrl,
+                lastReadChapterId: mergeResult.lastReadChapterId,
                 epubPath: newChapterCount > 0 ? undefined : story.epubPath,
+                epubPaths: newChapterCount > 0 ? undefined : story.epubPaths,
             };
 
             await storageService.addStory(updatedStory);

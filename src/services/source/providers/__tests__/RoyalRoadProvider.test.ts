@@ -6,6 +6,7 @@ describe('RoyalRoadProvider', () => {
 <html>
 <head>
     <title>Gunwitch: LitRPG Adventure | Royal Road</title>
+    <link rel="canonical" href="https://www.royalroad.com/fiction/123/gunwitch-litrpg-adventure">
     <meta name="author" content="Test Author">
     <meta property="og:description" content="A great story about guns and witches.">
 </head>
@@ -49,6 +50,7 @@ describe('RoyalRoadProvider', () => {
         expect(metadata.score).toBe('4.84 / 5');
         expect(metadata.tags).toContain('LitRPG');
         expect(metadata.tags).toContain('Fantasy');
+        expect(metadata.canonicalUrl).toBe('https://www.royalroad.com/fiction/123/gunwitch-litrpg-adventure');
     });
 
     it('should return undefined score if not found', () => {
@@ -79,5 +81,6 @@ describe('RoyalRoadProvider', () => {
         expect(chapters).toHaveLength(1);
         expect(chapters[0].title).toBe('Chapter 1. Hope Armstrong');
         expect(chapters[0].url).toBe('https://www.royalroad.com/fiction/140335/i-became-a-paladin-girl/chapter/2768745/chapter-1-hope-armstrong');
+        expect(chapters[0].id).toBe('2768745');
     });
 });

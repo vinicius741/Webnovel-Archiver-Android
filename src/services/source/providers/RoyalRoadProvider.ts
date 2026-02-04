@@ -18,6 +18,11 @@ export const RoyalRoadProvider: SourceProvider = {
         return 'rr_' + Date.now(); // Fallback
     },
 
+    getChapterId: (url: string): string | undefined => {
+        const match = url.match(/\/chapter\/(\d+)/);
+        return match ? match[1] : undefined;
+    },
+
     parseMetadata: (html: string): NovelMetadata => {
         const $ = load(html);
 
@@ -58,6 +63,10 @@ export const RoyalRoadProvider: SourceProvider = {
                 $('meta[property="og:description"]').attr('content');
         }
 
+        const canonicalUrl = $('link[rel="canonical"]').attr('href') ||
+            $('meta[property="og:url"]').attr('content') ||
+            undefined;
+
         const tags: string[] = [];
         $('.tags .label, .tags a, .tag').each((_, el) => {
             const tag = $(el).text().trim();
@@ -86,7 +95,8 @@ export const RoyalRoadProvider: SourceProvider = {
             coverUrl,
             description,
             tags: uniqueTags.length > 0 ? uniqueTags : undefined,
-            score
+            score,
+            canonicalUrl
         };
     },
 
@@ -110,7 +120,10 @@ export const RoyalRoadProvider: SourceProvider = {
                     }
                 }
 
+                const chapterId = relativeUrl ? RoyalRoadProvider.getChapterId(relativeUrl) : undefined;
+
                 chapters.push({
+                    id: chapterId,
                     title: sanitizeTitle(title),
                     url: relativeUrl
                 });
