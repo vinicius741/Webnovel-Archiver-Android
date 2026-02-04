@@ -4,7 +4,7 @@ Webnovel Archiver is a powerful, local-first Android application designed to dow
 
 ## 🚀 Key Features
 
--   **Multi-Source Support**: Designed to seamlessly integrate with various webnovel platforms (currently RoyalRoad, ScribbleHub, and easily extensible for more).
+-   **Multi-Source Support**: Designed to seamlessly integrate with various webnovel platforms (currently RoyalRoad, with extensible support for more).
 -   **Webnovel Scraping**: Automatically fetches chapters from supported sites.
 -   **Offline Reading**: Downloaded chapters are stored locally, accessible anytime without an internet connection.
 -   **EPUB Export**: Generate high-quality, standard-compliant EPUB files directly on your device. Compatible with Moon+ Reader, Kindle, and other e-reader apps.
@@ -71,7 +71,7 @@ npx eas build -p android --profile preview --local
 
 ### 1. Adding a Story
 -   Tap the **"+" (Add)** button on the home screen.
--   Paste the URL of the webnovel (e.g., a RoyalRoad fiction page, or a ScribbleHub series page).
+-   Paste the URL of the webnovel (e.g., a RoyalRoad fiction page).
 -   Tap **"Add"**. The app will fetch metadata and add it to your library.
 
 ### 2. Downloading Content
@@ -89,7 +89,7 @@ npx eas build -p android --profile preview --local
 -   `src/app`: Screens and navigation logic (Expo Router).
 -   `src/components`: Reusable UI components (StoryCard, ProgressBar, etc.).
 -   `src/services`: Core business logic.
-    -   `src/services/source`: Contains the `SourceProvider` interface, `SourceRegistry`, and individual provider implementations (e.g., `RoyalRoadProvider`, `ScribbleHubProvider`).
+    -   `src/services/source`: Contains the `SourceProvider` interface, `SourceRegistry`, and individual provider implementations (e.g., RoyalRoadProvider).
     -   `EpubGenerator.ts`: Logic for constructing EPUB files.
 -   `src/theme`: App theming and styling.
 -   `documentation`: Detailed tech docs and decision logs.

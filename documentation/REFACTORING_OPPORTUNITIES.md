@@ -165,27 +165,7 @@ This document identifies files in the codebase that are good candidates for refa
 
 ---
 
-### 8. ScribbleHub Provider (`src/services/source/providers/ScribbleHubProvider.ts`) - 204 lines
-**Issues:**
-- Complex pagination logic embedded in chapter list fetching
-- URL construction logic duplicated
-- Loop detection mixed with pagination
-- Progress callbacks scattered throughout
-
-**Suggested Refactoring:**
-- Extract pagination logic into `PaginationHandler` utility
-- Create `ScribbleHubUrlBuilder` for URL construction
-- Extract page parsing into separate methods
-- Use a strategy pattern for different pagination strategies
-
-**Potential Modules:**
-- `services/source/providers/ScribbleHubPagination.ts` - Pagination logic
-- `services/source/providers/ScribbleHubUrlBuilder.ts` - URL construction
-- `services/source/providers/BaseProvider.ts` - Common provider logic
-
----
-
-### 9. Library Hook (`src/hooks/useLibrary.ts`) - 197 lines
+### 8. Library Hook (`src/hooks/useLibrary.ts`) - 197 lines
 **Issues:**
 - Complex filtering logic with multiple conditions
 - Sorting logic embedded in the hook
@@ -278,7 +258,6 @@ This document identifies files in the codebase that are good candidates for refa
 | `app/sentence-removal.tsx` | 226 | Medium | Medium | 2 | ❌ |
 | `app/index.tsx` | 218 | Medium | Medium | 2 | ❌ |
 | `src/services/download/DownloadManager.ts` | 216 | High | Medium | 2 | ❌ |
-| `src/services/source/providers/ScribbleHubProvider.ts` | 203 | Medium | Low | 2 | ❌ |
 | `src/hooks/useLibrary.ts` | 196 | Medium | Medium | 2 | ❌ |
 | `src/components/TTSSettingsModal.tsx` | 190 | Low | Low | 3 | ❌ |
 

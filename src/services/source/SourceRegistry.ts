@@ -1,13 +1,11 @@
 import { SourceProvider } from './types';
 import { RoyalRoadProvider } from './providers/RoyalRoadProvider';
-import { ScribbleHubProvider } from './providers/ScribbleHubProvider';
 
 class SourceRegistry {
     private providers: SourceProvider[] = [];
 
     constructor() {
         this.register(RoyalRoadProvider);
-        this.register(ScribbleHubProvider);
     }
 
     register(provider: SourceProvider) {

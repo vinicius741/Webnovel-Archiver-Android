@@ -35,7 +35,6 @@ Most critical services now have test coverage.
 - ✓ **`StorageService.test.ts`**: Tests for file system operations.
 - ✓ **`EpubGenerator.test.ts`**: Tests for EPUB generation.
 - ✓ **`RoyalRoadProvider.test.ts`**: Tests for RoyalRoad novel source parsing.
-- ✓ **`ScribbleHubProvider.test.ts`**: Tests for ScribbleHub novel source parsing.
 - ✓ **`TTSStateManager.test.ts`**: Tests for TTS state management.
 - ✓ **`tts/TTSQueue.test.ts`**: Tests for TTS playback queue management.
 - ✓ **`tts/TTSPlaybackController.test.ts`**: Tests for TTS playback control logic.

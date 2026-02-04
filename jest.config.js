@@ -6,7 +6,7 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/jest-setup.ts'],
   collectCoverage: true,
   collectCoverageFrom: [
-    'src/services/source/providers/ScribbleHubProvider.ts',
+    'src/services/source/providers/RoyalRoadProvider.ts',
     'src/services/DownloadService.ts'
   ]
 };
