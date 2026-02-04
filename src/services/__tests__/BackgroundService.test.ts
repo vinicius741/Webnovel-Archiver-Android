@@ -2,6 +2,7 @@
 import Constants from 'expo-constants';
 import { ttsStateManager } from '../TTSStateManager';
 import { registerForegroundService } from '../ForegroundServiceCoordinator';
+import { EventType } from '@notifee/react-native';
 
 // Mock dependencies BEFORE importing the service because it runs code on import.
 jest.mock('expo-constants', () => ({
@@ -13,12 +14,46 @@ const mockCancelNotification = jest.fn();
 
 jest.mock('@notifee/react-native', () => ({
     EventType: {
-        ACTION_PRESS: 1,
+        UNKNOWN: -1,
+        DISMISSED: 0,
+        PRESS: 1,
+        ACTION_PRESS: 2,
+        DELIVERED: 3,
+        APP_BLOCKED: 4,
+        CHANNEL_BLOCKED: 5,
+        CHANNEL_GROUP_BLOCKED: 6,
+        TRIGGER_NOTIFICATION_CREATED: 7,
+        FG_ALREADY_EXIST: 8,
     },
     default: {
         onBackgroundEvent: mockOnBackgroundEvent,
         cancelNotification: mockCancelNotification,
     },
+}));
+
+jest.mock('../NotifeeTypes', () => ({
+    loadNotifee: jest.fn(() => ({
+        default: {
+            onBackgroundEvent: mockOnBackgroundEvent,
+            cancelNotification: mockCancelNotification,
+        },
+        AndroidImportance: {},
+        AndroidColor: {},
+        AndroidCategory: {},
+        EventType: {
+            UNKNOWN: -1,
+            DISMISSED: 0,
+            PRESS: 1,
+            ACTION_PRESS: 2,
+            DELIVERED: 3,
+            APP_BLOCKED: 4,
+            CHANNEL_BLOCKED: 5,
+            CHANNEL_GROUP_BLOCKED: 6,
+            TRIGGER_NOTIFICATION_CREATED: 7,
+            FG_ALREADY_EXIST: 8,
+        },
+    })),
+    clearNotifeeCache: jest.fn(),
 }));
 
 jest.mock('../TTSStateManager'); // Auto-mock
@@ -63,7 +98,7 @@ describe('BackgroundService', () => {
 
         expect(handler).toBeDefined();
 
-        await handler({ type: 1, detail: { pressAction: { id: 'cancel' } } });
+        await handler({ type: EventType.ACTION_PRESS, detail: { pressAction: { id: 'cancel' } } });
 
         const { downloadManager } = require('../download/DownloadManager');
         const { clearDownloadState } = require('../ForegroundServiceCoordinator');
@@ -94,7 +129,7 @@ describe('BackgroundService', () => {
         ];
 
         for (const action of actions) {
-            await handler({ type: 1, detail: { pressAction: { id: action.id } } });
+            await handler({ type: EventType.ACTION_PRESS, detail: { pressAction: { id: action.id } } });
             // @ts-ignore
             expect(ttsStateManager[action.method]).toHaveBeenCalled();
         }
@@ -102,7 +137,7 @@ describe('BackgroundService', () => {
 
     it('should not register handler in Expo Go (storeClient)', () => {
         // We need to change Constants mock for this test.
-        // Since we are using isolateModules, we can re-mock or modify the mock object 
+        // Since we are using isolateModules, we can re-mock or modify the mock object
         // if it's mutable and referenced inside the isolated module.
         // However, standard `jest.mock` is hoisted.
 
@@ -111,13 +146,12 @@ describe('BackgroundService', () => {
             jest.doMock('expo-constants', () => ({
                 executionEnvironment: 'storeClient',
             }));
-            const notifee = require('@notifee/react-native').default; // Mocked globally, but let's check calls.
             // Reset mock calls for this isolation
-            notifee.onBackgroundEvent.mockClear();
+            mockOnBackgroundEvent.mockClear();
 
             require('../BackgroundService');
 
-            expect(notifee.onBackgroundEvent).not.toHaveBeenCalled();
+            expect(mockOnBackgroundEvent).not.toHaveBeenCalled();
         });
     });
 });

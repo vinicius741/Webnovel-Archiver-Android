@@ -8,6 +8,8 @@ jest.mock('expo-constants', () => ({
     executionEnvironment: 'bare',
 }));
 
+import { AndroidImportance, AndroidColor, AndroidCategory, EventType } from '@notifee/react-native';
+
 const mockNotifee = {
     createChannel: jest.fn().mockResolvedValue(undefined),
     displayNotification: jest.fn().mockResolvedValue(undefined),
@@ -17,18 +19,62 @@ const mockNotifee = {
     registerForegroundService: jest.fn(),
 };
 
+// Keep track of the loadNotifee mock function
+let mockLoadNotifee: jest.Mock;
+
 jest.mock('@notifee/react-native', () => ({
     default: mockNotifee,
     AndroidImportance: {
-        LOW: 'low',
-        MEDIUM: 'medium',
+        LOW: 'low' as const,
+        DEFAULT: 'default' as const,
     },
     AndroidColor: {
-        BLUE: 'blue',
+        BLUE: 'blue' as const,
     },
     AndroidCategory: {
-        SERVICE: 'service',
+        SERVICE: 'service' as const,
     },
+    EventType: {
+        UNKNOWN: -1,
+        DISMISSED: 0,
+        PRESS: 1,
+        ACTION_PRESS: 2,
+        DELIVERED: 3,
+        APP_BLOCKED: 4,
+        CHANNEL_BLOCKED: 5,
+        CHANNEL_GROUP_BLOCKED: 6,
+        TRIGGER_NOTIFICATION_CREATED: 7,
+        FG_ALREADY_EXIST: 8,
+    },
+}));
+
+jest.mock('../NotifeeTypes', () => ({
+    loadNotifee: jest.fn(() => ({
+        default: mockNotifee,
+        AndroidImportance: {
+            LOW: 'low' as const,
+            DEFAULT: 'default' as const,
+        },
+        AndroidColor: {
+            BLUE: 'blue' as const,
+        },
+        AndroidCategory: {
+            SERVICE: 'service' as const,
+        },
+        EventType: {
+            UNKNOWN: -1,
+            DISMISSED: 0,
+            PRESS: 1,
+            ACTION_PRESS: 2,
+            DELIVERED: 3,
+            APP_BLOCKED: 4,
+            CHANNEL_BLOCKED: 5,
+            CHANNEL_GROUP_BLOCKED: 6,
+            TRIGGER_NOTIFICATION_CREATED: 7,
+            FG_ALREADY_EXIST: 8,
+        },
+    })),
+    clearNotifeeCache: jest.fn(),
 }));
 
 jest.mock('../download/DownloadManager', () => ({

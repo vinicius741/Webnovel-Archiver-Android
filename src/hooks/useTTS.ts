@@ -3,6 +3,8 @@ import { DeviceEventEmitter, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { ttsStateManager, TTS_STATE_EVENTS, TTSState } from '../services/TTSStateManager';
 import { TTSSettings } from '../services/StorageService';
+import { loadNotifee, type NotifeeModule } from '../services/NotifeeTypes';
+import type { Event } from '@notifee/react-native/dist/types/Notification';
 
 export const useTTS = (options?: { onFinish?: () => void }) => {
     const onFinishRef = useRef(options?.onFinish);
@@ -74,31 +76,31 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
 
         if (Platform.OS === 'android' && Constants.executionEnvironment !== 'storeClient') {
             try {
-                const notifee = require('@notifee/react-native').default;
-                const { EventType } = require('@notifee/react-native');
-
-                unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }: any) => {
-                    if (type === EventType.ACTION_PRESS && detail.pressAction) {
-                        const actionId = detail.pressAction.id;
-                        switch (actionId) {
-                            case 'tts_play':
-                                ttsStateManager.resume();
-                                break;
-                            case 'tts_pause':
-                                ttsStateManager.pause();
-                                break;
-                            case 'tts_next':
-                                ttsStateManager.next();
-                                break;
-                            case 'tts_prev':
-                                ttsStateManager.previous();
-                                break;
-                            case 'tts_stop':
-                                ttsStateManager.stop();
-                                break;
+                const notifee = loadNotifee();
+                if (notifee) {
+                    unsubscribeNotifee = notifee.default.onForegroundEvent((event: Event) => {
+                        if (event.type === notifee.EventType.ACTION_PRESS && event.detail.pressAction) {
+                            const actionId = event.detail.pressAction.id;
+                            switch (actionId) {
+                                case 'tts_play':
+                                    ttsStateManager.resume();
+                                    break;
+                                case 'tts_pause':
+                                    ttsStateManager.pause();
+                                    break;
+                                case 'tts_next':
+                                    ttsStateManager.next();
+                                    break;
+                                case 'tts_prev':
+                                    ttsStateManager.previous();
+                                    break;
+                                case 'tts_stop':
+                                    ttsStateManager.stop();
+                                    break;
+                            }
                         }
-                    }
-                });
+                    });
+                }
             } catch (e) {
                 // Notifee not available
             }

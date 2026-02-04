@@ -64,7 +64,7 @@ class TTSStateManager {
         this.controller?.setOnFinishCallback(callback);
     }
 
-    public start(chunks: string[], title: string = 'Reading') {
+    public async start(chunks: string[], title: string = 'Reading') {
         if (!chunks || chunks.length === 0) return;
 
         if (!this.controller) {
@@ -75,7 +75,7 @@ class TTSStateManager {
 
         const state = this.getState();
         if (state) {
-            this.updateForegroundNotification(true, `Reading chunk 1 / ${state.chunks.length}`);
+            await this.updateForegroundNotification(true, `Reading chunk 1 / ${state.chunks.length}`);
         }
     }
 
@@ -96,11 +96,11 @@ class TTSStateManager {
         }
     }
 
-    public resume() {
+    public async resume() {
         this.controller?.resume();
         const state = this.getState();
         if (state) {
-            this.updateForegroundNotification(
+            await this.updateForegroundNotification(
                 true,
                 `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`
             );
@@ -144,11 +144,11 @@ class TTSStateManager {
             onStateChange: (state: TTSState) => {
                 this.emitStateChange(state);
             },
-            onChunkChange: (currentIndex: number) => {
+            onChunkChange: async (currentIndex: number) => {
                 const state = this.getState();
                 if (state) {
                     const msg = `Reading chunk ${currentIndex + 1} / ${state.chunks.length}`;
-                    this.updateForegroundNotification(true, msg);
+                    await this.updateForegroundNotification(true, msg);
                 }
             },
             onFinish: null,

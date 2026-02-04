@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import EventEmitter from 'events';
+import { loadNotifee, type NotifeeModule } from './NotifeeTypes';
+import type { NotificationAndroid } from '@notifee/react-native/dist/types/NotificationAndroid';
 
 export interface DownloadState {
     current: number;
@@ -23,10 +25,7 @@ const FOREGROUND_NOTIFICATION_ID = 'foreground_service';
 
 const emitter = new EventEmitter();
 
-let notifee: any = null;
-let androidImportance: any = null;
-let androidColor: any = null;
-let androidCategory: any = null;
+let notifee: NotifeeModule | null = null;
 let initialized = false;
 let initializing: Promise<void> | null = null;
 let foregroundRegistered = false;
@@ -44,22 +43,21 @@ const ensureInitialized = async (): Promise<boolean> => {
     if (!initializing) {
         initializing = (async () => {
             try {
-                const notifeeModule = require('@notifee/react-native');
-                notifee = notifeeModule.default;
-                androidImportance = notifeeModule.AndroidImportance;
-                androidColor = notifeeModule.AndroidColor;
-                androidCategory = notifeeModule.AndroidCategory;
+                notifee = loadNotifee();
+                if (!notifee) {
+                    return;
+                }
 
-                await notifee.createChannel({
+                await notifee.default.createChannel({
                     id: FOREGROUND_CHANNEL_ID,
                     name: 'Foreground Service',
-                    importance: androidImportance.LOW,
+                    importance: notifee.AndroidImportance.LOW,
                 });
 
-                await notifee.createChannel({
+                await notifee.default.createChannel({
                     id: DOWNLOAD_COMPLETE_CHANNEL_ID,
                     name: 'Download Complete',
-                    importance: androidImportance.MEDIUM,
+                    importance: notifee.AndroidImportance.DEFAULT,
                 });
 
                 initialized = true;
@@ -135,13 +133,13 @@ const updateForegroundNotification = async () => {
         body = `${downloadState.message} • ${ttsState.body}`;
     }
 
-    const android: any = {
+    const android: NotificationAndroid = {
         channelId: FOREGROUND_CHANNEL_ID,
         asForegroundService: true,
         ongoing: true,
         onlyAlertOnce: true,
-        color: androidColor?.BLUE,
-        category: androidCategory?.SERVICE,
+        color: notifee?.AndroidColor.BLUE,
+        category: notifee?.AndroidCategory.SERVICE,
         actions: buildActions(),
     };
 
@@ -154,7 +152,7 @@ const updateForegroundNotification = async () => {
     }
 
     try {
-        await notifee.displayNotification({
+        await notifee!.default.displayNotification({
             id: FOREGROUND_NOTIFICATION_ID,
             title,
             body,
@@ -169,8 +167,8 @@ const stopForegroundIfIdle = async () => {
     if (!await ensureInitialized()) return;
     if (hasActive()) return;
     try {
-        await notifee.stopForegroundService();
-        await notifee.cancelNotification(FOREGROUND_NOTIFICATION_ID);
+        await notifee!.default.stopForegroundService();
+        await notifee!.default.cancelNotification(FOREGROUND_NOTIFICATION_ID);
     } catch (e) {
         console.warn('[ForegroundServiceCoordinator] Failed to stop foreground service:', e);
     }
@@ -181,7 +179,7 @@ export const registerForegroundService = async () => {
     if (foregroundRegistered) return;
     foregroundRegistered = true;
 
-    notifee.registerForegroundService(async () => {
+    notifee!.default.registerForegroundService(async () => {
         try {
             const { downloadManager } = require('./download/DownloadManager');
             const { downloadQueue } = require('./download/DownloadQueue');
@@ -238,7 +236,7 @@ export const clearTtsState = async () => {
 export const showDownloadCompletionNotification = async (title: string, body: string) => {
     if (!await ensureInitialized()) return;
     try {
-        await notifee.displayNotification({
+        await notifee!.default.displayNotification({
             title,
             body,
             android: {
@@ -255,7 +253,7 @@ export const showDownloadCompletionNotification = async (title: string, body: st
 export const requestPermissions = async () => {
     if (!await ensureInitialized()) return;
     try {
-        await notifee.requestPermission();
+        await notifee!.default.requestPermission();
     } catch (e) {
         console.warn('[ForegroundServiceCoordinator] Failed to request permissions:', e);
     }
