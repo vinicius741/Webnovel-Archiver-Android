@@ -126,17 +126,13 @@ jest.mock('react-native', () => ({
     },
 }));
 
-jest.mock('../TTSNotificationService', () => ({
-    ttsNotificationService: {
-        startService: jest.fn().mockResolvedValue(undefined),
-        stopService: jest.fn().mockResolvedValue(undefined),
-        updateNotification: jest.fn().mockResolvedValue(undefined),
+jest.mock('../TtsMediaSessionService', () => ({
+    ttsMediaSessionService: {
+        startSession: jest.fn().mockResolvedValue(undefined),
+        updateSession: jest.fn().mockResolvedValue(undefined),
+        stopSession: jest.fn().mockResolvedValue(undefined),
+        registerMediaButtonHandler: jest.fn(),
     },
-}));
-
-jest.mock('../ForegroundServiceCoordinator', () => ({
-    setTtsState: jest.fn().mockResolvedValue(undefined),
-    clearTtsState: jest.fn().mockResolvedValue(undefined),
 }));
 
 describe('TTSStateManager - Concurrent Operations', () => {
@@ -154,8 +150,8 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             // Rapid toggle
             await Promise.all([
@@ -172,8 +168,8 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             // Pause then immediately resume
             await Promise.all([
@@ -189,8 +185,8 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3', 'chunk4', 'chunk5'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             // Skip forward multiple times
             await Promise.all([
@@ -206,8 +202,8 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3', 'chunk4'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             // Mix of navigation and playback controls
             await Promise.all([
@@ -228,11 +224,11 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
             const isPlayingStates: boolean[] = [];
 
-            setTtsState.mockImplementation(async (state: any) => {
-                isPlayingStates.push(state.isPlaying);
+            ttsMediaSessionService.updateSession.mockImplementation(async (payload: any) => {
+                isPlayingStates.push(payload.isPlaying);
             });
 
             // Rapid sequence: pause, resume, pause, resume
@@ -249,8 +245,8 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             // Read state while operations are in flight
             const stateReads: any[] = [];
@@ -279,12 +275,12 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3', 'chunk4'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             const updates: string[] = [];
-            setTtsState.mockImplementation(async (state: any) => {
-                updates.push(state.body);
+            ttsMediaSessionService.updateSession.mockImplementation(async (payload: any) => {
+                updates.push(payload.body);
             });
 
             // Sequence of operations
@@ -302,12 +298,12 @@ describe('TTSStateManager - Concurrent Operations', () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3', 'chunk4', 'chunk5'];
             ttsStateManager.start(chunks, 'Test Story');
 
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.updateSession.mockClear();
 
             const chunkIndices: number[] = [];
-            setTtsState.mockImplementation(async (state: any) => {
-                const match = state.body.match(/chunk (\d+)/);
+            ttsMediaSessionService.updateSession.mockImplementation(async (payload: any) => {
+                const match = payload.body.match(/chunk (\d+)/);
                 if (match) {
                     chunkIndices.push(parseInt(match[1]));
                 }
@@ -332,8 +328,8 @@ describe('TTSStateManager - Concurrent Operations', () => {
                 ttsStateManager.stop(),
             ]);
 
-            const { clearTtsState } = require('../ForegroundServiceCoordinator');
-            expect(clearTtsState).toHaveBeenCalled();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            expect(ttsMediaSessionService.stopSession).toHaveBeenCalled();
         });
 
         it('should handle multiple start calls', async () => {
@@ -462,22 +458,22 @@ describe('TTSStateManager - Concurrent Operations', () => {
 
     describe('Empty/Invalid Input Handling', () => {
         it('should ignore start with empty chunks', () => {
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.startSession.mockClear();
 
             ttsStateManager.start([], 'Empty Story');
 
             // Should not update notification for empty chunks
-            expect(setTtsState).not.toHaveBeenCalled();
+            expect(ttsMediaSessionService.startSession).not.toHaveBeenCalled();
         });
 
         it('should handle start with null chunks', () => {
-            const { setTtsState } = require('../ForegroundServiceCoordinator');
-            setTtsState.mockClear();
+            const { ttsMediaSessionService } = require('../TtsMediaSessionService');
+            ttsMediaSessionService.startSession.mockClear();
 
             ttsStateManager.start(null as any, 'Null Story');
 
-            expect(setTtsState).not.toHaveBeenCalled();
+            expect(ttsMediaSessionService.startSession).not.toHaveBeenCalled();
         });
     });
 });

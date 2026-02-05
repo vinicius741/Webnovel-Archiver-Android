@@ -126,3 +126,31 @@ Strict mode enabled with Expo base config. Absolute imports from `src/` preferre
 
 ### UI Library
 React Native Paper (Material Design) with theme in `src/theme/`. Theme mode ('system' | 'light' | 'dark') persisted in AsyncStorage.
+
+### Native Modules (modules/)
+
+**IMPORTANT:** The `modules/` directory contains **native Android code** written in Kotlin using the Expo Modules API. This code runs outside the JavaScript/React Native runtime and requires native compilation.
+
+#### tts-media-session
+An Expo Module providing Android media session support for TTS playback. This enables:
+- Media button events (play/pause from headphones, Bluetooth devices, car controls)
+- Integration with Android's MediaSession framework
+- Proper foreground service behavior for TTS playback
+
+**Structure:**
+```
+modules/tts-media-session/
+├── android/src/main/java/expo/modules/ttsmediasession/
+│   ├── TtsMediaSessionModule.kt        # Main module interface
+│   ├── TtsMediaSessionService.kt       # Foreground service for media session
+│   └── TtsMediaSessionEventEmitter.kt  # Event emission to JS
+├── android/build.gradle                # Native build configuration
+├── expo-module.config.json             # Expo module manifest
+└── src/index.ts                        # TypeScript/JS interface
+```
+
+**When modifying this module:**
+1. Changes to Kotlin files (`*.kt`) require rebuilding the native app: `npm run android` (not just `npm start`)
+2. The module is Android-only (`platforms: ["android"]`) - no iOS implementation
+3. Use `expo-modules-api` for the bridge between JS and native code
+4. Follow Expo Modules conventions for native module development

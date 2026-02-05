@@ -1,6 +1,6 @@
 import { storageService, TTSSettings } from './StorageService';
 import { TTSPlaybackController, TTSState, TTSPlaybackConfig } from './tts/TTSPlaybackController';
-import { clearTtsState, setTtsState } from './ForegroundServiceCoordinator';
+import { ttsMediaSessionService } from './TtsMediaSessionService';
 
 export type { TTSState } from './tts/TTSPlaybackController';
 
@@ -15,6 +15,9 @@ class TTSStateManager {
 
     private constructor() {
         this.loadSettings();
+        ttsMediaSessionService.registerMediaButtonHandler(() => {
+            void this.playPause();
+        });
     }
 
     public static getInstance(): TTSStateManager {
@@ -36,14 +39,10 @@ class TTSStateManager {
         DeviceEventEmitter.emit(TTS_STATE_EVENTS.STATE_CHANGED, state);
     }
 
-    private async updateForegroundNotification(isPlaying: boolean, body: string) {
+    private async updateMediaSession(isPlaying: boolean, body: string) {
         const state = this.getState();
         if (!state) return;
-        await setTtsState({
-            title: state.title,
-            body,
-            isPlaying,
-        });
+        await ttsMediaSessionService.updateSession({ title: state.title, body, isPlaying });
     }
 
     public getState(): TTSState | null {
@@ -75,13 +74,17 @@ class TTSStateManager {
 
         const state = this.getState();
         if (state) {
-            await this.updateForegroundNotification(true, `Reading chunk 1 / ${state.chunks.length}`);
+            await ttsMediaSessionService.startSession({
+                title: state.title,
+                body: `Reading chunk 1 / ${state.chunks.length}`,
+                isPlaying: true,
+            });
         }
     }
 
     public async stop() {
         await this.controller?.stop();
-        await clearTtsState();
+        await ttsMediaSessionService.stopSession();
     }
 
     public async pause() {
@@ -89,7 +92,7 @@ class TTSStateManager {
 
         const state = this.getState();
         if (state) {
-            await this.updateForegroundNotification(
+            await this.updateMediaSession(
                 false,
                 `Paused: Chunk ${state.currentChunkIndex + 1}`
             );
@@ -100,7 +103,7 @@ class TTSStateManager {
         this.controller?.resume();
         const state = this.getState();
         if (state) {
-            await this.updateForegroundNotification(
+            await this.updateMediaSession(
                 true,
                 `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`
             );
@@ -115,7 +118,7 @@ class TTSStateManager {
             const msg = isPlaying
                 ? `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`
                 : `Paused: Chunk ${state.currentChunkIndex + 1}`;
-            await this.updateForegroundNotification(isPlaying, msg);
+            await this.updateMediaSession(isPlaying, msg);
         }
     }
 
@@ -125,7 +128,7 @@ class TTSStateManager {
         const state = this.getState();
         if (state) {
             const msg = `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`;
-            await this.updateForegroundNotification(true, msg);
+            await this.updateMediaSession(true, msg);
         }
     }
 
@@ -135,7 +138,7 @@ class TTSStateManager {
         const state = this.getState();
         if (state) {
             const msg = `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`;
-            await this.updateForegroundNotification(true, msg);
+            await this.updateMediaSession(true, msg);
         }
     }
 
@@ -148,7 +151,7 @@ class TTSStateManager {
                 const state = this.getState();
                 if (state) {
                     const msg = `Reading chunk ${currentIndex + 1} / ${state.chunks.length}`;
-                    await this.updateForegroundNotification(true, msg);
+                    await this.updateMediaSession(true, msg);
                 }
             },
             onFinish: null,
