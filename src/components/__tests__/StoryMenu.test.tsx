@@ -59,6 +59,7 @@ jest.mock('react-native-safe-area-context', () => ({
 
 describe('StoryMenu', () => {
     const defaultProps = {
+        onDownloadRange: jest.fn(),
         onApplySentenceRemoval: jest.fn(),
         onDelete: jest.fn(),
         disabled: false,

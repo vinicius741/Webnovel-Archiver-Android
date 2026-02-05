@@ -60,8 +60,8 @@ describe('useStoryDownload', () => {
         });
     });
 
-    it('should handle update check with updateNovel', async () => {
-        // Setup Mocks for update check
+    it('should handle sync with new chapters', async () => {
+        // Setup Mocks for sync
         const mockProvider = {
             getChapterList: jest.fn().mockResolvedValue([
                 { url: 'http://test.com/c1', title: 'Chapter 1' },
@@ -71,17 +71,22 @@ describe('useStoryDownload', () => {
         };
         (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
         (fetcher.fetchPage as jest.Mock).mockResolvedValue('<html></html>');
+        (downloadService.downloadChaptersByIds as jest.Mock).mockResolvedValue(mockStory);
 
         const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
 
         await act(async () => {
-            await result.current.updateNovel();
+            await result.current.syncChapters();
         });
 
-        expect(result.current.checkingUpdates).toBe(false);
+        expect(result.current.syncing).toBe(false);
         expect(storageService.addStory).toHaveBeenCalled();
         expect(mockOnStoryUpdated).toHaveBeenCalled();
-        expect(mockShowAlert).toHaveBeenCalledWith('Update Found', expect.stringContaining('1 new chapters'));
+        expect(downloadService.downloadChaptersByIds).toHaveBeenCalledWith(
+            expect.any(Object),
+            ['http://test.com/c2']
+        );
+        expect(mockShowAlert).toHaveBeenCalledWith('Update Found', expect.stringContaining('Download queued'));
     });
 
     it('should preserve downloaded chapters when RoyalRoad slug changes', async () => {
@@ -122,7 +127,7 @@ describe('useStoryDownload', () => {
         const { result } = renderHook(() => useStoryDownload({ story: storyWithOldSlug, onStoryUpdated: mockOnStoryUpdated }));
 
         await act(async () => {
-            await result.current.updateNovel();
+            await result.current.syncChapters();
         });
 
         const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];

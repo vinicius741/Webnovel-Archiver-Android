@@ -4,6 +4,7 @@ import { startActivityAsync } from 'expo-intent-launcher';
 
 import { storageService } from '../services/StorageService';
 import { epubGenerator, EpubProgress, EpubResult } from '../services/EpubGenerator';
+import { downloadService } from '../services/DownloadService';
 import { useAppAlert } from '../context/AlertContext';
 import { Story } from '../types';
 import { validateStory } from '../utils/storyValidation';
@@ -67,7 +68,8 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
                     const updated: Story = {
                         ...story,
                         epubPath: undefined,
-                        epubPaths: undefined
+                        epubPaths: undefined,
+                        epubStale: false
                     };
                     await storageService.addStory(updated);
                     onStoryUpdated(updated);
@@ -113,8 +115,8 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
         return await readExistingEpub(pathToRead, isFromMultiple);
     };
 
-    const generateEpub = async (): Promise<boolean> => {
-        if (!validateStory(story)) return false;
+    const generateEpub = async (): Promise<string[] | null> => {
+        if (!validateStory(story)) return null;
 
         try {
             setGenerating(true);
@@ -192,7 +194,8 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
                 ...story,
                 epubPaths: epubUris,
                 // Keep epubPath for backward compatibility
-                epubPath: epubUris[0]
+                epubPath: epubUris[0],
+                epubStale: false
             };
             await storageService.addStory(updatedStory);
             onStoryUpdated(updatedStory);
@@ -207,10 +210,10 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
             } else {
                 showAlert('Success', `EPUB exported to: ${results[0].uri}`);
             }
-            return true;
+            return epubUris;
         } catch (error: any) {
             showAlert('Error', error.message);
-            return false;
+            return null;
         } finally {
             setGenerating(false);
             setProgress(null);
@@ -226,12 +229,51 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
 
         // Explicitly check for non-empty array before using it
         const hasEpubPaths = epubPaths && epubPaths.length > 0;
+        const hasEpub = hasEpubPaths || !!epubPath;
+        const pendingNewChapterIds = (story.pendingNewChapterIds || []).filter(id => {
+            const chapter = story.chapters.find(ch => ch.id === id);
+            return chapter && !chapter.downloaded;
+        });
 
-        if (hasEpubPaths || epubPath) {
-            await readFirstEpub();
-        } else {
-            await generateEpub();
+        if (pendingNewChapterIds.length > 0) {
+            showAlert(
+                'New Chapters Found',
+                'Download the new chapters before reading?',
+                [
+                    {
+                        text: 'Read',
+                        style: 'cancel',
+                        onPress: async () => {
+                            await readFirstEpub();
+                        }
+                    },
+                    {
+                        text: 'Download',
+                        onPress: async () => {
+                            try {
+                                const queuedStory = await downloadService.downloadChaptersByIds(story, pendingNewChapterIds);
+                                await storageService.addStory(queuedStory);
+                                onStoryUpdated(queuedStory);
+                                showAlert('Download Started', 'New chapters have been queued for download.');
+                            } catch (error: any) {
+                                showAlert('Download Error', error.message || 'Failed to queue downloads.');
+                            }
+                        }
+                    }
+                ]
+            );
+            return;
         }
+
+        if (!hasEpub || story.epubStale) {
+            const epubUris = await generateEpub();
+            if (epubUris && epubUris.length > 0) {
+                await readExistingEpub(epubUris[0], epubUris.length > 1);
+            }
+            return;
+        }
+
+        await readFirstEpub();
     };
 
     return {

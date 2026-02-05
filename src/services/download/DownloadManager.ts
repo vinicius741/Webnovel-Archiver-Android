@@ -178,13 +178,19 @@ export class DownloadManager extends EventEmitter {
 
                         const downloadedCount = chapters.filter(c => c.downloaded).length;
                         const status = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
+                        const hasEpub = !!(story.epubPaths && story.epubPaths.length > 0) || !!story.epubPath;
+                        const pendingNewChapterIds = story.pendingNewChapterIds?.filter(id => id !== chapters[job.chapterIndex].id);
 
                         await storageService.updateStory({
                             ...story,
                             chapters,
                             downloadedChapters: downloadedCount,
                             status,
-                            lastUpdated: Date.now()
+                            lastUpdated: Date.now(),
+                            epubStale: hasEpub ? true : story.epubStale,
+                            pendingNewChapterIds: pendingNewChapterIds && pendingNewChapterIds.length > 0
+                                ? pendingNewChapterIds
+                                : undefined
                         });
                     }
                 }

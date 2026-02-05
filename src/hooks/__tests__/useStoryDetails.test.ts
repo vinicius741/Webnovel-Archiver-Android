@@ -63,10 +63,12 @@ describe('useStoryDetails', () => {
 
         const useStoryDownload = require('../useStoryDownload').useStoryDownload as jest.Mock;
         useStoryDownload.mockReturnValue({
-            checkingUpdates: jest.fn(),
-            updateStatus: jest.fn(),
+            syncing: jest.fn(),
+            syncStatus: jest.fn(),
             queueing: jest.fn(),
-            downloadOrUpdate: jest.fn(),
+            syncChapters: jest.fn(),
+            downloadRange: jest.fn(),
+            applySentenceRemoval: jest.fn(),
         });
 
         const useStoryEPUB = require('../useStoryEPUB').useStoryEPUB as jest.Mock;
@@ -223,14 +225,14 @@ describe('useStoryDetails', () => {
 
     it('should expose story download functions', async () => {
         const { useStoryDownload } = require('../useStoryDownload');
-        const mockDownloadOrUpdate = jest.fn();
+        const mockSyncChapters = jest.fn();
         const mockDownloadRange = jest.fn();
         const mockApplySentenceRemoval = jest.fn();
         useStoryDownload.mockReturnValue({
-            checkingUpdates: false,
-            updateStatus: '',
+            syncing: false,
+            syncStatus: '',
             queueing: false,
-            downloadOrUpdate: mockDownloadOrUpdate,
+            syncChapters: mockSyncChapters,
             downloadRange: mockDownloadRange,
             applySentenceRemoval: mockApplySentenceRemoval,
         });
@@ -241,7 +243,7 @@ describe('useStoryDetails', () => {
             expect(result.current.loading).toBe(false);
         });
 
-        expect(typeof result.current.downloadOrUpdate).toBe('function');
+        expect(typeof result.current.syncChapters).toBe('function');
         expect(typeof result.current.downloadRange).toBe('function');
         expect(typeof result.current.applySentenceRemoval).toBe('function');
     });
@@ -270,10 +272,10 @@ describe('useStoryDetails', () => {
         const { useDownloadProgress } = require('../useDownloadProgress');
 
         useStoryDownload.mockReturnValue({
-            checkingUpdates: false,
-            updateStatus: '',
+            syncing: false,
+            syncStatus: '',
             queueing: true,
-            downloadOrUpdate: jest.fn(),
+            syncChapters: jest.fn(),
             downloadRange: jest.fn(),
             applySentenceRemoval: jest.fn(),
         });

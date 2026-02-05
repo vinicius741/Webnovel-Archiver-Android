@@ -64,6 +64,14 @@ export const useAddStory = () => {
                 provider,
                 existingStory?.lastReadChapterId
             );
+            const existingPending = existingStory?.pendingNewChapterIds ?? [];
+            const pendingSet = new Set([...existingPending, ...mergeResult.newChapterIds]);
+            const chapterMap = new Map(mergeResult.chapters.map(ch => [ch.id, ch]));
+            const pendingNewChapterIds = Array.from(pendingSet)
+                .filter(id => {
+                    const chapter = chapterMap.get(id);
+                    return chapter && !chapter.downloaded;
+                });
 
             const status = existingStory
                 ? (mergeResult.newChaptersCount > 0 ? DownloadStatus.Partial : existingStory.status)
@@ -87,8 +95,10 @@ export const useAddStory = () => {
 
             if (existingStory) {
                 story.lastReadChapterId = mergeResult.lastReadChapterId;
-                story.epubPath = mergeResult.newChaptersCount > 0 ? undefined : existingStory.epubPath;
-                story.epubPaths = mergeResult.newChaptersCount > 0 ? undefined : existingStory.epubPaths;
+                story.epubPath = existingStory.epubPath;
+                story.epubPaths = existingStory.epubPaths;
+                story.epubStale = existingStory.epubStale;
+                story.pendingNewChapterIds = pendingNewChapterIds.length > 0 ? pendingNewChapterIds : undefined;
             }
 
             await storageService.addStory(story);

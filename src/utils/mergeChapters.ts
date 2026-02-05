@@ -6,6 +6,7 @@ export interface MergeChaptersResult {
     chapters: Chapter[];
     downloadedCount: number;
     newChaptersCount: number;
+    newChapterIds: string[];
     lastReadChapterId?: string;
 }
 
@@ -77,6 +78,7 @@ export const mergeChapters = (
     });
 
     let newChaptersCount = 0;
+    const newChapterIds: string[] = [];
 
     const mergedChapters: Chapter[] = newChapters.map((chapter) => {
         const stableId = buildStableId(provider, chapter.url, chapter.id) ?? chapter.url;
@@ -93,6 +95,7 @@ export const mergeChapters = (
         }
 
         newChaptersCount++;
+        newChapterIds.push(stableId);
         return {
             id: stableId,
             title,
@@ -112,6 +115,7 @@ export const mergeChapters = (
         chapters: mergedChapters,
         downloadedCount,
         newChaptersCount,
+        newChapterIds,
         lastReadChapterId: remappedLastRead,
     };
 };

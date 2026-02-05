@@ -27,16 +27,15 @@ export default function StoryDetailsScreen() {
       story,
       loading,
       downloading,
-      checkingUpdates,
+      syncing,
       generating,
       epubProgress,
-      updateStatus,
+      syncStatus,
       downloadProgress,
       downloadStatus,
       deleteStory,
       markChapterAsRead,
-      downloadAll,
-      updateNovel,
+      syncChapters,
       generateOrRead,
       downloadRange,
       applySentenceRemoval,
@@ -108,16 +107,14 @@ export default function StoryDetailsScreen() {
         <StoryActions
             story={story}
             downloading={downloading}
-            checkingUpdates={checkingUpdates}
+            syncing={syncing}
             generating={generating}
             epubProgress={epubProgress}
-            updateStatus={updateStatus}
+            syncStatus={syncStatus}
             downloadProgress={downloadProgress}
             downloadStatus={downloadStatus}
-            onDownloadAll={downloadAll}
-            onUpdate={updateNovel}
+            onSync={syncChapters}
             onGenerateOrRead={generateOrRead}
-            onPartialDownload={() => setShowDownloadRange(true)}
         />
         <DownloadRangeDialog 
             visible={showDownloadRange}
@@ -147,6 +144,7 @@ export default function StoryDetailsScreen() {
             title: story ? story.title : 'Details',
             headerRight: () => (
                 <StoryMenu 
+                    onDownloadRange={() => setShowDownloadRange(true)}
                     onApplySentenceRemoval={applySentenceRemoval}
                     onDelete={deleteStory}
                     disabled={loading}

@@ -35,16 +35,14 @@ describe('StoryActions', () => {
             lastReadChapterId: '50',
         },
         downloading: false,
-        checkingUpdates: false,
+        syncing: false,
         generating: false,
         epubProgress: null,
-        updateStatus: undefined,
+        syncStatus: undefined,
         downloadProgress: 0.5,
         downloadStatus: 'Downloading chapter 50/100',
-        onDownloadAll: jest.fn(),
-        onUpdate: jest.fn(),
+        onSync: jest.fn(),
         onGenerateOrRead: jest.fn(),
-        onPartialDownload: jest.fn(),
     };
 
     const renderWithTheme = (component: React.ReactElement) => {
@@ -55,44 +53,25 @@ describe('StoryActions', () => {
         );
     };
 
-    it('should render Download All button when not all chapters downloaded', () => {
+    it('should render Sync Chapters button', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
-        expect(getByTestId('download-button')).toBeTruthy();
+        expect(getByTestId('sync-button')).toBeTruthy();
     });
 
-    it('should render Update button', () => {
-        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
-
-        expect(getByTestId('update-button')).toBeTruthy();
-    });
-
-    it('should render Downloading... button when downloading', () => {
+    it('should render Syncing... button when syncing', () => {
         const { getByTestId } = renderWithTheme(
-            <StoryActions {...defaultProps} downloading={true} />
+            <StoryActions {...defaultProps} syncing={true} />
         );
 
-        expect(getByTestId('download-button')).toBeTruthy();
+        expect(getByTestId('sync-button')).toBeTruthy();
     });
 
-    it('should render Checking... button when checking updates', () => {
-        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} checkingUpdates={true} />);
-
-        expect(getByTestId('update-button')).toBeTruthy();
-    });
-
-    it('should call onDownloadAll when Download All button is pressed', () => {
+    it('should call onSync when Sync Chapters button is pressed', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
-        fireEvent.press(getByTestId('download-button'));
-        expect(defaultProps.onDownloadAll).toHaveBeenCalledTimes(1);
-    });
-
-    it('should call onUpdate when Update button is pressed', () => {
-        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
-
-        fireEvent.press(getByTestId('update-button'));
-        expect(defaultProps.onUpdate).toHaveBeenCalledTimes(1);
+        fireEvent.press(getByTestId('sync-button'));
+        expect(defaultProps.onSync).toHaveBeenCalledTimes(1);
     });
 
     it('should render progress bar when downloading', () => {
@@ -111,17 +90,17 @@ describe('StoryActions', () => {
         expect(getByText('Downloading chapter 50/100')).toBeTruthy();
     });
 
-    it('should render checking updates status when checking', () => {
+    it('should render sync status when syncing', () => {
         const props = {
             ...defaultProps,
-            updateStatus: 'Checking for updates...',
+            syncStatus: 'Checking for updates...',
         };
-        const { getByText } = renderWithTheme(<StoryActions {...props} checkingUpdates={true} />);
+        const { getByText } = renderWithTheme(<StoryActions {...props} syncing={true} />);
 
         expect(getByText('Checking for updates...')).toBeTruthy();
     });
 
-    it('should render Generate EPUB button when no epub path', () => {
+    it('should render Read EPUB button when no epub path', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
         expect(getByTestId('generate-button')).toBeTruthy();
@@ -137,7 +116,7 @@ describe('StoryActions', () => {
         expect(getByTestId('generate-button')).toBeTruthy();
     });
 
-    it('should call onGenerateOrRead when Generate EPUB button is pressed', () => {
+    it('should call onGenerateOrRead when Read EPUB button is pressed', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
         fireEvent.press(getByTestId('generate-button'));
@@ -178,25 +157,20 @@ describe('StoryActions', () => {
         expect(getByText('Generating chapters...')).toBeTruthy();
     });
 
-    it('should render Partial Download button', () => {
-        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
+    it('should render stale indicator when epub is out of date', () => {
+        const props = {
+            ...defaultProps,
+            story: { ...defaultProps.story, epubStale: true, epubPath: '/path/to/epub.epub' },
+        };
+        const { getByText } = renderWithTheme(<StoryActions {...props} />);
 
-        expect(getByTestId('partial-download-button')).toBeTruthy();
+        expect(getByText('EPUB out of date')).toBeTruthy();
     });
 
-    it('should call onPartialDownload when Partial Download button is pressed', () => {
+    it('should render both action buttons', () => {
         const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
-        fireEvent.press(getByTestId('partial-download-button'));
-        expect(defaultProps.onPartialDownload).toHaveBeenCalledTimes(1);
-    });
-
-    it('should render all four action buttons', () => {
-        const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
-
-        expect(getByTestId('download-button')).toBeTruthy();
-        expect(getByTestId('update-button')).toBeTruthy();
+        expect(getByTestId('sync-button')).toBeTruthy();
         expect(getByTestId('generate-button')).toBeTruthy();
-        expect(getByTestId('partial-download-button')).toBeTruthy();
     });
 });

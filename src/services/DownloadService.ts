@@ -67,6 +67,45 @@ class DownloadService {
     }
 
     /**
+     * Queues specific chapters by ID.
+     */
+    async downloadChaptersByIds(
+        story: Story,
+        chapterIds: string[]
+    ): Promise<Story> {
+        if (chapterIds.length === 0) return story;
+
+        const idSet = new Set(chapterIds);
+        const jobs = story.chapters
+            .map((ch, index) => ({ chapter: ch, index }))
+            .filter(({ chapter }) => idSet.has(chapter.id))
+            .filter(({ chapter }) => !chapter.downloaded)
+            .map(({ chapter, index }) => ({
+                id: `${story.id}_${index}`,
+                storyId: story.id,
+                storyTitle: story.title,
+                chapterIndex: index,
+                chapter: chapter,
+                status: 'pending' as const,
+                addedAt: Date.now(),
+                retryCount: 0
+            }));
+
+        if (jobs.length === 0) return story;
+
+        const updatedStory = {
+            ...story,
+            status: DownloadStatus.Downloading,
+            lastUpdated: Date.now()
+        };
+        await storageService.updateStory(updatedStory);
+
+        await downloadManager.addJobs(jobs);
+
+        return updatedStory;
+    }
+
+    /**
      * Queues all chapters.
      */
     async downloadAllChapters(
@@ -110,7 +149,7 @@ class DownloadService {
 
         const updatedStory = {
             ...story,
-            epubPath: undefined,
+            epubStale: true,
             lastUpdated: Date.now()
         };
         await storageService.updateStory(updatedStory);

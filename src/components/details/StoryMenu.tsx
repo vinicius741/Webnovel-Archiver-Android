@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { Menu, IconButton, Divider, useTheme } from 'react-native-paper';
 
 interface StoryMenuProps {
+    onDownloadRange: () => void;
     onApplySentenceRemoval: () => void;
     onDelete: () => void;
     disabled?: boolean;
 }
 
 export const StoryMenu: React.FC<StoryMenuProps> = ({
+    onDownloadRange,
     onApplySentenceRemoval,
     onDelete,
     disabled = false
@@ -33,6 +35,15 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
             onDismiss={closeMenu}
             anchor={MenuButton}
         >
+            <Menu.Item 
+                onPress={() => {
+                    closeMenu();
+                    onDownloadRange();
+                }} 
+                title="Download Range"
+                disabled={disabled}
+            />
+            <Divider />
             <Menu.Item 
                 onPress={() => {
                     closeMenu();

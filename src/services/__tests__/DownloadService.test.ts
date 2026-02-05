@@ -252,14 +252,14 @@ describe('DownloadService', () => {
             expect(saveChapter).not.toHaveBeenCalled();
         });
 
-        it('should clear epubPath after processing', async () => {
+        it('should mark epub as stale after processing', async () => {
             (readChapterFile as jest.Mock).mockResolvedValue('<p>Content</p>');
 
             await downloadService.applySentenceRemovalToStory(mockStory);
 
             expect(storageService.updateStory).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    epubPath: undefined,
+                    epubStale: true,
                     lastUpdated: expect.any(Number),
                 })
             );

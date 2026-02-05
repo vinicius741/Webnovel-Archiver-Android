@@ -7,6 +7,7 @@ import { Story } from '../../types';
 
 jest.mock('../../services/StorageService');
 jest.mock('../../services/EpubGenerator');
+jest.mock('../../services/DownloadService');
 
 jest.mock('expo-file-system/legacy', () => ({
     getInfoAsync: jest.fn(),
@@ -54,23 +55,37 @@ describe('useStoryEPUB', () => {
         (getContentUriAsync as jest.Mock).mockReset();
         (startActivityAsync as jest.Mock).mockReset();
         (startActivityAsync as jest.Mock).mockResolvedValue({});
+        (getInfoAsync as jest.Mock).mockResolvedValue({ exists: true });
+        (getContentUriAsync as jest.Mock).mockResolvedValue('content://uri');
+        (storageService.getSettings as jest.Mock).mockResolvedValue({ maxChaptersPerEpub: 150 });
     });
 
     it('should generate epub when story has no epub path', async () => {
         const { result } = renderHook(() => useStoryEPUB({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
 
         const mockProgress = { current: 5, total: 10, percentage: 50, stage: 'processing' as const };
-        (epubGenerator.generateEpub as jest.Mock).mockImplementation(async (_story, _chapters, callback) => {
+        (epubGenerator.generateEpubs as jest.Mock).mockImplementation(async (_story, _chapters, _maxChapters, callback) => {
             callback(mockProgress);
-            return 'file://path/to/epub.epub';
+            return [{
+                uri: 'file://path/to/epub.epub',
+                filename: 'test.epub',
+                chapterRange: { start: 1, end: 10 }
+            }];
         });
+        (getInfoAsync as jest.Mock).mockResolvedValue({ exists: true });
+        (getContentUriAsync as jest.Mock).mockResolvedValue('content://uri');
 
         await act(async () => {
             await result.current.generateOrRead();
         });
 
         expect(result.current.generating).toBe(false);
-        expect(epubGenerator.generateEpub).toHaveBeenCalledWith(mockStory, mockStory.chapters, expect.any(Function));
+        expect(epubGenerator.generateEpubs).toHaveBeenCalledWith(
+            mockStory,
+            mockStory.chapters,
+            150,
+            expect.any(Function)
+        );
         expect(storageService.addStory).toHaveBeenCalledWith(
             expect.objectContaining({ epubPath: 'file://path/to/epub.epub' })
         );
@@ -96,7 +111,7 @@ describe('useStoryEPUB', () => {
             flags: 1,
             type: 'application/epub+zip',
         });
-        expect(epubGenerator.generateEpub).not.toHaveBeenCalled();
+        expect(epubGenerator.generateEpubs).not.toHaveBeenCalled();
     });
 
     it('should handle missing epub file gracefully', async () => {
@@ -124,14 +139,14 @@ describe('useStoryEPUB', () => {
             await result.current.generateOrRead();
         });
 
-        expect(epubGenerator.generateEpub).not.toHaveBeenCalled();
+        expect(epubGenerator.generateEpubs).not.toHaveBeenCalled();
         expect(mockShowAlert).not.toHaveBeenCalled();
     });
 
     it('should handle generate epub error', async () => {
         const { result } = renderHook(() => useStoryEPUB({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
 
-        (epubGenerator.generateEpub as jest.Mock).mockRejectedValue(new Error('Generation failed'));
+        (epubGenerator.generateEpubs as jest.Mock).mockRejectedValue(new Error('Generation failed'));
 
         await act(async () => {
             await result.current.generateOrRead();
@@ -142,7 +157,7 @@ describe('useStoryEPUB', () => {
     });
 
     it('should update progress during epub generation', async () => {
-        (epubGenerator.generateEpub as jest.Mock).mockImplementation(async (_story, _chapters, callback) => {
+        (epubGenerator.generateEpubs as jest.Mock).mockImplementation(async (_story, _chapters, _maxChapters, callback) => {
             await new Promise(resolve => setTimeout(resolve, 10));
             callback({ current: 2, total: 10, percentage: 20, stage: 'filtering' as const });
             await new Promise(resolve => setTimeout(resolve, 10));
@@ -150,7 +165,11 @@ describe('useStoryEPUB', () => {
             await new Promise(resolve => setTimeout(resolve, 10));
             callback({ current: 10, total: 10, percentage: 100, stage: 'finalizing' as const });
             await new Promise(resolve => setTimeout(resolve, 10));
-            return 'file://path/to/epub.epub';
+            return [{
+                uri: 'file://path/to/epub.epub',
+                filename: 'test.epub',
+                chapterRange: { start: 1, end: 10 }
+            }];
         });
 
         const { result } = renderHook(() => useStoryEPUB({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
@@ -179,7 +198,7 @@ describe('useStoryEPUB', () => {
             await result.current.generateOrRead();
         });
 
-        expect(epubGenerator.generateEpub).not.toHaveBeenCalled();
+        expect(epubGenerator.generateEpubs).not.toHaveBeenCalled();
         expect(mockShowAlert).not.toHaveBeenCalled();
     });
 

@@ -17,8 +17,8 @@ interface UseStoryDownloadParams {
 
 export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadParams) => {
     const { showAlert } = useAppAlert();
-    const [checkingUpdates, setCheckingUpdates] = useState(false);
-    const [updateStatus, setUpdateStatus] = useState('');
+    const [syncing, setSyncing] = useState(false);
+    const [syncStatus, setSyncStatus] = useState('');
     const [queueing, setQueueing] = useState(false);
 
     const downloadAll = async () => {
@@ -29,13 +29,8 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
             await activateKeepAwakeAsync();
 
             const updatedStory = await downloadService.downloadAllChapters(story);
-            const finalStory = {
-                ...updatedStory,
-                epubPath: undefined
-            };
-
-            await storageService.addStory(finalStory);
-            onStoryUpdated(finalStory);
+            await storageService.addStory(updatedStory);
+            onStoryUpdated(updatedStory);
             showAlert('Download Started', 'Chapters have been added to the download queue.');
 
         } catch (error) {
@@ -47,12 +42,12 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
         }
     };
 
-    const updateNovel = async () => {
+    const syncChapters = async () => {
         if (!validateStory(story)) return;
 
         try {
-            setCheckingUpdates(true);
-            setUpdateStatus('Initializing...');
+            setSyncing(true);
+            setSyncStatus('Initializing...');
             const provider = sourceRegistry.getProvider(story.sourceUrl);
             if (!provider) {
                 throw new Error('Unsupported source URL.');
@@ -60,11 +55,11 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
 
             const html = await fetchPage(story.sourceUrl);
             const newChapters = await provider.getChapterList(html, story.sourceUrl, (msg) => {
-                setUpdateStatus(msg);
+                setSyncStatus(msg);
             });
             const metadata = provider.parseMetadata(html);
 
-            setUpdateStatus('Merging...');
+            setSyncStatus('Merging...');
 
             const mergeResult = mergeChapters(
                 story.chapters,
@@ -74,8 +69,17 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
             );
 
             const tagsChanged = JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
-            const hasUpdates = mergeResult.newChaptersCount > 0 || tagsChanged;
-            const newChapterCount = mergeResult.newChaptersCount;
+            const hasUpdates = mergeResult.newChapterIds.length > 0 || tagsChanged;
+            const newChapterCount = mergeResult.newChapterIds.length;
+
+            const existingPending = story.pendingNewChapterIds ?? [];
+            const pendingSet = new Set([...existingPending, ...mergeResult.newChapterIds]);
+            const chapterMap = new Map(mergeResult.chapters.map(ch => [ch.id, ch]));
+            const pendingNewChapterIds = Array.from(pendingSet)
+                .filter(id => {
+                    const chapter = chapterMap.get(id);
+                    return chapter && !chapter.downloaded;
+                });
 
             const updatedStory: Story = {
                 ...story,
@@ -92,8 +96,7 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                 score: metadata.score || story.score,
                 sourceUrl: metadata.canonicalUrl || story.sourceUrl,
                 lastReadChapterId: mergeResult.lastReadChapterId,
-                epubPath: newChapterCount > 0 ? undefined : story.epubPath,
-                epubPaths: newChapterCount > 0 ? undefined : story.epubPaths,
+                pendingNewChapterIds: pendingNewChapterIds.length > 0 ? pendingNewChapterIds : undefined,
             };
 
             await storageService.addStory(updatedStory);
@@ -101,7 +104,11 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
 
             if (hasUpdates) {
                 if (newChapterCount > 0) {
-                    showAlert('Update Found', `Found ${newChapterCount} new chapters!`);
+                    setQueueing(true);
+                    const queuedStory = await downloadService.downloadChaptersByIds(updatedStory, mergeResult.newChapterIds);
+                    await storageService.addStory(queuedStory);
+                    onStoryUpdated(queuedStory);
+                    showAlert('Update Found', `Found ${newChapterCount} new chapters. Download queued.`);
                 } else if (tagsChanged) {
                     showAlert('Metadata Updated', 'Tags and details updated.');
                 }
@@ -111,10 +118,11 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
 
         } catch (error: any) {
             console.error('Update error', error);
-            showAlert('Update Error', error.message || 'Failed to check for updates. Check logs.');
+            showAlert('Sync Error', error.message || 'Failed to sync chapters. Check logs.');
         } finally {
-            setCheckingUpdates(false);
-            setUpdateStatus('');
+            setQueueing(false);
+            setSyncing(false);
+            setSyncStatus('');
         }
     };
 
@@ -139,14 +147,8 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                 startIndex,
                 endIndex
             );
-
-            const finalStory = {
-                ...updatedStory,
-                epubPath: undefined
-            };
-
-            await storageService.addStory(finalStory);
-            onStoryUpdated(finalStory);
+            await storageService.addStory(updatedStory);
+            onStoryUpdated(updatedStory);
             showAlert('Download Started', 'Selected chapters have been queued.');
 
         } catch (error) {
@@ -176,8 +178,8 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                     text: 'Apply',
                     onPress: async () => {
                         try {
-                            setCheckingUpdates(true);
-                            setUpdateStatus('Processing...');
+                            setSyncing(true);
+                            setSyncStatus('Processing...');
 
                             let currentChapterTitle = '';
 
@@ -185,12 +187,12 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                                 story,
                                 (current, total, title) => {
                                     currentChapterTitle = title;
-                                    setUpdateStatus(`Processing ${current}/${total}: ${title}`);
+                                    setSyncStatus(`Processing ${current}/${total}: ${title}`);
                                 }
                             );
 
-                            setCheckingUpdates(false);
-                            setUpdateStatus('');
+                            setSyncing(false);
+                            setSyncStatus('');
 
                             if (errors > 0) {
                                 showAlert(
@@ -209,8 +211,8 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                                 onStoryUpdated(reloadedStory);
                             }
                         } catch (error: any) {
-                            setCheckingUpdates(false);
-                            setUpdateStatus('');
+                            setSyncing(false);
+                            setSyncStatus('');
                             showAlert('Error', error.message || 'Failed to apply sentence removal.');
                         }
                     }
@@ -220,11 +222,11 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
     };
 
     return {
-        checkingUpdates,
-        updateStatus,
+        syncing,
+        syncStatus,
         queueing,
         downloadAll,
-        updateNovel,
+        syncChapters,
         downloadRange,
         applySentenceRemoval,
     };

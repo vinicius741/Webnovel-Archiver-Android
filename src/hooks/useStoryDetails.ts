@@ -66,11 +66,10 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     });
 
     const {
-        checkingUpdates,
-        updateStatus,
+        syncing,
+        syncStatus,
         queueing,
-        downloadAll,
-        updateNovel,
+        syncChapters,
         downloadRange,
         applySentenceRemoval,
     } = useStoryDownload({
@@ -90,17 +89,16 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     return {
         story,
         loading,
-        downloading: queueing || isDownloadingHook || generating,
-        checkingUpdates,
-        updateStatus,
+        downloading: queueing || isDownloadingHook,
+        syncing,
+        syncStatus,
         downloadProgress,
         downloadStatus,
         generating,
         epubProgress,
         deleteStory,
         markChapterAsRead,
-        downloadAll,
-        updateNovel,
+        syncChapters,
         downloadRange,
         generateOrRead,
         applySentenceRemoval,

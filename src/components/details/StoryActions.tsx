@@ -6,72 +6,59 @@ import { Story } from '../../types';
 interface StoryActionsProps {
     story: Story;
     downloading: boolean;
-    checkingUpdates: boolean;
+    syncing: boolean;
     generating: boolean;
     epubProgress: { current: number; total: number; percentage: number; stage: string; status: string } | null;
-    updateStatus?: string;
+    syncStatus?: string;
     downloadProgress: number;
     downloadStatus: string;
-    onDownloadAll: () => void;
-    onUpdate: () => void;
+    onSync: () => void;
     onGenerateOrRead: () => void;
-    onPartialDownload: () => void;
 }
 
 export const StoryActions: React.FC<StoryActionsProps> = ({
     story,
     downloading,
-    checkingUpdates,
+    syncing,
     generating,
     epubProgress,
-    updateStatus,
+    syncStatus,
     downloadProgress,
     downloadStatus,
-    onDownloadAll,
-    onUpdate,
+    onSync,
     onGenerateOrRead,
-    onPartialDownload
 }) => {
     const theme = useTheme();
+    const hasEpub = !!story.epubPath || (story.epubPaths && story.epubPaths.length > 0);
+    const showStale = !!story.epubStale && hasEpub;
 
     return (
         <View style={styles.container}>
             <Button
                 mode="contained"
                 style={styles.actionBtn}
-                loading={downloading}
-                disabled={downloading || checkingUpdates || story.downloadedChapters === story.totalChapters}
-                onPress={onDownloadAll}
-                testID="download-button"
+                loading={syncing}
+                disabled={syncing || downloading || generating}
+                onPress={onSync}
+                testID="sync-button"
             >
-                {downloading ? 'Downloading...' : 'Download All'}
+                {syncing ? 'Syncing...' : 'Sync Chapters'}
             </Button>
 
             {downloading && (
                 <View style={styles.progressContainer}>
-                    <ProgressBar progress={downloadProgress} color={theme.colors.primary} style={styles.progressBar} />
+                    <ProgressBar testID="progress-bar" progress={downloadProgress} color={theme.colors.primary} style={styles.progressBar} />
                     <Text variant="bodySmall" style={styles.progressText}>
                         {downloadStatus}
                     </Text>
                 </View>
             )}
 
-            <Button
-                mode="outlined"
-                style={styles.actionBtn}
-                loading={checkingUpdates}
-                disabled={downloading || checkingUpdates || generating}
-                onPress={onUpdate}
-                testID="update-button"
-            >
-                {checkingUpdates ? 'Checking...' : 'Update'}
-            </Button>
-
-            {checkingUpdates && updateStatus && (
+            {syncing && syncStatus && (
                 <View style={styles.progressContainer}>
-                     <ActivityIndicator size="small" style={{ marginBottom: 8 }} />
+                    <ActivityIndicator size="small" style={{ marginBottom: 8 }} />
                     <Text variant="bodySmall" style={styles.progressText}>
-                        {updateStatus}
+                        {syncStatus}
                     </Text>
                 </View>
             )}
@@ -79,32 +66,28 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             <Button
                 mode="outlined"
                 style={styles.actionBtn}
-                disabled={(story.downloadedChapters === 0 && !story.epubPath && !story.epubPaths) || generating}
+                disabled={(story.downloadedChapters === 0 && !hasEpub) || generating}
                 loading={generating}
                 onPress={onGenerateOrRead}
                 testID="generate-button"
             >
-                {(story.epubPath || story.epubPaths) ? 'Read EPUB' : 'Generate EPUB'}
+                Read EPUB
             </Button>
+
+            {showStale ? (
+                <Text variant="bodySmall" style={styles.staleText}>
+                    EPUB out of date
+                </Text>
+            ) : null}
 
             {generating && epubProgress && (
                 <View style={styles.progressContainer}>
-                    <ProgressBar progress={epubProgress.percentage / 100} color={theme.colors.primary} style={styles.progressBar} />
+                    <ProgressBar testID="progress-bar" progress={epubProgress.percentage / 100} color={theme.colors.primary} style={styles.progressBar} />
                     <Text variant="bodySmall" style={styles.progressText}>
                         {epubProgress.status}
                     </Text>
                 </View>
             )}
-
-            <Button
-                mode="outlined"
-                onPress={onPartialDownload}
-                disabled={downloading || checkingUpdates || generating}
-                style={styles.actionBtn}
-                testID="partial-download-button"
-            >
-                Partial Download
-            </Button>
         </View>
     );
 };
@@ -125,6 +108,11 @@ const styles = StyleSheet.create({
     },
     progressText: {
         marginTop: 8, 
+        textAlign: 'center',
+    },
+    staleText: {
+        marginTop: -8,
+        marginBottom: 16,
         textAlign: 'center',
     }
 });

@@ -34,6 +34,8 @@ export interface Story {
     dateAdded?: number; // timestamp for initial addition
     epubPath?: string; // Local URI to generated EPUB (deprecated, use epubPaths)
     epubPaths?: string[]; // Local URIs to generated EPUBs (supports split files)
+    epubStale?: boolean; // True when EPUB needs regeneration
+    pendingNewChapterIds?: string[]; // Chapter IDs discovered on sync but not downloaded yet
     tags?: string[];
     lastReadChapterId?: string;
     score?: string;
