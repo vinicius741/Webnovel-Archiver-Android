@@ -12,6 +12,9 @@ jest.mock('../../services/StorageService', () => ({
     storageService: {
         getTTSSettings: jest.fn().mockResolvedValue({ pitch: 1.0, rate: 1.0, chunkSize: 500 }),
         saveTTSSettings: jest.fn().mockResolvedValue(undefined),
+        getTTSSession: jest.fn().mockResolvedValue(null),
+        saveTTSSession: jest.fn().mockResolvedValue(undefined),
+        clearTTSSession: jest.fn().mockResolvedValue(undefined),
     },
     TTSSettings: {},
 }));
@@ -46,7 +49,7 @@ jest.mock('../../services/tts/TTSPlaybackController', () => {
                 this.emitStateChange();
             },
 
-            stop: jest.fn().mockImplementation(async () => {
+            stop: jest.fn().mockImplementation(async function (this: any) {
                 this.isSpeaking = false;
                 this.isPaused = false;
                 this.currentChunkIndex = 0;
@@ -54,17 +57,17 @@ jest.mock('../../services/tts/TTSPlaybackController', () => {
                 this.emitStateChange();
             }),
 
-            pause: jest.fn().mockImplementation(async () => {
+            pause: jest.fn().mockImplementation(async function (this: any) {
                 this.isPaused = true;
                 this.emitStateChange();
             }),
 
-            resume: jest.fn().mockImplementation(() => {
+            resume: jest.fn().mockImplementation(function (this: any) {
                 this.isPaused = false;
                 this.emitStateChange();
             }),
 
-            playPause: jest.fn().mockImplementation(async () => {
+            playPause: jest.fn().mockImplementation(async function (this: any) {
                 if (this.isPaused) {
                     this.isPaused = false;
                 } else {
@@ -73,14 +76,14 @@ jest.mock('../../services/tts/TTSPlaybackController', () => {
                 this.emitStateChange();
             }),
 
-            next: jest.fn().mockImplementation(async () => {
+            next: jest.fn().mockImplementation(async function (this: any) {
                 if (this.currentChunkIndex < this.chunks.length - 1) {
                     this.currentChunkIndex++;
                     this.emitStateChange();
                 }
             }),
 
-            previous: jest.fn().mockImplementation(async () => {
+            previous: jest.fn().mockImplementation(async function (this: any) {
                 if (this.currentChunkIndex > 0) {
                     this.currentChunkIndex--;
                     this.emitStateChange();
@@ -144,6 +147,15 @@ jest.mock('../../services/TTSNotificationService', () => ({
 jest.mock('../../services/ForegroundServiceCoordinator', () => ({
     setTtsState: jest.fn().mockResolvedValue(undefined),
     clearTtsState: jest.fn().mockResolvedValue(undefined),
+}));
+
+jest.mock('../../services/TtsMediaSessionService', () => ({
+    ttsMediaSessionService: {
+        startSession: jest.fn().mockResolvedValue(undefined),
+        updateSession: jest.fn().mockResolvedValue(undefined),
+        stopSession: jest.fn().mockResolvedValue(undefined),
+        registerMediaButtonHandler: jest.fn(),
+    },
 }));
 
 describe('useTTS - Concurrent Operations', () => {

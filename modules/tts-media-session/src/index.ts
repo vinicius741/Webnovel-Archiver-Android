@@ -7,16 +7,18 @@ export type TtsMediaSessionPayload = {
   title: string;
   body: string;
   isPlaying: boolean;
+  storyId?: string;
+  chapterId?: string;
 };
 
 type NativeTtsMediaSessionModule = {
-  startSession: (title: string, body: string, isPlaying: boolean) => Promise<void>;
-  updateSession: (title: string, body: string, isPlaying: boolean) => Promise<void>;
+  startSession: (title: string, body: string, isPlaying: boolean, storyId?: string, chapterId?: string) => Promise<void>;
+  updateSession: (title: string, body: string, isPlaying: boolean, storyId?: string, chapterId?: string) => Promise<void>;
   stopSession: () => Promise<void>;
 };
 
 const nativeModule = requireOptionalNativeModule<NativeTtsMediaSessionModule>('TtsMediaSession');
-const emitter = nativeModule ? new EventEmitter(nativeModule) : null;
+const emitter = nativeModule ? new EventEmitter(nativeModule as any) : null;
 
 export function isAvailable(): boolean {
   return !!nativeModule;
@@ -24,12 +26,24 @@ export function isAvailable(): boolean {
 
 export function startSession(payload: TtsMediaSessionPayload): Promise<void> {
   if (!nativeModule) return Promise.resolve();
-  return nativeModule.startSession(payload.title, payload.body, payload.isPlaying);
+  return nativeModule.startSession(
+    payload.title,
+    payload.body,
+    payload.isPlaying,
+    payload.storyId,
+    payload.chapterId
+  );
 }
 
 export function updateSession(payload: TtsMediaSessionPayload): Promise<void> {
   if (!nativeModule) return Promise.resolve();
-  return nativeModule.updateSession(payload.title, payload.body, payload.isPlaying);
+  return nativeModule.updateSession(
+    payload.title,
+    payload.body,
+    payload.isPlaying,
+    payload.storyId,
+    payload.chapterId
+  );
 }
 
 export function stopSession(): Promise<void> {
@@ -41,5 +55,5 @@ export function addMediaButtonListener(
   listener: (event: MediaButtonEvent) => void
 ): EventSubscription | null {
   if (!emitter) return null;
-  return emitter.addListener<MediaButtonEvent>('onMediaButton', listener);
+  return emitter.addListener('onMediaButton', listener as any);
 }

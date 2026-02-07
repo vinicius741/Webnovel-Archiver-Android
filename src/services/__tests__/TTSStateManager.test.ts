@@ -4,6 +4,9 @@ jest.mock('../StorageService', () => ({
     storageService: {
         getTTSSettings: jest.fn().mockResolvedValue({ pitch: 1.0, rate: 1.0, chunkSize: 500 }),
         saveTTSSettings: jest.fn().mockResolvedValue(undefined),
+        getTTSSession: jest.fn().mockResolvedValue(null),
+        saveTTSSession: jest.fn().mockResolvedValue(undefined),
+        clearTTSSession: jest.fn().mockResolvedValue(undefined),
     },
 }));
 
@@ -102,15 +105,18 @@ describe('TTSStateManager', () => {
     describe('Playback Controls', () => {
         it('should start with chunks and title', async () => {
             const chunks = ['chunk1', 'chunk2', 'chunk3'];
-            ttsStateManager.start(chunks, 'Test Story');
+            await ttsStateManager.start(chunks, 'Test Story');
 
-            expect(mockController.start).toHaveBeenCalledWith(chunks, 'Test Story');
+            expect(mockController.start).toHaveBeenCalledWith(chunks, 'Test Story', {
+                startChunkIndex: undefined,
+                startPaused: undefined,
+            });
             const { ttsMediaSessionService } = require('../TtsMediaSessionService');
             expect(ttsMediaSessionService.startSession).toHaveBeenCalled();
         });
 
-        it('should not start with empty chunks', () => {
-            ttsStateManager.start([], 'Test Story');
+        it('should not start with empty chunks', async () => {
+            await ttsStateManager.start([], 'Test Story');
             expect(mockController.start).not.toHaveBeenCalled();
         });
 
@@ -130,8 +136,8 @@ describe('TTSStateManager', () => {
             expect(ttsMediaSessionService.updateSession).toHaveBeenCalled();
         });
 
-        it('should resume playback', () => {
-            ttsStateManager.resume();
+        it('should resume playback', async () => {
+            await ttsStateManager.resume();
             expect(mockController.resume).toHaveBeenCalled();
         });
 
@@ -156,8 +162,9 @@ describe('TTSStateManager', () => {
             expect(ttsMediaSessionService.updateSession).toHaveBeenCalled();
         });
 
-        it('should set on finish callback', () => {
+        it('should set on finish callback', async () => {
             const callback = jest.fn();
+            await ttsStateManager.start(['chunk1'], 'Test Story');
             ttsStateManager.setOnFinishCallback(callback);
             expect(mockController.setOnFinishCallback).toHaveBeenCalledWith(callback);
         });

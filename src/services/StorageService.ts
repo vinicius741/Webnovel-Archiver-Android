@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
     SETTINGS: 'wa_settings_v1',
     SENTENCE_REMOVAL: 'wa_sentence_removal_v1',
     TTS_SETTINGS: 'wa_tts_settings_v1',
+    TTS_SESSION: 'wa_tts_session_v1',
     CHAPTER_FILTER_SETTINGS: 'wa_chapter_filter_settings_v1',
 };
 
@@ -28,6 +29,21 @@ export interface TTSSettings {
     rate: number;
     voiceIdentifier?: string;
     chunkSize: number;
+}
+
+export interface TTSSession {
+    storyId: string;
+    chapterId: string;
+    chapterTitle: string;
+    currentChunkIndex: number;
+    isPaused: boolean;
+    wasPlaying: boolean;
+    chunkSize: number;
+    voiceIdentifier?: string;
+    rate: number;
+    pitch: number;
+    updatedAt: number;
+    sessionVersion: number;
 }
 
 const DEFAULT_TTS_SETTINGS: TTSSettings = {
@@ -191,6 +207,34 @@ class StorageService {
             await AsyncStorage.setItem(STORAGE_KEYS.TTS_SETTINGS, jsonValue);
         } catch (e) {
             console.error('Failed to save TTS settings', e);
+        }
+    }
+
+    async getTTSSession(): Promise<TTSSession | null> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.TTS_SESSION);
+            if (!jsonValue) return null;
+            return JSON.parse(jsonValue) as TTSSession;
+        } catch (e) {
+            console.error('Failed to load TTS session', e);
+            return null;
+        }
+    }
+
+    async saveTTSSession(session: TTSSession): Promise<void> {
+        try {
+            const jsonValue = JSON.stringify(session);
+            await AsyncStorage.setItem(STORAGE_KEYS.TTS_SESSION, jsonValue);
+        } catch (e) {
+            console.error('Failed to save TTS session', e);
+        }
+    }
+
+    async clearTTSSession(): Promise<void> {
+        try {
+            await AsyncStorage.removeItem(STORAGE_KEYS.TTS_SESSION);
+        } catch (e) {
+            console.error('Failed to clear TTS session', e);
         }
     }
 

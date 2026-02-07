@@ -1,10 +1,16 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { DeviceEventEmitter, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { ttsStateManager, TTS_STATE_EVENTS, TTSState } from '../services/TTSStateManager';
 import { TTSSettings } from '../services/StorageService';
-import { loadNotifee, type NotifeeModule } from '../services/NotifeeTypes';
+import { loadNotifee } from '../services/NotifeeTypes';
 import type { Event } from '@notifee/react-native/dist/types/Notification';
+
+interface TTSPlaybackContext {
+    storyId?: string;
+    chapterId?: string;
+    chapterTitle?: string;
+}
 
 export const useTTS = (options?: { onFinish?: () => void }) => {
     const onFinishRef = useRef(options?.onFinish);
@@ -134,14 +140,24 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
         await ttsStateManager.previous();
     }, []);
 
-    const toggleSpeech = useCallback(async (newChunks: string[], title: string = 'Reading') => {
+    const toggleSpeech = useCallback(async (
+        newChunks: string[],
+        title: string = 'Reading',
+        context?: TTSPlaybackContext
+    ) => {
         const currentState = ttsStateManager.getState();
         const shouldStop = currentState?.isSpeaking || currentState?.isPaused || false;
         if (shouldStop) {
             await stopSpeech();
         } else {
             if (!newChunks || newChunks.length === 0) return;
-            ttsStateManager.start(newChunks, title);
+            await ttsStateManager.start({
+                chunks: newChunks,
+                title,
+                storyId: context?.storyId || '',
+                chapterId: context?.chapterId || '',
+                chapterTitle: context?.chapterTitle || title,
+            });
             setIsControllerVisible(true);
         }
     }, [stopSpeech]);

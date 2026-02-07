@@ -1,5 +1,5 @@
-import { TTSPlaybackController, TTSPlaybackState } from '../../tts/TTSPlaybackController';
 import * as Speech from 'expo-speech';
+import { TTSPlaybackController } from '../../tts/TTSPlaybackController';
 
 jest.mock('expo-speech');
 
@@ -16,243 +16,113 @@ describe('TTSPlaybackController', () => {
         onFinish: jest.fn(),
     };
 
-    const mockChunks = ['Chunk 1', 'Chunk 2', 'Chunk 3'];
+    const chunks = ['Chunk 1', 'Chunk 2', 'Chunk 3'];
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (Speech.stop as jest.Mock).mockResolvedValue(undefined);
     });
 
-    it('should create controller with initial state', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
+    const getSpeakOptions = (index: number = 0) => {
+        return (Speech.speak as jest.Mock).mock.calls[index][1];
+    };
 
-        const state = controller.getState();
-        expect(state.isSpeaking).toBe(false);
-        expect(state.isPaused).toBe(false);
-        expect(state.chunks).toEqual(mockChunks);
-        expect(state.currentChunkIndex).toBe(0);
-        expect(state.title).toBe('Test Story');
-    });
+    it('should start playback from first chunk by default', () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
 
-    it('should start playback', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-
-        controller.start(mockChunks, 'Test Story');
-
-        const state = controller.getState();
-        expect(state.isSpeaking).toBe(true);
-        expect(state.isPaused).toBe(false);
-        expect(state.currentChunkIndex).toBe(0);
-        expect(mockConfig.onStateChange).toHaveBeenCalled();
-    });
-
-    it('should not start with empty chunks', () => {
-        const controller = new TTSPlaybackController([], 'Test Story', mockSettings, mockConfig);
-
-        controller.start([], 'Test Story');
-
-        const state = controller.getState();
-        expect(state.isSpeaking).toBe(false);
-    });
-
-    it('should stop playback', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        await controller.stop();
-
-        const state = controller.getState();
-        expect(state.isSpeaking).toBe(false);
-        expect(state.isPaused).toBe(false);
-        expect(state.chunks).toEqual([]);
-        expect(state.currentChunkIndex).toBe(0);
-        expect(Speech.stop).toHaveBeenCalled();
-        expect(mockConfig.onStateChange).toHaveBeenCalled();
-    });
-
-    it('should pause playback', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        await controller.pause();
-
-        const state = controller.getState();
-        expect(state.isPaused).toBe(true);
-        expect(state.isSpeaking).toBe(true);
-        expect(Speech.stop).toHaveBeenCalled();
-        expect(mockConfig.onStateChange).toHaveBeenCalled();
-    });
-
-    it('should not pause if not speaking or already paused', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-
-        await controller.pause();
-
-        expect(Speech.stop).not.toHaveBeenCalled();
-    });
-
-    it('should resume playback', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-        controller.pause();
-
-        controller.resume();
-
-        const state = controller.getState();
-        expect(state.isPaused).toBe(false);
-        expect(mockConfig.onStateChange).toHaveBeenCalled();
-    });
-
-    it('should not resume if not paused', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        controller.resume();
-
-        expect(mockConfig.onStateChange).toHaveBeenCalledTimes(1);
-    });
-
-    it('should toggle play/pause', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        await controller.playPause();
-
-        expect(controller.getState().isPaused).toBe(true);
-
-        controller.playPause();
-
+        expect(controller.getState().isSpeaking).toBe(true);
         expect(controller.getState().isPaused).toBe(false);
-    });
-
-    it('should go to next chunk', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        await controller.next();
-
-        const state = controller.getState();
-        expect(state.currentChunkIndex).toBe(1);
-        expect(state.isPaused).toBe(false);
-        expect(Speech.stop).toHaveBeenCalled();
-        expect(mockConfig.onStateChange).toHaveBeenCalled();
-        expect(mockConfig.onChunkChange).toHaveBeenCalledWith(1);
-    });
-
-    it('should not go beyond last chunk', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        await controller.next();
-        await controller.next();
-        await controller.next();
-
-        const state = controller.getState();
-        expect(state.currentChunkIndex).toBe(2);
-    });
-
-    it('should not go to next if not speaking', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-
-        await controller.next();
-
-        expect(Speech.stop).not.toHaveBeenCalled();
-        expect(mockConfig.onChunkChange).not.toHaveBeenCalled();
-    });
-
-    it('should go to previous chunk', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-
-        await controller.next();
-        await controller.previous();
-
-        const state = controller.getState();
-        expect(state.currentChunkIndex).toBe(0);
-        expect(Speech.stop).toHaveBeenCalled();
+        expect(controller.getState().currentChunkIndex).toBe(0);
+        expect(Speech.speak).toHaveBeenCalledTimes(1);
         expect(mockConfig.onChunkChange).toHaveBeenCalledWith(0);
     });
 
-    it('should not go below first chunk', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
+    it('should start from a specific chunk index', () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story', { startChunkIndex: 2 });
 
-        await controller.previous();
-
-        const state = controller.getState();
-        expect(state.currentChunkIndex).toBe(0);
+        expect(controller.getState().currentChunkIndex).toBe(2);
+        expect(Speech.speak).toHaveBeenCalledWith('Chunk 3', expect.any(Object));
     });
 
-    it('should not go to previous if not speaking', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
+    it('should start paused without speaking', () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story', { startPaused: true });
 
-        await controller.previous();
-
-        expect(Speech.stop).not.toHaveBeenCalled();
-        expect(mockConfig.onChunkChange).not.toHaveBeenCalled();
+        expect(controller.getState().isPaused).toBe(true);
+        expect(controller.getState().isSpeaking).toBe(true);
+        expect(Speech.speak).not.toHaveBeenCalled();
     });
 
-    it('should update settings', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        const newSettings = { pitch: 1.5, rate: 0.8, chunkSize: 600 };
+    it('should progress deterministically on chunk completion', () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
 
-        controller.updateSettings(newSettings);
-
-        expect(controller.getSettings()).toEqual(newSettings);
+        getSpeakOptions(0).onDone();
+        expect(controller.getState().currentChunkIndex).toBe(1);
+        expect(Speech.speak).toHaveBeenCalledTimes(2);
+        expect((Speech.speak as jest.Mock).mock.calls[1][0]).toBe('Chunk 2');
     });
 
-    it('should set finish callback', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        const newCallback = jest.fn();
+    it('should stop and call finish callback at the end', async () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
 
-        controller.setOnFinishCallback(newCallback);
+        getSpeakOptions(0).onDone();
+        getSpeakOptions(1).onDone();
+        getSpeakOptions(2).onDone();
 
-        expect(mockConfig.onFinish).toBe(newCallback);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mockConfig.onFinish).toHaveBeenCalled();
+        expect(controller.getState().isSpeaking).toBe(false);
     });
 
-    it('should increment session ID on start', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        const initialSessionId = controller.getSessionId();
-
-        controller.start(mockChunks, 'Test Story');
-
-        expect(controller.getSessionId()).toBeGreaterThan(initialSessionId);
-    });
-
-    it('should increment session ID on stop', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-        const beforeStopId = controller.getSessionId();
-
-        await controller.stop();
-
-        expect(controller.getSessionId()).toBeGreaterThan(beforeStopId);
-    });
-
-    it('should increment session ID on pause', async () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        controller.start(mockChunks, 'Test Story');
-        const beforePauseId = controller.getSessionId();
+    it('should pause and resume from current chunk', async () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
+        getSpeakOptions(0).onDone();
 
         await controller.pause();
+        expect(controller.getState().isPaused).toBe(true);
+        expect(Speech.stop).toHaveBeenCalled();
 
-        expect(controller.getSessionId()).toBeGreaterThan(beforePauseId);
+        controller.resume();
+        expect(controller.getState().isPaused).toBe(false);
+        const calls = (Speech.speak as jest.Mock).mock.calls;
+        expect(calls[calls.length - 1][0]).toBe('Chunk 2');
     });
 
-    it('should return copy of state', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        const state1 = controller.getState();
-        const state2 = controller.getState();
+    it('should jump next and previous deterministically', async () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
 
-        expect(state1).toEqual(state2);
-        expect(state1).not.toBe(state2);
+        await controller.next();
+        expect(controller.getState().currentChunkIndex).toBe(1);
+
+        await controller.previous();
+        expect(controller.getState().currentChunkIndex).toBe(0);
     });
 
-    it('should return copy of settings', () => {
-        const controller = new TTSPlaybackController(mockChunks, 'Test Story', mockSettings, mockConfig);
-        const settings1 = controller.getSettings();
-        const settings2 = controller.getSettings();
+    it('should restart current chunk for silent-stop recovery', async () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
+        getSpeakOptions(0).onDone();
 
-        expect(settings1).toEqual(settings2);
-        expect(settings1).not.toBe(settings2);
+        await controller.restartCurrentChunk();
+        const calls = (Speech.speak as jest.Mock).mock.calls;
+        expect(calls[calls.length - 1][0]).toBe('Chunk 2');
+    });
+
+    it('should ignore callbacks from invalidated play token', async () => {
+        const controller = new TTSPlaybackController(chunks, 'Story', mockSettings, mockConfig);
+        controller.start(chunks, 'Story');
+        const firstSpeakOptions = getSpeakOptions(0);
+        await controller.next();
+
+        firstSpeakOptions.onDone();
+        expect(controller.getState().currentChunkIndex).toBe(1);
+        expect(Speech.speak).toHaveBeenCalledTimes(2);
     });
 });

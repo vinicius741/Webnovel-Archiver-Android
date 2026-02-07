@@ -4,8 +4,11 @@ jest.mock('../StorageService', () => ({
     storageService: {
         getTTSSettings: jest.fn().mockResolvedValue({ pitch: 1.0, rate: 1.0, chunkSize: 500 }),
         saveTTSSettings: jest.fn().mockResolvedValue(undefined),
+        getTTSSession: jest.fn().mockResolvedValue(null),
+        saveTTSSession: jest.fn().mockResolvedValue(undefined),
+        clearTTSSession: jest.fn().mockResolvedValue(undefined),
     },
-});
+}));
 
 // Create a global mock controller that will be returned by the mock
 let globalMockController: any = null;

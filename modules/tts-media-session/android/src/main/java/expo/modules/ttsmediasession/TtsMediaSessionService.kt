@@ -3,10 +3,12 @@ package expo.modules.ttsmediasession
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
@@ -25,6 +27,8 @@ class TtsMediaSessionService : Service() {
   private var isPlaying: Boolean = false
   private var title: String = "Reading"
   private var body: String = ""
+  private var storyId: String? = null
+  private var chapterId: String? = null
 
   private var lastEmitAt: Long = 0L
 
@@ -79,6 +83,8 @@ class TtsMediaSessionService : Service() {
     title = intent.getStringExtra(EXTRA_TITLE) ?: title
     body = intent.getStringExtra(EXTRA_BODY) ?: body
     isPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, isPlaying)
+    storyId = intent.getStringExtra(EXTRA_STORY_ID) ?: storyId
+    chapterId = intent.getStringExtra(EXTRA_CHAPTER_ID) ?: chapterId
     updatePlaybackState()
   }
 
@@ -186,6 +192,7 @@ class TtsMediaSessionService : Service() {
 
   private fun buildNotification(): Notification {
     ensureMediaSession()
+    val contentIntent = buildContentIntent()
 
     val playPauseAction = NotificationCompat.Action(
       if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
@@ -202,12 +209,36 @@ class TtsMediaSessionService : Service() {
       .setContentText(body)
       .setSmallIcon(android.R.drawable.ic_media_play)
       .addAction(playPauseAction)
+      .setContentIntent(contentIntent)
       .setStyle(style)
       .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
       .setOnlyAlertOnce(true)
       .setOngoing(true)
       .build()
+  }
+
+  private fun buildContentIntent(): PendingIntent {
+    val encodedChapter = chapterId?.let { Uri.encode(it) }
+    val targetUri = if (!storyId.isNullOrBlank() && !encodedChapter.isNullOrBlank()) {
+      val autoplay = if (isPlaying) "true" else "false"
+      "webnovel-archiver://reader/${storyId}/${encodedChapter}?resumeSession=true&autoplay=${autoplay}"
+    } else {
+      "webnovel-archiver://"
+    }
+
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUri)).apply {
+      setPackage(packageName)
+      addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    }
+
+    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    } else {
+      PendingIntent.FLAG_UPDATE_CURRENT
+    }
+
+    return PendingIntent.getActivity(this, 0, intent, flags)
   }
 
   private fun createNotificationChannel() {
@@ -232,13 +263,24 @@ class TtsMediaSessionService : Service() {
     private const val EXTRA_TITLE = "title"
     private const val EXTRA_BODY = "body"
     private const val EXTRA_IS_PLAYING = "isPlaying"
+    private const val EXTRA_STORY_ID = "storyId"
+    private const val EXTRA_CHAPTER_ID = "chapterId"
 
-    fun start(context: Context, title: String, body: String, isPlaying: Boolean) {
+    fun start(
+      context: Context,
+      title: String,
+      body: String,
+      isPlaying: Boolean,
+      storyId: String?,
+      chapterId: String?
+    ) {
       val intent = Intent(context, TtsMediaSessionService::class.java).apply {
         action = ACTION_START
         putExtra(EXTRA_TITLE, title)
         putExtra(EXTRA_BODY, body)
         putExtra(EXTRA_IS_PLAYING, isPlaying)
+        putExtra(EXTRA_STORY_ID, storyId)
+        putExtra(EXTRA_CHAPTER_ID, chapterId)
       }
       if (Build.VERSION.SDK_INT >= 26) {
         context.startForegroundService(intent)
@@ -247,12 +289,21 @@ class TtsMediaSessionService : Service() {
       }
     }
 
-    fun update(context: Context, title: String, body: String, isPlaying: Boolean) {
+    fun update(
+      context: Context,
+      title: String,
+      body: String,
+      isPlaying: Boolean,
+      storyId: String?,
+      chapterId: String?
+    ) {
       val intent = Intent(context, TtsMediaSessionService::class.java).apply {
         action = ACTION_UPDATE
         putExtra(EXTRA_TITLE, title)
         putExtra(EXTRA_BODY, body)
         putExtra(EXTRA_IS_PLAYING, isPlaying)
+        putExtra(EXTRA_STORY_ID, storyId)
+        putExtra(EXTRA_CHAPTER_ID, chapterId)
       }
       context.startService(intent)
     }

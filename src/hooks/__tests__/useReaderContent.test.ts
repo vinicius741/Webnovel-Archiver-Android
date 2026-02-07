@@ -90,6 +90,7 @@ describe('useReaderContent', () => {
 
         expect(result.current.error).toBe('Story not found.');
         expect(result.current.story).toBeNull();
+        expect(result.current.redirectPath).toBe('/');
     });
 
     it('should set error when chapter not found', async () => {
@@ -107,6 +108,7 @@ describe('useReaderContent', () => {
 
         expect(result.current.error).toBe('Chapter not found.');
         expect(result.current.chapter).toBeNull();
+        expect(result.current.redirectPath).toBe('/details/story1');
     });
 
     it('should handle undownloaded chapters', async () => {

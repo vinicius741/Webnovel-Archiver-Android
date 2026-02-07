@@ -15,9 +15,15 @@ import { ReaderContent } from '../../../src/components/ReaderContent';
 import { useReaderContent } from '../../../src/hooks/useReaderContent';
 import { useReaderNavigation } from '../../../src/hooks/useReaderNavigation';
 import { useWebViewHighlight } from '../../../src/hooks/useWebViewHighlight';
+import { ttsStateManager } from '../../../src/services/TTSStateManager';
 
 export default function ReaderScreen() {
-    const { storyId, chapterId, autoplay } = useLocalSearchParams<{ storyId: string; chapterId: string; autoplay?: string }>();
+    const { storyId, chapterId, autoplay, resumeSession } = useLocalSearchParams<{
+        storyId: string;
+        chapterId: string;
+        autoplay?: string;
+        resumeSession?: string;
+    }>();
     const theme = useTheme();
     const router = useRouter();
     const webViewRef = useRef<WebView>(null);
@@ -35,6 +41,7 @@ export default function ReaderScreen() {
         chapter,
         content,
         loading,
+        redirectPath,
         loadData,
         markAsRead,
         currentIndex,
@@ -104,18 +111,51 @@ export default function ReaderScreen() {
     }, [storyId, chapterId]);
 
     useEffect(() => {
-        stopSpeech();
-    }, [chapterId]);
+        if (!redirectPath) return;
+        router.replace(redirectPath);
+    }, [redirectPath, router]);
+
+    useEffect(() => {
+        const decodedChapterId = (() => {
+            try {
+                return decodeURIComponent(chapterId);
+            } catch {
+                return chapterId;
+            }
+        })();
+
+        if (loading || !story || !chapter || ttsChunks.length === 0) return;
+        if (resumeSession !== 'true' && autoplay === 'true') return;
+
+        void ttsStateManager.restoreForChapter({
+            chunks: ttsChunks,
+            title: chapter ? sanitizeTitle(chapter.title) : 'Reading',
+            storyId,
+            chapterId: decodedChapterId,
+            chapterTitle: chapter ? sanitizeTitle(chapter.title) : 'Reading',
+        });
+    }, [loading, story, chapter, ttsChunks, storyId, chapterId, resumeSession, autoplay]);
 
     useEffect(() => {
         if (autoplay === 'true' && !loading && content && ttsChunks.length > 0 && !isSpeaking) {
             const timer = setTimeout(() => {
-                toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading');
+                const decodedChapterId = (() => {
+                    try {
+                        return decodeURIComponent(chapterId);
+                    } catch {
+                        return chapterId;
+                    }
+                })();
+                toggleSpeech(ttsChunks, chapter ? sanitizeTitle(chapter.title) : 'Reading', {
+                    storyId,
+                    chapterId: decodedChapterId,
+                    chapterTitle: chapter ? sanitizeTitle(chapter.title) : 'Reading',
+                });
                 router.setParams({ autoplay: undefined });
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [autoplay, loading, content, ttsChunks, isSpeaking]);
+    }, [autoplay, loading, content, ttsChunks, isSpeaking, chapter, storyId, chapterId, toggleSpeech, router]);
 
     const handleCopy = async () => {
         if (!content) return;
@@ -124,8 +164,20 @@ export default function ReaderScreen() {
     };
 
     const handleToggleSpeech = useCallback(() => {
-        toggleSpeech(currentTtsChunksRef.current, currentChapterTitleRef.current);
-    }, [toggleSpeech]);
+        const decodedChapterId = (() => {
+            try {
+                return decodeURIComponent(chapterId);
+            } catch {
+                return chapterId;
+            }
+        })();
+
+        toggleSpeech(currentTtsChunksRef.current, currentChapterTitleRef.current, {
+            storyId,
+            chapterId: decodedChapterId,
+            chapterTitle: currentChapterTitleRef.current,
+        });
+    }, [toggleSpeech, storyId, chapterId]);
 
     const HeaderRight = useMemo(() => () => (
         <View style={{ flexDirection: 'row' }}>

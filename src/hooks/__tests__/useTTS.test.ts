@@ -57,7 +57,13 @@ describe('useTTS', () => {
             await result.current.toggleSpeech(mockChunks, 'Test Story');
         });
 
-        expect(ttsStateManager.start).toHaveBeenCalledWith(mockChunks, 'Test Story');
+        expect(ttsStateManager.start).toHaveBeenCalledWith({
+            chunks: mockChunks,
+            title: 'Test Story',
+            storyId: '',
+            chapterId: '',
+            chapterTitle: 'Test Story',
+        });
         expect(result.current.isControllerVisible).toBe(true);
     });
 

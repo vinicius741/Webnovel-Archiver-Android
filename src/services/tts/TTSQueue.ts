@@ -2,7 +2,6 @@ import * as Speech from 'expo-speech';
 import { TTSSettings } from '../StorageService';
 
 export interface TTSQueueConfig {
-    bufferSize?: number;
     onChunkStart: (index: number) => void;
     onChunkComplete: (index: number) => void;
     onError: (error: any) => void;
@@ -12,13 +11,14 @@ export class TTSQueue {
     private chunks: string[] = [];
     private settings: TTSSettings;
     private config: TTSQueueConfig;
-    private bufferedIndex: number = 0;
+    private speakToken: number = 0;
+    private activeChunkIndex: number | null = null;
 
     constructor(chunks: string[], settings: TTSSettings, config: TTSQueueConfig) {
         this.chunks = chunks;
         this.settings = settings;
         this.config = config;
-        this.bufferedIndex = 0;
+        this.speakToken = 0;
     }
 
     public updateSettings(newSettings: TTSSettings): void {
@@ -27,44 +27,49 @@ export class TTSQueue {
 
     public updateChunks(newChunks: string[]): void {
         this.chunks = newChunks;
-        this.bufferedIndex = 0;
+        this.invalidate();
     }
 
-    public processQueue(currentIndex: number): void {
-        const bufferSize = this.config.bufferSize || 3;
-        const targetBufferIndex = currentIndex + bufferSize;
+    public playChunk(index: number): void {
+        if (index < 0 || index >= this.chunks.length) return;
 
-        while (
-            this.bufferedIndex < this.chunks.length &&
-            this.bufferedIndex < targetBufferIndex
-        ) {
-            const index = this.bufferedIndex;
-            const chunk = this.chunks[index];
-            this.bufferedIndex++;
+        const currentToken = ++this.speakToken;
+        const chunk = this.chunks[index];
+        this.activeChunkIndex = index;
 
-            Speech.speak(chunk, {
-                pitch: this.settings.pitch,
-                rate: this.settings.rate,
-                voice: this.settings.voiceIdentifier,
-                onStart: () => {
-                    this.config.onChunkStart(index);
-                },
-                onDone: () => {
-                    this.config.onChunkComplete(index);
-                },
-                onError: (error) => {
-                    this.config.onError(error);
-                },
-            });
-        }
+        Speech.speak(chunk, {
+            pitch: this.settings.pitch,
+            rate: this.settings.rate,
+            voice: this.settings.voiceIdentifier,
+            onStart: () => {
+                if (this.speakToken !== currentToken) return;
+                this.config.onChunkStart(index);
+            },
+            onDone: () => {
+                if (this.speakToken !== currentToken) return;
+                this.activeChunkIndex = null;
+                this.config.onChunkComplete(index);
+            },
+            onError: (error) => {
+                if (this.speakToken !== currentToken) return;
+                this.activeChunkIndex = null;
+                this.config.onError(error);
+            },
+        });
     }
 
-    public resetBuffer(currentIndex: number): void {
-        this.bufferedIndex = currentIndex;
+    public async stop(): Promise<void> {
+        this.invalidate();
+        await Speech.stop();
     }
 
-    public getBufferedIndex(): number {
-        return this.bufferedIndex;
+    public invalidate(): void {
+        this.speakToken++;
+        this.activeChunkIndex = null;
+    }
+
+    public getActiveChunkIndex(): number | null {
+        return this.activeChunkIndex;
     }
 
     public getLength(): number {

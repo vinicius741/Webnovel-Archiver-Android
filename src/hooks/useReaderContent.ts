@@ -9,15 +9,29 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
     const [content, setContent] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [redirectPath, setRedirectPath] = useState<string | null>(null);
 
     const loadData = useCallback(async () => {
         setLoading(true);
         setError(null);
+        setRedirectPath(null);
+
+        const decodeChapterId = (value: string): string => {
+            try {
+                return decodeURIComponent(value);
+            } catch {
+                return value;
+            }
+        };
+
         try {
             const s = await storageService.getStory(storyId);
             if (s) {
                 setStory(s);
-                const c = s.chapters.find((chap: Chapter) => chap.id === decodeURIComponent(chapterId));
+                const decodedChapterId = decodeChapterId(chapterId);
+                const c = s.chapters.find((chap: Chapter) => chap.id === decodedChapterId)
+                    || s.chapters.find((chap: Chapter) => chap.id === chapterId);
+
                 if (c) {
                     setChapter(c);
                     if (c.filePath) {
@@ -28,13 +42,16 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
                     }
                 } else {
                     setError('Chapter not found.');
+                    setRedirectPath(`/details/${s.id}`);
                 }
             } else {
                 setError('Story not found.');
+                setRedirectPath('/');
             }
         } catch (e) {
             console.error('Failed to load chapter content', e);
             setError(e instanceof Error ? e.message : 'Failed to load chapter content.');
+            setRedirectPath('/');
         } finally {
             setLoading(false);
         }
@@ -65,6 +82,7 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
         content,
         loading,
         error,
+        redirectPath,
         loadData,
         markAsRead,
         currentIndex,

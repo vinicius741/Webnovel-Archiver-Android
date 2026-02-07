@@ -11,165 +11,106 @@ describe('TTSQueue', () => {
     };
 
     const mockConfig = {
-        bufferSize: 3,
         onChunkStart: jest.fn(),
         onChunkComplete: jest.fn(),
         onError: jest.fn(),
     };
 
-    const mockChunks = ['Chunk 1', 'Chunk 2', 'Chunk 3', 'Chunk 4', 'Chunk 5'];
+    const mockChunks = ['Chunk 1', 'Chunk 2', 'Chunk 3'];
 
     beforeEach(() => {
         jest.clearAllMocks();
-        (Speech.speak as jest.Mock).mockReturnValue('test-utterance-id');
     });
 
-    it('should create queue with chunks and settings', () => {
+    it('should play a single chunk by index', () => {
         const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
+        queue.playChunk(1);
 
-        expect(queue).toBeInstanceOf(TTSQueue);
+        expect(Speech.speak).toHaveBeenCalledTimes(1);
+        expect(Speech.speak).toHaveBeenCalledWith(
+            'Chunk 2',
+            expect.objectContaining({
+                pitch: 1.0,
+                rate: 1.0,
+                voice: undefined,
+            })
+        );
     });
 
-    it('should start buffering from index 0', () => {
+    it('should ignore invalid chunk indexes', () => {
         const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        expect(queue.getBufferedIndex()).toBe(0);
+        queue.playChunk(-1);
+        queue.playChunk(99);
+        expect(Speech.speak).not.toHaveBeenCalled();
     });
 
-    it('should return correct queue length', () => {
+    it('should expose active chunk while speaking', () => {
         const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        expect(queue.getLength()).toBe(5);
+        queue.playChunk(0);
+        expect(queue.getActiveChunkIndex()).toBe(0);
     });
 
-    it('should process queue up to buffer size', () => {
+    it('should call chunk start callback', () => {
         const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        queue.processQueue(0);
-
-        expect(Speech.speak).toHaveBeenCalledTimes(3);
+        queue.playChunk(0);
+        const speakOptions = (Speech.speak as jest.Mock).mock.calls[0][1];
+        speakOptions.onStart();
+        expect(mockConfig.onChunkStart).toHaveBeenCalledWith(0);
     });
 
-    it('should update settings', () => {
+    it('should call chunk complete callback and clear active index', () => {
         const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-        const newSettings = { pitch: 1.5, rate: 0.8, chunkSize: 600 };
+        queue.playChunk(0);
+        const speakOptions = (Speech.speak as jest.Mock).mock.calls[0][1];
+        speakOptions.onDone();
+        expect(mockConfig.onChunkComplete).toHaveBeenCalledWith(0);
+        expect(queue.getActiveChunkIndex()).toBeNull();
+    });
 
-        queue.updateSettings(newSettings);
+    it('should call onError callback and clear active index', () => {
+        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
+        const error = new Error('Speech failed');
+        queue.playChunk(0);
+        const speakOptions = (Speech.speak as jest.Mock).mock.calls[0][1];
+        speakOptions.onError(error);
+        expect(mockConfig.onError).toHaveBeenCalledWith(error);
+        expect(queue.getActiveChunkIndex()).toBeNull();
+    });
 
-        queue.processQueue(0);
+    it('should cancel prior callbacks after invalidate', () => {
+        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
+        queue.playChunk(0);
+        const firstOptions = (Speech.speak as jest.Mock).mock.calls[0][1];
+        queue.invalidate();
+        firstOptions.onDone();
+        expect(mockConfig.onChunkComplete).not.toHaveBeenCalled();
+    });
+
+    it('should stop speech and invalidate callbacks', async () => {
+        (Speech.stop as jest.Mock).mockResolvedValue(undefined);
+        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
+        queue.playChunk(0);
+        const firstOptions = (Speech.speak as jest.Mock).mock.calls[0][1];
+
+        await queue.stop();
+        firstOptions.onDone();
+
+        expect(Speech.stop).toHaveBeenCalled();
+        expect(mockConfig.onChunkComplete).not.toHaveBeenCalled();
+    });
+
+    it('should update settings for subsequent chunks', () => {
+        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
+        queue.updateSettings({ pitch: 1.5, rate: 0.8, chunkSize: 500, voiceIdentifier: 'voice-id' });
+        queue.playChunk(0);
 
         expect(Speech.speak).toHaveBeenCalledWith(
             'Chunk 1',
             expect.objectContaining({
                 pitch: 1.5,
                 rate: 0.8,
+                voice: 'voice-id',
             })
         );
-    });
-
-    it('should update chunks and reset buffer', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-        const newChunks = ['New Chunk 1', 'New Chunk 2'];
-
-        queue.processQueue(0);
-        expect(queue.getBufferedIndex()).toBe(3);
-
-        queue.updateChunks(newChunks);
-        expect(queue.getLength()).toBe(2);
-        expect(queue.getBufferedIndex()).toBe(0);
-    });
-
-    it('should call onChunkStart when speech starts', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        queue.processQueue(0);
-
-        const speakCalls = (Speech.speak as jest.Mock).mock.calls;
-        expect(speakCalls[0][1].onStart).toBeDefined();
-
-        speakCalls[0][1].onStart();
-        expect(mockConfig.onChunkStart).toHaveBeenCalledWith(0);
-    });
-
-    it('should call onChunkComplete when speech completes', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        queue.processQueue(0);
-
-        const speakCalls = (Speech.speak as jest.Mock).mock.calls;
-        speakCalls[0][1].onDone();
-        expect(mockConfig.onChunkComplete).toHaveBeenCalledWith(0);
-    });
-
-    it('should call onError when speech errors', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-        const testError = new Error('Speech error');
-
-        queue.processQueue(0);
-
-        const speakCalls = (Speech.speak as jest.Mock).mock.calls;
-        speakCalls[0][1].onError(testError);
-        expect(mockConfig.onError).toHaveBeenCalledWith(testError);
-    });
-
-    it('should continue processing after buffer size', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        queue.processQueue(0);
-        expect(Speech.speak).toHaveBeenCalledTimes(3);
-
-        queue.processQueue(3);
-        expect(Speech.speak).toHaveBeenCalledTimes(5);
-    });
-
-    it('should not process beyond queue length', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        queue.processQueue(0);
-        queue.processQueue(4);
-
-        expect(Speech.speak).toHaveBeenCalledTimes(5);
-    });
-
-    it('should reset buffer to current index', () => {
-        const queue = new TTSQueue(mockChunks, mockSettings, mockConfig);
-
-        queue.processQueue(0);
-        expect(queue.getBufferedIndex()).toBe(3);
-
-        queue.resetBuffer(2);
-        expect(queue.getBufferedIndex()).toBe(2);
-    });
-
-    it('should use custom buffer size', () => {
-        const customConfig = { ...mockConfig, bufferSize: 2 };
-        const queue = new TTSQueue(mockChunks, mockSettings, customConfig);
-
-        queue.processQueue(0);
-
-        expect(Speech.speak).toHaveBeenCalledTimes(2);
-    });
-
-    it('should respect voiceIdentifier in settings', () => {
-        const settingsWithVoice = { ...mockSettings, voiceIdentifier: 'com.apple.ttsbundle.Samantha-compact' };
-        const queue = new TTSQueue(mockChunks, settingsWithVoice, mockConfig);
-
-        queue.processQueue(0);
-
-        expect(Speech.speak).toHaveBeenCalledWith(
-            'Chunk 1',
-            expect.objectContaining({
-                voice: 'com.apple.ttsbundle.Samantha-compact',
-            })
-        );
-    });
-
-    it('should handle empty chunks array', () => {
-        const emptyQueue = new TTSQueue([], mockSettings, mockConfig);
-
-        emptyQueue.processQueue(0);
-
-        expect(Speech.speak).not.toHaveBeenCalled();
-        expect(emptyQueue.getLength()).toBe(0);
     });
 });
