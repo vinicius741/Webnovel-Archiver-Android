@@ -14,6 +14,7 @@ interface StoryActionsProps {
     downloadStatus: string;
     onSync: () => void;
     onGenerateOrRead: () => void;
+    onDownloadAll?: () => void;
 }
 
 export const StoryActions: React.FC<StoryActionsProps> = ({
@@ -27,6 +28,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
     downloadStatus,
     onSync,
     onGenerateOrRead,
+    onDownloadAll,
 }) => {
     const theme = useTheme();
     const hasEpub = !!story.epubPath || (story.epubPaths && story.epubPaths.length > 0);
@@ -44,6 +46,20 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             >
                 {syncing ? 'Syncing...' : 'Sync Chapters'}
             </Button>
+
+            {/* Show "Download All" only for stories with zero downloads */}
+            {story.downloadedChapters === 0 && story.totalChapters > 0 && onDownloadAll && (
+                <Button
+                    mode="contained-tonal"
+                    icon="download-multiple"
+                    style={styles.actionBtn}
+                    disabled={downloading || syncing || generating}
+                    onPress={onDownloadAll}
+                    testID="download-all-button"
+                >
+                    Download All
+                </Button>
+            )}
 
             {downloading && (
                 <View style={styles.progressContainer}>

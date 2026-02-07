@@ -115,6 +115,7 @@ export default function StoryDetailsScreen() {
             downloadStatus={downloadStatus}
             onSync={syncChapters}
             onGenerateOrRead={generateOrRead}
+            onDownloadAll={() => story.totalChapters > 0 && downloadRange(0, story.totalChapters - 1)}
         />
         <DownloadRangeDialog 
             visible={showDownloadRange}
