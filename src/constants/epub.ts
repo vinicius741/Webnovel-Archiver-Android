@@ -1,0 +1,3 @@
+export const EPUB_MAX_CHAPTERS_FALLBACK = 150;
+export const EPUB_MAX_CHAPTERS_MIN = 10;
+export const EPUB_MAX_CHAPTERS_MAX = 1000;

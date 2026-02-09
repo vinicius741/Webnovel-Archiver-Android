@@ -195,6 +195,35 @@ describe('useStoryDownload', () => {
         expect(downloadService.downloadRange).not.toHaveBeenCalled();
     });
 
+    it('should convert 1-based range input to zero-based indexes for download service', async () => {
+        const storyWithThreeChapters: Story = {
+            ...mockStory,
+            totalChapters: 3,
+            chapters: [
+                { id: 'c1', title: 'Chapter 1', url: 'http://c1', downloaded: false },
+                { id: 'c2', title: 'Chapter 2', url: 'http://c2', downloaded: false },
+                { id: 'c3', title: 'Chapter 3', url: 'http://c3', downloaded: false },
+            ],
+        };
+        (downloadService.downloadRange as jest.Mock).mockResolvedValue(storyWithThreeChapters);
+
+        const { result } = renderHook(() => useStoryDownload({
+            story: storyWithThreeChapters,
+            onStoryUpdated: mockOnStoryUpdated,
+        }));
+
+        await act(async () => {
+            await result.current.downloadRange(1, 3);
+        });
+
+        expect(downloadService.downloadRange).toHaveBeenCalledWith(
+            storyWithThreeChapters,
+            0,
+            2
+        );
+        expect(mockShowAlert).toHaveBeenCalledWith('Download Started', 'Selected chapters have been queued.');
+    });
+
     it('should apply sentence removal', async () => {
         const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
 

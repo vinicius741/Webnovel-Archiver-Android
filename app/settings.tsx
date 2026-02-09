@@ -11,16 +11,12 @@ export default function SettingsScreen() {
     setThemeMode,
     concurrency,
     delay,
-    maxChaptersPerEpub,
     concurrencyError,
     delayError,
-    maxChaptersError,
     handleConcurrencyChange,
     handleDelayChange,
-    handleMaxChaptersPerEpubChange,
     handleConcurrencyBlur,
     handleDelayBlur,
-    handleMaxChaptersBlur,
     clearData,
     handleExportBackup,
     handleImportBackup,
@@ -88,27 +84,6 @@ export default function SettingsScreen() {
         </List.Section>
 
         <List.Section>
-          <List.Subheader>EPUB</List.Subheader>
-          <View style={styles.container}>
-            <TextInput
-              label="Max Chapters Per EPUB"
-              value={maxChaptersPerEpub}
-              onChangeText={handleMaxChaptersPerEpubChange}
-              onEndEditing={handleMaxChaptersBlur}
-              keyboardType="number-pad"
-              mode="outlined"
-              style={styles.input}
-              error={!!maxChaptersError}
-              right={<TextInput.Affix text="chapters" />}
-            />
-            {maxChaptersError ? <Text variant="bodySmall" style={styles.error}>{maxChaptersError}</Text> : null}
-            <Text variant="bodySmall" style={styles.hint}>
-              Large novels will be split into multiple EPUBs with this maximum number of chapters each.
-            </Text>
-          </View>
-        </List.Section>
-
-        <List.Section>
           <List.Subheader>Data</List.Subheader>
           <View style={styles.container}>
             <List.Item
@@ -158,11 +133,6 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
-  },
-  hint: {
-    marginTop: -8,
-    marginBottom: 12,
-    opacity: 0.7,
   },
   error: {
     marginTop: -8,

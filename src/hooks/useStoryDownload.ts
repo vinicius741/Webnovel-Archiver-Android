@@ -126,17 +126,18 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
         }
     };
 
-    const downloadRange = async (start: number, end: number) => {
+    // `startChapter`/`endChapter` are 1-based inclusive values from UI inputs.
+    const downloadRange = async (startChapter: number, endChapter: number) => {
         if (!validateStory(story)) return;
 
-        const validation = validateDownloadRange(start, end, story.totalChapters);
+        const validation = validateDownloadRange(startChapter, endChapter, story.totalChapters);
         if (!validation.valid) {
             showAlert('Invalid Range', validation.error || 'Please enter a valid range of chapters.');
             return;
         }
 
-        const startIndex = start - 1;
-        const endIndex = end - 1;
+        const startIndex = startChapter - 1;
+        const endIndex = endChapter - 1;
 
         try {
             setQueueing(true);

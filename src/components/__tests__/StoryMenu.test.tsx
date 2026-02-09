@@ -60,6 +60,7 @@ jest.mock('react-native-safe-area-context', () => ({
 describe('StoryMenu', () => {
     const defaultProps = {
         onDownloadRange: jest.fn(),
+        onConfigureEpub: jest.fn(),
         onApplySentenceRemoval: jest.fn(),
         onDelete: jest.fn(),
         disabled: false,
@@ -86,5 +87,14 @@ describe('StoryMenu', () => {
     it('should render menu with correct testID', () => {
         const { getByTestId } = render(<StoryMenu {...defaultProps} />);
         expect(getByTestId('menu-container')).toBeTruthy();
+    });
+
+    it('should trigger onConfigureEpub when EPUB Settings is pressed', () => {
+        const { getByTestId } = render(<StoryMenu {...defaultProps} />);
+
+        fireEvent.press(getByTestId('story-menu-button'));
+        fireEvent.press(getByTestId('menu-item-epub-settings'));
+
+        expect(defaultProps.onConfigureEpub).toHaveBeenCalledTimes(1);
     });
 });

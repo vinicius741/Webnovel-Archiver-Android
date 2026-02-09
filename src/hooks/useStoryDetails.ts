@@ -86,6 +86,11 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         onStoryUpdated: setStory,
     });
 
+    const updateStory = async (updatedStory: Story) => {
+        await storageService.addStory(updatedStory);
+        setStory(updatedStory);
+    };
+
     return {
         story,
         loading,
@@ -102,5 +107,6 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         downloadRange,
         generateOrRead,
         applySentenceRemoval,
+        updateStory,
     };
 };

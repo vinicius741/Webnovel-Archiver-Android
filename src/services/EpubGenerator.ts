@@ -128,15 +128,27 @@ export class EpubGenerator {
         story: Story,
         chapters: Chapter[],
         maxChaptersPerEpub: number,
-        onProgress?: (progress: EpubProgress) => void
+        onProgress?: (progress: EpubProgress) => void,
+        originalChapterNumbers?: number[]
     ): Promise<EpubResult[]> {
+        if (chapters.length === 0) {
+            throw new Error('No chapters available for EPUB generation.');
+        }
+
+        const hasOriginalChapterNumbers = !!originalChapterNumbers && originalChapterNumbers.length === chapters.length;
+
         if (chapters.length <= maxChaptersPerEpub) {
             // Single EPUB is sufficient
             const result = await this.generateEpub(story, chapters, onProgress);
             return [{
                 uri: result.uri,
                 filename: result.filename,
-                chapterRange: { start: 1, end: chapters.length }
+                chapterRange: {
+                    start: hasOriginalChapterNumbers ? (originalChapterNumbers as number[])[0] : 1,
+                    end: hasOriginalChapterNumbers
+                        ? (originalChapterNumbers as number[])[chapters.length - 1]
+                        : chapters.length
+                }
             }];
         }
 
@@ -184,7 +196,14 @@ export class EpubGenerator {
             results.push({
                 uri,
                 filename,
-                chapterRange: { start: startIndex + 1, end: endIndex }
+                chapterRange: {
+                    start: hasOriginalChapterNumbers
+                        ? (originalChapterNumbers as number[])[startIndex]
+                        : startIndex + 1,
+                    end: hasOriginalChapterNumbers
+                        ? (originalChapterNumbers as number[])[endIndex - 1]
+                        : endIndex
+                }
             });
         }
 

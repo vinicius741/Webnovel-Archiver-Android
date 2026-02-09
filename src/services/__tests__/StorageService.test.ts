@@ -109,7 +109,7 @@ describe('StorageService', () => {
         });
 
         it('should save settings', async () => {
-            const settings = { downloadConcurrency: 2, downloadDelay: 1000 };
+            const settings = { downloadConcurrency: 2, downloadDelay: 1000, maxChaptersPerEpub: 150 };
             await storageService.saveSettings(settings);
             expect(AsyncStorage.setItem).toHaveBeenCalledWith('wa_settings_v1', JSON.stringify(settings));
         });

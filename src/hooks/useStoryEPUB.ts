@@ -6,7 +6,12 @@ import { storageService } from '../services/StorageService';
 import { epubGenerator, EpubProgress, EpubResult } from '../services/EpubGenerator';
 import { downloadService } from '../services/DownloadService';
 import { useAppAlert } from '../context/AlertContext';
-import { Story } from '../types';
+import {
+    EPUB_MAX_CHAPTERS_FALLBACK,
+    EPUB_MAX_CHAPTERS_MIN,
+    EPUB_MAX_CHAPTERS_MAX,
+} from '../constants/epub';
+import { Chapter, Story } from '../types';
 import { validateStory } from '../utils/storyValidation';
 
 interface UseStoryEPUBParams {
@@ -121,23 +126,69 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
         try {
             setGenerating(true);
             const startTime = Date.now();
+
+            const settings = await storageService.getSettings().catch(() => ({
+                maxChaptersPerEpub: EPUB_MAX_CHAPTERS_FALLBACK,
+            }));
             const totalChapters = story.chapters.length;
+            const configuredMax = story.epubConfig?.maxChaptersPerEpub
+                ?? settings.maxChaptersPerEpub
+                ?? EPUB_MAX_CHAPTERS_FALLBACK;
+            const maxChaptersPerEpub = Math.max(
+                EPUB_MAX_CHAPTERS_MIN,
+                Math.min(EPUB_MAX_CHAPTERS_MAX, configuredMax)
+            );
+
+            if (totalChapters === 0) {
+                showAlert('No Chapters', 'No chapters available to generate an EPUB.');
+                return null;
+            }
+
+            let rangeStart = Math.max(1, Math.min(totalChapters, story.epubConfig?.rangeStart ?? 1));
+            const rangeEnd = Math.max(
+                rangeStart,
+                Math.min(totalChapters, story.epubConfig?.rangeEnd ?? totalChapters)
+            );
+
+            if (story.epubConfig?.startAfterBookmark && story.lastReadChapterId) {
+                const bookmarkIndex = story.chapters.findIndex(ch => ch.id === story.lastReadChapterId);
+                if (bookmarkIndex !== -1) {
+                    rangeStart = Math.max(rangeStart, bookmarkIndex + 2);
+                } else {
+                    showAlert(
+                        'Bookmark Not Found',
+                        'Your saved bookmark is no longer in this chapter list. Using the configured chapter range instead.'
+                    );
+                }
+            }
+
+            const selectedEntries = story.chapters
+                .map((chapter, index) => ({ chapter, originalChapterNumber: index + 1 }))
+                .filter(({ originalChapterNumber }) => (
+                    originalChapterNumber >= rangeStart && originalChapterNumber <= rangeEnd
+                ))
+                .filter(({ chapter }) => chapter.downloaded === true);
+
+            if (selectedEntries.length === 0) {
+                showAlert('No Downloaded Chapters', 'No downloaded chapters found in the selected EPUB range.');
+                return null;
+            }
+
+            const selectedChapters: Chapter[] = selectedEntries.map(entry => entry.chapter);
+            const originalChapterNumbers = selectedEntries.map(entry => entry.originalChapterNumber);
+            const selectedCount = selectedChapters.length;
+
             setProgress({
                 current: 0,
-                total: totalChapters,
+                total: selectedCount,
                 percentage: 0,
                 stage: 'Starting...',
                 status: 'Initializing'
             });
 
-            // Get the max chapters per EPUB setting
-            const maxChaptersPerEpub = await storageService.getSettings()
-                .then(settings => settings.maxChaptersPerEpub)
-                .catch(() => 150); // Use default if settings fail to load
-
             const results: EpubResult[] = await epubGenerator.generateEpubs(
                 story,
-                story.chapters,
+                selectedChapters,
                 maxChaptersPerEpub,
                 (progressData: EpubProgress) => {
                     const elapsed = (Date.now() - startTime) / 1000;
@@ -184,7 +235,8 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
                         currentFile: progressData.currentFile,
                         totalFiles: progressData.totalFiles
                     });
-                }
+                },
+                originalChapterNumbers
             );
 
             // Extract URIs and update story with epubPaths

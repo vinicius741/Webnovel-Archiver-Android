@@ -3,6 +3,7 @@ import { Menu, IconButton, Divider, useTheme } from 'react-native-paper';
 
 interface StoryMenuProps {
     onDownloadRange: () => void;
+    onConfigureEpub: () => void;
     onApplySentenceRemoval: () => void;
     onDelete: () => void;
     disabled?: boolean;
@@ -10,6 +11,7 @@ interface StoryMenuProps {
 
 export const StoryMenu: React.FC<StoryMenuProps> = ({
     onDownloadRange,
+    onConfigureEpub,
     onApplySentenceRemoval,
     onDelete,
     disabled = false
@@ -41,6 +43,15 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
                     onDownloadRange();
                 }} 
                 title="Download Range"
+                disabled={disabled}
+            />
+            <Divider />
+            <Menu.Item
+                onPress={() => {
+                    closeMenu();
+                    onConfigureEpub();
+                }}
+                title="EPUB Settings"
                 disabled={disabled}
             />
             <Divider />

@@ -19,6 +19,13 @@ export const DownloadStatus = {
 
 export type DownloadStatus = typeof DownloadStatus[keyof typeof DownloadStatus];
 
+export interface EpubConfig {
+    maxChaptersPerEpub: number;
+    rangeStart: number; // 1-based inclusive
+    rangeEnd: number; // 1-based inclusive
+    startAfterBookmark: boolean;
+}
+
 export interface Story {
     id: string;
     title: string;
@@ -35,6 +42,7 @@ export interface Story {
     epubPath?: string; // Local URI to generated EPUB (deprecated, use epubPaths)
     epubPaths?: string[]; // Local URIs to generated EPUBs (supports split files)
     epubStale?: boolean; // True when EPUB needs regeneration
+    epubConfig?: EpubConfig; // Per-story EPUB generation configuration
     pendingNewChapterIds?: string[]; // Chapter IDs discovered on sync but not downloaded yet
     tags?: string[];
     lastReadChapterId?: string;

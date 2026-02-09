@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
-import { Text, Button, List, useTheme, ActivityIndicator } from 'react-native-paper';
+import { Text, Button, List, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 
 import { StoryHeader } from '../../src/components/details/StoryHeader';
@@ -11,15 +11,15 @@ import { StoryTags } from '../../src/components/details/StoryTags';
 import { ChapterListItem } from '../../src/components/details/ChapterListItem';
 import { ChapterFilterMenu } from '../../src/components/details/ChapterFilterMenu';
 import { DownloadRangeDialog } from '../../src/components/details/DownloadRangeDialog';
+import { EpubConfigDialog } from '../../src/components/details/EpubConfigDialog';
 import { ScreenContainer } from '../../src/components/ScreenContainer';
 import { useScreenLayout } from '../../src/hooks/useScreenLayout';
 import { useStoryDetails } from '../../src/hooks/useStoryDetails';
 import { storageService, ChapterFilterMode } from '../../src/services/StorageService';
-import { Chapter } from '../../src/types';
+import { Chapter, EpubConfig } from '../../src/types';
 
 export default function StoryDetailsScreen() {
   const { id } = useLocalSearchParams();
-  const theme = useTheme();
   const router = useRouter();
   const { isLargeScreen } = useScreenLayout();
   
@@ -39,18 +39,25 @@ export default function StoryDetailsScreen() {
       generateOrRead,
       downloadRange,
       applySentenceRemoval,
+      updateStory,
   } = useStoryDetails(id);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showDownloadRange, setShowDownloadRange] = useState(false);
+  const [showEpubConfig, setShowEpubConfig] = useState(false);
   const [filterMode, setFilterMode] = useState<ChapterFilterMode>('all');
+  const [defaultMaxChapters, setDefaultMaxChapters] = useState(150);
 
   useEffect(() => {
-    const loadFilterSettings = async () => {
-      const settings = await storageService.getChapterFilterSettings();
-      setFilterMode(settings.filterMode);
+    const loadSettings = async () => {
+      const [filterSettings, appSettings] = await Promise.all([
+        storageService.getChapterFilterSettings(),
+        storageService.getSettings(),
+      ]);
+      setFilterMode(filterSettings.filterMode);
+      setDefaultMaxChapters(appSettings.maxChaptersPerEpub || 150);
     };
-    loadFilterSettings();
+    loadSettings();
   }, []);
 
   const filteredChapters = useMemo(() => {
@@ -101,6 +108,25 @@ export default function StoryDetailsScreen() {
       );
   }
 
+  const chapterCount = story.chapters.length;
+  const downloadedChapterCount = story.chapters.filter(chapter => chapter.downloaded === true).length;
+  const hasValidBookmark = !!story.lastReadChapterId
+    && story.chapters.some(chapter => chapter.id === story.lastReadChapterId);
+  const initialEpubConfig: EpubConfig = {
+    maxChaptersPerEpub: story.epubConfig?.maxChaptersPerEpub ?? defaultMaxChapters,
+    rangeStart: story.epubConfig?.rangeStart ?? 1,
+    rangeEnd: story.epubConfig?.rangeEnd ?? chapterCount,
+    startAfterBookmark: story.epubConfig?.startAfterBookmark ?? false,
+  };
+
+  const handleSaveEpubConfig = async (config: EpubConfig) => {
+    const updatedStory = {
+      ...story,
+      epubConfig: config,
+    };
+    await updateStory(updatedStory);
+  };
+
   const renderStoryInfo = () => (
     <View style={styles.fullWidth}>
         <StoryHeader story={story} />
@@ -115,13 +141,22 @@ export default function StoryDetailsScreen() {
             downloadStatus={downloadStatus}
             onSync={syncChapters}
             onGenerateOrRead={generateOrRead}
-            onDownloadAll={() => story.totalChapters > 0 && downloadRange(0, story.totalChapters - 1)}
+            onDownloadAll={() => story.totalChapters > 0 && downloadRange(1, story.totalChapters)}
         />
         <DownloadRangeDialog 
             visible={showDownloadRange}
             onDismiss={() => setShowDownloadRange(false)}
             onDownload={downloadRange}
             totalChapters={story.totalChapters}
+        />
+        <EpubConfigDialog
+            visible={showEpubConfig}
+            onDismiss={() => setShowEpubConfig(false)}
+            onSave={handleSaveEpubConfig}
+            initialConfig={initialEpubConfig}
+            totalChapters={chapterCount}
+            downloadedChapterCount={downloadedChapterCount}
+            hasBookmark={hasValidBookmark}
         />
         <StoryTags tags={story.tags} />
         <StoryDescription description={story.description} />
@@ -146,6 +181,7 @@ export default function StoryDetailsScreen() {
             headerRight: () => (
                 <StoryMenu 
                     onDownloadRange={() => setShowDownloadRange(true)}
+                    onConfigureEpub={() => setShowEpubConfig(true)}
                     onApplySentenceRemoval={applySentenceRemoval}
                     onDelete={deleteStory}
                     disabled={loading}
