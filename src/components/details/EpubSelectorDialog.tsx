@@ -16,7 +16,21 @@ export const EpubSelectorDialog: React.FC<EpubSelectorDialogProps> = ({
     epubs,
 }) => {
     // Helper to extract filename from path
-    const getFilename = (path: string) => path.split('/').pop() || 'Unknown File';
+    const getFilename = (path: string) => {
+        try {
+            // First decode URL-encoded parts (like %2F and %3A)
+            const decodedPath = decodeURIComponent(path);
+
+            // Split by both '/' and ':' to handle typical paths and Android SAF URIs
+            const parts = decodedPath.split(/[\/:]/);
+            const filename = parts.pop() || 'Unknown File';
+
+            // Remove common epub extensions and replace underscores with spaces for readability
+            return filename.replace(/\.epub$/i, '').replace(/_/g, ' ');
+        } catch (e) {
+            return path.split('/').pop() || 'Unknown File';
+        }
+    };
 
     return (
         <Portal>
