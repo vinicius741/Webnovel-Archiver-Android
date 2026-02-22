@@ -192,6 +192,23 @@ class TTSStateManager {
         });
     }
 
+    /**
+     * Helper to run a controller action and sync state to storage + media session.
+     * Reduces boilerplate across playback control methods.
+     */
+    private async withStateSync(
+        action: () => void | Promise<void>,
+        wasPlayingOverride?: boolean
+    ): Promise<void> {
+        await this.enqueue(async () => {
+            await action();
+            const state = this.getState();
+            if (!state) return;
+            await this.persistSessionFromState(state, wasPlayingOverride);
+            await this.updateMediaSession();
+        });
+    }
+
     public async stop() {
         await this.enqueue(async () => {
             await this.controller?.stop();
@@ -202,65 +219,29 @@ class TTSStateManager {
     }
 
     public async pause() {
-        await this.enqueue(async () => {
-            await this.controller?.pause();
-            const state = this.getState();
-            if (!state) return;
-
-            await this.persistSessionFromState(state, false);
-            await this.updateMediaSession();
-        });
+        await this.withStateSync(() => this.controller?.pause(), false);
     }
 
     public async resume() {
-        await this.enqueue(async () => {
-            this.controller?.resume();
-            const state = this.getState();
-            if (!state) return;
-
-            await this.persistSessionFromState(state, true);
-            await this.updateMediaSession();
-        });
+        await this.withStateSync(() => this.controller?.resume(), true);
     }
 
     public async playPause() {
-        await this.enqueue(async () => {
-            await this.controller?.playPause();
-            const state = this.getState();
-            if (!state) return;
-
-            await this.persistSessionFromState(state);
-            await this.updateMediaSession();
-        });
+        await this.withStateSync(() => this.controller?.playPause());
     }
 
     public async next() {
-        await this.enqueue(async () => {
-            await this.controller?.next();
-            const state = this.getState();
-            if (!state) return;
-
-            await this.persistSessionFromState(state, true);
-            await this.updateMediaSession();
-        });
+        await this.withStateSync(() => this.controller?.next(), true);
     }
 
     public async previous() {
-        await this.enqueue(async () => {
-            await this.controller?.previous();
-            const state = this.getState();
-            if (!state) return;
-
-            await this.persistSessionFromState(state, true);
-            await this.updateMediaSession();
-        });
+        await this.withStateSync(() => this.controller?.previous(), true);
     }
 
     public async recoverPlaybackFromSilentStop() {
         await this.enqueue(async () => {
             const state = this.getState();
             if (!state || !state.isSpeaking || state.isPaused) return;
-
             await this.controller?.restartCurrentChunk();
             const latest = this.getState();
             if (!latest) return;

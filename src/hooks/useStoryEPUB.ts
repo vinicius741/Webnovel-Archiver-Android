@@ -30,6 +30,40 @@ interface EpubGenerationProgress {
     totalFiles?: number;
 }
 
+/** Helper to get the first available epub path from a story */
+const getFirstEpubPath = (story: Story): { path: string | undefined; isMultiple: boolean } => {
+    const { epubPaths, epubPath } = story;
+    const hasMultiple = epubPaths && epubPaths.length > 0;
+    return {
+        path: hasMultiple ? epubPaths[0] : epubPath,
+        isMultiple: hasMultiple ? epubPaths.length > 1 : false,
+    };
+};
+
+/** Formats progress status message based on stage and file info */
+const formatProgressStatus = (
+    stage: string,
+    current: number,
+    total: number,
+    timeString: string,
+    currentFile?: number,
+    totalFiles?: number
+): string => {
+    const hasMultipleFiles = totalFiles && totalFiles > 1;
+    const filePrefix = hasMultipleFiles ? `File ${currentFile}/${totalFiles} - ` : '';
+
+    switch (stage) {
+        case 'filtering':
+            return `${filePrefix}Filtering: ${current}/${total} chapters`;
+        case 'processing':
+            return `${filePrefix}Processing: ${current}/${total} chapters (${timeString} remaining)`;
+        case 'finalizing':
+            return hasMultipleFiles ? `Finalizing file ${currentFile}/${totalFiles}...` : 'Finalizing EPUB...';
+        default:
+            return '';
+    }
+};
+
 export const useStoryEPUB = ({ story, onStoryUpdated, onMultipleEpubs }: UseStoryEPUBParams) => {
     const { showAlert } = useAppAlert();
     const [generating, setGenerating] = useState(false);
@@ -105,26 +139,15 @@ export const useStoryEPUB = ({ story, onStoryUpdated, onMultipleEpubs }: UseStor
     const readFirstEpub = async (): Promise<boolean> => {
         if (!validateStory(story)) return false;
 
-        // Check for new epubPaths array first, fall back to old epubPath
-        const epubPaths = story.epubPaths;
-        const epubPath = story.epubPath;
+        const { path, isMultiple } = getFirstEpubPath(story);
+        if (!path) return false;
 
-        // Explicitly check for non-empty array
-        const pathToRead = (epubPaths && epubPaths.length > 0) ? epubPaths[0] : epubPath;
-
-        if (!pathToRead) {
+        if (isMultiple && onMultipleEpubs) {
+            onMultipleEpubs(story.epubPaths!);
             return false;
         }
 
-        // Track if this is from multiple files for better error handling
-        const isFromMultiple = epubPaths && epubPaths.length > 1;
-
-        if (isFromMultiple && onMultipleEpubs) {
-            onMultipleEpubs(epubPaths);
-            return false; // Did not actually read the epub
-        }
-
-        return await readExistingEpub(pathToRead, isFromMultiple);
+        return readExistingEpub(path, isMultiple);
     };
 
     const generateEpub = async (): Promise<string[] | null> => {
@@ -206,32 +229,14 @@ export const useStoryEPUB = ({ story, onStoryUpdated, onMultipleEpubs }: UseStor
                         ? `${Math.ceil(remaining / 60)}m ${Math.ceil(remaining % 60)}s`
                         : `${Math.ceil(remaining)}s`;
 
-                    let status = '';
-                    const { currentFile, totalFiles } = progressData;
-
-                    switch (progressData.stage) {
-                        case 'filtering':
-                            if (totalFiles && totalFiles > 1) {
-                                status = `Filtering: File ${currentFile}/${totalFiles} - ${progressData.current}/${progressData.total} chapters`;
-                            } else {
-                                status = `Filtering chapters: ${progressData.current}/${progressData.total}`;
-                            }
-                            break;
-                        case 'processing':
-                            if (totalFiles && totalFiles > 1) {
-                                status = `Processing: File ${currentFile}/${totalFiles} - ${progressData.current}/${progressData.total} chapters (${timeString} remaining)`;
-                            } else {
-                                status = `Processing: ${progressData.current}/${progressData.total} chapters (${timeString} remaining)`;
-                            }
-                            break;
-                        case 'finalizing':
-                            if (totalFiles && totalFiles > 1) {
-                                status = `Finalizing file ${currentFile}/${totalFiles}...`;
-                            } else {
-                                status = 'Finalizing EPUB...';
-                            }
-                            break;
-                    }
+                    const status = formatProgressStatus(
+                        progressData.stage,
+                        progressData.current,
+                        progressData.total,
+                        timeString,
+                        progressData.currentFile,
+                        progressData.totalFiles
+                    );
 
                     setProgress({
                         current: progressData.current,
@@ -282,13 +287,8 @@ export const useStoryEPUB = ({ story, onStoryUpdated, onMultipleEpubs }: UseStor
     const generateOrRead = async (): Promise<void> => {
         if (!validateStory(story)) return;
 
-        // Check for new epubPaths array first, fall back to old epubPath
-        const epubPaths = story.epubPaths;
-        const epubPath = story.epubPath;
-
-        // Explicitly check for non-empty array before using it
-        const hasEpubPaths = epubPaths && epubPaths.length > 0;
-        const hasEpub = hasEpubPaths || !!epubPath;
+        const { path, isMultiple } = getFirstEpubPath(story);
+        const hasEpub = !!path;
         const pendingNewChapterIds = (story.pendingNewChapterIds || []).filter(id => {
             const chapter = story.chapters.find(ch => ch.id === id);
             return chapter && !chapter.downloaded;
