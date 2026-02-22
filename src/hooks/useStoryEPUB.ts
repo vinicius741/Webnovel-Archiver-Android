@@ -17,6 +17,7 @@ import { validateStory } from '../utils/storyValidation';
 interface UseStoryEPUBParams {
     story: Story | null;
     onStoryUpdated: (updatedStory: Story) => void;
+    onMultipleEpubs?: (paths: string[]) => void;
 }
 
 interface EpubGenerationProgress {
@@ -29,7 +30,7 @@ interface EpubGenerationProgress {
     totalFiles?: number;
 }
 
-export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
+export const useStoryEPUB = ({ story, onStoryUpdated, onMultipleEpubs }: UseStoryEPUBParams) => {
     const { showAlert } = useAppAlert();
     const [generating, setGenerating] = useState(false);
     const [progress, setProgress] = useState<EpubGenerationProgress | null>(null);
@@ -117,6 +118,12 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
 
         // Track if this is from multiple files for better error handling
         const isFromMultiple = epubPaths && epubPaths.length > 1;
+
+        if (isFromMultiple && onMultipleEpubs) {
+            onMultipleEpubs(epubPaths);
+            return false; // Did not actually read the epub
+        }
+
         return await readExistingEpub(pathToRead, isFromMultiple);
     };
 
@@ -319,6 +326,10 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
 
         if (!hasEpub || story.epubStale) {
             const epubUris = await generateEpub();
+            if (epubUris && epubUris.length > 1 && onMultipleEpubs) {
+                onMultipleEpubs(epubUris);
+                return;
+            }
             if (epubUris && epubUris.length > 0) {
                 await readExistingEpub(epubUris[0], epubUris.length > 1);
             }
@@ -332,5 +343,6 @@ export const useStoryEPUB = ({ story, onStoryUpdated }: UseStoryEPUBParams) => {
         generating,
         progress,
         generateOrRead,
+        readEpub: (path: string) => readExistingEpub(path, true),
     };
 };

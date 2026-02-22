@@ -13,6 +13,8 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     const router = useRouter();
     const [story, setStory] = useState<Story | null>(null);
     const [loading, setLoading] = useState(true);
+    const [showEpubSelector, setShowEpubSelector] = useState(false);
+    const [availableEpubs, setAvailableEpubs] = useState<string[]>([]);
 
     const storyId = Array.isArray(id) ? id[0] : (typeof id === 'string' ? id : '');
     const { progress: downloadProgress, status: downloadStatus, isDownloading: isDownloadingHook } = useDownloadProgress(storyId);
@@ -50,7 +52,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         prevDownloading.current = isDownloadingHook;
     }, [isDownloadingHook, storyId]);
 
-    const { 
+    const {
         deleteStory,
         markChapterAsRead,
     } = useStoryActions({
@@ -81,9 +83,14 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         generating,
         progress: epubProgress,
         generateOrRead,
+        readEpub,
     } = useStoryEPUB({
         story,
         onStoryUpdated: setStory,
+        onMultipleEpubs: (paths) => {
+            setAvailableEpubs(paths);
+            setShowEpubSelector(true);
+        }
     });
 
     const updateStory = async (updatedStory: Story) => {
@@ -108,5 +115,9 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         generateOrRead,
         applySentenceRemoval,
         updateStory,
+        showEpubSelector,
+        setShowEpubSelector,
+        availableEpubs,
+        readEpub,
     };
 };
