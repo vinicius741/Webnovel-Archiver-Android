@@ -2,7 +2,7 @@ import { Story, Chapter, DownloadStatus } from '../types';
 import { downloadManager } from './download/DownloadManager';
 import { storageService } from './StorageService';
 import { readChapterFile, saveChapter } from './storage/fileSystem';
-import { removeUnwantedSentences } from '../utils/htmlUtils';
+import { applyDownloadCleanup } from '../utils/textCleanup';
 
 class DownloadService {
 
@@ -115,13 +115,16 @@ class DownloadService {
     }
 
     /**
-     * Applies sentence removal to already downloaded chapters offline.
+     * Applies text cleanup rules to already downloaded chapters offline.
      */
     async applySentenceRemovalToStory(
         story: Story,
         onProgress?: (current: number, total: number, chapterTitle: string) => void
     ): Promise<{ processed: number, errors: number }> {
-        const sentenceRemovalList = await storageService.getSentenceRemovalList();
+        const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
+            storageService.getSentenceRemovalList(),
+            storageService.getRegexCleanupRules(),
+        ]);
         let processed = 0;
         let errors = 0;
 
@@ -132,7 +135,7 @@ class DownloadService {
                 try {
                     const html = await readChapterFile(chapter.filePath);
                     if (html) {
-                        const cleanedContent = removeUnwantedSentences(html, sentenceRemovalList);
+                        const cleanedContent = applyDownloadCleanup(html, sentenceRemovalList, regexCleanupRules);
                         await saveChapter(story.id, i, chapter.title, cleanedContent);
                         processed++;
                     }

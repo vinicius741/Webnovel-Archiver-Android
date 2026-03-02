@@ -224,7 +224,7 @@ describe('useStoryDownload', () => {
         expect(mockShowAlert).toHaveBeenCalledWith('Download Started', 'Selected chapters have been queued.');
     });
 
-    it('should apply sentence removal', async () => {
+    it('should apply text cleanup', async () => {
         const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
 
         // applySentenceRemoval calls showAlert with buttons.

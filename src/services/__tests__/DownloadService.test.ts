@@ -2,7 +2,7 @@ import { downloadService } from '../DownloadService';
 import { downloadManager } from '../download/DownloadManager';
 import { storageService } from '../StorageService';
 import { readChapterFile, saveChapter } from '../storage/fileSystem';
-import { removeUnwantedSentences } from '../../utils/htmlUtils';
+import { applyDownloadCleanup } from '../../utils/textCleanup';
 import { Story, Chapter, DownloadStatus } from '../../types';
 
 jest.mock('../download/DownloadManager', () => ({
@@ -16,6 +16,7 @@ jest.mock('../StorageService', () => ({
     storageService: {
         updateStory: jest.fn().mockResolvedValue(undefined),
         getSentenceRemovalList: jest.fn().mockResolvedValue(['bad sentence']),
+        getRegexCleanupRules: jest.fn().mockResolvedValue([]),
     },
 }));
 
@@ -24,8 +25,8 @@ jest.mock('../storage/fileSystem', () => ({
     saveChapter: jest.fn().mockResolvedValue('file://chapter.html'),
 }));
 
-jest.mock('../../utils/htmlUtils', () => ({
-    removeUnwantedSentences: jest.fn((html, list) => html),
+jest.mock('../../utils/textCleanup', () => ({
+    applyDownloadCleanup: jest.fn((html) => html),
 }));
 
 describe('DownloadService', () => {
@@ -175,7 +176,7 @@ describe('DownloadService', () => {
     describe('applySentenceRemovalToStory', () => {
         it('should apply sentence removal to downloaded chapters', async () => {
             (readChapterFile as jest.Mock).mockResolvedValue('<p>Chapter content with bad sentence.</p>');
-            (removeUnwantedSentences as jest.Mock).mockReturnValue('<p>Chapter content.</p>');
+            (applyDownloadCleanup as jest.Mock).mockReturnValue('<p>Chapter content.</p>');
 
             const onProgress = jest.fn();
             const result = await downloadService.applySentenceRemovalToStory(mockStory, onProgress);
@@ -267,12 +268,14 @@ describe('DownloadService', () => {
 
         it('should use sentence removal list from storage', async () => {
             (storageService.getSentenceRemovalList as jest.Mock).mockResolvedValue(['remove this']);
+            (storageService.getRegexCleanupRules as jest.Mock).mockResolvedValue([]);
             (readChapterFile as jest.Mock).mockResolvedValue('<p>remove this</p>');
 
             await downloadService.applySentenceRemovalToStory(mockStory);
 
             expect(storageService.getSentenceRemovalList).toHaveBeenCalled();
-            expect(removeUnwantedSentences).toHaveBeenCalledWith('<p>remove this</p>', ['remove this']);
+            expect(storageService.getRegexCleanupRules).toHaveBeenCalled();
+            expect(applyDownloadCleanup).toHaveBeenCalledWith('<p>remove this</p>', ['remove this'], []);
         });
     });
 

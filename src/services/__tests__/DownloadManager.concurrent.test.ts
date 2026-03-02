@@ -79,6 +79,7 @@ jest.mock('../StorageService', () => ({
             await new Promise(resolve => setTimeout(resolve, 10));
         }),
         getSentenceRemovalList: jest.fn().mockResolvedValue([]),
+        getRegexCleanupRules: jest.fn().mockResolvedValue([]),
     },
 }));
 
@@ -88,8 +89,8 @@ jest.mock('../ForegroundServiceCoordinator', () => ({
     showDownloadCompletionNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../../utils/htmlUtils', () => ({
-    removeUnwantedSentences: jest.fn((content) => content),
+jest.mock('../../utils/textCleanup', () => ({
+    applyDownloadCleanup: jest.fn((content) => content),
 }));
 
 describe('DownloadManager - Concurrent Downloads', () => {

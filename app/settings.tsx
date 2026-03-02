@@ -87,8 +87,8 @@ export default function SettingsScreen() {
           <List.Subheader>Data</List.Subheader>
           <View style={styles.container}>
             <List.Item
-              title="Sentence Removal List"
-              description="Manage sentences to automatically remove from chapters"
+              title="Text Cleanup Rules"
+              description="Manage sentence removal and regex cleanup rules"
               left={props => <List.Icon {...props} icon="text-box-remove-outline" />}
               onPress={() => router.push('/sentence-removal')}
             />

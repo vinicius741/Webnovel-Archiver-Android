@@ -1,46 +1,93 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, FlatList } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, View, ScrollView } from 'react-native';
 import {
   Appbar,
   List,
   IconButton,
-  FAB,
   Portal,
   Dialog,
   TextInput,
   Button,
   Text,
   ActivityIndicator,
-  Divider
+  Divider,
+  SegmentedButtons,
+  Switch
 } from 'react-native-paper';
 import { router, Stack } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { useAppAlert } from '../src/context/AlertContext';
 import { storageService } from '../src/services/StorageService';
-import { useTheme } from '../src/theme/ThemeContext';
-import * as Clipboard from 'expo-clipboard';
+import { RegexCleanupAppliesTo, RegexCleanupRule } from '../src/types';
+import { applyTtsCleanupLines, validateRegexCleanupRule } from '../src/utils/textCleanup';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+interface RuleDraft {
+  id?: string;
+  name: string;
+  pattern: string;
+  flags: string;
+  enabled: boolean;
+  appliesTo: RegexCleanupAppliesTo;
+}
+
+const EMPTY_RULE_DRAFT: RuleDraft = {
+  name: '',
+  pattern: '',
+  flags: '',
+  enabled: true,
+  appliesTo: 'both',
+};
+
+const targetLabelMap: Record<RegexCleanupAppliesTo, string> = {
+  both: 'Download + TTS',
+  download: 'Download only',
+  tts: 'TTS only',
+};
+
+const createRuleId = (): string => {
+  return `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+};
+
 export default function SentenceRemovalScreen() {
-  const insets = useSafeAreaInsets();
   const { showAlert } = useAppAlert();
   const [sentences, setSentences] = useState<string[]>([]);
+  const [regexRules, setRegexRules] = useState<RegexCleanupRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [visible, setVisible] = useState(false);
+
+  const [sentenceDialogVisible, setSentenceDialogVisible] = useState(false);
   const [newSentence, setNewSentence] = useState('');
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingSentenceIndex, setEditingSentenceIndex] = useState<number | null>(null);
+
+  const [ruleDialogVisible, setRuleDialogVisible] = useState(false);
+  const [ruleDraft, setRuleDraft] = useState<RuleDraft>(EMPTY_RULE_DRAFT);
+  const [rulePreviewInput, setRulePreviewInput] = useState('');
 
   useEffect(() => {
-    loadSentences();
+    void loadData();
   }, []);
 
-  const loadSentences = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const list = await storageService.getSentenceRemovalList();
-    setSentences(list);
-    setLoading(false);
+    try {
+      const [sentenceList, cleanupLoadResult] = await Promise.all([
+        storageService.getSentenceRemovalList(),
+        storageService.getRegexCleanupRulesWithDiagnostics(),
+      ]);
+      setSentences(sentenceList);
+      setRegexRules(cleanupLoadResult.rules);
+
+      if (cleanupLoadResult.rejected.length > 0) {
+        const rejectedCount = cleanupLoadResult.rejected.length;
+        showAlert(
+          'Some Rules Were Skipped',
+          `${rejectedCount} invalid regex rule${rejectedCount > 1 ? 's were' : ' was'} ignored. Please review your cleanup rules.`
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const saveSentences = async (list: string[]) => {
@@ -48,22 +95,27 @@ export default function SentenceRemovalScreen() {
     await storageService.saveSentenceRemovalList(list);
   };
 
+  const saveRegexRules = async (rules: RegexCleanupRule[]) => {
+    setRegexRules(rules);
+    await storageService.saveRegexCleanupRules(rules);
+  };
+
   const handleExport = async () => {
     try {
-      const json = JSON.stringify(sentences, null, 4);
-      const file = new File(Paths.cache, 'sentence_removal_list.json');
+      const json = JSON.stringify({ sentences, regexRules }, null, 4);
+      const file = new File(Paths.cache, 'text_cleanup_rules.json');
 
       if (!file.exists) {
         file.create();
       }
-      
+
       file.write(json);
 
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(file.uri, {
-            mimeType: 'application/json',
-            dialogTitle: 'Export Sentence Removal List',
-            UTI: 'public.json'
+          mimeType: 'application/json',
+          dialogTitle: 'Export Text Cleanup Rules',
+          UTI: 'public.json'
         });
       } else {
         showAlert('Error', 'Sharing is not available on this device');
@@ -74,32 +126,30 @@ export default function SentenceRemovalScreen() {
     }
   };
 
-  const handleAdd = () => {
+  const handleSaveSentence = () => {
     const trimmed = newSentence.trim();
     if (!trimmed) return;
 
     const existingIndex = sentences.indexOf(trimmed);
-    if (existingIndex !== -1) {
-      if (editingIndex === null || existingIndex !== editingIndex) {
-        showAlert('Duplicate', 'This sentence is already in the removal list.');
-        return;
-      }
+    if (existingIndex !== -1 && (editingSentenceIndex === null || existingIndex !== editingSentenceIndex)) {
+      showAlert('Duplicate', 'This sentence is already in the removal list.');
+      return;
     }
 
     const list = [...sentences];
-    if (editingIndex !== null) {
-      list[editingIndex] = trimmed;
+    if (editingSentenceIndex !== null) {
+      list[editingSentenceIndex] = trimmed;
     } else {
       list.unshift(trimmed);
     }
 
-    saveSentences(list);
-    setVisible(false);
+    void saveSentences(list);
+    setSentenceDialogVisible(false);
     setNewSentence('');
-    setEditingIndex(null);
+    setEditingSentenceIndex(null);
   };
 
-  const confirmDelete = (index: number) => {
+  const confirmDeleteSentence = (index: number) => {
     showAlert(
       'Remove Sentence',
       'Are you sure you want to remove this sentence from the blocklist?',
@@ -110,78 +160,233 @@ export default function SentenceRemovalScreen() {
           style: 'destructive',
           onPress: () => {
             const list = sentences.filter((_, i) => i !== index);
-            saveSentences(list);
+            void saveSentences(list);
           }
         }
       ]
     );
   };
 
-  const openDialog = (sentence: string = '', index: number | null = null) => {
+  const openSentenceDialog = (sentence: string = '', index: number | null = null) => {
     setNewSentence(sentence);
-    setEditingIndex(index);
-    setVisible(true);
+    setEditingSentenceIndex(index);
+    setSentenceDialogVisible(true);
   };
 
-  const renderItem = ({ item, index }: { item: string, index: number }) => (
-    <List.Item
-      title={item}
-      titleNumberOfLines={3}
-      right={props => (
-        <View style={{ flexDirection: 'row' }}>
-          <IconButton
-            icon="pencil"
-            onPress={() => openDialog(item, index)}
-          />
-          <IconButton
-            icon="delete"
-            iconColor="red"
-            onPress={() => confirmDelete(index)}
-          />
+  const openRuleDialog = (rule?: RegexCleanupRule) => {
+    if (!rule) {
+      setRuleDraft(EMPTY_RULE_DRAFT);
+    } else {
+      setRuleDraft({
+        id: rule.id,
+        name: rule.name,
+        pattern: rule.pattern,
+        flags: rule.flags,
+        enabled: rule.enabled,
+        appliesTo: rule.appliesTo,
+      });
+    }
+    setRuleDialogVisible(true);
+  };
+
+  const closeRuleDialog = () => {
+    setRuleDialogVisible(false);
+    setRuleDraft(EMPTY_RULE_DRAFT);
+  };
+
+  const ruleValidation = useMemo(() => {
+    return validateRegexCleanupRule({
+      name: ruleDraft.name,
+      pattern: ruleDraft.pattern,
+      flags: ruleDraft.flags,
+    });
+  }, [ruleDraft.name, ruleDraft.pattern, ruleDraft.flags]);
+
+  const previewOutput = useMemo(() => {
+    if (!rulePreviewInput) return '';
+    if (!ruleValidation.valid) return '';
+
+    const previewRule: RegexCleanupRule = {
+      id: 'preview',
+      name: ruleDraft.name.trim() || 'Preview',
+      pattern: ruleDraft.pattern.trim(),
+      flags: ruleValidation.normalizedFlags || '',
+      enabled: true,
+      appliesTo: 'both',
+    };
+
+    return applyTtsCleanupLines(rulePreviewInput, [previewRule]);
+  }, [ruleDraft.name, ruleDraft.pattern, rulePreviewInput, ruleValidation]);
+
+  const handleSaveRule = () => {
+    if (!ruleValidation.valid) {
+      showAlert('Invalid Rule', ruleValidation.error || 'Please review the regex rule.');
+      return;
+    }
+
+    const normalizedPattern = ruleDraft.pattern.trim();
+    const normalizedFlags = ruleValidation.normalizedFlags || '';
+    const normalizedName = ruleDraft.name.trim();
+
+    const duplicate = regexRules.find(rule =>
+      rule.id !== ruleDraft.id &&
+      rule.pattern === normalizedPattern &&
+      rule.flags === normalizedFlags &&
+      rule.appliesTo === ruleDraft.appliesTo
+    );
+
+    if (duplicate) {
+      showAlert('Duplicate', 'A similar regex rule already exists.');
+      return;
+    }
+
+    const nextRule: RegexCleanupRule = {
+      id: ruleDraft.id || createRuleId(),
+      name: normalizedName,
+      pattern: normalizedPattern,
+      flags: normalizedFlags,
+      enabled: ruleDraft.enabled,
+      appliesTo: ruleDraft.appliesTo,
+    };
+
+    const list = [...regexRules];
+    const existingIndex = list.findIndex(rule => rule.id === nextRule.id);
+    if (existingIndex >= 0) {
+      list[existingIndex] = nextRule;
+    } else {
+      list.unshift(nextRule);
+    }
+
+    void saveRegexRules(list);
+    closeRuleDialog();
+  };
+
+  const toggleRule = (ruleId: string, enabled: boolean) => {
+    const updatedRules = regexRules.map(rule => {
+      if (rule.id !== ruleId) return rule;
+      return { ...rule, enabled };
+    });
+    void saveRegexRules(updatedRules);
+  };
+
+  const confirmDeleteRule = (ruleId: string) => {
+    showAlert(
+      'Remove Regex Rule',
+      'Are you sure you want to delete this regex cleanup rule?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const list = regexRules.filter(rule => rule.id !== ruleId);
+            void saveRegexRules(list);
+          }
+        }
+      ]
+    );
+  };
+
+  if (loading) {
+    return (
+      <ScreenContainer edges={['bottom', 'left', 'right']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Appbar.Header>
+          <Appbar.BackAction onPress={() => router.back()} />
+          <Appbar.Content title="Text Cleanup" />
+        </Appbar.Header>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" />
         </View>
-      )}
-      style={styles.listItem}
-    />
-  );
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer edges={['bottom', 'left', 'right']}>
       <Stack.Screen options={{ headerShown: false }} />
       <Appbar.Header>
         <Appbar.BackAction onPress={() => router.back()} />
-        <Appbar.Content title="Sentence Removal" />
+        <Appbar.Content title="Text Cleanup" />
         <Appbar.Action icon="export-variant" onPress={handleExport} accessibilityLabel="Export JSON" />
       </Appbar.Header>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
-        </View>
-      ) : (
-        <FlatList
-          data={sentences}
-          keyExtractor={(item, index) => index.toString()}
-          renderItem={renderItem}
-          ItemSeparatorComponent={() => <Divider />}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
+      <ScrollView contentContainerStyle={styles.content}>
+        <List.Section>
+          <View style={styles.sectionHeader}>
+            <List.Subheader>Exact Sentence Removal</List.Subheader>
+            <Button icon="plus" mode="text" onPress={() => openSentenceDialog()}>
+              Add
+            </Button>
+          </View>
+          <Text variant="bodySmall" style={styles.sectionDescription}>
+            Removes exact text matches from downloaded chapters.
+          </Text>
+          <Divider />
+          {sentences.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text variant="bodyLarge">No sentences in the list.</Text>
+              <Text variant="bodyMedium">No sentences in the list.</Text>
             </View>
-          }
-        />
-      )}
+          ) : (
+            sentences.map((item, index) => (
+              <View key={`sentence-${index}`}>
+                <List.Item
+                  title={item}
+                  titleNumberOfLines={3}
+                  right={() => (
+                    <View style={styles.rowActions}>
+                      <IconButton icon="pencil" onPress={() => openSentenceDialog(item, index)} />
+                      <IconButton icon="delete" iconColor="red" onPress={() => confirmDeleteSentence(index)} />
+                    </View>
+                  )}
+                  style={styles.listItem}
+                />
+                <Divider />
+              </View>
+            ))
+          )}
+        </List.Section>
 
-      <FAB
-        icon="plus"
-        style={[styles.fab, { bottom: insets.bottom + 16 }]}
-        onPress={() => openDialog()}
-        label="Add Sentence"
-      />
+        <List.Section>
+          <View style={styles.sectionHeader}>
+            <List.Subheader>Regex Cleanup Rules</List.Subheader>
+            <Button icon="plus" mode="text" onPress={() => openRuleDialog()}>
+              Add
+            </Button>
+          </View>
+          <Text variant="bodySmall" style={styles.sectionDescription}>
+            Remove patterns like long separators. Rules run in guarded mode and skip invalid patterns.
+          </Text>
+          <Divider />
+          {regexRules.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text variant="bodyMedium">No regex cleanup rules yet.</Text>
+            </View>
+          ) : (
+            regexRules.map((rule) => (
+              <View key={rule.id}>
+                <List.Item
+                  title={rule.name}
+                  description={`/${rule.pattern}/${rule.flags} • ${targetLabelMap[rule.appliesTo]}`}
+                  right={() => (
+                    <View style={styles.rowActions}>
+                      <Switch value={rule.enabled} onValueChange={(value) => toggleRule(rule.id, value)} />
+                      <IconButton icon="pencil" onPress={() => openRuleDialog(rule)} />
+                      <IconButton icon="delete" iconColor="red" onPress={() => confirmDeleteRule(rule.id)} />
+                    </View>
+                  )}
+                  style={[styles.listItem, !rule.enabled && styles.disabledItem]}
+                />
+                <Divider />
+              </View>
+            ))
+          )}
+        </List.Section>
+      </ScrollView>
 
       <Portal>
-        <Dialog visible={visible} onDismiss={() => setVisible(false)}>
-          <Dialog.Title>{editingIndex !== null ? 'Edit Sentence' : 'Add Sentence'}</Dialog.Title>
+        <Dialog visible={sentenceDialogVisible} onDismiss={() => setSentenceDialogVisible(false)}>
+          <Dialog.Title>{editingSentenceIndex !== null ? 'Edit Sentence' : 'Add Sentence'}</Dialog.Title>
           <Dialog.Content>
             <TextInput
               label="Sentence to remove"
@@ -194,8 +399,86 @@ export default function SentenceRemovalScreen() {
             />
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setVisible(false)}>Cancel</Button>
-            <Button onPress={handleAdd}>Save</Button>
+            <Button onPress={() => setSentenceDialogVisible(false)}>Cancel</Button>
+            <Button onPress={handleSaveSentence}>Save</Button>
+          </Dialog.Actions>
+        </Dialog>
+
+        <Dialog visible={ruleDialogVisible} onDismiss={closeRuleDialog}>
+          <Dialog.Title>{ruleDraft.id ? 'Edit Regex Rule' : 'Add Regex Rule'}</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              label="Rule Name"
+              value={ruleDraft.name}
+              onChangeText={(value) => setRuleDraft(prev => ({ ...prev, name: value }))}
+              mode="outlined"
+              style={styles.input}
+            />
+            <TextInput
+              label="Pattern"
+              value={ruleDraft.pattern}
+              onChangeText={(value) => setRuleDraft(prev => ({ ...prev, pattern: value }))}
+              mode="outlined"
+              style={styles.input}
+              placeholder="(?:[-=]){5,}"
+            />
+            <TextInput
+              label="Flags"
+              value={ruleDraft.flags}
+              onChangeText={(value) => setRuleDraft(prev => ({ ...prev, flags: value }))}
+              mode="outlined"
+              style={styles.input}
+              placeholder="im"
+              autoCapitalize="none"
+            />
+            <Text variant="bodySmall" style={styles.helpText}>
+              Allowed flags: gimsu. Global replace is always enforced.
+            </Text>
+            {!ruleValidation.valid && (
+              <Text variant="bodySmall" style={styles.errorText}>
+                {ruleValidation.error}
+              </Text>
+            )}
+
+            <Text variant="labelMedium" style={styles.targetLabel}>Apply To</Text>
+            <SegmentedButtons
+              value={ruleDraft.appliesTo}
+              onValueChange={(value) => setRuleDraft(prev => ({ ...prev, appliesTo: value as RegexCleanupAppliesTo }))}
+              buttons={[
+                { value: 'both', label: 'Both' },
+                { value: 'download', label: 'Download' },
+                { value: 'tts', label: 'TTS' },
+              ]}
+            />
+
+            <View style={styles.enabledRow}>
+              <Text variant="bodyMedium">Enabled</Text>
+              <Switch
+                value={ruleDraft.enabled}
+                onValueChange={(value) => setRuleDraft(prev => ({ ...prev, enabled: value }))}
+              />
+            </View>
+
+            <Divider style={styles.previewDivider} />
+            <Text variant="labelMedium">Test Preview</Text>
+            <TextInput
+              label="Preview input"
+              value={rulePreviewInput}
+              onChangeText={setRulePreviewInput}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              style={styles.input}
+              placeholder="Try text like ----- or ===== to test your rule"
+            />
+            <Text variant="bodySmall" style={styles.previewLabel}>Preview output</Text>
+            <View style={styles.previewBox}>
+              <Text variant="bodySmall">{previewOutput || '(No output)'}</Text>
+            </View>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={closeRuleDialog}>Cancel</Button>
+            <Button onPress={handleSaveRule}>Save</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
@@ -209,20 +492,65 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  listContent: {
-    paddingBottom: 120,
+  content: {
+    paddingBottom: 40,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sectionDescription: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    opacity: 0.75,
   },
   listItem: {
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
+  rowActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   emptyContainer: {
-    padding: 32,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+  disabledItem: {
+    opacity: 0.5,
+  },
+  input: {
+    marginBottom: 10,
+  },
+  helpText: {
+    opacity: 0.75,
+    marginBottom: 10,
+  },
+  errorText: {
+    color: 'red',
+    marginBottom: 10,
+  },
+  targetLabel: {
+    marginBottom: 8,
+  },
+  enabledRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-  }
+    marginTop: 12,
+  },
+  previewDivider: {
+    marginVertical: 12,
+  },
+  previewLabel: {
+    marginBottom: 6,
+  },
+  previewBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 52,
+    justifyContent: 'center',
+  },
 });

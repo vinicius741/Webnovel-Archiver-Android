@@ -31,6 +31,7 @@ jest.mock('../StorageService', () => ({
         getStory: jest.fn().mockResolvedValue(null),
         updateStory: jest.fn().mockResolvedValue(undefined),
         getSentenceRemovalList: jest.fn().mockResolvedValue([]),
+        getRegexCleanupRules: jest.fn().mockResolvedValue([]),
     },
 }));
 
@@ -40,8 +41,8 @@ jest.mock('../ForegroundServiceCoordinator', () => ({
     showDownloadCompletionNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../../utils/htmlUtils', () => ({
-    removeUnwantedSentences: jest.fn((content) => content),
+jest.mock('../../utils/textCleanup', () => ({
+    applyDownloadCleanup: jest.fn((content) => content),
 }));
 
 describe('DownloadManager', () => {

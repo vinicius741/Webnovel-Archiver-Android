@@ -171,8 +171,8 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
         }
 
         showAlert(
-            'Apply Sentence Removal',
-            `This will apply the current sentence removal list to ${downloadedChapters.length} downloaded chapters. The EPUB will need to be regenerated after.`,
+            'Apply Text Cleanup',
+            `This will apply sentence removal and regex cleanup rules to ${downloadedChapters.length} downloaded chapters. The EPUB will need to be regenerated after.`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -203,7 +203,7 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                             } else {
                                 showAlert(
                                     'Processing Complete',
-                                    `Successfully applied sentence removal to ${processed} chapters. Please regenerate the EPUB.`
+                                    `Successfully applied text cleanup to ${processed} chapters. Please regenerate the EPUB.`
                                 );
                             }
 
@@ -214,7 +214,7 @@ export const useStoryDownload = ({ story, onStoryUpdated }: UseStoryDownloadPara
                         } catch (error: any) {
                             setSyncing(false);
                             setSyncStatus('');
-                            showAlert('Error', error.message || 'Failed to apply sentence removal.');
+                            showAlert('Error', error.message || 'Failed to apply text cleanup.');
                         }
                     }
                 }

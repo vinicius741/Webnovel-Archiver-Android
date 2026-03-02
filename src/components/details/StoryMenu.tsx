@@ -60,7 +60,7 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
                     closeMenu();
                     onApplySentenceRemoval();
                 }} 
-                title="Apply Sentence Removal"
+                title="Apply Text Cleanup"
                 disabled={disabled}
             />
             <Divider />

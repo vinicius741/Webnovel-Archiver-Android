@@ -1,4 +1,6 @@
 import * as cheerio from 'cheerio';
+import { RegexCleanupRule } from '../types';
+import { createRegexCleanupRunner, removeUnwantedSentences } from './textCleanup';
 
 /**
  * Extracts plain text from HTML content, suitable for TTS.
@@ -27,10 +29,15 @@ export const extractPlainText = (html: string): string => {
  * Prepares HTML content for TTS by grouping elements into chunks
  * and adding data attributes for highlighting.
  */
-export const prepareTTSContent = (html: string, chunkSize: number = 500): { processedHtml: string, chunks: string[] } => {
+export const prepareTTSContent = (
+    html: string,
+    chunkSize: number = 500,
+    regexCleanupRules: RegexCleanupRule[] = []
+): { processedHtml: string, chunks: string[] } => {
     if (!html) return { processedHtml: '', chunks: [] };
 
     const $ = cheerio.load(html);
+    const cleanupForTts = createRegexCleanupRunner(regexCleanupRules, 'tts');
     const chunks: string[] = [];
     let currentChunkText = '';
     let currentGroupIndex = 0;
@@ -45,7 +52,9 @@ export const prepareTTSContent = (html: string, chunkSize: number = 500): { proc
             return;
         }
 
-        const text = $(elem).text().replace(/\s+/g, ' ').trim();
+        const rawText = $(elem).text();
+        const cleanedForTts = cleanupForTts(rawText);
+        const text = cleanedForTts.replace(/\s+/g, ' ').trim();
         if (!text) return;
 
         // If adding this text would exceed chunk size (and we have something in buffer),
@@ -74,7 +83,8 @@ export const prepareTTSContent = (html: string, chunkSize: number = 500): { proc
 
     // If no chunks were found (e.g. plain text or structure not matched), falls back to body text
     if (chunks.length === 0) {
-        const bodyText = $('body').text().replace(/\s+/g, ' ').trim();
+        const cleanedBodyText = cleanupForTts($('body').text());
+        const bodyText = cleanedBodyText.replace(/\s+/g, ' ').trim();
         if (bodyText) {
             const $body = $('body');
             $body.attr('data-tts-group', '0');
@@ -92,17 +102,7 @@ export const prepareTTSContent = (html: string, chunkSize: number = 500): { proc
     };
 };
 
-/**
- * Removes unwanted sentences from content.
- */
-export const removeUnwantedSentences = (content: string, sentenceRemovalList: string[]): string => {
-    let cleanContent = content;
-    for (const sentence of sentenceRemovalList) {
-        // Using split/join for global replacement of exact string.
-        cleanContent = cleanContent.split(sentence).join('');
-    }
-    return cleanContent;
-};
+export { removeUnwantedSentences };
 
 // Block elements that should create line breaks (tr is handled separately for table cells)
 const BLOCK_ELEMENTS = ['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote'];

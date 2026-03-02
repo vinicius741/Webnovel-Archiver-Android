@@ -1,4 +1,4 @@
-import { removeUnwantedSentences, cleanChapterTitle, extractPlainText, extractFormattedText } from '../htmlUtils';
+import { removeUnwantedSentences, cleanChapterTitle, extractPlainText, extractFormattedText, prepareTTSContent } from '../htmlUtils';
 
 describe('htmlUtils', () => {
     describe('extractPlainText', () => {
@@ -109,6 +109,27 @@ describe('htmlUtils', () => {
         it('should handle empty table cells', () => {
             const html = '<table><tr><td></td><td>cell2</td></tr></table>';
             expect(extractFormattedText(html)).toBe(' | cell2');
+        });
+    });
+
+    describe('prepareTTSContent', () => {
+        it('should exclude separator-only lines from TTS chunks when regex rule is enabled', () => {
+            const html = '<div><p>Intro</p><p>-----</p><p>Outro</p></div>';
+            const rules = [
+                {
+                    id: 'rule-1',
+                    name: 'Remove separators',
+                    pattern: '(?:-){5,}',
+                    flags: '',
+                    enabled: true,
+                    appliesTo: 'tts' as const,
+                }
+            ];
+
+            const result = prepareTTSContent(html, 500, rules);
+            expect(result.chunks.join(' ')).toContain('Intro');
+            expect(result.chunks.join(' ')).toContain('Outro');
+            expect(result.chunks.join(' ')).not.toContain('-----');
         });
     });
 });

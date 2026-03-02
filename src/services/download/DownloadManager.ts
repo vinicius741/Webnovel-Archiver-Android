@@ -11,7 +11,7 @@ import {
     showDownloadCompletionNotification
 } from '../ForegroundServiceCoordinator';
 import { DownloadStatus, Story, Chapter } from '../../types';
-import { removeUnwantedSentences } from '../../utils/htmlUtils';
+import { applyDownloadCleanup } from '../../utils/textCleanup';
 
 export class DownloadManager extends EventEmitter {
     private isRunning = false;
@@ -242,8 +242,11 @@ export class DownloadManager extends EventEmitter {
             throw new Error('Content empty or too short');
         }
 
-        const sentenceRemovalList = await storageService.getSentenceRemovalList();
-        const cleanedContent = removeUnwantedSentences(content, sentenceRemovalList);
+        const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
+            storageService.getSentenceRemovalList(),
+            storageService.getRegexCleanupRules(),
+        ]);
+        const cleanedContent = applyDownloadCleanup(content, sentenceRemovalList, regexCleanupRules);
 
         return await saveChapter(job.storyId, job.chapterIndex, job.chapter.title, cleanedContent);
     }

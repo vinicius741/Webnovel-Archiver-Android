@@ -16,6 +16,8 @@ import { useReaderContent } from '../../../src/hooks/useReaderContent';
 import { useReaderNavigation } from '../../../src/hooks/useReaderNavigation';
 import { useWebViewHighlight } from '../../../src/hooks/useWebViewHighlight';
 import { ttsStateManager } from '../../../src/services/TTSStateManager';
+import { storageService } from '../../../src/services/StorageService';
+import { RegexCleanupRule } from '../../../src/types';
 
 export default function ReaderScreen() {
     const { storyId, chapterId, autoplay, resumeSession } = useLocalSearchParams<{
@@ -29,6 +31,8 @@ export default function ReaderScreen() {
     const webViewRef = useRef<WebView>(null);
 
     const [copyFeedbackVisible, setCopyFeedbackVisible] = useState(false);
+    const [regexCleanupRules, setRegexCleanupRules] = useState<RegexCleanupRule[]>([]);
+    const [cleanupRulesLoaded, setCleanupRulesLoaded] = useState(false);
 
     const currentTtsChunksRef = useRef<string[]>([]);
     const currentChapterTitleRef = useRef<string>('');
@@ -81,8 +85,8 @@ export default function ReaderScreen() {
     });
 
     const { processedHtml: processedContent, chunks: ttsChunks } = useMemo(() => {
-        return prepareTTSContent(content, ttsSettings.chunkSize);
-    }, [content, ttsSettings.chunkSize]);
+        return prepareTTSContent(content, ttsSettings.chunkSize, regexCleanupRules);
+    }, [content, ttsSettings.chunkSize, regexCleanupRules]);
 
     useWebViewHighlight(webViewRef as React.RefObject<WebView>, currentChunkIndex, isControllerVisible);
 
@@ -111,6 +115,34 @@ export default function ReaderScreen() {
     }, [storyId, chapterId]);
 
     useEffect(() => {
+        let mounted = true;
+
+        const loadCleanupRules = async () => {
+            try {
+                const rules = await storageService.getRegexCleanupRules();
+                if (mounted) {
+                    setRegexCleanupRules(rules);
+                }
+            } catch (error) {
+                console.error('Failed to load regex cleanup rules for TTS', error);
+                if (mounted) {
+                    setRegexCleanupRules([]);
+                }
+            } finally {
+                if (mounted) {
+                    setCleanupRulesLoaded(true);
+                }
+            }
+        };
+
+        loadCleanupRules();
+
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    useEffect(() => {
         if (!redirectPath) return;
         router.replace(redirectPath);
     }, [redirectPath, router]);
@@ -124,7 +156,7 @@ export default function ReaderScreen() {
             }
         })();
 
-        if (loading || !story || !chapter || ttsChunks.length === 0) return;
+        if (!cleanupRulesLoaded || loading || !story || !chapter || ttsChunks.length === 0) return;
         if (resumeSession !== 'true' && autoplay === 'true') return;
 
         void ttsStateManager.restoreForChapter({
@@ -134,9 +166,10 @@ export default function ReaderScreen() {
             chapterId: decodedChapterId,
             chapterTitle: chapter ? sanitizeTitle(chapter.title) : 'Reading',
         });
-    }, [loading, story, chapter, ttsChunks, storyId, chapterId, resumeSession, autoplay]);
+    }, [cleanupRulesLoaded, loading, story, chapter, ttsChunks, storyId, chapterId, resumeSession, autoplay]);
 
     useEffect(() => {
+        if (!cleanupRulesLoaded) return;
         if (autoplay === 'true' && !loading && content && ttsChunks.length > 0 && !isSpeaking) {
             const timer = setTimeout(() => {
                 const decodedChapterId = (() => {
@@ -155,7 +188,7 @@ export default function ReaderScreen() {
             }, 500);
             return () => clearTimeout(timer);
         }
-    }, [autoplay, loading, content, ttsChunks, isSpeaking, chapter, storyId, chapterId, toggleSpeech, router]);
+    }, [cleanupRulesLoaded, autoplay, loading, content, ttsChunks, isSpeaking, chapter, storyId, chapterId, toggleSpeech, router]);
 
     const handleCopy = async () => {
         if (!content) return;
@@ -164,6 +197,10 @@ export default function ReaderScreen() {
     };
 
     const handleToggleSpeech = useCallback(() => {
+        if (!cleanupRulesLoaded) {
+            return;
+        }
+
         const decodedChapterId = (() => {
             try {
                 return decodeURIComponent(chapterId);
@@ -177,7 +214,7 @@ export default function ReaderScreen() {
             chapterId: decodedChapterId,
             chapterTitle: currentChapterTitleRef.current,
         });
-    }, [toggleSpeech, storyId, chapterId]);
+    }, [cleanupRulesLoaded, toggleSpeech, storyId, chapterId]);
 
     const HeaderRight = useMemo(() => () => (
         <View style={{ flexDirection: 'row' }}>
@@ -185,6 +222,7 @@ export default function ReaderScreen() {
                 icon={isSpeakingRef.current ? "stop" : "volume-high"}
                 iconColor={isSpeakingRef.current ? themeColorsRef.current.error : undefined}
                 onPress={handleToggleSpeech}
+                disabled={!cleanupRulesLoaded}
             />
 
             <IconButton

@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Story, Chapter, DownloadStatus } from '../types';
+import { Story, Chapter, DownloadStatus, RegexCleanupRule } from '../types';
 import * as fileSystem from './storage/fileSystem';
 import DEFAULT_SENTENCE_REMOVAL_LIST from '../constants/default_sentence_removal.json';
+import { validateRegexCleanupRule } from '../utils/textCleanup';
 
 const STORAGE_KEYS = {
     LIBRARY: 'wa_library_v1',
     SETTINGS: 'wa_settings_v1',
     SENTENCE_REMOVAL: 'wa_sentence_removal_v1',
+    REGEX_CLEANUP_RULES: 'wa_regex_cleanup_rules_v1',
     TTS_SETTINGS: 'wa_tts_settings_v1',
     TTS_SESSION: 'wa_tts_session_v1',
     CHAPTER_FILTER_SETTINGS: 'wa_chapter_filter_settings_v1',
@@ -52,6 +54,8 @@ const DEFAULT_TTS_SETTINGS: TTSSettings = {
     chunkSize: 500,
 };
 
+const DEFAULT_REGEX_CLEANUP_RULES: RegexCleanupRule[] = [];
+
 export type ChapterFilterMode = 'all' | 'hideNonDownloaded' | 'hideAboveBookmark';
 
 export interface ChapterFilterSettings {
@@ -62,7 +66,71 @@ const DEFAULT_CHAPTER_FILTER_SETTINGS: ChapterFilterSettings = {
     filterMode: 'all',
 };
 
+interface RegexCleanupRuleRejection {
+    id?: string;
+    name?: string;
+    reason: string;
+}
+
+interface RegexCleanupRulesSanitizeResult {
+    rules: RegexCleanupRule[];
+    rejected: RegexCleanupRuleRejection[];
+}
+
 class StorageService {
+    private sanitizeRegexCleanupRules(input: unknown): RegexCleanupRulesSanitizeResult {
+        if (!Array.isArray(input)) return { rules: [], rejected: [] };
+
+        const sanitized: RegexCleanupRule[] = [];
+        const rejected: RegexCleanupRuleRejection[] = [];
+        for (const item of input) {
+            if (!item || typeof item !== 'object') {
+                rejected.push({ reason: 'Entry is not a valid object.' });
+                continue;
+            }
+
+            const id = typeof (item as any).id === 'string' ? (item as any).id.trim() : '';
+            const name = typeof (item as any).name === 'string' ? (item as any).name.trim() : '';
+            const pattern = typeof (item as any).pattern === 'string' ? (item as any).pattern : '';
+            const flags = typeof (item as any).flags === 'string' ? (item as any).flags : '';
+            const enabled = typeof (item as any).enabled === 'boolean' ? (item as any).enabled : true;
+            const appliesToRaw = (item as any).appliesTo;
+            const appliesTo = appliesToRaw === 'download' || appliesToRaw === 'tts' || appliesToRaw === 'both'
+                ? appliesToRaw
+                : 'both';
+
+            if (!id) {
+                rejected.push({ name, reason: 'Missing rule id.' });
+                continue;
+            }
+            const validation = validateRegexCleanupRule({ name, pattern, flags });
+            if (!validation.valid) {
+                rejected.push({
+                    id,
+                    name,
+                    reason: validation.error || 'Validation failed.',
+                });
+                continue;
+            }
+
+            sanitized.push({
+                id,
+                name,
+                pattern: pattern.trim(),
+                flags: validation.normalizedFlags || '',
+                enabled,
+                appliesTo,
+            });
+        }
+
+        const unique = new Map<string, RegexCleanupRule>();
+        sanitized.forEach(rule => unique.set(rule.id, rule));
+        return {
+            rules: Array.from(unique.values()),
+            rejected,
+        };
+    }
+
     async getLibrary(): Promise<Story[]> {
         try {
             const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.LIBRARY);
@@ -188,6 +256,48 @@ class StorageService {
             await AsyncStorage.setItem(STORAGE_KEYS.SENTENCE_REMOVAL, jsonValue);
         } catch (e) {
             console.error('Failed to save sentence removal list', e);
+        }
+    }
+
+    async getRegexCleanupRules(): Promise<RegexCleanupRule[]> {
+        const result = await this.getRegexCleanupRulesWithDiagnostics();
+        return result.rules;
+    }
+
+    async getRegexCleanupRulesWithDiagnostics(): Promise<{ rules: RegexCleanupRule[]; rejected: RegexCleanupRuleRejection[] }> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.REGEX_CLEANUP_RULES);
+            if (!jsonValue) return { rules: DEFAULT_REGEX_CLEANUP_RULES, rejected: [] };
+
+            const parsed = JSON.parse(jsonValue);
+            const sanitized = this.sanitizeRegexCleanupRules(parsed);
+
+            if (sanitized.rejected.length > 0) {
+                console.warn(
+                    `[StorageService] Skipped ${sanitized.rejected.length} invalid regex cleanup rule(s) while loading.`
+                );
+            }
+
+            return sanitized;
+        } catch (e) {
+            console.error('Failed to load regex cleanup rules', e);
+            return { rules: DEFAULT_REGEX_CLEANUP_RULES, rejected: [] };
+        }
+    }
+
+    async saveRegexCleanupRules(rules: RegexCleanupRule[]): Promise<void> {
+        try {
+            const sanitized = this.sanitizeRegexCleanupRules(rules);
+            const jsonValue = JSON.stringify(sanitized.rules);
+            await AsyncStorage.setItem(STORAGE_KEYS.REGEX_CLEANUP_RULES, jsonValue);
+
+            if (sanitized.rejected.length > 0) {
+                console.warn(
+                    `[StorageService] Skipped ${sanitized.rejected.length} invalid regex cleanup rule(s) while saving.`
+                );
+            }
+        } catch (e) {
+            console.error('Failed to save regex cleanup rules', e);
         }
     }
 

@@ -129,6 +129,90 @@ describe('StorageService', () => {
         });
     });
 
+    describe('Regex Cleanup Rules', () => {
+        it('should get default rules when storage is empty', async () => {
+            (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+            const rules = await storageService.getRegexCleanupRules();
+            expect(rules).toEqual([]);
+        });
+
+        it('should save sanitized regex rules', async () => {
+            const rules = [
+                {
+                    id: 'rule-1',
+                    name: 'Remove separators',
+                    pattern: '(?:[-=]){5,}',
+                    flags: 'gi',
+                    enabled: true,
+                    appliesTo: 'both' as const,
+                },
+            ];
+
+            await storageService.saveRegexCleanupRules(rules);
+
+            expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+                'wa_regex_cleanup_rules_v1',
+                JSON.stringify([
+                    {
+                        ...rules[0],
+                        flags: 'gi',
+                    },
+                ])
+            );
+        });
+
+        it('should discard invalid rules when loading', async () => {
+            (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([
+                {
+                    id: 'invalid',
+                    name: '',
+                    pattern: '(?:[-=]){5,}',
+                    flags: 'im',
+                    enabled: true,
+                    appliesTo: 'both',
+                },
+                {
+                    id: 'valid',
+                    name: 'Valid rule',
+                    pattern: '(?:[-=]){5,}',
+                    flags: 'im',
+                    enabled: true,
+                    appliesTo: 'both',
+                },
+            ]));
+
+            const rules = await storageService.getRegexCleanupRules();
+            expect(rules).toHaveLength(1);
+            expect(rules[0].id).toBe('valid');
+        });
+
+        it('should report rejected rules through diagnostics API', async () => {
+            (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([
+                {
+                    id: 'valid',
+                    name: 'Valid rule',
+                    pattern: '(?:[-=]){5,}',
+                    flags: 'im',
+                    enabled: true,
+                    appliesTo: 'both',
+                },
+                {
+                    id: 'invalid',
+                    name: 'Unsafe',
+                    pattern: '(.+)+',
+                    flags: '',
+                    enabled: true,
+                    appliesTo: 'both',
+                },
+            ]));
+
+            const result = await storageService.getRegexCleanupRulesWithDiagnostics();
+            expect(result.rules).toHaveLength(1);
+            expect(result.rejected).toHaveLength(1);
+            expect(result.rejected[0].id).toBe('invalid');
+        });
+    });
+
     describe('clearAll', () => {
         it('should clear storage and files', async () => {
             await storageService.clearAll();

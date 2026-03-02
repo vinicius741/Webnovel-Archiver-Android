@@ -48,3 +48,14 @@ export interface Story {
     lastReadChapterId?: string;
     score?: string;
 }
+
+export type RegexCleanupAppliesTo = 'download' | 'tts' | 'both';
+
+export interface RegexCleanupRule {
+    id: string;
+    name: string;
+    pattern: string;
+    flags: string;
+    enabled: boolean;
+    appliesTo: RegexCleanupAppliesTo;
+}
