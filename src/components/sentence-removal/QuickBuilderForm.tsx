@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { TextInput, Text, Switch } from 'react-native-paper';
+import { TextInput, Text, Switch, List } from 'react-native-paper';
 import { QuickBuilderConfig } from '../../types/sentenceRemoval';
 import { generateQuickPattern } from '../../utils/regexBuilder';
 
@@ -11,6 +11,7 @@ interface QuickBuilderFormProps {
 
 export function QuickBuilderForm({ config, onChange }: QuickBuilderFormProps) {
   const { characters, minCount, wholeLine } = config;
+  const [showAdvanced, setShowAdvanced] = useState(false);
   
   const generatedPattern = generateQuickPattern(config);
   const isValid = characters.length > 0 && minCount >= 1;
@@ -55,27 +56,34 @@ export function QuickBuilderForm({ config, onChange }: QuickBuilderFormProps) {
         Match when the character repeats at least this many times (e.g., 5 means ===== or more).
       </Text>
 
-      <View style={styles.switchRow}>
-        <View style={styles.switchText}>
-          <Text variant="bodyMedium">Whole line only</Text>
-          <Text variant="bodySmall" style={styles.switchHint}>
-            Match entire lines, not inline patterns
-          </Text>
+      <List.Accordion
+        title="Advanced Settings"
+        expanded={showAdvanced}
+        onPress={() => setShowAdvanced(!showAdvanced)}
+        style={styles.accordion}
+      >
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text variant="bodyMedium">Whole line only</Text>
+            <Text variant="bodySmall" style={styles.switchHint}>
+              Match entire lines, not inline patterns
+            </Text>
+          </View>
+          <Switch
+            value={wholeLine}
+            onValueChange={(value) => onChange({ ...config, wholeLine: value })}
+          />
         </View>
-        <Switch
-          value={wholeLine}
-          onValueChange={(value) => onChange({ ...config, wholeLine: value })}
-        />
-      </View>
 
-      <View style={styles.previewSection}>
-        <Text variant="labelMedium" style={styles.previewLabel}>Generated Pattern</Text>
-        <View style={[styles.previewBox, !isValid && styles.previewBoxEmpty]}>
-          <Text variant="bodySmall" style={styles.patternText}>
-            {isValid ? `/${generatedPattern.pattern}/${generatedPattern.flags}` : 'Enter character(s) to generate pattern'}
-          </Text>
+        <View style={styles.previewSection}>
+          <Text variant="labelMedium" style={styles.previewLabel}>Generated Pattern</Text>
+          <View style={[styles.previewBox, !isValid && styles.previewBoxEmpty]}>
+            <Text variant="bodySmall" style={styles.patternText}>
+              {isValid ? `/${generatedPattern.pattern}/${generatedPattern.flags}` : 'Enter character(s) to generate pattern'}
+            </Text>
+          </View>
         </View>
-      </View>
+      </List.Accordion>
     </View>
   );
 }
@@ -91,6 +99,10 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     marginBottom: 8,
     paddingHorizontal: 4,
+  },
+  accordion: {
+    marginVertical: 8,
+    paddingHorizontal: 0,
   },
   switchRow: {
     flexDirection: 'row',

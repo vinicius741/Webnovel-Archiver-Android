@@ -120,7 +120,7 @@ export const RoyalRoadProvider: SourceProvider = {
                     }
                 }
 
-                const chapterId = relativeUrl ? RoyalRoadProvider.getChapterId(relativeUrl) : undefined;
+                const chapterId = relativeUrl ? RoyalRoadProvider.getChapterId?.(relativeUrl) : undefined;
 
                 chapters.push({
                     id: chapterId,

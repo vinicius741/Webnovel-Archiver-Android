@@ -332,7 +332,7 @@ describe('DownloadManager - Concurrent Downloads', () => {
             ];
 
             // Add all job sets simultaneously
-            await Promise.all(jobSet => manager.addJobs(jobSet));
+            await Promise.all(jobSets.map(jobSet => manager.addJobs(jobSet)));
 
             const { downloadQueue } = require('../download/DownloadQueue');
             expect(downloadQueue.addJob).toHaveBeenCalledTimes(3);
@@ -416,7 +416,7 @@ describe('DownloadManager - Concurrent Downloads', () => {
             ]);
 
             // Should not throw and should complete cleanly
-            expect(manager['isProcessing']).toBe(false);
+            expect(manager['isRunning']).toBe(false);
         });
     });
 

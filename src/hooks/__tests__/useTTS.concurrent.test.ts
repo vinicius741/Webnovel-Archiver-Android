@@ -413,7 +413,7 @@ describe('useTTS - Concurrent Operations', () => {
             const callback1 = jest.fn();
             const callback2 = jest.fn();
 
-            const { rerender } = renderHook(({ onFinish }) => useTTS({ onFinish }), {
+            const { rerender } = renderHook(({ onFinish }: { onFinish: () => void }) => useTTS({ onFinish }), {
                 initialProps: { onFinish: callback1 },
             });
 

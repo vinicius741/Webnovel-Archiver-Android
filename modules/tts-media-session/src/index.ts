@@ -55,5 +55,5 @@ export function addMediaButtonListener(
   listener: (event: MediaButtonEvent) => void
 ): EventSubscription | null {
   if (!emitter) return null;
-  return emitter.addListener('onMediaButton', listener as any);
+  return (emitter as any).addListener('onMediaButton', listener);
 }

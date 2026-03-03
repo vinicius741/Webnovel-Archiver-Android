@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Portal, Dialog, TextInput, Button, Text, Divider, Switch, SegmentedButtons } from 'react-native-paper';
+import { StyleSheet, View, ScrollView } from 'react-native';
+import { Portal, Dialog, TextInput, Button, Text, Divider, Switch, SegmentedButtons, List } from 'react-native-paper';
 import { RegexCleanupRule, RegexCleanupAppliesTo } from '../../types';
 import { RuleDraft, RuleMode, QuickBuilderConfig, DEFAULT_QUICK_CONFIG } from '../../types/sentenceRemoval';
 import { validateRegexCleanupRule, applyTtsCleanupLines } from '../../utils/textCleanup';
@@ -32,6 +32,7 @@ export function RuleDialog({
 }: RuleDialogProps) {
   const [mode, setMode] = useState<RuleMode>('quick');
   const [quickConfig, setQuickConfig] = useState<QuickBuilderConfig>(DEFAULT_QUICK_CONFIG);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const prevQuickConfigRef = useRef<QuickBuilderConfig>(DEFAULT_QUICK_CONFIG);
   const isInitializedRef = useRef(false);
 
@@ -132,97 +133,106 @@ export function RuleDialog({
       <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
         <Dialog.Title>{ruleDraft.id ? 'Edit Regex Rule' : 'Add Regex Rule'}</Dialog.Title>
         <Dialog.Content style={styles.content}>
-          <SegmentedButtons
-            value={mode}
-            onValueChange={(value) => handleModeChange(value as RuleMode)}
-            buttons={[
-              { value: 'quick', label: 'Quick Builder' },
-              { value: 'advanced', label: 'Advanced' },
-            ]}
-            style={styles.modeButtons}
-          />
-
-          <TextInput
-            label="Rule Name"
-            value={ruleDraft.name}
-            onChangeText={(value) => onDraftChange({ ...ruleDraft, name: value })}
-            mode="outlined"
-            style={styles.input}
-          />
-
-          {mode === 'quick' ? (
-            <QuickBuilderForm
-              config={quickConfig}
-              onChange={handleQuickConfigChange}
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <SegmentedButtons
+              value={mode}
+              onValueChange={(value) => handleModeChange(value as RuleMode)}
+              buttons={[
+                { value: 'quick', label: 'Quick Builder' },
+                { value: 'advanced', label: 'Advanced' },
+              ]}
+              style={styles.modeButtons}
             />
-          ) : (
-            <>
-              <TextInput
-                label="Pattern"
-                value={ruleDraft.pattern}
-                onChangeText={(value) => onDraftChange({ ...ruleDraft, pattern: value })}
-                mode="outlined"
-                style={styles.input}
-                placeholder="(?:[-=]){5,}"
+
+            <TextInput
+              label="Rule Name"
+              value={ruleDraft.name}
+              onChangeText={(value) => onDraftChange({ ...ruleDraft, name: value })}
+              mode="outlined"
+              style={styles.input}
+            />
+
+            {mode === 'quick' ? (
+              <QuickBuilderForm
+                config={quickConfig}
+                onChange={handleQuickConfigChange}
               />
-              <TextInput
-                label="Flags"
-                value={ruleDraft.flags}
-                onChangeText={(value) => onDraftChange({ ...ruleDraft, flags: value })}
-                mode="outlined"
-                style={styles.input}
-                placeholder="im"
-                autoCapitalize="none"
-              />
-              <Text variant="bodySmall" style={styles.helpText}>
-                Allowed flags: gimsu. Global replace is always enforced.
+            ) : (
+              <>
+                <TextInput
+                  label="Pattern"
+                  value={ruleDraft.pattern}
+                  onChangeText={(value) => onDraftChange({ ...ruleDraft, pattern: value })}
+                  mode="outlined"
+                  style={styles.input}
+                  placeholder="(?:[-=]){5,}"
+                />
+                <TextInput
+                  label="Flags"
+                  value={ruleDraft.flags}
+                  onChangeText={(value) => onDraftChange({ ...ruleDraft, flags: value })}
+                  mode="outlined"
+                  style={styles.input}
+                  placeholder="im"
+                  autoCapitalize="none"
+                />
+                <Text variant="bodySmall" style={styles.helpText}>
+                  Allowed flags: gimsu. Global replace is always enforced.
+                </Text>
+              </>
+            )}
+
+            {!ruleValidation.valid && (
+              <Text variant="bodySmall" style={styles.errorText}>
+                {ruleValidation.error}
               </Text>
-            </>
-          )}
+            )}
 
-          {!ruleValidation.valid && (
-            <Text variant="bodySmall" style={styles.errorText}>
-              {ruleValidation.error}
-            </Text>
-          )}
+            <List.Accordion
+              title="Advanced Settings"
+              expanded={showAdvanced}
+              onPress={() => setShowAdvanced(!showAdvanced)}
+              style={styles.accordion}
+            >
+              <Text variant="labelMedium" style={styles.targetLabel}>Apply To</Text>
+              <SegmentedButtons
+                value={ruleDraft.appliesTo}
+                onValueChange={(value) => onDraftChange({ ...ruleDraft, appliesTo: value as RegexCleanupAppliesTo })}
+                buttons={[
+                  { value: 'both', label: 'Both' },
+                  { value: 'download', label: 'Download' },
+                  { value: 'tts', label: 'TTS' },
+                ]}
+              />
 
-          <Text variant="labelMedium" style={styles.targetLabel}>Apply To</Text>
-          <SegmentedButtons
-            value={ruleDraft.appliesTo}
-            onValueChange={(value) => onDraftChange({ ...ruleDraft, appliesTo: value as RegexCleanupAppliesTo })}
-            buttons={[
-              { value: 'both', label: 'Both' },
-              { value: 'download', label: 'Download' },
-              { value: 'tts', label: 'TTS' },
-            ]}
-          />
+              <View style={styles.enabledRow}>
+                <Text variant="bodyMedium">Enabled</Text>
+                <Switch
+                  value={ruleDraft.enabled}
+                  onValueChange={(value) => onDraftChange({ ...ruleDraft, enabled: value })}
+                />
+              </View>
+            </List.Accordion>
 
-          <View style={styles.enabledRow}>
-            <Text variant="bodyMedium">Enabled</Text>
-            <Switch
-              value={ruleDraft.enabled}
-              onValueChange={(value) => onDraftChange({ ...ruleDraft, enabled: value })}
+            <Divider style={styles.previewDivider} />
+            <Text variant="labelMedium">Test Preview</Text>
+            <TextInput
+              label="Preview input"
+              value={previewInput}
+              onChangeText={onPreviewInputChange}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              style={styles.input}
+              placeholder={mode === 'quick' 
+                ? "Try: ===== or ------ or ######" 
+                : "Try text like ----- or ===== to test your rule"}
             />
-          </View>
-
-          <Divider style={styles.previewDivider} />
-          <Text variant="labelMedium">Test Preview</Text>
-          <TextInput
-            label="Preview input"
-            value={previewInput}
-            onChangeText={onPreviewInputChange}
-            mode="outlined"
-            multiline
-            numberOfLines={3}
-            style={styles.input}
-            placeholder={mode === 'quick' 
-              ? "Try: ===== or ------ or ######" 
-              : "Try text like ----- or ===== to test your rule"}
-          />
-          <Text variant="bodySmall" style={styles.previewLabel}>Preview output</Text>
-          <View style={styles.previewBox}>
-            <Text variant="bodySmall">{previewOutput || '(No output)'}</Text>
-          </View>
+            <Text variant="bodySmall" style={styles.previewLabel}>Preview output</Text>
+            <View style={styles.previewBox}>
+              <Text variant="bodySmall">{previewOutput || '(No output)'}</Text>
+            </View>
+          </ScrollView>
         </Dialog.Content>
         <Dialog.Actions>
           <Button onPress={onDismiss}>Cancel</Button>
@@ -253,6 +263,10 @@ const styles = StyleSheet.create({
   errorText: {
     color: 'red',
     marginBottom: 10,
+  },
+  accordion: {
+    marginVertical: 8,
+    paddingHorizontal: 0,
   },
   targetLabel: {
     marginBottom: 8,
