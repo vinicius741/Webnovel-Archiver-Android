@@ -1,11 +1,13 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, View, ScrollView } from 'react-native';
+import { StyleSheet, View, Dimensions, ScrollView } from 'react-native';
 import { Portal, Dialog, TextInput, Button, Text, Divider, Switch, SegmentedButtons, List } from 'react-native-paper';
 import { RegexCleanupRule, RegexCleanupAppliesTo } from '../../types';
 import { RuleDraft, RuleMode, QuickBuilderConfig, DEFAULT_QUICK_CONFIG } from '../../types/sentenceRemoval';
 import { validateRegexCleanupRule, applyTtsCleanupLines } from '../../utils/textCleanup';
 import { generateRuleName } from '../../utils/regexBuilder';
 import { QuickBuilderForm } from './QuickBuilderForm';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface RuleDialogProps {
   visible: boolean;
@@ -31,7 +33,7 @@ export function RuleDialog({
   onDismiss,
 }: RuleDialogProps) {
   const { mode, quickConfig } = ruleDraft;
-  
+
   const handleQuickConfigChange = (newConfig: QuickBuilderConfig) => {
     const generatedName = ruleDraft.id ? ruleDraft.name : generateRuleName(newConfig);
     onDraftChange({
@@ -82,13 +84,19 @@ export function RuleDialog({
 
   const displayPattern = mode === 'quick' ? effectivePattern : ruleDraft.pattern;
   const displayFlags = mode === 'quick' ? effectiveFlags : ruleDraft.flags;
+  const isQuickValid = mode === 'quick' && quickConfig && quickConfig.characters.length > 0 && quickConfig.minCount >= 1;
 
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
         <Dialog.Title>{ruleDraft.id ? 'Edit Regex Rule' : 'Add Regex Rule'}</Dialog.Title>
         <Dialog.Content style={styles.content}>
-          <ScrollView keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={true}
+          >
             <SegmentedButtons
               value={mode}
               onValueChange={handleModeChange}
@@ -111,8 +119,6 @@ export function RuleDialog({
               <QuickBuilderForm
                 config={quickConfig || DEFAULT_QUICK_CONFIG}
                 onChange={handleQuickConfigChange}
-                effectivePattern={displayPattern}
-                effectiveFlags={displayFlags}
               />
             ) : (
               <>
@@ -134,7 +140,7 @@ export function RuleDialog({
                   autoCapitalize="none"
                 />
                 <Text variant="bodySmall" style={styles.helpText}>
-                  Allowed flags: gimsu. Use separate pattern/flags or paste /pattern/flags directly. Global replace is always enforced.
+                  Allowed flags: gimsu. Use separate pattern/flags or paste /pattern/flags directly.
                 </Text>
               </>
             )}
@@ -146,11 +152,22 @@ export function RuleDialog({
             )}
 
             <List.Accordion
-              title="Advanced Settings"
+              title="Advanced"
               expanded={ruleDraft.showAdvanced}
               onPress={() => onDraftChange({ ...ruleDraft, showAdvanced: !ruleDraft.showAdvanced })}
               style={styles.accordion}
             >
+              {mode === 'quick' && (
+                <View style={styles.patternPreview}>
+                  <Text variant="labelMedium" style={styles.patternLabel}>Generated Pattern</Text>
+                  <View style={[styles.patternBox, !isQuickValid && styles.patternBoxEmpty]}>
+                    <Text variant="bodySmall" style={styles.patternText}>
+                      {isQuickValid ? `/${displayPattern}/${displayFlags}` : 'Enter character(s) to generate pattern'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               <Text variant="labelMedium" style={styles.targetLabel}>Apply To</Text>
               <SegmentedButtons
                 value={ruleDraft.appliesTo}
@@ -181,8 +198,8 @@ export function RuleDialog({
               multiline
               numberOfLines={3}
               style={styles.input}
-              placeholder={mode === 'quick' 
-                ? "Try: ===== or ------ or ######" 
+              placeholder={mode === 'quick'
+                ? "Try: ===== or ------ or ######"
                 : "Try text like ----- or ===== to test your rule"}
             />
             <Text variant="bodySmall" style={styles.previewLabel}>Preview output</Text>
@@ -202,44 +219,68 @@ export function RuleDialog({
 
 const styles = StyleSheet.create({
   dialog: {
-    maxHeight: '90%',
+    maxHeight: SCREEN_HEIGHT * 0.85,
   },
   content: {
-    paddingBottom: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+  },
+  scrollView: {
+    maxHeight: SCREEN_HEIGHT * 0.55,
+  },
+  scrollContent: {
+    paddingBottom: 16,
   },
   modeButtons: {
     marginBottom: 12,
   },
   input: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   helpText: {
     opacity: 0.75,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   errorText: {
     color: 'red',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   accordion: {
-    marginVertical: 8,
+    marginVertical: 4,
     paddingHorizontal: 0,
   },
-  targetLabel: {
+  patternPreview: {
     marginBottom: 8,
+  },
+  patternLabel: {
+    marginBottom: 4,
+  },
+  patternBox: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 6,
+    padding: 10,
+  },
+  patternBoxEmpty: {
+    opacity: 0.6,
+  },
+  patternText: {
+    fontFamily: 'monospace',
+  },
+  targetLabel: {
+    marginBottom: 4,
     marginTop: 4,
   },
   enabledRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
   },
   previewDivider: {
-    marginVertical: 12,
+    marginVertical: 8,
   },
   previewLabel: {
-    marginBottom: 6,
+    marginBottom: 4,
   },
   previewBox: {
     borderWidth: 1,
