@@ -1,4 +1,5 @@
-export { SentenceList } from './SentenceList';
+export { QuickBuilderForm } from './QuickBuilderForm';
 export { RegexRuleList } from './RegexRuleList';
-export { SentenceDialog } from './SentenceDialog';
 export { RuleDialog } from './RuleDialog';
+export { SentenceDialog } from './SentenceDialog';
+export { SentenceList } from './SentenceList';

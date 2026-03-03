@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Portal, Dialog, TextInput, Button, Text, Divider, Switch, SegmentedButtons } from 'react-native-paper';
 import { RegexCleanupRule, RegexCleanupAppliesTo } from '../../types';
-import { RuleDraft, EMPTY_RULE_DRAFT } from '../../types/sentenceRemoval';
-import { validateRegexCleanupRule } from '../../utils/textCleanup';
-import { applyTtsCleanupLines } from '../../utils/textCleanup';
-import { useMemo } from 'react';
+import { RuleDraft, RuleMode, QuickBuilderConfig, DEFAULT_QUICK_CONFIG } from '../../types/sentenceRemoval';
+import { validateRegexCleanupRule, applyTtsCleanupLines } from '../../utils/textCleanup';
+import { generateQuickPattern, generateRuleName, parseQuickPattern } from '../../utils/regexBuilder';
+import { QuickBuilderForm } from './QuickBuilderForm';
 
 interface RuleDialogProps {
   visible: boolean;
@@ -17,6 +17,10 @@ interface RuleDialogProps {
   onDismiss: () => void;
 }
 
+function quickConfigEquals(a: QuickBuilderConfig, b: QuickBuilderConfig): boolean {
+  return a.characters === b.characters && a.minCount === b.minCount && a.wholeLine === b.wholeLine;
+}
+
 export function RuleDialog({
   visible,
   ruleDraft,
@@ -26,6 +30,79 @@ export function RuleDialog({
   onSave,
   onDismiss,
 }: RuleDialogProps) {
+  const [mode, setMode] = useState<RuleMode>('quick');
+  const [quickConfig, setQuickConfig] = useState<QuickBuilderConfig>(DEFAULT_QUICK_CONFIG);
+  const prevQuickConfigRef = useRef<QuickBuilderConfig>(DEFAULT_QUICK_CONFIG);
+  const isInitializedRef = useRef(false);
+
+  const updateDraftFromQuickConfig = useCallback((config: QuickBuilderConfig, currentDraft: RuleDraft) => {
+    const generated = generateQuickPattern(config);
+    const generatedName = generateRuleName(config);
+    
+    if (generated.pattern) {
+      onDraftChange({
+        ...currentDraft,
+        pattern: generated.pattern,
+        flags: generated.flags,
+        name: currentDraft.id ? currentDraft.name : generatedName,
+      });
+    }
+  }, [onDraftChange]);
+
+  useEffect(() => {
+    if (visible) {
+      isInitializedRef.current = true;
+      
+      if (ruleDraft.id && ruleDraft.pattern) {
+        const parsed = parseQuickPattern(ruleDraft.pattern, ruleDraft.flags);
+        if (parsed) {
+          setMode('quick');
+          setQuickConfig(parsed);
+          prevQuickConfigRef.current = parsed;
+        } else {
+          setMode('advanced');
+        }
+      } else {
+        setMode('quick');
+        setQuickConfig(DEFAULT_QUICK_CONFIG);
+        prevQuickConfigRef.current = DEFAULT_QUICK_CONFIG;
+      }
+    } else {
+      isInitializedRef.current = false;
+    }
+  }, [visible, ruleDraft.id, ruleDraft.pattern, ruleDraft.flags]);
+
+  useEffect(() => {
+    if (!isInitializedRef.current || mode !== 'quick' || !visible) {
+      return;
+    }
+
+    if (!quickConfigEquals(quickConfig, prevQuickConfigRef.current)) {
+      prevQuickConfigRef.current = quickConfig;
+      updateDraftFromQuickConfig(quickConfig, ruleDraft);
+    }
+  }, [quickConfig, mode, visible, ruleDraft, updateDraftFromQuickConfig]);
+
+  const handleQuickConfigChange = (newConfig: QuickBuilderConfig) => {
+    setQuickConfig(newConfig);
+  };
+
+  const handleModeChange = (newMode: RuleMode) => {
+    if (newMode === 'quick') {
+      const generated = generateQuickPattern(quickConfig);
+      const generatedName = generateRuleName(quickConfig);
+      
+      onDraftChange({
+        ...ruleDraft,
+        pattern: generated.pattern,
+        flags: generated.flags,
+        name: ruleDraft.id ? ruleDraft.name : generatedName,
+      });
+      prevQuickConfigRef.current = quickConfig;
+    }
+    setMode(newMode);
+  };
+
   const ruleValidation = useMemo(() => {
     return validateRegexCleanupRule({
       name: ruleDraft.name,
@@ -52,9 +129,19 @@ export function RuleDialog({
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
+      <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
         <Dialog.Title>{ruleDraft.id ? 'Edit Regex Rule' : 'Add Regex Rule'}</Dialog.Title>
-        <Dialog.Content>
+        <Dialog.Content style={styles.content}>
+          <SegmentedButtons
+            value={mode}
+            onValueChange={(value) => handleModeChange(value as RuleMode)}
+            buttons={[
+              { value: 'quick', label: 'Quick Builder' },
+              { value: 'advanced', label: 'Advanced' },
+            ]}
+            style={styles.modeButtons}
+          />
+
           <TextInput
             label="Rule Name"
             value={ruleDraft.name}
@@ -62,26 +149,37 @@ export function RuleDialog({
             mode="outlined"
             style={styles.input}
           />
-          <TextInput
-            label="Pattern"
-            value={ruleDraft.pattern}
-            onChangeText={(value) => onDraftChange({ ...ruleDraft, pattern: value })}
-            mode="outlined"
-            style={styles.input}
-            placeholder="(?:[-=]){5,}"
-          />
-          <TextInput
-            label="Flags"
-            value={ruleDraft.flags}
-            onChangeText={(value) => onDraftChange({ ...ruleDraft, flags: value })}
-            mode="outlined"
-            style={styles.input}
-            placeholder="im"
-            autoCapitalize="none"
-          />
-          <Text variant="bodySmall" style={styles.helpText}>
-            Allowed flags: gimsu. Global replace is always enforced.
-          </Text>
+
+          {mode === 'quick' ? (
+            <QuickBuilderForm
+              config={quickConfig}
+              onChange={handleQuickConfigChange}
+            />
+          ) : (
+            <>
+              <TextInput
+                label="Pattern"
+                value={ruleDraft.pattern}
+                onChangeText={(value) => onDraftChange({ ...ruleDraft, pattern: value })}
+                mode="outlined"
+                style={styles.input}
+                placeholder="(?:[-=]){5,}"
+              />
+              <TextInput
+                label="Flags"
+                value={ruleDraft.flags}
+                onChangeText={(value) => onDraftChange({ ...ruleDraft, flags: value })}
+                mode="outlined"
+                style={styles.input}
+                placeholder="im"
+                autoCapitalize="none"
+              />
+              <Text variant="bodySmall" style={styles.helpText}>
+                Allowed flags: gimsu. Global replace is always enforced.
+              </Text>
+            </>
+          )}
+
           {!ruleValidation.valid && (
             <Text variant="bodySmall" style={styles.errorText}>
               {ruleValidation.error}
@@ -117,7 +215,9 @@ export function RuleDialog({
             multiline
             numberOfLines={3}
             style={styles.input}
-            placeholder="Try text like ----- or ===== to test your rule"
+            placeholder={mode === 'quick' 
+              ? "Try: ===== or ------ or ######" 
+              : "Try text like ----- or ===== to test your rule"}
           />
           <Text variant="bodySmall" style={styles.previewLabel}>Preview output</Text>
           <View style={styles.previewBox}>
@@ -126,7 +226,7 @@ export function RuleDialog({
         </Dialog.Content>
         <Dialog.Actions>
           <Button onPress={onDismiss}>Cancel</Button>
-          <Button onPress={onSave}>Save</Button>
+          <Button onPress={onSave} disabled={!ruleValidation.valid}>Save</Button>
         </Dialog.Actions>
       </Dialog>
     </Portal>
@@ -134,6 +234,15 @@ export function RuleDialog({
 }
 
 const styles = StyleSheet.create({
+  dialog: {
+    maxHeight: '90%',
+  },
+  content: {
+    paddingBottom: 8,
+  },
+  modeButtons: {
+    marginBottom: 12,
+  },
   input: {
     marginBottom: 10,
   },
@@ -147,6 +256,7 @@ const styles = StyleSheet.create({
   },
   targetLabel: {
     marginBottom: 8,
+    marginTop: 4,
   },
   enabledRow: {
     flexDirection: 'row',

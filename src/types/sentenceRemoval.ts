@@ -19,6 +19,20 @@ export const EMPTY_RULE_DRAFT: RuleDraft = {
   appliesTo: 'both',
 };
 
+export type RuleMode = 'quick' | 'advanced';
+
+export interface QuickBuilderConfig {
+  characters: string;
+  minCount: number;
+  wholeLine: boolean;
+}
+
+export const DEFAULT_QUICK_CONFIG: QuickBuilderConfig = {
+  characters: '',
+  minCount: 3,
+  wholeLine: true,
+};
+
 export const TARGET_LABEL_MAP: Record<RegexCleanupAppliesTo, string> = {
   both: 'Download + TTS',
   download: 'Download only',
