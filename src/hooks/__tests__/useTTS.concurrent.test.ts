@@ -2,8 +2,8 @@ import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { useTTS } from '../useTTS';
 import { TTS_STATE_EVENTS } from '../../services/TTSStateManager';
 
-// Store event listeners for DeviceEventEmitter
-const eventListeners = new Map<string, Function>();
+// Store event listeners for DeviceEventEmitter - must use mock prefix for jest.mock access
+const mockEventListeners = new Map<string, Function>();
 
 // Mock all the dependencies
 jest.mock('expo-keep-awake', () => ({
@@ -126,14 +126,14 @@ jest.mock('../../services/tts/TTSPlaybackController', () => {
 jest.mock('react-native', () => ({
     DeviceEventEmitter: {
         emit: jest.fn((event: string, data: any) => {
-            const listener = eventListeners.get(event);
+            const listener = mockEventListeners.get(event);
             if (listener) {
                 listener(data);
             }
         }),
         addListener: jest.fn((event: string, callback: Function) => {
-            eventListeners.set(event, callback);
-            return { remove: jest.fn(() => eventListeners.delete(event)) };
+            mockEventListeners.set(event, callback);
+            return { remove: jest.fn(() => mockEventListeners.delete(event)) };
         }),
     },
     Platform: { OS: 'ios' },
@@ -174,7 +174,7 @@ describe('useTTS - Concurrent Operations', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        eventListeners.clear();
+        mockEventListeners.clear();
 
         const mockModule = require('../../services/tts/TTSPlaybackController');
         getMockController = mockModule.getMockController;
