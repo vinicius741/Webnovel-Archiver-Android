@@ -50,11 +50,14 @@ const createRuleId = (): string => {
   return `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 };
 
+type TabValue = 'sentences' | 'regex';
+
 export default function SentenceRemovalScreen() {
   const { showAlert } = useAppAlert();
   const [sentences, setSentences] = useState<string[]>([]);
   const [regexRules, setRegexRules] = useState<RegexCleanupRule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<TabValue>('sentences');
 
   const [sentenceDialogVisible, setSentenceDialogVisible] = useState(false);
   const [newSentence, setNewSentence] = useState('');
@@ -312,76 +315,90 @@ export default function SentenceRemovalScreen() {
       </Appbar.Header>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <List.Section>
-          <View style={styles.sectionHeader}>
-            <List.Subheader>Exact Sentence Removal</List.Subheader>
-            <Button icon="plus" mode="text" onPress={() => openSentenceDialog()}>
-              Add
-            </Button>
-          </View>
-          <Text variant="bodySmall" style={styles.sectionDescription}>
-            Removes exact text matches from downloaded chapters.
-          </Text>
-          <Divider />
-          {sentences.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text variant="bodyMedium">No sentences in the list.</Text>
-            </View>
-          ) : (
-            sentences.map((item, index) => (
-              <View key={`sentence-${index}`}>
-                <List.Item
-                  title={item}
-                  titleNumberOfLines={3}
-                  right={() => (
-                    <View style={styles.rowActions}>
-                      <IconButton icon="pencil" onPress={() => openSentenceDialog(item, index)} />
-                      <IconButton icon="delete" iconColor="red" onPress={() => confirmDeleteSentence(index)} />
-                    </View>
-                  )}
-                  style={styles.listItem}
-                />
-                <Divider />
-              </View>
-            ))
-          )}
-        </List.Section>
+        <SegmentedButtons
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as TabValue)}
+          buttons={[
+            { value: 'sentences', label: 'Sentences' },
+            { value: 'regex', label: 'Regex Rules' },
+          ]}
+          style={styles.tabs}
+        />
 
-        <List.Section>
-          <View style={styles.sectionHeader}>
-            <List.Subheader>Regex Cleanup Rules</List.Subheader>
-            <Button icon="plus" mode="text" onPress={() => openRuleDialog()}>
-              Add
-            </Button>
-          </View>
-          <Text variant="bodySmall" style={styles.sectionDescription}>
-            Remove patterns like long separators. Rules run in guarded mode and skip invalid patterns.
-          </Text>
-          <Divider />
-          {regexRules.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text variant="bodyMedium">No regex cleanup rules yet.</Text>
+        {activeTab === 'sentences' && (
+          <List.Section>
+            <View style={styles.sectionHeader}>
+              <List.Subheader>Exact Sentence Removal</List.Subheader>
+              <Button icon="plus" mode="text" onPress={() => openSentenceDialog()}>
+                Add
+              </Button>
             </View>
-          ) : (
-            regexRules.map((rule) => (
-              <View key={rule.id}>
-                <List.Item
-                  title={rule.name}
-                  description={`/${rule.pattern}/${rule.flags} • ${targetLabelMap[rule.appliesTo]}`}
-                  right={() => (
-                    <View style={styles.rowActions}>
-                      <Switch value={rule.enabled} onValueChange={(value) => toggleRule(rule.id, value)} />
-                      <IconButton icon="pencil" onPress={() => openRuleDialog(rule)} />
-                      <IconButton icon="delete" iconColor="red" onPress={() => confirmDeleteRule(rule.id)} />
-                    </View>
-                  )}
-                  style={[styles.listItem, !rule.enabled && styles.disabledItem]}
-                />
-                <Divider />
+            <Text variant="bodySmall" style={styles.sectionDescription}>
+              Removes exact text matches from downloaded chapters.
+            </Text>
+            <Divider />
+            {sentences.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text variant="bodyMedium">No sentences in the list.</Text>
               </View>
-            ))
-          )}
-        </List.Section>
+            ) : (
+              sentences.map((item, index) => (
+                <View key={`sentence-${index}`}>
+                  <List.Item
+                    title={item}
+                    titleNumberOfLines={3}
+                    right={() => (
+                      <View style={styles.rowActions}>
+                        <IconButton icon="pencil" onPress={() => openSentenceDialog(item, index)} />
+                        <IconButton icon="delete" iconColor="red" onPress={() => confirmDeleteSentence(index)} />
+                      </View>
+                    )}
+                    style={styles.listItem}
+                  />
+                  <Divider />
+                </View>
+              ))
+            )}
+          </List.Section>
+        )}
+
+        {activeTab === 'regex' && (
+          <List.Section>
+            <View style={styles.sectionHeader}>
+              <List.Subheader>Regex Cleanup Rules</List.Subheader>
+              <Button icon="plus" mode="text" onPress={() => openRuleDialog()}>
+                Add
+              </Button>
+            </View>
+            <Text variant="bodySmall" style={styles.sectionDescription}>
+              Remove patterns like long separators. Rules run in guarded mode and skip invalid patterns.
+            </Text>
+            <Divider />
+            {regexRules.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text variant="bodyMedium">No regex cleanup rules yet.</Text>
+              </View>
+            ) : (
+              regexRules.map((rule) => (
+                <View key={rule.id}>
+                  <List.Item
+                    title={rule.name}
+                    description={`/${rule.pattern}/${rule.flags} • ${targetLabelMap[rule.appliesTo]}`}
+                    right={() => (
+                      <View style={styles.rowActions}>
+                        <Switch value={rule.enabled} onValueChange={(value) => toggleRule(rule.id, value)} />
+                        <IconButton icon="pencil" onPress={() => openRuleDialog(rule)} />
+                        <IconButton icon="delete" iconColor="red" onPress={() => confirmDeleteRule(rule.id)} />
+                      </View>
+                    )}
+                    style={[styles.listItem, !rule.enabled && styles.disabledItem]}
+                  />
+                  <Divider />
+                </View>
+              ))
+            )}
+          </List.Section>
+        )}
       </ScrollView>
 
       <Portal>
@@ -494,6 +511,9 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 40,
+  },
+  tabs: {
+    marginBottom: 8,
   },
   sectionHeader: {
     flexDirection: 'row',

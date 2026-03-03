@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 
 import { storageService } from '../services/StorageService';
-import { Story } from '../types';
+import { downloadManager } from '../services/download/DownloadManager';
+import { Story, DownloadStatus } from '../types';
+import { DownloadJob } from '../services/download/types';
 
 import { useDownloadProgress } from './useDownloadProgress';
 import { useStoryActions } from './useStoryActions';
@@ -51,6 +53,40 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
         }
         prevDownloading.current = isDownloadingHook;
     }, [isDownloadingHook, storyId]);
+
+    useEffect(() => {
+        const onJobCompleted = (job: DownloadJob) => {
+            if (job.storyId !== storyId) return;
+
+            setStory(prevStory => {
+                if (!prevStory) return prevStory;
+
+                const chapters = [...prevStory.chapters];
+                if (chapters[job.chapterIndex]) {
+                    chapters[job.chapterIndex] = {
+                        ...chapters[job.chapterIndex],
+                        downloaded: true,
+                    };
+                }
+
+                const downloadedCount = chapters.filter(c => c.downloaded).length;
+                const status = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
+
+                return {
+                    ...prevStory,
+                    chapters,
+                    downloadedChapters: downloadedCount,
+                    status,
+                };
+            });
+        };
+
+        downloadManager.on('job-completed', onJobCompleted);
+
+        return () => {
+            downloadManager.off('job-completed', onJobCompleted);
+        };
+    }, [storyId]);
 
     const {
         deleteStory,
