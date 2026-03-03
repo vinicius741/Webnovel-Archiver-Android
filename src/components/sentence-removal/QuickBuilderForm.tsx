@@ -62,7 +62,7 @@ export function QuickBuilderForm({
         autoCorrect={false}
       />
       <Text variant="bodySmall" style={styles.helpText}>
-        Enter the character(s) that form the separator. Use 1-2 characters for best results.
+        Enter the character(s) that form the separator. Use 1-2 characters for best results. For mixed dashes (— and -), use Advanced mode with `[—-]`.
       </Text>
 
       <TextInput

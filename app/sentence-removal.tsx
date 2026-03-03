@@ -152,7 +152,7 @@ export default function SentenceRemovalScreen() {
       return;
     }
 
-    const normalizedPattern = effectivePattern.trim();
+    const normalizedPattern = ruleValidation.normalizedPattern || effectivePattern.trim();
     const normalizedFlags = ruleValidation.normalizedFlags || '';
     const normalizedName = ruleDraft.name.trim() || (ruleDraft.mode === 'quick' && ruleDraft.quickConfig 
       ? generateRuleName(ruleDraft.quickConfig) 

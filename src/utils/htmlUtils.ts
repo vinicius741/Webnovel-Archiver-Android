@@ -37,6 +37,7 @@ export const prepareTTSContent = (
     if (!html) return { processedHtml: '', chunks: [] };
 
     const $ = cheerio.load(html);
+    const cleanupForDisplay = createRegexCleanupRunner(regexCleanupRules, 'download');
     const cleanupForTts = createRegexCleanupRunner(regexCleanupRules, 'tts');
     const chunks: string[] = [];
     let currentChunkText = '';
@@ -53,7 +54,14 @@ export const prepareTTSContent = (
         }
 
         const rawText = $(elem).text();
-        const cleanedForTts = cleanupForTts(rawText);
+        const cleanedForDisplay = cleanupForDisplay(rawText);
+        const displayText = cleanedForDisplay.replace(/\s+/g, ' ').trim();
+        if (!displayText) {
+            $(elem).remove();
+            return;
+        }
+
+        const cleanedForTts = cleanupForTts(cleanedForDisplay);
         const text = cleanedForTts.replace(/\s+/g, ' ').trim();
         if (!text) return;
 
@@ -83,7 +91,8 @@ export const prepareTTSContent = (
 
     // If no chunks were found (e.g. plain text or structure not matched), falls back to body text
     if (chunks.length === 0) {
-        const cleanedBodyText = cleanupForTts($('body').text());
+        const cleanedBodyForDisplay = cleanupForDisplay($('body').text());
+        const cleanedBodyText = cleanupForTts(cleanedBodyForDisplay);
         const bodyText = cleanedBodyText.replace(/\s+/g, ' ').trim();
         if (bodyText) {
             const $body = $('body');

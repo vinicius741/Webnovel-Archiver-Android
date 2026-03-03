@@ -134,7 +134,7 @@ export function RuleDialog({
                   autoCapitalize="none"
                 />
                 <Text variant="bodySmall" style={styles.helpText}>
-                  Allowed flags: gimsu. Global replace is always enforced.
+                  Allowed flags: gimsu. Use separate pattern/flags or paste /pattern/flags directly. Global replace is always enforced.
                 </Text>
               </>
             )}

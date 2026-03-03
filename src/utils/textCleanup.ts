@@ -30,6 +30,7 @@ const RISKY_REGEX_CHECKS = [
 export interface RegexValidationResult {
     valid: boolean;
     error?: string;
+    normalizedPattern?: string;
     normalizedFlags?: string;
 }
 
@@ -60,10 +61,53 @@ interface ParsedRule {
     normalizedFlags: string;
 }
 
+const REGEX_LITERAL_PATTERN = /^\/((?:\\.|[^\\/])*)\/([gimsu]*)$/i;
+const DASH_SEPARATOR_CLASS = '[\\-\\u2010\\u2011\\u2012\\u2013\\u2014\\u2015\\u2212\\u2500\\u2501]';
+const DASH_QUANTIFIER_PATTERN = /(^|[^\\])-(\{(?:\d+,\d*|\d+)\}|[+*])/g;
+
+const normalizeRegexInput = (
+    patternInput: string,
+    flagsInput: string
+): { pattern: string; flags: string; error?: string } => {
+    const trimmedPattern = (patternInput || '').trim();
+    const trimmedFlags = (flagsInput || '').trim().toLowerCase();
+    const maybeLiteral = trimmedPattern.startsWith('/') && trimmedPattern.lastIndexOf('/') > 0;
+    const literalRegex = maybeLiteral
+        ? /^\/((?:\\.|[^\\/])*)\/([a-z]*)$/i
+        : REGEX_LITERAL_PATTERN;
+    const literalMatch = trimmedPattern.match(literalRegex);
+
+    if (!literalMatch && maybeLiteral) {
+        return {
+            pattern: trimmedPattern,
+            flags: trimmedFlags,
+            error: 'Invalid regex literal. Use /pattern/flags or provide pattern and flags separately.',
+        };
+    }
+
+    if (!literalMatch) {
+        return { pattern: trimmedPattern, flags: trimmedFlags, error: undefined };
+    }
+
+    const parsedPattern = literalMatch[1];
+    const literalFlags = literalMatch[2].toLowerCase();
+
+    return {
+        pattern: parsedPattern,
+        flags: `${trimmedFlags}${literalFlags}`,
+        error: undefined,
+    };
+};
+
 const parseRegexCleanupRule = (rule: Pick<RegexCleanupRule, 'name' | 'pattern' | 'flags'>): { parsed?: ParsedRule; error?: string } => {
     const name = (rule.name || '').trim();
-    const pattern = (rule.pattern || '').trim();
-    const flags = (rule.flags || '').trim().toLowerCase();
+    const normalizedInput = normalizeRegexInput(rule.pattern || '', rule.flags || '');
+    const pattern = normalizedInput.pattern;
+    const flags = normalizedInput.flags;
+
+    if (normalizedInput.error) {
+        return { error: normalizedInput.error };
+    }
 
     if (!name) {
         return { error: 'Rule name is required.' };
@@ -109,13 +153,23 @@ const parseRegexCleanupRule = (rule: Pick<RegexCleanupRule, 'name' | 'pattern' |
     };
 };
 
+const expandDashSeparatorQuantifiers = (pattern: string): string => {
+    // Treat quantifiers over plain hyphen as "dash-like separator" quantifiers.
+    // Example: -{3,} -> [\-\u2010...\u2212]{3,}
+    return pattern.replace(DASH_QUANTIFIER_PATTERN, `$1${DASH_SEPARATOR_CLASS}$2`);
+};
+
 export const validateRegexCleanupRule = (rule: Pick<RegexCleanupRule, 'name' | 'pattern' | 'flags'>): RegexValidationResult => {
     const parsed = parseRegexCleanupRule(rule);
     if (!parsed.parsed) {
         return { valid: false, error: parsed.error || 'Invalid regex rule.' };
     }
 
-    return { valid: true, normalizedFlags: parsed.parsed.normalizedFlags };
+    return {
+        valid: true,
+        normalizedPattern: parsed.parsed.pattern,
+        normalizedFlags: parsed.parsed.normalizedFlags,
+    };
 };
 
 export const removeUnwantedSentences = (content: string, sentenceRemovalList: string[]): string => {
@@ -143,11 +197,12 @@ const compileRules = (rules: RegexCleanupRule[], target: CleanupTarget): Compile
         const flagsWithGlobal = parsed.parsed.normalizedFlags.includes('g')
             ? parsed.parsed.normalizedFlags
             : `${parsed.parsed.normalizedFlags}g`;
+        const patternForCompile = expandDashSeparatorQuantifiers(parsed.parsed.pattern);
 
         try {
             compiled.push({
                 ruleId: rule.id,
-                regex: new RegExp(parsed.parsed.pattern, flagsWithGlobal),
+                regex: new RegExp(patternForCompile, flagsWithGlobal),
             });
         } catch (error) {
             console.error(`[TextCleanup] Failed to compile rule ${rule.id}`, error);

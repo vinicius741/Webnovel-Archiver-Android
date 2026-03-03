@@ -130,6 +130,27 @@ describe('htmlUtils', () => {
             expect(result.chunks.join(' ')).toContain('Intro');
             expect(result.chunks.join(' ')).toContain('Outro');
             expect(result.chunks.join(' ')).not.toContain('-----');
+            expect(result.processedHtml).toContain('-----');
+        });
+
+        it('should remove separator-only blocks from rendered HTML when rule applies to download', () => {
+            const html = '<div><p>Intro</p><p>—--------------------</p><p>Outro</p></div>';
+            const rules = [
+                {
+                    id: 'rule-2',
+                    name: 'Remove dash separators',
+                    pattern: '/^[\\s]*[—-]{3,}[\\s]*$/gm',
+                    flags: '',
+                    enabled: true,
+                    appliesTo: 'both' as const,
+                }
+            ];
+
+            const result = prepareTTSContent(html, 500, rules);
+            expect(result.processedHtml).toContain('Intro');
+            expect(result.processedHtml).toContain('Outro');
+            expect(result.processedHtml).not.toContain('—--------------------');
+            expect(result.chunks.join(' ')).not.toContain('—--------------------');
         });
     });
 });

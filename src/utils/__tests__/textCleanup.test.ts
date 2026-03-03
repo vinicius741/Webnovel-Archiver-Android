@@ -16,7 +16,54 @@ describe('textCleanup', () => {
             });
 
             expect(result.valid).toBe(true);
+            expect(result.normalizedPattern).toBe('(?:[-=]){5,}');
             expect(result.normalizedFlags).toBe('gi');
+        });
+
+        it('should accept JavaScript-style /pattern/flags input', () => {
+            const result = validateRegexCleanupRule({
+                name: 'Literal regex',
+                pattern: '/^[\\s]*[—-]{3,}[\\s]*$/gm',
+                flags: '',
+            });
+
+            expect(result.valid).toBe(true);
+            expect(result.normalizedPattern).toBe('^[\\s]*[—-]{3,}[\\s]*$');
+            expect(result.normalizedFlags).toBe('gm');
+        });
+
+        it('should reject regex literals with unsupported flags', () => {
+            const result = validateRegexCleanupRule({
+                name: 'Bad literal flag',
+                pattern: '/abc/z',
+                flags: '',
+            });
+
+            expect(result.valid).toBe(false);
+            expect(result.error).toContain('Unsupported regex flag');
+        });
+
+        it('should parse escaped slashes in regex literals', () => {
+            const result = validateRegexCleanupRule({
+                name: 'Escaped slash',
+                pattern: '/a\\/b/g',
+                flags: '',
+            });
+
+            expect(result.valid).toBe(true);
+            expect(result.normalizedPattern).toBe('a\\/b');
+            expect(result.normalizedFlags).toBe('g');
+        });
+
+        it('should reject malformed regex literals', () => {
+            const result = validateRegexCleanupRule({
+                name: 'Malformed literal',
+                pattern: '/abc/gm$',
+                flags: '',
+            });
+
+            expect(result.valid).toBe(false);
+            expect(result.error).toContain('Invalid regex literal');
         });
 
         it('should reject invalid regex patterns', () => {
@@ -94,6 +141,70 @@ describe('textCleanup', () => {
             expect(output).toBe('Intro\n\nMiddle\n\nOutro');
         });
 
+        it('should treat hyphen separator quantifiers as dash-like separators', () => {
+            const hyphenRule: RegexCleanupRule = {
+                id: 'rule-hyphen',
+                name: 'Remove hyphen separators',
+                pattern: '^[\\s]*-{3,}[\\s]*$',
+                flags: 'gm',
+                enabled: true,
+                appliesTo: 'tts',
+            };
+
+            const input = 'Intro\n—--------------------------\nOutro';
+            const output = applyTtsCleanupLines(input, [hyphenRule]);
+
+            expect(output).toBe('Intro\n\nOutro');
+        });
+
+        it('should not expand hyphen quantifiers inside character classes', () => {
+            const classRule: RegexCleanupRule = {
+                id: 'rule-class-hyphen',
+                name: 'Only hyphen class',
+                pattern: '^[\\s]*[-]{3,}[\\s]*$',
+                flags: 'gm',
+                enabled: true,
+                appliesTo: 'tts',
+            };
+
+            const input = 'Intro\n—--------------------------\n-----\nOutro';
+            const output = applyTtsCleanupLines(input, [classRule]);
+
+            expect(output).toBe('Intro\n—--------------------------\n\nOutro');
+        });
+
+        it('should keep escaped hyphen quantifiers literal', () => {
+            const escapedRule: RegexCleanupRule = {
+                id: 'rule-escaped-hyphen',
+                name: 'Escaped hyphen',
+                pattern: '^[\\s]*\\-{3,}[\\s]*$',
+                flags: 'gm',
+                enabled: true,
+                appliesTo: 'tts',
+            };
+
+            const input = 'Intro\n—--------------------------\n-----\nOutro';
+            const output = applyTtsCleanupLines(input, [escapedRule]);
+
+            expect(output).toBe('Intro\n—--------------------------\n\nOutro');
+        });
+
+        it('should expand multiple hyphen quantifiers in one pattern', () => {
+            const doubleRule: RegexCleanupRule = {
+                id: 'rule-double-hyphen',
+                name: 'Double edge separators',
+                pattern: '^-{3,}.*-{3,}$',
+                flags: 'gm',
+                enabled: true,
+                appliesTo: 'tts',
+            };
+
+            const input = 'Intro\n—----middle----—\nOutro';
+            const output = applyTtsCleanupLines(input, [doubleRule]);
+
+            expect(output).toBe('Intro\n\nOutro');
+        });
+
         it('should apply multiple rules in order', () => {
             const rules: RegexCleanupRule[] = [
                 separatorRule,
@@ -139,6 +250,22 @@ describe('textCleanup', () => {
             const output = applyTtsCleanupLines(input, [removeEveryCharacterRule]);
 
             expect(output.length).toBe(1000);
+        });
+
+        it('should remove separator lines that include em dash and hyphen', () => {
+            const rule: RegexCleanupRule = {
+                id: 'rule-mixed-dash',
+                name: 'Remove mixed dash separator',
+                pattern: '/^[\\s]*[—-]{3,}[\\s]*$/gm',
+                flags: '',
+                enabled: true,
+                appliesTo: 'tts',
+            };
+
+            const input = 'Intro\n—-------------------------------\nOutro';
+            const output = applyTtsCleanupLines(input, [rule]);
+
+            expect(output).toBe('Intro\n\nOutro');
         });
     });
 

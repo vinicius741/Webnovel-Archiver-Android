@@ -116,7 +116,7 @@ class StorageService {
             sanitized.push({
                 id,
                 name,
-                pattern: pattern.trim(),
+                pattern: validation.normalizedPattern || pattern.trim(),
                 flags: validation.normalizedFlags || '',
                 enabled,
                 appliesTo,
