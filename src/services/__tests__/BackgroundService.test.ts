@@ -104,10 +104,8 @@ describe('BackgroundService', () => {
         const { clearDownloadState } = require('../ForegroundServiceCoordinator');
         expect(downloadManager.cancelAll).toHaveBeenCalled();
         expect(clearDownloadState).toHaveBeenCalled();
-        // Check if notifee.cancelNotification was called? 
-        // We need to access the mock.
-        const notifee = require('@notifee/react-native').default;
-        expect(notifee.cancelNotification).toHaveBeenCalledWith('foreground_service');
+        // Use the mock directly since jest.isolateModules creates a new module cache
+        expect(mockCancelNotification).toHaveBeenCalledWith('foreground_service');
     });
 
     it('should handle TTS actions', async () => {

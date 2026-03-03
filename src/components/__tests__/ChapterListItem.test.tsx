@@ -1,30 +1,43 @@
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import { ChapterListItem } from '../details/ChapterListItem';
-import { ThemeProvider } from 'react-native-paper';
 
-jest.mock('react-native-paper', () => ({
-    ...jest.requireActual('react-native-paper'),
-    useTheme: jest.fn().mockReturnValue({
-        colors: {
-            primary: '#6200ee',
-            primaryContainer: 'rgba(98, 0, 238, 0.12)',
-            secondary: '#03dac6',
-            outline: '#cccccc',
+// Mock react-native-paper to avoid icon rendering issues
+jest.mock('react-native-paper', () => {
+    const React = require('react');
+    const { View, Text, TouchableOpacity } = require('react-native');
+
+    return {
+        useTheme: jest.fn().mockReturnValue({
+            colors: {
+                primary: '#6200ee',
+                primaryContainer: 'rgba(98, 0, 238, 0.12)',
+                secondary: '#03dac6',
+                outline: '#cccccc',
+            },
+        }),
+        List: {
+            Item: ({ title, description, onPress, onLongPress, testID, left, right, style, titleStyle, descriptionStyle }: any) => (
+                <TouchableOpacity onPress={onPress} onLongPress={onLongPress} testID={testID} style={style}>
+                    {left && left({})}
+                    <View>
+                        <Text style={titleStyle}>{title}</Text>
+                        {description && <Text style={descriptionStyle}>{description}</Text>}
+                    </View>
+                    {right && right({})}
+                </TouchableOpacity>
+            ),
+            Icon: ({ icon, color }: any) => (
+                <View testID={`list-icon-${icon}`}>
+                    <Text>{icon}</Text>
+                </View>
+            ),
         },
-    }),
-}));
+        ThemeProvider: ({ children }: any) => <>{children}</>,
+    };
+});
 
 describe('ChapterListItem', () => {
-    const mockTheme = {
-        colors: {
-            primary: '#6200ee',
-            primaryContainer: 'rgba(98, 0, 238, 0.12)',
-            secondary: '#03dac6',
-            outline: '#cccccc',
-        },
-    };
-
     const mockChapter = {
         id: '1',
         title: 'Test Chapter',
@@ -40,11 +53,7 @@ describe('ChapterListItem', () => {
     };
 
     const renderWithTheme = (component: React.ReactElement) => {
-        return render(
-            <ThemeProvider theme={mockTheme as any}>
-                {component}
-            </ThemeProvider>
-        );
+        return render(component);
     };
 
     it('should render chapter title', () => {

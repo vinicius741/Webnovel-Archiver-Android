@@ -1,116 +1,68 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View, ScrollView } from 'react-native';
 import { Portal, Dialog, TextInput, Button, Text, Divider, Switch, SegmentedButtons, List } from 'react-native-paper';
 import { RegexCleanupRule, RegexCleanupAppliesTo } from '../../types';
 import { RuleDraft, RuleMode, QuickBuilderConfig, DEFAULT_QUICK_CONFIG } from '../../types/sentenceRemoval';
 import { validateRegexCleanupRule, applyTtsCleanupLines } from '../../utils/textCleanup';
-import { generateQuickPattern, generateRuleName, parseQuickPattern } from '../../utils/regexBuilder';
+import { generateRuleName } from '../../utils/regexBuilder';
 import { QuickBuilderForm } from './QuickBuilderForm';
 
 interface RuleDialogProps {
   visible: boolean;
   ruleDraft: RuleDraft;
   previewInput: string;
+  effectivePattern: string;
+  effectiveFlags: string;
   onDraftChange: (draft: RuleDraft) => void;
   onPreviewInputChange: (value: string) => void;
   onSave: () => void;
   onDismiss: () => void;
 }
 
-function quickConfigEquals(a: QuickBuilderConfig, b: QuickBuilderConfig): boolean {
-  return a.characters === b.characters && a.minCount === b.minCount && a.wholeLine === b.wholeLine;
-}
-
 export function RuleDialog({
   visible,
   ruleDraft,
   previewInput,
+  effectivePattern,
+  effectiveFlags,
   onDraftChange,
   onPreviewInputChange,
   onSave,
   onDismiss,
 }: RuleDialogProps) {
-  const [mode, setMode] = useState<RuleMode>('quick');
-  const [quickConfig, setQuickConfig] = useState<QuickBuilderConfig>(DEFAULT_QUICK_CONFIG);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const prevQuickConfigRef = useRef<QuickBuilderConfig>(DEFAULT_QUICK_CONFIG);
-  const isInitializedRef = useRef(false);
-
-  const updateDraftFromQuickConfig = useCallback((config: QuickBuilderConfig, currentDraft: RuleDraft) => {
-    const generated = generateQuickPattern(config);
-    const generatedName = generateRuleName(config);
-    
-    if (generated.pattern) {
-      onDraftChange({
-        ...currentDraft,
-        pattern: generated.pattern,
-        flags: generated.flags,
-        name: currentDraft.id ? currentDraft.name : generatedName,
-      });
-    }
-  }, [onDraftChange]);
-
-  useEffect(() => {
-    if (visible) {
-      isInitializedRef.current = true;
-      
-      if (ruleDraft.id && ruleDraft.pattern) {
-        const parsed = parseQuickPattern(ruleDraft.pattern, ruleDraft.flags);
-        if (parsed) {
-          setMode('quick');
-          setQuickConfig(parsed);
-          prevQuickConfigRef.current = parsed;
-        } else {
-          setMode('advanced');
-        }
-      } else {
-        setMode('quick');
-        setQuickConfig(DEFAULT_QUICK_CONFIG);
-        prevQuickConfigRef.current = DEFAULT_QUICK_CONFIG;
-      }
-    } else {
-      isInitializedRef.current = false;
-    }
-  }, [visible, ruleDraft.id, ruleDraft.pattern, ruleDraft.flags]);
-
-  useEffect(() => {
-    if (!isInitializedRef.current || mode !== 'quick' || !visible) {
-      return;
-    }
-
-    if (!quickConfigEquals(quickConfig, prevQuickConfigRef.current)) {
-      prevQuickConfigRef.current = quickConfig;
-      updateDraftFromQuickConfig(quickConfig, ruleDraft);
-    }
-  }, [quickConfig, mode, visible, ruleDraft, updateDraftFromQuickConfig]);
-
+  const { mode, quickConfig } = ruleDraft;
+  
   const handleQuickConfigChange = (newConfig: QuickBuilderConfig) => {
-    setQuickConfig(newConfig);
+    const generatedName = ruleDraft.id ? ruleDraft.name : generateRuleName(newConfig);
+    onDraftChange({
+      ...ruleDraft,
+      quickConfig: newConfig,
+      name: generatedName,
+    });
   };
 
   const handleModeChange = (newMode: RuleMode) => {
-    if (newMode === 'quick') {
-      const generated = generateQuickPattern(quickConfig);
-      const generatedName = generateRuleName(quickConfig);
-      
+    if (newMode === 'quick' && !ruleDraft.quickConfig) {
       onDraftChange({
         ...ruleDraft,
-        pattern: generated.pattern,
-        flags: generated.flags,
-        name: ruleDraft.id ? ruleDraft.name : generatedName,
+        mode: newMode,
+        quickConfig: DEFAULT_QUICK_CONFIG,
       });
-      prevQuickConfigRef.current = quickConfig;
+    } else {
+      onDraftChange({
+        ...ruleDraft,
+        mode: newMode,
+      });
     }
-    setMode(newMode);
   };
 
   const ruleValidation = useMemo(() => {
     return validateRegexCleanupRule({
       name: ruleDraft.name,
-      pattern: ruleDraft.pattern,
-      flags: ruleDraft.flags,
+      pattern: effectivePattern,
+      flags: effectiveFlags,
     });
-  }, [ruleDraft.name, ruleDraft.pattern, ruleDraft.flags]);
+  }, [ruleDraft.name, effectivePattern, effectiveFlags]);
 
   const previewOutput = useMemo(() => {
     if (!previewInput) return '';
@@ -119,14 +71,17 @@ export function RuleDialog({
     const previewRule: RegexCleanupRule = {
       id: 'preview',
       name: ruleDraft.name.trim() || 'Preview',
-      pattern: ruleDraft.pattern.trim(),
+      pattern: effectivePattern.trim(),
       flags: ruleValidation.normalizedFlags || '',
       enabled: true,
       appliesTo: 'both',
     };
 
     return applyTtsCleanupLines(previewInput, [previewRule]);
-  }, [ruleDraft.name, ruleDraft.pattern, previewInput, ruleValidation]);
+  }, [ruleDraft.name, effectivePattern, previewInput, ruleValidation]);
+
+  const displayPattern = mode === 'quick' ? effectivePattern : ruleDraft.pattern;
+  const displayFlags = mode === 'quick' ? effectiveFlags : ruleDraft.flags;
 
   return (
     <Portal>
@@ -136,7 +91,7 @@ export function RuleDialog({
           <ScrollView keyboardShouldPersistTaps="handled">
             <SegmentedButtons
               value={mode}
-              onValueChange={(value) => handleModeChange(value as RuleMode)}
+              onValueChange={handleModeChange}
               buttons={[
                 { value: 'quick', label: 'Quick Builder' },
                 { value: 'advanced', label: 'Advanced' },
@@ -154,8 +109,10 @@ export function RuleDialog({
 
             {mode === 'quick' ? (
               <QuickBuilderForm
-                config={quickConfig}
+                config={quickConfig || DEFAULT_QUICK_CONFIG}
                 onChange={handleQuickConfigChange}
+                effectivePattern={displayPattern}
+                effectiveFlags={displayFlags}
               />
             ) : (
               <>
@@ -190,8 +147,8 @@ export function RuleDialog({
 
             <List.Accordion
               title="Advanced Settings"
-              expanded={showAdvanced}
-              onPress={() => setShowAdvanced(!showAdvanced)}
+              expanded={ruleDraft.showAdvanced}
+              onPress={() => onDraftChange({ ...ruleDraft, showAdvanced: !ruleDraft.showAdvanced })}
               style={styles.accordion}
             >
               <Text variant="labelMedium" style={styles.targetLabel}>Apply To</Text>

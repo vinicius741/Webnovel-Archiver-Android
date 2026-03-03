@@ -23,6 +23,13 @@ jest.mock('expo-router', () => ({
         back: jest.fn(),
     })),
 }));
+jest.mock('../../services/download/DownloadManager', () => ({
+    downloadManager: {
+        on: jest.fn(),
+        off: jest.fn(),
+        init: jest.fn().mockResolvedValue(undefined),
+    },
+}));
 
 describe('useStoryDetails', () => {
     const mockStory: Story = {

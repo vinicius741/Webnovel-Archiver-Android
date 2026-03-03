@@ -1,20 +1,53 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { TextInput, Text, Switch, List } from 'react-native-paper';
 import { QuickBuilderConfig } from '../../types/sentenceRemoval';
-import { generateQuickPattern } from '../../utils/regexBuilder';
 
 interface QuickBuilderFormProps {
   config: QuickBuilderConfig;
   onChange: (config: QuickBuilderConfig) => void;
+  effectivePattern: string;
+  effectiveFlags: string;
 }
 
-export function QuickBuilderForm({ config, onChange }: QuickBuilderFormProps) {
+export function QuickBuilderForm({
+  config,
+  onChange,
+  effectivePattern,
+  effectiveFlags
+}: QuickBuilderFormProps) {
   const { characters, minCount, wholeLine } = config;
   const [showAdvanced, setShowAdvanced] = useState(false);
-  
-  const generatedPattern = generateQuickPattern(config);
+  const [minCountInput, setMinCountInput] = useState(minCount.toString());
+
+  // Sync input with external config changes
+  useEffect(() => {
+    setMinCountInput(minCount.toString());
+  }, [minCount]);
+
   const isValid = characters.length > 0 && minCount >= 1;
+
+  const handleMinCountChange = (value: string) => {
+    setMinCountInput(value);
+    
+    if (value === '') {
+      return;
+    }
+    
+    const num = parseInt(value, 10);
+    if (!isNaN(num) && num >= 1) {
+      onChange({ ...config, minCount: num });
+    }
+  };
+
+  const handleMinCountBlur = () => {
+    const num = parseInt(minCountInput, 10);
+    if (isNaN(num) || num < 1) {
+      const fallback = 1;
+      setMinCountInput(fallback.toString());
+      onChange({ ...config, minCount: fallback });
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -34,20 +67,9 @@ export function QuickBuilderForm({ config, onChange }: QuickBuilderFormProps) {
 
       <TextInput
         label="Minimum repetitions"
-        value={minCount.toString()}
-        onChangeText={(value) => {
-          const num = parseInt(value, 10);
-          if (!isNaN(num) && num >= 1) {
-            onChange({ ...config, minCount: num });
-          } else if (value === '') {
-            onChange({ ...config, minCount: 1 });
-          }
-        }}
-        onBlur={() => {
-          if (minCount < 1) {
-            onChange({ ...config, minCount: 1 });
-          }
-        }}
+        value={minCountInput}
+        onChangeText={handleMinCountChange}
+        onBlur={handleMinCountBlur}
         mode="outlined"
         style={styles.input}
         keyboardType="numeric"
@@ -79,7 +101,7 @@ export function QuickBuilderForm({ config, onChange }: QuickBuilderFormProps) {
           <Text variant="labelMedium" style={styles.previewLabel}>Generated Pattern</Text>
           <View style={[styles.previewBox, !isValid && styles.previewBoxEmpty]}>
             <Text variant="bodySmall" style={styles.patternText}>
-              {isValid ? `/${generatedPattern.pattern}/${generatedPattern.flags}` : 'Enter character(s) to generate pattern'}
+              {isValid ? `/${effectivePattern}/${effectiveFlags}` : 'Enter character(s) to generate pattern'}
             </Text>
           </View>
         </View>

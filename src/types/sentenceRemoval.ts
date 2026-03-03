@@ -2,23 +2,6 @@ import { RegexCleanupAppliesTo } from './index';
 
 export type TabValue = 'sentences' | 'regex';
 
-export interface RuleDraft {
-  id?: string;
-  name: string;
-  pattern: string;
-  flags: string;
-  enabled: boolean;
-  appliesTo: RegexCleanupAppliesTo;
-}
-
-export const EMPTY_RULE_DRAFT: RuleDraft = {
-  name: '',
-  pattern: '',
-  flags: '',
-  enabled: true,
-  appliesTo: 'both',
-};
-
 export type RuleMode = 'quick' | 'advanced';
 
 export interface QuickBuilderConfig {
@@ -31,6 +14,28 @@ export const DEFAULT_QUICK_CONFIG: QuickBuilderConfig = {
   characters: '',
   minCount: 3,
   wholeLine: true,
+};
+
+export interface RuleDraft {
+  id?: string;
+  name: string;
+  pattern: string;
+  flags: string;
+  enabled: boolean;
+  appliesTo: RegexCleanupAppliesTo;
+  quickConfig?: QuickBuilderConfig;
+  mode: RuleMode;
+  showAdvanced?: boolean;
+}
+
+export const EMPTY_RULE_DRAFT: RuleDraft = {
+  name: '',
+  pattern: '',
+  flags: '',
+  enabled: true,
+  appliesTo: 'both',
+  quickConfig: DEFAULT_QUICK_CONFIG,
+  mode: 'quick',
 };
 
 export const TARGET_LABEL_MAP: Record<RegexCleanupAppliesTo, string> = {

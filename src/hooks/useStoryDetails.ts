@@ -55,7 +55,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     }, [isDownloadingHook, storyId]);
 
     useEffect(() => {
-        const onJobCompleted = (job: DownloadJob) => {
+        const onJobCompleted = (job: DownloadJob, filePath: string) => {
             if (job.storyId !== storyId) return;
 
             setStory(prevStory => {
@@ -66,6 +66,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
                     chapters[job.chapterIndex] = {
                         ...chapters[job.chapterIndex],
                         downloaded: true,
+                        filePath,
                     };
                 }
 

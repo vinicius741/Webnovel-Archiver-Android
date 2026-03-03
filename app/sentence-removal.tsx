@@ -5,12 +5,20 @@ import { router, Stack } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { useAppAlert } from '../src/context/AlertContext';
 import { RegexCleanupRule } from '../src/types';
-import { TabValue, RuleDraft, EMPTY_RULE_DRAFT, createRuleId } from '../src/types/sentenceRemoval';
+import { TabValue, RuleDraft, EMPTY_RULE_DRAFT, createRuleId, QuickBuilderConfig, DEFAULT_QUICK_CONFIG } from '../src/types/sentenceRemoval';
 import { validateRegexCleanupRule } from '../src/utils/textCleanup';
+import { generateQuickPattern, parseQuickPattern, generateRuleName } from '../src/utils/regexBuilder';
 import { useSentenceRemovalData } from '../src/hooks/useSentenceRemovalData';
 import { SentenceList, RegexRuleList, SentenceDialog, RuleDialog } from '../src/components/sentence-removal';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+
+function getDerivedPattern(draft: RuleDraft): { pattern: string; flags: string } {
+  if (draft.mode === 'quick' && draft.quickConfig) {
+    return generateQuickPattern(draft.quickConfig);
+  }
+  return { pattern: draft.pattern, flags: draft.flags };
+}
 
 export default function SentenceRemovalScreen() {
   const { showAlert } = useAppAlert();
@@ -102,6 +110,10 @@ export default function SentenceRemovalScreen() {
     if (!rule) {
       setRuleDraft(EMPTY_RULE_DRAFT);
     } else {
+      const parsed = parseQuickPattern(rule.pattern, rule.flags);
+      const mode = parsed ? 'quick' : 'advanced';
+      const quickConfig = parsed || DEFAULT_QUICK_CONFIG;
+      
       setRuleDraft({
         id: rule.id,
         name: rule.name,
@@ -109,6 +121,8 @@ export default function SentenceRemovalScreen() {
         flags: rule.flags,
         enabled: rule.enabled,
         appliesTo: rule.appliesTo,
+        mode,
+        quickConfig,
       });
     }
     setRuleDialogVisible(true);
@@ -119,13 +133,18 @@ export default function SentenceRemovalScreen() {
     setRuleDraft(EMPTY_RULE_DRAFT);
   };
 
+  const derivedPattern = useMemo(() => getDerivedPattern(ruleDraft), [ruleDraft]);
+  
+  const effectivePattern = ruleDraft.mode === 'quick' ? derivedPattern.pattern : ruleDraft.pattern;
+  const effectiveFlags = ruleDraft.mode === 'quick' ? derivedPattern.flags : ruleDraft.flags;
+
   const ruleValidation = useMemo(() => {
     return validateRegexCleanupRule({
       name: ruleDraft.name,
-      pattern: ruleDraft.pattern,
-      flags: ruleDraft.flags,
+      pattern: effectivePattern,
+      flags: effectiveFlags,
     });
-  }, [ruleDraft.name, ruleDraft.pattern, ruleDraft.flags]);
+  }, [ruleDraft.name, effectivePattern, effectiveFlags]);
 
   const handleSaveRule = () => {
     if (!ruleValidation.valid) {
@@ -133,9 +152,11 @@ export default function SentenceRemovalScreen() {
       return;
     }
 
-    const normalizedPattern = ruleDraft.pattern.trim();
+    const normalizedPattern = effectivePattern.trim();
     const normalizedFlags = ruleValidation.normalizedFlags || '';
-    const normalizedName = ruleDraft.name.trim();
+    const normalizedName = ruleDraft.name.trim() || (ruleDraft.mode === 'quick' && ruleDraft.quickConfig 
+      ? generateRuleName(ruleDraft.quickConfig) 
+      : 'Unnamed Rule');
 
     const duplicate = regexRules.find(rule =>
       rule.id !== ruleDraft.id &&
@@ -264,6 +285,8 @@ export default function SentenceRemovalScreen() {
         visible={ruleDialogVisible}
         ruleDraft={ruleDraft}
         previewInput={rulePreviewInput}
+        effectivePattern={effectivePattern}
+        effectiveFlags={effectiveFlags}
         onDraftChange={setRuleDraft}
         onPreviewInputChange={setRulePreviewInput}
         onSave={handleSaveRule}
