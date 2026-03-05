@@ -10,13 +10,15 @@ This file provides guidelines for agentic coding assistants working on this code
 - `npm run android` - Run on Android device/emulator
 - `npm run ios` - Run on iOS device/simulator
 - `npm run web` - Run web version
+- `npm run lint` - Run ESLint on all TypeScript files
+- `npm run lint:fix` - Run ESLint with auto-fix
 
 ### Running Single Tests
 - `npm test -- src/services/__tests__/EpubGenerator.test.ts` - Run specific test file
 - `npm test -- --testPathPattern=EpubGenerator` - Run tests matching pattern
 - `npm test -- --testNamePattern="should generate epub"` - Run tests matching name
 
-No lint command is configured in package.json. TypeScript is configured with strict mode.
+TypeScript is configured with strict mode.
 
 ## Code Style Guidelines
 

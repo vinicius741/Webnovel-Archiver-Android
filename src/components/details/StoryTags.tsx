@@ -1,14 +1,12 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import { Chip, Text, useTheme } from "react-native-paper";
+import { Chip } from "react-native-paper";
 
 interface StoryTagsProps {
   tags?: string[];
 }
 
 export const StoryTags: React.FC<StoryTagsProps> = ({ tags }) => {
-  const theme = useTheme();
-
   if (!tags || tags.length === 0) {
     return null;
   }

@@ -30,7 +30,7 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({
       <Text
         variant="bodyMedium"
         style={styles.description}
-        onPress={handlePress}
+        onPress={() => void handlePress()}
       >
         {description}
       </Text>

@@ -8,13 +8,13 @@ import React, {
 import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Modal,
-  Portal,
   Text,
   Button,
   useTheme,
   List,
   Divider,
   Searchbar,
+  MD3Theme,
 } from "react-native-paper";
 import Slider from "@react-native-community/slider";
 import * as Speech from "expo-speech";
@@ -37,7 +37,7 @@ const ModalContent = React.memo(
     settings: TTSSettings;
     onSettingsChange: (settings: TTSSettings) => void;
     onDismiss: () => void;
-    theme: any;
+    theme: MD3Theme;
   }) => {
     const [voices, setVoices] = useState<Speech.Voice[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
@@ -52,13 +52,15 @@ const ModalContent = React.memo(
         const availableVoices = await Speech.getAvailableVoicesAsync();
         setVoices(
           availableVoices.sort((a: Speech.Voice, b: Speech.Voice) => {
-            if (a.quality === "Enhanced" && b.quality !== "Enhanced") return -1;
-            if (a.quality !== "Enhanced" && b.quality === "Enhanced") return 1;
+            const aQuality = a.quality as string;
+            const bQuality = b.quality as string;
+            if (aQuality === "Enhanced" && bQuality !== "Enhanced") return -1;
+            if (aQuality !== "Enhanced" && bQuality === "Enhanced") return 1;
             return a.name.localeCompare(b.name);
           }),
         );
       };
-      loadVoices();
+      void loadVoices();
     }, []);
 
     const updateSetting = useCallback(
@@ -96,7 +98,7 @@ const ModalContent = React.memo(
             testID={`voice-item-${voice.identifier}`}
             key={voice.identifier}
             title={voice.name}
-            description={`${voice.language} ${voice.quality === "Enhanced" ? "(High Quality)" : ""}`}
+            description={`${voice.language} ${(voice.quality as string) === "Enhanced" ? "(High Quality)" : ""}`}
             right={icon ? () => icon : undefined}
             onPress={() => updateSetting("voiceIdentifier", voice.identifier)}
             style={style}

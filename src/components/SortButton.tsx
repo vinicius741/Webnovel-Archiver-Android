@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from "react";
-import { View, InteractionManager } from "react-native";
+import { View } from "react-native";
 import { Menu, IconButton, Divider } from "react-native-paper";
 import { SortOption, SortDirection } from "../hooks/useLibrary";
 

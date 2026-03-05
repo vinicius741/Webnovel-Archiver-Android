@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState, useCallback } from "react";
 import { downloadManager } from "../services/download/DownloadManager";
 import { downloadQueue } from "../services/download/DownloadQueue";

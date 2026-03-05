@@ -45,7 +45,7 @@ export function loadNotifee(): NotifeeLoadResult {
   }
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+     
     const notifeeModule = require("@notifee/react-native") as unknown;
 
     // Validate that the module has the expected structure

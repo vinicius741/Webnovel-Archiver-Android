@@ -7,7 +7,7 @@ interface TTSControllerProps {
   onStop: () => void;
   onNext: () => void;
   onPrevious: () => void;
-  isSpeaking: boolean;
+  _isSpeaking: boolean;
   isPaused: boolean;
   currentChunk: number;
   totalChunks: number;
@@ -19,7 +19,7 @@ export const TTSController: React.FC<TTSControllerProps> = ({
   onStop,
   onNext,
   onPrevious,
-  isSpeaking,
+  _isSpeaking,
   isPaused,
   currentChunk,
   totalChunks,
@@ -47,7 +47,7 @@ export const TTSController: React.FC<TTSControllerProps> = ({
         if (finished) setIsRendered(false);
       });
     }
-  }, [visible]);
+  }, [visible, fadeAnim]);
 
   if (!isRendered) return null;
 

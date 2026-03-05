@@ -47,7 +47,7 @@ describe("StoryActions", () => {
 
   const renderWithTheme = (component: React.ReactElement) => {
     return render(
-      <ThemeProvider theme={mockTheme as any}>{component}</ThemeProvider>,
+      <ThemeProvider theme={mockTheme}>{component}</ThemeProvider>,
     );
   };
 

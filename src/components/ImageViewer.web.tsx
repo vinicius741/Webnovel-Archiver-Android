@@ -6,7 +6,16 @@ import {
   TouchableOpacity,
   Text,
   View,
+  ImageSourcePropType,
 } from "react-native";
+
+interface ImageViewProps {
+  visible: boolean;
+  images: ImageSourcePropType[];
+  imageIndex?: number;
+  onRequestClose: () => void;
+  testID?: string;
+}
 
 const ImageView = ({
   visible,
@@ -14,7 +23,7 @@ const ImageView = ({
   imageIndex,
   onRequestClose,
   testID,
-}: any) => {
+}: ImageViewProps) => {
   if (!visible) return null;
   const image = images && images.length > 0 ? images[imageIndex || 0] : null;
 

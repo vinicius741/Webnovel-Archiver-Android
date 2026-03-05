@@ -222,7 +222,7 @@ export const extractFormattedText = (html: string): string => {
     });
 
   // Get text and clean up while preserving structure
-  let result = $body
+  const result = $body
     .text()
     .replace(/[ \t]+/g, " ") // Collapse multiple spaces/tabs to single space
     .replace(/ \n/g, "\n") // Remove space before newline

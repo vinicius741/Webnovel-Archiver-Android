@@ -175,10 +175,10 @@ export class EpubGenerator {
           filename: result.filename,
           chapterRange: {
             start: hasOriginalChapterNumbers
-              ? (originalChapterNumbers as number[])[0]
+              ? (originalChapterNumbers)[0]
               : 1,
             end: hasOriginalChapterNumbers
-              ? (originalChapterNumbers as number[])[chapters.length - 1]
+              ? (originalChapterNumbers)[chapters.length - 1]
               : chapters.length,
           },
         },
@@ -247,10 +247,10 @@ export class EpubGenerator {
         filename,
         chapterRange: {
           start: hasOriginalChapterNumbers
-            ? (originalChapterNumbers as number[])[startIndex]
+            ? (originalChapterNumbers)[startIndex]
             : startIndex + 1,
           end: hasOriginalChapterNumbers
-            ? (originalChapterNumbers as number[])[endIndex - 1]
+            ? (originalChapterNumbers)[endIndex - 1]
             : endIndex,
         },
       });

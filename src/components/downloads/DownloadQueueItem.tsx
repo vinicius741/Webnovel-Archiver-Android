@@ -6,6 +6,7 @@ import {
   IconButton,
   Chip,
   useTheme,
+  MD3Theme,
 } from "react-native-paper";
 import { DownloadJob, JobStatus } from "../../services/download/types";
 
@@ -17,7 +18,7 @@ interface DownloadQueueItemProps {
   onRetry: () => void;
 }
 
-const getStatusColor = (status: JobStatus, theme: any): string => {
+const getStatusColor = (status: JobStatus, theme: MD3Theme): string => {
   switch (status) {
     case "pending":
       return theme.colors.secondary;

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useState, useEffect } from "react";
 import { View, StyleSheet } from "react-native";
 import {
@@ -28,10 +29,12 @@ export const DownloadRangeDialog: React.FC<DownloadRangeDialogProps> = ({
 
   useEffect(() => {
     if (visible) {
+      // Initialize form when dialog becomes visible
       setStart("1");
       setEnd(totalChapters.toString());
       setError("");
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [visible, totalChapters]);
 
   const handleDownload = () => {

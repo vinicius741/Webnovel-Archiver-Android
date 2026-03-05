@@ -148,7 +148,7 @@ describe("TTSStateManager - Concurrent Operations", () => {
     jest.clearAllMocks();
 
     // Reset state manager by clearing controller
-    (ttsStateManager as any).controller = null;
+    (ttsStateManager).controller = null;
     globalMockController = null;
   });
 

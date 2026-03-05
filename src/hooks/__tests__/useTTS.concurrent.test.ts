@@ -186,7 +186,7 @@ describe("useTTS - Concurrent Operations", () => {
 
     // Reset the ttsStateManager controller
     const { ttsStateManager } = require("../../services/TTSStateManager");
-    (ttsStateManager as any).controller = null;
+    (ttsStateManager).controller = null;
   });
 
   describe("Rapid Control Changes", () => {

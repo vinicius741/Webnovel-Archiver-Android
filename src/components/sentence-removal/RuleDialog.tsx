@@ -224,7 +224,7 @@ export function RuleDialog({
                 onValueChange={(value) =>
                   onDraftChange({
                     ...ruleDraft,
-                    appliesTo: value as RegexCleanupAppliesTo,
+                    appliesTo: value,
                   })
                 }
                 buttons={[

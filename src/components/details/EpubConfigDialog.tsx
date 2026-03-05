@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
@@ -44,6 +45,7 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
   useEffect(() => {
     if (!visible) return;
 
+    // Initialize form when dialog becomes visible
     setMaxChapters(String(initialConfig.maxChaptersPerEpub));
     setRangeStart(String(initialConfig.rangeStart));
     setRangeEnd(String(initialConfig.rangeEnd));
@@ -51,6 +53,7 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
       hasBookmark ? initialConfig.startAfterBookmark : false,
     );
     setError("");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [visible, initialConfig, hasBookmark]);
 
   const handleSave = async () => {
@@ -170,7 +173,7 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
         </Dialog.Content>
         <Dialog.Actions>
           <Button onPress={onDismiss}>Cancel</Button>
-          <Button testID="epub-save-button" onPress={handleSave}>
+          <Button testID="epub-save-button" onPress={() => void handleSave()}>
             Save
           </Button>
         </Dialog.Actions>

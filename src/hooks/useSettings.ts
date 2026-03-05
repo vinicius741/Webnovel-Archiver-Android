@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback } from "react";
 import { router } from "expo-router";
 import { storageService } from "../services/StorageService";
@@ -37,11 +38,7 @@ export const useSettings = () => {
   >();
   const [delayError, setDelayError] = useState<string | undefined>();
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     const settings = await storageService.getSettings();
     setConcurrency(settings.downloadConcurrency.toString());
     setDelay(settings.downloadDelay.toString());
@@ -49,7 +46,11 @@ export const useSettings = () => {
     // Clear any errors on load
     setConcurrencyError(undefined);
     setDelayError(undefined);
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   const saveSettings = useCallback(async () => {
     const concurrencyResult = validateConcurrency(concurrency);

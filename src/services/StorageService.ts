@@ -95,18 +95,18 @@ class StorageService {
       }
 
       const id =
-        typeof (item as any).id === "string" ? (item as any).id.trim() : "";
+        typeof (item).id === "string" ? (item).id.trim() : "";
       const name =
-        typeof (item as any).name === "string" ? (item as any).name.trim() : "";
+        typeof (item).name === "string" ? (item).name.trim() : "";
       const pattern =
-        typeof (item as any).pattern === "string" ? (item as any).pattern : "";
+        typeof (item).pattern === "string" ? (item).pattern : "";
       const flags =
-        typeof (item as any).flags === "string" ? (item as any).flags : "";
+        typeof (item).flags === "string" ? (item).flags : "";
       const enabled =
-        typeof (item as any).enabled === "boolean"
-          ? (item as any).enabled
+        typeof (item).enabled === "boolean"
+          ? (item).enabled
           : true;
-      const appliesToRaw = (item as any).appliesTo;
+      const appliesToRaw = (item).appliesTo;
       const appliesTo =
         appliesToRaw === "download" ||
         appliesToRaw === "tts" ||
