@@ -1,8 +1,15 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { List, IconButton, Divider, Text, Button, Switch } from 'react-native-paper';
-import { RegexCleanupRule, RegexCleanupAppliesTo } from '../../types';
-import { TARGET_LABEL_MAP } from '../../types/sentenceRemoval';
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import {
+  List,
+  IconButton,
+  Divider,
+  Text,
+  Button,
+  Switch,
+} from "react-native-paper";
+import { RegexCleanupRule, RegexCleanupAppliesTo } from "../../types";
+import { TARGET_LABEL_MAP } from "../../types/sentenceRemoval";
 
 interface RegexRuleListProps {
   rules: RegexCleanupRule[];
@@ -12,7 +19,13 @@ interface RegexRuleListProps {
   onToggle: (ruleId: string, enabled: boolean) => void;
 }
 
-export function RegexRuleList({ rules, onAdd, onEdit, onDelete, onToggle }: RegexRuleListProps) {
+export function RegexRuleList({
+  rules,
+  onAdd,
+  onEdit,
+  onDelete,
+  onToggle,
+}: RegexRuleListProps) {
   return (
     <List.Section>
       <View style={styles.sectionHeader}>
@@ -22,7 +35,8 @@ export function RegexRuleList({ rules, onAdd, onEdit, onDelete, onToggle }: Rege
         </Button>
       </View>
       <Text variant="bodySmall" style={styles.sectionDescription}>
-        Remove patterns like long separators. Rules run in guarded mode and skip invalid patterns.
+        Remove patterns like long separators. Rules run in guarded mode and skip
+        invalid patterns.
       </Text>
       <Divider />
       {rules.length === 0 ? (
@@ -37,9 +51,16 @@ export function RegexRuleList({ rules, onAdd, onEdit, onDelete, onToggle }: Rege
               description={`/${rule.pattern}/${rule.flags} • ${TARGET_LABEL_MAP[rule.appliesTo]}`}
               right={() => (
                 <View style={styles.rowActions}>
-                  <Switch value={rule.enabled} onValueChange={(value) => onToggle(rule.id, value)} />
+                  <Switch
+                    value={rule.enabled}
+                    onValueChange={(value) => onToggle(rule.id, value)}
+                  />
                   <IconButton icon="pencil" onPress={() => onEdit(rule)} />
-                  <IconButton icon="delete" iconColor="red" onPress={() => onDelete(rule.id)} />
+                  <IconButton
+                    icon="delete"
+                    iconColor="red"
+                    onPress={() => onDelete(rule.id)}
+                  />
                 </View>
               )}
               style={[styles.listItem, !rule.enabled && styles.disabledItem]}
@@ -54,9 +75,9 @@ export function RegexRuleList({ rules, onAdd, onEdit, onDelete, onToggle }: Rege
 
 const styles = StyleSheet.create({
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   sectionDescription: {
     paddingHorizontal: 16,
@@ -67,8 +88,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   rowActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   emptyContainer: {
     paddingHorizontal: 16,

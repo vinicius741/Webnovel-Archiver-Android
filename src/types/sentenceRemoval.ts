@@ -1,8 +1,8 @@
-import { RegexCleanupAppliesTo } from './index';
+import { RegexCleanupAppliesTo } from "./index";
 
-export type TabValue = 'sentences' | 'regex';
+export type TabValue = "sentences" | "regex";
 
-export type RuleMode = 'quick' | 'advanced';
+export type RuleMode = "quick" | "advanced";
 
 export interface QuickBuilderConfig {
   characters: string;
@@ -11,7 +11,7 @@ export interface QuickBuilderConfig {
 }
 
 export const DEFAULT_QUICK_CONFIG: QuickBuilderConfig = {
-  characters: '',
+  characters: "",
   minCount: 3,
   wholeLine: true,
 };
@@ -29,19 +29,19 @@ export interface RuleDraft {
 }
 
 export const EMPTY_RULE_DRAFT: RuleDraft = {
-  name: '',
-  pattern: '',
-  flags: '',
+  name: "",
+  pattern: "",
+  flags: "",
   enabled: true,
-  appliesTo: 'both',
+  appliesTo: "both",
   quickConfig: DEFAULT_QUICK_CONFIG,
-  mode: 'quick',
+  mode: "quick",
 };
 
 export const TARGET_LABEL_MAP: Record<RegexCleanupAppliesTo, string> = {
-  both: 'Download + TTS',
-  download: 'Download only',
-  tts: 'TTS only',
+  both: "Download + TTS",
+  download: "Download only",
+  tts: "TTS only",
 };
 
 export const createRuleId = (): string => {

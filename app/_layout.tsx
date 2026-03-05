@@ -1,15 +1,15 @@
-import { useEffect, useRef } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
-import { Stack, usePathname, useRouter } from 'expo-router';
-import { useTheme as usePaperTheme } from 'react-native-paper';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { notificationService } from '../src/services/NotificationService';
-import { ThemeProvider } from '../src/theme/ThemeContext';
-import { AlertProvider } from '../src/context/AlertContext';
-import { backgroundServiceInitializer } from '../src/services/BackgroundService';
-import { ttsLifecycleService } from '../src/services/TTSLifecycleService';
-import { ttsStateManager } from '../src/services/TTSStateManager';
-import { TTS_RELIABILITY_V2 } from '../src/services/TTSFeatureFlags';
+import { useEffect, useRef } from "react";
+import { AppState, AppStateStatus } from "react-native";
+import { Stack, usePathname, useRouter } from "expo-router";
+import { useTheme as usePaperTheme } from "react-native-paper";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { notificationService } from "../src/services/NotificationService";
+import { ThemeProvider } from "../src/theme/ThemeContext";
+import { AlertProvider } from "../src/context/AlertContext";
+import { backgroundServiceInitializer } from "../src/services/BackgroundService";
+import { ttsLifecycleService } from "../src/services/TTSLifecycleService";
+import { ttsStateManager } from "../src/services/TTSStateManager";
+import { TTS_RELIABILITY_V2 } from "../src/services/TTSFeatureFlags";
 
 function ReaderResumeCoordinator() {
   const router = useRouter();
@@ -30,28 +30,36 @@ function ReaderResumeCoordinator() {
       if (!session.storyId || !session.chapterId) return;
       if (!session.wasPlaying && !session.isPaused) return;
 
-      const currentPath = pathnameRef.current || '';
+      const currentPath = pathnameRef.current || "";
       const match = currentPath.match(/^\/reader\/([^/]+)\/([^/?#]+)/);
       const isAlreadyOnReader = (() => {
         if (!match) return false;
         const activeStoryId = match[1];
         const activeChapterId = match[2];
         try {
-          return activeStoryId === session.storyId && decodeURIComponent(activeChapterId) === session.chapterId;
+          return (
+            activeStoryId === session.storyId &&
+            decodeURIComponent(activeChapterId) === session.chapterId
+          );
         } catch {
           return false;
         }
       })();
       if (isAlreadyOnReader) return;
 
-      router.replace(`/reader/${session.storyId}/${encodeURIComponent(session.chapterId)}?resumeSession=true`);
+      router.replace(
+        `/reader/${session.storyId}/${encodeURIComponent(session.chapterId)}?resumeSession=true`,
+      );
     };
 
-    const subscription = AppState.addEventListener('change', (nextState) => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
       const prev = appStateRef.current;
       appStateRef.current = nextState;
 
-      if ((prev === 'inactive' || prev === 'background') && nextState === 'active') {
+      if (
+        (prev === "inactive" || prev === "background") &&
+        nextState === "active"
+      ) {
         void maybeResumeReader();
       }
     });
@@ -97,14 +105,20 @@ function AppLayout() {
           },
           headerTintColor: theme.colors.onSurface,
           headerTitleStyle: {
-            fontWeight: 'bold',
+            fontWeight: "bold",
           },
         }}
       >
-        <Stack.Screen name="index" options={{ title: 'Library' }} />
-        <Stack.Screen name="add" options={{ title: 'Add Story', presentation: 'modal' }} />
-        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-        <Stack.Screen name="download-manager" options={{ title: 'Download Manager' }} />
+        <Stack.Screen name="index" options={{ title: "Library" }} />
+        <Stack.Screen
+          name="add"
+          options={{ title: "Add Story", presentation: "modal" }}
+        />
+        <Stack.Screen name="settings" options={{ title: "Settings" }} />
+        <Stack.Screen
+          name="download-manager"
+          options={{ title: "Download Manager" }}
+        />
       </Stack>
     </>
   );

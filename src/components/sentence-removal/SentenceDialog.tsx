@@ -1,5 +1,5 @@
-import React from 'react';
-import { Portal, Dialog, TextInput, Button } from 'react-native-paper';
+import React from "react";
+import { Portal, Dialog, TextInput, Button } from "react-native-paper";
 
 interface SentenceDialogProps {
   visible: boolean;
@@ -21,7 +21,9 @@ export function SentenceDialog({
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
-        <Dialog.Title>{isEditing ? 'Edit Sentence' : 'Add Sentence'}</Dialog.Title>
+        <Dialog.Title>
+          {isEditing ? "Edit Sentence" : "Add Sentence"}
+        </Dialog.Title>
         <Dialog.Content>
           <TextInput
             label="Sentence to remove"

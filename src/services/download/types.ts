@@ -1,25 +1,30 @@
-import { Story, Chapter } from '../../types';
+import { Story, Chapter } from "../../types";
 
-export type JobStatus = 'pending' | 'downloading' | 'failed' | 'completed' | 'paused';
+export type JobStatus =
+  | "pending"
+  | "downloading"
+  | "failed"
+  | "completed"
+  | "paused";
 
 export interface DownloadJob {
-    id: string; // usually `${storyId}_${chapterIndex}`
-    storyId: string;
-    storyTitle: string;
-    chapterIndex: number;
-    chapter: Chapter;
-    status: JobStatus;
-    addedAt: number;
-    retryCount: number;
-    error?: string;
-    pausedAt?: number;
+  id: string; // usually `${storyId}_${chapterIndex}`
+  storyId: string;
+  storyTitle: string;
+  chapterIndex: number;
+  chapter: Chapter;
+  status: JobStatus;
+  addedAt: number;
+  retryCount: number;
+  error?: string;
+  pausedAt?: number;
 }
 
 export interface QueueStats {
-    total: number;
-    pending: number;
-    active: number;
-    completed: number;
-    failed: number;
-    paused: number;
+  total: number;
+  pending: number;
+  active: number;
+  completed: number;
+  failed: number;
+  paused: number;
 }

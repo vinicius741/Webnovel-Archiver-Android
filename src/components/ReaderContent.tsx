@@ -1,15 +1,21 @@
-import React, { useMemo } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { WebView } from 'react-native-webview';
-import { useTheme } from 'react-native-paper';
+import React, { useMemo } from "react";
+import { View, StyleSheet } from "react-native";
+import { WebView } from "react-native-webview";
+import { useTheme } from "react-native-paper";
 
-export const ReaderContent = ({ webViewRef, processedContent }: { webViewRef: React.RefObject<WebView>, processedContent: string }) => {
-    const theme = useTheme();
+export const ReaderContent = ({
+  webViewRef,
+  processedContent,
+}: {
+  webViewRef: React.RefObject<WebView>;
+  processedContent: string;
+}) => {
+  const theme = useTheme();
 
-    const htmlContent = useMemo(() => {
-        if (!processedContent) return '';
-        
-        const css = `
+  const htmlContent = useMemo(() => {
+    if (!processedContent) return "";
+
+    const css = `
             body {
                 background-color: ${theme.colors.surface};
                 color: ${theme.colors.onSurface};
@@ -30,7 +36,7 @@ export const ReaderContent = ({ webViewRef, processedContent }: { webViewRef: Re
             }
         `;
 
-        return `
+    return `
             <!DOCTYPE html>
             <html>
             <head>
@@ -42,22 +48,22 @@ export const ReaderContent = ({ webViewRef, processedContent }: { webViewRef: Re
             </body>
             </html>
         `;
-    }, [processedContent, theme]);
+  }, [processedContent, theme]);
 
-    return (
-        <View style={styles.container}>
-            <WebView
-                ref={webViewRef}
-                originWhitelist={['*']}
-                source={{ html: htmlContent }}
-                style={{ backgroundColor: theme.colors.surface }}
-            />
-        </View>
-    );
+  return (
+    <View style={styles.container}>
+      <WebView
+        ref={webViewRef}
+        originWhitelist={["*"]}
+        source={{ html: htmlContent }}
+        style={{ backgroundColor: theme.colors.surface }}
+      />
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-    },
+  container: {
+    flex: 1,
+  },
 });

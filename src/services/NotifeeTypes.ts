@@ -4,19 +4,23 @@
  * Notifee APIs while gracefully handling environments where it's unavailable.
  */
 
-import type { Module } from '@notifee/react-native/dist/types/Module';
-import type { AndroidImportance, AndroidColor, AndroidCategory } from '@notifee/react-native/dist/types/NotificationAndroid';
-import type { EventType } from '@notifee/react-native/dist/types/Notification';
+import type { Module } from "@notifee/react-native/dist/types/Module";
+import type {
+  AndroidImportance,
+  AndroidColor,
+  AndroidCategory,
+} from "@notifee/react-native/dist/types/NotificationAndroid";
+import type { EventType } from "@notifee/react-native/dist/types/Notification";
 
 /**
  * Type-safe interface for the Notifee module with Android-specific exports
  */
 export interface NotifeeModule {
-    default: Module;
-    AndroidImportance: typeof AndroidImportance;
-    AndroidColor: typeof AndroidColor;
-    AndroidCategory: typeof AndroidCategory;
-    EventType: typeof EventType;
+  default: Module;
+  AndroidImportance: typeof AndroidImportance;
+  AndroidColor: typeof AndroidColor;
+  AndroidCategory: typeof AndroidCategory;
+  EventType: typeof EventType;
 }
 
 /**
@@ -36,35 +40,35 @@ let cachedNotifee: NotifeeLoadResult = null;
  * @returns Typed Notifee module or null
  */
 export function loadNotifee(): NotifeeLoadResult {
-    if (cachedNotifee !== null) {
-        return cachedNotifee;
+  if (cachedNotifee !== null) {
+    return cachedNotifee;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const notifeeModule = require("@notifee/react-native") as unknown;
+
+    // Validate that the module has the expected structure
+    if (
+      notifeeModule &&
+      typeof notifeeModule === "object" &&
+      "default" in notifeeModule &&
+      typeof notifeeModule.default === "object"
+    ) {
+      cachedNotifee = notifeeModule as NotifeeModule;
+      return cachedNotifee;
     }
 
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        const notifeeModule = require('@notifee/react-native') as unknown;
-
-        // Validate that the module has the expected structure
-        if (
-            notifeeModule &&
-            typeof notifeeModule === 'object' &&
-            'default' in notifeeModule &&
-            typeof notifeeModule.default === 'object'
-        ) {
-            cachedNotifee = notifeeModule as NotifeeModule;
-            return cachedNotifee;
-        }
-
-        return null;
-    } catch {
-        // Notifee not available (e.g., Expo Go)
-        return null;
-    }
+    return null;
+  } catch {
+    // Notifee not available (e.g., Expo Go)
+    return null;
+  }
 }
 
 /**
  * Clears the cached Notifee module. Primarily useful for testing.
  */
 export function clearNotifeeCache(): void {
-    cachedNotifee = null;
+  cachedNotifee = null;
 }

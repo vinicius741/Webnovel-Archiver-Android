@@ -1,9 +1,9 @@
-import React from 'react';
-import { Text, SegmentedButtons, List } from 'react-native-paper';
-import { StyleSheet, View, ScrollView } from 'react-native';
-import { ScreenContainer } from '../src/components/ScreenContainer';
-import { useSettings } from '../src/hooks/useSettings';
-import { router } from 'expo-router';
+import React from "react";
+import { Text, SegmentedButtons, List } from "react-native-paper";
+import { StyleSheet, View, ScrollView } from "react-native";
+import { ScreenContainer } from "../src/components/ScreenContainer";
+import { useSettings } from "../src/hooks/useSettings";
+import { router } from "expo-router";
 
 export default function SettingsScreen() {
   const {
@@ -15,30 +15,32 @@ export default function SettingsScreen() {
   } = useSettings();
 
   return (
-    <ScreenContainer edges={['bottom', 'left', 'right']} style={{ padding: 8 }}>
+    <ScreenContainer edges={["bottom", "left", "right"]} style={{ padding: 8 }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 80 }}>
         <List.Section>
           <List.Subheader>Appearance</List.Subheader>
           <View style={styles.container}>
-            <Text variant="bodyMedium" style={styles.label}>Theme</Text>
+            <Text variant="bodyMedium" style={styles.label}>
+              Theme
+            </Text>
             <SegmentedButtons
               value={themeMode}
               onValueChange={(value) => setThemeMode(value as any)}
               buttons={[
                 {
-                  value: 'system',
-                  label: 'System',
-                  icon: 'theme-light-dark',
+                  value: "system",
+                  label: "System",
+                  icon: "theme-light-dark",
                 },
                 {
-                  value: 'light',
-                  label: 'Light',
-                  icon: 'weather-sunny',
+                  value: "light",
+                  label: "Light",
+                  icon: "weather-sunny",
                 },
                 {
-                  value: 'dark',
-                  label: 'Dark',
-                  icon: 'weather-night',
+                  value: "dark",
+                  label: "Dark",
+                  icon: "weather-night",
                 },
               ]}
             />
@@ -51,8 +53,8 @@ export default function SettingsScreen() {
             <List.Item
               title="Download Manager"
               description="View and manage active downloads"
-              left={props => <List.Icon {...props} icon="download-circle" />}
-              onPress={() => router.push('/download-manager')}
+              left={(props) => <List.Icon {...props} icon="download-circle" />}
+              onPress={() => router.push("/download-manager")}
             />
           </View>
         </List.Section>
@@ -63,13 +65,15 @@ export default function SettingsScreen() {
             <List.Item
               title="Text Cleanup Rules"
               description="Manage sentence removal and regex cleanup rules"
-              left={props => <List.Icon {...props} icon="text-box-remove-outline" />}
-              onPress={() => router.push('/sentence-removal')}
+              left={(props) => (
+                <List.Icon {...props} icon="text-box-remove-outline" />
+              )}
+              onPress={() => router.push("/sentence-removal")}
             />
             <List.Item
               title="Clear Local Storage"
               description="Delete all novels and reset app data"
-              left={props => <List.Icon {...props} icon="delete-outline" />}
+              left={(props) => <List.Icon {...props} icon="delete-outline" />}
               onPress={clearData}
             />
           </View>
@@ -81,13 +85,13 @@ export default function SettingsScreen() {
             <List.Item
               title="Export Backup"
               description="Export your library to a JSON file"
-              left={props => <List.Icon {...props} icon="export-variant" />}
+              left={(props) => <List.Icon {...props} icon="export-variant" />}
               onPress={handleExportBackup}
             />
             <List.Item
               title="Import Backup"
               description="Merge library from a backup file"
-              left={props => <List.Icon {...props} icon="import" />}
+              left={(props) => <List.Icon {...props} icon="import" />}
               onPress={handleImportBackup}
             />
           </View>

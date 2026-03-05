@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { storageService } from '../services/StorageService';
-import { RegexCleanupRule } from '../types';
-import { useAppAlert } from '../context/AlertContext';
+import { useState, useEffect, useCallback } from "react";
+import { storageService } from "../services/StorageService";
+import { RegexCleanupRule } from "../types";
+import { useAppAlert } from "../context/AlertContext";
 
 export function useSentenceRemovalData() {
   const { showAlert } = useAppAlert();
@@ -26,8 +26,8 @@ export function useSentenceRemovalData() {
       if (cleanupLoadResult.rejected.length > 0) {
         const rejectedCount = cleanupLoadResult.rejected.length;
         showAlert(
-          'Some Rules Were Skipped',
-          `${rejectedCount} invalid regex rule${rejectedCount > 1 ? 's were' : ' was'} ignored. Please review your cleanup rules.`
+          "Some Rules Were Skipped",
+          `${rejectedCount} invalid regex rule${rejectedCount > 1 ? "s were" : " was"} ignored. Please review your cleanup rules.`,
         );
       }
     } finally {

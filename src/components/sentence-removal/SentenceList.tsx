@@ -1,6 +1,6 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { List, IconButton, Divider, Text, Button } from 'react-native-paper';
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { List, IconButton, Divider, Text, Button } from "react-native-paper";
 
 interface SentenceListProps {
   sentences: string[];
@@ -9,7 +9,12 @@ interface SentenceListProps {
   onDelete: (index: number) => void;
 }
 
-export function SentenceList({ sentences, onAdd, onEdit, onDelete }: SentenceListProps) {
+export function SentenceList({
+  sentences,
+  onAdd,
+  onEdit,
+  onDelete,
+}: SentenceListProps) {
   return (
     <List.Section>
       <View style={styles.sectionHeader}>
@@ -34,8 +39,15 @@ export function SentenceList({ sentences, onAdd, onEdit, onDelete }: SentenceLis
               titleNumberOfLines={3}
               right={() => (
                 <View style={styles.rowActions}>
-                  <IconButton icon="pencil" onPress={() => onEdit(item, index)} />
-                  <IconButton icon="delete" iconColor="red" onPress={() => onDelete(index)} />
+                  <IconButton
+                    icon="pencil"
+                    onPress={() => onEdit(item, index)}
+                  />
+                  <IconButton
+                    icon="delete"
+                    iconColor="red"
+                    onPress={() => onDelete(index)}
+                  />
                 </View>
               )}
               style={styles.listItem}
@@ -50,9 +62,9 @@ export function SentenceList({ sentences, onAdd, onEdit, onDelete }: SentenceLis
 
 const styles = StyleSheet.create({
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   sectionDescription: {
     paddingHorizontal: 16,
@@ -63,8 +75,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   rowActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   emptyContainer: {
     paddingHorizontal: 16,

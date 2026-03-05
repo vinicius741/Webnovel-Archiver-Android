@@ -1,310 +1,321 @@
-import { renderHook, waitFor } from '@testing-library/react-native';
-import { useStoryDetails } from '../useStoryDetails';
-import { storageService } from '../../services/StorageService';
-import { Story, Chapter, DownloadStatus } from '../../types';
+import { renderHook, waitFor } from "@testing-library/react-native";
+import { useStoryDetails } from "../useStoryDetails";
+import { storageService } from "../../services/StorageService";
+import { Story, Chapter, DownloadStatus } from "../../types";
 
-jest.mock('../../services/StorageService');
-jest.mock('../useDownloadProgress', () => ({
-    useDownloadProgress: jest.fn(),
+jest.mock("../../services/StorageService");
+jest.mock("../useDownloadProgress", () => ({
+  useDownloadProgress: jest.fn(),
 }));
-jest.mock('../useStoryActions', () => ({
-    useStoryActions: jest.fn(),
+jest.mock("../useStoryActions", () => ({
+  useStoryActions: jest.fn(),
 }));
-jest.mock('../useStoryDownload', () => ({
-    useStoryDownload: jest.fn(),
+jest.mock("../useStoryDownload", () => ({
+  useStoryDownload: jest.fn(),
 }));
-jest.mock('../useStoryEPUB', () => ({
-    useStoryEPUB: jest.fn(),
+jest.mock("../useStoryEPUB", () => ({
+  useStoryEPUB: jest.fn(),
 }));
-jest.mock('expo-router', () => ({
-    useRouter: jest.fn(() => ({
-        push: jest.fn(),
-        replace: jest.fn(),
-        back: jest.fn(),
-    })),
+jest.mock("expo-router", () => ({
+  useRouter: jest.fn(() => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+  })),
 }));
-jest.mock('../../services/download/DownloadManager', () => ({
-    downloadManager: {
-        on: jest.fn(),
-        off: jest.fn(),
-        init: jest.fn().mockResolvedValue(undefined),
-    },
+jest.mock("../../services/download/DownloadManager", () => ({
+  downloadManager: {
+    on: jest.fn(),
+    off: jest.fn(),
+    init: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 
-describe('useStoryDetails', () => {
-    const mockStory: Story = {
-        id: '123',
-        title: 'Test Story',
-        author: 'Author',
-        sourceUrl: 'http://test.com',
-        coverUrl: 'http://cover.com',
-        chapters: [
-            { id: 'c1', title: 'Chapter 1', url: 'http://c1', downloaded: true },
-        ],
-        status: DownloadStatus.Completed,
-        totalChapters: 1,
-        downloadedChapters: 1,
-        dateAdded: 1000,
-        lastUpdated: 2000,
-    };
+describe("useStoryDetails", () => {
+  const mockStory: Story = {
+    id: "123",
+    title: "Test Story",
+    author: "Author",
+    sourceUrl: "http://test.com",
+    coverUrl: "http://cover.com",
+    chapters: [
+      { id: "c1", title: "Chapter 1", url: "http://c1", downloaded: true },
+    ],
+    status: DownloadStatus.Completed,
+    totalChapters: 1,
+    downloadedChapters: 1,
+    dateAdded: 1000,
+    lastUpdated: 2000,
+  };
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        (storageService.getStory as jest.Mock).mockResolvedValue(mockStory);
-        (storageService.getSettings as jest.Mock).mockResolvedValue({
-            downloadConcurrency: 3,
-        } as any);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (storageService.getStory as jest.Mock).mockResolvedValue(mockStory);
+    (storageService.getSettings as jest.Mock).mockResolvedValue({
+      downloadConcurrency: 3,
+    } as any);
 
-        const useDownloadProgress = require('../useDownloadProgress').useDownloadProgress as jest.Mock;
-        useDownloadProgress.mockReturnValue({
-            progress: jest.fn(),
-            status: jest.fn(),
-            isDownloading: jest.fn(),
-        });
-
-        const useStoryActions = require('../useStoryActions').useStoryActions as jest.Mock;
-        useStoryActions.mockReturnValue({
-            deleteStory: jest.fn(),
-            markChapterAsRead: jest.fn(),
-        });
-
-        const useStoryDownload = require('../useStoryDownload').useStoryDownload as jest.Mock;
-        useStoryDownload.mockReturnValue({
-            syncing: jest.fn(),
-            syncStatus: jest.fn(),
-            queueing: jest.fn(),
-            syncChapters: jest.fn(),
-            downloadRange: jest.fn(),
-            applySentenceRemoval: jest.fn(),
-        });
-
-        const useStoryEPUB = require('../useStoryEPUB').useStoryEPUB as jest.Mock;
-        useStoryEPUB.mockReturnValue({
-            generating: jest.fn(),
-            progress: jest.fn(),
-            generateOrRead: jest.fn(),
-        });
+    const useDownloadProgress = require("../useDownloadProgress")
+      .useDownloadProgress as jest.Mock;
+    useDownloadProgress.mockReturnValue({
+      progress: jest.fn(),
+      status: jest.fn(),
+      isDownloading: jest.fn(),
     });
 
-    it('should load story on mount', async () => {
-        const { result } = renderHook(() => useStoryDetails('123'));
-
-        expect(result.current.loading).toBe(true);
-
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(storageService.getStory).toHaveBeenCalledWith('123');
-        expect(result.current.story).toEqual(mockStory);
+    const useStoryActions = require("../useStoryActions")
+      .useStoryActions as jest.Mock;
+    useStoryActions.mockReturnValue({
+      deleteStory: jest.fn(),
+      markChapterAsRead: jest.fn(),
     });
 
-    it('should handle string id parameter', async () => {
-        const { result } = renderHook(() => useStoryDetails('123'));
-
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(storageService.getStory).toHaveBeenCalledWith('123');
+    const useStoryDownload = require("../useStoryDownload")
+      .useStoryDownload as jest.Mock;
+    useStoryDownload.mockReturnValue({
+      syncing: jest.fn(),
+      syncStatus: jest.fn(),
+      queueing: jest.fn(),
+      syncChapters: jest.fn(),
+      downloadRange: jest.fn(),
+      applySentenceRemoval: jest.fn(),
     });
 
-    it('should handle array id parameter by using first element', async () => {
-        const { result } = renderHook(() => useStoryDetails(['456']));
+    const useStoryEPUB = require("../useStoryEPUB").useStoryEPUB as jest.Mock;
+    useStoryEPUB.mockReturnValue({
+      generating: jest.fn(),
+      progress: jest.fn(),
+      generateOrRead: jest.fn(),
+    });
+  });
 
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
+  it("should load story on mount", async () => {
+    const { result } = renderHook(() => useStoryDetails("123"));
 
-        expect(storageService.getStory).toHaveBeenCalledWith('456');
+    expect(result.current.loading).toBe(true);
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
     });
 
-    it('should handle undefined id', async () => {
-        const { result } = renderHook(() => useStoryDetails(undefined));
+    expect(storageService.getStory).toHaveBeenCalledWith("123");
+    expect(result.current.story).toEqual(mockStory);
+  });
 
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
+  it("should handle string id parameter", async () => {
+    const { result } = renderHook(() => useStoryDetails("123"));
 
-        expect(storageService.getStory).not.toHaveBeenCalled();
-        expect(result.current.story).toBeNull();
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
     });
 
-    it('should set story to null if not found', async () => {
-        (storageService.getStory as jest.Mock).mockResolvedValue(null);
+    expect(storageService.getStory).toHaveBeenCalledWith("123");
+  });
 
-        const { result } = renderHook(() => useStoryDetails('123'));
+  it("should handle array id parameter by using first element", async () => {
+    const { result } = renderHook(() => useStoryDetails(["456"]));
 
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(result.current.story).toBeNull();
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
     });
 
-    it('should reload story after download completes', async () => {
-        let downloadState = true;
+    expect(storageService.getStory).toHaveBeenCalledWith("456");
+  });
 
-        const { useDownloadProgress } = require('../useDownloadProgress');
-        useDownloadProgress.mockReturnValue({
-            progress: 50,
-            status: 'downloading',
-            isDownloading: downloadState,
-        });
+  it("should handle undefined id", async () => {
+    const { result } = renderHook(() => useStoryDetails(undefined));
 
-        const { result, rerender } = renderHook(({ id }: { id: string | undefined }) => useStoryDetails(id), {
-            initialProps: { id: '123' },
-        });
-
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(storageService.getStory).toHaveBeenCalledTimes(1);
-
-        downloadState = false;
-        useDownloadProgress.mockReturnValue({
-            progress: 100,
-            status: 'completed',
-            isDownloading: downloadState,
-        });
-
-        rerender({ id: '123' });
-
-        await waitFor(() => {
-            expect(storageService.getStory).toHaveBeenCalledTimes(2);
-        });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
     });
 
-    it('should handle error when reloading story', async () => {
-        let downloadState = true;
+    expect(storageService.getStory).not.toHaveBeenCalled();
+    expect(result.current.story).toBeNull();
+  });
 
-        const { useDownloadProgress } = require('../useDownloadProgress');
-        useDownloadProgress.mockReturnValue({
-            progress: 50,
-            status: 'downloading',
-            isDownloading: downloadState,
-        });
+  it("should set story to null if not found", async () => {
+    (storageService.getStory as jest.Mock).mockResolvedValue(null);
 
-        const { result, rerender } = renderHook(({ id }: { id: string | undefined }) => useStoryDetails(id), {
-            initialProps: { id: '123' },
-        });
+    const { result } = renderHook(() => useStoryDetails("123"));
 
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        downloadState = false;
-        useDownloadProgress.mockReturnValue({
-            progress: 100,
-            status: 'completed',
-            isDownloading: downloadState,
-        });
-
-        (storageService.getStory as jest.Mock).mockRejectedValueOnce(new Error('Fetch failed'));
-
-        rerender({ id: '123' });
-
-        await waitFor(() => {
-            const current = result.current as any;
-            expect(current.story).toBeNull();
-        });
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
     });
 
-    it('should expose story actions', async () => {
-        const { useStoryActions } = require('../useStoryActions');
-        const mockDeleteStory = jest.fn();
-        const mockMarkChapterAsRead = jest.fn();
-        useStoryActions.mockReturnValue({
-            deleteStory: mockDeleteStory,
-            markChapterAsRead: mockMarkChapterAsRead,
-        });
+    expect(result.current.story).toBeNull();
+  });
 
-        const { result } = renderHook(() => useStoryDetails('123'));
+  it("should reload story after download completes", async () => {
+    let downloadState = true;
 
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(typeof result.current.deleteStory).toBe('function');
-        expect(typeof result.current.markChapterAsRead).toBe('function');
+    const { useDownloadProgress } = require("../useDownloadProgress");
+    useDownloadProgress.mockReturnValue({
+      progress: 50,
+      status: "downloading",
+      isDownloading: downloadState,
     });
 
-    it('should expose story download functions', async () => {
-        const { useStoryDownload } = require('../useStoryDownload');
-        const mockSyncChapters = jest.fn();
-        const mockDownloadRange = jest.fn();
-        const mockApplySentenceRemoval = jest.fn();
-        useStoryDownload.mockReturnValue({
-            syncing: false,
-            syncStatus: '',
-            queueing: false,
-            syncChapters: mockSyncChapters,
-            downloadRange: mockDownloadRange,
-            applySentenceRemoval: mockApplySentenceRemoval,
-        });
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string | undefined }) => useStoryDetails(id),
+      {
+        initialProps: { id: "123" },
+      },
+    );
 
-        const { result } = renderHook(() => useStoryDetails('123'));
-
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(typeof result.current.syncChapters).toBe('function');
-        expect(typeof result.current.downloadRange).toBe('function');
-        expect(typeof result.current.applySentenceRemoval).toBe('function');
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
     });
 
-    it('should expose epub generation functions', async () => {
-        const { useStoryEPUB } = require('../useStoryEPUB');
-        const mockGenerateOrRead = jest.fn();
-        useStoryEPUB.mockReturnValue({
-            generating: false,
-            progress: null,
-            generateOrRead: mockGenerateOrRead,
-        });
+    expect(storageService.getStory).toHaveBeenCalledTimes(1);
 
-        const { result } = renderHook(() => useStoryDetails('123'));
-
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(typeof result.current.generateOrRead).toBe('function');
+    downloadState = false;
+    useDownloadProgress.mockReturnValue({
+      progress: 100,
+      status: "completed",
+      isDownloading: downloadState,
     });
 
-    it('should calculate downloading state correctly', async () => {
-        const { useStoryDownload } = require('../useStoryDownload');
-        const { useStoryEPUB } = require('../useStoryEPUB');
-        const { useDownloadProgress } = require('../useDownloadProgress');
+    rerender({ id: "123" });
 
-        useStoryDownload.mockReturnValue({
-            syncing: false,
-            syncStatus: '',
-            queueing: true,
-            syncChapters: jest.fn(),
-            downloadRange: jest.fn(),
-            applySentenceRemoval: jest.fn(),
-        });
-
-        useStoryEPUB.mockReturnValue({
-            generating: false,
-            progress: null,
-            generateOrRead: jest.fn(),
-        });
-
-        useDownloadProgress.mockReturnValue({
-            progress: 50,
-            status: 'downloading',
-            isDownloading: true,
-        });
-
-        const { result } = renderHook(() => useStoryDetails('123'));
-
-        await waitFor(() => {
-            expect(result.current.loading).toBe(false);
-        });
-
-        expect(result.current.downloading).toBe(true);
+    await waitFor(() => {
+      expect(storageService.getStory).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("should handle error when reloading story", async () => {
+    let downloadState = true;
+
+    const { useDownloadProgress } = require("../useDownloadProgress");
+    useDownloadProgress.mockReturnValue({
+      progress: 50,
+      status: "downloading",
+      isDownloading: downloadState,
+    });
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string | undefined }) => useStoryDetails(id),
+      {
+        initialProps: { id: "123" },
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    downloadState = false;
+    useDownloadProgress.mockReturnValue({
+      progress: 100,
+      status: "completed",
+      isDownloading: downloadState,
+    });
+
+    (storageService.getStory as jest.Mock).mockRejectedValueOnce(
+      new Error("Fetch failed"),
+    );
+
+    rerender({ id: "123" });
+
+    await waitFor(() => {
+      const current = result.current as any;
+      expect(current.story).toBeNull();
+    });
+  });
+
+  it("should expose story actions", async () => {
+    const { useStoryActions } = require("../useStoryActions");
+    const mockDeleteStory = jest.fn();
+    const mockMarkChapterAsRead = jest.fn();
+    useStoryActions.mockReturnValue({
+      deleteStory: mockDeleteStory,
+      markChapterAsRead: mockMarkChapterAsRead,
+    });
+
+    const { result } = renderHook(() => useStoryDetails("123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(typeof result.current.deleteStory).toBe("function");
+    expect(typeof result.current.markChapterAsRead).toBe("function");
+  });
+
+  it("should expose story download functions", async () => {
+    const { useStoryDownload } = require("../useStoryDownload");
+    const mockSyncChapters = jest.fn();
+    const mockDownloadRange = jest.fn();
+    const mockApplySentenceRemoval = jest.fn();
+    useStoryDownload.mockReturnValue({
+      syncing: false,
+      syncStatus: "",
+      queueing: false,
+      syncChapters: mockSyncChapters,
+      downloadRange: mockDownloadRange,
+      applySentenceRemoval: mockApplySentenceRemoval,
+    });
+
+    const { result } = renderHook(() => useStoryDetails("123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(typeof result.current.syncChapters).toBe("function");
+    expect(typeof result.current.downloadRange).toBe("function");
+    expect(typeof result.current.applySentenceRemoval).toBe("function");
+  });
+
+  it("should expose epub generation functions", async () => {
+    const { useStoryEPUB } = require("../useStoryEPUB");
+    const mockGenerateOrRead = jest.fn();
+    useStoryEPUB.mockReturnValue({
+      generating: false,
+      progress: null,
+      generateOrRead: mockGenerateOrRead,
+    });
+
+    const { result } = renderHook(() => useStoryDetails("123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(typeof result.current.generateOrRead).toBe("function");
+  });
+
+  it("should calculate downloading state correctly", async () => {
+    const { useStoryDownload } = require("../useStoryDownload");
+    const { useStoryEPUB } = require("../useStoryEPUB");
+    const { useDownloadProgress } = require("../useDownloadProgress");
+
+    useStoryDownload.mockReturnValue({
+      syncing: false,
+      syncStatus: "",
+      queueing: true,
+      syncChapters: jest.fn(),
+      downloadRange: jest.fn(),
+      applySentenceRemoval: jest.fn(),
+    });
+
+    useStoryEPUB.mockReturnValue({
+      generating: false,
+      progress: null,
+      generateOrRead: jest.fn(),
+    });
+
+    useDownloadProgress.mockReturnValue({
+      progress: 50,
+      status: "downloading",
+      isDownloading: true,
+    });
+
+    const { result } = renderHook(() => useStoryDetails("123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.downloading).toBe(true);
+  });
 });

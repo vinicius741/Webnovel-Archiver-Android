@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { TextInput, Text, Switch } from 'react-native-paper';
-import { QuickBuilderConfig } from '../../types/sentenceRemoval';
+import React, { useState, useEffect } from "react";
+import { StyleSheet, View } from "react-native";
+import { TextInput, Text, Switch } from "react-native-paper";
+import { QuickBuilderConfig } from "../../types/sentenceRemoval";
 
 interface QuickBuilderFormProps {
   config: QuickBuilderConfig;
   onChange: (config: QuickBuilderConfig) => void;
 }
 
-export function QuickBuilderForm({
-  config,
-  onChange,
-}: QuickBuilderFormProps) {
+export function QuickBuilderForm({ config, onChange }: QuickBuilderFormProps) {
   const { characters, minCount, wholeLine } = config;
   const [minCountInput, setMinCountInput] = useState(minCount.toString());
 
@@ -23,7 +20,7 @@ export function QuickBuilderForm({
   const handleMinCountChange = (value: string) => {
     setMinCountInput(value);
 
-    if (value === '') {
+    if (value === "") {
       return;
     }
 
@@ -55,7 +52,8 @@ export function QuickBuilderForm({
         autoCorrect={false}
       />
       <Text variant="bodySmall" style={styles.helpText}>
-        Enter the character(s) that form the separator. Use 1-2 characters for best results.
+        Enter the character(s) that form the separator. Use 1-2 characters for
+        best results.
       </Text>
 
       <TextInput
@@ -68,7 +66,8 @@ export function QuickBuilderForm({
         keyboardType="numeric"
       />
       <Text variant="bodySmall" style={styles.helpText}>
-        Match when the character repeats at least this many times (e.g., 5 means ===== or more).
+        Match when the character repeats at least this many times (e.g., 5 means
+        ===== or more).
       </Text>
 
       <View style={styles.switchRow}>
@@ -100,9 +99,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 4,
     marginTop: 4,
   },

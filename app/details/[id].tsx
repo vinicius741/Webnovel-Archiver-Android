@@ -1,23 +1,26 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
-import { Text, Button, List, ActivityIndicator } from 'react-native-paper';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import React, { useState, useEffect, useMemo } from "react";
+import { View, StyleSheet, ScrollView, FlatList } from "react-native";
+import { Text, Button, List, ActivityIndicator } from "react-native-paper";
+import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 
-import { StoryHeader } from '../../src/components/details/StoryHeader';
-import { StoryActions } from '../../src/components/details/StoryActions';
-import { StoryMenu } from '../../src/components/details/StoryMenu';
-import { StoryDescription } from '../../src/components/details/StoryDescription';
-import { StoryTags } from '../../src/components/details/StoryTags';
-import { ChapterListItem } from '../../src/components/details/ChapterListItem';
-import { ChapterFilterMenu } from '../../src/components/details/ChapterFilterMenu';
-import { DownloadRangeDialog } from '../../src/components/details/DownloadRangeDialog';
-import { EpubConfigDialog } from '../../src/components/details/EpubConfigDialog';
-import { EpubSelectorDialog } from '../../src/components/details/EpubSelectorDialog';
-import { ScreenContainer } from '../../src/components/ScreenContainer';
-import { useScreenLayout } from '../../src/hooks/useScreenLayout';
-import { useStoryDetails } from '../../src/hooks/useStoryDetails';
-import { storageService, ChapterFilterMode } from '../../src/services/StorageService';
-import { Chapter, EpubConfig } from '../../src/types';
+import { StoryHeader } from "../../src/components/details/StoryHeader";
+import { StoryActions } from "../../src/components/details/StoryActions";
+import { StoryMenu } from "../../src/components/details/StoryMenu";
+import { StoryDescription } from "../../src/components/details/StoryDescription";
+import { StoryTags } from "../../src/components/details/StoryTags";
+import { ChapterListItem } from "../../src/components/details/ChapterListItem";
+import { ChapterFilterMenu } from "../../src/components/details/ChapterFilterMenu";
+import { DownloadRangeDialog } from "../../src/components/details/DownloadRangeDialog";
+import { EpubConfigDialog } from "../../src/components/details/EpubConfigDialog";
+import { EpubSelectorDialog } from "../../src/components/details/EpubSelectorDialog";
+import { ScreenContainer } from "../../src/components/ScreenContainer";
+import { useScreenLayout } from "../../src/hooks/useScreenLayout";
+import { useStoryDetails } from "../../src/hooks/useStoryDetails";
+import {
+  storageService,
+  ChapterFilterMode,
+} from "../../src/services/StorageService";
+import { Chapter, EpubConfig } from "../../src/types";
 
 export default function StoryDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -47,10 +50,10 @@ export default function StoryDetailsScreen() {
     readEpub,
   } = useStoryDetails(id);
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [showDownloadRange, setShowDownloadRange] = useState(false);
   const [showEpubConfig, setShowEpubConfig] = useState(false);
-  const [filterMode, setFilterMode] = useState<ChapterFilterMode>('all');
+  const [filterMode, setFilterMode] = useState<ChapterFilterMode>("all");
   const [defaultMaxChapters, setDefaultMaxChapters] = useState(150);
 
   useEffect(() => {
@@ -68,18 +71,21 @@ export default function StoryDetailsScreen() {
   const filteredChapters = useMemo(() => {
     if (!story) return [];
 
-    const bookmarkIndex = story.lastReadChapterId && filterMode === 'hideAboveBookmark'
-      ? story.chapters.findIndex(ch => ch.id === story.lastReadChapterId)
-      : -1;
+    const bookmarkIndex =
+      story.lastReadChapterId && filterMode === "hideAboveBookmark"
+        ? story.chapters.findIndex((ch) => ch.id === story.lastReadChapterId)
+        : -1;
 
     return story.chapters.filter((c, index) => {
-      const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = c.title
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
       switch (filterMode) {
-        case 'hideNonDownloaded':
+        case "hideNonDownloaded":
           return c.downloaded === true;
-        case 'hideAboveBookmark':
+        case "hideAboveBookmark":
           return bookmarkIndex !== -1 ? index >= bookmarkIndex : true;
         default:
           return true;
@@ -114,11 +120,15 @@ export default function StoryDetailsScreen() {
   }
 
   const chapterCount = story.chapters.length;
-  const downloadedChapterCount = story.chapters.filter(chapter => chapter.downloaded === true).length;
-  const hasValidBookmark = !!story.lastReadChapterId
-    && story.chapters.some(chapter => chapter.id === story.lastReadChapterId);
+  const downloadedChapterCount = story.chapters.filter(
+    (chapter) => chapter.downloaded === true,
+  ).length;
+  const hasValidBookmark =
+    !!story.lastReadChapterId &&
+    story.chapters.some((chapter) => chapter.id === story.lastReadChapterId);
   const initialEpubConfig: EpubConfig = {
-    maxChaptersPerEpub: story.epubConfig?.maxChaptersPerEpub ?? defaultMaxChapters,
+    maxChaptersPerEpub:
+      story.epubConfig?.maxChaptersPerEpub ?? defaultMaxChapters,
     rangeStart: story.epubConfig?.rangeStart ?? 1,
     rangeEnd: story.epubConfig?.rangeEnd ?? chapterCount,
     startAfterBookmark: story.epubConfig?.startAfterBookmark ?? false,
@@ -146,7 +156,9 @@ export default function StoryDetailsScreen() {
         downloadStatus={downloadStatus}
         onSync={syncChapters}
         onGenerateOrRead={generateOrRead}
-        onDownloadAll={() => story.totalChapters > 0 && downloadRange(1, story.totalChapters)}
+        onDownloadAll={() =>
+          story.totalChapters > 0 && downloadRange(1, story.totalChapters)
+        }
       />
       <DownloadRangeDialog
         visible={showDownloadRange}
@@ -185,10 +197,10 @@ export default function StoryDetailsScreen() {
   );
 
   return (
-    <ScreenContainer edges={['bottom', 'left', 'right']}>
+    <ScreenContainer edges={["bottom", "left", "right"]}>
       <Stack.Screen
         options={{
-          title: story ? story.title : 'Details',
+          title: story ? story.title : "Details",
           headerRight: () => (
             <StoryMenu
               onDownloadRange={() => setShowDownloadRange(true)}
@@ -197,7 +209,7 @@ export default function StoryDetailsScreen() {
               onDelete={deleteStory}
               disabled={loading}
             />
-          )
+          ),
         }}
       />
 
@@ -216,7 +228,11 @@ export default function StoryDetailsScreen() {
                   <ChapterListItem
                     item={item}
                     isLastRead={story.lastReadChapterId === item.id}
-                    onPress={() => router.push(`/reader/${story.id}/${encodeURIComponent(item.id)}`)}
+                    onPress={() =>
+                      router.push(
+                        `/reader/${story.id}/${encodeURIComponent(item.id)}`,
+                      )
+                    }
                     onLongPress={() => markChapterAsRead(item)}
                   />
                 )}
@@ -233,7 +249,11 @@ export default function StoryDetailsScreen() {
             <ChapterListItem
               item={item}
               isLastRead={story.lastReadChapterId === item.id}
-              onPress={() => router.push(`/reader/${story.id}/${encodeURIComponent(item.id)}`)}
+              onPress={() =>
+                router.push(
+                  `/reader/${story.id}/${encodeURIComponent(item.id)}`,
+                )
+              }
               onLongPress={() => markChapterAsRead(item)}
             />
           )}
@@ -249,31 +269,31 @@ export default function StoryDetailsScreen() {
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   content: {
     padding: 16,
     flexGrow: 1,
   },
   largeScreenContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 32,
   },
   normalContainer: {
-    flexDirection: 'column',
+    flexDirection: "column",
   },
   leftColumn: {
     flex: 1,
     minWidth: 200,
     maxWidth: 500,
-    alignItems: 'stretch',
+    alignItems: "stretch",
   },
   rightColumn: {
     flex: 2,
   },
   fullWidth: {
-    width: '100%',
+    width: "100%",
   },
   filterContainer: {
     margin: 16,

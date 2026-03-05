@@ -1,93 +1,92 @@
-
-jest.mock('react-native', () => ({
-    Platform: {
-        OS: 'android',
-    },
+jest.mock("react-native", () => ({
+  Platform: {
+    OS: "android",
+  },
 }));
 
-jest.mock('expo-constants', () => ({
-    executionEnvironment: 'bare',
+jest.mock("expo-constants", () => ({
+  executionEnvironment: "bare",
 }));
 
-jest.mock('../ForegroundServiceCoordinator', () => ({
-    setTtsState: jest.fn().mockResolvedValue(undefined),
-    clearTtsState: jest.fn().mockResolvedValue(undefined),
+jest.mock("../ForegroundServiceCoordinator", () => ({
+  setTtsState: jest.fn().mockResolvedValue(undefined),
+  clearTtsState: jest.fn().mockResolvedValue(undefined),
 }));
 
-describe('TTSNotificationService', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
+describe("TTSNotificationService", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("should start TTS service", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
+    const { setTtsState } = require("../ForegroundServiceCoordinator");
+
+    await ttsNotificationService.startService("Test Title", "Test Body");
+
+    expect(setTtsState).toHaveBeenCalledWith({
+      title: "Test Title",
+      body: "Test Body",
+      isPlaying: true,
     });
+  });
 
-    it('should start TTS service', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
-        const { setTtsState } = require('../ForegroundServiceCoordinator');
+  it("should update notification with playing state", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
+    const { setTtsState } = require("../ForegroundServiceCoordinator");
 
-        await ttsNotificationService.startService('Test Title', 'Test Body');
+    await ttsNotificationService.updateNotification(true, "Title", "Body");
 
-        expect(setTtsState).toHaveBeenCalledWith({
-            title: 'Test Title',
-            body: 'Test Body',
-            isPlaying: true,
-        });
+    expect(setTtsState).toHaveBeenCalledWith({
+      title: "Title",
+      body: "Body",
+      isPlaying: true,
     });
+  });
 
-    it('should update notification with playing state', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
-        const { setTtsState } = require('../ForegroundServiceCoordinator');
+  it("should update notification with paused state", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
+    const { setTtsState } = require("../ForegroundServiceCoordinator");
 
-        await ttsNotificationService.updateNotification(true, 'Title', 'Body');
+    await ttsNotificationService.updateNotification(false, "Title", "Body");
 
-        expect(setTtsState).toHaveBeenCalledWith({
-            title: 'Title',
-            body: 'Body',
-            isPlaying: true,
-        });
+    expect(setTtsState).toHaveBeenCalledWith({
+      title: "Title",
+      body: "Body",
+      isPlaying: false,
     });
+  });
 
-    it('should update notification with paused state', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
-        const { setTtsState } = require('../ForegroundServiceCoordinator');
+  it("should stop TTS service", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
+    const { clearTtsState } = require("../ForegroundServiceCoordinator");
 
-        await ttsNotificationService.updateNotification(false, 'Title', 'Body');
+    await ttsNotificationService.stopService();
 
-        expect(setTtsState).toHaveBeenCalledWith({
-            title: 'Title',
-            body: 'Body',
-            isPlaying: false,
-        });
-    });
+    expect(clearTtsState).toHaveBeenCalled();
+  });
 
-    it('should stop TTS service', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
-        const { clearTtsState } = require('../ForegroundServiceCoordinator');
+  it("should start service when initialized", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
 
-        await ttsNotificationService.stopService();
+    await ttsNotificationService.startService("Title", "Body");
 
-        expect(clearTtsState).toHaveBeenCalled();
-    });
+    const { setTtsState } = require("../ForegroundServiceCoordinator");
+    expect(setTtsState).toHaveBeenCalled();
+  });
 
-    it('should start service when initialized', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
+  it("should update notification when initialized", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
 
-        await ttsNotificationService.startService('Title', 'Body');
+    await ttsNotificationService.updateNotification(true, "Title", "Body");
 
-        const { setTtsState } = require('../ForegroundServiceCoordinator');
-        expect(setTtsState).toHaveBeenCalled();
-    });
+    const { setTtsState } = require("../ForegroundServiceCoordinator");
+    expect(setTtsState).toHaveBeenCalled();
+  });
 
-    it('should update notification when initialized', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
+  it("should not throw error when coordinator is available", async () => {
+    const { ttsNotificationService } = require("../TTSNotificationService");
 
-        await ttsNotificationService.updateNotification(true, 'Title', 'Body');
-
-        const { setTtsState } = require('../ForegroundServiceCoordinator');
-        expect(setTtsState).toHaveBeenCalled();
-    });
-
-    it('should not throw error when coordinator is available', async () => {
-        const { ttsNotificationService } = require('../TTSNotificationService');
-
-        expect(ttsNotificationService).toBeDefined();
-    });
+    expect(ttsNotificationService).toBeDefined();
+  });
 });

@@ -1,442 +1,486 @@
-import EventEmitter from 'events';
-import { DownloadQueue, downloadQueue } from './DownloadQueue';
-import { DownloadJob, JobStatus } from './types';
-import { sourceRegistry } from '../source/SourceRegistry';
-import { fetchPage } from '../network/fetcher';
-import { saveChapter } from '../storage/fileSystem';
-import { storageService } from '../StorageService';
+import EventEmitter from "events";
+import { DownloadQueue, downloadQueue } from "./DownloadQueue";
+import { DownloadJob, JobStatus } from "./types";
+import { sourceRegistry } from "../source/SourceRegistry";
+import { fetchPage } from "../network/fetcher";
+import { saveChapter } from "../storage/fileSystem";
+import { storageService } from "../StorageService";
 import {
-    clearDownloadState,
-    setDownloadState,
-    showDownloadCompletionNotification
-} from '../ForegroundServiceCoordinator';
-import { DownloadStatus, Story, Chapter } from '../../types';
-import { applyDownloadCleanup } from '../../utils/textCleanup';
+  clearDownloadState,
+  setDownloadState,
+  showDownloadCompletionNotification,
+} from "../ForegroundServiceCoordinator";
+import { DownloadStatus, Story, Chapter } from "../../types";
+import { applyDownloadCleanup } from "../../utils/textCleanup";
 
 const FLUSH_THRESHOLD = 3;
 const FLUSH_INTERVAL = 2000;
 
 interface PendingUpdate {
-    chapterIndex: number;
-    filePath: string;
+  chapterIndex: number;
+  filePath: string;
 }
 
 export class DownloadManager extends EventEmitter {
-    private isRunning = false;
-    private activeWorkers = 0;
-    private concurrency = 3;
-    private storyLocks = new Map<string, Promise<void>>();
-    private lastNotificationUpdate = 0;
-    private cancelRequested = false;
-    
-    private storyCache = new Map<string, Story>();
-    private pendingUpdates = new Map<string, PendingUpdate[]>();
-    private flushTimer: ReturnType<typeof setInterval> | null = null;
-    private flushPromise = Promise.resolve();
+  private isRunning = false;
+  private activeWorkers = 0;
+  private concurrency = 3;
+  private storyLocks = new Map<string, Promise<void>>();
+  private lastNotificationUpdate = 0;
+  private cancelRequested = false;
 
-    constructor() {
-        super();
-        this.init();
+  private storyCache = new Map<string, Story>();
+  private pendingUpdates = new Map<string, PendingUpdate[]>();
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private flushPromise = Promise.resolve();
+
+  constructor() {
+    super();
+    this.init();
+  }
+
+  async init() {
+    await downloadQueue.init();
+    const settings = await storageService.getSettings();
+    this.concurrency =
+      settings.downloadConcurrency > 0 ? settings.downloadConcurrency : 3;
+
+    const stats = downloadQueue.getStats();
+    if (stats.pending > 0) {
+      this.start();
     }
+  }
 
-    async init() {
-        await downloadQueue.init();
-        const settings = await storageService.getSettings();
-        this.concurrency = settings.downloadConcurrency > 0 ? settings.downloadConcurrency : 3;
+  private startFlushTimer() {
+    if (this.flushTimer) return;
+    this.flushTimer = setInterval(() => {
+      this.flushAllPending();
+    }, FLUSH_INTERVAL);
+  }
 
-        const stats = downloadQueue.getStats();
-        if (stats.pending > 0) {
-            this.start();
+  private stopFlushTimer() {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
+  }
+
+  private async getCachedStory(storyId: string): Promise<Story | undefined> {
+    // Wait for any pending flush to complete to ensure cache coherency
+    await this.flushPromise;
+
+    if (this.storyCache.has(storyId)) {
+      return this.storyCache.get(storyId);
+    }
+    const story = await storageService.getStory(storyId);
+    if (story) {
+      this.storyCache.set(storyId, story);
+    }
+    return story;
+  }
+
+  private queuePendingUpdate(
+    storyId: string,
+    chapterIndex: number,
+    filePath: string,
+  ) {
+    let updates = this.pendingUpdates.get(storyId);
+    if (!updates) {
+      updates = [];
+      this.pendingUpdates.set(storyId, updates);
+    }
+    updates.push({ chapterIndex, filePath });
+  }
+
+  private shouldFlush(storyId: string): boolean {
+    const updates = this.pendingUpdates.get(storyId);
+    return updates ? updates.length >= FLUSH_THRESHOLD : false;
+  }
+
+  private async flushStoryToStorage(storyId: string): Promise<void> {
+    const updates = this.pendingUpdates.get(storyId);
+    if (!updates || updates.length === 0) return;
+
+    this.pendingUpdates.set(storyId, []);
+
+    const story = this.storyCache.get(storyId);
+    if (!story) return;
+
+    // Chain this flush to the flushPromise to ensure cache coherency
+    const currentPromise = this.flushPromise;
+    const nextPromise = currentPromise.then(async () => {
+      await this.acquireStoryLock(storyId, async () => {
+        const freshStory = await storageService.getStory(storyId);
+        if (!freshStory) return;
+
+        const chapters = [...freshStory.chapters];
+        for (const update of updates) {
+          if (chapters[update.chapterIndex]) {
+            chapters[update.chapterIndex] = {
+              ...chapters[update.chapterIndex],
+              filePath: update.filePath,
+              downloaded: true,
+            };
+          }
         }
-    }
 
-    private startFlushTimer() {
-        if (this.flushTimer) return;
-        this.flushTimer = setInterval(() => {
-            this.flushAllPending();
-        }, FLUSH_INTERVAL);
-    }
+        const downloadedCount = chapters.filter((c) => c.downloaded).length;
+        const status =
+          downloadedCount === chapters.length
+            ? DownloadStatus.Completed
+            : DownloadStatus.Partial;
+        const hasEpub =
+          !!(freshStory.epubPaths && freshStory.epubPaths.length > 0) ||
+          !!freshStory.epubPath;
+        const allPendingIds = new Set(
+          updates.map((u) => chapters[u.chapterIndex]?.id).filter(Boolean),
+        );
+        const pendingNewChapterIds = freshStory.pendingNewChapterIds?.filter(
+          (id) => !allPendingIds.has(id),
+        );
 
-    private stopFlushTimer() {
-        if (this.flushTimer) {
-            clearInterval(this.flushTimer);
-            this.flushTimer = null;
-        }
-    }
-
-    private async getCachedStory(storyId: string): Promise<Story | undefined> {
-        // Wait for any pending flush to complete to ensure cache coherency
-        await this.flushPromise;
-
-        if (this.storyCache.has(storyId)) {
-            return this.storyCache.get(storyId);
-        }
-        const story = await storageService.getStory(storyId);
-        if (story) {
-            this.storyCache.set(storyId, story);
-        }
-        return story;
-    }
-
-    private queuePendingUpdate(storyId: string, chapterIndex: number, filePath: string) {
-        let updates = this.pendingUpdates.get(storyId);
-        if (!updates) {
-            updates = [];
-            this.pendingUpdates.set(storyId, updates);
-        }
-        updates.push({ chapterIndex, filePath });
-    }
-
-    private shouldFlush(storyId: string): boolean {
-        const updates = this.pendingUpdates.get(storyId);
-        return updates ? updates.length >= FLUSH_THRESHOLD : false;
-    }
-
-    private async flushStoryToStorage(storyId: string): Promise<void> {
-        const updates = this.pendingUpdates.get(storyId);
-        if (!updates || updates.length === 0) return;
-
-        this.pendingUpdates.set(storyId, []);
-
-        const story = this.storyCache.get(storyId);
-        if (!story) return;
-
-        // Chain this flush to the flushPromise to ensure cache coherency
-        const currentPromise = this.flushPromise;
-        const nextPromise = currentPromise.then(async () => {
-            await this.acquireStoryLock(storyId, async () => {
-                const freshStory = await storageService.getStory(storyId);
-                if (!freshStory) return;
-
-                const chapters = [...freshStory.chapters];
-                for (const update of updates) {
-                    if (chapters[update.chapterIndex]) {
-                        chapters[update.chapterIndex] = {
-                            ...chapters[update.chapterIndex],
-                            filePath: update.filePath,
-                            downloaded: true,
-                        };
-                    }
-                }
-
-                const downloadedCount = chapters.filter(c => c.downloaded).length;
-                const status = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
-                const hasEpub = !!(freshStory.epubPaths && freshStory.epubPaths.length > 0) || !!freshStory.epubPath;
-                const allPendingIds = new Set(updates.map(u => chapters[u.chapterIndex]?.id).filter(Boolean));
-                const pendingNewChapterIds = freshStory.pendingNewChapterIds?.filter(id => !allPendingIds.has(id));
-
-                await storageService.updateStory({
-                    ...freshStory,
-                    chapters,
-                    downloadedChapters: downloadedCount,
-                    status,
-                    lastUpdated: Date.now(),
-                    epubStale: hasEpub ? true : freshStory.epubStale,
-                    pendingNewChapterIds: pendingNewChapterIds && pendingNewChapterIds.length > 0
-                        ? pendingNewChapterIds
-                        : undefined
-                });
-
-                this.storyCache.set(storyId, {
-                    ...freshStory,
-                    chapters,
-                    downloadedChapters: downloadedCount,
-                    status,
-                });
-            });
+        await storageService.updateStory({
+          ...freshStory,
+          chapters,
+          downloadedChapters: downloadedCount,
+          status,
+          lastUpdated: Date.now(),
+          epubStale: hasEpub ? true : freshStory.epubStale,
+          pendingNewChapterIds:
+            pendingNewChapterIds && pendingNewChapterIds.length > 0
+              ? pendingNewChapterIds
+              : undefined,
         });
-        this.flushPromise = nextPromise;
-        await nextPromise;
-    }
 
-    async flushAllPending(): Promise<void> {
-        const currentPromise = this.flushPromise;
-        const nextPromise = currentPromise.then(async () => {
-            const storyIds = Array.from(this.pendingUpdates.keys());
-            await Promise.all(storyIds.map(id => this.flushStoryToStorage(id)));
+        this.storyCache.set(storyId, {
+          ...freshStory,
+          chapters,
+          downloadedChapters: downloadedCount,
+          status,
         });
-        await nextPromise;
-        this.flushPromise = nextPromise;
+      });
+    });
+    this.flushPromise = nextPromise;
+    await nextPromise;
+  }
+
+  async flushAllPending(): Promise<void> {
+    const currentPromise = this.flushPromise;
+    const nextPromise = currentPromise.then(async () => {
+      const storyIds = Array.from(this.pendingUpdates.keys());
+      await Promise.all(storyIds.map((id) => this.flushStoryToStorage(id)));
+    });
+    await nextPromise;
+    this.flushPromise = nextPromise;
+  }
+
+  private clearStoryCache(storyId: string) {
+    this.storyCache.delete(storyId);
+    this.pendingUpdates.delete(storyId);
+  }
+
+  async addJob(job: DownloadJob) {
+    downloadQueue.addJob(job);
+    this.emit("queue-updated");
+    this.start();
+  }
+
+  async addJobs(jobs: DownloadJob[]) {
+    jobs.forEach((j) => downloadQueue.addJob(j));
+    this.emit("queue-updated");
+    this.start();
+  }
+
+  async start() {
+    if (this.isRunning) return;
+    this.cancelRequested = false;
+    this.isRunning = true;
+    this.startFlushTimer();
+    this.processLoop();
+    this.startNotification();
+  }
+
+  private async startNotification() {
+    // Initial notification
+    const stats = downloadQueue.getStats();
+    if (stats.pending > 0 || stats.active > 0) {
+      const completed = Math.max(
+        0,
+        stats.total - stats.pending - stats.active - stats.paused,
+      );
+      await setDownloadState({
+        title: "Downloading chapters",
+        message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
+        current: completed,
+        total: stats.total,
+      });
+    }
+  }
+
+  private async updateNotification() {
+    if (this.cancelRequested) return;
+    const now = Date.now();
+    if (now - this.lastNotificationUpdate < 1000) return; // Throttle 1s
+    this.lastNotificationUpdate = now;
+
+    const stats = downloadQueue.getStats();
+    if (stats.pending === 0 && stats.active === 0) {
+      await clearDownloadState();
+      return;
     }
 
-    private clearStoryCache(storyId: string) {
-        this.storyCache.delete(storyId);
-        this.pendingUpdates.delete(storyId);
+    const completed = Math.max(
+      0,
+      stats.total - stats.pending - stats.active - stats.paused,
+    );
+    await setDownloadState({
+      title: "Downloading...",
+      message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
+      current: completed,
+      total: stats.total,
+    });
+  }
+
+  private async processLoop() {
+    // Main loop
+    while (true) {
+      // Check concurrency
+      if (this.activeWorkers >= this.concurrency) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        continue;
+      }
+
+      if (this.cancelRequested) {
+        if (this.activeWorkers === 0) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        continue;
+      }
+
+      const pending = downloadQueue.getNextPending();
+
+      if (!pending) {
+        // If no pending and no active workers, we are done.
+        if (this.activeWorkers === 0) {
+          break;
+        }
+        // Wait for workers to finish
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        continue;
+      }
+
+      // Start a worker
+      this.activeWorkers++;
+      // We do NOT await here. We fire and forget (the promise is handled).
+      this.processJob(pending).then(() => {
+        this.activeWorkers--;
+        this.emit("queue-updated");
+        this.updateNotification();
+      });
+
+      // Brief pause to allow event loop to breathe
+      await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
-    async addJob(job: DownloadJob) {
-        downloadQueue.addJob(job);
-        this.emit('queue-updated');
-        this.start();
+    this.isRunning = false;
+    this.stopFlushTimer();
+    await this.flushAllPending();
+    await clearDownloadState();
+    if (!this.cancelRequested) {
+      await showDownloadCompletionNotification(
+        "Downloads Completed",
+        "All queued chapters have been processed.",
+      );
     }
+    this.emit("all-complete");
+  }
 
-    async addJobs(jobs: DownloadJob[]) {
-        jobs.forEach(j => downloadQueue.addJob(j));
-        this.emit('queue-updated');
-        this.start();
+  async pauseJob(jobId: string) {
+    const job = downloadQueue.getAllJobs().find((j) => j.id === jobId);
+    if (job && (job.status === "pending" || job.status === "downloading")) {
+      downloadQueue.pauseJob(jobId);
+      this.emit("job-paused", job);
+      this.emit("queue-updated");
+      this.emit("notification-update");
     }
+  }
 
-    async start() {
-        if (this.isRunning) return;
-        this.cancelRequested = false;
-        this.isRunning = true;
-        this.startFlushTimer();
-        this.processLoop();
-        this.startNotification();
+  async resumeJob(jobId: string) {
+    const job = downloadQueue.getAllJobs().find((j) => j.id === jobId);
+    if (job && job.status === "paused") {
+      downloadQueue.resumeJob(jobId);
+      this.emit("job-resumed", job);
+      this.emit("queue-updated");
+      this.emit("notification-update");
+      this.start();
     }
+  }
 
-    private async startNotification() {
-        // Initial notification
-        const stats = downloadQueue.getStats();
-        if (stats.pending > 0 || stats.active > 0) {
-            const completed = Math.max(0, stats.total - stats.pending - stats.active - stats.paused);
-            await setDownloadState({
-                title: 'Downloading chapters',
-                message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
-                current: completed,
-                total: stats.total
+  async pauseAll() {
+    downloadQueue.pauseAll();
+    this.emit("queue-updated");
+    this.emit("notification-update");
+  }
+
+  async resumeAll() {
+    downloadQueue.resumeAll();
+    this.emit("queue-updated");
+    this.emit("notification-update");
+    this.start();
+  }
+
+  async cancelJob(jobId: string) {
+    const job = downloadQueue.getAllJobs().find((j) => j.id === jobId);
+    if (
+      job &&
+      (job.status === "pending" ||
+        job.status === "paused" ||
+        job.status === "downloading")
+    ) {
+      downloadQueue.updateJobStatus(jobId, "failed", "cancelled by user");
+      this.emit("job-failed", job, new Error("cancelled by user"));
+      this.emit("queue-updated");
+      this.emit("notification-update");
+    }
+  }
+
+  async cancelAll() {
+    downloadQueue.cancelAll();
+    this.emit("queue-updated");
+    this.emit("notification-update");
+  }
+
+  async retryJob(jobId: string): Promise<boolean> {
+    const job = downloadQueue.getAllJobs().find((j) => j.id === jobId);
+    if (!job) {
+      console.warn(
+        `[DownloadManager] Cannot retry job ${jobId}: job not found`,
+      );
+      return false;
+    }
+    if (job.status !== "failed") {
+      console.warn(
+        `[DownloadManager] Cannot retry job ${jobId}: status is ${job.status}, expected 'failed'`,
+      );
+      return false;
+    }
+    downloadQueue.retryJob(jobId);
+    this.emit("queue-updated");
+    this.emit("notification-update");
+    this.start();
+    return true;
+  }
+
+  private async processJob(job: DownloadJob) {
+    if (job.status !== "pending") return;
+
+    downloadQueue.updateJobStatus(job.id, "downloading");
+    this.emit("job-started", job);
+
+    try {
+      const filePath = await this.executeDownload(job);
+
+      const story = await this.getCachedStory(job.storyId);
+      if (story) {
+        const chapters = [...story.chapters];
+        if (chapters[job.chapterIndex]) {
+          chapters[job.chapterIndex] = {
+            ...chapters[job.chapterIndex],
+            filePath,
+            downloaded: true,
+          };
+
+          const downloadedCount = chapters.filter((c) => c.downloaded).length;
+          const status =
+            downloadedCount === chapters.length
+              ? DownloadStatus.Completed
+              : DownloadStatus.Partial;
+
+          this.storyCache.set(job.storyId, {
+            ...story,
+            chapters,
+            downloadedChapters: downloadedCount,
+            status,
+            lastUpdated: Date.now(),
+          });
+
+          this.queuePendingUpdate(job.storyId, job.chapterIndex, filePath);
+
+          if (this.shouldFlush(job.storyId)) {
+            // Flush with error handling - don't block job processing
+            this.flushStoryToStorage(job.storyId).catch((err) => {
+              console.error(
+                `[DownloadManager] Flush failed for ${job.storyId}`,
+                err,
+              );
             });
+          }
         }
+      }
+
+      downloadQueue.updateJobStatus(job.id, "completed");
+      this.emit("job-completed", job, filePath);
+    } catch (error: any) {
+      console.error(`[DownloadManager] Job ${job.id} failed`, error);
+      downloadQueue.updateJobStatus(job.id, "failed", error.message);
+      this.emit("job-failed", job, error);
     }
+  }
 
-    private async updateNotification() {
-        if (this.cancelRequested) return;
-        const now = Date.now();
-        if (now - this.lastNotificationUpdate < 1000) return; // Throttle 1s
-        this.lastNotificationUpdate = now;
+  private async acquireStoryLock(storyId: string, action: () => Promise<void>) {
+    // Simple mutex queue
+    const previousLock = this.storyLocks.get(storyId) || Promise.resolve();
 
-        const stats = downloadQueue.getStats();
-        if (stats.pending === 0 && stats.active === 0) {
-            await clearDownloadState();
-            return;
-        }
-
-        const completed = Math.max(0, stats.total - stats.pending - stats.active - stats.paused);
-        await setDownloadState({
-            title: 'Downloading...',
-            message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
-            current: completed,
-            total: stats.total
-        });
-    }
-
-    private async processLoop() {
-        // Main loop
-        while (true) {
-            // Check concurrency
-            if (this.activeWorkers >= this.concurrency) {
-                await new Promise(resolve => setTimeout(resolve, 200));
-                continue;
-            }
-
-            if (this.cancelRequested) {
-                if (this.activeWorkers === 0) {
-                    break;
-                }
-                await new Promise(resolve => setTimeout(resolve, 200));
-                continue;
-            }
-
-            const pending = downloadQueue.getNextPending();
-
-            if (!pending) {
-                // If no pending and no active workers, we are done.
-                if (this.activeWorkers === 0) {
-                    break;
-                }
-                // Wait for workers to finish
-                await new Promise(resolve => setTimeout(resolve, 200));
-                continue;
-            }
-
-            // Start a worker
-            this.activeWorkers++;
-            // We do NOT await here. We fire and forget (the promise is handled).
-            this.processJob(pending).then(() => {
-                this.activeWorkers--;
-                this.emit('queue-updated');
-                this.updateNotification();
-            });
-
-            // Brief pause to allow event loop to breathe
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
-
-        this.isRunning = false;
-        this.stopFlushTimer();
-        await this.flushAllPending();
-        await clearDownloadState();
-        if (!this.cancelRequested) {
-            await showDownloadCompletionNotification(
-                'Downloads Completed',
-                'All queued chapters have been processed.'
-            );
-        }
-        this.emit('all-complete');
-    }
-
-    async pauseJob(jobId: string) {
-        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
-        if (job && (job.status === 'pending' || job.status === 'downloading')) {
-            downloadQueue.pauseJob(jobId);
-            this.emit('job-paused', job);
-            this.emit('queue-updated');
-            this.emit('notification-update');
-        }
-    }
-
-    async resumeJob(jobId: string) {
-        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
-        if (job && job.status === 'paused') {
-            downloadQueue.resumeJob(jobId);
-            this.emit('job-resumed', job);
-            this.emit('queue-updated');
-            this.emit('notification-update');
-            this.start();
-        }
-    }
-
-    async pauseAll() {
-        downloadQueue.pauseAll();
-        this.emit('queue-updated');
-        this.emit('notification-update');
-    }
-
-    async resumeAll() {
-        downloadQueue.resumeAll();
-        this.emit('queue-updated');
-        this.emit('notification-update');
-        this.start();
-    }
-
-    async cancelJob(jobId: string) {
-        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
-        if (job && (job.status === 'pending' || job.status === 'paused' || job.status === 'downloading')) {
-            downloadQueue.updateJobStatus(jobId, 'failed', 'cancelled by user');
-            this.emit('job-failed', job, new Error('cancelled by user'));
-            this.emit('queue-updated');
-            this.emit('notification-update');
-        }
-    }
-
-    async cancelAll() {
-        downloadQueue.cancelAll();
-        this.emit('queue-updated');
-        this.emit('notification-update');
-    }
-
-    async retryJob(jobId: string): Promise<boolean> {
-        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
-        if (!job) {
-            console.warn(`[DownloadManager] Cannot retry job ${jobId}: job not found`);
-            return false;
-        }
-        if (job.status !== 'failed') {
-            console.warn(`[DownloadManager] Cannot retry job ${jobId}: status is ${job.status}, expected 'failed'`);
-            return false;
-        }
-        downloadQueue.retryJob(jobId);
-        this.emit('queue-updated');
-        this.emit('notification-update');
-        this.start();
-        return true;
-    }
-
-    private async processJob(job: DownloadJob) {
-        if (job.status !== 'pending') return;
-
-        downloadQueue.updateJobStatus(job.id, 'downloading');
-        this.emit('job-started', job);
-
+    // Ensure we run regardless of previous failure
+    const myLock = previousLock
+      .catch(() => {})
+      .then(async () => {
         try {
-            const filePath = await this.executeDownload(job);
-
-            const story = await this.getCachedStory(job.storyId);
-            if (story) {
-                const chapters = [...story.chapters];
-                if (chapters[job.chapterIndex]) {
-                    chapters[job.chapterIndex] = {
-                        ...chapters[job.chapterIndex],
-                        filePath,
-                        downloaded: true,
-                    };
-
-                    const downloadedCount = chapters.filter(c => c.downloaded).length;
-                    const status = downloadedCount === chapters.length ? DownloadStatus.Completed : DownloadStatus.Partial;
-
-                    this.storyCache.set(job.storyId, {
-                        ...story,
-                        chapters,
-                        downloadedChapters: downloadedCount,
-                        status,
-                        lastUpdated: Date.now(),
-                    });
-
-                    this.queuePendingUpdate(job.storyId, job.chapterIndex, filePath);
-
-                    if (this.shouldFlush(job.storyId)) {
-                        // Flush with error handling - don't block job processing
-                        this.flushStoryToStorage(job.storyId).catch(err => {
-                            console.error(`[DownloadManager] Flush failed for ${job.storyId}`, err);
-                        });
-                    }
-                }
-            }
-
-            downloadQueue.updateJobStatus(job.id, 'completed');
-            this.emit('job-completed', job, filePath);
-
-        } catch (error: any) {
-            console.error(`[DownloadManager] Job ${job.id} failed`, error);
-            downloadQueue.updateJobStatus(job.id, 'failed', error.message);
-            this.emit('job-failed', job, error);
+          await action();
+        } catch (e) {
+          console.error(`[DownloadManager] Story lock error for ${storyId}`, e);
         }
+      });
+
+    this.storyLocks.set(storyId, myLock);
+
+    return myLock;
+  }
+
+  private async executeDownload(job: DownloadJob): Promise<string> {
+    const story = await storageService.getStory(job.storyId);
+    if (!story) throw new Error("Story not found");
+
+    const provider = sourceRegistry.getProvider(story.sourceUrl);
+    if (!provider) throw new Error(`No provider for ${story.sourceUrl}`);
+
+    if (!job.chapter.url) throw new Error("Chapter has no URL");
+
+    const html = await fetchPage(job.chapter.url);
+    const content = provider.parseChapterContent(html);
+
+    if (!content || content.length < 50) {
+      throw new Error("Content empty or too short");
     }
 
-    private async acquireStoryLock(storyId: string, action: () => Promise<void>) {
-        // Simple mutex queue
-        const previousLock = this.storyLocks.get(storyId) || Promise.resolve();
+    const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
+      storageService.getSentenceRemovalList(),
+      storageService.getRegexCleanupRules(),
+    ]);
+    const cleanedContent = applyDownloadCleanup(
+      content,
+      sentenceRemovalList,
+      regexCleanupRules,
+    );
 
-        // Ensure we run regardless of previous failure
-        const myLock = previousLock
-            .catch(() => { })
-            .then(async () => {
-                try {
-                    await action();
-                } catch (e) {
-                    console.error(`[DownloadManager] Story lock error for ${storyId}`, e);
-                }
-            });
-
-        this.storyLocks.set(storyId, myLock);
-
-        return myLock;
-    }
-
-    private async executeDownload(job: DownloadJob): Promise<string> {
-        const story = await storageService.getStory(job.storyId);
-        if (!story) throw new Error('Story not found');
-
-        const provider = sourceRegistry.getProvider(story.sourceUrl);
-        if (!provider) throw new Error(`No provider for ${story.sourceUrl}`);
-
-        if (!job.chapter.url) throw new Error('Chapter has no URL');
-
-        const html = await fetchPage(job.chapter.url);
-        const content = provider.parseChapterContent(html);
-
-        if (!content || content.length < 50) {
-            throw new Error('Content empty or too short');
-        }
-
-        const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
-            storageService.getSentenceRemovalList(),
-            storageService.getRegexCleanupRules(),
-        ]);
-        const cleanedContent = applyDownloadCleanup(content, sentenceRemovalList, regexCleanupRules);
-
-        return await saveChapter(job.storyId, job.chapterIndex, job.chapter.title, cleanedContent);
-    }
+    return await saveChapter(
+      job.storyId,
+      job.chapterIndex,
+      job.chapter.title,
+      cleanedContent,
+    );
+  }
 }
 
 export const downloadManager = new DownloadManager();

@@ -1,7 +1,7 @@
-import { RoyalRoadProvider } from '../RoyalRoadProvider';
+import { RoyalRoadProvider } from "../RoyalRoadProvider";
 
-describe('RoyalRoadProvider', () => {
-    const mockHtml = `
+describe("RoyalRoadProvider", () => {
+  const mockHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -42,25 +42,27 @@ describe('RoyalRoadProvider', () => {
 </html>
     `;
 
-    it('should parse metadata correctly including score', () => {
-        const metadata = RoyalRoadProvider.parseMetadata(mockHtml);
+  it("should parse metadata correctly including score", () => {
+    const metadata = RoyalRoadProvider.parseMetadata(mockHtml);
 
-        expect(metadata.title).toBe('Gunwitch: LitRPG Adventure');
-        expect(metadata.author).toBe('Test Author');
-        expect(metadata.score).toBe('4.84 / 5');
-        expect(metadata.tags).toContain('LitRPG');
-        expect(metadata.tags).toContain('Fantasy');
-        expect(metadata.canonicalUrl).toBe('https://www.royalroad.com/fiction/123/gunwitch-litrpg-adventure');
-    });
+    expect(metadata.title).toBe("Gunwitch: LitRPG Adventure");
+    expect(metadata.author).toBe("Test Author");
+    expect(metadata.score).toBe("4.84 / 5");
+    expect(metadata.tags).toContain("LitRPG");
+    expect(metadata.tags).toContain("Fantasy");
+    expect(metadata.canonicalUrl).toBe(
+      "https://www.royalroad.com/fiction/123/gunwitch-litrpg-adventure",
+    );
+  });
 
-    it('should return undefined score if not found', () => {
-        const htmlNoScore = `<html><body><h1>Title</h1><h4>Author</h4></body></html>`;
-        const metadata = RoyalRoadProvider.parseMetadata(htmlNoScore);
-        expect(metadata.score).toBeUndefined();
-    });
+  it("should return undefined score if not found", () => {
+    const htmlNoScore = `<html><body><h1>Title</h1><h4>Author</h4></body></html>`;
+    const metadata = RoyalRoadProvider.parseMetadata(htmlNoScore);
+    expect(metadata.score).toBeUndefined();
+  });
 
-    it('should parse chapter list correctly and exclude post time', async () => {
-        const chapterHtml = `
+  it("should parse chapter list correctly and exclude post time", async () => {
+    const chapterHtml = `
             <table>
                 <tr class="chapter-row">
                     <td>
@@ -76,11 +78,16 @@ describe('RoyalRoadProvider', () => {
                 </tr>
             </table>
         `;
-        const chapters = await RoyalRoadProvider.getChapterList(chapterHtml, 'https://www.royalroad.com');
+    const chapters = await RoyalRoadProvider.getChapterList(
+      chapterHtml,
+      "https://www.royalroad.com",
+    );
 
-        expect(chapters).toHaveLength(1);
-        expect(chapters[0].title).toBe('Chapter 1. Hope Armstrong');
-        expect(chapters[0].url).toBe('https://www.royalroad.com/fiction/140335/i-became-a-paladin-girl/chapter/2768745/chapter-1-hope-armstrong');
-        expect(chapters[0].id).toBe('2768745');
-    });
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].title).toBe("Chapter 1. Hope Armstrong");
+    expect(chapters[0].url).toBe(
+      "https://www.royalroad.com/fiction/140335/i-became-a-paladin-girl/chapter/2768745/chapter-1-hope-armstrong",
+    );
+    expect(chapters[0].id).toBe("2768745");
+  });
 });

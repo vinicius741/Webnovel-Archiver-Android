@@ -1,61 +1,62 @@
 export interface Chapter {
-    id: string;
-    title: string;
-    url: string;
-    content?: string; // HTML content, loaded only when needed? Or maybe path to file?
-    // Ideally content is stored in file, not here. Here we track metadata.
-    filePath?: string; // Path to local HTML file
-    downloaded?: boolean;
+  id: string;
+  title: string;
+  url: string;
+  content?: string; // HTML content, loaded only when needed? Or maybe path to file?
+  // Ideally content is stored in file, not here. Here we track metadata.
+  filePath?: string; // Path to local HTML file
+  downloaded?: boolean;
 }
 
 export const DownloadStatus = {
-    Idle: 'idle',
-    Downloading: 'downloading',
-    Completed: 'completed',
-    Failed: 'failed',
-    Paused: 'paused',
-    Partial: 'partial',
+  Idle: "idle",
+  Downloading: "downloading",
+  Completed: "completed",
+  Failed: "failed",
+  Paused: "paused",
+  Partial: "partial",
 } as const;
 
-export type DownloadStatus = typeof DownloadStatus[keyof typeof DownloadStatus];
+export type DownloadStatus =
+  (typeof DownloadStatus)[keyof typeof DownloadStatus];
 
 export interface EpubConfig {
-    maxChaptersPerEpub: number;
-    rangeStart: number; // 1-based inclusive
-    rangeEnd: number; // 1-based inclusive
-    startAfterBookmark: boolean;
+  maxChaptersPerEpub: number;
+  rangeStart: number; // 1-based inclusive
+  rangeEnd: number; // 1-based inclusive
+  startAfterBookmark: boolean;
 }
 
 export interface Story {
-    id: string;
-    title: string;
-    author: string;
-    coverUrl?: string;
-    description?: string;
-    sourceUrl: string;
-    status: DownloadStatus;
-    totalChapters: number;
-    downloadedChapters: number;
-    chapters: Chapter[];
-    lastUpdated?: number; // timestamp
-    dateAdded?: number; // timestamp for initial addition
-    epubPath?: string; // Local URI to generated EPUB (deprecated, use epubPaths)
-    epubPaths?: string[]; // Local URIs to generated EPUBs (supports split files)
-    epubStale?: boolean; // True when EPUB needs regeneration
-    epubConfig?: EpubConfig; // Per-story EPUB generation configuration
-    pendingNewChapterIds?: string[]; // Chapter IDs discovered on sync but not downloaded yet
-    tags?: string[];
-    lastReadChapterId?: string;
-    score?: string;
+  id: string;
+  title: string;
+  author: string;
+  coverUrl?: string;
+  description?: string;
+  sourceUrl: string;
+  status: DownloadStatus;
+  totalChapters: number;
+  downloadedChapters: number;
+  chapters: Chapter[];
+  lastUpdated?: number; // timestamp
+  dateAdded?: number; // timestamp for initial addition
+  epubPath?: string; // Local URI to generated EPUB (deprecated, use epubPaths)
+  epubPaths?: string[]; // Local URIs to generated EPUBs (supports split files)
+  epubStale?: boolean; // True when EPUB needs regeneration
+  epubConfig?: EpubConfig; // Per-story EPUB generation configuration
+  pendingNewChapterIds?: string[]; // Chapter IDs discovered on sync but not downloaded yet
+  tags?: string[];
+  lastReadChapterId?: string;
+  score?: string;
 }
 
-export type RegexCleanupAppliesTo = 'download' | 'tts' | 'both';
+export type RegexCleanupAppliesTo = "download" | "tts" | "both";
 
 export interface RegexCleanupRule {
-    id: string;
-    name: string;
-    pattern: string;
-    flags: string;
-    enabled: boolean;
-    appliesTo: RegexCleanupAppliesTo;
+  id: string;
+  name: string;
+  pattern: string;
+  flags: string;
+  enabled: boolean;
+  appliesTo: RegexCleanupAppliesTo;
 }

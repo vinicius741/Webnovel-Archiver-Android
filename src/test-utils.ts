@@ -7,19 +7,25 @@
  * @throws Error if alert or button is not found
  */
 export const findAndPressButton = (
-    mockFn: jest.Mock,
-    alertTitle: string,
-    buttonText: string
+  mockFn: jest.Mock,
+  alertTitle: string,
+  buttonText: string,
 ): (() => void) => {
-    const alertCall = mockFn.mock.calls.find((call: unknown[]) => call[0] === alertTitle);
-    if (!alertCall) {
-        throw new Error(`No alert found with title "${alertTitle}"`);
-    }
-    const button = alertCall[2].find((b: { text: string }) => b.text === buttonText);
-    if (!button) {
-        throw new Error(`No button found with text "${buttonText}" in alert "${alertTitle}"`);
-    }
-    return button.onPress;
+  const alertCall = mockFn.mock.calls.find(
+    (call: unknown[]) => call[0] === alertTitle,
+  );
+  if (!alertCall) {
+    throw new Error(`No alert found with title "${alertTitle}"`);
+  }
+  const button = alertCall[2].find(
+    (b: { text: string }) => b.text === buttonText,
+  );
+  if (!button) {
+    throw new Error(
+      `No button found with text "${buttonText}" in alert "${alertTitle}"`,
+    );
+  }
+  return button.onPress;
 };
 
 /**
@@ -28,5 +34,5 @@ export const findAndPressButton = (
  * @returns The last call to the mock function
  */
 export const getLastAlertCall = (mockFn: jest.Mock): unknown[] => {
-    return mockFn.mock.calls.slice(-1)[0];
+  return mockFn.mock.calls.slice(-1)[0];
 };

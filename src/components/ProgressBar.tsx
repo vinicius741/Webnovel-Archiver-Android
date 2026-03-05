@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { ProgressBar as PaperProgressBar } from 'react-native-paper';
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import { ProgressBar as PaperProgressBar } from "react-native-paper";
 
 interface Props {
   progress: number;

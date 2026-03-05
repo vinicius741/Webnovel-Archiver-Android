@@ -1,254 +1,324 @@
-
-import { renderHook, act, waitFor } from '@testing-library/react-native';
-import { useStoryDownload } from '../useStoryDownload';
-import { storageService } from '../../services/StorageService';
-import { downloadService } from '../../services/DownloadService';
-import { sourceRegistry } from '../../services/source/SourceRegistry';
-import * as fetcher from '../../services/network/fetcher';
-import * as keepAwake from 'expo-keep-awake';
-import { Story, DownloadStatus } from '../../types';
+import { renderHook, act, waitFor } from "@testing-library/react-native";
+import { useStoryDownload } from "../useStoryDownload";
+import { storageService } from "../../services/StorageService";
+import { downloadService } from "../../services/DownloadService";
+import { sourceRegistry } from "../../services/source/SourceRegistry";
+import * as fetcher from "../../services/network/fetcher";
+import * as keepAwake from "expo-keep-awake";
+import { Story, DownloadStatus } from "../../types";
 
 // Mock dependencies
-jest.mock('../../services/DownloadService');
-jest.mock('../../services/source/SourceRegistry');
-jest.mock('../../services/network/fetcher');
-jest.mock('../../services/StorageService', () => ({
-    storageService: {
-        getSettings: jest.fn().mockResolvedValue({ downloadConcurrency: 3, downloadDelay: 500 }),
-        getLibrary: jest.fn(),
-        addStory: jest.fn(),
-        getStory: jest.fn(),
-        saveLibrary: jest.fn(),
-        saveSettings: jest.fn(),
-    }
+jest.mock("../../services/DownloadService");
+jest.mock("../../services/source/SourceRegistry");
+jest.mock("../../services/network/fetcher");
+jest.mock("../../services/StorageService", () => ({
+  storageService: {
+    getSettings: jest
+      .fn()
+      .mockResolvedValue({ downloadConcurrency: 3, downloadDelay: 500 }),
+    getLibrary: jest.fn(),
+    addStory: jest.fn(),
+    getStory: jest.fn(),
+    saveLibrary: jest.fn(),
+    saveSettings: jest.fn(),
+  },
 }));
-jest.mock('expo-keep-awake', () => ({
-    activateKeepAwakeAsync: jest.fn(),
-    deactivateKeepAwake: jest.fn(),
+jest.mock("expo-keep-awake", () => ({
+  activateKeepAwakeAsync: jest.fn(),
+  deactivateKeepAwake: jest.fn(),
 }));
 
 const mockShowAlert = jest.fn();
-jest.mock('../../context/AlertContext', () => ({
-    useAppAlert: () => ({ showAlert: mockShowAlert }),
+jest.mock("../../context/AlertContext", () => ({
+  useAppAlert: () => ({ showAlert: mockShowAlert }),
 }));
 
-describe('useStoryDownload', () => {
-    const mockStory: Story = {
-        id: '1',
-        title: 'Test Story',
-        author: 'Author',
-        sourceUrl: 'http://test.com/story',
-        coverUrl: 'http://cover',
-        chapters: [
-            { id: 'http://test.com/c1', title: 'Chapter 1', url: 'http://test.com/c1', downloaded: true, filePath: 'path/c1' }
-        ],
-        status: DownloadStatus.Completed,
-        totalChapters: 1,
-        downloadedChapters: 1,
-        dateAdded: 1000,
-        lastUpdated: 2000,
-        tags: ['tag1']
+describe("useStoryDownload", () => {
+  const mockStory: Story = {
+    id: "1",
+    title: "Test Story",
+    author: "Author",
+    sourceUrl: "http://test.com/story",
+    coverUrl: "http://cover",
+    chapters: [
+      {
+        id: "http://test.com/c1",
+        title: "Chapter 1",
+        url: "http://test.com/c1",
+        downloaded: true,
+        filePath: "path/c1",
+      },
+    ],
+    status: DownloadStatus.Completed,
+    totalChapters: 1,
+    downloadedChapters: 1,
+    dateAdded: 1000,
+    lastUpdated: 2000,
+    tags: ["tag1"],
+  };
+
+  const mockOnStoryUpdated = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (storageService.getSettings as jest.Mock).mockResolvedValue({
+      downloadConcurrency: 3,
+      downloadDelay: 500,
+    });
+  });
+
+  it("should handle sync with new chapters", async () => {
+    // Setup Mocks for sync
+    const mockProvider = {
+      getChapterList: jest.fn().mockResolvedValue([
+        { url: "http://test.com/c1", title: "Chapter 1" },
+        { url: "http://test.com/c2", title: "Chapter 2" }, // New chapter
+      ]),
+      parseMetadata: jest.fn().mockReturnValue({ tags: ["tag1"] }),
+    };
+    (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
+    (fetcher.fetchPage as jest.Mock).mockResolvedValue("<html></html>");
+    (downloadService.downloadChaptersByIds as jest.Mock).mockResolvedValue(
+      mockStory,
+    );
+
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: mockStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.syncChapters();
+    });
+
+    expect(result.current.syncing).toBe(false);
+    expect(storageService.addStory).toHaveBeenCalled();
+    expect(mockOnStoryUpdated).toHaveBeenCalled();
+    expect(downloadService.downloadChaptersByIds).toHaveBeenCalledWith(
+      expect.any(Object),
+      ["http://test.com/c2"],
+    );
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Update Found",
+      expect.stringContaining("Download queued"),
+    );
+  });
+
+  it("should preserve downloaded chapters when RoyalRoad slug changes", async () => {
+    const storyWithOldSlug: Story = {
+      ...mockStory,
+      sourceUrl:
+        "https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now",
+      chapters: [
+        {
+          id: "https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug",
+          title: "Chapter 1",
+          url: "https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug",
+          downloaded: true,
+          filePath: "file://chapter-1.html",
+        },
+      ],
+      lastReadChapterId:
+        "https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug",
+      totalChapters: 1,
+      downloadedChapters: 1,
     };
 
-    const mockOnStoryUpdated = jest.fn();
+    const mockProvider = {
+      getChapterId: (url: string) => {
+        const match = url.match(/\/chapter\/(\d+)/);
+        return match ? match[1] : undefined;
+      },
+      getChapterList: jest.fn().mockResolvedValue([
+        {
+          url: "https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug",
+          title: "Chapter 1",
+        },
+      ]),
+      parseMetadata: jest.fn().mockReturnValue({ tags: ["tag1"] }),
+    };
 
-    beforeEach(() => {
-        jest.clearAllMocks();
-        (storageService.getSettings as jest.Mock).mockResolvedValue({
-            downloadConcurrency: 3,
-            downloadDelay: 500
-        });
+    (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
+    (fetcher.fetchPage as jest.Mock).mockResolvedValue("<html></html>");
+
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: storyWithOldSlug,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.syncChapters();
     });
 
-    it('should handle sync with new chapters', async () => {
-        // Setup Mocks for sync
-        const mockProvider = {
-            getChapterList: jest.fn().mockResolvedValue([
-                { url: 'http://test.com/c1', title: 'Chapter 1' },
-                { url: 'http://test.com/c2', title: 'Chapter 2' } // New chapter
-            ]),
-            parseMetadata: jest.fn().mockReturnValue({ tags: ['tag1'] })
-        };
-        (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
-        (fetcher.fetchPage as jest.Mock).mockResolvedValue('<html></html>');
-        (downloadService.downloadChaptersByIds as jest.Mock).mockResolvedValue(mockStory);
+    const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
+    expect(savedStory.chapters[0].downloaded).toBe(true);
+    expect(savedStory.chapters[0].filePath).toBe("file://chapter-1.html");
+    expect(savedStory.chapters[0].url).toBe(
+      "https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug",
+    );
+    expect(savedStory.chapters[0].id).toBe("111");
+    expect(savedStory.lastReadChapterId).toBe("111");
+  });
 
-        const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
+  it("should start download all with downloadAll", async () => {
+    const uncompletedStory = {
+      ...mockStory,
+      status: DownloadStatus.Partial,
+      totalChapters: 2,
+      downloadedChapters: 1,
+      chapters: [
+        { id: "c1", title: "Chapter 1", url: "http://c1", downloaded: true },
+        { id: "c2", title: "Chapter 2", url: "http://c2", downloaded: false },
+      ],
+    };
 
-        await act(async () => {
-            await result.current.syncChapters();
-        });
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: uncompletedStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
 
-        expect(result.current.syncing).toBe(false);
-        expect(storageService.addStory).toHaveBeenCalled();
-        expect(mockOnStoryUpdated).toHaveBeenCalled();
-        expect(downloadService.downloadChaptersByIds).toHaveBeenCalledWith(
-            expect.any(Object),
-            ['http://test.com/c2']
-        );
-        expect(mockShowAlert).toHaveBeenCalledWith('Update Found', expect.stringContaining('Download queued'));
+    (downloadService.downloadAllChapters as jest.Mock).mockResolvedValue(
+      uncompletedStory,
+    );
+
+    await act(async () => {
+      await result.current.downloadAll();
     });
 
-    it('should preserve downloaded chapters when RoyalRoad slug changes', async () => {
-        const storyWithOldSlug: Story = {
-            ...mockStory,
-            sourceUrl: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now',
-            chapters: [
-                {
-                    id: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
-                    title: 'Chapter 1',
-                    url: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
-                    downloaded: true,
-                    filePath: 'file://chapter-1.html'
-                }
-            ],
-            lastReadChapterId: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now/chapter/111/old-slug',
-            totalChapters: 1,
-            downloadedChapters: 1
-        };
+    expect(downloadService.downloadAllChapters).toHaveBeenCalledWith(
+      uncompletedStory,
+    );
+    expect(keepAwake.activateKeepAwakeAsync).toHaveBeenCalled();
+    expect(keepAwake.deactivateKeepAwake).toHaveBeenCalled();
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Download Started",
+      expect.anything(),
+    );
+  });
 
-        const mockProvider = {
-            getChapterId: (url: string) => {
-                const match = url.match(/\/chapter\/(\d+)/);
-                return match ? match[1] : undefined;
-            },
-            getChapterList: jest.fn().mockResolvedValue([
-                {
-                    url: 'https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug',
-                    title: 'Chapter 1'
-                }
-            ]),
-            parseMetadata: jest.fn().mockReturnValue({ tags: ['tag1'] })
-        };
+  it("should handle download error", async () => {
+    const uncompletedStory = {
+      ...mockStory,
+      status: DownloadStatus.Partial,
+      totalChapters: 2,
+      downloadedChapters: 1,
+      chapters: [{ id: "c1", title: "C1", url: "u1", downloaded: false }],
+    };
+    (downloadService.downloadAllChapters as jest.Mock).mockRejectedValue(
+      new Error("Download failed"),
+    );
 
-        (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
-        (fetcher.fetchPage as jest.Mock).mockResolvedValue('<html></html>');
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: uncompletedStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
 
-        const { result } = renderHook(() => useStoryDownload({ story: storyWithOldSlug, onStoryUpdated: mockOnStoryUpdated }));
-
-        await act(async () => {
-            await result.current.syncChapters();
-        });
-
-        const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
-        expect(savedStory.chapters[0].downloaded).toBe(true);
-        expect(savedStory.chapters[0].filePath).toBe('file://chapter-1.html');
-        expect(savedStory.chapters[0].url).toBe('https://www.royalroad.com/fiction/148730/the-archmage-is-baking-now-book-1-complete/chapter/111/new-slug');
-        expect(savedStory.chapters[0].id).toBe('111');
-        expect(savedStory.lastReadChapterId).toBe('111');
+    await act(async () => {
+      await result.current.downloadAll();
     });
 
-    it('should start download all with downloadAll', async () => {
-        const uncompletedStory = {
-            ...mockStory,
-            status: DownloadStatus.Partial,
-            totalChapters: 2,
-            downloadedChapters: 1,
-            chapters: [
-                { id: 'c1', title: 'Chapter 1', url: 'http://c1', downloaded: true },
-                { id: 'c2', title: 'Chapter 2', url: 'http://c2', downloaded: false }
-            ]
-        };
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Download Error",
+      expect.anything(),
+    );
+    expect(result.current.queueing).toBe(false);
+  });
 
-        const { result } = renderHook(() => useStoryDownload({ story: uncompletedStory, onStoryUpdated: mockOnStoryUpdated }));
+  it("should validate download range", async () => {
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: mockStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
 
-        (downloadService.downloadAllChapters as jest.Mock).mockResolvedValue(uncompletedStory);
-
-        await act(async () => {
-            await result.current.downloadAll();
-        });
-
-        expect(downloadService.downloadAllChapters).toHaveBeenCalledWith(uncompletedStory);
-        expect(keepAwake.activateKeepAwakeAsync).toHaveBeenCalled();
-        expect(keepAwake.deactivateKeepAwake).toHaveBeenCalled();
-        expect(mockShowAlert).toHaveBeenCalledWith('Download Started', expect.anything());
+    await act(async () => {
+      await result.current.downloadRange(5, 1); // Invalid range
     });
 
-    it('should handle download error', async () => {
-        const uncompletedStory = {
-            ...mockStory,
-            status: DownloadStatus.Partial,
-            totalChapters: 2,
-            downloadedChapters: 1,
-            chapters: [{ id: 'c1', title: 'C1', url: 'u1', downloaded: false }]
-        };
-        (downloadService.downloadAllChapters as jest.Mock).mockRejectedValue(new Error('Download failed'));
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Invalid Range",
+      expect.anything(),
+    );
+    expect(downloadService.downloadRange).not.toHaveBeenCalled();
+  });
 
-        const { result } = renderHook(() => useStoryDownload({ story: uncompletedStory, onStoryUpdated: mockOnStoryUpdated }));
+  it("should convert 1-based range input to zero-based indexes for download service", async () => {
+    const storyWithThreeChapters: Story = {
+      ...mockStory,
+      totalChapters: 3,
+      chapters: [
+        { id: "c1", title: "Chapter 1", url: "http://c1", downloaded: false },
+        { id: "c2", title: "Chapter 2", url: "http://c2", downloaded: false },
+        { id: "c3", title: "Chapter 3", url: "http://c3", downloaded: false },
+      ],
+    };
+    (downloadService.downloadRange as jest.Mock).mockResolvedValue(
+      storyWithThreeChapters,
+    );
 
-        await act(async () => {
-            await result.current.downloadAll();
-        });
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: storyWithThreeChapters,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
 
-        expect(mockShowAlert).toHaveBeenCalledWith('Download Error', expect.anything());
-        expect(result.current.queueing).toBe(false);
+    await act(async () => {
+      await result.current.downloadRange(1, 3);
     });
 
-    it('should validate download range', async () => {
-        const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
+    expect(downloadService.downloadRange).toHaveBeenCalledWith(
+      storyWithThreeChapters,
+      0,
+      2,
+    );
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Download Started",
+      "Selected chapters have been queued.",
+    );
+  });
 
-        await act(async () => {
-            await result.current.downloadRange(5, 1); // Invalid range
-        });
+  it("should apply text cleanup", async () => {
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: mockStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
 
-        expect(mockShowAlert).toHaveBeenCalledWith('Invalid Range', expect.anything());
-        expect(downloadService.downloadRange).not.toHaveBeenCalled();
+    // applySentenceRemoval calls showAlert with buttons.
+    // We need to simulate the 'Apply' button press.
+    // mockShowAlert receives (title, msg, buttons).
+
+    await act(async () => {
+      await result.current.applySentenceRemoval();
     });
 
-    it('should convert 1-based range input to zero-based indexes for download service', async () => {
-        const storyWithThreeChapters: Story = {
-            ...mockStory,
-            totalChapters: 3,
-            chapters: [
-                { id: 'c1', title: 'Chapter 1', url: 'http://c1', downloaded: false },
-                { id: 'c2', title: 'Chapter 2', url: 'http://c2', downloaded: false },
-                { id: 'c3', title: 'Chapter 3', url: 'http://c3', downloaded: false },
-            ],
-        };
-        (downloadService.downloadRange as jest.Mock).mockResolvedValue(storyWithThreeChapters);
+    expect(mockShowAlert).toHaveBeenCalled();
+    const buttons = mockShowAlert.mock.calls[0][2];
+    const applyButton = buttons.find((b: any) => b.text === "Apply");
 
-        const { result } = renderHook(() => useStoryDownload({
-            story: storyWithThreeChapters,
-            onStoryUpdated: mockOnStoryUpdated,
-        }));
+    expect(applyButton).toBeDefined();
 
-        await act(async () => {
-            await result.current.downloadRange(1, 3);
-        });
+    // Simulate press
+    (
+      downloadService.applySentenceRemovalToStory as jest.Mock
+    ).mockResolvedValue({ processed: 1, errors: 0 });
 
-        expect(downloadService.downloadRange).toHaveBeenCalledWith(
-            storyWithThreeChapters,
-            0,
-            2
-        );
-        expect(mockShowAlert).toHaveBeenCalledWith('Download Started', 'Selected chapters have been queued.');
+    await act(async () => {
+      await applyButton.onPress();
     });
 
-    it('should apply text cleanup', async () => {
-        const { result } = renderHook(() => useStoryDownload({ story: mockStory, onStoryUpdated: mockOnStoryUpdated }));
-
-        // applySentenceRemoval calls showAlert with buttons.
-        // We need to simulate the 'Apply' button press.
-        // mockShowAlert receives (title, msg, buttons).
-
-        await act(async () => {
-            await result.current.applySentenceRemoval();
-        });
-
-        expect(mockShowAlert).toHaveBeenCalled();
-        const buttons = mockShowAlert.mock.calls[0][2];
-        const applyButton = buttons.find((b: any) => b.text === 'Apply');
-
-        expect(applyButton).toBeDefined();
-
-        // Simulate press
-        (downloadService.applySentenceRemovalToStory as jest.Mock).mockResolvedValue({ processed: 1, errors: 0 });
-
-        await act(async () => {
-            await applyButton.onPress();
-        });
-
-        expect(downloadService.applySentenceRemovalToStory).toHaveBeenCalled();
-        expect(storageService.getStory).toHaveBeenCalled();
-    });
+    expect(downloadService.applySentenceRemovalToStory).toHaveBeenCalled();
+    expect(storageService.getStory).toHaveBeenCalled();
+  });
 });

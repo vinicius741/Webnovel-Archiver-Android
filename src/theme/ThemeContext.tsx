@@ -1,11 +1,17 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useColorScheme } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Provider as PaperProvider } from 'react-native-paper';
-import { LightTheme } from './light';
-import { DarkTheme } from './dark';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { useColorScheme } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Provider as PaperProvider } from "react-native-paper";
+import { LightTheme } from "./light";
+import { DarkTheme } from "./dark";
 
-type ThemeMode = 'system' | 'light' | 'dark';
+type ThemeMode = "system" | "light" | "dark";
 
 interface ThemeContextType {
   themeMode: ThemeMode;
@@ -14,18 +20,18 @@ interface ThemeContextType {
 }
 
 const ThemeContext = createContext<ThemeContextType>({
-  themeMode: 'system',
+  themeMode: "system",
   setThemeMode: async () => {},
   isDark: false,
 });
 
 export const useTheme = () => useContext(ThemeContext);
 
-const THEME_STORAGE_KEY = 'wa_theme_mode';
+const THEME_STORAGE_KEY = "wa_theme_mode";
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemScheme = useColorScheme();
-  const [themeMode, setThemeModeState] = useState<ThemeMode>('system');
+  const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -33,11 +39,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-        if (saved && (saved === 'light' || saved === 'dark' || saved === 'system')) {
+        if (
+          saved &&
+          (saved === "light" || saved === "dark" || saved === "system")
+        ) {
           setThemeModeState(saved as ThemeMode);
         }
       } catch (e) {
-        console.error('Failed to load theme preference', e);
+        console.error("Failed to load theme preference", e);
       } finally {
         setIsReady(true);
       }
@@ -49,12 +58,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, mode);
     } catch (e) {
-      console.error('Failed to save theme preference', e);
+      console.error("Failed to save theme preference", e);
     }
   };
 
   const isDark =
-    themeMode === 'dark' || (themeMode === 'system' && systemScheme === 'dark');
+    themeMode === "dark" || (themeMode === "system" && systemScheme === "dark");
 
   const theme = isDark ? DarkTheme : LightTheme;
 

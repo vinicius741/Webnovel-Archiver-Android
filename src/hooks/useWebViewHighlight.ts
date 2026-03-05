@@ -1,18 +1,23 @@
-import { useEffect } from 'react';
-import { WebView } from 'react-native-webview';
+import { useEffect } from "react";
+import { WebView } from "react-native-webview";
 
 export const useWebViewHighlight = (
-    webViewRef: React.RefObject<WebView>,
-    currentChunkIndex: number,
-    isControllerVisible: boolean
+  webViewRef: React.RefObject<WebView>,
+  currentChunkIndex: number,
+  isControllerVisible: boolean,
 ) => {
-    useEffect(() => {
-        if (!webViewRef.current) return;
+  useEffect(() => {
+    if (!webViewRef.current) return;
 
-        if (typeof currentChunkIndex !== 'number' || !Number.isInteger(currentChunkIndex) || currentChunkIndex < 0) return;
+    if (
+      typeof currentChunkIndex !== "number" ||
+      !Number.isInteger(currentChunkIndex) ||
+      currentChunkIndex < 0
+    )
+      return;
 
-        if (!isControllerVisible) {
-            const js = `
+    if (!isControllerVisible) {
+      const js = `
                 (function() {
                     const actives = document.querySelectorAll('.tts-active');
                     for (let i = 0; i < actives.length; i++) {
@@ -20,11 +25,11 @@ export const useWebViewHighlight = (
                     }
                 })();
             `;
-            webViewRef.current.injectJavaScript(js);
-            return;
-        }
+      webViewRef.current.injectJavaScript(js);
+      return;
+    }
 
-        const js = `
+    const js = `
             (function() {
                 try {
                     const actives = document.querySelectorAll('.tts-active');
@@ -44,6 +49,6 @@ export const useWebViewHighlight = (
                 }
             })();
         `;
-        webViewRef.current.injectJavaScript(js);
-    }, [currentChunkIndex, isControllerVisible]);
+    webViewRef.current.injectJavaScript(js);
+  }, [currentChunkIndex, isControllerVisible]);
 };

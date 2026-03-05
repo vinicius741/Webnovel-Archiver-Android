@@ -1,171 +1,179 @@
-import { Story, Chapter, DownloadStatus } from '../types';
-import { downloadManager } from './download/DownloadManager';
-import { storageService } from './StorageService';
-import { readChapterFile, saveChapter } from './storage/fileSystem';
-import { applyDownloadCleanup } from '../utils/textCleanup';
+import { Story, Chapter, DownloadStatus } from "../types";
+import { downloadManager } from "./download/DownloadManager";
+import { storageService } from "./StorageService";
+import { readChapterFile, saveChapter } from "./storage/fileSystem";
+import { applyDownloadCleanup } from "../utils/textCleanup";
 
 class DownloadService {
+  /**
+   * Queues a single chapter for download.
+   */
+  async downloadChapter(
+    story: Story,
+    chapter: Chapter,
+    index: number,
+  ): Promise<Chapter> {
+    // We add to queue and return immediately.
+    // The UI should rely on listeners or storage updates.
+    await downloadManager.addJob({
+      id: `${story.id}_${index}`,
+      storyId: story.id,
+      storyTitle: story.title,
+      chapterIndex: index,
+      chapter: chapter,
+      status: "pending",
+      addedAt: Date.now(),
+      retryCount: 0,
+    });
 
-    /**
-     * Queues a single chapter for download.
-     */
-    async downloadChapter(story: Story, chapter: Chapter, index: number): Promise<Chapter> {
-        // We add to queue and return immediately.
-        // The UI should rely on listeners or storage updates.
-        await downloadManager.addJob({
-            id: `${story.id}_${index}`,
-            storyId: story.id,
-            storyTitle: story.title,
-            chapterIndex: index,
-            chapter: chapter,
-            status: 'pending',
-            addedAt: Date.now(),
-            retryCount: 0
-        });
+    // Optimistically update status to show pending?
+    // Or just return as is.
+    return chapter;
+  }
 
-        // Optimistically update status to show pending? 
-        // Or just return as is.
-        return chapter;
-    }
+  /**
+   * Queues a range of chapters.
+   */
+  async downloadRange(
+    story: Story,
+    startIndex: number,
+    endIndex: number,
+  ): Promise<Story> {
+    const jobs = story.chapters
+      .map((ch, index) => ({ chapter: ch, index }))
+      .filter(({ index }) => index >= startIndex && index <= endIndex)
+      .filter(({ chapter }) => !chapter.downloaded) // Skip already downloaded? Use logic preference.
+      .map(({ chapter, index }) => ({
+        id: `${story.id}_${index}`,
+        storyId: story.id,
+        storyTitle: story.title,
+        chapterIndex: index,
+        chapter: chapter,
+        status: "pending" as const,
+        addedAt: Date.now(),
+        retryCount: 0,
+      }));
 
-    /**
-     * Queues a range of chapters.
-     */
-    async downloadRange(
-        story: Story,
-        startIndex: number,
-        endIndex: number
-    ): Promise<Story> {
-        const jobs = story.chapters
-            .map((ch, index) => ({ chapter: ch, index }))
-            .filter(({ index }) => index >= startIndex && index <= endIndex)
-            .filter(({ chapter }) => !chapter.downloaded) // Skip already downloaded? Use logic preference.
-            .map(({ chapter, index }) => ({
-                id: `${story.id}_${index}`,
-                storyId: story.id,
-                storyTitle: story.title,
-                chapterIndex: index,
-                chapter: chapter,
-                status: 'pending' as const,
-                addedAt: Date.now(),
-                retryCount: 0
-            }));
+    if (jobs.length === 0) return story;
 
-        if (jobs.length === 0) return story;
+    // Set status to Downloading
+    const updatedStory = {
+      ...story,
+      status: DownloadStatus.Downloading,
+      lastUpdated: Date.now(),
+    };
+    await storageService.updateStory(updatedStory);
 
-        // Set status to Downloading
-        const updatedStory = {
-            ...story,
-            status: DownloadStatus.Downloading,
-            lastUpdated: Date.now()
-        };
-        await storageService.updateStory(updatedStory);
+    await downloadManager.addJobs(jobs);
 
-        await downloadManager.addJobs(jobs);
+    return updatedStory;
+  }
 
-        return updatedStory;
-    }
+  /**
+   * Queues specific chapters by ID.
+   */
+  async downloadChaptersByIds(
+    story: Story,
+    chapterIds: string[],
+  ): Promise<Story> {
+    if (chapterIds.length === 0) return story;
 
-    /**
-     * Queues specific chapters by ID.
-     */
-    async downloadChaptersByIds(
-        story: Story,
-        chapterIds: string[]
-    ): Promise<Story> {
-        if (chapterIds.length === 0) return story;
+    const idSet = new Set(chapterIds);
+    const jobs = story.chapters
+      .map((ch, index) => ({ chapter: ch, index }))
+      .filter(({ chapter }) => idSet.has(chapter.id))
+      .filter(({ chapter }) => !chapter.downloaded)
+      .map(({ chapter, index }) => ({
+        id: `${story.id}_${index}`,
+        storyId: story.id,
+        storyTitle: story.title,
+        chapterIndex: index,
+        chapter: chapter,
+        status: "pending" as const,
+        addedAt: Date.now(),
+        retryCount: 0,
+      }));
 
-        const idSet = new Set(chapterIds);
-        const jobs = story.chapters
-            .map((ch, index) => ({ chapter: ch, index }))
-            .filter(({ chapter }) => idSet.has(chapter.id))
-            .filter(({ chapter }) => !chapter.downloaded)
-            .map(({ chapter, index }) => ({
-                id: `${story.id}_${index}`,
-                storyId: story.id,
-                storyTitle: story.title,
-                chapterIndex: index,
-                chapter: chapter,
-                status: 'pending' as const,
-                addedAt: Date.now(),
-                retryCount: 0
-            }));
+    if (jobs.length === 0) return story;
 
-        if (jobs.length === 0) return story;
+    const updatedStory = {
+      ...story,
+      status: DownloadStatus.Downloading,
+      lastUpdated: Date.now(),
+    };
+    await storageService.updateStory(updatedStory);
 
-        const updatedStory = {
-            ...story,
-            status: DownloadStatus.Downloading,
-            lastUpdated: Date.now()
-        };
-        await storageService.updateStory(updatedStory);
+    await downloadManager.addJobs(jobs);
 
-        await downloadManager.addJobs(jobs);
+    return updatedStory;
+  }
 
-        return updatedStory;
-    }
+  /**
+   * Queues all chapters.
+   */
+  async downloadAllChapters(story: Story): Promise<Story> {
+    return this.downloadRange(story, 0, story.chapters.length - 1);
+  }
 
-    /**
-     * Queues all chapters.
-     */
-    async downloadAllChapters(
-        story: Story
-    ): Promise<Story> {
-        return this.downloadRange(story, 0, story.chapters.length - 1);
-    }
+  /**
+   * Applies text cleanup rules to already downloaded chapters offline.
+   */
+  async applySentenceRemovalToStory(
+    story: Story,
+    onProgress?: (current: number, total: number, chapterTitle: string) => void,
+  ): Promise<{ processed: number; errors: number }> {
+    const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
+      storageService.getSentenceRemovalList(),
+      storageService.getRegexCleanupRules(),
+    ]);
+    let processed = 0;
+    let errors = 0;
 
-    /**
-     * Applies text cleanup rules to already downloaded chapters offline.
-     */
-    async applySentenceRemovalToStory(
-        story: Story,
-        onProgress?: (current: number, total: number, chapterTitle: string) => void
-    ): Promise<{ processed: number, errors: number }> {
-        const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
-            storageService.getSentenceRemovalList(),
-            storageService.getRegexCleanupRules(),
-        ]);
-        let processed = 0;
-        let errors = 0;
+    for (let i = 0; i < story.chapters.length; i++) {
+      const chapter = story.chapters[i];
 
-        for (let i = 0; i < story.chapters.length; i++) {
-            const chapter = story.chapters[i];
-
-            if (chapter.downloaded && chapter.filePath) {
-                try {
-                    const html = await readChapterFile(chapter.filePath);
-                    if (html) {
-                        const cleanedContent = applyDownloadCleanup(html, sentenceRemovalList, regexCleanupRules);
-                        await saveChapter(story.id, i, chapter.title, cleanedContent);
-                        processed++;
-                    }
-                } catch (error) {
-                    console.error(`Failed to process chapter ${i}: ${chapter.title}`, error);
-                    errors++;
-                }
-
-                if (onProgress) {
-                    onProgress(i + 1, story.chapters.length, chapter.title);
-                }
-            }
+      if (chapter.downloaded && chapter.filePath) {
+        try {
+          const html = await readChapterFile(chapter.filePath);
+          if (html) {
+            const cleanedContent = applyDownloadCleanup(
+              html,
+              sentenceRemovalList,
+              regexCleanupRules,
+            );
+            await saveChapter(story.id, i, chapter.title, cleanedContent);
+            processed++;
+          }
+        } catch (error) {
+          console.error(
+            `Failed to process chapter ${i}: ${chapter.title}`,
+            error,
+          );
+          errors++;
         }
 
-        const updatedStory = {
-            ...story,
-            epubStale: true,
-            lastUpdated: Date.now()
-        };
-        await storageService.updateStory(updatedStory);
-
-        return { processed, errors };
+        if (onProgress) {
+          onProgress(i + 1, story.chapters.length, chapter.title);
+        }
+      }
     }
 
-    /**
-     * Expose manager for event subscriptions
-     */
-    getManager() {
-        return downloadManager;
-    }
+    const updatedStory = {
+      ...story,
+      epubStale: true,
+      lastUpdated: Date.now(),
+    };
+    await storageService.updateStory(updatedStory);
+
+    return { processed, errors };
+  }
+
+  /**
+   * Expose manager for event subscriptions
+   */
+  getManager() {
+    return downloadManager;
+  }
 }
 
 export const downloadService = new DownloadService();

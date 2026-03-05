@@ -1,78 +1,74 @@
-import React, { useState } from 'react';
-import { Menu, IconButton, Divider, useTheme } from 'react-native-paper';
+import React, { useState } from "react";
+import { Menu, IconButton, Divider, useTheme } from "react-native-paper";
 
 interface StoryMenuProps {
-    onDownloadRange: () => void;
-    onConfigureEpub: () => void;
-    onApplySentenceRemoval: () => void;
-    onDelete: () => void;
-    disabled?: boolean;
+  onDownloadRange: () => void;
+  onConfigureEpub: () => void;
+  onApplySentenceRemoval: () => void;
+  onDelete: () => void;
+  disabled?: boolean;
 }
 
 export const StoryMenu: React.FC<StoryMenuProps> = ({
-    onDownloadRange,
-    onConfigureEpub,
-    onApplySentenceRemoval,
-    onDelete,
-    disabled = false
+  onDownloadRange,
+  onConfigureEpub,
+  onApplySentenceRemoval,
+  onDelete,
+  disabled = false,
 }) => {
-    const theme = useTheme();
-    const [visible, setVisible] = useState(false);
+  const theme = useTheme();
+  const [visible, setVisible] = useState(false);
 
-    const openMenu = () => setVisible(true);
-    const closeMenu = () => setVisible(false);
+  const openMenu = () => setVisible(true);
+  const closeMenu = () => setVisible(false);
 
-    const MenuButton = (
-        <IconButton
-            icon="dots-vertical"
-            onPress={openMenu}
-            accessibilityLabel="More options"
-            testID="story-menu-button"
-        />
-    );
+  const MenuButton = (
+    <IconButton
+      icon="dots-vertical"
+      onPress={openMenu}
+      accessibilityLabel="More options"
+      testID="story-menu-button"
+    />
+  );
 
-    return (
-        <Menu
-            visible={visible}
-            onDismiss={closeMenu}
-            anchor={MenuButton}
-        >
-            <Menu.Item 
-                onPress={() => {
-                    closeMenu();
-                    onDownloadRange();
-                }} 
-                title="Download Range"
-                disabled={disabled}
-            />
-            <Divider />
-            <Menu.Item
-                onPress={() => {
-                    closeMenu();
-                    onConfigureEpub();
-                }}
-                title="EPUB Settings"
-                disabled={disabled}
-            />
-            <Divider />
-            <Menu.Item 
-                onPress={() => {
-                    closeMenu();
-                    onApplySentenceRemoval();
-                }} 
-                title="Apply Text Cleanup"
-                disabled={disabled}
-            />
-            <Divider />
-            <Menu.Item 
-                onPress={() => {
-                    closeMenu();
-                    onDelete();
-                }} 
-                title="Delete Novel"
-                titleStyle={{ color: theme.colors.error }}
-                disabled={disabled}
-            />
-        </Menu>
-    );
+  return (
+    <Menu visible={visible} onDismiss={closeMenu} anchor={MenuButton}>
+      <Menu.Item
+        onPress={() => {
+          closeMenu();
+          onDownloadRange();
+        }}
+        title="Download Range"
+        disabled={disabled}
+      />
+      <Divider />
+      <Menu.Item
+        onPress={() => {
+          closeMenu();
+          onConfigureEpub();
+        }}
+        title="EPUB Settings"
+        disabled={disabled}
+      />
+      <Divider />
+      <Menu.Item
+        onPress={() => {
+          closeMenu();
+          onApplySentenceRemoval();
+        }}
+        title="Apply Text Cleanup"
+        disabled={disabled}
+      />
+      <Divider />
+      <Menu.Item
+        onPress={() => {
+          closeMenu();
+          onDelete();
+        }}
+        title="Delete Novel"
+        titleStyle={{ color: theme.colors.error }}
+        disabled={disabled}
+      />
+    </Menu>
+  );
 };

@@ -1,7 +1,7 @@
-import React from 'react';
-import { StyleSheet, ViewStyle } from 'react-native';
-import { SafeAreaView, Edge } from 'react-native-safe-area-context';
-import { useTheme } from 'react-native-paper';
+import React from "react";
+import { StyleSheet, ViewStyle } from "react-native";
+import { SafeAreaView, Edge } from "react-native-safe-area-context";
+import { useTheme } from "react-native-paper";
 
 interface Props {
   children: React.ReactNode;
