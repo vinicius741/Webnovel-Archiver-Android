@@ -20,84 +20,98 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
 }) => {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
-  const isClosingRef = useRef(false);
+  const [menuKey, setMenuKey] = useState(0);
+  const isDismissedRef = useRef(false);
 
   const openMenu = useCallback(() => {
-    if (isClosingRef.current) return;
+    // Prevent reopening immediately after dismiss (touch event conflict)
+    if (isDismissedRef.current) {
+      isDismissedRef.current = false;
+      return;
+    }
     setVisible(true);
   }, []);
 
   const closeMenu = useCallback(() => {
     setVisible(false);
+    // Force remount of Menu component to reset internal state
+    setMenuKey((k) => k + 1);
   }, []);
 
-  // Delay callback to allow menu close animation to complete.
-  // Without this, the menu can briefly re-open if the user taps quickly.
+  const handleDismiss = useCallback(() => {
+    isDismissedRef.current = true;
+    closeMenu();
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isDismissedRef.current = false;
+    }, 150);
+  }, [closeMenu]);
+
   const handleSelect = useCallback(
     (mode: ChapterFilterMode) => {
-      isClosingRef.current = true;
-      setVisible(false);
+      closeMenu();
+      // Small delay to let menu close animation complete before callback
       setTimeout(() => {
         onFilterSelect(mode);
-        isClosingRef.current = false;
-      }, 150);
+      }, 100);
     },
-    [onFilterSelect],
+    [onFilterSelect, closeMenu],
   );
 
   return (
-    <Menu
-      visible={visible}
-      onDismiss={closeMenu}
-      anchor={
-        <Searchbar
-          placeholder="Search chapters"
-          onChangeText={onSearchChange}
-          value={searchQuery}
-          style={styles.searchbar}
-          inputStyle={styles.searchInput}
-          right={() => (
-            <View style={styles.rightContainer}>
-              <View
-                style={[
-                  styles.separator,
-                  { backgroundColor: theme.colors.outlineVariant },
-                ]}
-              />
-              <IconButton
-                icon="filter-variant"
-                onPress={openMenu}
-                size={20}
-                style={styles.filterButton}
-                testID="chapter-filter-button"
-              />
-            </View>
-          )}
+    <View style={styles.container}>
+      <Searchbar
+        placeholder="Search chapters"
+        onChangeText={onSearchChange}
+        value={searchQuery}
+        style={styles.searchbar}
+        inputStyle={styles.searchInput}
+      />
+      <View style={styles.divider} />
+      <Menu
+        key={menuKey}
+        visible={visible}
+        onDismiss={handleDismiss}
+        anchor={
+          <View collapsable={false}>
+            <IconButton
+              icon="filter-variant"
+              onPress={openMenu}
+              size={20}
+              style={styles.filterButton}
+              testID="chapter-filter-button"
+            />
+          </View>
+        }
+      >
+        <Menu.Item
+          onPress={() => handleSelect("all")}
+          title="Show all chapters"
+          leadingIcon={filterMode === "all" ? "check" : undefined}
         />
-      }
-    >
-      <Menu.Item
-        onPress={() => handleSelect("all")}
-        title="Show all chapters"
-        leadingIcon={filterMode === "all" ? "check" : undefined}
-      />
-      <Menu.Item
-        onPress={() => handleSelect("hideNonDownloaded")}
-        title="Hide non-downloaded"
-        leadingIcon={filterMode === "hideNonDownloaded" ? "check" : undefined}
-      />
-      <Menu.Item
-        onPress={() => handleSelect("hideAboveBookmark")}
-        title="Hide chapters above bookmark"
-        leadingIcon={filterMode === "hideAboveBookmark" ? "check" : undefined}
-        disabled={!hasBookmark}
-      />
-    </Menu>
+        <Menu.Item
+          onPress={() => handleSelect("hideNonDownloaded")}
+          title="Hide non-downloaded"
+          leadingIcon={filterMode === "hideNonDownloaded" ? "check" : undefined}
+        />
+        <Menu.Item
+          onPress={() => handleSelect("hideAboveBookmark")}
+          title="Hide chapters above bookmark"
+          leadingIcon={filterMode === "hideAboveBookmark" ? "check" : undefined}
+          disabled={!hasBookmark}
+        />
+      </Menu>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   searchbar: {
+    flex: 1,
     height: 48,
     alignItems: "center",
   },
@@ -105,14 +119,11 @@ const styles = StyleSheet.create({
     minHeight: 0,
     alignSelf: "center",
   },
-  rightContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  separator: {
+  divider: {
     width: 1,
     height: 24,
-    marginRight: 4,
+    backgroundColor: "#757575",
+    marginHorizontal: 4,
   },
   filterButton: {
     margin: 0,
