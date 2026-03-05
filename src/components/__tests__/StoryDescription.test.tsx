@@ -70,13 +70,57 @@ describe("StoryDescription", () => {
     expect(description).toBeTruthy();
   });
 
-  it("should render long description", () => {
-    const longDescription = "A".repeat(500);
-    const { getByText } = renderWithTheme(
+  it("should truncate long description and show read more button", () => {
+    const longDescription = "A".repeat(300);
+    const { getByTestId, queryByText } = renderWithTheme(
       <StoryDescription description={longDescription} />,
     );
 
+    expect(queryByText(longDescription)).toBeNull();
+    expect(getByTestId("read-more-button")).toBeTruthy();
+    expect(getByTestId("read-more-text").children[0]).toBe("Read more");
+  });
+
+  it("should expand to show full description when read more is clicked", () => {
+    const longDescription = "A".repeat(300);
+    const { getByTestId, getByText } = renderWithTheme(
+      <StoryDescription description={longDescription} />,
+    );
+
+    fireEvent.press(getByTestId("read-more-button"));
+
     expect(getByText(longDescription)).toBeTruthy();
+    expect(getByTestId("read-more-text").children[0]).toBe("Show less");
+  });
+
+  it("should collapse when show less is clicked", () => {
+    const longDescription = "A".repeat(300);
+    const { getByTestId, queryByText } = renderWithTheme(
+      <StoryDescription description={longDescription} />,
+    );
+
+    fireEvent.press(getByTestId("read-more-button"));
+    fireEvent.press(getByTestId("read-more-button"));
+
+    expect(queryByText(longDescription)).toBeNull();
+    expect(getByTestId("read-more-text").children[0]).toBe("Read more");
+  });
+
+  it("should not show read more button for short descriptions", () => {
+    const { queryByTestId } = renderWithTheme(
+      <StoryDescription {...defaultProps} />,
+    );
+
+    expect(queryByTestId("read-more-button")).toBeNull();
+  });
+
+  it("should use custom maxLength when provided", () => {
+    const description = "A".repeat(150);
+    const { queryByTestId, getByTestId } = renderWithTheme(
+      <StoryDescription description={description} maxLength={100} />,
+    );
+
+    expect(getByTestId("read-more-button")).toBeTruthy();
   });
 
   it("should call Clipboard.setStringAsync on double press", async () => {
