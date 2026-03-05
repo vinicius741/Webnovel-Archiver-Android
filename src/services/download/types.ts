@@ -1,6 +1,6 @@
 import { Story, Chapter } from '../../types';
 
-export type JobStatus = 'pending' | 'downloading' | 'failed' | 'completed';
+export type JobStatus = 'pending' | 'downloading' | 'failed' | 'completed' | 'paused';
 
 export interface DownloadJob {
     id: string; // usually `${storyId}_${chapterIndex}`
@@ -12,6 +12,7 @@ export interface DownloadJob {
     addedAt: number;
     retryCount: number;
     error?: string;
+    pausedAt?: number;
 }
 
 export interface QueueStats {
@@ -20,4 +21,5 @@ export interface QueueStats {
     active: number;
     completed: number;
     failed: number;
+    paused: number;
 }

@@ -104,6 +104,7 @@ function AppLayout() {
         <Stack.Screen name="index" options={{ title: 'Library' }} />
         <Stack.Screen name="add" options={{ title: 'Add Story', presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="download-manager" options={{ title: 'Download Manager' }} />
       </Stack>
     </>
   );

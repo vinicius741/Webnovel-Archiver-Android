@@ -82,14 +82,81 @@ export class DownloadQueue {
         return this.jobs.find(j => j.status === 'pending');
     }
 
+    getAllJobs(): DownloadJob[] {
+        return [...this.jobs];
+    }
+
     getJobsForStory(storyId: string): DownloadJob[] {
         return this.jobs.filter(j => j.storyId === storyId);
     }
 
-    getStats(): { pending: number, active: number, total: number } {
+    getStats(): { pending: number, active: number, total: number, paused: number, completed: number, failed: number } {
         const pending = this.jobs.filter(j => j.status === 'pending').length;
         const active = this.jobs.filter(j => j.status === 'downloading').length;
-        return { pending, active, total: this.jobs.length };
+        const paused = this.jobs.filter(j => j.status === 'paused').length;
+        const completed = this.jobs.filter(j => j.status === 'completed').length;
+        const failed = this.jobs.filter(j => j.status === 'failed').length;
+        return { pending, active, total: this.jobs.length, paused, completed, failed };
+    }
+
+    pauseJob(id: string): void {
+        const job = this.jobs.find(j => j.id === id);
+        if (job && (job.status === 'pending' || job.status === 'downloading')) {
+            job.status = 'paused';
+            job.pausedAt = Date.now();
+            this._save();
+        }
+    }
+
+    resumeJob(id: string): void {
+        const job = this.jobs.find(j => j.id === id);
+        if (job && job.status === 'paused') {
+            job.status = 'pending';
+            job.pausedAt = undefined;
+            this._save();
+        }
+    }
+
+    pauseAll(): void {
+        let changed = false;
+        this.jobs.forEach(job => {
+            if (job.status === 'pending' || job.status === 'downloading') {
+                job.status = 'paused';
+                job.pausedAt = Date.now();
+                changed = true;
+            }
+        });
+        if (changed) {
+            this._save();
+        }
+    }
+
+    resumeAll(): void {
+        let changed = false;
+        this.jobs.forEach(job => {
+            if (job.status === 'paused') {
+                job.status = 'pending';
+                job.pausedAt = undefined;
+                changed = true;
+            }
+        });
+        if (changed) {
+            this._save();
+        }
+    }
+
+    cancelAll(): void {
+        let changed = false;
+        this.jobs.forEach(job => {
+            if (job.status === 'pending' || job.status === 'paused') {
+                job.status = 'failed';
+                job.error = 'cancelled';
+                changed = true;
+            }
+        });
+        if (changed) {
+            this._save();
+        }
     }
 
     clearCompleted(storyId?: string): void {

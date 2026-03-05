@@ -189,10 +189,10 @@ export class DownloadManager extends EventEmitter {
         // Initial notification
         const stats = downloadQueue.getStats();
         if (stats.pending > 0 || stats.active > 0) {
-            const completed = Math.max(0, stats.total - stats.pending - stats.active);
+            const completed = Math.max(0, stats.total - stats.pending - stats.active - stats.paused);
             await setDownloadState({
                 title: 'Downloading chapters',
-                message: `Active: ${stats.active}, Pending: ${stats.pending}`,
+                message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
                 current: completed,
                 total: stats.total
             });
@@ -211,10 +211,10 @@ export class DownloadManager extends EventEmitter {
             return;
         }
 
-        const completed = Math.max(0, stats.total - stats.pending - stats.active);
+        const completed = Math.max(0, stats.total - stats.pending - stats.active - stats.paused);
         await setDownloadState({
             title: 'Downloading...',
-            message: `Active: ${stats.active}, Pending: ${stats.pending}`,
+            message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
             current: completed,
             total: stats.total
         });
@@ -275,13 +275,54 @@ export class DownloadManager extends EventEmitter {
         this.emit('all-complete');
     }
 
-    async cancelAll() {
-        this.cancelRequested = true;
-        downloadQueue.cancelPending('cancelled');
+    async pauseJob(jobId: string) {
+        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
+        if (job && (job.status === 'pending' || job.status === 'downloading')) {
+            downloadQueue.pauseJob(jobId);
+            this.emit('job-paused', job);
+            this.emit('queue-updated');
+            this.emit('notification-update');
+        }
+    }
+
+    async resumeJob(jobId: string) {
+        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
+        if (job && job.status === 'paused') {
+            downloadQueue.resumeJob(jobId);
+            this.emit('job-resumed', job);
+            this.emit('queue-updated');
+            this.emit('notification-update');
+            this.start();
+        }
+    }
+
+    async pauseAll() {
+        downloadQueue.pauseAll();
         this.emit('queue-updated');
-        this.stopFlushTimer();
-        await this.flushAllPending();
-        await clearDownloadState();
+        this.emit('notification-update');
+    }
+
+    async resumeAll() {
+        downloadQueue.resumeAll();
+        this.emit('queue-updated');
+        this.emit('notification-update');
+        this.start();
+    }
+
+    async cancelJob(jobId: string) {
+        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
+        if (job && (job.status === 'pending' || job.status === 'paused' || job.status === 'downloading')) {
+            downloadQueue.updateJobStatus(jobId, 'failed', 'cancelled by user');
+            this.emit('job-failed', job, new Error('cancelled by user'));
+            this.emit('queue-updated');
+            this.emit('notification-update');
+        }
+    }
+
+    async cancelAll() {
+        downloadQueue.cancelAll();
+        this.emit('queue-updated');
+        this.emit('notification-update');
     }
 
     private async processJob(job: DownloadJob) {

@@ -56,6 +56,12 @@ export default function SettingsScreen() {
         <List.Section>
           <List.Subheader>Downloads</List.Subheader>
           <View style={styles.container}>
+            <List.Item
+              title="Download Manager"
+              description="View and manage active downloads"
+              left={props => <List.Icon {...props} icon="download-circle" />}
+              onPress={() => router.push('/download-manager')}
+            />
             <TextInput
               label="Simultaneous Downloads"
               value={concurrency}
