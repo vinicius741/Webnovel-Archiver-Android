@@ -46,7 +46,23 @@ export const useStoryActions = ({
     const newLastReadId =
       story.lastReadChapterId === chapter.id ? undefined : chapter.id;
 
-    const updatedStory = { ...story, lastReadChapterId: newLastReadId };
+    // Update epubConfig.rangeStart if startAfterBookmark is enabled and bookmark changes
+    let updatedEpubConfig = story.epubConfig;
+    if (newLastReadId && story.epubConfig?.startAfterBookmark) {
+      const bookmarkIndex = story.chapters.findIndex((ch) => ch.id === newLastReadId);
+      if (bookmarkIndex !== -1) {
+        updatedEpubConfig = {
+          ...story.epubConfig,
+          rangeStart: bookmarkIndex + 2, // Start after bookmark (1-based, +1 for next chapter)
+        };
+      }
+    }
+
+    const updatedStory = {
+      ...story,
+      lastReadChapterId: newLastReadId,
+      epubConfig: updatedEpubConfig,
+    };
 
     try {
       if (newLastReadId) {

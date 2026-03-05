@@ -105,6 +105,8 @@ const styles = StyleSheet.create({
     marginBottom: 0, // Handled by parent container now for grid gaps
     borderRadius: 12,
     marginTop: 8,
+    flexDirection: "column",
+    justifyContent: "space-between",
   },
   content: {
     flex: 1,

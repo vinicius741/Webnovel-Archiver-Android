@@ -93,6 +93,25 @@ export const useStoryDownload = ({
         return chapter && !chapter.downloaded;
       });
 
+      // Determine if we need to update epubConfig.rangeEnd
+      const oldTotal = story.chapters.length;
+      const newTotal = mergeResult.chapters.length;
+      const hasNewChapters = newTotal > oldTotal;
+      const hasEpub = story.epubPaths && story.epubPaths.length > 0;
+
+      // Update epubConfig.rangeEnd if new chapters were added and rangeEnd was at the old total
+      // This preserves intentional partial ranges (e.g., if user selected chapters 50-100)
+      let updatedEpubConfig = story.epubConfig;
+      if (hasNewChapters && story.epubConfig) {
+        const wasAtEnd = story.epubConfig.rangeEnd >= oldTotal;
+        if (wasAtEnd) {
+          updatedEpubConfig = {
+            ...story.epubConfig,
+            rangeEnd: newTotal,
+          };
+        }
+      }
+
       const updatedStory: Story = {
         ...story,
         chapters: mergeResult.chapters,
@@ -110,6 +129,8 @@ export const useStoryDownload = ({
         lastReadChapterId: mergeResult.lastReadChapterId,
         pendingNewChapterIds:
           pendingNewChapterIds.length > 0 ? pendingNewChapterIds : undefined,
+        epubConfig: updatedEpubConfig,
+        epubStale: hasNewChapters && hasEpub ? true : story.epubStale,
       };
 
       await storageService.addStory(updatedStory);
