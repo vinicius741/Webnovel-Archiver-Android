@@ -111,7 +111,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.generateEpub();
     });
 
     expect(epubGenerator.generateEpubs).toHaveBeenCalledWith(
@@ -147,7 +147,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.generateEpub();
     });
 
     expect(epubGenerator.generateEpubs).toHaveBeenCalledWith(
@@ -185,7 +185,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.generateEpub();
     });
 
     expect(epubGenerator.generateEpubs).toHaveBeenCalledWith(
@@ -221,7 +221,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.generateEpub();
     });
 
     expect(mockShowAlert).toHaveBeenCalledWith(
@@ -256,7 +256,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.generateEpub();
     });
 
     expect(epubGenerator.generateEpubs).not.toHaveBeenCalled();
@@ -280,7 +280,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.readEpub();
     });
 
     expect(getInfoAsync).toHaveBeenCalledWith("file://existing.epub");
@@ -308,7 +308,7 @@ describe("useStoryEPUB", () => {
     );
 
     await act(async () => {
-      await result.current.generateOrRead();
+      await result.current.generateEpub();
     });
 
     expect(mockShowAlert).toHaveBeenCalledWith("Error", "Generation failed");

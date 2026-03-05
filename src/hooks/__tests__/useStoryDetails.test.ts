@@ -85,7 +85,9 @@ describe("useStoryDetails", () => {
     useStoryEPUB.mockReturnValue({
       generating: jest.fn(),
       progress: jest.fn(),
-      generateOrRead: jest.fn(),
+      generateEpub: jest.fn(),
+      readEpub: jest.fn(),
+      readEpubAtPath: jest.fn(),
     });
   });
 
@@ -268,11 +270,15 @@ describe("useStoryDetails", () => {
 
   it("should expose epub generation functions", async () => {
     const { useStoryEPUB } = require("../useStoryEPUB");
-    const mockGenerateOrRead = jest.fn();
+    const mockGenerateEpub = jest.fn();
+    const mockReadEpub = jest.fn();
+    const mockReadEpubAtPath = jest.fn();
     useStoryEPUB.mockReturnValue({
       generating: false,
       progress: null,
-      generateOrRead: mockGenerateOrRead,
+      generateEpub: mockGenerateEpub,
+      readEpub: mockReadEpub,
+      readEpubAtPath: mockReadEpubAtPath,
     });
 
     const { result } = renderHook(() => useStoryDetails("123"));
@@ -281,7 +287,9 @@ describe("useStoryDetails", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(typeof result.current.generateOrRead).toBe("function");
+    expect(typeof result.current.generateEpub).toBe("function");
+    expect(typeof result.current.readEpub).toBe("function");
+    expect(typeof result.current.readEpubAtPath).toBe("function");
   });
 
   it("should calculate downloading state correctly", async () => {
@@ -301,7 +309,9 @@ describe("useStoryDetails", () => {
     useStoryEPUB.mockReturnValue({
       generating: false,
       progress: null,
-      generateOrRead: jest.fn(),
+      generateEpub: jest.fn(),
+      readEpub: jest.fn(),
+      readEpubAtPath: jest.fn(),
     });
 
     useDownloadProgress.mockReturnValue({

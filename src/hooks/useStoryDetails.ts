@@ -124,8 +124,9 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
   const {
     generating,
     progress: epubProgress,
-    generateOrRead,
+    generateEpub,
     readEpub,
+    readEpubAtPath,
   } = useStoryEPUB({
     story,
     onStoryUpdated: setStory,
@@ -154,13 +155,14 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     markChapterAsRead,
     syncChapters,
     downloadRange,
-    generateOrRead,
+    generateEpub,
+    readEpub,
+    readEpubAtPath,
     applySentenceRemoval,
     updateStory,
     showEpubSelector,
     setShowEpubSelector,
     availableEpubs,
-    readEpub,
     downloadChaptersByIds,
   };
 };

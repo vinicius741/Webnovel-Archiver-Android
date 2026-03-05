@@ -42,7 +42,8 @@ describe("StoryActions", () => {
     downloadProgress: 0.5,
     downloadStatus: "Downloading chapter 50/100",
     onSync: jest.fn(),
-    onGenerateOrRead: jest.fn(),
+    onGenerate: jest.fn(),
+    onRead: jest.fn(),
   };
 
   const renderWithTheme = (component: React.ReactElement) => {
@@ -100,7 +101,7 @@ describe("StoryActions", () => {
     expect(getByText("Checking for updates...")).toBeTruthy();
   });
 
-  it("should render Read EPUB button when no epub path", () => {
+  it("should render Generate EPUB button when no epub path", () => {
     const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
     expect(getByTestId("generate-button")).toBeTruthy();
@@ -113,14 +114,25 @@ describe("StoryActions", () => {
     };
     const { getByTestId } = renderWithTheme(<StoryActions {...props} />);
 
-    expect(getByTestId("generate-button")).toBeTruthy();
+    expect(getByTestId("read-button")).toBeTruthy();
   });
 
-  it("should call onGenerateOrRead when Read EPUB button is pressed", () => {
+  it("should call onGenerate when Generate EPUB button is pressed", () => {
     const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
     fireEvent.press(getByTestId("generate-button"));
-    expect(defaultProps.onGenerateOrRead).toHaveBeenCalledTimes(1);
+    expect(defaultProps.onGenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it("should call onRead when Read EPUB button is pressed", () => {
+    const props = {
+      ...defaultProps,
+      story: { ...defaultProps.story, epubPath: "/path/to/epub.epub" },
+    };
+    const { getByTestId } = renderWithTheme(<StoryActions {...props} />);
+
+    fireEvent.press(getByTestId("read-button"));
+    expect(defaultProps.onRead).toHaveBeenCalledTimes(1);
   });
 
   it("should render generating progress when generating", () => {
@@ -171,10 +183,11 @@ describe("StoryActions", () => {
     expect(getByText("EPUB out of date")).toBeTruthy();
   });
 
-  it("should render both action buttons", () => {
+  it("should render all action buttons", () => {
     const { getByTestId } = renderWithTheme(<StoryActions {...defaultProps} />);
 
     expect(getByTestId("sync-button")).toBeTruthy();
     expect(getByTestId("generate-button")).toBeTruthy();
+    expect(getByTestId("read-button")).toBeTruthy();
   });
 });

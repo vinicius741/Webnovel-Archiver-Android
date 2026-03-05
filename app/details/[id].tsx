@@ -42,14 +42,15 @@ export default function StoryDetailsScreen() {
     deleteStory,
     markChapterAsRead,
     syncChapters,
-    generateOrRead,
+    generateEpub,
+    readEpub,
+    readEpubAtPath,
     downloadRange,
     applySentenceRemoval,
     updateStory,
     showEpubSelector,
     setShowEpubSelector,
     availableEpubs,
-    readEpub,
     downloadChaptersByIds,
   } = useStoryDetails(id);
 
@@ -199,7 +200,8 @@ export default function StoryDetailsScreen() {
         downloadProgress={downloadProgress}
         downloadStatus={downloadStatus}
         onSync={syncChapters}
-        onGenerateOrRead={generateOrRead}
+        onGenerate={generateEpub}
+        onRead={readEpub}
         onDownloadAll={() =>
           story.totalChapters > 0 && downloadRange(1, story.totalChapters)
         }
@@ -223,7 +225,7 @@ export default function StoryDetailsScreen() {
       <EpubSelectorDialog
         visible={showEpubSelector}
         onDismiss={() => setShowEpubSelector(false)}
-        onSelect={readEpub}
+        onSelect={readEpubAtPath}
         epubs={availableEpubs}
       />
       <StoryTags tags={story.tags} />

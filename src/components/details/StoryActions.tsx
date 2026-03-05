@@ -25,7 +25,8 @@ interface StoryActionsProps {
   downloadProgress: number;
   downloadStatus: string;
   onSync: () => void;
-  onGenerateOrRead: () => void;
+  onGenerate: () => void;
+  onRead: () => void;
   onDownloadAll?: () => void;
   onViewDownloads?: () => void;
 }
@@ -40,7 +41,8 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
   downloadProgress,
   downloadStatus,
   onSync,
-  onGenerateOrRead,
+  onGenerate,
+  onRead,
   onDownloadAll,
   onViewDownloads,
 }) => {
@@ -111,16 +113,27 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
         </View>
       )}
 
-      <Button
-        mode="outlined"
-        style={styles.actionBtn}
-        disabled={(story.downloadedChapters === 0 && !hasEpub) || generating}
-        loading={generating}
-        onPress={onGenerateOrRead}
-        testID="generate-button"
-      >
-        Read EPUB
-      </Button>
+      <View style={styles.buttonRow}>
+        <Button
+          mode="outlined"
+          disabled={story.downloadedChapters === 0 || generating}
+          loading={generating}
+          onPress={onGenerate}
+          style={styles.halfWidth}
+          testID="generate-button"
+        >
+          Generate EPUB
+        </Button>
+        <Button
+          mode="contained"
+          disabled={!hasEpub || generating}
+          onPress={onRead}
+          style={styles.halfWidth}
+          testID="read-button"
+        >
+          Read EPUB
+        </Button>
+      </View>
 
       {showStale ? (
         <Text variant="bodySmall" style={styles.staleText}>
@@ -151,6 +164,14 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     marginBottom: 20,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  halfWidth: {
+    flex: 1,
   },
   progressContainer: {
     marginBottom: 20,

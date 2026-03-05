@@ -8,7 +8,6 @@ import {
   EpubProgress,
   EpubResult,
 } from "../services/EpubGenerator";
-import { downloadService } from "../services/DownloadService";
 import { useAppAlert } from "../context/AlertContext";
 import {
   EPUB_MAX_CHAPTERS_FALLBACK,
@@ -330,77 +329,28 @@ export const useStoryEPUB = ({
     }
   };
 
-  const generateOrRead = async (): Promise<void> => {
-    if (!validateStory(story)) return;
+  const readEpub = async (): Promise<boolean> => {
+    if (!validateStory(story)) return false;
 
-    const { path } = getFirstEpubPath(story);
-    const hasEpub = !!path;
-    const pendingNewChapterIds = (story.pendingNewChapterIds || []).filter(
-      (id) => {
-        const chapter = story.chapters.find((ch) => ch.id === id);
-        return chapter && !chapter.downloaded;
-      },
-    );
-
-    if (pendingNewChapterIds.length > 0) {
-      showAlert(
-        "New Chapters Found",
-        "Download the new chapters before reading?",
-        [
-          {
-            text: "Read",
-            style: "cancel",
-            onPress: async () => {
-              await readFirstEpub();
-            },
-          },
-          {
-            text: "Download",
-            onPress: async () => {
-              try {
-                const queuedStory = await downloadService.downloadChaptersByIds(
-                  story,
-                  pendingNewChapterIds,
-                );
-                await storageService.addStory(queuedStory);
-                onStoryUpdated(queuedStory);
-                showAlert(
-                  "Download Started",
-                  "New chapters have been queued for download.",
-                );
-              } catch (error: unknown) {
-                const message = error instanceof Error ? error.message : "Failed to queue downloads.";
-                showAlert(
-                  "Download Error",
-                  message,
-                );
-              }
-            },
-          },
-        ],
-      );
-      return;
+    const { path, isMultiple } = getFirstEpubPath(story);
+    if (!path) {
+      showAlert("No EPUB", "Generate an EPUB first.");
+      return false;
     }
 
-    if (!hasEpub || story.epubStale) {
-      const epubUris = await generateEpub();
-      if (epubUris && epubUris.length > 1 && onMultipleEpubs) {
-        onMultipleEpubs(epubUris);
-        return;
-      }
-      if (epubUris && epubUris.length > 0) {
-        await readExistingEpub(epubUris[0], epubUris.length > 1);
-      }
-      return;
+    if (isMultiple && onMultipleEpubs) {
+      onMultipleEpubs(story.epubPaths!);
+      return true;
     }
 
-    await readFirstEpub();
+    return readExistingEpub(path, isMultiple);
   };
 
   return {
     generating,
     progress,
-    generateOrRead,
-    readEpub: (path: string) => readExistingEpub(path, true),
+    generateEpub,
+    readEpub,
+    readEpubAtPath: (path: string) => readExistingEpub(path, true),
   };
 };
