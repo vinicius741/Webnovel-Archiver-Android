@@ -53,7 +53,6 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
       hasBookmark ? initialConfig.startAfterBookmark : false,
     );
     setError("");
-    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [visible, initialConfig, hasBookmark]);
 
   const handleSave = async () => {

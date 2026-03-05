@@ -27,6 +27,7 @@ interface StoryActionsProps {
   onSync: () => void;
   onGenerateOrRead: () => void;
   onDownloadAll?: () => void;
+  onViewDownloads?: () => void;
 }
 
 export const StoryActions: React.FC<StoryActionsProps> = ({
@@ -41,6 +42,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
   onSync,
   onGenerateOrRead,
   onDownloadAll,
+  onViewDownloads,
 }) => {
   const theme = useTheme();
   const hasEpub =
@@ -87,6 +89,16 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
           <Text variant="bodySmall" style={styles.progressText}>
             {downloadStatus}
           </Text>
+          {onViewDownloads && (
+            <Button
+              mode="text"
+              compact
+              onPress={onViewDownloads}
+              style={styles.viewDownloadsBtn}
+            >
+              Go to Downloads Manager
+            </Button>
+          )}
         </View>
       )}
 
@@ -150,6 +162,9 @@ const styles = StyleSheet.create({
   progressText: {
     marginTop: 8,
     textAlign: "center",
+  },
+  viewDownloadsBtn: {
+    marginTop: 4,
   },
   staleText: {
     marginTop: -8,

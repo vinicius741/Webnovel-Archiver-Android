@@ -34,7 +34,6 @@ export const DownloadRangeDialog: React.FC<DownloadRangeDialogProps> = ({
       setEnd(totalChapters.toString());
       setError("");
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
   }, [visible, totalChapters]);
 
   const handleDownload = () => {

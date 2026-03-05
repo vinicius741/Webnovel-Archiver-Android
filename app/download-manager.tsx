@@ -1,154 +1,14 @@
 import React, { useState, useCallback } from "react";
 import { StyleSheet, View } from "react-native";
-import {
-  Text,
-  useTheme,
-  Card,
-  IconButton,
-  Modal,
-  Portal,
-  Button,
-  TextInput,
-  Divider,
-} from "react-native-paper";
+import { Text, useTheme, Card, IconButton, Portal } from "react-native-paper";
 import { Stack } from "expo-router";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useDownloadQueue } from "../src/hooks/useDownloadQueue";
 import { DownloadQueueList } from "../src/components/downloads/DownloadQueueList";
+import { StatItem } from "../src/components/downloads/StatItem";
+import { DownloadManagerSettingsModal } from "../src/components/downloads/DownloadManagerSettingsModal";
 import { useAppAlert } from "../src/context/AlertContext";
 import { useSettings } from "../src/hooks/useSettings";
-
-interface StatItemProps {
-  icon: string;
-  value: number;
-  label: string;
-  color?: string;
-  theme: any;
-}
-
-const StatItem = ({ icon, value, label, color, theme }: StatItemProps) => (
-  <View style={styles.statItem}>
-    <IconButton
-      icon={icon}
-      size={20}
-      iconColor={color || theme.colors.onSurfaceVariant}
-      style={styles.statIcon}
-    />
-    <Text
-      variant="titleLarge"
-      style={[styles.statValue, { color: color || theme.colors.onSurface }]}
-    >
-      {value}
-    </Text>
-    <Text
-      variant="bodySmall"
-      style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}
-    >
-      {label}
-    </Text>
-  </View>
-);
-
-interface SettingsModalProps {
-  visible: boolean;
-  onDismiss: () => void;
-  concurrency: string;
-  concurrencyError: string | undefined;
-  delay: string;
-  delayError: string | undefined;
-  onConcurrencyChange: (text: string) => void;
-  onDelayChange: (text: string) => void;
-  onConcurrencyBlur: () => void;
-  onDelayBlur: () => void;
-  onClearCompletedPress: () => void;
-}
-
-const DownloadManagerSettingsModal: React.FC<SettingsModalProps> = ({
-  visible,
-  onDismiss,
-  concurrency,
-  concurrencyError,
-  delay,
-  delayError,
-  onConcurrencyChange,
-  onDelayChange,
-  onConcurrencyBlur,
-  onDelayBlur,
-  onClearCompletedPress,
-}) => {
-  const theme = useTheme();
-
-  return (
-    <Modal
-      visible={visible}
-      onDismiss={onDismiss}
-      contentContainerStyle={[
-        styles.modalContent,
-        { backgroundColor: theme.colors.surface },
-      ]}
-    >
-      <Text variant="headlineSmall" style={styles.modalTitle}>
-        Download Manager
-      </Text>
-
-      <Button
-        mode="outlined"
-        icon="delete-sweep"
-        onPress={onClearCompletedPress}
-        textColor={theme.colors.error}
-        style={styles.clearButton}
-      >
-        Clear Completed Downloads
-      </Button>
-
-      <Divider style={styles.divider} />
-
-      <TextInput
-        label="Simultaneous Downloads"
-        value={concurrency}
-        onChangeText={onConcurrencyChange}
-        onEndEditing={onConcurrencyBlur}
-        keyboardType="number-pad"
-        mode="outlined"
-        style={styles.input}
-        error={!!concurrencyError}
-        right={<TextInput.Affix text="files" />}
-      />
-      {concurrencyError ? (
-        <Text
-          variant="bodySmall"
-          style={[styles.error, { color: theme.colors.error }]}
-        >
-          {concurrencyError}
-        </Text>
-      ) : null}
-
-      <TextInput
-        label="Delay Between Downloads"
-        value={delay}
-        onChangeText={onDelayChange}
-        onEndEditing={onDelayBlur}
-        keyboardType="number-pad"
-        mode="outlined"
-        style={styles.input}
-        error={!!delayError}
-        right={<TextInput.Affix text="ms" />}
-      />
-      {delayError ? (
-        <Text
-          variant="bodySmall"
-          style={[styles.error, { color: theme.colors.error }]}
-        >
-          {delayError}
-        </Text>
-      ) : null}
-
-      <Button mode="contained" onPress={onDismiss} style={styles.closeButton}>
-        Done
-      </Button>
-    </Modal>
-  );
-};
 
 export default function DownloadManagerScreen() {
   const theme = useTheme();
@@ -189,7 +49,6 @@ export default function DownloadManagerScreen() {
 
   const hasActiveJobs = stats.pending > 0 || stats.active > 0;
   const hasPausedJobs = stats.paused > 0;
-  const hasCompletedJobs = stats.completed > 0;
   const hasFailedJobs = stats.failed > 0;
 
   const handleCancelAll = () => {
@@ -369,48 +228,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
   },
-  statItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  statIcon: {
-    margin: 0,
-    marginBottom: -4,
-  },
-  statValue: {
-    fontWeight: "bold",
-  },
-  statLabel: {
-    marginTop: -2,
-  },
   statDivider: {
     width: 1,
     height: 40,
     opacity: 0.5,
-  },
-  modalContent: {
-    margin: 20,
-    padding: 20,
-    borderRadius: 12,
-  },
-  modalTitle: {
-    marginBottom: 16,
-    fontWeight: "bold",
-  },
-  clearButton: {
-    marginBottom: 8,
-  },
-  divider: {
-    marginVertical: 12,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  error: {
-    marginTop: -8,
-    marginBottom: 8,
-  },
-  closeButton: {
-    marginTop: 16,
   },
 });

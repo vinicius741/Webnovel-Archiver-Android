@@ -159,6 +159,7 @@ export default function StoryDetailsScreen() {
         onDownloadAll={() =>
           story.totalChapters > 0 && downloadRange(1, story.totalChapters)
         }
+        onViewDownloads={() => router.push("/download-manager")}
       />
       <DownloadRangeDialog
         visible={showDownloadRange}
