@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, SegmentedButtons, List, TextInput } from 'react-native-paper';
+import { Text, SegmentedButtons, List } from 'react-native-paper';
 import { StyleSheet, View, ScrollView } from 'react-native';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { useSettings } from '../src/hooks/useSettings';
@@ -9,14 +9,6 @@ export default function SettingsScreen() {
   const {
     themeMode,
     setThemeMode,
-    concurrency,
-    delay,
-    concurrencyError,
-    delayError,
-    handleConcurrencyChange,
-    handleDelayChange,
-    handleConcurrencyBlur,
-    handleDelayBlur,
     clearData,
     handleExportBackup,
     handleImportBackup,
@@ -62,30 +54,6 @@ export default function SettingsScreen() {
               left={props => <List.Icon {...props} icon="download-circle" />}
               onPress={() => router.push('/download-manager')}
             />
-            <TextInput
-              label="Simultaneous Downloads"
-              value={concurrency}
-              onChangeText={handleConcurrencyChange}
-              onEndEditing={handleConcurrencyBlur}
-              keyboardType="number-pad"
-              mode="outlined"
-              style={styles.input}
-              error={!!concurrencyError}
-              right={<TextInput.Affix text="files" />}
-            />
-            {concurrencyError ? <Text variant="bodySmall" style={styles.error}>{concurrencyError}</Text> : null}
-            <TextInput
-              label="Delay Between Downloads"
-              value={delay}
-              onChangeText={handleDelayChange}
-              onEndEditing={handleDelayBlur}
-              keyboardType="number-pad"
-              mode="outlined"
-              style={styles.input}
-              error={!!delayError}
-              right={<TextInput.Affix text="ms" />}
-            />
-            {delayError ? <Text variant="bodySmall" style={styles.error}>{delayError}</Text> : null}
           </View>
         </List.Section>
 
@@ -136,13 +104,5 @@ const styles = StyleSheet.create({
   },
   label: {
     marginBottom: 8,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  error: {
-    marginTop: -8,
-    marginBottom: 12,
-    color: 'red',
   },
 });

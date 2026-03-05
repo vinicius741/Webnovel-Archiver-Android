@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Text, useTheme, Card, IconButton } from 'react-native-paper';
+import { Text, useTheme, Card, IconButton, Modal, Portal, Button, TextInput, Divider } from 'react-native-paper';
 import { Stack } from 'expo-router';
 import { ScreenContainer } from '../src/components/ScreenContainer';
 import { useDownloadQueue } from '../src/hooks/useDownloadQueue';
 import { DownloadQueueList } from '../src/components/downloads/DownloadQueueList';
 import { useAppAlert } from '../src/context/AlertContext';
+import { useSettings } from '../src/hooks/useSettings';
 
 interface StatItemProps {
     icon: string;
@@ -32,6 +33,99 @@ const StatItem = ({ icon, value, label, color, theme }: StatItemProps) => (
     </View>
 );
 
+interface SettingsModalProps {
+    visible: boolean;
+    onDismiss: () => void;
+    concurrency: string;
+    concurrencyError: string | undefined;
+    delay: string;
+    delayError: string | undefined;
+    onConcurrencyChange: (text: string) => void;
+    onDelayChange: (text: string) => void;
+    onConcurrencyBlur: () => void;
+    onDelayBlur: () => void;
+    onClearCompletedPress: () => void;
+}
+
+const DownloadManagerSettingsModal: React.FC<SettingsModalProps> = ({
+    visible,
+    onDismiss,
+    concurrency,
+    concurrencyError,
+    delay,
+    delayError,
+    onConcurrencyChange,
+    onDelayChange,
+    onConcurrencyBlur,
+    onDelayBlur,
+    onClearCompletedPress,
+}) => {
+    const theme = useTheme();
+
+    return (
+        <Modal
+            visible={visible}
+            onDismiss={onDismiss}
+            contentContainerStyle={[styles.modalContent, { backgroundColor: theme.colors.surface }]}
+            accessible={true}
+            accessibilityRole="dialog"
+            accessibilityLabel="Download manager settings"
+        >
+            <Text variant="headlineSmall" style={styles.modalTitle}>Download Manager</Text>
+
+            <Button
+                mode="outlined"
+                icon="delete-sweep"
+                onPress={onClearCompletedPress}
+                textColor={theme.colors.error}
+                style={styles.clearButton}
+            >
+                Clear Completed Downloads
+            </Button>
+
+            <Divider style={styles.divider} />
+
+            <TextInput
+                label="Simultaneous Downloads"
+                value={concurrency}
+                onChangeText={onConcurrencyChange}
+                onEndEditing={onConcurrencyBlur}
+                keyboardType="number-pad"
+                mode="outlined"
+                style={styles.input}
+                error={!!concurrencyError}
+                right={<TextInput.Affix text="files" />}
+            />
+            {concurrencyError ? (
+                <Text variant="bodySmall" style={[styles.error, { color: theme.colors.error }]}>
+                    {concurrencyError}
+                </Text>
+            ) : null}
+
+            <TextInput
+                label="Delay Between Downloads"
+                value={delay}
+                onChangeText={onDelayChange}
+                onEndEditing={onDelayBlur}
+                keyboardType="number-pad"
+                mode="outlined"
+                style={styles.input}
+                error={!!delayError}
+                right={<TextInput.Affix text="ms" />}
+            />
+            {delayError ? (
+                <Text variant="bodySmall" style={[styles.error, { color: theme.colors.error }]}>
+                    {delayError}
+                </Text>
+            ) : null}
+
+            <Button mode="contained" onPress={onDismiss} style={styles.closeButton}>
+                Done
+            </Button>
+        </Modal>
+    );
+};
+
 export default function DownloadManagerScreen() {
     const theme = useTheme();
     const { showAlert } = useAppAlert();
@@ -49,7 +143,19 @@ export default function DownloadManagerScreen() {
         refreshState,
     } = useDownloadQueue();
 
+    const {
+        concurrency,
+        delay,
+        concurrencyError,
+        delayError,
+        handleConcurrencyChange,
+        handleDelayChange,
+        handleConcurrencyBlur,
+        handleDelayBlur,
+    } = useSettings();
+
     const [refreshing, setRefreshing] = useState(false);
+    const [settingsModalVisible, setSettingsModalVisible] = useState(false);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -73,13 +179,20 @@ export default function DownloadManagerScreen() {
         );
     };
 
-    const handleClearCompleted = () => {
+    const handleClearCompletedPress = () => {
         showAlert(
             'Clear Completed Downloads',
             'Remove all completed downloads from the queue?',
             [
                 { text: 'Cancel', style: 'cancel' },
-                { text: 'Clear', style: 'default', onPress: clearCompleted }
+                {
+                    text: 'Clear',
+                    style: 'default',
+                    onPress: () => {
+                        clearCompleted();
+                        setSettingsModalVisible(false);
+                    }
+                }
             ]
         );
     };
@@ -114,14 +227,12 @@ export default function DownloadManagerScreen() {
                                     iconColor={theme.colors.error}
                                 />
                             )}
-                            {hasCompletedJobs && (
-                                <IconButton
-                                    icon="delete-sweep"
-                                    size={24}
-                                    onPress={handleClearCompleted}
-                                    iconColor={theme.colors.onSurfaceVariant}
-                                />
-                            )}
+                            <IconButton
+                                icon="tune"
+                                size={24}
+                                onPress={() => setSettingsModalVisible(true)}
+                                iconColor={theme.colors.onSurfaceVariant}
+                            />
                         </View>
                     ),
                 }} 
@@ -178,6 +289,22 @@ export default function DownloadManagerScreen() {
                 refreshing={refreshing}
                 onRefresh={onRefresh}
             />
+
+            <Portal>
+                <DownloadManagerSettingsModal
+                    visible={settingsModalVisible}
+                    onDismiss={() => setSettingsModalVisible(false)}
+                    concurrency={concurrency}
+                    concurrencyError={concurrencyError}
+                    delay={delay}
+                    delayError={delayError}
+                    onConcurrencyChange={handleConcurrencyChange}
+                    onDelayChange={handleDelayChange}
+                    onConcurrencyBlur={handleConcurrencyBlur}
+                    onDelayBlur={handleDelayBlur}
+                    onClearCompletedPress={handleClearCompletedPress}
+                />
+            </Portal>
         </ScreenContainer>
     );
 }
@@ -216,5 +343,30 @@ const styles = StyleSheet.create({
         width: 1,
         height: 40,
         opacity: 0.5,
+    },
+    modalContent: {
+        margin: 20,
+        padding: 20,
+        borderRadius: 12,
+    },
+    modalTitle: {
+        marginBottom: 16,
+        fontWeight: 'bold',
+    },
+    clearButton: {
+        marginBottom: 8,
+    },
+    divider: {
+        marginVertical: 12,
+    },
+    input: {
+        marginBottom: 12,
+    },
+    error: {
+        marginTop: -8,
+        marginBottom: 8,
+    },
+    closeButton: {
+        marginTop: 16,
     },
 });
