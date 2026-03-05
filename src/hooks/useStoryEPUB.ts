@@ -156,20 +156,6 @@ export const useStoryEPUB = ({
     }
   };
 
-  const readFirstEpub = async (): Promise<boolean> => {
-    if (!validateStory(story)) return false;
-
-    const { path, isMultiple } = getFirstEpubPath(story);
-    if (!path) return false;
-
-    if (isMultiple && onMultipleEpubs) {
-      onMultipleEpubs(story.epubPaths!);
-      return false;
-    }
-
-    return readExistingEpub(path, isMultiple);
-  };
-
   const generateEpub = async (): Promise<string[] | null> => {
     if (!validateStory(story)) return null;
 
