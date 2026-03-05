@@ -212,13 +212,10 @@ export const useStoryDownload = ({
               setSyncing(true);
               setSyncStatus("Processing...");
 
-              let currentChapterTitle = "";
-
               const { processed, errors } =
                 await downloadService.applySentenceRemovalToStory(
                   story,
                   (current, total, title) => {
-                    currentChapterTitle = title;
                     setSyncStatus(`Processing ${current}/${total}: ${title}`);
                   },
                 );

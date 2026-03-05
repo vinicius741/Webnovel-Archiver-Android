@@ -4,7 +4,6 @@ import {
   RuleDraft,
   EMPTY_RULE_DRAFT,
   createRuleId,
-  QuickBuilderConfig,
   DEFAULT_QUICK_CONFIG,
 } from "../types/sentenceRemoval";
 import { validateRegexCleanupRule } from "../utils/textCleanup";

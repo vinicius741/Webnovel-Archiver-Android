@@ -91,7 +91,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
 
     if (
       Platform.OS === "android" &&
-      Constants.executionEnvironment !== "storeClient"
+      (Constants.executionEnvironment as string) !== "storeClient"
     ) {
       try {
         const notifee = loadNotifee();
@@ -124,7 +124,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
             },
           );
         }
-      } catch (e) {
+      } catch {
         // Notifee not available
       }
     }

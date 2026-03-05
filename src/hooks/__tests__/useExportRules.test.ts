@@ -63,7 +63,7 @@ describe("useExportRules", () => {
     });
 
     expect(MockFile).toHaveBeenCalledWith(expect.anything(), "text_cleanup_rules.json");
-    const mockFileInstance = (MockFile as jest.Mock).mock.results[0].value;
+    const mockFileInstance = (MockFile).mock.results[0].value;
     expect(mockFileInstance.write).toHaveBeenCalledWith(
       JSON.stringify({ sentences, regexRules: rules }, null, 4),
     );

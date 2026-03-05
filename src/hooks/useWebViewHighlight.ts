@@ -50,5 +50,6 @@ export const useWebViewHighlight = (
             })();
         `;
     webViewRef.current.injectJavaScript(js);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChunkIndex, isControllerVisible]);
 };

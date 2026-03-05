@@ -22,12 +22,12 @@ export const EpubSelectorDialog: React.FC<EpubSelectorDialogProps> = ({
       const decodedPath = decodeURIComponent(path);
 
       // Split by both '/' and ':' to handle typical paths and Android SAF URIs
-      const parts = decodedPath.split(/[\/:]/);
+      const parts = decodedPath.split(/[/:]/);
       const filename = parts.pop() || "Unknown File";
 
       // Remove common epub extensions and replace underscores with spaces for readability
       return filename.replace(/\.epub$/i, "").replace(/_/g, " ");
-    } catch (e) {
+    } catch {
       return path.split("/").pop() || "Unknown File";
     }
   };

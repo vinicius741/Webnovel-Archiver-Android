@@ -58,7 +58,7 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
     } finally {
       setLoading(false);
     }
-  }, [storyId, chapterId, storageService, readChapterFile]);
+  }, [storyId, chapterId]);
 
   const markAsRead = useCallback(async () => {
     if (!story || !chapter) return;

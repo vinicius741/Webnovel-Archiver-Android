@@ -4,12 +4,13 @@ import {
   clearDownloadState,
   registerForegroundService,
 } from "./ForegroundServiceCoordinator";
-import { loadNotifee, type NotifeeModule } from "./NotifeeTypes";
+import { loadNotifee } from "./NotifeeTypes";
 import type { Event } from "@notifee/react-native/dist/types/Notification";
 
 // Safely initialize background service to handle environments without Notifee (e.g. Expo Go)
 const initializeBackgroundService = () => {
-  if (Constants.executionEnvironment === "storeClient") {
+  const env = Constants.executionEnvironment as string | undefined;
+  if (env === "storeClient") {
     console.log(
       "[BackgroundService] Expo Go detected. Background events disabled.",
     );
@@ -73,7 +74,7 @@ const initializeBackgroundService = () => {
     console.log(
       "[BackgroundService] Notifee background event handler registered.",
     );
-  } catch (e) {
+  } catch {
     console.warn(
       "[BackgroundService] Notifee native module not found. Background events will be ignored.",
     );

@@ -39,6 +39,14 @@ jest.mock("../download/DownloadQueue", () => {
           }
         }
       }),
+      cancelAll: jest.fn(() => {
+        for (const job of mockJobs.values()) {
+          if (job.status === "pending" || job.status === "paused") {
+            job.status = "failed";
+            job.error = "cancelled";
+          }
+        }
+      }),
       _mockJobs: mockJobs,
     },
   };
@@ -547,7 +555,7 @@ describe("DownloadManager - Concurrent Downloads", () => {
 
       // Verify cancel was called on queue
       const { downloadQueue } = require("../download/DownloadQueue");
-      expect(downloadQueue.cancelPending).toHaveBeenCalled();
+      expect(downloadQueue.cancelAll).toHaveBeenCalled();
     });
 
     it("should handle multiple rapid cancel calls safely", async () => {

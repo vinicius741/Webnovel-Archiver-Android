@@ -11,7 +11,7 @@ import {
   SegmentedButtons,
   List,
 } from "react-native-paper";
-import { RegexCleanupRule, RegexCleanupAppliesTo } from "../../types";
+import { RegexCleanupRule } from "../../types";
 import {
   RuleDraft,
   RuleMode,

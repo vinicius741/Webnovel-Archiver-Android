@@ -35,7 +35,7 @@ export class EpubGenerator {
     chapters: Chapter[],
     onProgress?: (progress: EpubProgress) => void,
     fileNumber?: number,
-    totalFiles?: number,
+    _totalFiles?: number,
   ): Promise<GenerateEpubResult> {
     onProgress?.({
       current: 0,

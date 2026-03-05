@@ -331,7 +331,7 @@ export const useStoryEPUB = ({
   const generateOrRead = async (): Promise<void> => {
     if (!validateStory(story)) return;
 
-    const { path, isMultiple } = getFirstEpubPath(story);
+    const { path } = getFirstEpubPath(story);
     const hasEpub = !!path;
     const pendingNewChapterIds = (story.pendingNewChapterIds || []).filter(
       (id) => {

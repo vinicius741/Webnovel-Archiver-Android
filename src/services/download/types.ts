@@ -1,4 +1,4 @@
-import { Story, Chapter } from "../../types";
+import { Chapter } from "../../types";
 
 export type JobStatus =
   | "pending"

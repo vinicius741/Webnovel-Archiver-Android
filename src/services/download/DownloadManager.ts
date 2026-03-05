@@ -1,6 +1,6 @@
 import EventEmitter from "events";
-import { DownloadQueue, downloadQueue } from "./DownloadQueue";
-import { DownloadJob, JobStatus } from "./types";
+import { downloadQueue } from "./DownloadQueue";
+import { DownloadJob } from "./types";
 import { sourceRegistry } from "../source/SourceRegistry";
 import { fetchPage } from "../network/fetcher";
 import { saveChapter } from "../storage/fileSystem";
@@ -10,7 +10,7 @@ import {
   setDownloadState,
   showDownloadCompletionNotification,
 } from "../ForegroundServiceCoordinator";
-import { DownloadStatus, Story, Chapter } from "../../types";
+import { DownloadStatus, Story } from "../../types";
 import { applyDownloadCleanup } from "../../utils/textCleanup";
 
 const FLUSH_THRESHOLD = 3;

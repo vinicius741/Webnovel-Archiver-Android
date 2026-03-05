@@ -1,4 +1,3 @@
-import * as FileSystem from "expo-file-system";
 // We need to use FileSystem.StorageAccessFramework and FileSystem.writeAsStringAsync
 // The helper classes File/Directory/Paths must be imported from the library if they exist, or they are custom?
 // Based on previous file content, they were imported from 'expo-file-system'.
@@ -7,6 +6,7 @@ import * as FileSystem from "expo-file-system";
 // Lint in step 105 did NOT complain about Paths, File, Directory. It complained about `StorageAccessFramework`, `writeAsStringAsync`, `EncodingType` NOT being there.
 // So:
 import { Paths, File, Directory } from "expo-file-system";
+import { Story } from "../../types";
 import {
   StorageAccessFramework,
   EncodingType,
@@ -55,7 +55,7 @@ export const saveChapter = async (
   return file.uri;
 };
 
-export const saveMetadata = async (novelId: string, metadata: any) => {
+export const saveMetadata = async (novelId: string, metadata: Story) => {
   const novelDir = ensureNovelDirExists(novelId);
   const file = new File(novelDir, "metadata.json");
   file.write(JSON.stringify(metadata, null, 2));
@@ -71,7 +71,7 @@ export const listNovelFiles = async (novelId: string) => {
 export const deleteNovel = async (novelId: string): Promise<void> => {
   const novelDir = new Directory(Paths.document, BASE_DIR_NAME, novelId);
   if (novelDir.exists) {
-    await novelDir.delete();
+    novelDir.delete();
     console.log(`[Storage] Deleted novel directory: ${novelId}`);
   }
 };
@@ -79,7 +79,7 @@ export const deleteNovel = async (novelId: string): Promise<void> => {
 export const clearAllFiles = async (): Promise<void> => {
   const baseDir = new Directory(Paths.document, BASE_DIR_NAME);
   if (baseDir.exists) {
-    await baseDir.delete();
+    baseDir.delete();
     console.log(`[Storage] Deleted base directory: ${BASE_DIR_NAME}`);
   }
 };
@@ -111,7 +111,6 @@ export const saveEpub = async (
     );
 
     // 3. Write data
-    // @ts-ignore: writeAsStringAsync
     await writeAsStringAsync(createdFileUri, base64, {
       encoding: EncodingType.Base64,
     });
@@ -140,7 +139,7 @@ export const checkFileExists = async (uri: string): Promise<boolean> => {
   try {
     const file = new File(uri);
     return file.exists;
-  } catch (e) {
+  } catch {
     return false;
   }
 };

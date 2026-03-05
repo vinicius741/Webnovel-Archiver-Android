@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Story, Chapter, DownloadStatus, RegexCleanupRule } from "../types";
+import { Story, DownloadStatus, RegexCleanupRule } from "../types";
 import * as fileSystem from "./storage/fileSystem";
 import DEFAULT_SENTENCE_REMOVAL_LIST from "../constants/default_sentence_removal.json";
 import { validateRegexCleanupRule } from "../utils/textCleanup";

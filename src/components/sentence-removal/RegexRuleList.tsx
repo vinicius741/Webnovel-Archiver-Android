@@ -8,7 +8,7 @@ import {
   Button,
   Switch,
 } from "react-native-paper";
-import { RegexCleanupRule, RegexCleanupAppliesTo } from "../../types";
+import { RegexCleanupRule } from "../../types";
 import { TARGET_LABEL_MAP } from "../../types/sentenceRemoval";
 
 interface RegexRuleListProps {

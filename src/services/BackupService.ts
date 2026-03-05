@@ -111,7 +111,7 @@ class BackupService {
       let backupData: BackupData;
       try {
         backupData = JSON.parse(content);
-      } catch (parseError) {
+      } catch {
         return {
           success: false,
           message: "Invalid backup file: not valid JSON",
@@ -144,7 +144,6 @@ class BackupService {
       }
 
       const existingLibrary = await storageService.getLibrary();
-      const existingMap = new Map(existingLibrary.map((s) => [s.id, s]));
 
       let addedCount = 0;
       let updatedCount = 0;
