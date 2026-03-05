@@ -76,6 +76,10 @@ export const useDownloadQueue = () => {
         refreshState();
     }, [refreshState]);
 
+    const retryJob = useCallback(async (jobId: string) => {
+        await downloadManager.retryJob(jobId);
+    }, []);
+
     const jobsByStory = state.jobs.reduce((acc, job) => {
         if (!acc[job.storyId]) {
             acc[job.storyId] = {
@@ -95,6 +99,7 @@ export const useDownloadQueue = () => {
         pauseJob,
         resumeJob,
         cancelJob,
+        retryJob,
         pauseAll,
         resumeAll,
         cancelAll,

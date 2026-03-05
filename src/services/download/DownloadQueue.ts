@@ -117,6 +117,16 @@ export class DownloadQueue {
         }
     }
 
+    retryJob(id: string): void {
+        const job = this.jobs.find(j => j.id === id);
+        if (job && job.status === 'failed') {
+            job.status = 'pending';
+            job.retryCount = (job.retryCount || 0) + 1;
+            job.error = undefined;
+            this._save();
+        }
+    }
+
     pauseAll(): void {
         let changed = false;
         this.jobs.forEach(job => {

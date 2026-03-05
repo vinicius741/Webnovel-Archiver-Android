@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, ProgressBar, IconButton, Chip, useTheme } from 'react-native-paper';
 import { DownloadJob, JobStatus } from '../../services/download/types';
 
@@ -8,6 +8,7 @@ interface DownloadQueueItemProps {
     onPause: () => void;
     onResume: () => void;
     onCancel: () => void;
+    onRetry: () => void;
 }
 
 const getStatusColor = (status: JobStatus, theme: any): string => {
@@ -17,9 +18,9 @@ const getStatusColor = (status: JobStatus, theme: any): string => {
         case 'downloading':
             return theme.colors.primary;
         case 'paused':
-            return theme.dark ? '#FFB74D' : '#FFA000';
+            return theme.colors.tertiary;
         case 'completed':
-            return theme.dark ? '#81C784' : '#4CAF50';
+            return theme.colors.secondary;
         case 'failed':
             return theme.colors.error;
         default:
@@ -43,8 +44,10 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
     onPause,
     onResume,
     onCancel,
+    onRetry,
 }) => {
     const theme = useTheme();
+    const [showError, setShowError] = useState(false);
     const statusColor = getStatusColor(job.status, theme);
 
     const renderActions = () => {
@@ -56,6 +59,7 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
                         icon="pause"
                         size={20}
                         onPress={onPause}
+                        iconColor={theme.colors.onSurfaceVariant}
                     />
                 );
             case 'paused':
@@ -64,15 +68,25 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
                         icon="play"
                         size={20}
                         onPress={onResume}
+                        iconColor={theme.colors.primary}
                     />
                 );
             case 'failed':
                 return (
-                    <IconButton
-                        icon="close"
-                        size={20}
-                        onPress={onCancel}
-                    />
+                    <>
+                        <IconButton
+                            icon="refresh"
+                            size={20}
+                            onPress={onRetry}
+                            iconColor={theme.colors.primary}
+                        />
+                        <IconButton
+                            icon="close"
+                            size={20}
+                            onPress={onCancel}
+                            iconColor={theme.colors.onSurfaceVariant}
+                        />
+                    </>
                 );
             default:
                 return null;
@@ -85,12 +99,12 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
         <View style={styles.container}>
             <View style={styles.content}>
                 <View style={styles.header}>
-                    <Text variant="titleSmall" numberOfLines={1} style={styles.chapterTitle}>
+                    <Text variant="bodyMedium" numberOfLines={1} style={styles.chapterTitle}>
                         {job.chapter.title}
                     </Text>
                     <Chip
                         mode="flat"
-                        textStyle={{ fontSize: 10, color: 'white' }}
+                        textStyle={{ fontSize: 10, color: 'white', fontWeight: '500' }}
                         style={[styles.statusChip, { backgroundColor: statusColor }]}
                     >
                         {getStatusLabel(job.status)}
@@ -99,16 +113,25 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
                 
                 <View style={styles.progressContainer}>
                     <ProgressBar
-                        progress={job.status === 'completed' ? 1 : 0}
+                        progress={job.status === 'completed' ? 1 : job.status === 'downloading' ? 0.5 : 0}
                         color={job.status === 'failed' ? theme.colors.error : theme.colors.primary}
                         style={styles.progressBar}
                     />
                 </View>
 
                 {job.status === 'failed' && job.error && (
-                    <Text variant="bodySmall" style={[styles.errorText, { color: theme.colors.error }]}>
-                        {job.error}
-                    </Text>
+                    <TouchableOpacity onPress={() => setShowError(!showError)}>
+                        <Text 
+                            variant="bodySmall" 
+                            style={[styles.errorText, { color: theme.colors.error }]}
+                            numberOfLines={showError ? undefined : 1}
+                        >
+                            {job.error}
+                        </Text>
+                        <Text variant="labelSmall" style={[styles.tapHint, { color: theme.colors.onSurfaceVariant }]}>
+                            {showError ? 'Tap to collapse' : 'Tap to expand'}
+                        </Text>
+                    </TouchableOpacity>
                 )}
             </View>
 
@@ -119,6 +142,7 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
                         icon="close"
                         size={20}
                         onPress={onCancel}
+                        iconColor={theme.colors.onSurfaceVariant}
                     />
                 )}
             </View>
@@ -129,27 +153,28 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
 const styles = StyleSheet.create({
     container: {
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: '#e0e0e0',
+        alignItems: 'flex-start',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
     },
     content: {
         flex: 1,
+        marginRight: 8,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 4,
+        marginBottom: 6,
     },
     chapterTitle: {
         flex: 1,
         marginRight: 8,
+        fontWeight: '500',
     },
     statusChip: {
-        height: 20,
+        height: 22,
+        borderRadius: 4,
     },
     progressContainer: {
         marginTop: 2,
@@ -159,10 +184,15 @@ const styles = StyleSheet.create({
         borderRadius: 2,
     },
     errorText: {
-        marginTop: 4,
+        marginTop: 6,
+    },
+    tapHint: {
+        marginTop: 2,
+        opacity: 0.6,
     },
     actions: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginTop: -4,
     },
 });

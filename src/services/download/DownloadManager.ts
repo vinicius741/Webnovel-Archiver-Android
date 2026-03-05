@@ -325,6 +325,23 @@ export class DownloadManager extends EventEmitter {
         this.emit('notification-update');
     }
 
+    async retryJob(jobId: string): Promise<boolean> {
+        const job = downloadQueue.getAllJobs().find(j => j.id === jobId);
+        if (!job) {
+            console.warn(`[DownloadManager] Cannot retry job ${jobId}: job not found`);
+            return false;
+        }
+        if (job.status !== 'failed') {
+            console.warn(`[DownloadManager] Cannot retry job ${jobId}: status is ${job.status}, expected 'failed'`);
+            return false;
+        }
+        downloadQueue.retryJob(jobId);
+        this.emit('queue-updated');
+        this.emit('notification-update');
+        this.start();
+        return true;
+    }
+
     private async processJob(job: DownloadJob) {
         if (job.status !== 'pending') return;
 
