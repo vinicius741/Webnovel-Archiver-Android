@@ -115,6 +115,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     syncChapters,
     downloadRange,
     applySentenceRemoval,
+    downloadChaptersByIds,
   } = useStoryDownload({
     story,
     onStoryUpdated: setStory,
@@ -160,5 +161,6 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     setShowEpubSelector,
     availableEpubs,
     readEpub,
+    downloadChaptersByIds,
   };
 };

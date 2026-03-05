@@ -9,6 +9,8 @@ interface ChapterFilterMenuProps {
   onFilterSelect: (mode: ChapterFilterMode) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  selectionMode: boolean;
+  onToggleSelectionMode: () => void;
 }
 
 export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
@@ -17,6 +19,8 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
   onFilterSelect,
   searchQuery,
   onSearchChange,
+  selectionMode,
+  onToggleSelectionMode,
 }) => {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
@@ -67,7 +71,17 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
         style={styles.searchbar}
         inputStyle={styles.searchInput}
       />
-      <View style={styles.divider} />
+      <IconButton
+        icon={selectionMode ? "close" : "checkbox-marked-outline"}
+        onPress={onToggleSelectionMode}
+        size={20}
+        style={[
+          styles.filterButton,
+          selectionMode && { backgroundColor: theme.colors.primaryContainer },
+        ]}
+        iconColor={selectionMode ? theme.colors.primary : undefined}
+        testID="chapter-selection-button"
+      />
       <Menu
         key={menuKey}
         visible={visible}
@@ -118,12 +132,6 @@ const styles = StyleSheet.create({
   searchInput: {
     minHeight: 0,
     alignSelf: "center",
-  },
-  divider: {
-    width: 1,
-    height: 24,
-    backgroundColor: "#757575",
-    marginHorizontal: 4,
   },
   filterButton: {
     margin: 0,

@@ -256,6 +256,29 @@ export const useStoryDownload = ({
     );
   };
 
+  const downloadChaptersByIds = async (chapterIds: string[]) => {
+    if (!validateStory(story)) return;
+
+    try {
+      setQueueing(true);
+      await activateKeepAwakeAsync();
+
+      const updatedStory = await downloadService.downloadChaptersByIds(
+        story,
+        chapterIds,
+      );
+      await storageService.addStory(updatedStory);
+      onStoryUpdated(updatedStory);
+      showAlert("Download Started", `${chapterIds.length} chapters have been queued.`);
+    } catch (error) {
+      console.error("Download error", error);
+      showAlert("Download Error", "Failed to download chapters. Check logs.");
+    } finally {
+      setQueueing(false);
+      await deactivateKeepAwake();
+    }
+  };
+
   return {
     syncing,
     syncStatus,
@@ -264,5 +287,6 @@ export const useStoryDownload = ({
     syncChapters,
     downloadRange,
     applySentenceRemoval,
+    downloadChaptersByIds,
   };
 };

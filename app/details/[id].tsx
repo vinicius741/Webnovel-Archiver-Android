@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { View, StyleSheet, ScrollView, FlatList } from "react-native";
-import { Text, Button, List, ActivityIndicator } from "react-native-paper";
+import { Text, Button, List, ActivityIndicator, FAB, useTheme } from "react-native-paper";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 
 import { StoryHeader } from "../../src/components/details/StoryHeader";
@@ -16,6 +16,7 @@ import { EpubSelectorDialog } from "../../src/components/details/EpubSelectorDia
 import { ScreenContainer } from "../../src/components/ScreenContainer";
 import { useScreenLayout } from "../../src/hooks/useScreenLayout";
 import { useStoryDetails } from "../../src/hooks/useStoryDetails";
+import { useAppAlert } from "../../src/context/AlertContext";
 import {
   storageService,
   ChapterFilterMode,
@@ -26,6 +27,7 @@ export default function StoryDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { isLargeScreen } = useScreenLayout();
+  const { showAlert } = useAppAlert();
 
   const {
     story,
@@ -48,13 +50,19 @@ export default function StoryDetailsScreen() {
     setShowEpubSelector,
     availableEpubs,
     readEpub,
+    downloadChaptersByIds,
   } = useStoryDetails(id);
 
+  const theme = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [showDownloadRange, setShowDownloadRange] = useState(false);
   const [showEpubConfig, setShowEpubConfig] = useState(false);
   const [filterMode, setFilterMode] = useState<ChapterFilterMode>("all");
   const [defaultMaxChapters, setDefaultMaxChapters] = useState(150);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -96,6 +104,42 @@ export default function StoryDetailsScreen() {
   const handleFilterSelect = async (mode: ChapterFilterMode) => {
     setFilterMode(mode);
     await storageService.saveChapterFilterSettings({ filterMode: mode });
+  };
+
+  const handleToggleSelectionMode = () => {
+    setSelectionMode((prev) => !prev);
+    setSelectedChapterIds(new Set());
+  };
+
+  const handleToggleChapter = (chapterId: string) => {
+    setSelectedChapterIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(chapterId)) {
+        newSet.delete(chapterId);
+      } else {
+        newSet.add(chapterId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleDownloadSelected = async () => {
+    if (!story) return;
+
+    // Filter out already downloaded chapters
+    const idsToDownload = Array.from(selectedChapterIds).filter((id) => {
+      const chapter = story.chapters.find((ch) => ch.id === id);
+      return chapter && !chapter.downloaded;
+    });
+
+    if (idsToDownload.length === 0) {
+      showAlert("No Chapters to Download", "All selected chapters are already downloaded.");
+      return;
+    }
+
+    await downloadChaptersByIds(idsToDownload);
+    setSelectionMode(false);
+    setSelectedChapterIds(new Set());
   };
 
   if (loading) {
@@ -192,6 +236,8 @@ export default function StoryDetailsScreen() {
           onFilterSelect={handleFilterSelect}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
+          selectionMode={selectionMode}
+          onToggleSelectionMode={handleToggleSelectionMode}
         />
       </View>
     </View>
@@ -235,6 +281,9 @@ export default function StoryDetailsScreen() {
                       )
                     }
                     onLongPress={() => markChapterAsRead(item)}
+                    selectionMode={selectionMode}
+                    selected={selectedChapterIds.has(item.id)}
+                    onToggleSelection={() => handleToggleChapter(item.id)}
                   />
                 )}
                 keyExtractor={(item: Chapter) => item.id}
@@ -256,11 +305,24 @@ export default function StoryDetailsScreen() {
                 )
               }
               onLongPress={() => markChapterAsRead(item)}
+              selectionMode={selectionMode}
+              selected={selectedChapterIds.has(item.id)}
+              onToggleSelection={() => handleToggleChapter(item.id)}
             />
           )}
           keyExtractor={(item: Chapter) => item.id}
           ListHeaderComponent={renderStoryInfo()}
           ListHeaderComponentStyle={{ marginBottom: 16 }}
+        />
+      )}
+
+      {selectionMode && selectedChapterIds.size > 0 && (
+        <FAB
+          icon="download"
+          label={`Download (${selectedChapterIds.size})`}
+          onPress={handleDownloadSelected}
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+          color={theme.colors.onPrimary}
         />
       )}
     </ScreenContainer>
@@ -299,5 +361,11 @@ const styles = StyleSheet.create({
   filterContainer: {
     margin: 16,
     marginBottom: 8,
+  },
+  fab: {
+    position: "absolute",
+    margin: 24,
+    right: 8,
+    bottom: 24,
   },
 });
