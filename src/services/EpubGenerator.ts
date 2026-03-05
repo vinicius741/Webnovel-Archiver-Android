@@ -200,10 +200,10 @@ export class EpubGenerator {
       const fileChapters = chapters.slice(startIndex, endIndex);
 
       // Create a modified story for this volume
-      // Add "Vol N" to all volumes for consistency
+      // Only add volume number to title, filename will be handled separately
       const volumeStory: Story = {
         ...story,
-        title: `${story.title} (Vol ${fileIndex + 1})`,
+        title: story.title,
       };
 
       // Wrap the progress callback to add file information and adjust percentage
