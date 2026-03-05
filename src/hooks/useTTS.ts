@@ -105,19 +105,19 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
                 const actionId = event.detail.pressAction.id;
                 switch (actionId) {
                   case "tts_play":
-                    ttsStateManager.resume();
+                    void ttsStateManager.resume();
                     break;
                   case "tts_pause":
-                    ttsStateManager.pause();
+                    void ttsStateManager.pause();
                     break;
                   case "tts_next":
-                    ttsStateManager.next();
+                    void ttsStateManager.next();
                     break;
                   case "tts_prev":
-                    ttsStateManager.previous();
+                    void ttsStateManager.previous();
                     break;
                   case "tts_stop":
-                    ttsStateManager.stop();
+                    void ttsStateManager.stop();
                     break;
                 }
               }

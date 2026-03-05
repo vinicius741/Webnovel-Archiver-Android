@@ -18,7 +18,7 @@ const initializeBackgroundService = () => {
   }
 
   try {
-    registerForegroundService();
+    void registerForegroundService();
 
     const notifee = loadNotifee();
     if (!notifee) {

@@ -40,12 +40,12 @@ export const useLibrary = () => {
 
   useFocusEffect(
     useCallback(() => {
-      loadLibrary();
+      void loadLibrary();
     }, []),
   );
 
   const onRefresh = useCallback(() => {
-    loadLibrary();
+    void loadLibrary();
   }, []);
 
   const { allTags, sourceNames } = useMemo(() => {

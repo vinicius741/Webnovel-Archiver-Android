@@ -96,11 +96,11 @@ export const useSettings = () => {
   };
 
   const handleConcurrencyBlur = () => {
-    saveSettings();
+    void saveSettings();
   };
 
   const handleDelayBlur = () => {
-    saveSettings();
+    void saveSettings();
   };
 
   const clearData = () => {

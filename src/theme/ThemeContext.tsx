@@ -36,7 +36,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Load persisted theme
-    (async () => {
+    void (async () => {
       try {
         const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
         if (

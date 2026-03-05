@@ -78,7 +78,7 @@ export const useReaderContent = (storyId: string, chapterId: string) => {
   );
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   return {

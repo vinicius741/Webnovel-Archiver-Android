@@ -37,7 +37,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
       }
       setLoading(false);
     };
-    loadStory();
+    void loadStory();
   }, [storyId]);
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
           setStory(null);
         }
       };
-      reloadStory();
+      void reloadStory();
     }
     prevDownloading.current = isDownloadingHook;
   }, [isDownloadingHook, storyId]);

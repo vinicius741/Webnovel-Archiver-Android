@@ -43,7 +43,7 @@ module.exports = [
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
-      "@typescript-eslint/no-floating-promises": "off",
+      "@typescript-eslint/no-floating-promises": "warn",
       "@typescript-eslint/no-misused-promises": "off",
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/unbound-method": "off",

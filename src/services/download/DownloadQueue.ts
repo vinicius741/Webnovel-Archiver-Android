@@ -48,17 +48,17 @@ export class DownloadQueue {
       const existing = this.jobs[existingIndex];
       if (existing.status === "failed" || existing.status === "completed") {
         this.jobs[existingIndex] = { ...job, status: "pending", retryCount: 0 };
-        this._save();
+        void this._save();
       }
       return;
     }
     this.jobs.push(job);
-    this._save();
+    void this._save();
   }
 
   removeJob(id: string): void {
     this.jobs = this.jobs.filter((j) => j.id !== id);
-    this._save();
+    void this._save();
   }
 
   updateJobStatus(id: string, status: JobStatus, error?: string): void {
@@ -66,7 +66,7 @@ export class DownloadQueue {
     if (job) {
       job.status = status;
       if (error) job.error = error;
-      this._save();
+      void this._save();
     }
   }
 
@@ -74,7 +74,7 @@ export class DownloadQueue {
     const index = this.jobs.findIndex((j) => j.id === updatedJob.id);
     if (index !== -1) {
       this.jobs[index] = updatedJob;
-      this._save();
+      void this._save();
     }
   }
 
@@ -118,7 +118,7 @@ export class DownloadQueue {
     if (job && (job.status === "pending" || job.status === "downloading")) {
       job.status = "paused";
       job.pausedAt = Date.now();
-      this._save();
+      void this._save();
     }
   }
 
@@ -127,7 +127,7 @@ export class DownloadQueue {
     if (job && job.status === "paused") {
       job.status = "pending";
       job.pausedAt = undefined;
-      this._save();
+      void this._save();
     }
   }
 
@@ -137,7 +137,7 @@ export class DownloadQueue {
       job.status = "pending";
       job.retryCount = (job.retryCount || 0) + 1;
       job.error = undefined;
-      this._save();
+      void this._save();
     }
   }
 
@@ -151,7 +151,7 @@ export class DownloadQueue {
       }
     });
     if (changed) {
-      this._save();
+      void this._save();
     }
   }
 
@@ -165,7 +165,7 @@ export class DownloadQueue {
       }
     });
     if (changed) {
-      this._save();
+      void this._save();
     }
   }
 
@@ -179,7 +179,7 @@ export class DownloadQueue {
       }
     });
     if (changed) {
-      this._save();
+      void this._save();
     }
   }
 
@@ -191,12 +191,12 @@ export class DownloadQueue {
     } else {
       this.jobs = this.jobs.filter((j) => j.status !== "completed");
     }
-    this._save();
+    void this._save();
   }
 
   clearAll(): void {
     this.jobs = [];
-    this._save();
+    void this._save();
   }
 
   cancelPending(reason: string = "cancelled"): void {
@@ -209,7 +209,7 @@ export class DownloadQueue {
       }
     });
     if (changed) {
-      this._save();
+      void this._save();
     }
   }
 }

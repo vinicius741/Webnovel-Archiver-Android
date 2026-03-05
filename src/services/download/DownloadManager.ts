@@ -36,7 +36,7 @@ export class DownloadManager extends EventEmitter {
 
   constructor() {
     super();
-    this.init();
+    void this.init();
   }
 
   async init() {
@@ -47,14 +47,14 @@ export class DownloadManager extends EventEmitter {
 
     const stats = downloadQueue.getStats();
     if (stats.pending > 0) {
-      this.start();
+      void this.start();
     }
   }
 
   private startFlushTimer() {
     if (this.flushTimer) return;
     this.flushTimer = setInterval(() => {
-      this.flushAllPending();
+      void this.flushAllPending();
     }, FLUSH_INTERVAL);
   }
 
@@ -182,13 +182,13 @@ export class DownloadManager extends EventEmitter {
   async addJob(job: DownloadJob) {
     downloadQueue.addJob(job);
     this.emit("queue-updated");
-    this.start();
+    void this.start();
   }
 
   async addJobs(jobs: DownloadJob[]) {
     jobs.forEach((j) => downloadQueue.addJob(j));
     this.emit("queue-updated");
-    this.start();
+    void this.start();
   }
 
   async start() {
@@ -196,8 +196,8 @@ export class DownloadManager extends EventEmitter {
     this.cancelRequested = false;
     this.isRunning = true;
     this.startFlushTimer();
-    this.processLoop();
-    this.startNotification();
+    void this.processLoop();
+    void this.startNotification();
   }
 
   private async startNotification() {
@@ -276,7 +276,9 @@ export class DownloadManager extends EventEmitter {
       this.processJob(pending).then(() => {
         this.activeWorkers--;
         this.emit("queue-updated");
-        this.updateNotification();
+        void this.updateNotification();
+      }).catch((err) => {
+        console.error("[DownloadManager] Worker failed:", err);
       });
 
       // Brief pause to allow event loop to breathe
@@ -313,7 +315,7 @@ export class DownloadManager extends EventEmitter {
       this.emit("job-resumed", job);
       this.emit("queue-updated");
       this.emit("notification-update");
-      this.start();
+      void this.start();
     }
   }
 
@@ -327,7 +329,7 @@ export class DownloadManager extends EventEmitter {
     downloadQueue.resumeAll();
     this.emit("queue-updated");
     this.emit("notification-update");
-    this.start();
+    void this.start();
   }
 
   async cancelJob(jobId: string) {
@@ -368,7 +370,7 @@ export class DownloadManager extends EventEmitter {
     downloadQueue.retryJob(jobId);
     this.emit("queue-updated");
     this.emit("notification-update");
-    this.start();
+    void this.start();
     return true;
   }
 
