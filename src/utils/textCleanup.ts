@@ -1,6 +1,8 @@
 import * as cheerio from "cheerio";
 import { RegexCleanupRule } from "../types";
 
+type AnyNode = cheerio.Element;
+
 const MAX_REGEX_PATTERN_LENGTH = 500;
 const MAX_RULE_NAME_LENGTH = 80;
 const MAX_TOTAL_REPLACEMENTS = 5000;
@@ -326,7 +328,7 @@ export const applyTtsCleanupLines = (
   return createRegexCleanupRunner(regexRules, "tts")(text);
 };
 
-const hasSkippedAncestor = (node: any): boolean => {
+const hasSkippedAncestor = (node: AnyNode): boolean => {
   let current = node.parent;
   while (current) {
     if (
@@ -358,7 +360,7 @@ export const applyDownloadCleanup = (
   try {
     const $ = cheerio.load(cleanedSentenceContent);
 
-    const processNode = (node: any) => {
+    const processNode = (node: AnyNode) => {
       if (!node) return;
 
       if (
@@ -369,8 +371,9 @@ export const applyDownloadCleanup = (
         node.data = cleanupRunner(node.data);
       }
 
-      if (Array.isArray(node.children)) {
-        node.children.forEach(processNode);
+      const children = (node as cheerio.TagElement).children;
+      if (Array.isArray(children)) {
+        children.forEach(processNode);
       }
     };
 

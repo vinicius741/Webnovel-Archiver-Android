@@ -200,7 +200,7 @@ export class TTSPlaybackController {
         this.config.onChunkChange(nextIndex);
         this.queue?.playChunk(nextIndex);
       },
-      onError: (error: any) => {
+      onError: (error: unknown) => {
         if (this.sessionId !== sessionAtInit) return;
         console.error("[TTSPlaybackController] Speech error:", error);
         void this.stop();

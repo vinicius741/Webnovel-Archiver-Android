@@ -4,7 +4,7 @@ import { TTSSettings } from "../StorageService";
 export interface TTSQueueConfig {
   onChunkStart: (index: number) => void;
   onChunkComplete: (index: number) => void;
-  onError: (error: any) => void;
+  onError: (error: unknown) => void;
 }
 
 export class TTSQueue {

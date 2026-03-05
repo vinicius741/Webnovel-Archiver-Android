@@ -421,9 +421,10 @@ export class DownloadManager extends EventEmitter {
 
       downloadQueue.updateJobStatus(job.id, "completed");
       this.emit("job-completed", job, filePath);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[DownloadManager] Job ${job.id} failed`, error);
-      downloadQueue.updateJobStatus(job.id, "failed", error.message);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      downloadQueue.updateJobStatus(job.id, "failed", message);
       this.emit("job-failed", job, error);
     }
   }

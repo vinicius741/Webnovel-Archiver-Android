@@ -150,8 +150,9 @@ export const useStoryEPUB = ({
       });
 
       return true;
-    } catch (e: any) {
-      showAlert("Read Error", "Could not open EPUB: " + e.message);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Could not open EPUB";
+      showAlert("Read Error", "Could not open EPUB: " + message);
       return false;
     }
   };
@@ -319,8 +320,9 @@ export const useStoryEPUB = ({
         showAlert("Success", `EPUB exported to: ${results[0].uri}`);
       }
       return epubUris;
-    } catch (error: any) {
-      showAlert("Error", error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      showAlert("Error", message);
       return null;
     } finally {
       setGenerating(false);
@@ -366,10 +368,11 @@ export const useStoryEPUB = ({
                   "Download Started",
                   "New chapters have been queued for download.",
                 );
-              } catch (error: any) {
+              } catch (error: unknown) {
+                const message = error instanceof Error ? error.message : "Failed to queue downloads.";
                 showAlert(
                   "Download Error",
-                  error.message || "Failed to queue downloads.",
+                  message,
                 );
               }
             },

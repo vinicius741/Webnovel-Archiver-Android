@@ -137,11 +137,12 @@ export const useStoryDownload = ({
           "No new chapters found. Updated last checked time.",
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Update error", error);
+      const message = error instanceof Error ? error.message : "Failed to sync chapters. Check logs.";
       showAlert(
         "Sync Error",
-        error.message || "Failed to sync chapters. Check logs.",
+        message,
       );
     } finally {
       setQueueing(false);
@@ -239,12 +240,13 @@ export const useStoryDownload = ({
               if (reloadedStory) {
                 onStoryUpdated(reloadedStory);
               }
-            } catch (error: any) {
+            } catch (error: unknown) {
               setSyncing(false);
               setSyncStatus("");
+              const message = error instanceof Error ? error.message : "Failed to apply text cleanup.";
               showAlert(
                 "Error",
-                error.message || "Failed to apply text cleanup.",
+                message,
               );
             }
           },
