@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 12,
     backgroundColor: "transparent",
     width: "100%",
     maxWidth: 600,

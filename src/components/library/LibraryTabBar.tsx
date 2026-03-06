@@ -1,6 +1,6 @@
 import React from "react";
-import { StyleSheet, View, ScrollView } from "react-native";
-import { Chip, useTheme } from "react-native-paper";
+import { StyleSheet, View, ScrollView, Pressable } from "react-native";
+import { Text, useTheme } from "react-native-paper";
 import { Tab } from "../../types/tab";
 
 interface LibraryTabBarProps {
@@ -28,27 +28,75 @@ export const LibraryTabBar = ({
         contentContainerStyle={styles.scrollContent}
       >
         {tabs.map((tab) => (
-          <Chip
+          <Pressable
             key={tab.id}
-            selected={activeTabId === tab.id}
             onPress={() => onSelectTab(tab.id)}
-            style={styles.chip}
-            showSelectedOverlay
-            compact
+            style={styles.tabWrapper}
           >
-            {tab.name}
-          </Chip>
+            <View
+              style={[
+                styles.tab,
+                activeTabId === tab.id && {
+                  borderBottomColor: theme.colors.primary,
+                  borderBottomWidth: 2,
+                },
+                activeTabId !== tab.id && {
+                  borderBottomColor: theme.colors.surfaceVariant,
+                  borderBottomWidth: 2,
+                },
+              ]}
+            >
+              <Text
+                variant="labelLarge"
+                style={[
+                  styles.tabText,
+                  {
+                    color:
+                      activeTabId === tab.id
+                        ? theme.colors.primary
+                        : theme.colors.onSurfaceVariant,
+                  },
+                ]}
+              >
+                {tab.name}
+              </Text>
+            </View>
+          </Pressable>
         ))}
         {showUnassignedTab && (
-          <Chip
-            selected={activeTabId === "unassigned"}
+          <Pressable
             onPress={() => onSelectTab("unassigned")}
-            style={styles.chip}
-            showSelectedOverlay
-            compact
+            style={styles.tabWrapper}
           >
-            Unassigned ({unassignedCount})
-          </Chip>
+            <View
+              style={[
+                styles.tab,
+                activeTabId === "unassigned" && {
+                  borderBottomColor: theme.colors.primary,
+                  borderBottomWidth: 2,
+                },
+                activeTabId !== "unassigned" && {
+                  borderBottomColor: theme.colors.surfaceVariant,
+                  borderBottomWidth: 2,
+                },
+              ]}
+            >
+              <Text
+                variant="labelLarge"
+                style={[
+                  styles.tabText,
+                  {
+                    color:
+                      activeTabId === "unassigned"
+                        ? theme.colors.primary
+                        : theme.colors.onSurfaceVariant,
+                  },
+                ]}
+              >
+                Unassigned ({unassignedCount})
+              </Text>
+            </View>
+          </Pressable>
         )}
       </ScrollView>
     </View>
@@ -57,13 +105,25 @@ export const LibraryTabBar = ({
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 8,
+    marginTop: 0,
+    marginBottom: 16,
+    backgroundColor: "transparent",
   },
   scrollContent: {
-    gap: 8,
-    paddingHorizontal: 16,
+    gap: 0,
+    paddingHorizontal: 0,
   },
-  chip: {
-    height: 32,
+  tabWrapper: {
+    marginRight: 16,
+  },
+  tab: {
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    minWidth: 60,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabText: {
+    fontWeight: "600",
   },
 });

@@ -61,6 +61,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
+    minHeight: 56,
   },
   countText: {
     flex: 1,
