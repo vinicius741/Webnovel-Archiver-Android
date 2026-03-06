@@ -1,12 +1,11 @@
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, TouchableOpacity } from "react-native";
 import {
   Dialog,
   Portal,
   Text,
   RadioButton,
   Button,
-  useTheme,
 } from "react-native-paper";
 import { Tab } from "../../types/tab";
 
@@ -25,7 +24,6 @@ export const MoveToTabDialog = ({
   selectedCount,
   onMove,
 }: MoveToTabDialogProps) => {
-  const theme = useTheme();
   const [selectedTabId, setSelectedTabId] = React.useState<string | null>(null);
 
   // Reset selection when dialog opens
@@ -39,6 +37,12 @@ export const MoveToTabDialog = ({
     onMove(selectedTabId);
   };
 
+  const handleSelect = (value: string) => {
+    setSelectedTabId(value === "unassigned" ? null : value);
+  };
+
+  const currentValue = selectedTabId === null ? "unassigned" : selectedTabId;
+
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss}>
@@ -48,27 +52,35 @@ export const MoveToTabDialog = ({
             {selectedCount} novel{selectedCount !== 1 ? "s" : ""} selected
           </Text>
           <ScrollView style={styles.list}>
-            <RadioButton.Group
-              onValueChange={(value) => setSelectedTabId(value === "unassigned" ? null : value)}
-              value={selectedTabId === null ? "unassigned" : selectedTabId}
+            <TouchableOpacity
+              style={styles.option}
+              onPress={() => handleSelect("unassigned")}
             >
-              <View style={styles.item}>
-                <RadioButton.Item
-                  label="Unassigned"
-                  value="unassigned"
-                  position="leading"
+              <RadioButton
+                value="unassigned"
+                status={currentValue === "unassigned" ? "checked" : "unchecked"}
+                onPress={() => handleSelect("unassigned")}
+              />
+              <Text variant="bodyLarge" style={styles.optionLabel}>
+                Unassigned
+              </Text>
+            </TouchableOpacity>
+            {tabs.map((tab) => (
+              <TouchableOpacity
+                key={tab.id}
+                style={styles.option}
+                onPress={() => handleSelect(tab.id)}
+              >
+                <RadioButton
+                  value={tab.id}
+                  status={currentValue === tab.id ? "checked" : "unchecked"}
+                  onPress={() => handleSelect(tab.id)}
                 />
-              </View>
-              {tabs.map((tab) => (
-                <View key={tab.id} style={styles.item}>
-                  <RadioButton.Item
-                    label={tab.name}
-                    value={tab.id}
-                    position="leading"
-                  />
-                </View>
-              ))}
-            </RadioButton.Group>
+                <Text variant="bodyLarge" style={styles.optionLabel}>
+                  {tab.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
         </Dialog.Content>
         <Dialog.Actions>
@@ -87,8 +99,14 @@ const styles = StyleSheet.create({
   list: {
     maxHeight: 300,
   },
-  item: {
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.1)",
+    borderBottomColor: "rgba(128,128,128,0.3)",
+  },
+  optionLabel: {
+    marginLeft: 12,
   },
 });

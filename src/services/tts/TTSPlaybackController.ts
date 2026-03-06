@@ -148,7 +148,7 @@ export class TTSPlaybackController {
     await this.queue?.stop();
     this.emitStateChange();
     this.config.onChunkChange(nextIndex);
-    this.queue?.playChunk(nextIndex);
+    void this.queue?.playChunk(nextIndex);
   }
 
   public async previous(): Promise<void> {
@@ -161,14 +161,14 @@ export class TTSPlaybackController {
     await this.queue?.stop();
     this.emitStateChange();
     this.config.onChunkChange(prevIndex);
-    this.queue?.playChunk(prevIndex);
+    void this.queue?.playChunk(prevIndex);
   }
 
   public async restartCurrentChunk(): Promise<void> {
     if (!this.state.isSpeaking || this.state.isPaused) return;
     this.sessionId++;
     await this.queue?.stop();
-    this.queue?.playChunk(this.state.currentChunkIndex);
+    void this.queue?.playChunk(this.state.currentChunkIndex);
   }
 
   public getSessionId(): number {

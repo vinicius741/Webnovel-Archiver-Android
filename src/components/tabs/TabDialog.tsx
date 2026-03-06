@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Dialog, Portal, TextInput, Button } from "react-native-paper";
 
 interface TabDialogProps {
@@ -18,12 +18,6 @@ export const TabDialog = ({
 }: TabDialogProps) => {
   const [name, setName] = useState(initialValue);
 
-  useEffect(() => {
-    if (visible) {
-      setName(initialValue);
-    }
-  }, [visible, initialValue]);
-
   const handleSave = () => {
     if (name.trim()) {
       onSave(name.trim());
@@ -31,9 +25,18 @@ export const TabDialog = ({
     }
   };
 
+  const handleDismiss = () => {
+    setName(initialValue);
+    onDismiss();
+  };
+
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
+      <Dialog
+        key={`${visible}-${initialValue}`}
+        visible={visible}
+        onDismiss={handleDismiss}
+      >
         <Dialog.Title>{title}</Dialog.Title>
         <Dialog.Content>
           <TextInput
@@ -47,7 +50,7 @@ export const TabDialog = ({
           />
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
+          <Button onPress={handleDismiss}>Cancel</Button>
           <Button onPress={handleSave} disabled={!name.trim()}>
             Save
           </Button>
