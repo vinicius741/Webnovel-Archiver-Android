@@ -70,7 +70,7 @@ describe("TTSController", () => {
     onStop: jest.fn(),
     onNext: jest.fn(),
     onPrevious: jest.fn(),
-    isSpeaking: false,
+    _isSpeaking: false,
     isPaused: true,
     currentChunk: 0,
     totalChunks: 10,
@@ -211,7 +211,7 @@ describe("TTSController", () => {
 
   it("should handle isSpeaking prop correctly", () => {
     const { getByTestId } = renderWithTheme(
-      <TTSController {...defaultProps} isSpeaking={true} isPaused={false} />,
+      <TTSController {...defaultProps} _isSpeaking={true} isPaused={false} />,
     );
 
     const playPauseButton = getByTestId("play-pause-button");

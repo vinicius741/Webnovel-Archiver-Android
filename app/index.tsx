@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -19,8 +19,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { StoryCard } from "../src/components/StoryCard";
 import { SortButton } from "../src/components/SortButton";
+import { LibraryTabBar } from "../src/components/library/LibraryTabBar";
+import { MoveToTabDialog } from "../src/components/library/MoveToTabDialog";
+import { SelectionActionBar } from "../src/components/library/SelectionActionBar";
 import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { useLibrary, SortOption } from "../src/hooks/useLibrary";
+import { useTabs } from "../src/hooks/useTabs";
+import { useLibrarySelection } from "../src/hooks/useLibrarySelection";
 import { sourceRegistry } from "../src/services/source/SourceRegistry";
 
 export default function HomeScreen() {
@@ -30,7 +35,17 @@ export default function HomeScreen() {
   const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
 
   const {
+    tabs,
+    activeTabId,
+    hasCustomTabs,
+    showUnassignedTab,
+    unassignedCount,
+    selectTab,
+  } = useTabs();
+
+  const {
     stories: filteredStories,
+    allStories,
     refreshing,
     onRefresh,
     searchQuery,
@@ -42,17 +57,28 @@ export default function HomeScreen() {
     setSortOption,
     sortDirection,
     setSortDirection,
-  } = useLibrary();
+  } = useLibrary({
+    activeTabId,
+    hasCustomTabs,
+  });
+
+  const {
+    selectionMode,
+    selectedCount,
+    enterSelectionMode,
+    exitSelectionMode,
+    toggleSelection,
+    isSelected,
+    moveSelectedToTab,
+  } = useLibrarySelection();
+
+  const [moveDialogVisible, setMoveDialogVisible] = useState(false);
 
   const handleSortSelect = (option: SortOption) => {
     if (sortOption === option) {
-      // If clicking same option, we could toggle, but adhering to the component's explicit toggle button is cleaner.
-      // Or we can keep the "click again to toggle" behavior if we want.
-      // The previous logic did: if same, toggle.
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortOption(option);
-      // Set default direction based on option
       if (option === "title") {
         setSortDirection("asc");
       } else {
@@ -65,12 +91,41 @@ export default function HomeScreen() {
     setSortDirection(sortDirection === "asc" ? "desc" : "asc");
   };
 
+  const handleLongPress = useCallback(
+    (storyId: string) => {
+      if (!selectionMode) {
+        enterSelectionMode();
+        toggleSelection(storyId);
+      } else {
+        toggleSelection(storyId);
+      }
+    },
+    [selectionMode, enterSelectionMode, toggleSelection],
+  );
+
+  const handleOpenMoveDialog = useCallback(() => {
+    setMoveDialogVisible(true);
+  }, []);
+
+  const handleCloseMoveDialog = useCallback(() => {
+    setMoveDialogVisible(false);
+  }, []);
+
+  const handleMove = useCallback(
+    async (tabId: string | null) => {
+      await moveSelectedToTab(tabId);
+      setMoveDialogVisible(false);
+      // Refresh the library
+      onRefresh();
+    },
+    [moveSelectedToTab, onRefresh],
+  );
+
   // Calculate strict item width to prevent last item from stretching in grid
   const GAP = 8;
-  const containerPadding = 0; // ScreenContainer padding removed
-  const listPadding = isLargeScreen ? 32 : 32; // 16 * 2
+  const containerPadding = 0;
+  const listPadding = isLargeScreen ? 32 : 32;
   const totalPadding = containerPadding + listPadding;
-  // Account for safe area insets which ScreenContainer (SafeAreaView) enforces
   const safeAreaHorizontal = insets.left + insets.right;
   const availableWidth =
     screenWidth - safeAreaHorizontal - totalPadding - (numColumns - 1) * GAP;
@@ -93,6 +148,15 @@ export default function HomeScreen() {
         }}
       />
       <View style={styles.searchContainer}>
+        {hasCustomTabs && (
+          <LibraryTabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            showUnassignedTab={showUnassignedTab}
+            unassignedCount={unassignedCount}
+            onSelectTab={selectTab}
+          />
+        )}
         <View style={styles.searchRow}>
           <Searchbar
             placeholder="Search stories"
@@ -134,7 +198,7 @@ export default function HomeScreen() {
         )}
       </View>
       <FlatList
-        key={numColumns} // Force re-render when columns change
+        key={numColumns}
         data={filteredStories}
         numColumns={numColumns}
         columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
@@ -142,6 +206,7 @@ export default function HomeScreen() {
         contentContainerStyle={[
           styles.listContent,
           isLargeScreen && { paddingHorizontal: 16 },
+          selectionMode && { paddingBottom: 100 },
         ]}
         refreshControl={
           <RefreshControl
@@ -177,6 +242,9 @@ export default function HomeScreen() {
                   : undefined
               }
               onPress={() => router.push(`/details/${item.id}`)}
+              onLongPress={hasCustomTabs ? () => handleLongPress(item.id) : undefined}
+              selectionMode={selectionMode}
+              selected={isSelected(item.id)}
             />
           </View>
         )}
@@ -189,14 +257,32 @@ export default function HomeScreen() {
         }
       />
 
-      <FAB
-        icon="plus"
-        style={[
-          styles.fab,
-          { backgroundColor: theme.colors.primary, bottom: insets.bottom + 16 },
-        ]}
-        onPress={() => router.push("/add")}
-        color={theme.colors.onPrimary}
+      {!selectionMode && (
+        <FAB
+          icon="plus"
+          style={[
+            styles.fab,
+            { backgroundColor: theme.colors.primary, bottom: insets.bottom + 16 },
+          ]}
+          onPress={() => router.push("/add")}
+          color={theme.colors.onPrimary}
+        />
+      )}
+
+      {selectionMode && (
+        <SelectionActionBar
+          selectedCount={selectedCount}
+          onMove={handleOpenMoveDialog}
+          onCancel={exitSelectionMode}
+        />
+      )}
+
+      <MoveToTabDialog
+        visible={moveDialogVisible}
+        onDismiss={handleCloseMoveDialog}
+        tabs={tabs}
+        selectedCount={selectedCount}
+        onMove={handleMove}
       />
     </ScreenContainer>
   );
@@ -247,12 +333,12 @@ const styles = StyleSheet.create({
   },
   tagsScroll: {
     marginTop: 12,
-    marginHorizontal: -16, // Pull to edges to override parent padding
+    marginHorizontal: -16,
   },
   tagsContainer: {
     gap: 8,
-    paddingHorizontal: 16, // Align content with search bar
-    paddingRight: 16, // Ensure last item has padding
+    paddingHorizontal: 16,
+    paddingRight: 16,
   },
   tagChip: {
     height: 32,

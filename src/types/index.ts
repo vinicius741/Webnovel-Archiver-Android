@@ -48,6 +48,7 @@ export interface Story {
   tags?: string[];
   lastReadChapterId?: string;
   score?: string;
+  tabId?: string | null; // ID of the tab this story belongs to, or null for unassigned
 }
 
 export type RegexCleanupAppliesTo = "download" | "tts" | "both";

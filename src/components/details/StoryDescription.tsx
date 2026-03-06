@@ -23,10 +23,20 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({
   }
 
   const shouldTruncate = description.length > maxLength;
-  const displayText =
-    shouldTruncate && !isExpanded
-      ? `${description.slice(0, maxLength).trim()}...`
-      : description;
+  
+  const getTruncatedText = (): string => {
+    if (!shouldTruncate) {
+      return description;
+    }
+    const truncated = description.slice(0, maxLength);
+    const lastSpaceIndex = truncated.lastIndexOf(" ");
+    if (lastSpaceIndex > 0) {
+      return `${truncated.slice(0, lastSpaceIndex)}...`;
+    }
+    return `${truncated}...`;
+  };
+
+  const displayText = isExpanded ? description : getTruncatedText();
 
   const handlePress = async () => {
     const now = Date.now();

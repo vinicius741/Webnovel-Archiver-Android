@@ -77,6 +77,7 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
         size={20}
         style={[
           styles.filterButton,
+          styles.selectionButton,
           selectionMode && { backgroundColor: theme.colors.primaryContainer },
         ]}
         iconColor={selectionMode ? theme.colors.primary : undefined}
@@ -136,5 +137,8 @@ const styles = StyleSheet.create({
   filterButton: {
     margin: 0,
     marginRight: 4,
+  },
+  selectionButton: {
+    marginLeft: 8,
   },
 });

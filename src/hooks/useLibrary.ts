@@ -13,7 +13,14 @@ export type SortOption =
   | "score";
 export type SortDirection = "asc" | "desc";
 
-export const useLibrary = () => {
+interface UseLibraryOptions {
+  activeTabId?: string | null;
+  hasCustomTabs?: boolean;
+}
+
+export const useLibrary = (options: UseLibraryOptions = {}) => {
+  const { activeTabId, hasCustomTabs } = options;
+
   const [stories, setStories] = useState<Story[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -109,6 +116,18 @@ export const useLibrary = () => {
   const filteredAndSortedStories = useMemo(() => {
     // First filter
     const filtered = stories.filter((story) => {
+      // Tab filtering
+      if (hasCustomTabs) {
+        if (activeTabId === "unassigned") {
+          // Show stories with no tabId
+          if (story.tabId) return false;
+        } else if (activeTabId) {
+          // Show stories with matching tabId
+          if (story.tabId !== activeTabId) return false;
+        }
+        // If activeTabId is null, show all stories (no tab filter)
+      }
+
       const matchesSearch =
         story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (story.author &&
@@ -197,6 +216,8 @@ export const useLibrary = () => {
     sortOption,
     sortDirection,
     sourceNames,
+    activeTabId,
+    hasCustomTabs,
   ]);
 
   return {

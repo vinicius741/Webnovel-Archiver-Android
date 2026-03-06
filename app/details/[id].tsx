@@ -91,6 +91,10 @@ export default function StoryDetailsScreen() {
         .includes(searchQuery.toLowerCase());
       if (!matchesSearch) return false;
 
+      if (selectionMode && c.downloaded) {
+        return false;
+      }
+
       switch (filterMode) {
         case "hideNonDownloaded":
           return c.downloaded === true;
@@ -100,7 +104,7 @@ export default function StoryDetailsScreen() {
           return true;
       }
     });
-  }, [story, searchQuery, filterMode]);
+  }, [story, searchQuery, filterMode, selectionMode]);
 
   const handleFilterSelect = async (mode: ChapterFilterMode) => {
     setFilterMode(mode);

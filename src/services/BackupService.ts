@@ -3,19 +3,24 @@ import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { storageService } from "./StorageService";
 import { Story } from "../types";
+import { Tab } from "../types/tab";
 
 export interface BackupData {
   version: number;
   exportDate: string;
   library: Story[];
+  tabs?: Tab[];
 }
 
-const BACKUP_VERSION = 1;
+const BACKUP_VERSION = 2;
 
 class BackupService {
   async exportBackup(): Promise<{ success: boolean; message: string }> {
     try {
-      const library = await storageService.getLibrary();
+      const [library, tabs] = await Promise.all([
+        storageService.getLibrary(),
+        storageService.getTabs(),
+      ]);
 
       if (library.length === 0) {
         return { success: false, message: "Your library is empty" };
@@ -36,6 +41,7 @@ class BackupService {
             downloaded: false,
           })),
         })),
+        tabs,
       };
 
       const json = JSON.stringify(backupData, null, 2);
@@ -169,6 +175,17 @@ class BackupService {
       });
 
       await storageService.saveLibrary(existingLibrary);
+
+      // Import tabs if present in backup (version 2+)
+      if (backupData.tabs && Array.isArray(backupData.tabs)) {
+        const existingTabs = await storageService.getTabs();
+        // Merge tabs: add new tabs, don't overwrite existing ones with same ID
+        const existingTabIds = new Set(existingTabs.map(t => t.id));
+        const newTabs = backupData.tabs.filter(t => !existingTabIds.has(t.id));
+        if (newTabs.length > 0) {
+          await storageService.saveTabs([...existingTabs, ...newTabs]);
+        }
+      }
 
       return {
         success: true,

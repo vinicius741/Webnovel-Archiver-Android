@@ -60,6 +60,18 @@ export default function SettingsScreen() {
         </List.Section>
 
         <List.Section>
+          <List.Subheader>Library Organization</List.Subheader>
+          <View style={styles.container}>
+            <List.Item
+              title="Manage Tabs"
+              description="Create and organize custom tabs for your library"
+              left={(props) => <List.Icon {...props} icon="folder-multiple" />}
+              onPress={() => router.push("/tab-management")}
+            />
+          </View>
+        </List.Section>
+
+        <List.Section>
           <List.Subheader>Data</List.Subheader>
           <View style={styles.container}>
             <List.Item

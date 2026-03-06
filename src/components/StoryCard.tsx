@@ -17,6 +17,9 @@ interface Props {
   progress?: number; // 0 to 1
   lastReadChapterName?: string;
   onPress: () => void;
+  onLongPress?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
 }
 
 export const StoryCard = ({
@@ -28,12 +31,50 @@ export const StoryCard = ({
   progress,
   lastReadChapterName,
   onPress,
+  onLongPress,
+  selectionMode,
+  selected,
 }: Props) => {
   const theme = useTheme();
 
+  const handlePress = () => {
+    if (selectionMode && onLongPress) {
+      onLongPress();
+    } else {
+      onPress();
+    }
+  };
+
   return (
-    <Card style={styles.card} onPress={onPress} testID="story-card">
+    <Card
+      style={[
+        styles.card,
+        selected && { borderColor: theme.colors.primary, borderWidth: 2 },
+      ]}
+      onPress={handlePress}
+      onLongPress={onLongPress}
+      testID="story-card"
+    >
       <Card.Content style={styles.content}>
+        {selectionMode && (
+          <View
+            style={[
+              styles.selectionIndicator,
+              {
+                backgroundColor: selected
+                  ? theme.colors.primary
+                  : theme.colors.surfaceVariant,
+                borderColor: selected
+                  ? theme.colors.primary
+                  : theme.colors.outline,
+              },
+            ]}
+          >
+            {selected && (
+              <IconButton icon="check" size={16} iconColor={theme.colors.onPrimary} style={styles.checkIcon} />
+            )}
+          </View>
+        )}
         {coverUrl && (
           <Image
             source={{ uri: coverUrl }}
@@ -141,5 +182,23 @@ const styles = StyleSheet.create({
   scoreText: {
     fontWeight: "bold",
     marginLeft: -4,
+  },
+  selectionIndicator: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
+  },
+  checkIcon: {
+    margin: 0,
+    padding: 0,
+    width: 20,
+    height: 20,
   },
 });

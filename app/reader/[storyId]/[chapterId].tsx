@@ -336,7 +336,7 @@ export default function ReaderScreen() {
 
       <TTSController
         visible={isControllerVisible}
-        isSpeaking={isSpeaking}
+        _isSpeaking={isSpeaking}
         isPaused={isPaused}
         currentChunk={currentChunkIndex}
         totalChunks={chunks.length}

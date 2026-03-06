@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Story, DownloadStatus, RegexCleanupRule } from "../types";
+import { Tab } from "../types/tab";
 import * as fileSystem from "./storage/fileSystem";
 import DEFAULT_SENTENCE_REMOVAL_LIST from "../constants/default_sentence_removal.json";
 import { validateRegexCleanupRule } from "../utils/textCleanup";
@@ -12,6 +13,7 @@ const STORAGE_KEYS = {
   TTS_SETTINGS: "wa_tts_settings_v1",
   TTS_SESSION: "wa_tts_session_v1",
   CHAPTER_FILTER_SETTINGS: "wa_chapter_filter_settings_v1",
+  TABS: "wa_tabs_v1",
 };
 
 export interface AppSettings {
@@ -403,6 +405,39 @@ class StorageService {
     } catch (e) {
       console.error("Failed to save chapter filter settings", e);
     }
+  }
+
+  async getTabs(): Promise<Tab[]> {
+    try {
+      const jsonValue = await AsyncStorage.getItem(STORAGE_KEYS.TABS);
+      return jsonValue != null ? JSON.parse(jsonValue) : [];
+    } catch (e) {
+      console.error("Failed to load tabs", e);
+      return [];
+    }
+  }
+
+  async saveTabs(tabs: Tab[]): Promise<void> {
+    try {
+      const jsonValue = JSON.stringify(tabs);
+      await AsyncStorage.setItem(STORAGE_KEYS.TABS, jsonValue);
+    } catch (e) {
+      console.error("Failed to save tabs", e);
+    }
+  }
+
+  async moveStoriesToTab(
+    storyIds: string[],
+    tabId: string | null,
+  ): Promise<void> {
+    const library = await this.getLibrary();
+    storyIds.forEach((id) => {
+      const story = library.find((s) => s.id === id);
+      if (story) {
+        story.tabId = tabId;
+      }
+    });
+    await this.saveLibrary(library);
   }
 }
 
