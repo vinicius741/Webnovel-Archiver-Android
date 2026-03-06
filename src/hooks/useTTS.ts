@@ -134,7 +134,10 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
       if (unsubscribeNotifee) unsubscribeNotifee();
       ttsStateManager.setOnFinishCallback(null);
     };
-  }, [options?.onFinish, syncState]);
+    // Note: options?.onFinish is intentionally omitted from deps because we use
+    // onFinishRef to always get the latest callback without triggering effect re-runs.
+    // The ref is updated in a separate useEffect above (lines 23-25).
+  }, [syncState]);
 
   const handleSettingsChange = useCallback(async (newSettings: TTSSettings) => {
     setTtsSettings(newSettings);

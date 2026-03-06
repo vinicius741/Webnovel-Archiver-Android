@@ -94,7 +94,7 @@ export class TTSPlaybackController {
     this.config.onChunkChange(startChunkIndex);
 
     if (!startPaused) {
-      this.queue?.playChunk(startChunkIndex);
+      void this.queue?.playChunk(startChunkIndex);
     }
   }
 
@@ -118,12 +118,13 @@ export class TTSPlaybackController {
     this.emitStateChange();
   }
 
-  public resume(): void {
+  resume(): void {
     if (!this.state.isPaused || !this.state.isSpeaking) return;
     this.sessionId++;
     this.state.isPaused = false;
     this.emitStateChange();
-    this.queue?.playChunk(this.state.currentChunkIndex);
+    // playChunk is async, handles cleanup internally
+    void this.queue?.playChunk(this.state.currentChunkIndex);
   }
 
   public async playPause(): Promise<void> {
@@ -198,7 +199,8 @@ export class TTSPlaybackController {
         this.state.currentChunkIndex = nextIndex;
         this.emitStateChange();
         this.config.onChunkChange(nextIndex);
-        this.queue?.playChunk(nextIndex);
+        // Use void since we're in a callback and don't need to wait
+        void this.queue?.playChunk(nextIndex);
       },
       onError: (error: unknown) => {
         if (this.sessionId !== sessionAtInit) return;

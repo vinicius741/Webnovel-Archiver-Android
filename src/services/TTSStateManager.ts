@@ -37,6 +37,19 @@ class TTSStateManager {
   private pendingOnFinishCallback: (() => void) | null = null;
   private commandQueue: Promise<void> = Promise.resolve();
 
+  // Pending state for ensuring final state is persisted
+  private pendingStorageWrite: {
+    state: TTSState;
+    wasPlayingOverride?: boolean;
+  } | null = null;
+  private storageWriteTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private static readonly STORAGE_WRITE_THROTTLE_MS = 500;
+
+  // State emission debouncing
+  private stateEmitTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private pendingStateEmit: TTSState | null = null;
+  private static readonly STATE_EMIT_DEBOUNCE_MS = 100;
+
   private constructor() {
     void this.loadSettings();
     ttsMediaSessionService.registerMediaButtonHandler(() => {
@@ -59,17 +72,33 @@ class TTSStateManager {
   }
 
   private emitStateChange(state: TTSState) {
-    const { DeviceEventEmitter } = require("react-native");
-    DeviceEventEmitter.emit(TTS_STATE_EVENTS.STATE_CHANGED, state);
+    // Debounce state emissions to prevent UI overload while ensuring final state is emitted
+    this.pendingStateEmit = state;
+
+    if (this.stateEmitTimeoutId) {
+      return; // Already scheduled, will emit the latest pending state
+    }
+
+    this.stateEmitTimeoutId = setTimeout(() => {
+      this.stateEmitTimeoutId = null;
+      if (this.pendingStateEmit) {
+        const { DeviceEventEmitter } = require("react-native");
+        DeviceEventEmitter.emit(TTS_STATE_EVENTS.STATE_CHANGED, this.pendingStateEmit);
+        this.pendingStateEmit = null;
+      }
+    }, TTSStateManager.STATE_EMIT_DEBOUNCE_MS);
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.commandQueue.then(operation);
-    this.commandQueue = run.then(
+    // Chain operations sequentially, replacing the queue reference with a settled promise
+    // to prevent unbounded chain growth while ensuring no operations are lost
+    const result = this.commandQueue.then(operation);
+    // Replace queue with a settled promise that won't reject
+    this.commandQueue = result.then(
       () => undefined,
-      () => undefined,
+      () => undefined, // Swallow errors to prevent chain breakage
     );
-    return run;
+    return result;
   }
 
   private buildPlaybackBody(state: TTSState): string {
@@ -107,7 +136,28 @@ class TTSStateManager {
   ) {
     const session = this.buildSession(state, wasPlayingOverride);
     if (!session) return;
-    await storageService.saveTTSSession(session);
+
+    // Always store the pending write to ensure latest state is saved
+    this.pendingStorageWrite = { state, wasPlayingOverride };
+
+    // Clear any existing timeout
+    if (this.storageWriteTimeoutId) {
+      return; // Already scheduled, will save the latest pending state
+    }
+
+    // Schedule the write
+    this.storageWriteTimeoutId = setTimeout(async () => {
+      this.storageWriteTimeoutId = null;
+      if (this.pendingStorageWrite) {
+        const { state: pendingState, wasPlayingOverride: pendingOverride } =
+          this.pendingStorageWrite;
+        this.pendingStorageWrite = null;
+        const sessionToSave = this.buildSession(pendingState, pendingOverride);
+        if (sessionToSave) {
+          await storageService.saveTTSSession(sessionToSave);
+        }
+      }
+    }, TTSStateManager.STORAGE_WRITE_THROTTLE_MS);
   }
 
   private buildMediaPayload(state: TTSState, isPlayingOverride?: boolean) {
