@@ -152,6 +152,13 @@ describe("TTSStateManager - Concurrent Operations", () => {
     globalMockController = null;
   });
 
+  afterEach(async () => {
+    // Wait for any pending async operations to complete
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    // Cleanup pending timeouts without destroying the singleton
+    ttsStateManager.clearPendingTimeouts();
+  });
+
   describe("Rapid State Changes", () => {
     it("should handle rapid play/pause toggles", async () => {
       const chunks = ["chunk1", "chunk2", "chunk3"];
@@ -421,6 +428,9 @@ describe("TTSStateManager - Concurrent Operations", () => {
       await ttsStateManager.next();
       await ttsStateManager.pause();
       await ttsStateManager.resume();
+
+      // Wait for debounced state emissions (100ms debounce in TTSStateManager)
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Should have emitted state changes
       expect(emittedStates.length).toBeGreaterThan(0);

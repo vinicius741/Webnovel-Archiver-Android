@@ -64,6 +64,36 @@ class TTSStateManager {
     return TTSStateManager.instance;
   }
 
+  public static resetInstance(): void {
+    try {
+      if (TTSStateManager.instance) {
+        TTSStateManager.instance.cleanup();
+      }
+    } catch {
+      // Ignore errors during cleanup (e.g., if already torn down)
+    }
+    (TTSStateManager.instance as TTSStateManager | null) = null;
+  }
+
+  public clearPendingTimeouts(): void {
+    this.cleanup();
+  }
+
+  private cleanup(): void {
+    try {
+      if (this.stateEmitTimeoutId) {
+        clearTimeout(this.stateEmitTimeoutId);
+        this.stateEmitTimeoutId = null;
+      }
+      if (this.storageWriteTimeoutId) {
+        clearTimeout(this.storageWriteTimeoutId);
+        this.storageWriteTimeoutId = null;
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+
   private async loadSettings() {
     const settings = await storageService.getTTSSettings();
     if (settings) {
