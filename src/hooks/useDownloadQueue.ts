@@ -108,7 +108,7 @@ export const useDownloadQueue = () => {
 
   return {
     jobs: state.jobs,
-    jobsByStory: Object.values(jobsByStory),
+    jobsByStory: Object.values(jobsByStory).reverse(),
     stats: state.stats,
     pauseJob,
     resumeJob,
