@@ -1,5 +1,3 @@
-import Constants from "expo-constants";
-import { Platform } from "react-native";
 import {
   addMediaButtonListener,
   isAvailable,
@@ -8,6 +6,7 @@ import {
   updateSession,
   type TtsMediaSessionPayload,
 } from "tts-media-session";
+import { isAndroidNative } from "../utils/platform";
 
 export type MediaButtonHandler = (action: "playPause") => void;
 
@@ -17,17 +16,7 @@ class TtsMediaSessionService {
   private started = false;
 
   constructor() {
-    this.init();
-  }
-
-  private init() {
-    if (Platform.OS !== "android") return;
-    if (Constants.executionEnvironment === "storeClient") {
-      console.log(
-        "[TtsMediaSessionService] Expo Go detected. Media session disabled.",
-      );
-      return;
-    }
+    if (!isAndroidNative()) return;
     if (!isAvailable()) {
       console.warn("[TtsMediaSessionService] Native module not available.");
       return;

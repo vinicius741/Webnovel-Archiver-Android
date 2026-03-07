@@ -1,8 +1,7 @@
-import { Platform } from "react-native";
-import Constants from "expo-constants";
 import EventEmitter from "events";
 import { loadNotifee, type NotifeeModule } from "./NotifeeTypes";
 import type { NotificationAndroid } from "@notifee/react-native/dist/types/NotificationAndroid";
+import { isAndroidNative } from "../utils/platform";
 
 export interface DownloadState {
   current: number;
@@ -34,11 +33,10 @@ let downloadState: DownloadState | null = null;
 let ttsState: TtsState | null = null;
 const activeReasons = new Set<ActiveReason>();
 
-const isAndroid = Platform.OS === "android";
-const isExpoGo = Constants.executionEnvironment === "storeClient";
+const isNativeSupported = isAndroidNative();
 
 const ensureInitialized = async (): Promise<boolean> => {
-  if (!isAndroid || isExpoGo) return false;
+  if (!isNativeSupported) return false;
   if (initialized) return true;
   if (!initializing) {
     initializing = (async () => {

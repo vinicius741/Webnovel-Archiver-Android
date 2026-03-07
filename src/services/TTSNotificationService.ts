@@ -1,5 +1,4 @@
-import { Platform } from "react-native";
-import Constants from "expo-constants";
+import { isAndroidNative } from "../utils/platform";
 import { clearTtsState, setTtsState } from "./ForegroundServiceCoordinator";
 
 /**
@@ -12,20 +11,7 @@ class TTSNotificationService {
   private initialized = false;
 
   constructor() {
-    this.init();
-  }
-
-  private init() {
-    if (Platform.OS !== "android") return;
-
-    // Skip initialization in Expo Go
-    if (Constants.executionEnvironment === "storeClient") {
-      console.log(
-        "[TTSNotificationService] Expo Go detected. Notifications disabled.",
-      );
-      return;
-    }
-    this.initialized = true;
+    this.initialized = isAndroidNative();
   }
 
   async startService(title: string, body: string) {

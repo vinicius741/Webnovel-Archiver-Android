@@ -1,5 +1,4 @@
-import { Platform } from "react-native";
-import Constants from "expo-constants";
+import { isAndroidNative } from "../utils/platform";
 import {
   clearDownloadState,
   requestPermissions,
@@ -8,13 +7,11 @@ import {
 } from "./ForegroundServiceCoordinator";
 
 class NotificationService {
+  private supported: boolean;
+
   constructor() {
-    if (Platform.OS !== "android") return;
-    if (Constants.executionEnvironment === "storeClient") {
-      console.log(
-        "[NotificationService] Expo Go detected. Notifications disabled.",
-      );
-    }
+    this.supported = isAndroidNative();
+    if (!this.supported) return;
   }
 
   async startForegroundService(
