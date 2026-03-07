@@ -18,6 +18,22 @@ interface UseLibraryOptions {
   hasCustomTabs?: boolean;
 }
 
+// Helper to check if a story belongs to the active tab
+const matchesTab = (
+  story: Story,
+  activeTabId?: string | null,
+  hasCustomTabs?: boolean,
+): boolean => {
+  if (hasCustomTabs) {
+    if (activeTabId === "unassigned") {
+      return !story.tabId;
+    } else if (activeTabId) {
+      return story.tabId === activeTabId;
+    }
+  }
+  return true;
+};
+
 export const useLibrary = (options: UseLibraryOptions = {}) => {
   const { activeTabId, hasCustomTabs } = options;
 
@@ -57,8 +73,12 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
 
   const { allTags, sourceNames } = useMemo(() => {
     const sources = new Set<string>();
-    // Always collect all sources first to allow switching
+    const tags = new Set<string>();
+
+    // Collect sources and tags from tab-filtered stories in a single pass
     stories.forEach((story) => {
+      if (!matchesTab(story, activeTabId, hasCustomTabs)) return;
+
       const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
       if (providerName) {
         sources.add(providerName);
@@ -71,14 +91,12 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
       sortedSources.includes(tag),
     );
 
-    const tags = new Set<string>();
+    // Collect tags from tab-filtered stories (respecting source filter)
     stories.forEach((story) => {
-      const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
+      if (!matchesTab(story, activeTabId, hasCustomTabs)) return;
 
-      // If a source is selected, only collect tags from stories of that source
-      if (activeSource && providerName !== activeSource) {
-        return;
-      }
+      const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
+      if (activeSource && providerName !== activeSource) return;
 
       story.tags?.forEach((tag) => tags.add(tag));
     });
@@ -89,7 +107,7 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
       allTags: [...sortedSources, ...sortedTags],
       sourceNames: sortedSources,
     };
-  }, [stories, selectedTags]);
+  }, [stories, selectedTags, activeTabId, hasCustomTabs]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => {
@@ -117,16 +135,7 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
     // First filter
     const filtered = stories.filter((story) => {
       // Tab filtering
-      if (hasCustomTabs) {
-        if (activeTabId === "unassigned") {
-          // Show stories with no tabId
-          if (story.tabId) return false;
-        } else if (activeTabId) {
-          // Show stories with matching tabId
-          if (story.tabId !== activeTabId) return false;
-        }
-        // If activeTabId is null, show all stories (no tab filter)
-      }
+      if (!matchesTab(story, activeTabId, hasCustomTabs)) return false;
 
       const matchesSearch =
         story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
