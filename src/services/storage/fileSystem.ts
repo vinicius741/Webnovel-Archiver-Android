@@ -24,6 +24,11 @@ import {
 
 const BASE_DIR_NAME = "novels";
 
+const getChapterFilename = (chapterIndex: number, title: string): string => {
+  const safeTitle = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+  return `${chapterIndex.toString().padStart(4, "0")}_${safeTitle}.html`;
+};
+
 export const ensureNovelDirExists = (novelId: string): Directory => {
   const baseDir = new Directory(Paths.document, BASE_DIR_NAME);
   if (!baseDir.exists) {
@@ -44,15 +49,27 @@ export const saveChapter = async (
   content: string,
 ): Promise<string> => {
   const novelDir = ensureNovelDirExists(novelId);
-
-  // Sanitize title for filename
-  const safeTitle = title.replace(/[^a-z0-9]/gi, "_").toLowerCase();
-  const filename = `${chapterIndex.toString().padStart(4, "0")}_${safeTitle}.html`;
+  const filename = getChapterFilename(chapterIndex, title);
 
   const file = new File(novelDir, filename);
   file.write(content);
   console.log(`[Storage] Saved chapter: ${file.uri}`);
   return file.uri;
+};
+
+export const copyChapterToNovel = async (
+  sourceUri: string,
+  novelId: string,
+  chapterIndex: number,
+  title: string,
+): Promise<string> => {
+  const novelDir = ensureNovelDirExists(novelId);
+  const filename = getChapterFilename(chapterIndex, title);
+  const sourceFile = new File(sourceUri);
+  const destinationFile = new File(novelDir, filename);
+  sourceFile.copy(destinationFile);
+  console.log(`[Storage] Copied chapter to archive: ${destinationFile.uri}`);
+  return destinationFile.uri;
 };
 
 export const saveMetadata = async (novelId: string, metadata: Story) => {

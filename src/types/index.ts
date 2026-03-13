@@ -27,6 +27,8 @@ export interface EpubConfig {
   startAfterBookmark: boolean;
 }
 
+export type ArchiveReason = "source_chapters_removed";
+
 export interface Story {
   id: string;
   title: string;
@@ -49,6 +51,10 @@ export interface Story {
   lastReadChapterId?: string;
   score?: string;
   tabId?: string | null; // ID of the tab this story belongs to, or null for unassigned
+  isArchived?: boolean;
+  archiveOfStoryId?: string;
+  archivedAt?: number;
+  archiveReason?: ArchiveReason;
 }
 
 export type RegexCleanupAppliesTo = "download" | "tts" | "both";

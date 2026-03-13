@@ -232,4 +232,14 @@ describe("StoryHeader", () => {
 
     expect(getByText("RoyalRoad")).toBeTruthy();
   });
+
+  it("should render archived chip for archived stories", () => {
+    const props = {
+      ...defaultProps,
+      story: { ...defaultProps.story, isArchived: true },
+    };
+    const { getByText } = renderWithTheme(<StoryHeader {...props} />);
+
+    expect(getByText("Archived")).toBeTruthy();
+  });
 });

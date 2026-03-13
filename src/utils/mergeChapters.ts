@@ -7,7 +7,10 @@ export interface MergeChaptersResult {
   downloadedCount: number;
   newChaptersCount: number;
   newChapterIds: string[];
+  removedChapterIds: string[];
+  removedChapters: Chapter[];
   lastReadChapterId?: string;
+  lastReadChapterRemoved: boolean;
 }
 
 /**
@@ -64,6 +67,7 @@ export const mergeChapters = (
 ): MergeChaptersResult => {
   const existingById = new Map<string, Chapter>();
   const aliasToStable = new Map<string, string>();
+  const remainingExistingIds = new Set<string>();
 
   existingChapters.forEach((chapter) => {
     const stableId = buildStableId(provider, chapter.url, chapter.id);
@@ -72,6 +76,7 @@ export const mergeChapters = (
     if (!existingById.has(stableId)) {
       existingById.set(stableId, chapter);
     }
+    remainingExistingIds.add(stableId);
 
     if (chapter.id) aliasToStable.set(chapter.id, stableId);
     if (chapter.url) aliasToStable.set(chapter.url, stableId);
@@ -87,6 +92,7 @@ export const mergeChapters = (
 
     const existing = stableId ? existingById.get(stableId) : undefined;
     if (existing) {
+      remainingExistingIds.delete(stableId);
       return {
         ...existing,
         id: stableId,
@@ -110,6 +116,19 @@ export const mergeChapters = (
     remappedLastRead = aliasToStable.get(remappedLastRead)!;
   }
 
+  const mergedChapterIds = new Set(mergedChapters.map((chapter) => chapter.id));
+  const lastReadChapterRemoved = Boolean(
+    remappedLastRead && !mergedChapterIds.has(remappedLastRead),
+  );
+  if (lastReadChapterRemoved) {
+    remappedLastRead = undefined;
+  }
+
+  const removedChapterIds = Array.from(remainingExistingIds);
+  const removedChapters = removedChapterIds
+    .map((id) => existingById.get(id))
+    .filter((chapter): chapter is Chapter => Boolean(chapter));
+
   const downloadedCount = mergedChapters.filter(
     (chapter) => chapter.downloaded,
   ).length;
@@ -119,6 +138,9 @@ export const mergeChapters = (
     downloadedCount,
     newChaptersCount,
     newChapterIds,
+    removedChapterIds,
+    removedChapters,
     lastReadChapterId: remappedLastRead,
+    lastReadChapterRemoved,
   };
 };

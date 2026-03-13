@@ -15,6 +15,8 @@ interface UseStoryDownloadParams {
   onStoryUpdated: (updatedStory: Story) => void;
 }
 
+class SyncCancellationError extends Error {}
+
 export const useStoryDownload = ({
   story,
   onStoryUpdated,
@@ -24,7 +26,90 @@ export const useStoryDownload = ({
   const [syncStatus, setSyncStatus] = useState("");
   const [queueing, setQueueing] = useState(false);
 
+  const showArchivedStoryAlert = (action: string) => {
+    showAlert(
+      "Archived Snapshot",
+      `${action} is disabled for archived snapshots. Use the active story entry instead.`,
+    );
+  };
+
+  const buildPendingNewChapterIds = (
+    existingPending: string[] | undefined,
+    chapterIdsToAdd: string[],
+    mergedStory: Story,
+  ): string[] | undefined => {
+    const pendingSet = new Set([...(existingPending ?? []), ...chapterIdsToAdd]);
+    const chapterMap = new Map(mergedStory.chapters.map((ch) => [ch.id, ch]));
+    const pendingIds = Array.from(pendingSet).filter((id) => {
+      const chapter = chapterMap.get(id);
+      return chapter && !chapter.downloaded;
+    });
+    return pendingIds.length > 0 ? pendingIds : undefined;
+  };
+
+  const buildUpdatedEpubConfig = (
+    currentStory: Story,
+    nextChapterCount: number,
+  ) => {
+    if (!currentStory.epubConfig) return currentStory.epubConfig;
+
+    const oldTotal = currentStory.chapters.length;
+    const hasNewChapters = nextChapterCount > oldTotal;
+    const wasAtEnd = currentStory.epubConfig.rangeEnd >= oldTotal;
+    const nextRangeStart = Math.min(
+      Math.max(currentStory.epubConfig.rangeStart, 1),
+      nextChapterCount,
+    );
+    let nextRangeEnd = currentStory.epubConfig.rangeEnd;
+
+    if (hasNewChapters && wasAtEnd) {
+      nextRangeEnd = nextChapterCount;
+    }
+
+    nextRangeEnd = Math.min(Math.max(nextRangeEnd, nextRangeStart), nextChapterCount);
+
+    return {
+      ...currentStory.epubConfig,
+      rangeStart: nextRangeStart,
+      rangeEnd: nextRangeEnd,
+    };
+  };
+
+  const confirmArchiveAndUpdate = (
+    oldChapterCount: number,
+    newChapterCount: number,
+    removedChapterCount: number,
+    queuedNewChapterCount: number,
+  ): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const newChapterLine =
+        queuedNewChapterCount > 0
+          ? `\n\n${queuedNewChapterCount} brand new chapter${queuedNewChapterCount === 1 ? "" : "s"} will be queued after the update.`
+          : "";
+
+      showAlert(
+        "Source Chapters Removed",
+        `This story used to list ${oldChapterCount} chapters, but the source now lists ${newChapterCount}. ${removedChapterCount} saved chapter${removedChapterCount === 1 ? "" : "s"} would disappear from the active story.${newChapterLine}\n\nArchive the current version before updating?`,
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => resolve(false),
+          },
+          {
+            text: "Archive & Update",
+            onPress: () => resolve(true),
+          },
+        ],
+      );
+    });
+  };
+
   const downloadAll = async () => {
+    if (story?.isArchived) {
+      showArchivedStoryAlert("Downloading");
+      return;
+    }
     if (!validateStory(story)) return;
 
     try {
@@ -48,6 +133,10 @@ export const useStoryDownload = ({
   };
 
   const syncChapters = async () => {
+    if (story?.isArchived) {
+      showArchivedStoryAlert("Sync");
+      return;
+    }
     if (!validateStory(story)) return;
 
     try {
@@ -66,6 +155,11 @@ export const useStoryDownload = ({
           setSyncStatus(msg);
         },
       );
+      if (newChapters.length === 0) {
+        throw new SyncCancellationError(
+          "Source returned no chapters. Sync canceled to avoid overwriting this story.",
+        );
+      }
       const metadata = provider.parseMetadata(html);
 
       setSyncStatus("Merging...");
@@ -79,38 +173,56 @@ export const useStoryDownload = ({
 
       const tagsChanged =
         JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
-      const hasUpdates = mergeResult.newChapterIds.length > 0 || tagsChanged;
-      const newChapterCount = mergeResult.newChapterIds.length;
-
-      const existingPending = story.pendingNewChapterIds ?? [];
-      const pendingSet = new Set([
-        ...existingPending,
-        ...mergeResult.newChapterIds,
-      ]);
-      const chapterMap = new Map(mergeResult.chapters.map((ch) => [ch.id, ch]));
-      const pendingNewChapterIds = Array.from(pendingSet).filter((id) => {
-        const chapter = chapterMap.get(id);
-        return chapter && !chapter.downloaded;
-      });
-
-      // Determine if we need to update epubConfig.rangeEnd
       const oldTotal = story.chapters.length;
       const newTotal = mergeResult.chapters.length;
-      const hasNewChapters = newTotal > oldTotal;
-      const hasEpub = story.epubPaths && story.epubPaths.length > 0;
+      const newChapterCount = mergeResult.newChapterIds.length;
+      const removedChapterCount = mergeResult.removedChapterIds.length;
+      const hasUpdates =
+        newChapterCount > 0 || tagsChanged || removedChapterCount > 0;
 
-      // Update epubConfig.rangeEnd if new chapters were added and rangeEnd was at the old total
-      // This preserves intentional partial ranges (e.g., if user selected chapters 50-100)
-      let updatedEpubConfig = story.epubConfig;
-      if (hasNewChapters && story.epubConfig) {
-        const wasAtEnd = story.epubConfig.rangeEnd >= oldTotal;
-        if (wasAtEnd) {
-          updatedEpubConfig = {
-            ...story.epubConfig,
-            rangeEnd: newTotal,
-          };
+      if (removedChapterCount > 0) {
+        const missingDownloads = mergeResult.removedChapters.filter(
+          (chapter) => !chapter.downloaded,
+        );
+
+        if (missingDownloads.length > 0) {
+          showAlert(
+            "Sync Canceled",
+            `The source shrank from ${oldTotal} chapters to ${newTotal}. ${missingDownloads.length} removed chapter${missingDownloads.length === 1 ? "" : "s"} are not downloaded, so the update was canceled to avoid data loss.`,
+          );
+          return;
         }
+
+        const shouldArchive = await confirmArchiveAndUpdate(
+          oldTotal,
+          newTotal,
+          removedChapterCount,
+          newChapterCount,
+        );
+
+        if (!shouldArchive) {
+          return;
+        }
+
+        setSyncStatus("Archiving snapshot...");
+        await storageService.createArchivedStorySnapshot(
+          story,
+          "source_chapters_removed",
+        );
       }
+
+      const pendingNewChapterIds = buildPendingNewChapterIds(
+        story.pendingNewChapterIds,
+        mergeResult.newChapterIds,
+        {
+          ...story,
+          chapters: mergeResult.chapters,
+        },
+      );
+      const hasEpub =
+        !!story.epubPath || !!(story.epubPaths && story.epubPaths.length > 0);
+      const chapterListChanged = oldTotal !== newTotal;
+      const updatedEpubConfig = buildUpdatedEpubConfig(story, newTotal);
 
       const updatedStory: Story = {
         ...story,
@@ -128,9 +240,13 @@ export const useStoryDownload = ({
         sourceUrl: metadata.canonicalUrl || story.sourceUrl,
         lastReadChapterId: mergeResult.lastReadChapterId,
         pendingNewChapterIds:
-          pendingNewChapterIds.length > 0 ? pendingNewChapterIds : undefined,
+          pendingNewChapterIds,
         epubConfig: updatedEpubConfig,
-        epubStale: hasNewChapters && hasEpub ? true : story.epubStale,
+        epubStale: chapterListChanged && hasEpub ? true : story.epubStale,
+        isArchived: false,
+        archiveOfStoryId: undefined,
+        archivedAt: undefined,
+        archiveReason: undefined,
       };
 
       await storageService.addStory(updatedStory);
@@ -147,7 +263,14 @@ export const useStoryDownload = ({
           onStoryUpdated(queuedStory);
           showAlert(
             "Update Found",
-            `Found ${newChapterCount} new chapters. Download queued.`,
+            removedChapterCount > 0
+              ? `Archived the previous version, updated the active story, and queued ${newChapterCount} new chapter${newChapterCount === 1 ? "" : "s"}.`
+              : `Found ${newChapterCount} new chapters. Download queued.`,
+          );
+        } else if (removedChapterCount > 0) {
+          showAlert(
+            "Archive Created",
+            `Archived the previous version and updated the active story from ${oldTotal} chapters to ${newTotal}.`,
           );
         } else if (tagsChanged) {
           showAlert("Metadata Updated", "Tags and details updated.");
@@ -159,10 +282,16 @@ export const useStoryDownload = ({
         );
       }
     } catch (error: unknown) {
-      console.error("Update error", error);
-      const message = error instanceof Error ? error.message : "Failed to sync chapters. Check logs.";
+      if (error instanceof SyncCancellationError) {
+        console.warn("Sync canceled", error.message);
+      } else {
+        console.error("Update error", error);
+      }
+      const message = error instanceof Error
+        ? error.message
+        : "Failed to sync chapters. Check logs.";
       showAlert(
-        "Sync Error",
+        error instanceof SyncCancellationError ? "Sync Canceled" : "Sync Error",
         message,
       );
     } finally {
@@ -174,6 +303,10 @@ export const useStoryDownload = ({
 
   // `startChapter`/`endChapter` are 1-based inclusive values from UI inputs.
   const downloadRange = async (startChapter: number, endChapter: number) => {
+    if (story?.isArchived) {
+      showArchivedStoryAlert("Downloading");
+      return;
+    }
     if (!validateStory(story)) return;
 
     const validation = validateDownloadRange(
@@ -214,6 +347,10 @@ export const useStoryDownload = ({
   };
 
   const applySentenceRemoval = async () => {
+    if (story?.isArchived) {
+      showArchivedStoryAlert("Text cleanup");
+      return;
+    }
     if (!story) return;
 
     const downloadedChapters = story.chapters.filter((c) => c.downloaded);
@@ -277,6 +414,10 @@ export const useStoryDownload = ({
   };
 
   const downloadChaptersByIds = async (chapterIds: string[]) => {
+    if (story?.isArchived) {
+      showArchivedStoryAlert("Downloading");
+      return;
+    }
     if (!validateStory(story)) return;
 
     try {

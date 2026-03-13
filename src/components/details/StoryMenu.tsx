@@ -7,6 +7,7 @@ interface StoryMenuProps {
   onApplySentenceRemoval: () => void;
   onDelete: () => void;
   disabled?: boolean;
+  isArchived?: boolean;
 }
 
 export const StoryMenu: React.FC<StoryMenuProps> = ({
@@ -15,6 +16,7 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
   onApplySentenceRemoval,
   onDelete,
   disabled = false,
+  isArchived = false,
 }) => {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
@@ -39,7 +41,7 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
           onDownloadRange();
         }}
         title="Download Range"
-        disabled={disabled}
+        disabled={disabled || isArchived}
       />
       <Divider />
       <Menu.Item
@@ -57,7 +59,7 @@ export const StoryMenu: React.FC<StoryMenuProps> = ({
           onApplySentenceRemoval();
         }}
         title="Apply Text Cleanup"
-        disabled={disabled}
+        disabled={disabled || isArchived}
       />
       <Divider />
       <Menu.Item

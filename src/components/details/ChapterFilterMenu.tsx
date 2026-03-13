@@ -11,6 +11,7 @@ interface ChapterFilterMenuProps {
   onSearchChange: (query: string) => void;
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
+  selectionDisabled?: boolean;
 }
 
 export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
@@ -21,6 +22,7 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
   onSearchChange,
   selectionMode,
   onToggleSelectionMode,
+  selectionDisabled = false,
 }) => {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
@@ -75,6 +77,7 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
         icon={selectionMode ? "close" : "checkbox-marked-outline"}
         onPress={onToggleSelectionMode}
         size={20}
+        disabled={selectionDisabled}
         style={[
           styles.filterButton,
           styles.selectionButton,

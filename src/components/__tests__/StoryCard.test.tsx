@@ -26,6 +26,12 @@ describe("StoryCard", () => {
     animation: {
       scale: 1,
     },
+    fonts: {
+      regular: {
+        fontFamily: "System",
+        fontWeight: "400" as const,
+      },
+    },
   };
 
   const renderWithTheme = (component: React.ReactElement) => {
@@ -173,6 +179,7 @@ describe("StoryCard", () => {
       score: "4.8",
       progress: 0.75,
       lastReadChapterName: "Chapter 42",
+      isArchived: true,
     };
 
     const { getByText, getByTestId } = renderWithTheme(
@@ -183,8 +190,17 @@ describe("StoryCard", () => {
     expect(getByText("Test Author")).toBeTruthy();
     expect(getByText("RoyalRoad")).toBeTruthy();
     expect(getByText("4.8")).toBeTruthy();
+    expect(getByText("Archived")).toBeTruthy();
     expect(getByText(/Last read: Chapter 42/)).toBeTruthy();
     expect(getByTestId("story-card-cover")).toBeTruthy();
     expect(getByTestId("story-card-progress")).toBeTruthy();
+  });
+
+  it("should render archived badge when story is archived", () => {
+    const { getByText } = renderWithTheme(
+      <StoryCard {...defaultProps} isArchived={true} />,
+    );
+
+    expect(getByText("Archived")).toBeTruthy();
   });
 });

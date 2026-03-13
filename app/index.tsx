@@ -230,6 +230,7 @@ export default function HomeScreen() {
               coverUrl={item.coverUrl}
               sourceName={sourceRegistry.getProvider(item.sourceUrl)?.name}
               score={item.score}
+              isArchived={item.isArchived}
               progress={
                 item.totalChapters > 0
                   ? item.downloadedChapters / item.totalChapters

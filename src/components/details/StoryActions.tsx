@@ -50,6 +50,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
   const hasEpub =
     !!story.epubPath || (story.epubPaths && story.epubPaths.length > 0);
   const showStale = !!story.epubStale && hasEpub;
+  const isArchived = !!story.isArchived;
 
   return (
     <View style={styles.container}>
@@ -57,7 +58,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
         mode="contained"
         style={styles.actionBtn}
         loading={syncing}
-        disabled={syncing || downloading || generating}
+        disabled={syncing || downloading || generating || isArchived}
         onPress={onSync}
         testID="sync-button"
       >
@@ -67,6 +68,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
       {/* Show "Download All" only for stories with zero downloads */}
       {story.downloadedChapters === 0 &&
         story.totalChapters > 0 &&
+        !isArchived &&
         onDownloadAll && (
           <Button
             mode="contained-tonal"
@@ -141,6 +143,12 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
         </Text>
       ) : null}
 
+      {isArchived ? (
+        <Text variant="bodySmall" style={styles.archivedText}>
+          Archived snapshot: sync and downloads disabled
+        </Text>
+      ) : null}
+
       {generating && epubProgress && (
         <View style={styles.progressContainer}>
           <ProgressBar
@@ -188,6 +196,11 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   staleText: {
+    marginTop: -8,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  archivedText: {
     marginTop: -8,
     marginBottom: 16,
     textAlign: "center",

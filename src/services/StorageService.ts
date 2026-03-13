@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Story, DownloadStatus, RegexCleanupRule } from "../types";
+import {
+  Story,
+  DownloadStatus,
+  RegexCleanupRule,
+  ArchiveReason,
+} from "../types";
 import { Tab } from "../types/tab";
 import * as fileSystem from "./storage/fileSystem";
 import DEFAULT_SENTENCE_REMOVAL_LIST from "../constants/default_sentence_removal.json";
@@ -83,6 +88,11 @@ interface RegexCleanupRulesSanitizeResult {
 }
 
 class StorageService {
+  private generateArchiveStoryId(storyId: string, archivedAt: number): string {
+    const randomSuffix = Math.random().toString(36).slice(2, 8);
+    return `${storyId}__archive_${archivedAt}_${randomSuffix}`;
+  }
+
   private sanitizeRegexCleanupRules(
     input: unknown,
   ): RegexCleanupRulesSanitizeResult {
@@ -194,6 +204,54 @@ class StorageService {
 
   async updateStory(story: Story): Promise<void> {
     await this.addStory(story); // addStory handles update if ID matches
+  }
+
+  async createArchivedStorySnapshot(
+    story: Story,
+    reason: ArchiveReason,
+  ): Promise<Story> {
+    const archivedAt = Date.now();
+    const archiveId = this.generateArchiveStoryId(story.id, archivedAt);
+
+    const archivedChapters = await Promise.all(
+      story.chapters.map(async (chapter, index) => {
+        if (chapter.downloaded && chapter.filePath) {
+          const archivedFilePath = await fileSystem.copyChapterToNovel(
+            chapter.filePath,
+            archiveId,
+            index,
+            chapter.title,
+          );
+          return {
+            ...chapter,
+            filePath: archivedFilePath,
+          };
+        }
+
+        return {
+          ...chapter,
+          filePath: chapter.downloaded ? chapter.filePath : undefined,
+        };
+      }),
+    );
+
+    const archivedStory: Story = {
+      ...story,
+      id: archiveId,
+      chapters: archivedChapters,
+      isArchived: true,
+      archiveOfStoryId: story.id,
+      archivedAt,
+      archiveReason: reason,
+      pendingNewChapterIds: undefined,
+      epubPath: undefined,
+      epubPaths: undefined,
+      epubStale: undefined,
+      lastUpdated: archivedAt,
+    };
+
+    await this.addStory(archivedStory);
+    return archivedStory;
   }
 
   async deleteStory(id: string): Promise<void> {

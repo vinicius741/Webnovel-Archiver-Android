@@ -6,6 +6,7 @@ import {
   useTheme,
   ProgressBar,
   IconButton,
+  Chip,
 } from "react-native-paper";
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
   onLongPress?: () => void;
   selectionMode?: boolean;
   selected?: boolean;
+  isArchived?: boolean;
 }
 
 export const StoryCard = ({
@@ -34,6 +36,7 @@ export const StoryCard = ({
   onLongPress,
   selectionMode,
   selected,
+  isArchived,
 }: Props) => {
   const theme = useTheme();
 
@@ -96,6 +99,11 @@ export const StoryCard = ({
           >
             {author}
           </Text>
+          {isArchived ? (
+            <Chip compact icon="archive" style={styles.archiveChip}>
+              Archived
+            </Chip>
+          ) : null}
           {sourceName && (
             <Text
               variant="labelSmall"
@@ -200,5 +208,9 @@ const styles = StyleSheet.create({
     padding: 0,
     width: 20,
     height: 20,
+  },
+  archiveChip: {
+    alignSelf: "flex-start",
+    marginBottom: 4,
   },
 });

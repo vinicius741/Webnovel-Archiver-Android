@@ -34,6 +34,8 @@ describe("mergeChapters", () => {
       expect(result.chapters).toEqual([]);
       expect(result.downloadedCount).toBe(0);
       expect(result.newChaptersCount).toBe(0);
+      expect(result.removedChapterIds).toEqual([]);
+      expect(result.lastReadChapterRemoved).toBe(false);
     });
 
     it("should handle empty existing chapters with new chapters", () => {
@@ -48,6 +50,7 @@ describe("mergeChapters", () => {
       expect(result.newChaptersCount).toBe(2);
       expect(result.downloadedCount).toBe(0);
       expect(result.chapters[0].downloaded).toBe(false);
+      expect(result.removedChapterIds).toEqual([]);
     });
 
     it("should handle existing chapters with empty new chapters", () => {
@@ -65,6 +68,8 @@ describe("mergeChapters", () => {
       expect(result.chapters).toEqual([]);
       expect(result.newChaptersCount).toBe(0);
       expect(result.downloadedCount).toBe(0);
+      expect(result.removedChapterIds).toEqual(["chapter-1"]);
+      expect(result.removedChapters).toHaveLength(1);
     });
   });
 
@@ -273,7 +278,8 @@ describe("mergeChapters", () => {
       );
 
       // The old ID should be remapped to the provider-based stable ID
-      expect(result.lastReadChapterId).toBe("chapter-1");
+      expect(result.lastReadChapterId).toBeUndefined();
+      expect(result.lastReadChapterRemoved).toBe(true);
     });
 
     it("should preserve lastReadChapterId when no remapping needed", () => {
@@ -293,7 +299,8 @@ describe("mergeChapters", () => {
         "chapter-1",
       );
 
-      expect(result.lastReadChapterId).toBe("chapter-1");
+      expect(result.lastReadChapterId).toBeUndefined();
+      expect(result.lastReadChapterRemoved).toBe(true);
     });
 
     it("should return undefined for lastReadChapterId when not found", () => {
@@ -306,7 +313,38 @@ describe("mergeChapters", () => {
         "non-existent-id",
       );
 
-      expect(result.lastReadChapterId).toBe("non-existent-id"); // No remapping possible
+      expect(result.lastReadChapterId).toBeUndefined();
+      expect(result.lastReadChapterRemoved).toBe(true);
+    });
+
+    it("should keep lastReadChapterId when chapter survives with a new slug", () => {
+      const existingChapters: Chapter[] = [
+        {
+          id: "chapter-1",
+          title: "Chapter 1",
+          url: "https://example.com/chapter/1/old-slug",
+          downloaded: true,
+        },
+      ];
+
+      const newChapters: ChapterInfo[] = [
+        {
+          title: "Chapter 1",
+          url: "https://example.com/chapter/1/new-slug",
+        },
+      ];
+
+      const result = mergeChapters(
+        existingChapters,
+        newChapters,
+        mockProvider,
+        "chapter-1",
+      );
+
+      expect(result.lastReadChapterId).toBe("chapter-1");
+      expect(result.lastReadChapterRemoved).toBe(false);
+      expect(result.newChapterIds).toEqual([]);
+      expect(result.removedChapterIds).toEqual([]);
     });
   });
 });

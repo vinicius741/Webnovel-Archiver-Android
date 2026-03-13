@@ -244,6 +244,7 @@ export default function StoryDetailsScreen() {
           onSearchChange={setSearchQuery}
           selectionMode={selectionMode}
           onToggleSelectionMode={handleToggleSelectionMode}
+          selectionDisabled={!!story.isArchived}
         />
       </View>
     </View>
@@ -261,6 +262,7 @@ export default function StoryDetailsScreen() {
               onApplySentenceRemoval={applySentenceRemoval}
               onDelete={deleteStory}
               disabled={loading}
+              isArchived={story?.isArchived}
             />
           ),
         }}
@@ -322,7 +324,7 @@ export default function StoryDetailsScreen() {
         />
       )}
 
-      {selectionMode && selectedChapterIds.size > 0 && (
+      {selectionMode && selectedChapterIds.size > 0 && !story.isArchived && (
         <FAB
           icon="download"
           label={`Download (${selectedChapterIds.size})`}

@@ -67,6 +67,16 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
         </Chip>
       )}
 
+      {story.isArchived ? (
+        <Chip
+          icon="archive"
+          style={styles.archiveChip}
+          textStyle={{ fontSize: 12 }}
+        >
+          Archived
+        </Chip>
+      ) : null}
+
       <View style={styles.stats}>
         {story.score && (
           <View style={styles.statItem}>
@@ -118,6 +128,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sourceChip: {
+    marginBottom: 16,
+  },
+  archiveChip: {
     marginBottom: 16,
   },
   stats: {

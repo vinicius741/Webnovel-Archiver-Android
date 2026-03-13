@@ -6,6 +6,7 @@ import { Story, DownloadStatus } from "../../types";
 jest.mock("../storage/fileSystem", () => ({
   deleteNovel: jest.fn(),
   clearAllFiles: jest.fn(),
+  copyChapterToNovel: jest.fn(),
 }));
 
 describe("StorageService", () => {
@@ -110,6 +111,63 @@ describe("StorageService", () => {
 
       expect(fileSystem.deleteNovel).toHaveBeenCalledWith("1");
       expect(AsyncStorage.setItem).toHaveBeenCalledWith("wa_library_v1", "[]");
+    });
+  });
+
+  describe("createArchivedStorySnapshot", () => {
+    it("should create an archived snapshot with copied chapter files", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([]));
+      (fileSystem.copyChapterToNovel as jest.Mock)
+        .mockResolvedValueOnce("file://archive/c1.html")
+        .mockResolvedValueOnce("file://archive/c2.html");
+
+      const story: Story = {
+        id: "rr_1",
+        title: "Archive Me",
+        author: "Me",
+        sourceUrl: "http://test",
+        coverUrl: "http://cover",
+        chapters: [
+          {
+            id: "c1",
+            title: "Chapter 1",
+            url: "http://test/c1",
+            downloaded: true,
+            filePath: "file://live/c1.html",
+          },
+          {
+            id: "c2",
+            title: "Chapter 2",
+            url: "http://test/c2",
+            downloaded: true,
+            filePath: "file://live/c2.html",
+          },
+        ],
+        status: DownloadStatus.Completed,
+        totalChapters: 2,
+        downloadedChapters: 2,
+        epubPath: "file://existing.epub",
+        epubPaths: ["file://existing.epub"],
+        pendingNewChapterIds: ["c3"],
+        tabId: "tab-1",
+      };
+
+      const archivedStory = await storageService.createArchivedStorySnapshot(
+        story,
+        "source_chapters_removed",
+      );
+
+      expect(archivedStory.id).toMatch(/^rr_1__archive_\d+_[a-z0-9]+$/);
+      expect(archivedStory.isArchived).toBe(true);
+      expect(archivedStory.archiveOfStoryId).toBe("rr_1");
+      expect(archivedStory.archiveReason).toBe("source_chapters_removed");
+      expect(archivedStory.tabId).toBe("tab-1");
+      expect(archivedStory.epubPath).toBeUndefined();
+      expect(archivedStory.epubPaths).toBeUndefined();
+      expect(archivedStory.pendingNewChapterIds).toBeUndefined();
+      expect(archivedStory.chapters[0].filePath).toBe("file://archive/c1.html");
+      expect(archivedStory.chapters[1].filePath).toBe("file://archive/c2.html");
+      expect(fileSystem.copyChapterToNovel).toHaveBeenCalledTimes(2);
     });
   });
 

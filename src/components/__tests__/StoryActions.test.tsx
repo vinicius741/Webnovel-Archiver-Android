@@ -190,4 +190,28 @@ describe("StoryActions", () => {
     expect(getByTestId("generate-button")).toBeTruthy();
     expect(getByTestId("read-button")).toBeTruthy();
   });
+
+  it("should disable sync and hide download all for archived stories", () => {
+    const props = {
+      ...defaultProps,
+      story: {
+        ...defaultProps.story,
+        isArchived: true,
+        downloadedChapters: 0,
+      },
+      onDownloadAll: jest.fn(),
+    };
+
+    const { getByText, getByTestId, queryByTestId } = renderWithTheme(
+      <StoryActions {...props} />,
+    );
+
+    expect(getByTestId("sync-button").props.accessibilityState.disabled).toBe(
+      true,
+    );
+    expect(queryByTestId("download-all-button")).toBeNull();
+    expect(
+      getByText("Archived snapshot: sync and downloads disabled"),
+    ).toBeTruthy();
+  });
 });
