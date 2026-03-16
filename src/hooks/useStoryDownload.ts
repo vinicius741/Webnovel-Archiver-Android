@@ -3,19 +3,19 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 
 import { storageService } from "../services/StorageService";
 import { downloadService } from "../services/DownloadService";
-import { fetchPage } from "../services/network/fetcher";
-import { sourceRegistry } from "../services/source/SourceRegistry";
 import { useAppAlert } from "../context/AlertContext";
-import { Story, DownloadStatus } from "../types";
-import { mergeChapters } from "../utils/mergeChapters";
+import { Story } from "../types";
 import { validateStory, validateDownloadRange } from "../utils/storyValidation";
+import {
+  buildStoryForSync,
+  EmptyChapterListError,
+  prepareStorySyncData,
+} from "../services/story/storySyncOrchestrator";
 
 interface UseStoryDownloadParams {
   story: Story | null;
   onStoryUpdated: (updatedStory: Story) => void;
 }
-
-class SyncCancellationError extends Error {}
 
 export const useStoryDownload = ({
   story,
@@ -31,20 +31,6 @@ export const useStoryDownload = ({
       "Archived Snapshot",
       `${action} is disabled for archived snapshots. Use the active story entry instead.`,
     );
-  };
-
-  const buildPendingNewChapterIds = (
-    existingPending: string[] | undefined,
-    chapterIdsToAdd: string[],
-    mergedStory: Story,
-  ): string[] | undefined => {
-    const pendingSet = new Set([...(existingPending ?? []), ...chapterIdsToAdd]);
-    const chapterMap = new Map(mergedStory.chapters.map((ch) => [ch.id, ch]));
-    const pendingIds = Array.from(pendingSet).filter((id) => {
-      const chapter = chapterMap.get(id);
-      return chapter && !chapter.downloaded;
-    });
-    return pendingIds.length > 0 ? pendingIds : undefined;
   };
 
   const buildUpdatedEpubConfig = (
@@ -142,34 +128,14 @@ export const useStoryDownload = ({
     try {
       setSyncing(true);
       setSyncStatus("Initializing...");
-      const provider = sourceRegistry.getProvider(story.sourceUrl);
-      if (!provider) {
-        throw new Error("Unsupported source URL.");
-      }
-
-      const html = await fetchPage(story.sourceUrl);
-      const newChapters = await provider.getChapterList(
-        html,
-        story.sourceUrl,
-        (msg) => {
-          setSyncStatus(msg);
-        },
-      );
-      if (newChapters.length === 0) {
-        throw new SyncCancellationError(
-          "Source returned no chapters. Sync canceled to avoid overwriting this story.",
-        );
-      }
-      const metadata = provider.parseMetadata(html);
-
+      const prepared = await prepareStorySyncData({
+        sourceUrl: story.sourceUrl,
+        existingStory: story,
+        onStatus: setSyncStatus,
+        onProgress: setSyncStatus,
+      });
       setSyncStatus("Merging...");
-
-      const mergeResult = mergeChapters(
-        story.chapters,
-        newChapters,
-        provider,
-        story.lastReadChapterId,
-      );
+      const { mergeResult, metadata } = prepared;
 
       const tagsChanged =
         JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
@@ -211,43 +177,12 @@ export const useStoryDownload = ({
         );
       }
 
-      const pendingNewChapterIds = buildPendingNewChapterIds(
-        story.pendingNewChapterIds,
-        mergeResult.newChapterIds,
-        {
-          ...story,
-          chapters: mergeResult.chapters,
-        },
-      );
-      const hasEpub =
-        !!story.epubPath || !!(story.epubPaths && story.epubPaths.length > 0);
-      const chapterListChanged = oldTotal !== newTotal;
       const updatedEpubConfig = buildUpdatedEpubConfig(story, newTotal);
-
-      const updatedStory: Story = {
-        ...story,
-        chapters: mergeResult.chapters,
-        totalChapters: mergeResult.chapters.length,
-        downloadedChapters: mergeResult.downloadedCount,
-        status: newChapterCount > 0 ? DownloadStatus.Partial : story.status,
-        lastUpdated: Date.now(),
-        tags: metadata.tags,
-        title: metadata.title || story.title,
-        author: metadata.author || story.author,
-        coverUrl: metadata.coverUrl || story.coverUrl,
-        description: metadata.description || story.description,
-        score: metadata.score || story.score,
-        sourceUrl: metadata.canonicalUrl || story.sourceUrl,
-        lastReadChapterId: mergeResult.lastReadChapterId,
-        pendingNewChapterIds:
-          pendingNewChapterIds,
-        epubConfig: updatedEpubConfig,
-        epubStale: chapterListChanged && hasEpub ? true : story.epubStale,
-        isArchived: false,
-        archiveOfStoryId: undefined,
-        archivedAt: undefined,
-        archiveReason: undefined,
-      };
+      const updatedStory = buildStoryForSync({
+        currentStory: story,
+        prepared,
+        updatedEpubConfig,
+      });
 
       await storageService.addStory(updatedStory);
       onStoryUpdated(updatedStory);
@@ -282,7 +217,7 @@ export const useStoryDownload = ({
         );
       }
     } catch (error: unknown) {
-      if (error instanceof SyncCancellationError) {
+      if (error instanceof EmptyChapterListError) {
         console.warn("Sync canceled", error.message);
       } else {
         console.error("Update error", error);
@@ -291,7 +226,7 @@ export const useStoryDownload = ({
         ? error.message
         : "Failed to sync chapters. Check logs.";
       showAlert(
-        error instanceof SyncCancellationError ? "Sync Canceled" : "Sync Error",
+        error instanceof EmptyChapterListError ? "Sync Canceled" : "Sync Error",
         message,
       );
     } finally {
