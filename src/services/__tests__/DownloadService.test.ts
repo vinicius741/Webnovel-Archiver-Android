@@ -145,14 +145,10 @@ describe("DownloadService", () => {
     });
 
     it("should update story status to Downloading", async () => {
-      await downloadService.downloadRange(mockStory, 0, 1);
+      const result = await downloadService.downloadRange(mockStory, 0, 1);
 
-      expect(storageService.updateStory).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: DownloadStatus.Downloading,
-          lastUpdated: expect.any(Number),
-        }),
-      );
+      expect(result.status).toBe(DownloadStatus.Downloading);
+      expect(result.lastUpdated).toEqual(expect.any(Number));
     });
 
     it("should return story unchanged if no chapters to download", async () => {
@@ -192,13 +188,10 @@ describe("DownloadService", () => {
     });
 
     it("should update story status", async () => {
-      await downloadService.downloadAllChapters(mockStory);
+      const result = await downloadService.downloadAllChapters(mockStory);
 
-      expect(storageService.updateStory).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: DownloadStatus.Downloading,
-        }),
-      );
+      expect(result.status).toBe(DownloadStatus.Downloading);
+      expect(result.lastUpdated).toEqual(expect.any(Number));
     });
   });
 

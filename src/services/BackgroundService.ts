@@ -7,8 +7,13 @@ import {
 import { loadNotifee } from "./NotifeeTypes";
 import type { Event } from "@notifee/react-native/dist/types/Notification";
 
+let backgroundServiceInitialized = false;
+
 // Safely initialize background service to handle environments without Notifee (e.g. Expo Go)
-const initializeBackgroundService = () => {
+export const initializeBackgroundService = () => {
+  if (backgroundServiceInitialized) return;
+  backgroundServiceInitialized = true;
+
   const env = Constants.executionEnvironment as string | undefined;
   if (env === "storeClient") {
     console.log(
@@ -80,8 +85,3 @@ const initializeBackgroundService = () => {
     );
   }
 };
-
-initializeBackgroundService();
-
-// Export something to ensure the file is not tree-shaked if imported
-export const backgroundServiceInitializer = true;

@@ -6,7 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { notificationService } from "../src/services/NotificationService";
 import { ThemeProvider } from "../src/theme/ThemeContext";
 import { AlertProvider } from "../src/context/AlertContext";
-import { backgroundServiceInitializer } from "../src/services/BackgroundService";
+import { initializeBackgroundService } from "../src/services/BackgroundService";
 import { ttsLifecycleService } from "../src/services/TTSLifecycleService";
 import { ttsStateManager } from "../src/services/TTSStateManager";
 import { TTS_RELIABILITY_V2 } from "../src/services/TTSFeatureFlags";
@@ -79,10 +79,9 @@ function AppLayout() {
 
   useEffect(() => {
     // Request notification permissions
-    notificationService.requestPermissions();
-    // Ensure background service initializer is called
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _ = backgroundServiceInitializer;
+    void notificationService.requestPermissions();
+    initializeBackgroundService();
+    void ttsStateManager.initialize();
 
     if (TTS_RELIABILITY_V2) {
       ttsLifecycleService.start();

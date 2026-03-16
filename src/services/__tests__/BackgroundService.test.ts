@@ -3,7 +3,7 @@ import { ttsStateManager } from "../TTSStateManager";
 import { registerForegroundService } from "../ForegroundServiceCoordinator";
 import { EventType } from "@notifee/react-native";
 
-// Mock dependencies BEFORE importing the service because it runs code on import.
+// Mock dependencies BEFORE importing the service.
 jest.mock("expo-constants", () => ({
   executionEnvironment: "bare", // Default to bare to allow initialization
 }));
@@ -69,16 +69,12 @@ jest.mock("../download/DownloadManager", () => ({
 describe("BackgroundService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset Constants mock if needed, but it's hard to change executionEnvironment dynamically
-    // because the module is already loaded.
-    // We will rely on isolating tests or assuming the import happened.
   });
 
-  it("should register background event handler on import", () => {
-    // We need to require the module to trigger the side effect.
-    // Since Jest caches modules, we might need to isolate modules or use require.
+  it("should register background event handler on explicit initialization", () => {
     jest.isolateModules(() => {
-      require("../BackgroundService");
+      const { initializeBackgroundService } = require("../BackgroundService");
+      initializeBackgroundService();
     });
 
     expect(mockOnBackgroundEvent).toHaveBeenCalled();
@@ -92,7 +88,8 @@ describe("BackgroundService", () => {
     });
 
     jest.isolateModules(() => {
-      require("../BackgroundService");
+      const { initializeBackgroundService } = require("../BackgroundService");
+      initializeBackgroundService();
     });
 
     expect(handler).toBeDefined();
@@ -117,7 +114,8 @@ describe("BackgroundService", () => {
     });
 
     jest.isolateModules(() => {
-      require("../BackgroundService");
+      const { initializeBackgroundService } = require("../BackgroundService");
+      initializeBackgroundService();
     });
 
     const actions = [
@@ -139,20 +137,14 @@ describe("BackgroundService", () => {
   });
 
   it("should not register handler in Expo Go (storeClient)", () => {
-    // We need to change Constants mock for this test.
-    // Since we are using isolateModules, we can re-mock or modify the mock object
-    // if it's mutable and referenced inside the isolated module.
-    // However, standard `jest.mock` is hoisted.
-
-    // Strategy: Use `doMock` inside `isolateModules`.
     jest.isolateModules(() => {
       jest.doMock("expo-constants", () => ({
         executionEnvironment: "storeClient",
       }));
-      // Reset mock calls for this isolation
       mockOnBackgroundEvent.mockClear();
 
-      require("../BackgroundService");
+      const { initializeBackgroundService } = require("../BackgroundService");
+      initializeBackgroundService();
 
       expect(mockOnBackgroundEvent).not.toHaveBeenCalled();
     });

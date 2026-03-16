@@ -60,8 +60,8 @@ describe("BackgroundService - Concurrent Download + TTS Actions", () => {
     jest.clearAllMocks();
     jest.resetModules();
 
-    // Import BackgroundService to trigger initialization
-    require("../BackgroundService");
+    const { initializeBackgroundService } = require("../BackgroundService");
+    initializeBackgroundService();
 
     // Capture the registered event handler
     expect(mockOnBackgroundEvent).toHaveBeenCalledWith(expect.any(Function));

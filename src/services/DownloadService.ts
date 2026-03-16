@@ -3,8 +3,37 @@ import { downloadManager } from "./download/DownloadManager";
 import { storageService } from "./StorageService";
 import { readChapterFile, saveChapter } from "./storage/fileSystem";
 import { applyDownloadCleanup } from "../utils/textCleanup";
+import { DownloadJob } from "./download/types";
 
 class DownloadService {
+  private createJobsFromIndexes(
+    story: Story,
+    indexes: number[],
+  ): DownloadJob[] {
+    return indexes
+      .filter((index) => index >= 0 && index < story.chapters.length)
+      .map((index) => ({ chapter: story.chapters[index], index }))
+      .filter(({ chapter }) => !chapter.downloaded)
+      .map(({ chapter, index }) => ({
+        id: `${story.id}_${index}`,
+        storyId: story.id,
+        storyTitle: story.title,
+        chapterIndex: index,
+        chapter,
+        status: "pending" as const,
+        addedAt: Date.now(),
+        retryCount: 0,
+      }));
+  }
+
+  private buildQueuedStory(story: Story): Story {
+    return {
+      ...story,
+      status: DownloadStatus.Downloading,
+      lastUpdated: Date.now(),
+    };
+  }
+
   /**
    * Queues a single chapter for download.
    */
@@ -39,31 +68,15 @@ class DownloadService {
     startIndex: number,
     endIndex: number,
   ): Promise<Story> {
-    const jobs = story.chapters
-      .map((ch, index) => ({ chapter: ch, index }))
-      .filter(({ index }) => index >= startIndex && index <= endIndex)
-      .filter(({ chapter }) => !chapter.downloaded) // Skip already downloaded? Use logic preference.
-      .map(({ chapter, index }) => ({
-        id: `${story.id}_${index}`,
-        storyId: story.id,
-        storyTitle: story.title,
-        chapterIndex: index,
-        chapter: chapter,
-        status: "pending" as const,
-        addedAt: Date.now(),
-        retryCount: 0,
-      }));
+    const indexes = Array.from(
+      { length: endIndex - startIndex + 1 },
+      (_, i) => startIndex + i,
+    );
+    const jobs = this.createJobsFromIndexes(story, indexes);
 
     if (jobs.length === 0) return story;
 
-    // Set status to Downloading
-    const updatedStory = {
-      ...story,
-      status: DownloadStatus.Downloading,
-      lastUpdated: Date.now(),
-    };
-    await storageService.updateStory(updatedStory);
-
+    const updatedStory = this.buildQueuedStory(story);
     await downloadManager.addJobs(jobs);
 
     return updatedStory;
@@ -79,30 +92,17 @@ class DownloadService {
     if (chapterIds.length === 0) return story;
 
     const idSet = new Set(chapterIds);
-    const jobs = story.chapters
-      .map((ch, index) => ({ chapter: ch, index }))
-      .filter(({ chapter }) => idSet.has(chapter.id))
-      .filter(({ chapter }) => !chapter.downloaded)
-      .map(({ chapter, index }) => ({
-        id: `${story.id}_${index}`,
-        storyId: story.id,
-        storyTitle: story.title,
-        chapterIndex: index,
-        chapter: chapter,
-        status: "pending" as const,
-        addedAt: Date.now(),
-        retryCount: 0,
-      }));
+    const indexes = story.chapters.reduce<number[]>((acc, chapter, index) => {
+      if (idSet.has(chapter.id)) {
+        acc.push(index);
+      }
+      return acc;
+    }, []);
+    const jobs = this.createJobsFromIndexes(story, indexes);
 
     if (jobs.length === 0) return story;
 
-    const updatedStory = {
-      ...story,
-      status: DownloadStatus.Downloading,
-      lastUpdated: Date.now(),
-    };
-    await storageService.updateStory(updatedStory);
-
+    const updatedStory = this.buildQueuedStory(story);
     await downloadManager.addJobs(jobs);
 
     return updatedStory;
