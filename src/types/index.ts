@@ -67,3 +67,40 @@ export interface RegexCleanupRule {
   enabled: boolean;
   appliesTo: RegexCleanupAppliesTo;
 }
+
+export interface AppSettings {
+  downloadConcurrency: number;
+  downloadDelay: number;
+  maxChaptersPerEpub: number;
+}
+
+export interface TTSSettings {
+  pitch: number;
+  rate: number;
+  voiceIdentifier?: string;
+  chunkSize: number;
+}
+
+export interface TTSSession {
+  storyId: string;
+  chapterId: string;
+  chapterTitle: string;
+  currentChunkIndex: number;
+  isPaused: boolean;
+  wasPlaying: boolean;
+  chunkSize: number;
+  voiceIdentifier?: string;
+  rate: number;
+  pitch: number;
+  updatedAt: number;
+  sessionVersion: number;
+}
+
+export type ChapterFilterMode =
+  | "all"
+  | "hideNonDownloaded"
+  | "hideAboveBookmark";
+
+export interface ChapterFilterSettings {
+  filterMode: ChapterFilterMode;
+}
