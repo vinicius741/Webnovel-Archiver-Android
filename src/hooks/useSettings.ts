@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback } from "react";
 import { router } from "expo-router";
 import { storageService } from "../services/StorageService";
@@ -15,13 +14,13 @@ const DELAY_MIN = 0;
 const validateConcurrency = (
   value: string,
 ): { valid: string; actual: number } => {
-  const num = parseInt(value) || CONCURRENCY_MIN;
+  const num = parseInt(value, 10) || CONCURRENCY_MIN;
   const clamped = Math.max(CONCURRENCY_MIN, Math.min(CONCURRENCY_MAX, num));
   return { valid: clamped.toString(), actual: clamped };
 };
 
 const validateDelay = (value: string): { valid: string; actual: number } => {
-  const num = parseInt(value) || DELAY_MIN;
+  const num = parseInt(value, 10) || DELAY_MIN;
   const clamped = Math.max(DELAY_MIN, num);
   return { valid: clamped.toString(), actual: clamped };
 };
@@ -38,19 +37,23 @@ export const useSettings = () => {
   >();
   const [delayError, setDelayError] = useState<string | undefined>();
 
-  const loadSettings = useCallback(async () => {
-    const settings = await storageService.getSettings();
-    setConcurrency(settings.downloadConcurrency.toString());
-    setDelay(settings.downloadDelay.toString());
-    setPersistedMaxChaptersPerEpub(settings.maxChaptersPerEpub);
-    // Clear any errors on load
-    setConcurrencyError(undefined);
-    setDelayError(undefined);
-  }, []);
-
   useEffect(() => {
+    let mounted = true;
+    const loadSettings = async () => {
+      const settings = await storageService.getSettings();
+      if (!mounted) return;
+      setConcurrency(settings.downloadConcurrency.toString());
+      setDelay(settings.downloadDelay.toString());
+      setPersistedMaxChaptersPerEpub(settings.maxChaptersPerEpub);
+      setConcurrencyError(undefined);
+      setDelayError(undefined);
+    };
+
     void loadSettings();
-  }, [loadSettings]);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const saveSettings = useCallback(async () => {
     const concurrencyResult = validateConcurrency(concurrency);
@@ -74,7 +77,7 @@ export const useSettings = () => {
   const handleConcurrencyChange = (text: string) => {
     setConcurrency(text);
     // Validate immediately for feedback
-    const num = parseInt(text);
+    const num = parseInt(text, 10);
     if (isNaN(num) || num < CONCURRENCY_MIN || num > CONCURRENCY_MAX) {
       setConcurrencyError(
         `Must be between ${CONCURRENCY_MIN} and ${CONCURRENCY_MAX}`,
@@ -87,7 +90,7 @@ export const useSettings = () => {
 
   const handleDelayChange = (text: string) => {
     setDelay(text);
-    const num = parseInt(text);
+    const num = parseInt(text, 10);
     if (isNaN(num) || num < DELAY_MIN) {
       setDelayError(`Must be ${DELAY_MIN} or greater`);
     } else {

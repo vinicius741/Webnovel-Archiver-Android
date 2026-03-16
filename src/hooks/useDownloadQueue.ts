@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState, useCallback } from "react";
 import { downloadManager } from "../services/download/DownloadManager";
 import { downloadQueue } from "../services/download/DownloadQueue";
@@ -9,49 +8,52 @@ export interface DownloadQueueState {
   stats: QueueStats;
 }
 
+const DOWNLOAD_MANAGER_EVENTS = [
+  "queue-updated",
+  "job-started",
+  "job-completed",
+  "job-failed",
+  "job-paused",
+  "job-resumed",
+] as const;
+
+const INITIAL_STATS: QueueStats = {
+  total: 0,
+  pending: 0,
+  active: 0,
+  completed: 0,
+  failed: 0,
+  paused: 0,
+};
+
+const getQueueSnapshot = (): DownloadQueueState => ({
+  jobs: downloadQueue.getAllJobs(),
+  stats: downloadQueue.getStats(),
+});
+
 export const useDownloadQueue = () => {
-  const [state, setState] = useState<DownloadQueueState>({
-    jobs: [],
-    stats: {
-      total: 0,
-      pending: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-      paused: 0,
-    },
+  const [state, setState] = useState<DownloadQueueState>(() => {
+    const snapshot = getQueueSnapshot();
+    return {
+      jobs: snapshot.jobs,
+      stats: snapshot.stats || INITIAL_STATS,
+    };
   });
 
   const refreshState = useCallback(() => {
-    const jobs = downloadQueue.getAllJobs();
-    const stats = downloadQueue.getStats();
-    setState({ jobs, stats });
+    setState(getQueueSnapshot());
   }, []);
 
   useEffect(() => {
-    refreshState();
-
-    const onQueueUpdated = () => refreshState();
-    const onJobStarted = () => refreshState();
-    const onJobCompleted = () => refreshState();
-    const onJobFailed = () => refreshState();
-    const onJobPaused = () => refreshState();
-    const onJobResumed = () => refreshState();
-
-    downloadManager.on("queue-updated", onQueueUpdated);
-    downloadManager.on("job-started", onJobStarted);
-    downloadManager.on("job-completed", onJobCompleted);
-    downloadManager.on("job-failed", onJobFailed);
-    downloadManager.on("job-paused", onJobPaused);
-    downloadManager.on("job-resumed", onJobResumed);
+    const onQueueChanged = () => refreshState();
+    DOWNLOAD_MANAGER_EVENTS.forEach((eventName) => {
+      downloadManager.on(eventName, onQueueChanged);
+    });
 
     return () => {
-      downloadManager.off("queue-updated", onQueueUpdated);
-      downloadManager.off("job-started", onJobStarted);
-      downloadManager.off("job-completed", onJobCompleted);
-      downloadManager.off("job-failed", onJobFailed);
-      downloadManager.off("job-paused", onJobPaused);
-      downloadManager.off("job-resumed", onJobResumed);
+      DOWNLOAD_MANAGER_EVENTS.forEach((eventName) => {
+        downloadManager.off(eventName, onQueueChanged);
+      });
     };
   }, [refreshState]);
 
