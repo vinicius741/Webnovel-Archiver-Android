@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
   Button,
@@ -27,8 +26,28 @@ interface EpubConfigDialogProps {
   hasBookmark: boolean;
 }
 
-export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
-  visible,
+interface EpubConfigFormState {
+  maxChapters: string;
+  rangeStart: string;
+  rangeEnd: string;
+  startAfterBookmark: boolean;
+  error: string;
+}
+
+const getInitialFormState = (
+  initialConfig: EpubConfig,
+  hasBookmark: boolean,
+): EpubConfigFormState => ({
+  maxChapters: String(initialConfig.maxChaptersPerEpub),
+  rangeStart: String(initialConfig.rangeStart),
+  rangeEnd: String(initialConfig.rangeEnd),
+  startAfterBookmark: hasBookmark ? initialConfig.startAfterBookmark : false,
+  error: "",
+});
+
+const EpubConfigDialogContent: React.FC<
+  Omit<EpubConfigDialogProps, "visible">
+> = ({
   onDismiss,
   onSave,
   initialConfig,
@@ -36,24 +55,14 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
   downloadedChapterCount,
   hasBookmark,
 }) => {
-  const [maxChapters, setMaxChapters] = useState("");
-  const [rangeStart, setRangeStart] = useState("");
-  const [rangeEnd, setRangeEnd] = useState("");
-  const [startAfterBookmark, setStartAfterBookmark] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!visible) return;
-
-    // Initialize form when dialog becomes visible
-    setMaxChapters(String(initialConfig.maxChaptersPerEpub));
-    setRangeStart(String(initialConfig.rangeStart));
-    setRangeEnd(String(initialConfig.rangeEnd));
-    setStartAfterBookmark(
-      hasBookmark ? initialConfig.startAfterBookmark : false,
-    );
-    setError("");
-  }, [visible, initialConfig, hasBookmark]);
+  const initialState = getInitialFormState(initialConfig, hasBookmark);
+  const [maxChapters, setMaxChapters] = useState(initialState.maxChapters);
+  const [rangeStart, setRangeStart] = useState(initialState.rangeStart);
+  const [rangeEnd, setRangeEnd] = useState(initialState.rangeEnd);
+  const [startAfterBookmark, setStartAfterBookmark] = useState(
+    initialState.startAfterBookmark,
+  );
+  const [error, setError] = useState<string>(initialState.error);
 
   const handleSave = async () => {
     if (totalChapters <= 0) {
@@ -106,7 +115,7 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
+      <Dialog visible onDismiss={onDismiss}>
         <Dialog.Title>EPUB Settings</Dialog.Title>
         <Dialog.Content>
           <Text variant="bodyMedium" style={styles.subtitle}>
@@ -178,6 +187,40 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
         </Dialog.Actions>
       </Dialog>
     </Portal>
+  );
+};
+
+export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
+  visible,
+  onDismiss,
+  onSave,
+  initialConfig,
+  totalChapters,
+  downloadedChapterCount,
+  hasBookmark,
+}) => {
+  if (!visible) return null;
+
+  const formKey = [
+    initialConfig.maxChaptersPerEpub,
+    initialConfig.rangeStart,
+    initialConfig.rangeEnd,
+    initialConfig.startAfterBookmark ? "1" : "0",
+    totalChapters,
+    downloadedChapterCount,
+    hasBookmark ? "1" : "0",
+  ].join(":");
+
+  return (
+    <EpubConfigDialogContent
+      key={formKey}
+      onDismiss={onDismiss}
+      onSave={onSave}
+      initialConfig={initialConfig}
+      totalChapters={totalChapters}
+      downloadedChapterCount={downloadedChapterCount}
+      hasBookmark={hasBookmark}
+    />
   );
 };
 

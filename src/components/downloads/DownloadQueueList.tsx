@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   FlatList,
@@ -70,22 +69,23 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
     new Set(),
   );
 
-  useEffect(() => {
-    const validIds = new Set(jobsByStory.map((g) => g.storyId));
-    setExpandedStories((prev) => {
-      const cleaned = new Set([...prev].filter((id) => validIds.has(id)));
-      return cleaned.size === prev.size ? prev : cleaned;
-    });
-  }, [jobsByStory]);
+  const validStoryIds = useMemo(
+    () => new Set(jobsByStory.map((group) => group.storyId)),
+    [jobsByStory],
+  );
 
   const toggleStoryExpanded = (storyId: string) => {
-    const newExpanded = new Set(expandedStories);
-    if (newExpanded.has(storyId)) {
-      newExpanded.delete(storyId);
-    } else {
-      newExpanded.add(storyId);
-    }
-    setExpandedStories(newExpanded);
+    setExpandedStories((previous) => {
+      const next = new Set(
+        Array.from(previous).filter((id) => validStoryIds.has(id)),
+      );
+      if (next.has(storyId)) {
+        next.delete(storyId);
+      } else {
+        next.add(storyId);
+      }
+      return next;
+    });
   };
 
   if (jobsByStory.length === 0) {
@@ -224,7 +224,8 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
   };
 
   const renderStoryCard = ({ item }: { item: StoryGroup }) => {
-    const isExpanded = expandedStories.has(item.storyId);
+    const isExpanded =
+      validStoryIds.has(item.storyId) && expandedStories.has(item.storyId);
     const summary = getStatusSummary(item.jobs);
     const completedCount = item.jobs.filter(
       (j) => j.status === "completed",

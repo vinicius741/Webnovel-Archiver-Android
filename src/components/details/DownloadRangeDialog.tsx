@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { View, StyleSheet } from "react-native";
 import {
   Button,
@@ -17,24 +16,27 @@ interface DownloadRangeDialogProps {
   totalChapters: number;
 }
 
-export const DownloadRangeDialog: React.FC<DownloadRangeDialogProps> = ({
-  visible,
+const getInitialRangeState = (totalChapters: number) => ({
+  start: "1",
+  end: totalChapters.toString(),
+  error: "",
+});
+
+interface DownloadRangeDialogContentProps {
+  onDismiss: () => void;
+  onDownload: (start: number, end: number) => void;
+  totalChapters: number;
+}
+
+const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
   onDismiss,
   onDownload,
   totalChapters,
 }) => {
-  const [start, setStart] = useState("1");
-  const [end, setEnd] = useState("");
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (visible) {
-      // Initialize form when dialog becomes visible
-      setStart("1");
-      setEnd(totalChapters.toString());
-      setError("");
-    }
-  }, [visible, totalChapters]);
+  const initialState = getInitialRangeState(totalChapters);
+  const [start, setStart] = useState(initialState.start);
+  const [end, setEnd] = useState(initialState.end);
+  const [error, setError] = useState(initialState.error);
 
   const handleDownload = () => {
     const startNum = parseInt(start, 10);
@@ -62,7 +64,7 @@ export const DownloadRangeDialog: React.FC<DownloadRangeDialogProps> = ({
 
   return (
     <Portal>
-      <Dialog visible={visible} onDismiss={onDismiss}>
+      <Dialog visible onDismiss={onDismiss}>
         <Dialog.Title>Download Range</Dialog.Title>
         <Dialog.Content>
           <Text variant="bodyMedium" style={{ marginBottom: 16 }}>
@@ -99,6 +101,23 @@ export const DownloadRangeDialog: React.FC<DownloadRangeDialogProps> = ({
         </Dialog.Actions>
       </Dialog>
     </Portal>
+  );
+};
+
+export const DownloadRangeDialog: React.FC<DownloadRangeDialogProps> = ({
+  visible,
+  onDismiss,
+  onDownload,
+  totalChapters,
+}) => {
+  if (!visible) return null;
+  return (
+    <DownloadRangeDialogContent
+      key={`download-range-${totalChapters}`}
+      onDismiss={onDismiss}
+      onDownload={onDownload}
+      totalChapters={totalChapters}
+    />
   );
 };
 
