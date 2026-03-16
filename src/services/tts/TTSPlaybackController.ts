@@ -1,4 +1,4 @@
-import { TTSSettings } from "../StorageService";
+import type { TTSSettings } from "../../types";
 import { TTSQueue, TTSQueueConfig } from "./TTSQueue";
 
 export enum TTSPlaybackState {
@@ -100,13 +100,14 @@ export class TTSPlaybackController {
 
   public async stop(): Promise<void> {
     this.sessionId++;
-    await this.queue?.stop();
+    const queue = this.queue;
     this.state.isSpeaking = false;
     this.state.isPaused = false;
     this.state.currentChunkIndex = 0;
     this.state.chunks = [];
     this.queue = null;
     this.emitStateChange();
+    await queue?.stop();
   }
 
   public async pause(): Promise<void> {

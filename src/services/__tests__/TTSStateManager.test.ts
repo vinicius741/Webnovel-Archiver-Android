@@ -81,6 +81,10 @@ describe("TTSStateManager", () => {
     mockController = controller;
   });
 
+  afterEach(() => {
+    ttsStateManager.clearPendingTimeouts();
+  });
+
   describe("Singleton Pattern", () => {
     it("should return the same instance", () => {
       const instance1 = ttsStateManager;

@@ -1,4 +1,5 @@
-import { storageService, TTSSettings, TTSSession } from "./StorageService";
+import { TTSSettings, TTSSession } from "../types";
+import { storageService } from "./StorageService";
 import {
   TTSPlaybackController,
   TTSPlaybackConfig,
@@ -33,6 +34,8 @@ class TTSStateManager {
   private static instance: TTSStateManager;
   private controller: TTSPlaybackController | null = null;
   private _settings: TTSSettings = { pitch: 1.0, rate: 1.0, chunkSize: 500 };
+  private initialized = false;
+  private initializationPromise: Promise<void> | null = null;
   private playbackContext: PlaybackContext | null = null;
   private pendingOnFinishCallback: (() => void) | null = null;
   private commandQueue: Promise<void> = Promise.resolve();
@@ -50,12 +53,7 @@ class TTSStateManager {
   private pendingStateEmit: TTSState | null = null;
   private static readonly STATE_EMIT_DEBOUNCE_MS = 100;
 
-  private constructor() {
-    void this.loadSettings();
-    ttsMediaSessionService.registerMediaButtonHandler(() => {
-      void this.playPause();
-    });
-  }
+  private constructor() {}
 
   public static getInstance(): TTSStateManager {
     if (!TTSStateManager.instance) {
@@ -77,6 +75,31 @@ class TTSStateManager {
 
   public clearPendingTimeouts(): void {
     this.cleanup();
+  }
+
+  public async initialize(): Promise<void> {
+    if (this.initialized) return;
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+      return;
+    }
+
+    this.initializationPromise = (async () => {
+      await this.loadSettings();
+      ttsMediaSessionService.registerMediaButtonHandler(() => {
+        void this.playPause();
+      });
+      this.initialized = true;
+    })().finally(() => {
+      this.initializationPromise = null;
+    });
+
+    await this.initializationPromise;
+  }
+
+  private async ensureInitialized() {
+    if (this.initialized) return;
+    await this.initialize();
   }
 
   private cleanup(): void {
@@ -225,6 +248,7 @@ class TTSStateManager {
   }
 
   public async updateSettings(newSettings: TTSSettings) {
+    await this.ensureInitialized();
     this._settings = newSettings;
     await storageService.saveTTSSettings(newSettings);
     this.controller?.updateSettings(newSettings);
@@ -253,6 +277,8 @@ class TTSStateManager {
     requestOrChunks: TTSStartRequest | string[],
     title: string = "Reading",
   ) {
+    await this.ensureInitialized();
+
     const request = Array.isArray(requestOrChunks)
       ? {
           chunks: requestOrChunks,
@@ -307,6 +333,7 @@ class TTSStateManager {
   }
 
   public async stop() {
+    await this.ensureInitialized();
     await this.enqueue(async () => {
       await this.controller?.stop();
       this.playbackContext = null;
@@ -316,26 +343,32 @@ class TTSStateManager {
   }
 
   public async pause() {
+    await this.ensureInitialized();
     await this.withStateSync(() => this.controller?.pause(), false);
   }
 
   public async resume() {
+    await this.ensureInitialized();
     await this.withStateSync(() => this.controller?.resume(), true);
   }
 
   public async playPause() {
+    await this.ensureInitialized();
     await this.withStateSync(() => this.controller?.playPause());
   }
 
   public async next() {
+    await this.ensureInitialized();
     await this.withStateSync(() => this.controller?.next(), true);
   }
 
   public async previous() {
+    await this.ensureInitialized();
     await this.withStateSync(() => this.controller?.previous(), true);
   }
 
   public async recoverPlaybackFromSilentStop() {
+    await this.ensureInitialized();
     await this.enqueue(async () => {
       const state = this.getState();
       if (!state || !state.isSpeaking || state.isPaused) return;
@@ -354,6 +387,8 @@ class TTSStateManager {
     chapterId: string;
     chapterTitle: string;
   }): Promise<boolean> {
+    await this.ensureInitialized();
+
     const existingState = this.getState();
     if (existingState?.isSpeaking || existingState?.isPaused) return false;
 

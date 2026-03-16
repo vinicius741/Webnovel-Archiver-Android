@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { DeviceEventEmitter, Platform } from "react-native";
 import Constants from "expo-constants";
@@ -7,7 +6,7 @@ import {
   TTS_STATE_EVENTS,
   TTSState,
 } from "../services/TTSStateManager";
-import { TTSSettings } from "../services/StorageService";
+import type { TTSSettings } from "../types";
 import { loadNotifee } from "../services/NotifeeTypes";
 import type { Event } from "@notifee/react-native/dist/types/Notification";
 
@@ -17,26 +16,79 @@ interface TTSPlaybackContext {
   chapterTitle?: string;
 }
 
+const DEFAULT_TTS_SETTINGS: TTSSettings = {
+  pitch: 1.0,
+  rate: 1.0,
+  chunkSize: 500,
+};
+
+const areTtsSettingsEqual = (
+  left: TTSSettings,
+  right: TTSSettings,
+): boolean =>
+  left.pitch === right.pitch &&
+  left.rate === right.rate &&
+  left.chunkSize === right.chunkSize &&
+  left.voiceIdentifier === right.voiceIdentifier;
+
+const getInitialControllerVisibility = (state: TTSState | null): boolean => {
+  if (!state) return false;
+  if (state.isSpeaking) return true;
+  if (!state.isSpeaking && !state.isPaused) return false;
+  return false;
+};
+
+const TTS_NOTIFICATION_ACTION_HANDLERS = {
+  tts_play: () => ttsStateManager.resume(),
+  tts_pause: () => ttsStateManager.pause(),
+  tts_next: () => ttsStateManager.next(),
+  tts_prev: () => ttsStateManager.previous(),
+  tts_stop: () => ttsStateManager.stop(),
+} as const;
+
+type TTSNotificationActionId = keyof typeof TTS_NOTIFICATION_ACTION_HANDLERS;
+
+const isTTSNotificationAction = (
+  actionId: string,
+): actionId is TTSNotificationActionId =>
+  Object.prototype.hasOwnProperty.call(
+    TTS_NOTIFICATION_ACTION_HANDLERS,
+    actionId,
+  );
+
 export const useTTS = (options?: { onFinish?: () => void }) => {
   const onFinishRef = useRef(options?.onFinish);
+  const initialTtsSettings = ttsStateManager.getSettings() || DEFAULT_TTS_SETTINGS;
+  const initialTtsSettingsRef = useRef<TTSSettings>(initialTtsSettings);
+  const latestTtsSettingsRef = useRef<TTSSettings>(initialTtsSettings);
 
   useEffect(() => {
     onFinishRef.current = options?.onFinish;
   }, [options?.onFinish]);
   // UI state synchronized from TTSStateManager
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [chunks, setChunks] = useState<string[]>([]);
-  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+  const [isSpeaking, setIsSpeaking] = useState(
+    () => ttsStateManager.getState()?.isSpeaking ?? false,
+  );
+  const [isPaused, setIsPaused] = useState(
+    () => ttsStateManager.getState()?.isPaused ?? false,
+  );
+  const [chunks, setChunks] = useState<string[]>(
+    () => ttsStateManager.getState()?.chunks ?? [],
+  );
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(
+    () => ttsStateManager.getState()?.currentChunkIndex ?? 0,
+  );
 
   // Local UI state
-  const [ttsSettings, setTtsSettings] = useState<TTSSettings>({
-    pitch: 1.0,
-    rate: 1.0,
-    chunkSize: 500,
-  });
+  const [ttsSettings, setTtsSettings] = useState<TTSSettings>(initialTtsSettings);
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
-  const [isControllerVisible, setIsControllerVisible] = useState(false);
+  const [isControllerVisible, setIsControllerVisible] = useState(
+    () => getInitialControllerVisibility(ttsStateManager.getState()),
+  );
+
+  useEffect(() => {
+    latestTtsSettingsRef.current = ttsSettings;
+  }, [ttsSettings]);
 
   // Sync state from TTSStateManager
   const syncState = useCallback((state: TTSState | null) => {
@@ -62,15 +114,42 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
     }
   }, []);
 
-  useEffect(() => {
-    // Load initial settings
-    const settings = ttsStateManager.getSettings();
-    if (settings) {
-      setTtsSettings(settings);
+  const handleForegroundNotificationEvent = useCallback((event: Event) => {
+    const actionId = event.detail.pressAction?.id;
+    if (!actionId || !isTTSNotificationAction(actionId)) {
+      return;
     }
+    void TTS_NOTIFICATION_ACTION_HANDLERS[actionId]();
+  }, []);
 
-    // Sync initial state
-    syncState(ttsStateManager.getState());
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeTtsState = async () => {
+      await ttsStateManager.initialize();
+      if (!mounted) return;
+
+      const initializedSettings = ttsStateManager.getSettings();
+      const currentSettings = latestTtsSettingsRef.current;
+      const initialSettings = initialTtsSettingsRef.current;
+      const isStillUsingInitialSettings = areTtsSettingsEqual(
+        currentSettings,
+        initialSettings,
+      );
+      const hasPersistedSettingsToHydrate = !areTtsSettingsEqual(
+        initializedSettings,
+        initialSettings,
+      );
+
+      if (!isStillUsingInitialSettings || !hasPersistedSettingsToHydrate) {
+        return;
+      }
+
+      latestTtsSettingsRef.current = initializedSettings;
+      setTtsSettings(initializedSettings);
+    };
+
+    void initializeTtsState();
 
     // Set up finish callback - always call this, even if onFinish is undefined
     const finishWrapper = () => {
@@ -102,24 +181,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
                 event.type === notifee.EventType.ACTION_PRESS &&
                 event.detail.pressAction
               ) {
-                const actionId = event.detail.pressAction.id;
-                switch (actionId) {
-                  case "tts_play":
-                    void ttsStateManager.resume();
-                    break;
-                  case "tts_pause":
-                    void ttsStateManager.pause();
-                    break;
-                  case "tts_next":
-                    void ttsStateManager.next();
-                    break;
-                  case "tts_prev":
-                    void ttsStateManager.previous();
-                    break;
-                  case "tts_stop":
-                    void ttsStateManager.stop();
-                    break;
-                }
+                handleForegroundNotificationEvent(event);
               }
             },
           );
@@ -130,6 +192,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
     }
 
     return () => {
+      mounted = false;
       subscription.remove();
       if (unsubscribeNotifee) unsubscribeNotifee();
       ttsStateManager.setOnFinishCallback(null);
@@ -137,9 +200,10 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
     // Note: options?.onFinish is intentionally omitted from deps because we use
     // onFinishRef to always get the latest callback without triggering effect re-runs.
     // The ref is updated in a separate useEffect above (lines 23-25).
-  }, [syncState]);
+  }, [handleForegroundNotificationEvent, syncState]);
 
   const handleSettingsChange = useCallback(async (newSettings: TTSSettings) => {
+    latestTtsSettingsRef.current = newSettings;
     setTtsSettings(newSettings);
     await ttsStateManager.updateSettings(newSettings);
   }, []);

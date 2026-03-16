@@ -1,5 +1,5 @@
 import * as Speech from "expo-speech";
-import { TTSSettings } from "../StorageService";
+import type { TTSSettings } from "../../types";
 
 export interface TTSQueueConfig {
   onChunkStart: (index: number) => void;
@@ -51,8 +51,9 @@ export class TTSQueue {
   public async playChunk(index: number): Promise<void> {
     if (index < 0 || index >= this.chunks.length) return;
 
-    // Stop any current speech to clear native callbacks
-    await this.stopCurrentSpeech();
+    if (this.activeChunkIndex !== null || this.isStopping) {
+      await this.stopCurrentSpeech();
+    }
 
     const currentToken = ++this.speakToken;
     const chunk = this.chunks[index];

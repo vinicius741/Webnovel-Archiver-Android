@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react-native";
+import { renderHook, act, waitFor } from "@testing-library/react-native";
 import { useTTS } from "../useTTS";
 import {
   ttsStateManager,
@@ -168,6 +168,50 @@ describe("useTTS", () => {
 
     expect(ttsStateManager.updateSettings).toHaveBeenCalledWith(newSettings);
     expect(result.current.ttsSettings).toEqual(newSettings);
+  });
+
+  it("should not overwrite updated settings after initialization finishes", async () => {
+    let resolveInitialize: (() => void) | undefined;
+    const persistedSettings = {
+      pitch: 1.2,
+      rate: 0.9,
+      chunkSize: 450,
+    };
+    const updatedSettings = {
+      pitch: 1.5,
+      rate: 0.8,
+      chunkSize: 600,
+    };
+
+    (ttsStateManager.initialize as jest.Mock).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInitialize = resolve;
+        }),
+    );
+
+    const getSettingsMock = ttsStateManager.getSettings as jest.Mock;
+    getSettingsMock.mockReturnValueOnce({
+      pitch: 1.0,
+      rate: 1.0,
+      chunkSize: 500,
+    });
+
+    const { result } = renderHook(() => useTTS());
+
+    await act(async () => {
+      await result.current.handleSettingsChange(updatedSettings);
+    });
+
+    getSettingsMock.mockReturnValue(persistedSettings);
+
+    await act(async () => {
+      resolveInitialize?.();
+    });
+
+    await waitFor(() => {
+      expect(result.current.ttsSettings).toEqual(updatedSettings);
+    });
   });
 
   it("should toggle settings visibility", () => {

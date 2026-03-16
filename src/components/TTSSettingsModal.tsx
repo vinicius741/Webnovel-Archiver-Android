@@ -18,7 +18,7 @@ import {
 } from "react-native-paper";
 import Slider from "@react-native-community/slider";
 import * as Speech from "expo-speech";
-import { TTSSettings } from "../services/StorageService";
+import type { TTSSettings } from "../types";
 
 interface Props {
   visible: boolean;
