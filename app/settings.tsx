@@ -4,6 +4,10 @@ import { StyleSheet, View, ScrollView } from "react-native";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useSettings } from "../src/hooks/useSettings";
 import { router } from "expo-router";
+import type { ThemeMode } from "../src/theme/ThemeContext";
+
+const isThemeMode = (value: string): value is ThemeMode =>
+  value === "system" || value === "light" || value === "dark";
 
 export default function SettingsScreen() {
   const {
@@ -25,7 +29,11 @@ export default function SettingsScreen() {
             </Text>
             <SegmentedButtons
               value={themeMode}
-              onValueChange={(value) => setThemeMode(value as any)}
+              onValueChange={(value) => {
+                if (isThemeMode(value)) {
+                  void setThemeMode(value);
+                }
+              }}
               buttons={[
                 {
                   value: "system",

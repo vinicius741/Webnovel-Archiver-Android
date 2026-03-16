@@ -11,7 +11,7 @@ import { Provider as PaperProvider } from "react-native-paper";
 import { LightTheme } from "./light";
 import { DarkTheme } from "./dark";
 
-type ThemeMode = "system" | "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark";
 
 interface ThemeContextType {
   themeMode: ThemeMode;
