@@ -10,7 +10,7 @@ module.exports = [
   ...tseslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "app/**/*.{ts,tsx}"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -43,6 +43,8 @@ module.exports = [
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+      "@typescript-eslint/no-unnecessary-type-assertion": "warn",
+      "@typescript-eslint/no-redundant-type-constituents": "warn",
       "@typescript-eslint/no-floating-promises": "warn",
       "@typescript-eslint/no-misused-promises": "off",
       "@typescript-eslint/require-await": "off",
@@ -55,12 +57,18 @@ module.exports = [
       "no-case-declarations": "off",
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/await-thenable": "warn",
-      "no-useless-escape": "off",
       ...reactHooksPlugin.configs.recommended.rules,
+      "react-hooks/set-state-in-effect": "warn",
+      "no-useless-escape": "off",
     },
   },
   {
-    files: ["src/**/*.test.{ts,tsx}", "src/**/__tests__/**"],
+    files: [
+      "src/**/*.test.{ts,tsx}",
+      "src/**/__tests__/**",
+      "app/**/*.test.{ts,tsx}",
+      "app/**/__tests__/**",
+    ],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": "off",

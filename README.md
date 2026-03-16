@@ -17,7 +17,7 @@ Webnovel Archiver is a powerful, local-first Android application designed to dow
 
 This project leverages a modern mobile stack optimized for performance and local file handling:
 
--   **Framework**: [React Native](https://reactnative.dev/) (via [Expo SDK 52+](https://expo.dev/))
+-   **Framework**: [React Native](https://reactnative.dev/) (via [Expo SDK 54+](https://expo.dev/))
 -   **Navigation**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based routing)
 -   **UI Library**: [React Native Paper](https://callstack.github.io/react-native-paper/) (Material Design)
 -   **Parsing Engine**: `cheerio` (Fast HTML parsing)
@@ -58,6 +58,14 @@ Before running the project, ensure you have the following installed:
 2.  **Android**: Scan the QR code with the **Expo Go** app.
 3.  **iOS**: Scan the QR code with the **Camera** app.
 
+## ✅ Quality Gates
+
+-   `npm run lint` checks `src/` and `app/` TypeScript files with ESLint.
+-   `npm run typecheck` runs strict TypeScript validation with `tsc --noEmit`.
+-   `npm run test` runs Jest tests.
+-   `npm run test:coverage` runs Jest with coverage collection across production files in `src/` and `app/`.
+-   `npm run check` runs lint, typecheck, and coverage in sequence.
+
 ### Build Local APK
 
 To generate an installable APK file directly on your machine (requires Android SDK):
@@ -86,13 +94,20 @@ npx eas build -p android --profile preview --local
 
 ## 📂 Project Structure
 
--   `src/app`: Screens and navigation logic (Expo Router).
+-   `app`: Screens and route definitions (Expo Router).
 -   `src/components`: Reusable UI components (StoryCard, ProgressBar, etc.).
 -   `src/services`: Core business logic.
     -   `src/services/source`: Contains the `SourceProvider` interface, `SourceRegistry`, and individual provider implementations (e.g., RoyalRoadProvider).
     -   `EpubGenerator.ts`: Logic for constructing EPUB files.
+-   `src/hooks`: Custom hooks for app and feature behavior.
+-   `src/types`: Shared TypeScript models and enums.
 -   `src/theme`: App theming and styling.
 -   `documentation`: Detailed tech docs and decision logs.
+
+## 🔧 Import Paths
+
+-   TypeScript path aliases are configured in `tsconfig.json` for `src/*` and `app/*`.
+-   Existing files still use relative imports in many places; aliases can be adopted incrementally in future refactors.
 
 ## 🤝 Contributing
 
