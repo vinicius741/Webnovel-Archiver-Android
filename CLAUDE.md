@@ -57,11 +57,40 @@ Download flow:
 - `src/services/source/` - Website scraping and parsing (providers)
 - `src/services/download/` - DownloadQueue and DownloadManager
 - `src/services/epub/` - EPUB generation (content processor, metadata, file system)
-- `src/services/storage/` - File system operations (expo-file-system wrapper)
+- `src/services/storage/` - Focused storage modules:
+  - `libraryStorage.ts` - Story/library CRUD operations, archive snapshots
+  - `preferencesStorage.ts` - Settings, TTS, tabs, chapter filters
+  - `fileSystem.ts` - expo-file-system wrapper for file operations
+  - `regexCleanupRulesStorage.ts` - Regex cleanup rules management
+  - `storageKeys.ts` - Centralized storage key constants
+- `src/services/story/` - Story synchronization orchestration (storySyncOrchestrator.ts)
 - `src/services/network/` - Fetcher with mobile User-Agent
+- `src/services/tts/` - Text-to-speech services and playback control
 - `DownloadService.ts` - High-level download orchestration (wraps DownloadManager)
 - `EpubGenerator.ts` - EPUB generation orchestration
-- `StorageService.ts` - AsyncStorage wrapper singleton
+- `StorageService.ts` - Legacy AsyncStorage wrapper (being phased out in favor of focused modules)
+
+### Architecture Patterns
+
+#### Container Component Pattern
+Complex screens are refactored into container components that separate concerns:
+- **Container components** (e.g., `StoryDetailsScreenContainer`, `ReaderScreenContainer`) handle business logic and data fetching
+- **View state hooks** (e.g., `useStoryDetailsViewState`, `useReaderScreenController`) manage UI state and interactions
+- **Presentational components** focus purely on rendering
+
+#### Storage Module Pattern
+Storage is organized into focused modules instead of a monolithic service:
+- `LibraryStorage` - Story CRUD, archive snapshots, chapter tracking
+- `PreferencesStorage` - App settings, TTS configuration, tabs
+- Each module uses centralized `STORAGE_KEYS` from `storageKeys.ts`
+- Clear separation between file system operations (`fileSystem.ts`) and data storage
+
+#### Story Sync Orchestration
+Story synchronization logic is extracted into `storySyncOrchestrator.ts`:
+- `prepareStorySyncData()` - Fetches metadata and prepares merge data
+- `buildStoryForAdd()` - Creates new story from sync data
+- `buildStoryForSync()` - Updates existing story with new data
+- `mergeChapters()` utility - Handles chapter list merging with existing downloads
 
 ### EPUB Generation
 Node.js EPUB libraries don't work in React Native. The app uses `jszip` with custom XML templating to build standard EPUB files. The logic is split across:
@@ -79,6 +108,8 @@ Screen-specific logic is encapsulated in `src/hooks/`:
 - `useStoryDownload.ts` - Download orchestration via DownloadService
 - `useStoryEPUB.ts` - EPUB generation via EpubGenerator
 - `useReaderNavigation.ts` - Chapter navigation and reading progress
+- `hooks/details/useStoryDetailsViewState.ts` - View state management for details screen
+- `hooks/reader/useReaderScreenController.ts` - Controller for reader screen
 
 ### Routing
 Expo Router file-based routing (`app/` directory):
@@ -91,18 +122,35 @@ Expo Router file-based routing (`app/` directory):
 - `settings.tsx` - App settings, TTS configuration, theme toggles
 
 ### Storage Schema
-AsyncStorage keys (versioned for migrations):
+AsyncStorage keys (versioned for migrations, defined in `src/services/storage/storageKeys.ts`):
 - `wa_library_v1` - Array of Story objects
 - `wa_settings_v1` - AppSettings (downloadConcurrency, downloadDelay, maxChaptersPerEpub)
 - `wa_sentence_removal_v1` - Array of sentence strings to filter
+- `wa_regex_cleanup_rules_v1` - Array of regex cleanup rules
 - `wa_tts_settings_v1` - TTSSettings (pitch, rate, voiceIdentifier, chunkSize)
+- `wa_tts_session_v1` - TTSSession (current playback state)
 - `wa_chapter_filter_settings_v1` - ChapterFilterSettings (filterMode: 'all' | 'hideNonDownloaded' | 'hideAboveBookmark')
+- `wa_tabs_v1` - Array of Tab objects for library organization
 
 File storage (expo-file-system):
 - `/Documents/novels/{storyId}/` - Story directory
 - Chapter files: `0000_title.html` (zero-padded 4-digit index)
+- Archive snapshots: Stories can be archived with `createArchivedStorySnapshot()` to preserve downloaded chapters when source changes
+
+### Archive Snapshots
+When a story's source URL changes or chapters are removed, the app creates an archived snapshot:
+- Preserves all downloaded chapter files
+- Creates new story ID with `__archive_` suffix
+- Marks with `isArchived: true`, `archiveReason`, and `archiveOfStoryId`
+- Prevents data loss when syncing from changed sources
 
 ## Important Implementation Details
+
+### Platform Detection
+Use `src/utils/platform.ts` for environment detection:
+- `isExpoGo()` - Returns true when running in Expo Go (limited native module support)
+- `isAndroidNative()` - Returns true on Android with full native module support
+- Use these instead of checking `Constants.executionEnvironment` directly
 
 ### Performance
 - Chapters saved to disk immediately, not held in memory
@@ -118,8 +166,10 @@ Polyfills Node.js modules for React Native compatibility:
 - Tests co-located in `__tests__/` directories within each module
 - `jest-fetch-mock` for network mocking
 - AsyncStorage and Expo Router mocked in `jest-setup.ts`
-- Coverage **only** for `RoyalRoadProvider.ts` and `DownloadService.ts` (per jest.config.js)
+- Coverage collection is **disabled by default**; use `npm run test:coverage` for coverage
+- Tests now cover: services (storage, source, story, download), hooks, components, utilities
 - Run single test: `npm test -- --testNamePattern="test name"`
+- Run specific test file: `npm test -- src/services/__tests__/StorageService.test.ts`
 
 ### TypeScript
 Strict mode enabled with Expo base config. Absolute imports from `src/` preferred.

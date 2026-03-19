@@ -5,13 +5,16 @@ This file provides guidelines for agentic coding assistants working on this code
 ## Build/Lint/Test Commands
 
 ### Available Scripts
-- `npm test` - Run all Jest tests
+- `npm test` - Run all Jest tests (coverage disabled by default)
+- `npm run test:coverage` - Run Jest tests with coverage collection
 - `npm start` - Start Expo development server
 - `npm run android` - Run on Android device/emulator
 - `npm run ios` - Run on iOS device/simulator
 - `npm run web` - Run web version
 - `npm run lint` - Run ESLint on all TypeScript files
 - `npm run lint:fix` - Run ESLint with auto-fix
+- `npm run typecheck` - Run TypeScript validation with `tsc --noEmit`
+- `npm run check` - Run lint, typecheck, and coverage in sequence
 
 ### Running Single Tests
 - `npm test -- src/services/__tests__/EpubGenerator.test.ts` - Run specific test file
@@ -52,13 +55,28 @@ TypeScript is configured with strict mode.
 
 ### File Organization
 - `src/components/` - UI components (grouped by feature)
+  - `components/details/` - Story details screen components and containers
+  - `components/reader/` - Reader screen components and containers
+  - `components/library/` - Library screen components
+  - `components/downloads/` - Download manager components
+  - `components/tabs/` - Tab management components
 - `src/hooks/` - Custom React hooks
+  - `hooks/details/` - Details screen hooks (e.g., `useStoryDetailsViewState`)
+  - `hooks/reader/` - Reader screen hooks (e.g., `useReaderScreenController`)
 - `src/services/` - Business logic and external integrations
   - `services/download/` - Download management
   - `services/source/` - Novel source providers
-  - `services/storage/` - File system operations
+  - `services/storage/` - Focused storage modules
+    - `storage/libraryStorage.ts` - Story/library CRUD operations
+    - `storage/preferencesStorage.ts` - Settings, TTS, tabs storage
+    - `storage/fileSystem.ts` - File system operations
+    - `storage/regexCleanupRulesStorage.ts` - Regex cleanup rules
+    - `storage/storageKeys.ts` - Centralized storage key constants
+  - `services/story/` - Story synchronization orchestration
+  - `services/tts/` - Text-to-speech services
 - `src/types/` - TypeScript type definitions
 - `src/utils/` - Pure utility functions
+  - `utils/platform.ts` - Platform detection utilities (`isExpoGo`, `isAndroidNative`)
 - `src/context/` - React contexts
 - `src/theme/` - Theme configurations
 - Tests co-located in `__tests__/` directories alongside implementation
@@ -76,6 +94,8 @@ TypeScript is configured with strict mode.
 - Describe blocks to group related tests
 - Test names should describe expected behavior ("should generate epub")
 - Test both success and error cases
+- Coverage disabled by default; use `npm run test:coverage` for coverage
+- Tests cover: services, hooks, components, utilities
 
 ### Provider Pattern
 - Implement `SourceProvider` interface for novel sources
@@ -88,3 +108,7 @@ TypeScript is configured with strict mode.
 - Use `react-native-paper` for UI components
 - Use `expo-constants` to detect runtime environment
 - Cheerio for HTML parsing in providers
+- Container component pattern: Extract screen logic into container components (e.g., `StoryDetailsScreenContainer`, `ReaderScreenContainer`)
+- View state hooks: Separate view state management from business logic (e.g., `useStoryDetailsViewState`, `useReaderScreenController`)
+- Storage modules: Use focused storage classes (`LibraryStorage`, `PreferencesStorage`) instead of monolithic `StorageService`
+- Platform utilities: Use `isExpoGo()` and `isAndroidNative()` from `utils/platform.ts` for environment detection
