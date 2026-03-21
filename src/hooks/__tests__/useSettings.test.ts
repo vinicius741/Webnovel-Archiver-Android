@@ -69,8 +69,8 @@ describe("useSettings", () => {
       result.current.handleConcurrencyChange("5");
     });
 
-    await act(async () => {
-      await result.current.handleConcurrencyBlur();
+    act(() => {
+      result.current.handleConcurrencyBlur();
     });
 
     expect(storageService.saveSettings).toHaveBeenCalledWith({
@@ -92,8 +92,8 @@ describe("useSettings", () => {
     });
     expect(result.current.delayError).toBe("Must be 0 or greater");
 
-    await act(async () => {
-      await result.current.handleDelayBlur();
+    act(() => {
+      result.current.handleDelayBlur();
     });
 
     expect(result.current.delay).toBe("0");

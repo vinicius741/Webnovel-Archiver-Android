@@ -16,6 +16,7 @@ jest.mock("../../services/StorageService", () => ({
 jest.mock("expo-router", () => ({
   useFocusEffect: jest.fn((callback) => {
     const { useEffect } = require("react");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(callback, []);
   }),
 }));

@@ -29,7 +29,7 @@ export default function SentenceRemovalScreen() {
   const { exportRules } = useExportRules();
 
   const handleExport = () => {
-    exportRules(sentences, regexRules);
+    void exportRules(sentences, regexRules);
   };
 
   if (loading) {
@@ -63,7 +63,7 @@ export default function SentenceRemovalScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <SegmentedButtons
           value={activeTab}
-          onValueChange={(value) => setActiveTab(value as TabValue)}
+          onValueChange={(value) => setActiveTab(value)}
           buttons={[
             { value: "sentences", label: "Sentences" },
             { value: "regex", label: "Regex Rules" },

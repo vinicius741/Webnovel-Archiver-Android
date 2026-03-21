@@ -130,8 +130,8 @@ describe("StoryDescription", () => {
 
     const description = getByText("This is a test story description.");
 
-    await fireEvent.press(description);
-    await fireEvent.press(description);
+    fireEvent.press(description);
+    fireEvent.press(description);
 
     expect(Clipboard.setStringAsync).toHaveBeenCalledWith(
       "This is a test story description.",
@@ -145,7 +145,7 @@ describe("StoryDescription", () => {
 
     const description = getByText("This is a test story description.");
 
-    await fireEvent.press(description);
+    fireEvent.press(description);
 
     expect(Clipboard.setStringAsync).not.toHaveBeenCalled();
   });

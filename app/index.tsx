@@ -45,7 +45,6 @@ export default function HomeScreen() {
 
   const {
     stories: filteredStories,
-    allStories,
     refreshing,
     onRefresh,
     searchQuery,
@@ -290,11 +289,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    padding: 16,
-    paddingTop: 60,
-    backgroundColor: "transparent",
-  },
   listContent: {
     padding: 16,
     paddingBottom: 80,

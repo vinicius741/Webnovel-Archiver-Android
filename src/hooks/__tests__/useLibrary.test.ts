@@ -341,8 +341,8 @@ describe("useLibrary", () => {
 
     expect(result.current.refreshing).toBe(false);
 
-    await act(async () => {
-      await result.current.onRefresh();
+    act(() => {
+      result.current.onRefresh();
     });
 
     expect(storageService.getLibrary).toHaveBeenCalledTimes(2);

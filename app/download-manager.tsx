@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from "react";
 import { StyleSheet, View } from "react-native";
-import { Text, useTheme, Card, IconButton, Portal } from "react-native-paper";
+import { useTheme, Card, IconButton, Portal } from "react-native-paper";
 import { Stack } from "expo-router";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useDownloadQueue } from "../src/hooks/useDownloadQueue";

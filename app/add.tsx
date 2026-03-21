@@ -21,7 +21,7 @@ export default function AddStoryScreen() {
   const [selectedTabId, setSelectedTabId] = useState<string | undefined>(undefined);
 
   const onAdd = useCallback(() => {
-    handleAdd(selectedTabId);
+    void handleAdd(selectedTabId);
   }, [handleAdd, selectedTabId]);
 
   const handleSelectTab = (value: string) => {
@@ -74,7 +74,7 @@ export default function AddStoryScreen() {
                   Unassigned
                 </Text>
               </TouchableOpacity>
-              {tabs.map((tab, index) => (
+              {tabs.map((tab) => (
                 <React.Fragment key={tab.id}>
                   <Divider />
                   <TouchableOpacity

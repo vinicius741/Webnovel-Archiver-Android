@@ -105,7 +105,7 @@ describe("useStoryActions", () => {
         "Delete Novel",
         "Delete",
       );
-      await deleteButtonPress();
+      await act(() => deleteButtonPress());
 
       expect(storageService.deleteStory).toHaveBeenCalledWith(mockStory.id);
       expect(mockOnStoryDeleted).toHaveBeenCalled();

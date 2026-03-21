@@ -9,19 +9,17 @@ import {
 import {
   Text,
   IconButton,
-  List,
   FAB,
   useTheme,
   Divider,
 } from "react-native-paper";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useTabManagement } from "../src/hooks/useTabManagement";
 import { TabDialog } from "../src/components/tabs/TabDialog";
 import { Tab } from "../src/types/tab";
 
 export default function TabManagementScreen() {
-  const router = useRouter();
   const theme = useTheme();
   const {
     tabs,

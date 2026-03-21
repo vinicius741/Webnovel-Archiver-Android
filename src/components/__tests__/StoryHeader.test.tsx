@@ -164,8 +164,8 @@ describe("StoryHeader", () => {
 
     const title = getByText("Test Story");
 
-    await fireEvent.press(title);
-    await fireEvent.press(title);
+    fireEvent.press(title);
+    fireEvent.press(title);
 
     expect(openURLSpy).toHaveBeenCalledWith("https://example.com");
   });
@@ -175,7 +175,7 @@ describe("StoryHeader", () => {
 
     const title = getByText("Test Story");
 
-    await fireEvent.press(title);
+    fireEvent.press(title);
 
     expect(openURLSpy).not.toHaveBeenCalled();
   });
