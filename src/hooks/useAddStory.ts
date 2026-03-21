@@ -24,7 +24,7 @@ export const useAddStory = () => {
     }
   };
 
-  const handleAdd = async () => {
+  const handleAdd = async (tabId?: string) => {
     if (!url) return;
     setLoading(true);
     setStatusMessage("Initializing...");
@@ -38,7 +38,7 @@ export const useAddStory = () => {
       });
 
       setStatusMessage("Saving story...");
-      const story = buildStoryForAdd(prepared);
+      const story = buildStoryForAdd(prepared, tabId);
 
       await storageService.addStory(story);
       setLoading(false);

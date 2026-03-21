@@ -112,7 +112,10 @@ export const prepareStorySyncData = async ({
   };
 };
 
-export const buildStoryForAdd = (prepared: PreparedStorySyncData): Story => {
+export const buildStoryForAdd = (
+  prepared: PreparedStorySyncData,
+  tabId?: string,
+): Story => {
   const existingStory = prepared.existingStory;
   const { metadata, mergeResult } = prepared;
 
@@ -136,6 +139,7 @@ export const buildStoryForAdd = (prepared: PreparedStorySyncData): Story => {
     downloadedChapters: mergeResult.downloadedCount,
     chapters: mergeResult.chapters,
     lastUpdated: Date.now(),
+    tabId: tabId ?? undefined,
   };
 
   if (!existingStory) {
