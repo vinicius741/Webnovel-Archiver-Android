@@ -48,6 +48,7 @@ export const StoryDetailsScreenContainer: React.FC<
     generateEpub,
     readEpub,
     readEpubAtPath,
+    downloadAll,
     downloadRange,
     applySentenceRemoval,
     updateStory,
@@ -144,9 +145,7 @@ export const StoryDetailsScreenContainer: React.FC<
       onGenerate={generateEpub}
       onRead={readEpub}
       onReadEpubAtPath={readEpubAtPath}
-      onDownloadAll={() =>
-        story.totalChapters > 0 && downloadRange(1, story.totalChapters)
-      }
+      onDownloadAll={downloadAll}
       onViewDownloads={() => router.push("/download-manager")}
       onDownloadRange={downloadRange}
       onSetShowDownloadRange={setShowDownloadRange}
