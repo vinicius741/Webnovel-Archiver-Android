@@ -209,9 +209,16 @@ describe("PreferencesStorage", () => {
     it("should save TTS session to AsyncStorage", async () => {
       const session = {
         storyId: "story-1",
-        chapterIndex: 0,
-        paragraphIndex: 5,
-        timestamp: Date.now(),
+        chapterId: "ch-1",
+        chapterTitle: "Chapter 1",
+        currentChunkIndex: 0,
+        isPaused: false,
+        wasPlaying: false,
+        chunkSize: 5,
+        rate: 1.0,
+        pitch: 1.0,
+        updatedAt: Date.now(),
+        sessionVersion: 1,
       };
 
       await preferencesStorage.saveTTSSession(session);
@@ -279,8 +286,8 @@ describe("PreferencesStorage", () => {
   describe("getTabs", () => {
     it("should return stored tabs", async () => {
       const tabs = [
-        { id: "tab-1", name: "Reading", order: 0 },
-        { id: "tab-2", name: "Completed", order: 1 },
+        { id: "tab-1", name: "Reading", order: 0, createdAt: 1000 },
+        { id: "tab-2", name: "Completed", order: 1, createdAt: 2000 },
       ];
       (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
         JSON.stringify(tabs),
@@ -313,7 +320,7 @@ describe("PreferencesStorage", () => {
   describe("saveTabs", () => {
     it("should save tabs to AsyncStorage", async () => {
       const tabs = [
-        { id: "tab-1", name: "Reading", order: 0 },
+        { id: "tab-1", name: "Reading", order: 0, createdAt: 1000 },
       ];
 
       await preferencesStorage.saveTabs(tabs);

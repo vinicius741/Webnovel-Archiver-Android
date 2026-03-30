@@ -20,10 +20,12 @@ jest.mock("../../../utils/mergeChapters");
 describe("storySyncOrchestrator", () => {
   const mockProvider: SourceProvider = {
     name: "TestProvider",
+    baseUrl: "https://test.com",
     isSource: jest.fn().mockReturnValue(true),
     getStoryId: jest.fn().mockReturnValue("test-story-id"),
     parseMetadata: jest.fn(),
     getChapterList: jest.fn(),
+    parseChapterContent: jest.fn(),
     getChapterId: (url: string) => {
       const match = url.match(/\/chapter\/(\d+)/);
       return match ? match[1] : undefined;
@@ -36,7 +38,7 @@ describe("storySyncOrchestrator", () => {
     coverUrl: "http://test.com/cover.jpg",
     description: "Test description",
     tags: ["fantasy", "adventure"],
-    score: 4.5,
+    score: "4.5",
     canonicalUrl: "http://test.com/canonical",
   };
 
@@ -48,7 +50,7 @@ describe("storySyncOrchestrator", () => {
     coverUrl: "http://test.com/cover.jpg",
     description: "Test description",
     tags: ["fantasy"],
-    score: 4.5,
+    score: "4.5",
     chapters: [
       {
         id: "c1",
@@ -492,7 +494,7 @@ describe("storySyncOrchestrator", () => {
         coverUrl: "",
         description: "",
         tags: [] as string[],
-        score: 0,
+        score: "0",
       };
       const prepared: PreparedStorySyncData = {
         provider: mockProvider,
@@ -593,7 +595,7 @@ describe("storySyncOrchestrator", () => {
         isArchived: true,
         archiveOfStoryId: "original-id",
         archivedAt: Date.now(),
-        archiveReason: "user_requested",
+        archiveReason: "source_chapters_removed",
       };
       const prepared: PreparedStorySyncData = {
         provider: mockProvider,

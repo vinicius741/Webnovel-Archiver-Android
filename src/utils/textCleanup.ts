@@ -1,7 +1,9 @@
 import * as cheerio from "cheerio";
+import { ElementType } from "domelementtype";
 import { RegexCleanupRule } from "../types";
 
-type AnyNode = cheerio.Element;
+type AnyNode = import("domhandler").AnyNode;
+type Element = import("domhandler").Element;
 
 const MAX_REGEX_PATTERN_LENGTH = 500;
 const MAX_RULE_NAME_LENGTH = 80;
@@ -332,9 +334,9 @@ const hasSkippedAncestor = (node: AnyNode): boolean => {
   let current = node.parent;
   while (current) {
     if (
-      current.type === "tag" ||
-      current.type === "script" ||
-      current.type === "style"
+      current.type === ElementType.Tag ||
+      current.type === ElementType.Script ||
+      current.type === ElementType.Style
     ) {
       const tagName = String(current.name || "").toLowerCase();
       if (SKIP_TAGS.has(tagName)) {
@@ -364,14 +366,14 @@ export const applyDownloadCleanup = (
       if (!node) return;
 
       if (
-        node.type === "text" &&
+        node.type === ElementType.Text &&
         typeof node.data === "string" &&
         !hasSkippedAncestor(node)
       ) {
         node.data = cleanupRunner(node.data);
       }
 
-      const children = (node as cheerio.TagElement).children;
+      const children = (node as Element).children;
       if (Array.isArray(children)) {
         children.forEach(processNode);
       }

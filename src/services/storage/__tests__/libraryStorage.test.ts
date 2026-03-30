@@ -311,13 +311,13 @@ describe("LibraryStorage", () => {
 
       const result = await libraryStorage.createArchivedStorySnapshot(
         mockStory,
-        "user_requested",
+        "source_chapters_removed",
       );
 
       expect(result.id).toMatch(/^test-story-1__archive_\d+_[a-z0-9]+$/);
       expect(result.isArchived).toBe(true);
       expect(result.archiveOfStoryId).toBe("test-story-1");
-      expect(result.archiveReason).toBe("user_requested");
+      expect(result.archiveReason).toBe("source_chapters_removed");
       expect(result.archivedAt).toBeGreaterThan(0);
       expect(fileSystem.copyChapterToNovel).toHaveBeenCalledWith(
         "file://c1.html",
@@ -354,7 +354,7 @@ describe("LibraryStorage", () => {
 
       const result = await libraryStorage.createArchivedStorySnapshot(
         storyWithEpub,
-        "user_requested",
+        "source_chapters_removed",
       );
 
       expect(result.epubPath).toBeUndefined();

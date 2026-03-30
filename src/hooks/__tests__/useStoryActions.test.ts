@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react-native";
+import { renderHook, act } from "@testing-library/react-native";
 import { useStoryActions } from "../useStoryActions";
 import { storageService } from "../../services/StorageService";
 import { useAppAlert } from "../../context/AlertContext";
@@ -105,7 +105,9 @@ describe("useStoryActions", () => {
         "Delete Novel",
         "Delete",
       );
-      await act(() => deleteButtonPress());
+      await act(async () => {
+        deleteButtonPress();
+      });
 
       expect(storageService.deleteStory).toHaveBeenCalledWith(mockStory.id);
       expect(mockOnStoryDeleted).toHaveBeenCalled();

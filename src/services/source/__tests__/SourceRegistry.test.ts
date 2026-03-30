@@ -25,7 +25,12 @@ describe("SourceRegistry", () => {
     it("should register a new provider", () => {
       const customProvider: SourceProvider = {
         name: "CustomProvider",
+        baseUrl: "https://custom.com",
         isSource: (url) => url.includes("custom.com"),
+        getStoryId: (url) => url.split("/").pop() || "",
+        parseMetadata: (html: string) => ({ title: "", author: "" }),
+        getChapterList: async () => [],
+        parseChapterContent: (html: string) => "",
       };
 
       sourceRegistry.register(customProvider);
@@ -37,11 +42,21 @@ describe("SourceRegistry", () => {
     it("should allow multiple providers", () => {
       const provider1: SourceProvider = {
         name: "Provider1",
+        baseUrl: "https://provider1.com",
         isSource: (url) => url.includes("provider1.com"),
+        getStoryId: (url) => url.split("/").pop() || "",
+        parseMetadata: (html: string) => ({ title: "", author: "" }),
+        getChapterList: async () => [],
+        parseChapterContent: (html: string) => "",
       };
       const provider2: SourceProvider = {
         name: "Provider2",
+        baseUrl: "https://provider2.com",
         isSource: (url) => url.includes("provider2.com"),
+        getStoryId: (url) => url.split("/").pop() || "",
+        parseMetadata: (html: string) => ({ title: "", author: "" }),
+        getChapterList: async () => [],
+        parseChapterContent: (html: string) => "",
       };
 
       sourceRegistry.register(provider1);
@@ -60,7 +75,12 @@ describe("SourceRegistry", () => {
     it("should return provider for matching URL", () => {
       const provider: SourceProvider = {
         name: "TestProvider",
+        baseUrl: "https://test.com",
         isSource: (url) => url.includes("test.com"),
+        getStoryId: (url) => url.split("/").pop() || "",
+        parseMetadata: (html: string) => ({ title: "", author: "" }),
+        getChapterList: async () => [],
+        parseChapterContent: (html: string) => "",
       };
       sourceRegistry.register(provider);
 
@@ -78,7 +98,12 @@ describe("SourceRegistry", () => {
     it("should return first matching provider", () => {
       const provider1: SourceProvider = {
         name: "ProviderFirst",
-        isSource: () => true, // Always matches
+        baseUrl: "https://first.com",
+        isSource: () => true,
+        getStoryId: (url) => url.split("/").pop() || "",
+        parseMetadata: (html: string) => ({ title: "", author: "" }),
+        getChapterList: async () => [],
+        parseChapterContent: (html: string) => "",
       };
       sourceRegistry.register(provider1);
 
