@@ -2,6 +2,12 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
+config.resolver.unstable_conditionNames = ['require', 'browser'];
+config.resolver.unstable_conditionsByPlatform = {
+  android: ['browser'],
+  ios: ['browser'],
+};
+
 config.resolver.extraNodeModules = {
   stream: require.resolve('stream-browserify'),
   events: require.resolve('events'),
