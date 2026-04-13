@@ -1,10 +1,12 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
   FlatList,
   RefreshControl,
   ScrollView,
+  Animated,
+  Pressable,
 } from "react-native";
 import {
   Text,
@@ -72,6 +74,64 @@ export default function HomeScreen() {
   } = useLibrarySelection();
 
   const [moveDialogVisible, setMoveDialogVisible] = useState(false);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [contentHeight, setContentHeight] = useState(200);
+
+  const animatedHeight = useMemo(() => new Animated.Value(0), []);
+  const animatedOpacity = useMemo(() => new Animated.Value(0), []);
+  const animatedRotation = useMemo(() => new Animated.Value(0), []);
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  const hasActiveFilters = useMemo(
+    () => searchQuery.length > 0 || selectedTags.length > 0,
+    [searchQuery, selectedTags],
+  );
+
+  const handleContentLayout = useCallback(
+    (e: { nativeEvent: { layout: { height: number } } }) => {
+      const h = e.nativeEvent.layout.height;
+      if (h > 0) setContentHeight(h);
+    },
+    [],
+  );
+
+  const toggleFilters = useCallback(() => {
+    if (animationRef.current) {
+      animationRef.current.stop();
+    }
+    const newValue = !isFiltersExpanded;
+    setIsFiltersExpanded(newValue);
+
+    const anim = Animated.parallel([
+      Animated.timing(animatedHeight, {
+        toValue: newValue ? 1 : 0,
+        duration: 250,
+        useNativeDriver: false,
+      }),
+      Animated.timing(animatedOpacity, {
+        toValue: newValue ? 1 : 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(animatedRotation, {
+        toValue: newValue ? 1 : 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]);
+    animationRef.current = anim;
+    anim.start(() => {
+      animationRef.current = null;
+    });
+  }, [isFiltersExpanded, animatedHeight, animatedOpacity, animatedRotation]);
+
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) {
+        animationRef.current.stop();
+      }
+    };
+  }, []);
 
   const handleSortSelect = (option: SortOption) => {
     if (sortOption === option) {
@@ -130,6 +190,49 @@ export default function HomeScreen() {
     screenWidth - safeAreaHorizontal - totalPadding - (numColumns - 1) * GAP;
   const itemWidth = availableWidth / numColumns;
 
+  const filtersContent = (
+    <>
+      <View style={styles.searchRow}>
+        <Searchbar
+          placeholder="Search stories"
+          onChangeText={setSearchQuery}
+          value={searchQuery}
+          style={styles.searchBar}
+          placeholderTextColor={theme.colors.onSurfaceVariant}
+          iconColor={theme.colors.onSurfaceVariant}
+          inputStyle={{ color: theme.colors.onSurface }}
+        />
+        <SortButton
+          sortOption={sortOption}
+          sortDirection={sortDirection}
+          onSortSelect={handleSortSelect}
+          onToggleDirection={handleToggleDirection}
+        />
+      </View>
+      {allTags.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tagsContainer}
+          style={styles.tagsScroll}
+        >
+          {allTags.map((tag) => (
+            <Chip
+              key={tag}
+              selected={selectedTags.includes(tag)}
+              onPress={() => toggleTag(tag)}
+              style={styles.tagChip}
+              showSelectedOverlay
+              compact
+            >
+              {tag}
+            </Chip>
+          ))}
+        </ScrollView>
+      )}
+    </>
+  );
+
   return (
     <ScreenContainer
       edges={["bottom", "left", "right"]}
@@ -154,46 +257,65 @@ export default function HomeScreen() {
             showUnassignedTab={showUnassignedTab}
             unassignedCount={unassignedCount}
             onSelectTab={selectTab}
+            trailing={
+              <Pressable
+                onPress={toggleFilters}
+                style={styles.filterButton}
+                accessibilityLabel="Toggle filters"
+                accessibilityHint="Show or hide search and tag filters"
+                accessibilityState={{ expanded: isFiltersExpanded }}
+              >
+                <View style={styles.filterButtonInner}>
+                  <Animated.View
+                    style={{
+                      transform: [{
+                        rotate: animatedRotation.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '180deg'],
+                        }),
+                      }],
+                    }}
+                  >
+                    <IconButton
+                      icon="chevron-down"
+                      size={20}
+                      iconColor={theme.colors.onSurfaceVariant}
+                      style={styles.filterIcon}
+                    />
+                  </Animated.View>
+                  {hasActiveFilters && (
+                    <View
+                      style={[
+                        styles.filterIndicator,
+                        { backgroundColor: theme.colors.primary },
+                      ]}
+                    />
+                  )}
+                </View>
+              </Pressable>
+            }
           />
         )}
-        <View style={styles.searchRow}>
-          <Searchbar
-            placeholder="Search stories"
-            onChangeText={setSearchQuery}
-            value={searchQuery}
-            style={styles.searchBar}
-            placeholderTextColor={theme.colors.onSurfaceVariant}
-            iconColor={theme.colors.onSurfaceVariant}
-            inputStyle={{ color: theme.colors.onSurface }}
-          />
-          <SortButton
-            sortOption={sortOption}
-            sortDirection={sortDirection}
-            onSortSelect={handleSortSelect}
-            onToggleDirection={handleToggleDirection}
-          />
-        </View>
 
-        {allTags.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tagsContainer}
-            style={styles.tagsScroll}
+        {hasCustomTabs ? (
+          <Animated.View
+            style={[
+              styles.filtersContainer,
+              {
+                height: animatedHeight.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, contentHeight],
+                }),
+                overflow: 'hidden',
+              },
+            ]}
           >
-            {allTags.map((tag) => (
-              <Chip
-                key={tag}
-                selected={selectedTags.includes(tag)}
-                onPress={() => toggleTag(tag)}
-                style={styles.tagChip}
-                showSelectedOverlay
-                compact
-              >
-                {tag}
-              </Chip>
-            ))}
-          </ScrollView>
+            <Animated.View style={{ opacity: animatedOpacity }}>
+              <View onLayout={handleContentLayout}>{filtersContent}</View>
+            </Animated.View>
+          </Animated.View>
+        ) : (
+          <View onLayout={handleContentLayout}>{filtersContent}</View>
         )}
       </View>
       <FlatList
@@ -310,16 +432,40 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 4,
     backgroundColor: "transparent",
     width: "100%",
     maxWidth: 600,
     alignSelf: "center",
   },
+  filtersContainer: {
+    width: "100%",
+  },
+  filterButton: {
+    padding: 4,
+  },
+  filterButtonInner: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterIcon: {
+    margin: 0,
+    padding: 0,
+  },
+  filterIndicator: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    paddingTop: 8,
   },
   searchBar: {
     flex: 1,

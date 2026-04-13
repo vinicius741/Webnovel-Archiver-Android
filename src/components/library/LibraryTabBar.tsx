@@ -9,6 +9,7 @@ interface LibraryTabBarProps {
   showUnassignedTab: boolean;
   unassignedCount: number;
   onSelectTab: (tabId: string | null) => void;
+  trailing?: React.ReactNode;
 }
 
 export const LibraryTabBar = ({
@@ -17,17 +18,20 @@ export const LibraryTabBar = ({
   showUnassignedTab,
   unassignedCount,
   onSelectTab,
+  trailing,
 }: LibraryTabBarProps) => {
   const theme = useTheme();
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {tabs.map((tab) => (
+      <View style={styles.row}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          style={styles.scrollView}
+        >
+          {tabs.map((tab) => (
           <Pressable
             key={tab.id}
             onPress={() => onSelectTab(tab.id)}
@@ -98,7 +102,9 @@ export const LibraryTabBar = ({
             </View>
           </Pressable>
         )}
-      </ScrollView>
+        </ScrollView>
+        {trailing && <View style={styles.trailingContainer}>{trailing}</View>}
+      </View>
     </View>
   );
 };
@@ -125,5 +131,15 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontWeight: "600",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  scrollView: {
+    flexShrink: 1,
+  },
+  trailingContainer: {
+    marginLeft: 8,
   },
 });

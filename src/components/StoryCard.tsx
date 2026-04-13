@@ -78,12 +78,28 @@ export const StoryCard = ({
             )}
           </View>
         )}
-        {coverUrl && (
+        {coverUrl ? (
           <Image
             source={{ uri: coverUrl }}
             style={styles.coverImage}
             testID="story-card-cover"
+            accessibilityLabel={`${title} cover`}
           />
+        ) : (
+          <View
+            style={[
+              styles.coverImage,
+              styles.placeholderCover,
+              { backgroundColor: theme.colors.surfaceVariant },
+            ]}
+          >
+            <IconButton
+              icon="book-open-variant"
+              size={28}
+              iconColor={theme.colors.onSurfaceVariant}
+              style={styles.placeholderIcon}
+            />
+          </View>
         )}
         <View style={styles.textContainer}>
           <Text
@@ -168,6 +184,13 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 8,
     marginRight: 16,
+  },
+  placeholderCover: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  placeholderIcon: {
+    margin: 0,
   },
   textContainer: {
     flex: 1,

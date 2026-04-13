@@ -32,7 +32,7 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
 
   return (
     <View testID="story-header" style={styles.container}>
-      {story.coverUrl && (
+      {story.coverUrl ? (
         <>
           <Pressable onPress={() => setViewerVisible(true)}>
             <Image
@@ -48,6 +48,21 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({ story }) => {
             onRequestClose={() => setViewerVisible(false)}
           />
         </>
+      ) : (
+        <View
+          style={[
+            styles.coverImage,
+            styles.placeholderCover,
+            { backgroundColor: theme.colors.surfaceVariant },
+          ]}
+        >
+          <IconButton
+            icon="book-open-variant"
+            size={48}
+            iconColor={theme.colors.onSurfaceVariant}
+            style={styles.placeholderIcon}
+          />
+        </View>
       )}
       <Pressable onPress={handleTitlePress}>
         <Text variant="headlineMedium" style={styles.title}>
@@ -118,6 +133,13 @@ const styles = StyleSheet.create({
     height: 225,
     borderRadius: 8,
     marginBottom: 20,
+  },
+  placeholderCover: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  placeholderIcon: {
+    margin: 0,
   },
   title: {
     marginBottom: 8,
