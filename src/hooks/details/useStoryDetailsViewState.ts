@@ -87,6 +87,15 @@ export const useStoryDetailsViewState = ({
       story.chapters.some((chapter) => chapter.id === story.lastReadChapterId),
   );
 
+  const bookmarkChapterNumber = useMemo(() => {
+    if (!story) return undefined;
+    if (!story.lastReadChapterId) return undefined;
+    const index = story.chapters.findIndex(
+      (ch) => ch.id === story.lastReadChapterId,
+    );
+    return index >= 0 ? index + 1 : undefined;
+  }, [story]);
+
   const initialEpubConfig = useMemo<EpubConfig | null>(() => {
     if (!story) return null;
 
@@ -156,6 +165,7 @@ export const useStoryDetailsViewState = ({
     chapterCount,
     downloadedChapterCount,
     hasValidBookmark,
+    bookmarkChapterNumber,
     initialEpubConfig,
     handleFilterSelect,
     handleToggleSelectionMode,

@@ -72,6 +72,7 @@ export const StoryDetailsScreenContainer: React.FC<
     chapterCount,
     downloadedChapterCount,
     hasValidBookmark,
+    bookmarkChapterNumber,
     initialEpubConfig,
     handleFilterSelect,
     handleToggleSelectionMode,
@@ -140,6 +141,7 @@ export const StoryDetailsScreenContainer: React.FC<
       chapterCount={chapterCount}
       downloadedChapterCount={downloadedChapterCount}
       hasValidBookmark={hasValidBookmark}
+      bookmarkChapterNumber={bookmarkChapterNumber}
       initialEpubConfig={initialEpubConfig}
       onSync={syncChapters}
       onGenerate={generateEpub}

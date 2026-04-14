@@ -36,6 +36,7 @@ interface StoryDetailsInfoPanelProps {
   chapterCount: number;
   downloadedChapterCount: number;
   hasValidBookmark: boolean;
+  bookmarkChapterNumber?: number;
   initialEpubConfig: {
     maxChaptersPerEpub: number;
     rangeStart: number;
@@ -82,6 +83,7 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
   chapterCount,
   downloadedChapterCount,
   hasValidBookmark,
+  bookmarkChapterNumber,
   initialEpubConfig,
   onSync,
   onGenerate,
@@ -123,6 +125,8 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
         onDismiss={() => onSetShowDownloadRange(false)}
         onDownload={onDownloadRange}
         totalChapters={story.totalChapters}
+        hasBookmark={hasValidBookmark}
+        bookmarkChapterNumber={bookmarkChapterNumber}
       />
 
       <EpubConfigDialog

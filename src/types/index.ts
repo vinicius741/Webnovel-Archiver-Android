@@ -96,6 +96,8 @@ export interface TTSSession {
   sessionVersion: number;
 }
 
+export type DownloadRangeMode = "range" | "bookmark" | "count";
+
 export type ChapterFilterMode =
   | "all"
   | "hideNonDownloaded"
