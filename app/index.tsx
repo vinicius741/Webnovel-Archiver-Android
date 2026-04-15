@@ -8,13 +8,15 @@ import {
   Animated,
   Pressable,
 } from "react-native";
+import PagerView from "react-native-pager-view";
 import {
   Text,
   FAB,
-  useTheme,
+  useTheme as usePaperTheme,
   IconButton,
   Searchbar,
   Chip,
+  MD3Theme,
 } from "react-native-paper";
 import { useRouter, Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,10 +31,68 @@ import { useLibrary, SortOption } from "../src/hooks/useLibrary";
 import { useTabs } from "../src/hooks/useTabs";
 import { useLibrarySelection } from "../src/hooks/useLibrarySelection";
 import { sourceRegistry } from "../src/services/source/SourceRegistry";
+import { Story } from "../src/types";
+
+interface TabFlatListProps {
+  tabId: string;
+  stories: Story[];
+  numColumns: number;
+  itemWidth: number;
+  isLargeScreen: boolean;
+  selectionMode: boolean;
+  refreshing: boolean;
+  onRefresh: () => void;
+  renderStoryItem: (info: { item: Story }) => React.ReactElement | null;
+  theme: MD3Theme;
+}
+
+const TabFlatList = React.memo(function TabFlatList({
+  stories,
+  numColumns,
+  itemWidth: _itemWidth,
+  isLargeScreen,
+  selectionMode,
+  refreshing,
+  onRefresh,
+  renderStoryItem,
+  theme,
+}: TabFlatListProps) {
+  return (
+    <View style={styles.pageContainer}>
+      <FlatList
+        key={numColumns}
+        data={stories}
+        numColumns={numColumns}
+        columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.listContent,
+          isLargeScreen && { paddingHorizontal: 16 },
+          selectionMode && { paddingBottom: 100 },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[theme.colors.primary]}
+          />
+        }
+        renderItem={renderStoryItem}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text variant="bodyLarge" style={styles.placeholder}>
+              No stories in this tab.
+            </Text>
+          </View>
+        }
+      />
+    </View>
+  );
+});
 
 export default function HomeScreen() {
   const router = useRouter();
-  const theme = useTheme();
+  const theme = usePaperTheme();
   const insets = useSafeAreaInsets();
   const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
 
@@ -47,6 +107,7 @@ export default function HomeScreen() {
 
   const {
     stories: filteredStories,
+    storiesByTabId,
     refreshing,
     onRefresh,
     searchQuery,
@@ -81,6 +142,21 @@ export default function HomeScreen() {
   const animatedOpacity = useMemo(() => new Animated.Value(0), []);
   const animatedRotation = useMemo(() => new Animated.Value(0), []);
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const pagerRef = useRef<PagerView>(null);
+
+  const pageTabIds = useMemo(() => {
+    if (!hasCustomTabs) return [];
+    const ids = tabs.map((t) => t.id);
+    if (showUnassignedTab) {
+      ids.push("unassigned");
+    }
+    return ids;
+  }, [hasCustomTabs, tabs, showUnassignedTab]);
+
+  const activePageIndex = useMemo(() => {
+    const idx = pageTabIds.indexOf(activeTabId ?? "");
+    return idx >= 0 ? idx : 0;
+  }, [pageTabIds, activeTabId]);
 
   const hasActiveFilters = useMemo(
     () => searchQuery.length > 0 || selectedTags.length > 0,
@@ -133,6 +209,35 @@ export default function HomeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    if (hasCustomTabs && pagerRef.current && activeTabId) {
+      pagerRef.current.setPage(activePageIndex);
+    }
+  }, [activeTabId, activePageIndex, hasCustomTabs]);
+
+  const handlePageSelected = useCallback(
+    (e: { nativeEvent: { position: number } }) => {
+      const tabId = pageTabIds[e.nativeEvent.position];
+      if (tabId && tabId !== activeTabId) {
+        selectTab(tabId);
+      }
+    },
+    [pageTabIds, activeTabId, selectTab],
+  );
+
+  const handleSelectTabFromBar = useCallback(
+    (tabId: string | null) => {
+      selectTab(tabId);
+      if (tabId && pagerRef.current) {
+        const idx = pageTabIds.indexOf(tabId);
+        if (idx >= 0) {
+          pagerRef.current.setPage(idx);
+        }
+      }
+    },
+    [selectTab, pageTabIds],
+  );
+
   const handleSortSelect = (option: SortOption) => {
     if (sortOption === option) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -174,21 +279,64 @@ export default function HomeScreen() {
     async (tabId: string | null) => {
       await moveSelectedToTab(tabId);
       setMoveDialogVisible(false);
-      // Refresh the library
       onRefresh();
     },
     [moveSelectedToTab, onRefresh],
   );
 
-  // Calculate strict item width to prevent last item from stretching in grid
   const GAP = 8;
-  const containerPadding = 0;
   const listPadding = isLargeScreen ? 32 : 32;
-  const totalPadding = containerPadding + listPadding;
+  const totalPadding = listPadding;
   const safeAreaHorizontal = insets.left + insets.right;
   const availableWidth =
     screenWidth - safeAreaHorizontal - totalPadding - (numColumns - 1) * GAP;
   const itemWidth = availableWidth / numColumns;
+
+  const renderStoryItem = useCallback(
+    ({ item }: { item: (typeof filteredStories)[number] }) => (
+      <View
+        style={{
+          width: numColumns > 1 ? itemWidth : undefined,
+          flex: numColumns === 1 ? 1 : undefined,
+          height: "100%",
+          marginBottom: 8,
+        }}
+      >
+        <StoryCard
+          title={item.title}
+          author={item.author}
+          coverUrl={item.coverUrl}
+          sourceName={sourceRegistry.getProvider(item.sourceUrl)?.name}
+          score={item.score}
+          isArchived={item.isArchived}
+          progress={
+            item.totalChapters > 0
+              ? item.downloadedChapters / item.totalChapters
+              : 0
+          }
+          lastReadChapterName={
+            item.lastReadChapterId
+              ? item.chapters.find((c) => c.id === item.lastReadChapterId)
+                  ?.title
+              : undefined
+          }
+          onPress={() => router.push(`/details/${item.id}`)}
+          onLongPress={hasCustomTabs ? () => handleLongPress(item.id) : undefined}
+          selectionMode={selectionMode}
+          selected={isSelected(item.id)}
+        />
+      </View>
+    ),
+    [
+      numColumns,
+      itemWidth,
+      hasCustomTabs,
+      selectionMode,
+      isSelected,
+      handleLongPress,
+      router,
+    ],
+  );
 
   const filtersContent = (
     <>
@@ -256,7 +404,7 @@ export default function HomeScreen() {
             activeTabId={activeTabId}
             showUnassignedTab={showUnassignedTab}
             unassignedCount={unassignedCount}
-            onSelectTab={selectTab}
+            onSelectTab={handleSelectTabFromBar}
             trailing={
               <Pressable
                 onPress={toggleFilters}
@@ -318,66 +466,60 @@ export default function HomeScreen() {
           <View onLayout={handleContentLayout}>{filtersContent}</View>
         )}
       </View>
-      <FlatList
-        key={numColumns}
-        data={filteredStories}
-        numColumns={numColumns}
-        columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.listContent,
-          isLargeScreen && { paddingHorizontal: 16 },
-          selectionMode && { paddingBottom: 100 },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[theme.colors.primary]}
-          />
-        }
-        renderItem={({ item }) => (
-          <View
-            style={{
-              width: numColumns > 1 ? itemWidth : undefined,
-              flex: numColumns === 1 ? 1 : undefined,
-              height: "100%",
-              marginBottom: 8,
-            }}
-          >
-            <StoryCard
-              title={item.title}
-              author={item.author}
-              coverUrl={item.coverUrl}
-              sourceName={sourceRegistry.getProvider(item.sourceUrl)?.name}
-              score={item.score}
-              isArchived={item.isArchived}
-              progress={
-                item.totalChapters > 0
-                  ? item.downloadedChapters / item.totalChapters
-                  : 0
-              }
-              lastReadChapterName={
-                item.lastReadChapterId
-                  ? item.chapters.find((c) => c.id === item.lastReadChapterId)
-                      ?.title
-                  : undefined
-              }
-              onPress={() => router.push(`/details/${item.id}`)}
-              onLongPress={hasCustomTabs ? () => handleLongPress(item.id) : undefined}
+
+      {hasCustomTabs ? (
+        <PagerView
+          ref={pagerRef}
+          style={styles.pager}
+          initialPage={activePageIndex}
+          onPageSelected={handlePageSelected}
+          overdrag={false}
+        >
+          {pageTabIds.map((tabId) => (
+            <TabFlatList
+              key={tabId}
+              tabId={tabId}
+              stories={storiesByTabId.get(tabId) ?? []}
+              numColumns={numColumns}
+              itemWidth={itemWidth}
+              isLargeScreen={isLargeScreen}
               selectionMode={selectionMode}
-              selected={isSelected(item.id)}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              renderStoryItem={renderStoryItem}
+              theme={theme}
             />
-          </View>
-        )}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text variant="bodyLarge" style={styles.placeholder}>
-              No stories archived yet.
-            </Text>
-          </View>
-        }
-      />
+          ))}
+        </PagerView>
+      ) : (
+        <FlatList
+          key={numColumns}
+          data={filteredStories}
+          numColumns={numColumns}
+          columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[
+            styles.listContent,
+            isLargeScreen && { paddingHorizontal: 16 },
+            selectionMode && { paddingBottom: 100 },
+          ]}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.colors.primary]}
+            />
+          }
+          renderItem={renderStoryItem}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text variant="bodyLarge" style={styles.placeholder}>
+                No stories archived yet.
+              </Text>
+            </View>
+          }
+        />
+      )}
 
       {!selectionMode && (
         <FAB
@@ -411,6 +553,12 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  pager: {
+    flex: 1,
+  },
+  pageContainer: {
+    flex: 1,
+  },
   listContent: {
     padding: 16,
     paddingBottom: 80,

@@ -229,8 +229,88 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
     hasCustomTabs,
   ]);
 
+  const storiesByTabId = useMemo(() => {
+    const map = new Map<string, Story[]>();
+    if (!hasCustomTabs) return map;
+
+    const applySearchAndTags = (story: Story) => {
+      const matchesSearch =
+        story.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (story.author &&
+          story.author.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (!matchesSearch) return false;
+
+      if (selectedTags.length > 0) {
+        const storyTags = story.tags || [];
+        const storySourceName = sourceRegistry.getProvider(
+          story.sourceUrl,
+        )?.name;
+
+        const hasAllTags = selectedTags.every((tag) => {
+          if (sourceNames.includes(tag)) {
+            return storySourceName === tag;
+          }
+          return storyTags.includes(tag);
+        });
+        return hasAllTags;
+      }
+      return true;
+    };
+
+    const filtered = stories.filter(applySearchAndTags);
+
+    const applySort = (a: Story, b: Story) => {
+      let comparison = 0;
+      switch (sortOption) {
+        case "title":
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case "dateAdded":
+          comparison = (a.dateAdded || 0) - (b.dateAdded || 0);
+          break;
+        case "lastUpdated":
+          comparison = (a.lastUpdated || 0) - (b.lastUpdated || 0);
+          break;
+        case "totalChapters":
+          comparison = a.totalChapters - b.totalChapters;
+          break;
+        case "score": {
+          const parseScore = (s?: string) => {
+            if (!s) return 0;
+            const match = s.match(/(\d+\.?\d*)/);
+            return match ? parseFloat(match[1]) : 0;
+          };
+          comparison = parseScore(a.score) - parseScore(b.score);
+          break;
+        }
+        case "default":
+        default: {
+          const dateA = Math.max(a.lastUpdated || 0, a.dateAdded || 0);
+          const dateB = Math.max(b.lastUpdated || 0, b.dateAdded || 0);
+          comparison = dateA - dateB;
+          break;
+        }
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    };
+
+    const sorted = filtered.sort(applySort);
+
+    for (const story of sorted) {
+      const key = story.tabId || "unassigned";
+      const arr = map.get(key);
+      if (arr) {
+        arr.push(story);
+      } else {
+        map.set(key, [story]);
+      }
+    }
+    return map;
+  }, [stories, hasCustomTabs, searchQuery, selectedTags, sortOption, sortDirection, sourceNames]);
+
   return {
     stories: filteredAndSortedStories,
+    storiesByTabId,
     allStories: stories,
     loading: refreshing,
     refreshing,
