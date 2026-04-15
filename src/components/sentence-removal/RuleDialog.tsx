@@ -20,8 +20,8 @@ import {
 } from "../../types/sentenceRemoval";
 import {
   validateRegexCleanupRule,
-  applyTtsCleanupLines,
-} from "../../utils/textCleanup";
+} from "../../utils/regexValidation";
+import { applyTtsCleanupLines } from "../../utils/textCleanup";
 import { generateRuleName } from "../../utils/regexBuilder";
 import { QuickBuilderForm } from "./QuickBuilderForm";
 

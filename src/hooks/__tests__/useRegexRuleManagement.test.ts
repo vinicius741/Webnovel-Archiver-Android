@@ -5,10 +5,10 @@ import { RegexCleanupRule } from "../../types";
 import { DEFAULT_QUICK_CONFIG } from "../../types/sentenceRemoval";
 
 jest.mock("../../context/AlertContext");
-jest.mock("../../utils/textCleanup");
+jest.mock("../../utils/regexValidation");
 jest.mock("../../utils/regexBuilder");
 
-const mockValidateRegexCleanupRule = require("../../utils/textCleanup")
+const mockValidateRegexCleanupRule = require("../../utils/regexValidation")
   .validateRegexCleanupRule;
 const mockGenerateQuickPattern = require("../../utils/regexBuilder")
   .generateQuickPattern;

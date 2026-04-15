@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { RegexCleanupRule } from "../../types";
-import { validateRegexCleanupRule } from "../../utils/textCleanup";
+import { validateRegexCleanupRule } from "../../utils/regexValidation";
 import { STORAGE_KEYS } from "./storageKeys";
 
 const DEFAULT_REGEX_CLEANUP_RULES: RegexCleanupRule[] = [];

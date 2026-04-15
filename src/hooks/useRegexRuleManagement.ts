@@ -6,7 +6,7 @@ import {
   createRuleId,
   DEFAULT_QUICK_CONFIG,
 } from "../types/sentenceRemoval";
-import { validateRegexCleanupRule } from "../utils/textCleanup";
+import { validateRegexCleanupRule } from "../utils/regexValidation";
 import {
   generateQuickPattern,
   parseQuickPattern,
