@@ -2,7 +2,6 @@ import { useState } from "react";
 import { getInfoAsync, getContentUriAsync } from "expo-file-system/legacy";
 import { startActivityAsync } from "expo-intent-launcher";
 
-import { storageService } from "../services/StorageService";
 import {
   epubGenerator,
   EpubProgress,
@@ -16,6 +15,8 @@ import {
 } from "../constants/epub";
 import { Chapter, Story } from "../types";
 import { validateStory } from "../utils/storyValidation";
+import { saveAndNotify } from "../utils/saveAndNotify";
+import { storageService } from "../services/StorageService";
 
 interface UseStoryEPUBParams {
   story: Story | null;
@@ -33,7 +34,6 @@ interface EpubGenerationProgress {
   totalFiles?: number;
 }
 
-/** Helper to get the first available epub path from a story */
 const getFirstEpubPath = (
   story: Story,
 ): { path: string | undefined; isMultiple: boolean } => {
@@ -45,7 +45,6 @@ const getFirstEpubPath = (
   };
 };
 
-/** Formats progress status message based on stage and file info */
 const formatProgressStatus = (
   stage: string,
   current: number,
@@ -91,7 +90,6 @@ export const useStoryEPUB = ({
     try {
       const fileInfo = await getInfoAsync(epubPath);
       if (!fileInfo.exists) {
-        // If this is from multiple EPUBs, check which files still exist
         if (isFromMultiple && story.epubPaths && story.epubPaths.length > 1) {
           const existingPaths: string[] = [];
           for (const path of story.epubPaths) {
@@ -105,14 +103,12 @@ export const useStoryEPUB = ({
             }
           }
 
-          // Update story with only the existing paths
           const updated: Story = {
             ...story,
             epubPaths: existingPaths.length > 0 ? existingPaths : undefined,
             epubPath: existingPaths.length > 0 ? existingPaths[0] : undefined,
           };
-          await storageService.addStory(updated);
-          onStoryUpdated(updated);
+          await saveAndNotify(updated, onStoryUpdated);
 
           if (existingPaths.length === 0) {
             showAlert("Error", "All EPUB files not found. Please regenerate.");
@@ -123,15 +119,13 @@ export const useStoryEPUB = ({
             );
           }
         } else {
-          // Clear missing EPUB paths (single file or all files missing)
           const updated: Story = {
             ...story,
             epubPath: undefined,
             epubPaths: undefined,
             epubStale: false,
           };
-          await storageService.addStory(updated);
-          onStoryUpdated(updated);
+          await saveAndNotify(updated, onStoryUpdated);
           showAlert("Error", "EPUB file not found. Please regenerate.");
         }
         return false;
@@ -288,8 +282,7 @@ export const useStoryEPUB = ({
         epubPath: epubUris[0],
         epubStale: false,
       };
-      await storageService.addStory(updatedStory);
-      onStoryUpdated(updatedStory);
+      await saveAndNotify(updatedStory, onStoryUpdated);
 
       if (results.length > 1) {
         showAlert(

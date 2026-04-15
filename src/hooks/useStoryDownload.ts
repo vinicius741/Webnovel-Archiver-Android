@@ -6,6 +6,7 @@ import { downloadService } from "../services/DownloadService";
 import { useAppAlert } from "../context/AlertContext";
 import { Story } from "../types";
 import { validateStory, validateDownloadRange } from "../utils/storyValidation";
+import { saveAndNotify } from "../utils/saveAndNotify";
 import {
   buildStoryForSync,
   EmptyChapterListError,
@@ -17,6 +18,23 @@ interface UseStoryDownloadParams {
   onStoryUpdated: (updatedStory: Story) => void;
 }
 
+const withDownloadGuard = (
+  story: Story | null,
+  action: string,
+  showAlert: (title: string, message: string) => void,
+): boolean => {
+  if (story?.isArchived) {
+    showAlert(
+      "Archived Snapshot",
+      `${action} is disabled for archived snapshots. Use the active story entry instead.`,
+    );
+    return false;
+  }
+  if (!validateStory(story)) return false;
+
+  return true;
+};
+
 export const useStoryDownload = ({
   story,
   onStoryUpdated,
@@ -25,13 +43,6 @@ export const useStoryDownload = ({
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [queueing, setQueueing] = useState(false);
-
-  const showArchivedStoryAlert = (action: string) => {
-    showAlert(
-      "Archived Snapshot",
-      `${action} is disabled for archived snapshots. Use the active story entry instead.`,
-    );
-  };
 
   const buildUpdatedEpubConfig = (
     currentStory: Story,
@@ -91,24 +102,18 @@ export const useStoryDownload = ({
     });
   };
 
-  const downloadAll = async () => {
-    if (story?.isArchived) {
-      showArchivedStoryAlert("Downloading");
-      return;
-    }
-    if (!validateStory(story)) return;
-
+  const executeQueuedDownload = async (
+    getUpdatedStory: () => Promise<Story>,
+    successTitle: string,
+    successMessage: string,
+  ) => {
     try {
       setQueueing(true);
       await activateKeepAwakeAsync();
 
-      const updatedStory = await downloadService.downloadAllChapters(story);
-      await storageService.addStory(updatedStory);
-      onStoryUpdated(updatedStory);
-      showAlert(
-        "Download Started",
-        "Chapters have been added to the download queue.",
-      );
+      const updatedStory = await getUpdatedStory();
+      await saveAndNotify(updatedStory, onStoryUpdated);
+      showAlert(successTitle, successMessage);
     } catch (error) {
       console.error("Download error", error);
       showAlert("Download Error", "Failed to download chapters. Check logs.");
@@ -118,19 +123,25 @@ export const useStoryDownload = ({
     }
   };
 
+  const downloadAll = async () => {
+    if (!withDownloadGuard(story, "Downloading", showAlert)) return;
+
+    await executeQueuedDownload(
+      () => downloadService.downloadAllChapters(story!),
+      "Download Started",
+      "Chapters have been added to the download queue.",
+    );
+  };
+
   const syncChapters = async () => {
-    if (story?.isArchived) {
-      showArchivedStoryAlert("Sync");
-      return;
-    }
-    if (!validateStory(story)) return;
+    if (!withDownloadGuard(story, "Sync", showAlert)) return;
 
     try {
       setSyncing(true);
       setSyncStatus("Initializing...");
       const prepared = await prepareStorySyncData({
-        sourceUrl: story.sourceUrl,
-        existingStory: story,
+        sourceUrl: story!.sourceUrl,
+        existingStory: story!,
         onStatus: setSyncStatus,
         onProgress: setSyncStatus,
       });
@@ -138,8 +149,8 @@ export const useStoryDownload = ({
       const { mergeResult, metadata } = prepared;
 
       const tagsChanged =
-        JSON.stringify(story.tags) !== JSON.stringify(metadata.tags);
-      const oldTotal = story.chapters.length;
+        JSON.stringify(story!.tags) !== JSON.stringify(metadata.tags);
+      const oldTotal = story!.chapters.length;
       const newTotal = mergeResult.chapters.length;
       const newChapterCount = mergeResult.newChapterIds.length;
       const removedChapterCount = mergeResult.removedChapterIds.length;
@@ -172,20 +183,19 @@ export const useStoryDownload = ({
 
         setSyncStatus("Archiving snapshot...");
         await storageService.createArchivedStorySnapshot(
-          story,
+          story!,
           "source_chapters_removed",
         );
       }
 
-      const updatedEpubConfig = buildUpdatedEpubConfig(story, newTotal);
+      const updatedEpubConfig = buildUpdatedEpubConfig(story!, newTotal);
       const updatedStory = buildStoryForSync({
-        currentStory: story,
+        currentStory: story!,
         prepared,
         updatedEpubConfig,
       });
 
-      await storageService.addStory(updatedStory);
-      onStoryUpdated(updatedStory);
+      await saveAndNotify(updatedStory, onStoryUpdated);
 
       if (hasUpdates) {
         if (newChapterCount > 0) {
@@ -194,8 +204,7 @@ export const useStoryDownload = ({
             updatedStory,
             mergeResult.newChapterIds,
           );
-          await storageService.addStory(queuedStory);
-          onStoryUpdated(queuedStory);
+          await saveAndNotify(queuedStory, onStoryUpdated);
           showAlert(
             "Update Found",
             removedChapterCount > 0
@@ -236,18 +245,13 @@ export const useStoryDownload = ({
     }
   };
 
-  // `startChapter`/`endChapter` are 1-based inclusive values from UI inputs.
   const downloadRange = async (startChapter: number, endChapter: number) => {
-    if (story?.isArchived) {
-      showArchivedStoryAlert("Downloading");
-      return;
-    }
-    if (!validateStory(story)) return;
+    if (!withDownloadGuard(story, "Downloading", showAlert)) return;
 
     const validation = validateDownloadRange(
       startChapter,
       endChapter,
-      story.totalChapters,
+      story!.totalChapters,
     );
     if (!validation.valid) {
       showAlert(
@@ -260,35 +264,17 @@ export const useStoryDownload = ({
     const startIndex = startChapter - 1;
     const endIndex = endChapter - 1;
 
-    try {
-      setQueueing(true);
-      await activateKeepAwakeAsync();
-
-      const updatedStory = await downloadService.downloadRange(
-        story,
-        startIndex,
-        endIndex,
-      );
-      await storageService.addStory(updatedStory);
-      onStoryUpdated(updatedStory);
-      showAlert("Download Started", "Selected chapters have been queued.");
-    } catch (error) {
-      console.error("Download error", error);
-      showAlert("Download Error", "Failed to download chapters. Check logs.");
-    } finally {
-      setQueueing(false);
-      await deactivateKeepAwake();
-    }
+    await executeQueuedDownload(
+      () => downloadService.downloadRange(story!, startIndex, endIndex),
+      "Download Started",
+      "Selected chapters have been queued.",
+    );
   };
 
   const applySentenceRemoval = async () => {
-    if (story?.isArchived) {
-      showArchivedStoryAlert("Text cleanup");
-      return;
-    }
-    if (!story) return;
+    if (!withDownloadGuard(story, "Text cleanup", showAlert)) return;
 
-    const downloadedChapters = story.chapters.filter((c) => c.downloaded);
+    const downloadedChapters = story!.chapters.filter((c) => c.downloaded);
     if (downloadedChapters.length === 0) {
       showAlert("No Chapters", "No downloaded chapters to process.");
       return;
@@ -308,7 +294,7 @@ export const useStoryDownload = ({
 
               const { processed, errors } =
                 await downloadService.applySentenceRemovalToStory(
-                  story,
+                  story!,
                   (current, total, title) => {
                     setSyncStatus(`Processing ${current}/${total}: ${title}`);
                   },
@@ -329,7 +315,7 @@ export const useStoryDownload = ({
                 );
               }
 
-              const reloadedStory = await storageService.getStory(story.id);
+              const reloadedStory = await storageService.getStory(story!.id);
               if (reloadedStory) {
                 onStoryUpdated(reloadedStory);
               }
@@ -349,30 +335,13 @@ export const useStoryDownload = ({
   };
 
   const downloadChaptersByIds = async (chapterIds: string[]) => {
-    if (story?.isArchived) {
-      showArchivedStoryAlert("Downloading");
-      return;
-    }
-    if (!validateStory(story)) return;
+    if (!withDownloadGuard(story, "Downloading", showAlert)) return;
 
-    try {
-      setQueueing(true);
-      await activateKeepAwakeAsync();
-
-      const updatedStory = await downloadService.downloadChaptersByIds(
-        story,
-        chapterIds,
-      );
-      await storageService.addStory(updatedStory);
-      onStoryUpdated(updatedStory);
-      showAlert("Download Started", `${chapterIds.length} chapters have been queued.`);
-    } catch (error) {
-      console.error("Download error", error);
-      showAlert("Download Error", "Failed to download chapters. Check logs.");
-    } finally {
-      setQueueing(false);
-      await deactivateKeepAwake();
-    }
+    await executeQueuedDownload(
+      () => downloadService.downloadChaptersByIds(story!, chapterIds),
+      "Download Started",
+      `${chapterIds.length} chapters have been queued.`,
+    );
   };
 
   return {

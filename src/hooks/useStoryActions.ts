@@ -2,6 +2,7 @@ import { storageService } from "../services/StorageService";
 import { useAppAlert } from "../context/AlertContext";
 import { Story, Chapter } from "../types";
 import { validateStory, validateChapter } from "../utils/storyValidation";
+import { saveAndNotify } from "../utils/saveAndNotify";
 
 interface UseStoryActionsParams {
   story: Story | null;
@@ -46,14 +47,13 @@ export const useStoryActions = ({
     const newLastReadId =
       story.lastReadChapterId === chapter.id ? undefined : chapter.id;
 
-    // Update epubConfig.rangeStart if startAfterBookmark is enabled and bookmark changes
     let updatedEpubConfig = story.epubConfig;
     if (newLastReadId && story.epubConfig?.startAfterBookmark) {
       const bookmarkIndex = story.chapters.findIndex((ch) => ch.id === newLastReadId);
       if (bookmarkIndex !== -1) {
         updatedEpubConfig = {
           ...story.epubConfig,
-          rangeStart: bookmarkIndex + 2, // Start after bookmark (1-based, +1 for next chapter)
+          rangeStart: bookmarkIndex + 2,
         };
       }
     }
@@ -74,8 +74,7 @@ export const useStoryActions = ({
           `Marked "${cleanTitle}" as your last read location.`,
         );
       } else {
-        await storageService.addStory(updatedStory);
-        onStoryUpdated(updatedStory);
+        await saveAndNotify(updatedStory, onStoryUpdated);
         showAlert("Cleared", "Reading progress cleared.");
       }
     } catch (error) {

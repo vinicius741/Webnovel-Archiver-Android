@@ -7,20 +7,14 @@ import {
   TTSStartOptions,
 } from "./tts/TTSPlaybackController";
 import { ttsMediaSessionService } from "./TtsMediaSessionService";
+import { TTSSessionPersistence } from "./tts/TTSSessionPersistence";
+import { TTSStateEmitter } from "./tts/TTSStateEmitter";
 
 export type { TTSState } from "./tts/TTSPlaybackController";
 
 export const TTS_STATE_EVENTS = {
   STATE_CHANGED: "tts-state-changed",
 };
-
-const TTS_SESSION_VERSION = 1;
-
-interface PlaybackContext {
-  storyId: string;
-  chapterId: string;
-  chapterTitle: string;
-}
 
 export interface TTSStartRequest extends TTSStartOptions {
   chunks: string[];
@@ -36,22 +30,11 @@ class TTSStateManager {
   private _settings: TTSSettings = { pitch: 1.0, rate: 1.0, chunkSize: 500 };
   private initialized = false;
   private initializationPromise: Promise<void> | null = null;
-  private playbackContext: PlaybackContext | null = null;
   private pendingOnFinishCallback: (() => void) | null = null;
   private commandQueue: Promise<void> = Promise.resolve();
 
-  // Pending state for ensuring final state is persisted
-  private pendingStorageWrite: {
-    state: TTSState;
-    wasPlayingOverride?: boolean;
-  } | null = null;
-  private storageWriteTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private static readonly STORAGE_WRITE_THROTTLE_MS = 500;
-
-  // State emission debouncing
-  private stateEmitTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private pendingStateEmit: TTSState | null = null;
-  private static readonly STATE_EMIT_DEBOUNCE_MS = 100;
+  private sessionPersistence = new TTSSessionPersistence();
+  private stateEmitter = new TTSStateEmitter();
 
   private constructor() {}
 
@@ -104,14 +87,8 @@ class TTSStateManager {
 
   private cleanup(): void {
     try {
-      if (this.stateEmitTimeoutId) {
-        clearTimeout(this.stateEmitTimeoutId);
-        this.stateEmitTimeoutId = null;
-      }
-      if (this.storageWriteTimeoutId) {
-        clearTimeout(this.storageWriteTimeoutId);
-        this.storageWriteTimeoutId = null;
-      }
+      this.stateEmitter.cleanup();
+      this.sessionPersistence.cleanup();
     } catch {
       // Ignore cleanup errors
     }
@@ -125,31 +102,14 @@ class TTSStateManager {
   }
 
   private emitStateChange(state: TTSState) {
-    // Debounce state emissions to prevent UI overload while ensuring final state is emitted
-    this.pendingStateEmit = state;
-
-    if (this.stateEmitTimeoutId) {
-      return; // Already scheduled, will emit the latest pending state
-    }
-
-    this.stateEmitTimeoutId = setTimeout(() => {
-      this.stateEmitTimeoutId = null;
-      if (this.pendingStateEmit) {
-        const { DeviceEventEmitter } = require("react-native");
-        DeviceEventEmitter.emit(TTS_STATE_EVENTS.STATE_CHANGED, this.pendingStateEmit);
-        this.pendingStateEmit = null;
-      }
-    }, TTSStateManager.STATE_EMIT_DEBOUNCE_MS);
+    this.stateEmitter.emitStateChange(state);
   }
 
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    // Chain operations sequentially, replacing the queue reference with a settled promise
-    // to prevent unbounded chain growth while ensuring no operations are lost
     const result = this.commandQueue.then(operation);
-    // Replace queue with a settled promise that won't reject
     this.commandQueue = result.then(
       () => undefined,
-      () => undefined, // Swallow errors to prevent chain breakage
+      () => undefined,
     );
     return result;
   }
@@ -161,60 +121,8 @@ class TTSStateManager {
     return `Reading chunk ${state.currentChunkIndex + 1} / ${state.chunks.length}`;
   }
 
-  private buildSession(
-    state: TTSState,
-    wasPlayingOverride?: boolean,
-  ): TTSSession | null {
-    if (!this.playbackContext) return null;
-
-    return {
-      storyId: this.playbackContext.storyId,
-      chapterId: this.playbackContext.chapterId,
-      chapterTitle: this.playbackContext.chapterTitle,
-      currentChunkIndex: state.currentChunkIndex,
-      isPaused: state.isPaused,
-      wasPlaying: wasPlayingOverride ?? (state.isSpeaking && !state.isPaused),
-      chunkSize: this._settings.chunkSize,
-      voiceIdentifier: this._settings.voiceIdentifier,
-      rate: this._settings.rate,
-      pitch: this._settings.pitch,
-      updatedAt: Date.now(),
-      sessionVersion: TTS_SESSION_VERSION,
-    };
-  }
-
-  private async persistSessionFromState(
-    state: TTSState,
-    wasPlayingOverride?: boolean,
-  ) {
-    const session = this.buildSession(state, wasPlayingOverride);
-    if (!session) return;
-
-    // Always store the pending write to ensure latest state is saved
-    this.pendingStorageWrite = { state, wasPlayingOverride };
-
-    // Clear any existing timeout
-    if (this.storageWriteTimeoutId) {
-      return; // Already scheduled, will save the latest pending state
-    }
-
-    // Schedule the write
-    this.storageWriteTimeoutId = setTimeout(async () => {
-      this.storageWriteTimeoutId = null;
-      if (this.pendingStorageWrite) {
-        const { state: pendingState, wasPlayingOverride: pendingOverride } =
-          this.pendingStorageWrite;
-        this.pendingStorageWrite = null;
-        const sessionToSave = this.buildSession(pendingState, pendingOverride);
-        if (sessionToSave) {
-          await storageService.saveTTSSession(sessionToSave);
-        }
-      }
-    }, TTSStateManager.STORAGE_WRITE_THROTTLE_MS);
-  }
-
   private buildMediaPayload(state: TTSState, isPlayingOverride?: boolean) {
-    const context = this.playbackContext;
+    const context = this.sessionPersistence.getPlaybackContext();
     return {
       title: state.title,
       body: this.buildPlaybackBody(state),
@@ -232,8 +140,8 @@ class TTSStateManager {
 
   private async onControllerFinish() {
     await this.enqueue(async () => {
-      this.playbackContext = null;
-      await storageService.clearTTSSession();
+      this.sessionPersistence.setPlaybackContext(null);
+      await this.sessionPersistence.clearSession();
       await ttsMediaSessionService.stopSession();
       this.pendingOnFinishCallback?.();
     });
@@ -254,7 +162,7 @@ class TTSStateManager {
     this.controller?.updateSettings(newSettings);
     const state = this.getState();
     if (state?.isSpeaking || state?.isPaused) {
-      await this.persistSessionFromState(state);
+      this.sessionPersistence.persistSession(state, this._settings);
     }
   }
 
@@ -264,11 +172,11 @@ class TTSStateManager {
   }
 
   public async getPersistedSession(): Promise<TTSSession | null> {
-    return storageService.getTTSSession();
+    return this.sessionPersistence.loadSession();
   }
 
   public async clearPersistedSession(): Promise<void> {
-    await storageService.clearTTSSession();
+    await this.sessionPersistence.clearSession();
   }
 
   public async start(request: TTSStartRequest): Promise<void>;
@@ -296,11 +204,11 @@ class TTSStateManager {
         this.initializeController(request.chunks, request.title ?? "Reading");
       }
 
-      this.playbackContext = {
+      this.sessionPersistence.setPlaybackContext({
         storyId: request.storyId,
         chapterId: request.chapterId,
         chapterTitle: request.chapterTitle,
-      };
+      });
 
       this.controller?.start(request.chunks, request.title ?? "Reading", {
         startChunkIndex: request.startChunkIndex,
@@ -310,15 +218,11 @@ class TTSStateManager {
       const state = this.getState();
       if (!state) return;
 
-      await this.persistSessionFromState(state);
+      this.sessionPersistence.persistSession(state, this._settings);
       await ttsMediaSessionService.startSession(this.buildMediaPayload(state));
     });
   }
 
-  /**
-   * Helper to run a controller action and sync state to storage + media session.
-   * Reduces boilerplate across playback control methods.
-   */
   private async withStateSync(
     action: () => void | Promise<void>,
     wasPlayingOverride?: boolean,
@@ -327,7 +231,7 @@ class TTSStateManager {
       await action();
       const state = this.getState();
       if (!state) return;
-      await this.persistSessionFromState(state, wasPlayingOverride);
+      this.sessionPersistence.persistSession(state, this._settings, wasPlayingOverride);
       await this.updateMediaSession();
     });
   }
@@ -336,8 +240,8 @@ class TTSStateManager {
     await this.ensureInitialized();
     await this.enqueue(async () => {
       await this.controller?.stop();
-      this.playbackContext = null;
-      await storageService.clearTTSSession();
+      this.sessionPersistence.setPlaybackContext(null);
+      await this.sessionPersistence.clearSession();
       await ttsMediaSessionService.stopSession();
     });
   }
@@ -375,7 +279,7 @@ class TTSStateManager {
       await this.controller?.restartCurrentChunk();
       const latest = this.getState();
       if (!latest) return;
-      await this.persistSessionFromState(latest, true);
+      this.sessionPersistence.persistSession(latest, this._settings, true);
       await this.updateMediaSession();
     });
   }
@@ -392,7 +296,7 @@ class TTSStateManager {
     const existingState = this.getState();
     if (existingState?.isSpeaking || existingState?.isPaused) return false;
 
-    const session = await storageService.getTTSSession();
+    const session = await this.sessionPersistence.loadSession();
     if (!session) return false;
     if (!session.storyId || !session.chapterId) return false;
     if (
@@ -429,7 +333,7 @@ class TTSStateManager {
           ...state,
           currentChunkIndex: currentIndex,
         };
-        void this.persistSessionFromState(updatedState);
+        this.sessionPersistence.persistSession(updatedState, this._settings);
         void this.updateMediaSession();
       },
       onFinish: () => {
