@@ -47,27 +47,25 @@ New sources are registered in `src/services/source/SourceRegistry.ts`. Current i
 The download system is event-driven and concurrent:
 
 - **DownloadQueue** (`src/services/download/DownloadQueue.ts`): Persistent AsyncStorage-backed job queue with state management
-- **DownloadManager** (`src/services/download/DownloadManager.ts`): EventEmmiter-based worker pool with:
-  - Configurable concurrency (default 3, set via AppSettings)
-  - Story-level locking to prevent race conditions when updating chapters
-  - Auto-resume on app start for pending jobs
-  - Progress events: `job-started`, `job-completed`, `job-failed`, `queue-updated`, `all-complete`
+- **DownloadManager** (`src/services/download/DownloadManager.ts`): EventEmitter-based worker pool with configurable concurrency (default 3)
+- **DownloadStoryCache** (`src/services/download/DownloadStoryCache.ts`): In-memory story cache with batched storage flushes and story-level mutex locks
+- **DownloadNotificationManager** (`src/services/download/DownloadNotificationManager.ts`): Throttled download progress notification lifecycle
 
 Download flow:
 1. Jobs added to queue → `queue-updated` event fires
 2. Manager spawns workers up to concurrency limit
 3. Each worker: fetches HTML → parses content → saves to disk → updates story metadata
-4. Story updates are wrapped in mutex locks to prevent concurrent modification
-5. Notifications update throughout process
+4. Story updates are batched in DownloadStoryCache with story-level mutex locks
+5. Notifications update throughout process via DownloadNotificationManager
 
 ### Service Layer Organization
 - `src/services/source/` - Website scraping and parsing (providers)
-- `src/services/download/` - DownloadQueue and DownloadManager
+- `src/services/download/` - DownloadQueue, DownloadManager, DownloadStoryCache, DownloadNotificationManager
 - `src/services/epub/` - EPUB generation (content processor, metadata, file system)
 - `src/services/storage/` - Focused storage modules (`libraryStorage.ts`, `preferencesStorage.ts`, `fileSystem.ts`, `regexCleanupRulesStorage.ts`, centralized `storageKeys.ts`)
 - `src/services/story/` - Story synchronization orchestration (`storySyncOrchestrator.ts`)
 - `src/services/network/` - Fetcher with mobile User-Agent
-- `src/services/tts/` - TTS queue management and playback controller
+- `src/services/tts/` - TTS queue management, playback controller, session persistence, and state emitter
 - Top-level services in `src/services/`:
   - `DownloadService.ts` - High-level download orchestration (wraps DownloadManager)
   - `EpubGenerator.ts` - EPUB generation orchestration
@@ -75,6 +73,10 @@ Download flow:
   - `BackgroundService.ts` / `ForegroundServiceCoordinator.ts` - Background download and foreground service lifecycle
   - `NotificationService.ts` - Download notifications via Notifee
   - `TTSStateManager.ts` / `TTSLifecycleService.ts` / `TTSNotificationService.ts` / `TtsMediaSessionService.ts` - TTS playback state, lifecycle, notifications, and media session integration
+- Shared utilities in `src/utils/`:
+  - `textCleanup.ts` - HTML content cleanup and regex-based sentence removal
+  - `regexValidation.ts` - Regex rule validation, normalization, and ReDoS risk detection
+  - `saveAndNotify.ts` - Shared save-to-storage-then-notify-callback helper used across hooks
 
 ### Architecture Patterns
 
@@ -139,6 +141,7 @@ Use `src/utils/platform.ts` for environment detection:
 
 ### Performance
 - Chapters saved to disk immediately, not held in memory
+- DownloadStoryCache batches storage writes (flush threshold of 3 updates) to reduce AsyncStorage overhead
 - DownloadManager uses setTimeout yields to prevent event loop blocking
 - `expo-keep-awake` prevents sleep during active downloads
 - Concurrency control prevents overwhelming both server and device
