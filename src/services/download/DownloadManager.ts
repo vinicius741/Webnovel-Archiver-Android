@@ -1,38 +1,26 @@
 import EventEmitter from "events";
 import { downloadQueue } from "./DownloadQueue";
 import { DownloadJob } from "./types";
+import { DownloadStoryCache } from "./DownloadStoryCache";
+import { DownloadNotificationManager } from "./DownloadNotificationManager";
 import { sourceRegistry } from "../source/SourceRegistry";
 import { fetchPage } from "../network/fetcher";
 import { saveChapter } from "../storage/fileSystem";
 import { storageService } from "../StorageService";
-import {
-  clearDownloadState,
-  setDownloadState,
-  showDownloadCompletionNotification,
-} from "../ForegroundServiceCoordinator";
-import { DownloadStatus, Story } from "../../types";
+import { DownloadStatus } from "../../types";
 import { applyDownloadCleanup } from "../../utils/textCleanup";
 
-const FLUSH_THRESHOLD = 3;
 const FLUSH_INTERVAL = 2000;
-
-interface PendingUpdate {
-  chapterIndex: number;
-  filePath: string;
-}
 
 export class DownloadManager extends EventEmitter {
   private isRunning = false;
   private activeWorkers = 0;
   private concurrency = 3;
-  private storyLocks = new Map<string, Promise<void>>();
-  private lastNotificationUpdate = 0;
   private cancelRequested = false;
-
-  private storyCache = new Map<string, Story>();
-  private pendingUpdates = new Map<string, PendingUpdate[]>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
-  private flushPromise = Promise.resolve();
+
+  private storyCache = new DownloadStoryCache();
+  private notificationManager = new DownloadNotificationManager();
 
   constructor() {
     super();
@@ -54,7 +42,7 @@ export class DownloadManager extends EventEmitter {
   private startFlushTimer() {
     if (this.flushTimer) return;
     this.flushTimer = setInterval(() => {
-      void this.flushAllPending();
+      void this.storyCache.flushAllPending();
     }, FLUSH_INTERVAL);
   }
 
@@ -63,120 +51,6 @@ export class DownloadManager extends EventEmitter {
       clearInterval(this.flushTimer);
       this.flushTimer = null;
     }
-  }
-
-  private async getCachedStory(storyId: string): Promise<Story | undefined> {
-    // Wait for any pending flush to complete to ensure cache coherency
-    await this.flushPromise;
-
-    if (this.storyCache.has(storyId)) {
-      return this.storyCache.get(storyId);
-    }
-    const story = await storageService.getStory(storyId);
-    if (story) {
-      this.storyCache.set(storyId, story);
-    }
-    return story;
-  }
-
-  private queuePendingUpdate(
-    storyId: string,
-    chapterIndex: number,
-    filePath: string,
-  ) {
-    let updates = this.pendingUpdates.get(storyId);
-    if (!updates) {
-      updates = [];
-      this.pendingUpdates.set(storyId, updates);
-    }
-    updates.push({ chapterIndex, filePath });
-  }
-
-  private shouldFlush(storyId: string): boolean {
-    const updates = this.pendingUpdates.get(storyId);
-    return updates ? updates.length >= FLUSH_THRESHOLD : false;
-  }
-
-  private async flushStoryToStorage(storyId: string): Promise<void> {
-    const updates = this.pendingUpdates.get(storyId);
-    if (!updates || updates.length === 0) return;
-
-    this.pendingUpdates.set(storyId, []);
-
-    const story = this.storyCache.get(storyId);
-    if (!story) return;
-
-    // Chain this flush to the flushPromise to ensure cache coherency
-    const currentPromise = this.flushPromise;
-    const nextPromise = currentPromise.then(async () => {
-      await this.acquireStoryLock(storyId, async () => {
-        const freshStory = await storageService.getStory(storyId);
-        if (!freshStory) return;
-
-        const chapters = [...freshStory.chapters];
-        for (const update of updates) {
-          if (chapters[update.chapterIndex]) {
-            chapters[update.chapterIndex] = {
-              ...chapters[update.chapterIndex],
-              filePath: update.filePath,
-              downloaded: true,
-            };
-          }
-        }
-
-        const downloadedCount = chapters.filter((c) => c.downloaded).length;
-        const status =
-          downloadedCount === chapters.length
-            ? DownloadStatus.Completed
-            : DownloadStatus.Partial;
-        const hasEpub =
-          !!(freshStory.epubPaths && freshStory.epubPaths.length > 0) ||
-          !!freshStory.epubPath;
-        const allPendingIds = new Set(
-          updates.map((u) => chapters[u.chapterIndex]?.id).filter(Boolean),
-        );
-        const pendingNewChapterIds = freshStory.pendingNewChapterIds?.filter(
-          (id) => !allPendingIds.has(id),
-        );
-
-        await storageService.updateStory({
-          ...freshStory,
-          chapters,
-          downloadedChapters: downloadedCount,
-          status,
-          lastUpdated: Date.now(),
-          epubStale: hasEpub ? true : freshStory.epubStale,
-          pendingNewChapterIds:
-            pendingNewChapterIds && pendingNewChapterIds.length > 0
-              ? pendingNewChapterIds
-              : undefined,
-        });
-
-        this.storyCache.set(storyId, {
-          ...freshStory,
-          chapters,
-          downloadedChapters: downloadedCount,
-          status,
-        });
-      });
-    });
-    this.flushPromise = nextPromise;
-    await nextPromise;
-  }
-
-  async flushAllPending(): Promise<void> {
-    const currentPromise = this.flushPromise;
-    const nextPromise = currentPromise.then(async () => {
-      const storyIds = Array.from(this.pendingUpdates.keys());
-      await Promise.all(storyIds.map((id) => this.flushStoryToStorage(id)));
-    });
-    await nextPromise;
-    this.flushPromise = nextPromise;
-  }
-
-  private clearStoryCache(storyId: string) {
-    this.storyCache.delete(storyId);
-    this.pendingUpdates.delete(storyId);
   }
 
   async addJob(job: DownloadJob) {
@@ -197,54 +71,11 @@ export class DownloadManager extends EventEmitter {
     this.isRunning = true;
     this.startFlushTimer();
     void this.processLoop();
-    void this.startNotification();
-  }
-
-  private async startNotification() {
-    // Initial notification
-    const stats = downloadQueue.getStats();
-    if (stats.pending > 0 || stats.active > 0) {
-      const completed = Math.max(
-        0,
-        stats.total - stats.pending - stats.active - stats.paused,
-      );
-      await setDownloadState({
-        title: "Downloading chapters",
-        message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
-        current: completed,
-        total: stats.total,
-      });
-    }
-  }
-
-  private async updateNotification() {
-    if (this.cancelRequested) return;
-    const now = Date.now();
-    if (now - this.lastNotificationUpdate < 1000) return; // Throttle 1s
-    this.lastNotificationUpdate = now;
-
-    const stats = downloadQueue.getStats();
-    if (stats.pending === 0 && stats.active === 0) {
-      await clearDownloadState();
-      return;
-    }
-
-    const completed = Math.max(
-      0,
-      stats.total - stats.pending - stats.active - stats.paused,
-    );
-    await setDownloadState({
-      title: "Downloading...",
-      message: `Active: ${stats.active}, Pending: ${stats.pending}, Paused: ${stats.paused}`,
-      current: completed,
-      total: stats.total,
-    });
+    void this.notificationManager.showInitial();
   }
 
   private async processLoop() {
-    // Main loop
     while (true) {
-      // Check concurrency
       if (this.activeWorkers >= this.concurrency) {
         await new Promise((resolve) => setTimeout(resolve, 200));
         continue;
@@ -261,22 +92,19 @@ export class DownloadManager extends EventEmitter {
       const pending = downloadQueue.getNextPending();
 
       if (!pending) {
-        // If no pending and no active workers, we are done.
         if (this.activeWorkers === 0) {
           break;
         }
-        // Wait for workers to finish
         await new Promise((resolve) => setTimeout(resolve, 200));
         continue;
       }
 
-      // Start a worker
       this.activeWorkers++;
       // We do NOT await here. We fire and forget (the promise is handled).
       this.processJob(pending).then(() => {
         this.activeWorkers--;
         this.emit("queue-updated");
-        void this.updateNotification();
+        void this.notificationManager.update();
       }).catch((err) => {
         console.error("[DownloadManager] Worker failed:", err);
       });
@@ -287,14 +115,8 @@ export class DownloadManager extends EventEmitter {
 
     this.isRunning = false;
     this.stopFlushTimer();
-    await this.flushAllPending();
-    await clearDownloadState();
-    if (!this.cancelRequested) {
-      await showDownloadCompletionNotification(
-        "Downloads Completed",
-        "All queued chapters have been processed.",
-      );
-    }
+    await this.storyCache.flushAllPending();
+    await this.notificationManager.showCompletion(this.cancelRequested);
     this.emit("all-complete");
   }
 
@@ -383,7 +205,7 @@ export class DownloadManager extends EventEmitter {
     try {
       const filePath = await this.executeDownload(job);
 
-      const story = await this.getCachedStory(job.storyId);
+      const story = await this.storyCache.getCachedStory(job.storyId);
       if (story) {
         const chapters = [...story.chapters];
         if (chapters[job.chapterIndex]) {
@@ -399,7 +221,7 @@ export class DownloadManager extends EventEmitter {
               ? DownloadStatus.Completed
               : DownloadStatus.Partial;
 
-          this.storyCache.set(job.storyId, {
+          this.storyCache.updateCachedStory(job.storyId, {
             ...story,
             chapters,
             downloadedChapters: downloadedCount,
@@ -407,11 +229,14 @@ export class DownloadManager extends EventEmitter {
             lastUpdated: Date.now(),
           });
 
-          this.queuePendingUpdate(job.storyId, job.chapterIndex, filePath);
+          this.storyCache.queuePendingUpdate(
+            job.storyId,
+            job.chapterIndex,
+            filePath,
+          );
 
-          if (this.shouldFlush(job.storyId)) {
-            // Flush with error handling - don't block job processing
-            this.flushStoryToStorage(job.storyId).catch((err) => {
+          if (this.storyCache.shouldFlush(job.storyId)) {
+            this.storyCache.flushStoryToStorage(job.storyId).catch((err) => {
               console.error(
                 `[DownloadManager] Flush failed for ${job.storyId}`,
                 err,
@@ -429,26 +254,6 @@ export class DownloadManager extends EventEmitter {
       downloadQueue.updateJobStatus(job.id, "failed", message);
       this.emit("job-failed", job, error);
     }
-  }
-
-  private async acquireStoryLock(storyId: string, action: () => Promise<void>) {
-    // Simple mutex queue
-    const previousLock = this.storyLocks.get(storyId) || Promise.resolve();
-
-    // Ensure we run regardless of previous failure
-    const myLock = previousLock
-      .catch(() => {})
-      .then(async () => {
-        try {
-          await action();
-        } catch (e) {
-          console.error(`[DownloadManager] Story lock error for ${storyId}`, e);
-        }
-      });
-
-    this.storyLocks.set(storyId, myLock);
-
-    return myLock;
   }
 
   private async executeDownload(job: DownloadJob): Promise<string> {
