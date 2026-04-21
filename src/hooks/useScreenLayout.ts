@@ -4,9 +4,9 @@ export const useScreenLayout = () => {
   const { width, height } = useWindowDimensions();
 
   // Define a breakpoint for "large" screens (e.g. tablet/foldable inner screen)
-  // Increased to 700 to prevent large phones (e.g. Pro Max, or with 'Small' display size)
-  // from triggering tablet layout.
-  const isLargeScreen = width >= 700;
+  // 440dp is above the widest phones (~430dp iPhone Pro Max) while catching
+  // foldable inner screens even with aggressive display scaling (~453dp at 4x).
+  const isLargeScreen = width >= 440;
 
   // Determine number of columns for grid layouts
   // 1 for phone (vertical), 2 or 3 for tablet/wide

@@ -45,8 +45,8 @@ describe("useScreenLayout", () => {
     expect(result.current.screenHeight).toBe(1366);
   });
 
-  it("should handle edge case at breakpoint (width 700)", () => {
-    mockUseWindowDimensions.mockReturnValue({ width: 700, height: 900 });
+  it("should handle edge case at breakpoint (width 440)", () => {
+    mockUseWindowDimensions.mockReturnValue({ width: 440, height: 900 });
 
     const { result } = renderHook(() => useScreenLayout());
 
@@ -54,13 +54,22 @@ describe("useScreenLayout", () => {
     expect(result.current.numColumns).toBe(2);
   });
 
-  it("should handle edge case just below breakpoint (width 699)", () => {
-    mockUseWindowDimensions.mockReturnValue({ width: 699, height: 900 });
+  it("should handle edge case just below breakpoint (width 439)", () => {
+    mockUseWindowDimensions.mockReturnValue({ width: 439, height: 900 });
 
     const { result } = renderHook(() => useScreenLayout());
 
     expect(result.current.isLargeScreen).toBe(false);
     expect(result.current.numColumns).toBe(1);
+  });
+
+  it("should handle foldable with large display scaling (width 453)", () => {
+    mockUseWindowDimensions.mockReturnValue({ width: 453, height: 960 });
+
+    const { result } = renderHook(() => useScreenLayout());
+
+    expect(result.current.isLargeScreen).toBe(true);
+    expect(result.current.numColumns).toBe(2);
   });
 
   it("should handle edge case at 3-column breakpoint (width 841)", () => {
@@ -94,6 +103,15 @@ describe("useScreenLayout", () => {
 
   it("should handle large phone (Pro Max) correctly as small screen", () => {
     mockUseWindowDimensions.mockReturnValue({ width: 430, height: 932 });
+
+    const { result } = renderHook(() => useScreenLayout());
+
+    expect(result.current.isLargeScreen).toBe(false);
+    expect(result.current.numColumns).toBe(1);
+  });
+
+  it("should handle Samsung Galaxy S Ultra (412dp) as small screen", () => {
+    mockUseWindowDimensions.mockReturnValue({ width: 412, height: 915 });
 
     const { result } = renderHook(() => useScreenLayout());
 

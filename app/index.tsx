@@ -60,7 +60,8 @@ const TabFlatList = React.memo(function TabFlatList({
   return (
     <View style={styles.pageContainer}>
       <FlatList
-        key={numColumns}
+        key={String(numColumns)}
+        style={styles.flatList}
         data={stories}
         numColumns={numColumns}
         columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
@@ -298,7 +299,6 @@ export default function HomeScreen() {
         style={{
           width: numColumns > 1 ? itemWidth : undefined,
           flex: numColumns === 1 ? 1 : undefined,
-          height: "100%",
           marginBottom: 8,
         }}
       >
@@ -477,7 +477,7 @@ export default function HomeScreen() {
         >
           {pageTabIds.map((tabId) => (
             <TabFlatList
-              key={tabId}
+              key={`${tabId}-${numColumns}`}
               tabId={tabId}
               stories={storiesByTabId.get(tabId) ?? []}
               numColumns={numColumns}
@@ -558,6 +558,10 @@ const styles = StyleSheet.create({
   },
   pageContainer: {
     flex: 1,
+    width: "100%",
+  },
+  flatList: {
+    width: "100%",
   },
   listContent: {
     padding: 16,
