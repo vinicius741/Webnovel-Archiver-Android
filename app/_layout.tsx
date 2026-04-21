@@ -3,6 +3,34 @@ import { AppState, AppStateStatus } from "react-native";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useTheme as usePaperTheme } from "react-native-paper";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Platform } from "react-native";
+import { isAndroidNative } from "../src/utils/platform";
+
+// Conditionally loaded to avoid importing the native module in environments
+// where it is not linked (Expo Go, iOS, web). The FoldingFeatureProvider
+// requires the native fold-detection module; if it's missing the import
+// itself can crash at module-evaluation time.
+let FoldingFeatureProvider: React.ComponentType<{ children: React.ReactNode }> | null = null;
+if (Platform.OS === "android") {
+  try {
+    const mod = require("@logicwind/react-native-fold-detection");
+    FoldingFeatureProvider = mod.FoldingFeatureProvider;
+  } catch {
+    FoldingFeatureProvider = null;
+  }
+}
+
+// Guards against rendering FoldingFeatureProvider in environments where the
+// native module is unavailable (Expo Go, iOS, web) or failed to import.
+const SafeFoldingProvider = ({ children }: { children: React.ReactNode }) => {
+  if (!isAndroidNative() || !FoldingFeatureProvider) {
+    return <>{children}</>;
+  }
+
+  const Provider = FoldingFeatureProvider;
+  return <Provider>{children}</Provider>;
+};
+
 import { notificationService } from "../src/services/NotificationService";
 import { ThemeProvider } from "../src/theme/ThemeContext";
 import { AlertProvider } from "../src/context/AlertContext";
@@ -126,11 +154,13 @@ function AppLayout() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AlertProvider>
-          <AppLayout />
-        </AlertProvider>
-      </ThemeProvider>
+      <SafeFoldingProvider>
+        <ThemeProvider>
+          <AlertProvider>
+            <AppLayout />
+          </AlertProvider>
+        </ThemeProvider>
+      </SafeFoldingProvider>
     </SafeAreaProvider>
   );
 }

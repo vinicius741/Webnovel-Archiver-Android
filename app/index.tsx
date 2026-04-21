@@ -64,6 +64,7 @@ const TabFlatList = React.memo(function TabFlatList({
         style={styles.flatList}
         data={stories}
         numColumns={numColumns}
+        extraData={numColumns}
         columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
@@ -496,6 +497,7 @@ export default function HomeScreen() {
           key={numColumns}
           data={filteredStories}
           numColumns={numColumns}
+          extraData={numColumns}
           columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
