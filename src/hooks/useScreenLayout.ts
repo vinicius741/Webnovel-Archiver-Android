@@ -1,5 +1,6 @@
 import { useWindowDimensions } from "react-native";
 import { useFoldLayoutMode } from "../context/FoldLayoutContext";
+import { useSafeFoldingFeature } from "../utils/foldableUtils";
 
 export type ScreenLayoutClass = "compact" | "medium" | "expanded";
 
@@ -41,10 +42,13 @@ const getHeightClass = (height: number): ScreenLayoutClass => {
 export const useScreenLayout = () => {
   const { width, height } = useWindowDimensions();
   const { foldLayoutMode } = useFoldLayoutMode();
+  const { layoutInfo } = useSafeFoldingFeature();
   const shortestSide = Math.min(width, height);
   const longestSide = Math.max(width, height);
   const aspectRatio = shortestSide > 0 ? longestSide / shortestSide : Number.POSITIVE_INFINITY;
   const automaticWidthClass = getAutomaticWidthClass(width, shortestSide, aspectRatio);
+  const hasFoldingFeature =
+    !!layoutInfo?.displayFeatures && layoutInfo.displayFeatures.length > 0;
   const widthClass =
     foldLayoutMode === "cover"
       ? "compact"
@@ -52,7 +56,11 @@ export const useScreenLayout = () => {
         ? width >= 840
           ? "expanded"
           : "medium"
-        : automaticWidthClass;
+        : hasFoldingFeature
+          ? width >= 840
+            ? "expanded"
+            : "medium"
+          : automaticWidthClass;
   const heightClass = getHeightClass(height);
   const isCompactHeight = heightClass === "compact";
 
@@ -77,5 +85,6 @@ export const useScreenLayout = () => {
     screenWidth: width,
     screenHeight: height,
     foldLayoutMode,
+    hasFoldingFeature,
   };
 };

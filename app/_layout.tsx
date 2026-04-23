@@ -3,6 +3,7 @@ import { AppState, AppStateStatus } from "react-native";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useTheme as usePaperTheme } from "react-native-paper";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Platform } from "react-native";
 
 import { notificationService } from "../src/services/NotificationService";
 import { ThemeProvider } from "../src/theme/ThemeContext";
@@ -12,6 +13,26 @@ import { initializeBackgroundService } from "../src/services/BackgroundService";
 import { ttsLifecycleService } from "../src/services/TTSLifecycleService";
 import { ttsStateManager } from "../src/services/TTSStateManager";
 import { TTS_RELIABILITY_V2 } from "../src/services/TTSFeatureFlags";
+import { isAndroidNative } from "../src/utils/platform";
+
+let FoldingFeatureProvider: React.ComponentType<{ children: React.ReactNode }> | null = null;
+if (Platform.OS === "android") {
+  try {
+    const mod = require("@logicwind/react-native-fold-detection");
+    FoldingFeatureProvider = mod.FoldingFeatureProvider;
+  } catch {
+    FoldingFeatureProvider = null;
+  }
+}
+
+const SafeFoldingProvider = ({ children }: { children: React.ReactNode }) => {
+  if (!isAndroidNative() || !FoldingFeatureProvider) {
+    return <>{children}</>;
+  }
+
+  const Provider = FoldingFeatureProvider;
+  return <Provider>{children}</Provider>;
+};
 
 function ReaderResumeCoordinator() {
   const router = useRouter();
@@ -128,13 +149,15 @@ function AppLayout() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <FoldLayoutProvider>
-          <AlertProvider>
-            <AppLayout />
-          </AlertProvider>
-        </FoldLayoutProvider>
-      </ThemeProvider>
+      <SafeFoldingProvider>
+        <ThemeProvider>
+          <FoldLayoutProvider>
+            <AlertProvider>
+              <AppLayout />
+            </AlertProvider>
+          </FoldLayoutProvider>
+        </ThemeProvider>
+      </SafeFoldingProvider>
     </SafeAreaProvider>
   );
 }

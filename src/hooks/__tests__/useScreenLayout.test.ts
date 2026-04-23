@@ -6,9 +6,14 @@ jest.mock("react-native", () => ({
 }));
 
 const mockUseFoldLayoutMode = jest.fn();
+const mockUseSafeFoldingFeature = jest.fn();
 
 jest.mock("../../context/FoldLayoutContext", () => ({
   useFoldLayoutMode: () => mockUseFoldLayoutMode(),
+}));
+
+jest.mock("../../utils/foldableUtils", () => ({
+  useSafeFoldingFeature: () => mockUseSafeFoldingFeature(),
 }));
 
 describe("useScreenLayout", () => {
@@ -19,6 +24,9 @@ describe("useScreenLayout", () => {
     mockUseWindowDimensions.mockReturnValue({ width: 375, height: 812 });
     mockUseFoldLayoutMode.mockReturnValue({
       foldLayoutMode: "auto",
+    });
+    mockUseSafeFoldingFeature.mockReturnValue({
+      layoutInfo: { displayFeatures: [] },
     });
   });
 
@@ -193,6 +201,20 @@ describe("useScreenLayout", () => {
 
     const { result } = renderHook(() => useScreenLayout());
 
+    expect(result.current.widthClass).toBe("medium");
+    expect(result.current.numColumns).toBe(2);
+    expect(result.current.isTwoPane).toBe(true);
+  });
+
+  it("uses native fold detection in auto mode for Android builds", () => {
+    mockUseWindowDimensions.mockReturnValue({ width: 540, height: 760 });
+    mockUseSafeFoldingFeature.mockReturnValue({
+      layoutInfo: { displayFeatures: [{ type: "fold" }] },
+    });
+
+    const { result } = renderHook(() => useScreenLayout());
+
+    expect(result.current.hasFoldingFeature).toBe(true);
     expect(result.current.widthClass).toBe("medium");
     expect(result.current.numColumns).toBe(2);
     expect(result.current.isTwoPane).toBe(true);
