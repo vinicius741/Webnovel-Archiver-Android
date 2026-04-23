@@ -36,6 +36,25 @@ describe("ReaderContent", () => {
     expect(webView.props.source.html).toContain("background-color: #ffffff");
     expect(webView.props.source.html).toContain("color: #000000");
     expect(webView.props.source.html).toContain(".tts-active");
+    expect(webView.props.source.html).toContain("padding: 20px");
+    expect(webView.props.source.html).toContain("padding-bottom: 112px");
+  });
+
+  it("should apply custom reader padding values", () => {
+    const { UNSAFE_getByType } = render(
+      <ReaderContent
+        webViewRef={mockWebViewRef}
+        processedContent="<p>Test</p>"
+        contentPadding={28}
+        bottomPadding={208}
+      />,
+    );
+
+    const WebView = require("react-native-webview").WebView;
+    const webView = UNSAFE_getByType(WebView);
+
+    expect(webView.props.source.html).toContain("padding: 28px");
+    expect(webView.props.source.html).toContain("padding-bottom: 208px");
   });
 
   it("should return empty string for empty processed content", () => {

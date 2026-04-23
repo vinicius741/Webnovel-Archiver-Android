@@ -1,11 +1,8 @@
 import React from "react";
-import { render, fireEvent, waitFor, act } from "@testing-library/react-native";
+import { render, fireEvent, waitFor } from "@testing-library/react-native";
 import { View } from "react-native";
 import { TTSSettingsModal } from "../TTSSettingsModal";
-import { ThemeProvider } from "react-native-paper";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import Slider from "@react-native-community/slider";
-import * as Speech from "expo-speech";
 
 jest.mock("expo-speech", () => ({
   getAvailableVoicesAsync: jest.fn().mockResolvedValue([
@@ -124,7 +121,11 @@ jest.mock("react-native-paper", () => {
     ThemeProvider: MockThemeProvider,
     Modal: MockModal,
     Slider: MockSlider,
-    List: { Item: MockListItem },
+    List: {
+      Item: MockListItem,
+      Icon: ({ icon }: any) =>
+        React.createElement(Text, null, typeof icon === "string" ? icon : ""),
+    },
     Searchbar: MockSearchbar,
     Button: MockButton,
     Divider: MockDivider,
@@ -133,6 +134,16 @@ jest.mock("react-native-paper", () => {
     ScrollView: ScrollView,
   };
 });
+
+jest.mock("../../hooks/useScreenLayout", () => ({
+  useScreenLayout: jest.fn().mockReturnValue({
+    screenWidth: 1024,
+    screenHeight: 768,
+    widthClass: "expanded",
+    heightClass: "medium",
+    isCompactHeight: false,
+  }),
+}));
 
 jest.mock("react-native-safe-area-context", () => {
   const React = require("react");
@@ -193,28 +204,36 @@ describe("TTSSettingsModal", () => {
     onSettingsChange: jest.fn(),
   };
 
-  const renderWithTheme = (component: React.ReactElement) => {
-    return render(<SafeAreaProvider>{component}</SafeAreaProvider>);
+  const renderWithTheme = async (component: React.ReactElement) => {
+    const rendered = render(<SafeAreaProvider>{component}</SafeAreaProvider>);
+
+    await waitFor(() => {
+      expect(
+        require("expo-speech").getAvailableVoicesAsync,
+      ).toHaveBeenCalled();
+    });
+
+    return rendered;
   };
 
-  it("should render modal when visible", () => {
-    const { queryByTestId } = renderWithTheme(
+  it("should render modal when visible", async () => {
+    const { queryByTestId } = await renderWithTheme(
       <TTSSettingsModal {...defaultProps} />,
     );
     const modal = queryByTestId("modal");
     expect(modal).toBeTruthy();
   });
 
-  it("should not render modal when not visible", () => {
-    const { queryByTestId } = renderWithTheme(
+  it("should not render modal when not visible", async () => {
+    const { queryByTestId } = await renderWithTheme(
       <TTSSettingsModal {...defaultProps} visible={false} />,
     );
     const modal = queryByTestId("modal");
     expect(modal).toBeNull();
   });
 
-  it("should render sliders", () => {
-    const { queryByTestId } = renderWithTheme(
+  it("should render sliders", async () => {
+    const { queryByTestId } = await renderWithTheme(
       <TTSSettingsModal {...defaultProps} />,
     );
     expect(queryByTestId("pitch-slider")).toBeTruthy();
@@ -222,8 +241,8 @@ describe("TTSSettingsModal", () => {
     expect(queryByTestId("chunk-slider")).toBeTruthy();
   });
 
-  it("should call onDismiss when Done button is pressed", () => {
-    const { queryByText } = renderWithTheme(
+  it("should call onDismiss when Done button is pressed", async () => {
+    const { queryByText } = await renderWithTheme(
       <TTSSettingsModal {...defaultProps} />,
     );
     const doneButton = queryByText("Done");
@@ -233,8 +252,8 @@ describe("TTSSettingsModal", () => {
     }
   });
 
-  it("should call onSettingsChange when sliders change", () => {
-    const { queryByTestId } = renderWithTheme(
+  it("should call onSettingsChange when sliders change", async () => {
+    const { queryByTestId } = await renderWithTheme(
       <TTSSettingsModal {...defaultProps} />,
     );
     const slider = queryByTestId("pitch-slider");
@@ -242,5 +261,24 @@ describe("TTSSettingsModal", () => {
       fireEvent(slider, "onSlidingComplete", 1.5);
       expect(defaultProps.onSettingsChange).toHaveBeenCalled();
     }
+  });
+
+  it("should apply expanded modal sizing", async () => {
+    const { getByTestId } = await renderWithTheme(
+      <TTSSettingsModal {...defaultProps} />,
+    );
+
+    expect(getByTestId("modal").props.style).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          width: "100%",
+        }),
+        expect.objectContaining({
+          maxWidth: 760,
+          maxHeight: "85%",
+          margin: 32,
+        }),
+      ]),
+    );
   });
 });

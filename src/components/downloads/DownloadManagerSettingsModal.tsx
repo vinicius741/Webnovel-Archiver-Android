@@ -8,6 +8,7 @@ import {
   TextInput,
   Divider,
 } from "react-native-paper";
+import { useScreenLayout } from "../../hooks/useScreenLayout";
 
 interface Props {
   visible: boolean;
@@ -23,6 +24,12 @@ interface Props {
   onClearCompletedPress: () => void;
 }
 
+type ScreenLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+  heightClass?: "compact" | "medium" | "expanded";
+  isCompactHeight?: boolean;
+};
+
 export const DownloadManagerSettingsModal: React.FC<Props> = ({
   visible,
   onDismiss,
@@ -37,6 +44,19 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
   onClearCompletedPress,
 }) => {
   const theme = useTheme();
+  const layout = useScreenLayout() as ScreenLayout;
+  const screenWidth = layout.screenWidth || 0;
+  const widthClass =
+    layout.widthClass ||
+    (screenWidth >= 960
+      ? "expanded"
+      : screenWidth >= 600
+        ? "medium"
+        : "compact");
+  const modalMargin = widthClass === "expanded" ? 32 : 20;
+  const modalMaxWidth = widthClass === "expanded" ? 560 : 480;
+  const modalMaxHeight =
+    layout.isCompactHeight || layout.heightClass === "compact" ? "92%" : "80%";
 
   return (
     <Modal
@@ -44,7 +64,12 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
       onDismiss={onDismiss}
       contentContainerStyle={[
         styles.modalContent,
-        { backgroundColor: theme.colors.surface },
+        {
+          backgroundColor: theme.colors.surface,
+          margin: modalMargin,
+          maxWidth: modalMaxWidth,
+          maxHeight: modalMaxHeight,
+        },
       ]}
     >
       <Text variant="headlineSmall" style={styles.modalTitle}>
@@ -112,7 +137,8 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   modalContent: {
-    margin: 20,
+    width: "100%",
+    alignSelf: "center",
     padding: 20,
     borderRadius: 12,
   },

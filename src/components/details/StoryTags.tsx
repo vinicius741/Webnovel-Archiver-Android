@@ -4,15 +4,22 @@ import { Chip } from "react-native-paper";
 
 interface StoryTagsProps {
   tags?: string[];
+  align?: "center" | "start";
 }
 
-export const StoryTags: React.FC<StoryTagsProps> = ({ tags }) => {
+export const StoryTags: React.FC<StoryTagsProps> = ({
+  tags,
+  align = "center",
+}) => {
   if (!tags || tags.length === 0) {
     return null;
   }
 
   return (
-    <View testID="tags-container" style={styles.container}>
+    <View
+      testID="tags-container"
+      style={[styles.container, align === "start" && styles.containerStart]}
+    >
       {tags.map((tag, index) => (
         <Chip
           testID={`chip-${index}`}
@@ -36,6 +43,9 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 16,
     marginBottom: 16,
+  },
+  containerStart: {
+    justifyContent: "flex-start",
   },
   chip: {
     height: 32,

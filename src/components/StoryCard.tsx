@@ -22,6 +22,7 @@ interface Props {
   selectionMode?: boolean;
   selected?: boolean;
   isArchived?: boolean;
+  compact?: boolean;
 }
 
 export const StoryCard = ({
@@ -37,6 +38,7 @@ export const StoryCard = ({
   selectionMode,
   selected,
   isArchived,
+  compact = false,
 }: Props) => {
   const theme = useTheme();
 
@@ -52,13 +54,14 @@ export const StoryCard = ({
     <Card
       style={[
         styles.card,
+        compact && styles.cardCompact,
         selected && { borderColor: theme.colors.primary, borderWidth: 2 },
       ]}
       onPress={handlePress}
       onLongPress={onLongPress}
       testID="story-card"
     >
-      <Card.Content style={styles.content}>
+      <Card.Content style={[styles.content, compact && styles.contentCompact]}>
         {selectionMode && (
           <View
             style={[
@@ -81,7 +84,7 @@ export const StoryCard = ({
         {coverUrl ? (
           <Image
             source={{ uri: coverUrl }}
-            style={styles.coverImage}
+            style={[styles.coverImage, compact && styles.coverImageCompact]}
             testID="story-card-cover"
             accessibilityLabel={`${title} cover`}
           />
@@ -89,6 +92,7 @@ export const StoryCard = ({
           <View
             style={[
               styles.coverImage,
+              compact && styles.coverImageCompact,
               styles.placeholderCover,
               { backgroundColor: theme.colors.surfaceVariant },
             ]}
@@ -103,7 +107,7 @@ export const StoryCard = ({
         )}
         <View style={styles.textContainer}>
           <Text
-            variant="titleMedium"
+            variant={compact ? "titleSmall" : "titleMedium"}
             numberOfLines={2}
             style={{ marginBottom: 4 }}
           >
@@ -173,17 +177,28 @@ const styles = StyleSheet.create({
     flexDirection: "column",
     justifyContent: "space-between",
   },
+  cardCompact: {
+    minHeight: 0,
+  },
   content: {
     flex: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     padding: 16,
   },
+  contentCompact: {
+    padding: 12,
+  },
   coverImage: {
     width: 80,
     height: 120,
     borderRadius: 8,
     marginRight: 16,
+  },
+  coverImageCompact: {
+    width: 64,
+    height: 96,
+    marginRight: 12,
   },
   placeholderCover: {
     justifyContent: "center",

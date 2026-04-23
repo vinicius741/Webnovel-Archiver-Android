@@ -3,13 +3,21 @@ import { View, StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
 import { useTheme } from "react-native-paper";
 
+interface ReaderContentProps {
+  webViewRef: React.RefObject<WebView>;
+  processedContent: string;
+  maxWidth?: number;
+  contentPadding?: number;
+  bottomPadding?: number;
+}
+
 export const ReaderContent = ({
   webViewRef,
   processedContent,
-}: {
-  webViewRef: React.RefObject<WebView>;
-  processedContent: string;
-}) => {
+  maxWidth,
+  contentPadding = 20,
+  bottomPadding = 112,
+}: ReaderContentProps) => {
   const theme = useTheme();
 
   const htmlContent = useMemo(() => {
@@ -17,13 +25,16 @@ export const ReaderContent = ({
 
     const css = `
             body {
+                margin: 0;
                 background-color: ${theme.colors.surface};
                 color: ${theme.colors.onSurface};
                 font-family: sans-serif;
-                padding: 16px;
+                padding: ${contentPadding}px;
                 line-height: 1.6;
                 font-size: 18px;
-                padding-bottom: 64px;
+                padding-bottom: ${bottomPadding}px;
+                box-sizing: border-box;
+                -webkit-text-size-adjust: 100%;
             }
             img {
                 max-width: 100%;
@@ -48,15 +59,15 @@ export const ReaderContent = ({
             </body>
             </html>
         `;
-  }, [processedContent, theme]);
+  }, [bottomPadding, contentPadding, processedContent, theme]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, maxWidth ? { maxWidth } : null]}>
       <WebView
         ref={webViewRef}
         originWhitelist={["*"]}
         source={{ html: htmlContent }}
-        style={{ backgroundColor: theme.colors.surface }}
+        style={[styles.webView, { backgroundColor: theme.colors.surface }]}
       />
     </View>
   );
@@ -64,6 +75,11 @@ export const ReaderContent = ({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    width: "100%",
+    alignSelf: "center",
+  },
+  webView: {
     flex: 1,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { StyleSheet, View, TouchableOpacity } from "react-native";
+import { StyleSheet, View, TouchableOpacity, ScrollView } from "react-native";
 import {
   TextInput,
   Button,
@@ -11,10 +11,24 @@ import {
 } from "react-native-paper";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useAddStory } from "../src/hooks/useAddStory";
+import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { useTabs } from "../src/hooks/useTabs";
+
+type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+};
 
 export default function AddStoryScreen() {
   const theme = useTheme();
+  const screenLayout = useScreenLayout() as AdaptiveLayout;
+  const widthClass =
+    screenLayout.widthClass ??
+    (screenLayout.screenWidth >= 840
+      ? "expanded"
+      : screenLayout.screenWidth >= 600
+        ? "medium"
+        : "compact");
+  const isCompact = widthClass === "compact";
   const { url, setUrl, loading, statusMessage, handlePaste, handleAdd } =
     useAddStory();
   const { tabs, hasCustomTabs } = useTabs();
@@ -29,96 +43,117 @@ export default function AddStoryScreen() {
   };
 
   const currentValue = selectedTabId === undefined ? "unassigned" : selectedTabId;
+  const contentMaxWidth =
+    widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
 
   return (
-    <ScreenContainer edges={["bottom", "left", "right"]} style={{ padding: 8 }}>
-      <View style={styles.form}>
-        <Text variant="titleMedium" style={styles.label}>
-          Webnovel URL
-        </Text>
-        <View style={styles.inputContainer}>
-          <TextInput
-            mode="outlined"
-            placeholder="https://www.royalroad.com/fiction/..."
-            value={url}
-            onChangeText={setUrl}
-            autoCapitalize="none"
-            keyboardType="url"
-            style={styles.input}
-          />
-          <IconButton
-            icon="content-paste"
-            mode="contained-tonal"
-            onPress={handlePaste}
-            style={styles.pasteButton}
-          />
-        </View>
-
-        {hasCustomTabs && (
-          <View style={styles.tabSection}>
-            <Text variant="titleMedium" style={styles.label}>
-              Add to Tab
-            </Text>
-            <View style={[styles.tabList, { borderColor: theme.colors.outlineVariant }]}>
-              <TouchableOpacity
-                style={styles.tabOption}
-                onPress={() => handleSelectTab("unassigned")}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: currentValue === "unassigned" }}
-              >
-                <RadioButton
-                  value="unassigned"
-                  status={currentValue === "unassigned" ? "checked" : "unchecked"}
-                />
-                <Text variant="bodyLarge" style={styles.tabLabel}>
-                  Unassigned
-                </Text>
-              </TouchableOpacity>
-              {tabs.map((tab) => (
-                <React.Fragment key={tab.id}>
-                  <Divider />
-                  <TouchableOpacity
-                    style={styles.tabOption}
-                    onPress={() => handleSelectTab(tab.id)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: currentValue === tab.id }}
-                  >
-                    <RadioButton
-                      value={tab.id}
-                      status={currentValue === tab.id ? "checked" : "unchecked"}
-                    />
-                    <Text variant="bodyLarge" style={styles.tabLabel}>
-                      {tab.name}
-                    </Text>
-                  </TouchableOpacity>
-                </React.Fragment>
-              ))}
-            </View>
-          </View>
-        )}
-
-        <Button
-          mode="contained"
-          onPress={onAdd}
-          loading={loading}
-          disabled={loading || !url}
-          style={styles.button}
+    <ScreenContainer edges={["bottom", "left", "right"]} style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View
+          style={[
+            styles.form,
+            contentMaxWidth ? { maxWidth: contentMaxWidth } : undefined,
+          ]}
         >
-          Fetch Story
-        </Button>
-        {loading && statusMessage ? (
-          <Text style={styles.status} variant="bodySmall">
-            {statusMessage}
+          <Text variant="titleMedium" style={styles.label}>
+            Webnovel URL
           </Text>
-        ) : null}
-      </View>
+          <View
+            style={[
+              styles.inputContainer,
+              isCompact && styles.inputContainerCompact,
+            ]}
+          >
+            <TextInput
+              mode="outlined"
+              placeholder="https://www.royalroad.com/fiction/..."
+              value={url}
+              onChangeText={setUrl}
+              autoCapitalize="none"
+              keyboardType="url"
+              style={[styles.input, isCompact && styles.inputCompact]}
+            />
+            <IconButton
+              icon="content-paste"
+              mode="contained-tonal"
+              onPress={handlePaste}
+              style={[styles.pasteButton, isCompact && styles.pasteButtonCompact]}
+            />
+          </View>
+
+          {hasCustomTabs && (
+            <View style={styles.tabSection}>
+              <Text variant="titleMedium" style={styles.label}>
+                Add to Tab
+              </Text>
+              <View style={[styles.tabList, { borderColor: theme.colors.outlineVariant }]}>
+                <TouchableOpacity
+                  style={styles.tabOption}
+                  onPress={() => handleSelectTab("unassigned")}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: currentValue === "unassigned" }}
+                >
+                  <RadioButton
+                    value="unassigned"
+                    status={currentValue === "unassigned" ? "checked" : "unchecked"}
+                  />
+                  <Text variant="bodyLarge" style={styles.tabLabel}>
+                    Unassigned
+                  </Text>
+                </TouchableOpacity>
+                {tabs.map((tab) => (
+                  <React.Fragment key={tab.id}>
+                    <Divider />
+                    <TouchableOpacity
+                      style={styles.tabOption}
+                      onPress={() => handleSelectTab(tab.id)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: currentValue === tab.id }}
+                    >
+                      <RadioButton
+                        value={tab.id}
+                        status={currentValue === tab.id ? "checked" : "unchecked"}
+                      />
+                      <Text variant="bodyLarge" style={styles.tabLabel}>
+                        {tab.name}
+                      </Text>
+                    </TouchableOpacity>
+                  </React.Fragment>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <Button
+            mode="contained"
+            onPress={onAdd}
+            loading={loading}
+            disabled={loading || !url}
+            style={styles.button}
+          >
+            Fetch Story
+          </Button>
+          {loading && statusMessage ? (
+            <Text style={styles.status} variant="bodySmall">
+              {statusMessage}
+            </Text>
+          ) : null}
+        </View>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    paddingHorizontal: 8,
+  },
+  scrollContent: {
+    paddingVertical: 16,
+  },
   form: {
-    paddingTop: 16,
+    width: "100%",
+    alignSelf: "center",
   },
   label: {
     marginBottom: 8,
@@ -128,12 +163,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
+  inputContainerCompact: {
+    flexDirection: "column",
+    alignItems: "stretch",
+  },
   input: {
     flex: 1,
     marginRight: 8,
   },
+  inputCompact: {
+    width: "100%",
+    marginRight: 0,
+    marginBottom: 8,
+  },
   pasteButton: {
     margin: 0,
+  },
+  pasteButtonCompact: {
+    alignSelf: "flex-end",
   },
   tabSection: {
     marginBottom: 16,
@@ -154,6 +201,7 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 8,
+    width: "100%",
   },
   status: {
     marginTop: 12,

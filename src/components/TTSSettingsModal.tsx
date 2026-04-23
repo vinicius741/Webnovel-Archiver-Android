@@ -19,6 +19,7 @@ import {
 import Slider from "@react-native-community/slider";
 import * as Speech from "expo-speech";
 import type { TTSSettings } from "../types";
+import { useScreenLayout } from "../hooks/useScreenLayout";
 
 interface Props {
   visible: boolean;
@@ -26,6 +27,12 @@ interface Props {
   settings: TTSSettings;
   onSettingsChange: (settings: TTSSettings) => void;
 }
+
+type ScreenLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+  heightClass?: "compact" | "medium" | "expanded";
+  isCompactHeight?: boolean;
+};
 
 const ModalContent = React.memo(
   ({
@@ -213,6 +220,19 @@ export const TTSSettingsModal: React.FC<Props> = ({
   onSettingsChange,
 }) => {
   const theme = useTheme();
+  const layout = useScreenLayout() as ScreenLayout;
+  const screenWidth = layout.screenWidth || 0;
+  const widthClass =
+    layout.widthClass ||
+    (screenWidth >= 960
+      ? "expanded"
+      : screenWidth >= 600
+        ? "medium"
+        : "compact");
+  const modalMargin = widthClass === "expanded" ? 32 : 20;
+  const modalMaxWidth = widthClass === "expanded" ? 760 : 640;
+  const modalMaxHeight =
+    layout.isCompactHeight || layout.heightClass === "compact" ? "92%" : "85%";
 
   const handleSettingsChange = useCallback(
     (newSettings: TTSSettings) => {
@@ -227,7 +247,12 @@ export const TTSSettingsModal: React.FC<Props> = ({
       onDismiss={onDismiss}
       contentContainerStyle={[
         styles.modalContent,
-        { backgroundColor: theme.colors.surface },
+        {
+          backgroundColor: theme.colors.surface,
+          margin: modalMargin,
+          maxWidth: modalMaxWidth,
+          maxHeight: modalMaxHeight,
+        },
       ]}
       testID="modal"
     >
@@ -243,10 +268,10 @@ export const TTSSettingsModal: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   modalContent: {
-    margin: 20,
+    width: "100%",
+    alignSelf: "center",
     padding: 20,
     borderRadius: 12,
-    maxHeight: "85%",
     elevation: 5,
   },
   title: {

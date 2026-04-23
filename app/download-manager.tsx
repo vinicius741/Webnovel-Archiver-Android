@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useTheme, Card, IconButton, Portal } from "react-native-paper";
 import { Stack } from "expo-router";
@@ -8,10 +8,16 @@ import { DownloadQueueList } from "../src/components/downloads/DownloadQueueList
 import { StatItem } from "../src/components/downloads/StatItem";
 import { DownloadManagerSettingsModal } from "../src/components/downloads/DownloadManagerSettingsModal";
 import { useAppAlert } from "../src/context/AlertContext";
+import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { useSettings } from "../src/hooks/useSettings";
+
+type ScreenLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+};
 
 export default function DownloadManagerScreen() {
   const theme = useTheme();
+  const layout = useScreenLayout() as ScreenLayout;
   const { showAlert } = useAppAlert();
   const {
     jobsByStory,
@@ -40,6 +46,53 @@ export default function DownloadManagerScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const screenWidth = layout.screenWidth || 0;
+  const widthClass =
+    layout.widthClass ||
+    (screenWidth >= 960
+      ? "expanded"
+      : screenWidth >= 600
+        ? "medium"
+        : "compact");
+
+  const shellPadding = useMemo(() => {
+    if (widthClass === "expanded") {
+      return 32;
+    }
+    if (widthClass === "medium") {
+      return 24;
+    }
+    return 16;
+  }, [widthClass]);
+
+  const queueMaxWidth = widthClass === "expanded" ? 1080 : 920;
+  const statsColumns = useMemo(() => {
+    if (screenWidth >= 1024) {
+      return 5;
+    }
+    if (screenWidth >= 720) {
+      return 3;
+    }
+    if (screenWidth >= 420) {
+      return 3;
+    }
+    return 2;
+  }, [screenWidth]);
+
+  const statsGridWidth =
+    screenWidth > 0
+      ? Math.min(queueMaxWidth, Math.max(screenWidth - shellPadding * 2, 0))
+      : queueMaxWidth;
+  const statItemWidth = Math.max(
+    132,
+    Math.floor(statsGridWidth / statsColumns) - 16,
+  );
+  const statItemStyle = useMemo(
+    () => ({
+      width: statItemWidth,
+    }),
+    [statItemWidth],
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -121,7 +174,16 @@ export default function DownloadManagerScreen() {
         }}
       />
 
-      <Card style={styles.statsCard}>
+      <Card
+        style={[
+          styles.statsCard,
+          {
+            marginHorizontal: shellPadding,
+            maxWidth: queueMaxWidth,
+            alignSelf: "center",
+          },
+        ]}
+      >
         <Card.Content style={styles.statsContent}>
           <StatItem
             icon="download"
@@ -129,36 +191,21 @@ export default function DownloadManagerScreen() {
             label="Active"
             color={theme.colors.primary}
             theme={theme}
-          />
-          <View
-            style={[
-              styles.statDivider,
-              { backgroundColor: theme.colors.outlineVariant },
-            ]}
+            style={statItemStyle}
           />
           <StatItem
             icon="clock-outline"
             value={stats.pending}
             label="Queued"
             theme={theme}
-          />
-          <View
-            style={[
-              styles.statDivider,
-              { backgroundColor: theme.colors.outlineVariant },
-            ]}
+            style={statItemStyle}
           />
           <StatItem
             icon="pause"
             value={stats.paused}
             label="Paused"
             theme={theme}
-          />
-          <View
-            style={[
-              styles.statDivider,
-              { backgroundColor: theme.colors.outlineVariant },
-            ]}
+            style={statItemStyle}
           />
           <StatItem
             icon="check-circle"
@@ -166,12 +213,7 @@ export default function DownloadManagerScreen() {
             label="Done"
             color={theme.colors.secondary}
             theme={theme}
-          />
-          <View
-            style={[
-              styles.statDivider,
-              { backgroundColor: theme.colors.outlineVariant },
-            ]}
+            style={statItemStyle}
           />
           <StatItem
             icon="alert-circle"
@@ -179,6 +221,7 @@ export default function DownloadManagerScreen() {
             label="Failed"
             color={hasFailedJobs ? theme.colors.error : undefined}
             theme={theme}
+            style={statItemStyle}
           />
         </Card.Content>
       </Card>
@@ -191,6 +234,8 @@ export default function DownloadManagerScreen() {
         onRetry={retryJob}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        contentMaxWidth={queueMaxWidth}
+        horizontalPadding={shellPadding}
       />
 
       <Portal>
@@ -219,18 +264,13 @@ const styles = StyleSheet.create({
     marginRight: -8,
   },
   statsCard: {
-    margin: 16,
     marginBottom: 8,
+    width: "100%",
   },
   statsContent: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-    paddingVertical: 8,
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    opacity: 0.5,
+    flexWrap: "wrap",
+    justifyContent: "center",
+    paddingVertical: 12,
   },
 });

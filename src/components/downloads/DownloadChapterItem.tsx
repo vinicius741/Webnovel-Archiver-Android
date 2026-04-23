@@ -1,6 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Text, IconButton, useTheme } from "react-native-paper";
+import { useScreenLayout } from "../../hooks/useScreenLayout";
 import { DownloadJob } from "../../services/download/types";
 import { getStatusColor, getStatusLabel } from "./downloadStatusUtils";
 
@@ -12,6 +13,10 @@ interface DownloadChapterItemProps {
   onRetry: (jobId: string) => void;
 }
 
+type ScreenLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+};
+
 export const DownloadChapterItem: React.FC<DownloadChapterItemProps> = ({
   job,
   onPause,
@@ -20,15 +25,25 @@ export const DownloadChapterItem: React.FC<DownloadChapterItemProps> = ({
   onRetry,
 }) => {
   const theme = useTheme();
+  const layout = useScreenLayout() as ScreenLayout;
   const statusColor = getStatusColor(job.status, theme);
   const statusLabel = getStatusLabel(job.status);
+  const screenWidth = layout.screenWidth || 0;
+  const isCompactLayout =
+    layout.widthClass === "compact" ||
+    (!layout.widthClass && screenWidth > 0 && screenWidth < 420);
 
   return (
-    <View style={styles.chapterItem}>
+    <View
+      style={[
+        styles.chapterItem,
+        isCompactLayout ? styles.chapterItemCompact : null,
+      ]}
+    >
       <View style={styles.chapterLeft}>
         <Text
           variant="bodyMedium"
-          numberOfLines={1}
+          numberOfLines={isCompactLayout ? 2 : 1}
           style={styles.chapterTitle}
         >
           {job.chapter.title}
@@ -40,7 +55,12 @@ export const DownloadChapterItem: React.FC<DownloadChapterItemProps> = ({
           {statusLabel}
         </Text>
       </View>
-      <View style={styles.chapterActions}>
+      <View
+        style={[
+          styles.chapterActions,
+          isCompactLayout ? styles.chapterActionsCompact : null,
+        ]}
+      >
         {(job.status === "pending" || job.status === "downloading") && (
           <IconButton
             icon="pause"
@@ -94,6 +114,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
+  chapterItemCompact: {
+    alignItems: "flex-start",
+  },
   chapterLeft: {
     flex: 1,
     marginRight: 8,
@@ -104,5 +127,9 @@ const styles = StyleSheet.create({
   chapterActions: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  chapterActionsCompact: {
+    marginTop: 4,
+    marginRight: -8,
   },
 });

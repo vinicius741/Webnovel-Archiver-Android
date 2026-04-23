@@ -12,6 +12,7 @@ interface ChapterFilterMenuProps {
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
   selectionDisabled?: boolean;
+  stacked?: boolean;
 }
 
 export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
@@ -23,6 +24,7 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
   selectionMode,
   onToggleSelectionMode,
   selectionDisabled = false,
+  stacked = false,
 }) => {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
@@ -70,55 +72,57 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
         placeholder="Search chapters"
         onChangeText={onSearchChange}
         value={searchQuery}
-        style={styles.searchbar}
+        style={[styles.searchbar, stacked && styles.searchbarStacked]}
         inputStyle={styles.searchInput}
       />
-      <IconButton
-        icon={selectionMode ? "close" : "checkbox-marked-outline"}
-        onPress={onToggleSelectionMode}
-        size={20}
-        disabled={selectionDisabled}
-        style={[
-          styles.filterButton,
-          styles.selectionButton,
-          selectionMode && { backgroundColor: theme.colors.primaryContainer },
-        ]}
-        iconColor={selectionMode ? theme.colors.primary : undefined}
-        testID="chapter-selection-button"
-      />
-      <Menu
-        key={menuKey}
-        visible={visible}
-        onDismiss={handleDismiss}
-        anchor={
-          <View collapsable={false}>
-            <IconButton
-              icon="filter-variant"
-              onPress={openMenu}
-              size={20}
-              style={styles.filterButton}
-              testID="chapter-filter-button"
-            />
-          </View>
-        }
-      >
-        <Menu.Item
-          onPress={() => handleSelect("all")}
-          title="Show all chapters"
-          leadingIcon={filterMode === "all" ? "check" : undefined}
+      <View style={[styles.buttonGroup, stacked && styles.buttonGroupStacked]}>
+        <IconButton
+          icon={selectionMode ? "close" : "checkbox-marked-outline"}
+          onPress={onToggleSelectionMode}
+          size={20}
+          disabled={selectionDisabled}
+          style={[
+            styles.filterButton,
+            styles.selectionButton,
+            selectionMode && { backgroundColor: theme.colors.primaryContainer },
+          ]}
+          iconColor={selectionMode ? theme.colors.primary : undefined}
+          testID="chapter-selection-button"
         />
-        <Menu.Item
-          onPress={() => handleSelect("hideNonDownloaded")}
-          title="Hide non-downloaded"
-          leadingIcon={filterMode === "hideNonDownloaded" ? "check" : undefined}
-        />
-        <Menu.Item
-          onPress={() => handleSelect("hideAboveBookmark")}
-          title="Hide chapters above bookmark"
-          leadingIcon={filterMode === "hideAboveBookmark" ? "check" : undefined}
-          disabled={!hasBookmark}
-        />
-      </Menu>
+        <Menu
+          key={menuKey}
+          visible={visible}
+          onDismiss={handleDismiss}
+          anchor={
+            <View collapsable={false}>
+              <IconButton
+                icon="filter-variant"
+                onPress={openMenu}
+                size={20}
+                style={styles.filterButton}
+                testID="chapter-filter-button"
+              />
+            </View>
+          }
+        >
+          <Menu.Item
+            onPress={() => handleSelect("all")}
+            title="Show all chapters"
+            leadingIcon={filterMode === "all" ? "check" : undefined}
+          />
+          <Menu.Item
+            onPress={() => handleSelect("hideNonDownloaded")}
+            title="Hide non-downloaded"
+            leadingIcon={filterMode === "hideNonDownloaded" ? "check" : undefined}
+          />
+          <Menu.Item
+            onPress={() => handleSelect("hideAboveBookmark")}
+            title="Hide chapters above bookmark"
+            leadingIcon={filterMode === "hideAboveBookmark" ? "check" : undefined}
+            disabled={!hasBookmark}
+          />
+        </Menu>
+      </View>
     </View>
   );
 };
@@ -127,15 +131,29 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
   },
   searchbar: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 260,
     height: 48,
     alignItems: "center",
+  },
+  searchbarStacked: {
+    flexBasis: "100%",
   },
   searchInput: {
     minHeight: 0,
     alignSelf: "center",
+  },
+  buttonGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  buttonGroupStacked: {
+    alignSelf: "flex-end",
   },
   filterButton: {
     margin: 0,

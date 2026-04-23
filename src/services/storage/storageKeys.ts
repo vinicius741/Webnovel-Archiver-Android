@@ -7,4 +7,5 @@ export const STORAGE_KEYS = {
   TTS_SESSION: "wa_tts_session_v1",
   CHAPTER_FILTER_SETTINGS: "wa_chapter_filter_settings_v1",
   TABS: "wa_tabs_v1",
+  FOLD_LAYOUT_MODE: "wa_fold_layout_mode_v1",
 } as const;

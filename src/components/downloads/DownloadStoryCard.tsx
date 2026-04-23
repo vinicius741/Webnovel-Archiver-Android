@@ -1,10 +1,7 @@
 import React from "react";
-import {
-  View,
-  StyleSheet,
-  TouchableOpacity,
-} from "react-native";
+import { View, StyleSheet, TouchableOpacity } from "react-native";
 import { Text, IconButton, Card, useTheme, Divider } from "react-native-paper";
+import { useScreenLayout } from "../../hooks/useScreenLayout";
 import { DownloadJob } from "../../services/download/types";
 import { DownloadChapterItem } from "./DownloadChapterItem";
 
@@ -31,6 +28,10 @@ interface StatusSummary {
   completed: number;
   failed: number;
 }
+
+type ScreenLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+};
 
 const getStatusSummary = (jobs: DownloadJob[]): StatusSummary => {
   const downloading = jobs.filter((j) => j.status === "downloading").length;
@@ -64,6 +65,7 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
   onRetry,
 }) => {
   const theme = useTheme();
+  const layout = useScreenLayout() as ScreenLayout;
   const summary = getStatusSummary(item.jobs);
   const completedCount = summary.completed;
   const totalCount = item.jobs.length;
@@ -71,6 +73,10 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
   const isInProgress =
     summary.downloading > 0 || summary.pending > 0 || summary.paused > 0;
   const subtitleText = getSubtitleText(completedCount, totalCount, summary);
+  const screenWidth = layout.screenWidth || 0;
+  const isCompactLayout =
+    layout.widthClass === "compact" ||
+    (!layout.widthClass && screenWidth > 0 && screenWidth < 520);
 
   const handlePauseAll = () => {
     item.jobs.forEach((job) => {
@@ -111,7 +117,12 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
   return (
     <Card style={styles.storyCard}>
       <TouchableOpacity onPress={() => onToggleExpanded(item.storyId)}>
-        <Card.Content style={styles.storyHeader}>
+        <Card.Content
+          style={[
+            styles.storyHeader,
+            isCompactLayout ? styles.storyHeaderCompact : null,
+          ]}
+        >
           <View style={styles.storyTitleRow}>
             <IconButton
               icon={isExpanded ? "chevron-down" : "chevron-right"}
@@ -122,19 +133,28 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
             <View style={styles.storyInfo}>
               <Text
                 variant="titleMedium"
-                numberOfLines={1}
+                numberOfLines={isCompactLayout ? 2 : 1}
                 style={styles.storyTitle}
               >
                 {item.storyTitle}
               </Text>
-              <Text variant="bodySmall" style={styles.storySubtitle}>
+              <Text
+                variant="bodySmall"
+                style={styles.storySubtitle}
+                numberOfLines={isCompactLayout ? 3 : 1}
+              >
                 {subtitleText}
               </Text>
             </View>
           </View>
 
           {isInProgress && (
-            <View style={styles.storyActions}>
+            <View
+              style={[
+                styles.storyActions,
+                isCompactLayout ? styles.storyActionsCompact : null,
+              ]}
+            >
               {(summary.downloading > 0 || summary.pending > 0) && (
                 <IconButton
                   icon="pause"
@@ -169,7 +189,12 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
             </View>
           )}
           {!isInProgress && hasFailed && (
-            <View style={styles.storyActions}>
+            <View
+              style={[
+                styles.storyActions,
+                isCompactLayout ? styles.storyActionsCompact : null,
+              ]}
+            >
               <IconButton
                 icon="refresh"
                 size={18}
@@ -218,14 +243,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
+  storyHeaderCompact: {
+    alignItems: "stretch",
+  },
   storyTitleRow: {
     flex: 1,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   expandIcon: {
     margin: 0,
     marginRight: -4,
+    marginTop: 4,
   },
   storyInfo: {
     flex: 1,
@@ -242,6 +271,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginLeft: 8,
+  },
+  storyActionsCompact: {
+    marginLeft: 0,
+    marginTop: 4,
+    alignSelf: "flex-end",
   },
   chapterList: {
     paddingBottom: 8,

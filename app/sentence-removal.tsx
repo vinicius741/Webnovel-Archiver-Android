@@ -18,8 +18,21 @@ import {
   SentenceDialog,
   RuleDialog,
 } from "../src/components/sentence-removal";
+import { useScreenLayout } from "../src/hooks/useScreenLayout";
+
+type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+};
 
 export default function SentenceRemovalScreen() {
+  const screenLayout = useScreenLayout() as AdaptiveLayout;
+  const widthClass =
+    screenLayout.widthClass ??
+    (screenLayout.screenWidth >= 840
+      ? "expanded"
+      : screenLayout.screenWidth >= 600
+        ? "medium"
+        : "compact");
   const { sentences, regexRules, loading, saveSentences, saveRegexRules } =
     useSentenceRemovalData();
   const [activeTab, setActiveTab] = useState<TabValue>("sentences");
@@ -31,6 +44,8 @@ export default function SentenceRemovalScreen() {
   const handleExport = () => {
     void exportRules(sentences, regexRules);
   };
+  const contentMaxWidth =
+    widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
 
   if (loading) {
     return (
@@ -61,34 +76,41 @@ export default function SentenceRemovalScreen() {
       </Appbar.Header>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <SegmentedButtons
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value)}
-          buttons={[
-            { value: "sentences", label: "Sentences" },
-            { value: "regex", label: "Regex Rules" },
+        <View
+          style={[
+            styles.contentInner,
+            contentMaxWidth ? { maxWidth: contentMaxWidth } : undefined,
           ]}
-          style={styles.tabs}
-        />
-
-        {activeTab === "sentences" && (
-          <SentenceList
-            sentences={sentences}
-            onAdd={() => sentenceManagement.openDialog()}
-            onEdit={(sentence, index) => sentenceManagement.openDialog(sentence, index)}
-            onDelete={sentenceManagement.handleDelete}
+        >
+          <SegmentedButtons
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value)}
+            buttons={[
+              { value: "sentences", label: "Sentences" },
+              { value: "regex", label: "Regex Rules" },
+            ]}
+            style={styles.tabs}
           />
-        )}
 
-        {activeTab === "regex" && (
-          <RegexRuleList
-            rules={regexRules}
-            onAdd={() => ruleManagement.openDialog()}
-            onEdit={ruleManagement.openDialog}
-            onDelete={ruleManagement.handleDelete}
-            onToggle={ruleManagement.handleToggle}
-          />
-        )}
+          {activeTab === "sentences" && (
+            <SentenceList
+              sentences={sentences}
+              onAdd={() => sentenceManagement.openDialog()}
+              onEdit={(sentence, index) => sentenceManagement.openDialog(sentence, index)}
+              onDelete={sentenceManagement.handleDelete}
+            />
+          )}
+
+          {activeTab === "regex" && (
+            <RegexRuleList
+              rules={regexRules}
+              onAdd={() => ruleManagement.openDialog()}
+              onEdit={ruleManagement.openDialog}
+              onDelete={ruleManagement.handleDelete}
+              onToggle={ruleManagement.handleToggle}
+            />
+          )}
+        </View>
       </ScrollView>
 
       <SentenceDialog
@@ -123,6 +145,12 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 40,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  contentInner: {
+    width: "100%",
+    alignSelf: "center",
   },
   tabs: {
     marginBottom: 8,

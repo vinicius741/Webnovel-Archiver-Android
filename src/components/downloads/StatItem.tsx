@@ -1,5 +1,5 @@
 import React, { memo } from "react";
-import { View, StyleSheet } from "react-native";
+import { View, StyleSheet, ViewStyle } from "react-native";
 import { Text, IconButton, MD3Theme } from "react-native-paper";
 
 interface Props {
@@ -8,10 +8,12 @@ interface Props {
   label: string;
   color?: string;
   theme: MD3Theme;
+  style?: ViewStyle;
 }
 
-export const StatItem = memo(({ icon, value, label, color, theme }: Props) => (
-  <View style={styles.container}>
+export const StatItem = memo(
+  ({ icon, value, label, color, theme, style }: Props) => (
+    <View style={[styles.container, style]}>
     <IconButton
       icon={icon}
       size={20}
@@ -30,13 +32,15 @@ export const StatItem = memo(({ icon, value, label, color, theme }: Props) => (
     >
       {label}
     </Text>
-  </View>
-));
+    </View>
+  ),
+);
 
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    flex: 1,
+    minWidth: 120,
+    paddingVertical: 4,
   },
   icon: {
     margin: 0,

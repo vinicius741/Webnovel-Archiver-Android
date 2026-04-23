@@ -6,6 +6,7 @@ import * as Clipboard from "expo-clipboard";
 interface StoryDescriptionProps {
   description?: string;
   maxLength?: number;
+  align?: "center" | "start";
 }
 
 const DEFAULT_MAX_LENGTH = 200;
@@ -13,6 +14,7 @@ const DEFAULT_MAX_LENGTH = 200;
 export const StoryDescription: React.FC<StoryDescriptionProps> = ({
   description,
   maxLength = DEFAULT_MAX_LENGTH,
+  align = "center",
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const lastTap = useRef(0);
@@ -21,6 +23,8 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({
   if (!description) {
     return null;
   }
+
+  const isStartAligned = align === "start";
 
   const shouldTruncate = description.length > maxLength;
   
@@ -55,7 +59,7 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({
     <View style={styles.descriptionContainer}>
       <Text
         variant="bodyMedium"
-        style={styles.description}
+        style={[styles.description, isStartAligned && styles.descriptionStart]}
         onPress={() => void handlePress()}
       >
         {displayText}
@@ -63,7 +67,7 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({
       {shouldTruncate && (
         <TouchableOpacity
           onPress={handleExpandToggle}
-          style={styles.readMoreButton}
+          style={[styles.readMoreButton, isStartAligned && styles.readMoreButtonStart]}
           testID="read-more-button"
         >
           <Text
@@ -86,9 +90,15 @@ const styles = StyleSheet.create({
   description: {
     textAlign: "center",
   },
+  descriptionStart: {
+    textAlign: "left",
+  },
   readMoreButton: {
     marginTop: 8,
     alignSelf: "center",
+  },
+  readMoreButtonStart: {
+    alignSelf: "flex-start",
   },
   readMoreText: {
     fontWeight: "600",

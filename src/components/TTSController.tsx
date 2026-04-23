@@ -12,6 +12,10 @@ interface TTSControllerProps {
   currentChunk: number;
   totalChunks: number;
   visible: boolean;
+  maxWidth?: number;
+  horizontalPadding?: number;
+  bottomOffset?: number;
+  compactHeight?: boolean;
 }
 
 export const TTSController: React.FC<TTSControllerProps> = ({
@@ -24,11 +28,16 @@ export const TTSController: React.FC<TTSControllerProps> = ({
   currentChunk,
   totalChunks,
   visible,
+  maxWidth,
+  horizontalPadding = 16,
+  bottomOffset = 96,
+  compactHeight = false,
 }) => {
   const theme = useTheme();
   const [fadeAnim] = React.useState(new Animated.Value(0));
 
   const [isRendered, setIsRendered] = React.useState(visible);
+  const isNarrowLayout = !!maxWidth && maxWidth < 420;
 
   React.useEffect(() => {
     if (visible) {
@@ -54,17 +63,40 @@ export const TTSController: React.FC<TTSControllerProps> = ({
   return (
     <Animated.View
       testID="animated-view"
-      style={[styles.container, { opacity: fadeAnim }]}
+      pointerEvents="box-none"
+      style={[
+        styles.container,
+        {
+          opacity: fadeAnim,
+          bottom: bottomOffset,
+          paddingHorizontal: horizontalPadding,
+        },
+      ]}
     >
       <Surface
         style={[
           styles.surface,
-          { backgroundColor: theme.colors.elevation.level3 },
+          {
+            backgroundColor: theme.colors.elevation.level3,
+            maxWidth,
+            paddingVertical: compactHeight ? 6 : 10,
+          },
         ]}
         elevation={4}
       >
-        <View style={styles.content}>
-          <View style={styles.info}>
+        <View
+          style={[
+            styles.content,
+            isNarrowLayout ? styles.contentStacked : null,
+          ]}
+        >
+          <View
+            style={[
+              styles.info,
+              isNarrowLayout ? styles.infoStacked : null,
+              isNarrowLayout ? styles.centered : null,
+            ]}
+          >
             <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
               TEXT-TO-SPEECH
             </Text>
@@ -75,7 +107,12 @@ export const TTSController: React.FC<TTSControllerProps> = ({
             </Text>
           </View>
 
-          <View style={styles.controls}>
+          <View
+            style={[
+              styles.controls,
+              isNarrowLayout ? styles.controlsStacked : null,
+            ]}
+          >
             <IconButton
               icon="skip-previous"
               size={24}
@@ -115,26 +152,38 @@ export const TTSController: React.FC<TTSControllerProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    bottom: 120, // Above the bottom bar
-    left: 16,
-    right: 16,
+    left: 0,
+    right: 0,
     zIndex: 1000,
   },
   surface: {
+    width: "100%",
+    alignSelf: "center",
     borderRadius: 24,
     paddingHorizontal: 16,
-    paddingVertical: 8,
   },
   content: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+  contentStacked: {
+    alignItems: "stretch",
+  },
   info: {
     flex: 1,
+  },
+  infoStacked: {
+    marginBottom: 4,
+  },
+  centered: {
+    alignItems: "center",
   },
   controls: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  controlsStacked: {
+    justifyContent: "center",
   },
 });

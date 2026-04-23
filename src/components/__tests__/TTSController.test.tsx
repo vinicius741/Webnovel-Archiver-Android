@@ -1,8 +1,7 @@
 import React from "react";
-import { render, fireEvent, waitFor } from "@testing-library/react-native";
+import { render, fireEvent } from "@testing-library/react-native";
 import { TTSController } from "../TTSController";
 import { ThemeProvider } from "react-native-paper";
-import { Animated } from "react-native";
 
 jest.mock("react-native-paper", () => {
   const React = require("react");
@@ -224,5 +223,23 @@ describe("TTSController", () => {
     );
 
     expect(getByTestId("animated-view")).toBeTruthy();
+  });
+
+  it("should apply bounded overlay spacing props", () => {
+    const { getByTestId } = renderWithTheme(
+      <TTSController
+        {...defaultProps}
+        maxWidth={800}
+        horizontalPadding={28}
+        bottomOffset={84}
+      />,
+    );
+
+    expect(getByTestId("animated-view").props.style).toEqual(
+      expect.objectContaining({
+        bottom: 84,
+        paddingHorizontal: 28,
+      }),
+    );
   });
 });

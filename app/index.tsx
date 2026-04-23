@@ -39,6 +39,7 @@ interface TabFlatListProps {
   numColumns: number;
   itemWidth: number;
   isLargeScreen: boolean;
+  maxContentWidth: number;
   selectionMode: boolean;
   refreshing: boolean;
   onRefresh: () => void;
@@ -46,11 +47,19 @@ interface TabFlatListProps {
   theme: MD3Theme;
 }
 
+type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+  heightClass?: "compact" | "medium" | "expanded";
+  isTwoPane?: boolean;
+  isCompactHeight?: boolean;
+};
+
 const TabFlatList = React.memo(function TabFlatList({
   stories,
   numColumns,
   itemWidth: _itemWidth,
   isLargeScreen,
+  maxContentWidth,
   selectionMode,
   refreshing,
   onRefresh,
@@ -69,7 +78,8 @@ const TabFlatList = React.memo(function TabFlatList({
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
-          isLargeScreen && { paddingHorizontal: 16 },
+          isLargeScreen && styles.largeListContent,
+          isLargeScreen && { maxWidth: maxContentWidth },
           selectionMode && { paddingBottom: 100 },
         ]}
         refreshControl={
@@ -96,7 +106,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const theme = usePaperTheme();
   const insets = useSafeAreaInsets();
-  const { numColumns, isLargeScreen, screenWidth } = useScreenLayout();
+  const screenLayout = useScreenLayout() as AdaptiveLayout;
+  const { numColumns, isLargeScreen, screenWidth } = screenLayout;
 
   const {
     tabs,
@@ -287,11 +298,16 @@ export default function HomeScreen() {
   );
 
   const GAP = 8;
-  const listPadding = isLargeScreen ? 32 : 32;
-  const totalPadding = listPadding;
+  const totalPadding = 32;
   const safeAreaHorizontal = insets.left + insets.right;
+  const maxContentWidth =
+    numColumns === 1 ? 760 : numColumns === 2 ? 1040 : 1320;
+  const effectiveWidth = Math.min(
+    screenWidth - safeAreaHorizontal,
+    maxContentWidth,
+  );
   const availableWidth =
-    screenWidth - safeAreaHorizontal - totalPadding - (numColumns - 1) * GAP;
+    effectiveWidth - totalPadding - (numColumns - 1) * GAP;
   const itemWidth = availableWidth / numColumns;
 
   const renderStoryItem = useCallback(
@@ -325,6 +341,7 @@ export default function HomeScreen() {
           onLongPress={hasCustomTabs ? () => handleLongPress(item.id) : undefined}
           selectionMode={selectionMode}
           selected={isSelected(item.id)}
+          compact={numColumns >= 3}
         />
       </View>
     ),
@@ -351,12 +368,14 @@ export default function HomeScreen() {
           iconColor={theme.colors.onSurfaceVariant}
           inputStyle={{ color: theme.colors.onSurface }}
         />
-        <SortButton
-          sortOption={sortOption}
-          sortDirection={sortDirection}
-          onSortSelect={handleSortSelect}
-          onToggleDirection={handleToggleDirection}
-        />
+        <View style={styles.sortButtonWrap}>
+          <SortButton
+            sortOption={sortOption}
+            sortDirection={sortDirection}
+            onSortSelect={handleSortSelect}
+            onToggleDirection={handleToggleDirection}
+          />
+        </View>
       </View>
       {allTags.length > 0 && (
         <ScrollView
@@ -484,6 +503,7 @@ export default function HomeScreen() {
               numColumns={numColumns}
               itemWidth={itemWidth}
               isLargeScreen={isLargeScreen}
+              maxContentWidth={maxContentWidth}
               selectionMode={selectionMode}
               refreshing={refreshing}
               onRefresh={onRefresh}
@@ -502,7 +522,8 @@ export default function HomeScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.listContent,
-            isLargeScreen && { paddingHorizontal: 16 },
+            isLargeScreen && styles.largeListContent,
+            isLargeScreen && { maxWidth: maxContentWidth },
             selectionMode && { paddingBottom: 100 },
           ]}
           refreshControl={
@@ -569,6 +590,10 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 80,
   },
+  largeListContent: {
+    width: "100%",
+    alignSelf: "center",
+  },
   emptyState: {
     flex: 1,
     alignItems: "center",
@@ -589,7 +614,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     backgroundColor: "transparent",
     width: "100%",
-    maxWidth: 600,
+    maxWidth: 840,
     alignSelf: "center",
   },
   filtersContainer: {
@@ -617,14 +642,19 @@ const styles = StyleSheet.create({
   },
   searchRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
     paddingTop: 8,
   },
   searchBar: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 280,
     elevation: 2,
     borderRadius: 8,
+  },
+  sortButtonWrap: {
+    alignSelf: "flex-start",
   },
   tagsScroll: {
     marginTop: 12,

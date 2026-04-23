@@ -29,6 +29,7 @@ interface StoryActionsProps {
   onRead: () => void;
   onDownloadAll?: () => void;
   onViewDownloads?: () => void;
+  stacked?: boolean;
 }
 
 export const StoryActions: React.FC<StoryActionsProps> = ({
@@ -45,6 +46,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
   onRead,
   onDownloadAll,
   onViewDownloads,
+  stacked = false,
 }) => {
   const theme = useTheme();
   const hasEpub =
@@ -115,13 +117,13 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
         </View>
       )}
 
-      <View style={styles.buttonRow}>
+      <View style={[styles.buttonRow, stacked && styles.buttonRowStacked]} testID="story-actions-row">
         <Button
           mode="outlined"
           disabled={story.downloadedChapters === 0 || generating}
           loading={generating}
           onPress={onGenerate}
-          style={styles.halfWidth}
+          style={[styles.actionRowButton, stacked && styles.actionRowButtonStacked]}
           testID="generate-button"
         >
           Generate EPUB
@@ -130,7 +132,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
           mode="contained"
           disabled={!hasEpub || generating}
           onPress={onRead}
-          style={styles.halfWidth}
+          style={[styles.actionRowButton, stacked && styles.actionRowButtonStacked]}
           testID="read-button"
         >
           Read EPUB
@@ -175,11 +177,19 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
     marginBottom: 20,
   },
-  halfWidth: {
+  buttonRowStacked: {
+    flexDirection: "column",
+  },
+  actionRowButton: {
     flex: 1,
+    minWidth: 180,
+  },
+  actionRowButtonStacked: {
+    width: "100%",
   },
   progressContainer: {
     marginBottom: 20,

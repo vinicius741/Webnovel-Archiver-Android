@@ -5,6 +5,7 @@ import type {
   ArchiveReason,
   ChapterFilterSettings,
   DownloadStatus,
+  FoldLayoutMode,
   RegexCleanupRule,
   Story,
   TTSSettings,
@@ -23,6 +24,7 @@ export type {
   AppSettings,
   ChapterFilterMode,
   ChapterFilterSettings,
+  FoldLayoutMode,
   TTSSettings,
   TTSSession,
 } from "../types";
@@ -149,6 +151,14 @@ class StorageService {
 
   async saveTabs(tabs: Tab[]): Promise<void> {
     await this.preferencesStorage.saveTabs(tabs);
+  }
+
+  async getFoldLayoutMode(): Promise<FoldLayoutMode> {
+    return this.preferencesStorage.getFoldLayoutMode();
+  }
+
+  async saveFoldLayoutMode(mode: FoldLayoutMode): Promise<void> {
+    await this.preferencesStorage.saveFoldLayoutMode(mode);
   }
 
   async moveStoriesToTab(

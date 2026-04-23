@@ -62,6 +62,8 @@ interface StoryDetailsInfoPanelProps {
   onFilterSelect: (mode: ChapterFilterMode) => void | Promise<void>;
   onSearchChange: (value: string) => void;
   onToggleSelectionMode: () => void;
+  isTwoPane?: boolean;
+  widthClass?: "compact" | "medium" | "expanded";
 }
 
 export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
@@ -99,10 +101,15 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
   onFilterSelect,
   onSearchChange,
   onToggleSelectionMode,
+  isTwoPane = false,
+  widthClass = "compact",
 }) => {
+  const stackedControls = widthClass === "compact";
+  const contentAlign = isTwoPane ? "start" : "center";
+
   return (
     <View style={styles.container}>
-      <StoryHeader story={story} />
+      <StoryHeader story={story} align={contentAlign} />
 
       <StoryActions
         story={story}
@@ -118,6 +125,7 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
         onRead={onRead}
         onDownloadAll={onDownloadAll}
         onViewDownloads={onViewDownloads}
+        stacked={stackedControls}
       />
 
       <DownloadRangeDialog
@@ -146,10 +154,10 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
         epubs={availableEpubs}
       />
 
-      <StoryTags tags={story.tags} />
-      <StoryDescription description={story.description} />
+      <StoryTags tags={story.tags} align={contentAlign} />
+      <StoryDescription description={story.description} align={contentAlign} />
 
-      <View style={styles.filterContainer}>
+      <View style={[styles.filterContainer, isTwoPane && styles.filterContainerTwoPane]}>
         <ChapterFilterMenu
           filterMode={filterMode}
           hasBookmark={!!story.lastReadChapterId}
@@ -159,6 +167,7 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
           selectionMode={selectionMode}
           onToggleSelectionMode={onToggleSelectionMode}
           selectionDisabled={!!story.isArchived}
+          stacked={stackedControls}
         />
       </View>
     </View>
@@ -172,5 +181,8 @@ const styles = StyleSheet.create({
   filterContainer: {
     margin: 16,
     marginBottom: 8,
+  },
+  filterContainerTwoPane: {
+    marginHorizontal: 0,
   },
 });

@@ -11,6 +11,8 @@ interface DownloadQueueListProps {
   onRetry: (jobId: string) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  contentMaxWidth?: number;
+  horizontalPadding?: number;
 }
 
 export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
@@ -21,6 +23,8 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
   onRetry,
   refreshing,
   onRefresh,
+  contentMaxWidth,
+  horizontalPadding = 16,
 }) => {
   const theme = useTheme();
   const [expandedStories, setExpandedStories] = useState<Set<string>>(
@@ -48,19 +52,33 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
 
   if (jobsByStory.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <IconButton
-          icon="download-box-outline"
-          size={64}
-          iconColor={theme.colors.surfaceVariant}
-          style={styles.emptyIcon}
-        />
-        <Text variant="titleLarge" style={styles.emptyTitle}>
-          No Active Downloads
-        </Text>
-        <Text variant="bodyMedium" style={styles.emptyText}>
-          Downloaded chapters will appear here
-        </Text>
+      <View
+        style={[
+          styles.emptyContainer,
+          {
+            paddingHorizontal: horizontalPadding,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.emptyContent,
+            contentMaxWidth ? { maxWidth: contentMaxWidth } : null,
+          ]}
+        >
+          <IconButton
+            icon="download-box-outline"
+            size={64}
+            iconColor={theme.colors.surfaceVariant}
+            style={styles.emptyIcon}
+          />
+          <Text variant="titleLarge" style={styles.emptyTitle}>
+            No Active Downloads
+          </Text>
+          <Text variant="bodyMedium" style={styles.emptyText}>
+            Downloaded chapters will appear here
+          </Text>
+        </View>
       </View>
     );
   }
@@ -70,15 +88,22 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
       validStoryIds.has(item.storyId) && expandedStories.has(item.storyId);
 
     return (
-      <DownloadStoryCard
-        item={item}
-        isExpanded={isExpanded}
-        onToggleExpanded={toggleStoryExpanded}
-        onPause={onPause}
-        onResume={onResume}
-        onCancel={onCancel}
-        onRetry={onRetry}
-      />
+      <View
+        style={[
+          styles.itemShell,
+          contentMaxWidth ? { maxWidth: contentMaxWidth } : null,
+        ]}
+      >
+        <DownloadStoryCard
+          item={item}
+          isExpanded={isExpanded}
+          onToggleExpanded={toggleStoryExpanded}
+          onPause={onPause}
+          onResume={onResume}
+          onCancel={onCancel}
+          onRetry={onRetry}
+        />
+      </View>
     );
   };
 
@@ -94,7 +119,10 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
           colors={[theme.colors.primary]}
         />
       }
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={[
+        styles.listContent,
+        { paddingHorizontal: horizontalPadding },
+      ]}
       ItemSeparatorComponent={() => <View style={styles.cardSpacing} />}
     />
   );
@@ -103,18 +131,25 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
 const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1,
-    paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 16,
   },
   cardSpacing: {
     height: 8,
   },
+  itemShell: {
+    width: "100%",
+    alignSelf: "center",
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
+  },
+  emptyContent: {
+    width: "100%",
+    alignSelf: "center",
   },
   emptyIcon: {
     marginBottom: 16,

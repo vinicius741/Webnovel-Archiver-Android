@@ -74,6 +74,8 @@ export interface AppSettings {
   maxChaptersPerEpub: number;
 }
 
+export type FoldLayoutMode = "auto" | "cover" | "inner";
+
 export interface TTSSettings {
   pitch: number;
   rate: number;

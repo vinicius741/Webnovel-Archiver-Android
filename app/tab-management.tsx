@@ -16,11 +16,13 @@ import {
 import { Stack } from "expo-router";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useTabManagement } from "../src/hooks/useTabManagement";
+import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { TabDialog } from "../src/components/tabs/TabDialog";
 import { Tab } from "../src/types/tab";
 
 export default function TabManagementScreen() {
   const theme = useTheme();
+  const { widthClass } = useScreenLayout();
   const {
     tabs,
     loading,
@@ -35,6 +37,7 @@ export default function TabManagementScreen() {
 
   const [dialogVisible, setDialogVisible] = useState(false);
   const [editingTab, setEditingTab] = useState<Tab | null>(null);
+  const contentMaxWidth = widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
 
   const handleAddTab = useCallback(
     async (name: string) => {
@@ -164,6 +167,12 @@ export default function TabManagementScreen() {
       />
 
       <View style={styles.container}>
+        <View
+          style={[
+            styles.content,
+            contentMaxWidth ? { maxWidth: contentMaxWidth } : undefined,
+          ]}
+        >
         {tabs.length === 0 && !loading ? (
           <View style={styles.emptyState}>
             <IconButton icon="folder-outline" size={64} iconColor={theme.colors.outline} />
@@ -194,6 +203,7 @@ export default function TabManagementScreen() {
             }
           />
         )}
+        </View>
 
         <FAB
           icon="plus"
@@ -218,6 +228,13 @@ export default function TabManagementScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+  },
+  content: {
+    flex: 1,
+    width: "100%",
+    alignSelf: "center",
   },
   listContent: {
     paddingBottom: 100,

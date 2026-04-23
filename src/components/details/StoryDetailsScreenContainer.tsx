@@ -24,12 +24,30 @@ interface StoryDetailsScreenContainerProps {
   id: string | string[] | undefined;
 }
 
+type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+  heightClass?: "compact" | "medium" | "expanded";
+  isTwoPane?: boolean;
+  isCompactHeight?: boolean;
+};
+
 export const StoryDetailsScreenContainer: React.FC<
   StoryDetailsScreenContainerProps
 > = ({ id }) => {
   const router = useRouter();
   const theme = useTheme();
-  const { isLargeScreen } = useScreenLayout();
+  const screenLayout = useScreenLayout() as AdaptiveLayout;
+  const { screenWidth, screenHeight } = screenLayout;
+  const widthClass =
+    screenLayout.widthClass ??
+    (screenWidth >= 840 ? "expanded" : screenWidth >= 600 ? "medium" : "compact");
+  const heightClass =
+    screenLayout.heightClass ??
+    (screenHeight >= 900 ? "expanded" : screenHeight >= 480 ? "medium" : "compact");
+  const isTwoPane = screenLayout.isTwoPane ?? widthClass !== "compact";
+  const isCompactHeight =
+    screenLayout.isCompactHeight ?? heightClass === "compact";
+  const isNarrowTwoPane = isTwoPane && screenWidth < 520;
   const { showAlert } = useAppAlert();
 
   const {
@@ -157,6 +175,8 @@ export const StoryDetailsScreenContainer: React.FC<
       onFilterSelect={handleFilterSelect}
       onSearchChange={setSearchQuery}
       onToggleSelectionMode={handleToggleSelectionMode}
+      isTwoPane={isTwoPane}
+      widthClass={isNarrowTwoPane ? "compact" : widthClass}
     />
   );
 
@@ -178,26 +198,35 @@ export const StoryDetailsScreenContainer: React.FC<
         }}
       />
 
-      {isLargeScreen ? (
-        <View style={styles.largeScreenContainer}>
-          <View style={styles.leftColumn}>
-            <ScrollView contentContainerStyle={styles.leftColumnContent}>
-              {infoPanel}
-            </ScrollView>
-          </View>
+      {isTwoPane ? (
+        <View style={styles.twoPaneShell}>
+          <View
+            style={[
+              styles.twoPaneContainer,
+              isCompactHeight && styles.twoPaneContainerCompactHeight,
+              isNarrowTwoPane && styles.twoPaneContainerNarrow,
+            ]}
+          >
+            <View style={[styles.leftColumn, isNarrowTwoPane && styles.leftColumnNarrow]}>
+              <ScrollView contentContainerStyle={styles.leftColumnContent}>
+                {infoPanel}
+              </ScrollView>
+            </View>
 
-          <View style={styles.rightColumn}>
-            <List.Section title="Chapters">
-              <StoryDetailsChaptersList
-                story={story}
-                chapters={filteredChapters}
-                selectionMode={selectionMode}
-                selectedChapterIds={selectedChapterIds}
-                onOpenChapter={handleOpenChapter}
-                onMarkChapterAsRead={markChapterAsRead}
-                onToggleChapter={handleToggleChapter}
-              />
-            </List.Section>
+            <View style={styles.rightColumn}>
+              <List.Section style={styles.chapterSection} title="Chapters">
+                <StoryDetailsChaptersList
+                  story={story}
+                  chapters={filteredChapters}
+                  selectionMode={selectionMode}
+                  selectedChapterIds={selectedChapterIds}
+                  onOpenChapter={handleOpenChapter}
+                  onMarkChapterAsRead={markChapterAsRead}
+                  onToggleChapter={handleToggleChapter}
+                  contentContainerStyle={styles.chapterListContent}
+                />
+              </List.Section>
+            </View>
           </View>
         </View>
       ) : (
@@ -210,7 +239,11 @@ export const StoryDetailsScreenContainer: React.FC<
           onMarkChapterAsRead={markChapterAsRead}
           onToggleChapter={handleToggleChapter}
           contentContainerStyle={styles.content}
-          listHeaderComponent={infoPanel}
+          listHeaderComponent={
+            <View style={styles.compactInfoPanel}>
+              {infoPanel}
+            </View>
+          }
           listHeaderComponentStyle={styles.listHeader}
         />
       )}
@@ -236,26 +269,65 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    paddingTop: 20,
     flexGrow: 1,
+    width: "100%",
+    maxWidth: 840,
+    alignSelf: "center",
+    paddingBottom: 104,
+  },
+  compactInfoPanel: {
+    width: "100%",
   },
   listHeader: {
     marginBottom: 16,
   },
-  largeScreenContainer: {
+  twoPaneShell: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 1280,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  twoPaneContainer: {
+    flex: 1,
     flexDirection: "row",
     gap: 32,
   },
+  twoPaneContainerCompactHeight: {
+    gap: 24,
+  },
+  twoPaneContainerNarrow: {
+    gap: 12,
+  },
   leftColumn: {
-    flex: 1,
-    minWidth: 200,
-    maxWidth: 500,
+    flexBasis: 360,
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 280,
+    maxWidth: 440,
     alignItems: "stretch",
   },
+  leftColumnNarrow: {
+    flexBasis: 168,
+    minWidth: 150,
+    maxWidth: 190,
+  },
   leftColumnContent: {
-    padding: 16,
+    paddingTop: 16,
+    paddingBottom: 120,
   },
   rightColumn: {
-    flex: 2,
+    flex: 1,
+    minWidth: 0,
+  },
+  chapterSection: {
+    flex: 1,
+    marginTop: 0,
+  },
+  chapterListContent: {
+    paddingBottom: 120,
   },
   fab: {
     position: "absolute",

@@ -9,6 +9,7 @@ import { ReaderContent } from "../ReaderContent";
 import { ScreenContainer } from "../ScreenContainer";
 import { TTSController } from "../TTSController";
 import { TTSSettingsModal } from "../TTSSettingsModal";
+import { useScreenLayout } from "../../hooks/useScreenLayout";
 import { useReaderScreenController } from "../../hooks/reader/useReaderScreenController";
 import { ReaderHeaderRight } from "./ReaderHeaderRight";
 
@@ -19,12 +20,21 @@ interface ReaderScreenContainerProps {
   resumeSession?: string;
 }
 
+type ScreenLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+  heightClass?: "compact" | "medium" | "expanded";
+  isCompactHeight?: boolean;
+};
+
+const READER_COLUMN_MAX_WIDTH = 800;
+
 export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
   storyId,
   chapterId,
   autoplay,
   resumeSession,
 }) => {
+  const layout = useScreenLayout() as ScreenLayout;
   const {
     theme,
     webViewRef,
@@ -63,6 +73,48 @@ export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
     autoplay,
     resumeSession,
   });
+
+  const screenWidth = layout.screenWidth || 0;
+  const derivedWidthClass =
+    layout.widthClass ||
+    (screenWidth >= 960
+      ? "expanded"
+      : screenWidth >= 600
+        ? "medium"
+        : "compact");
+  const isCompactHeight =
+    layout.isCompactHeight ||
+    layout.heightClass === "compact" ||
+    (layout.screenHeight || 0) < 520;
+
+  const shellPadding = useMemo(() => {
+    if (derivedWidthClass === "expanded") {
+      return 40;
+    }
+    if (derivedWidthClass === "medium") {
+      return 28;
+    }
+    return 16;
+  }, [derivedWidthClass]);
+
+  const readerColumnWidth = useMemo(() => {
+    if (screenWidth <= 0) {
+      return READER_COLUMN_MAX_WIDTH;
+    }
+
+    return Math.max(
+      0,
+      Math.min(READER_COLUMN_MAX_WIDTH, screenWidth - shellPadding * 2),
+    );
+  }, [screenWidth, shellPadding]);
+
+  const readerBodyPadding = derivedWidthClass === "expanded" ? 28 : 20;
+  const readerBottomPadding = isControllerVisible
+    ? isCompactHeight
+      ? 176
+      : 208
+    : 112;
+  const ttsBottomOffset = isCompactHeight ? 84 : 96;
 
   const screenOptions = useMemo(
     () => ({
@@ -116,6 +168,10 @@ export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
         isPaused={isPaused}
         currentChunk={currentChunkIndex}
         totalChunks={chunks.length}
+        maxWidth={readerColumnWidth}
+        horizontalPadding={shellPadding}
+        bottomOffset={ttsBottomOffset}
+        compactHeight={isCompactHeight}
         onPlayPause={handlePlayPause}
         onStop={stopSpeech}
         onNext={handleNextChunk}
@@ -123,16 +179,29 @@ export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
       />
 
       <View style={styles.container}>
-        <ReaderContent
-          webViewRef={webViewRef as React.RefObject<WebView>}
-          processedContent={processedContent}
-        />
+        <View
+          style={[
+            styles.readerContentShell,
+            { paddingHorizontal: shellPadding },
+          ]}
+        >
+          <ReaderContent
+            webViewRef={webViewRef as React.RefObject<WebView>}
+            processedContent={processedContent}
+            maxWidth={readerColumnWidth}
+            contentPadding={readerBodyPadding}
+            bottomPadding={readerBottomPadding}
+          />
+        </View>
 
         <ReaderNavigation
           currentChapterIndex={currentIndex}
           totalChapters={story?.totalChapters || 0}
           hasPrevious={hasPrevious}
           hasNext={hasNext}
+          maxWidth={readerColumnWidth}
+          horizontalPadding={shellPadding}
+          compactHeight={isCompactHeight}
           onPrevious={() => navigateToChapter(currentIndex - 1)}
           onNext={() => navigateToChapter(currentIndex + 1)}
           onCopy={handleCopy}
@@ -157,6 +226,9 @@ export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  readerContentShell: {
     flex: 1,
   },
   center: {

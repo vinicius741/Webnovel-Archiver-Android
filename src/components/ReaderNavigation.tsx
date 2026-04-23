@@ -7,6 +7,9 @@ interface ReaderNavigationProps {
   totalChapters: number;
   hasPrevious: boolean;
   hasNext: boolean;
+  maxWidth?: number;
+  horizontalPadding?: number;
+  compactHeight?: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onCopy?: () => void;
@@ -17,6 +20,9 @@ export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
   totalChapters,
   hasPrevious,
   hasNext,
+  maxWidth,
+  horizontalPadding = 16,
+  compactHeight = false,
   onPrevious,
   onNext,
   onCopy,
@@ -24,46 +30,65 @@ export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
   const theme = useTheme();
 
   return (
-    <Appbar
+    <View
       style={[
-        styles.bottomBar,
-        { backgroundColor: theme.colors.elevation.level2 },
+        styles.container,
+        {
+          paddingHorizontal: horizontalPadding,
+          paddingBottom: compactHeight ? 8 : 12,
+        },
       ]}
     >
-      <Appbar.Action
-        icon="chevron-left"
-        disabled={!hasPrevious}
-        onPress={onPrevious}
-      />
-      <View style={styles.spacer} />
-
-      <Appbar.Action
-        icon="content-copy"
-        onPress={onCopy}
-        accessibilityLabel="Copy chapter text"
-      />
-
-      <View style={styles.spacer} />
-      <Text
-        variant="labelLarge"
-        style={{ color: theme.colors.onSurfaceVariant }}
+      <Appbar
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor: theme.colors.elevation.level2,
+            maxWidth,
+          },
+        ]}
       >
-        {currentChapterIndex + 1} / {totalChapters}
-      </Text>
-      <View style={styles.spacer} />
-      <Appbar.Action
-        icon="chevron-right"
-        disabled={!hasNext}
-        onPress={onNext}
-      />
-    </Appbar>
+        <Appbar.Action
+          icon="chevron-left"
+          disabled={!hasPrevious}
+          onPress={onPrevious}
+        />
+        <View style={styles.spacer} />
+
+        <Appbar.Action
+          icon="content-copy"
+          onPress={onCopy}
+          accessibilityLabel="Copy chapter text"
+        />
+
+        <View style={styles.spacer} />
+        <Text
+          variant="labelLarge"
+          style={{ color: theme.colors.onSurfaceVariant }}
+        >
+          {currentChapterIndex + 1} / {totalChapters}
+        </Text>
+        <View style={styles.spacer} />
+        <Appbar.Action
+          icon="chevron-right"
+          disabled={!hasNext}
+          onPress={onNext}
+        />
+      </Appbar>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    width: "100%",
+  },
   bottomBar: {
+    width: "100%",
+    alignSelf: "center",
     justifyContent: "space-between",
     paddingHorizontal: 8,
+    borderRadius: 24,
   },
   spacer: {
     flex: 1,

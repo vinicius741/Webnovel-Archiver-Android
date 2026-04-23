@@ -3,6 +3,7 @@ import DEFAULT_SENTENCE_REMOVAL_LIST from "../../constants/default_sentence_remo
 import type {
   AppSettings,
   ChapterFilterSettings,
+  FoldLayoutMode,
   TTSSettings,
   TTSSession,
 } from "../../types";
@@ -24,6 +25,8 @@ const DEFAULT_TTS_SETTINGS: TTSSettings = {
 const DEFAULT_CHAPTER_FILTER_SETTINGS: ChapterFilterSettings = {
   filterMode: "all",
 };
+
+const DEFAULT_FOLD_LAYOUT_MODE: FoldLayoutMode = "auto";
 
 export class PreferencesStorage {
   async getSettings(): Promise<AppSettings> {
@@ -163,6 +166,27 @@ export class PreferencesStorage {
       await AsyncStorage.setItem(STORAGE_KEYS.TABS, jsonValue);
     } catch (e) {
       console.error("Failed to save tabs", e);
+    }
+  }
+
+  async getFoldLayoutMode(): Promise<FoldLayoutMode> {
+    try {
+      const value = await AsyncStorage.getItem(STORAGE_KEYS.FOLD_LAYOUT_MODE);
+      if (value === "auto" || value === "cover" || value === "inner") {
+        return value;
+      }
+      return DEFAULT_FOLD_LAYOUT_MODE;
+    } catch (e) {
+      console.error("Failed to load fold layout mode", e);
+      return DEFAULT_FOLD_LAYOUT_MODE;
+    }
+  }
+
+  async saveFoldLayoutMode(mode: FoldLayoutMode): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.FOLD_LAYOUT_MODE, mode);
+    } catch (e) {
+      console.error("Failed to save fold layout mode", e);
     }
   }
 }

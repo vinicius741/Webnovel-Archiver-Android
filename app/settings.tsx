@@ -2,14 +2,29 @@ import React from "react";
 import { Text, SegmentedButtons, List } from "react-native-paper";
 import { StyleSheet, View, ScrollView } from "react-native";
 import { ScreenContainer } from "../src/components/ScreenContainer";
+import { useFoldLayoutMode } from "../src/context/FoldLayoutContext";
 import { useSettings } from "../src/hooks/useSettings";
+import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { router } from "expo-router";
 import type { ThemeMode } from "../src/theme/ThemeContext";
+
+type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
+  widthClass?: "compact" | "medium" | "expanded";
+};
 
 const isThemeMode = (value: string): value is ThemeMode =>
   value === "system" || value === "light" || value === "dark";
 
 export default function SettingsScreen() {
+  const screenLayout = useScreenLayout() as AdaptiveLayout;
+  const { foldLayoutMode, setFoldLayoutMode } = useFoldLayoutMode();
+  const widthClass =
+    screenLayout.widthClass ??
+    (screenLayout.screenWidth >= 840
+      ? "expanded"
+      : screenLayout.screenWidth >= 600
+        ? "medium"
+        : "compact");
   const {
     themeMode,
     setThemeMode,
@@ -17,10 +32,18 @@ export default function SettingsScreen() {
     handleExportBackup,
     handleImportBackup,
   } = useSettings();
+  const contentMaxWidth =
+    widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
 
   return (
-    <ScreenContainer edges={["bottom", "left", "right"]} style={{ padding: 8 }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 80 }}>
+    <ScreenContainer edges={["bottom", "left", "right"]} style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View
+          style={[
+            styles.content,
+            contentMaxWidth ? { maxWidth: contentMaxWidth } : undefined,
+          ]}
+        >
         <List.Section>
           <List.Subheader>Appearance</List.Subheader>
           <View style={styles.container}>
@@ -49,6 +72,36 @@ export default function SettingsScreen() {
                   value: "dark",
                   label: "Dark",
                   icon: "weather-night",
+                },
+              ]}
+            />
+          </View>
+          <View style={styles.container}>
+            <Text variant="bodyMedium" style={styles.label}>
+              Fold Layout (Expo Go)
+            </Text>
+            <SegmentedButtons
+              value={foldLayoutMode}
+              onValueChange={(value) => {
+                if (value === "auto" || value === "cover" || value === "inner") {
+                  void setFoldLayoutMode(value);
+                }
+              }}
+              buttons={[
+                {
+                  value: "auto",
+                  label: "Auto",
+                  icon: "auto-fix",
+                },
+                {
+                  value: "cover",
+                  label: "Cover",
+                  icon: "cellphone",
+                },
+                {
+                  value: "inner",
+                  label: "Inner",
+                  icon: "tablet-cellphone",
                 },
               ]}
             />
@@ -116,12 +169,24 @@ export default function SettingsScreen() {
             />
           </View>
         </List.Section>
+        </View>
       </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    paddingHorizontal: 8,
+  },
+  scrollContent: {
+    paddingBottom: 80,
+    paddingTop: 8,
+  },
+  content: {
+    width: "100%",
+    alignSelf: "center",
+  },
   container: {
     paddingHorizontal: 16,
     paddingBottom: 8,
