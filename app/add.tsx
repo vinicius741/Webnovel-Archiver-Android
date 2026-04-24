@@ -66,7 +66,7 @@ export default function AddStoryScreen() {
           >
             <TextInput
               mode="outlined"
-              placeholder="https://www.royalroad.com/fiction/..."
+              placeholder="Royal Road or Scribble Hub story URL"
               value={url}
               onChangeText={setUrl}
               autoCapitalize="none"

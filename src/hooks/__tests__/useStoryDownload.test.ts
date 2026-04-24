@@ -166,6 +166,105 @@ describe("useStoryDownload", () => {
     expect(savedStory.lastReadChapterId).toBe("111");
   });
 
+  it("should preserve downloaded Scribble Hub chapters and queue new IDs after sync", async () => {
+    const scribbleStory: Story = {
+      ...mockStory,
+      id: "sh_1056226",
+      sourceUrl:
+        "https://www.scribblehub.com/series/1056226/outrun--cyberpunk-litrpg/",
+      chapters: [
+        {
+          id: "sh_111",
+          title: "Chapter 1",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/111/",
+          downloaded: true,
+          filePath: "file://chapter-1.html",
+        },
+      ],
+      lastReadChapterId: "sh_111",
+      totalChapters: 1,
+      downloadedChapters: 1,
+    };
+    const queuedStory: Story = {
+      ...scribbleStory,
+      status: DownloadStatus.Downloading,
+      totalChapters: 2,
+      downloadedChapters: 1,
+      pendingNewChapterIds: ["sh_222"],
+      chapters: [
+        {
+          id: "sh_111",
+          title: "Chapter 1 - Updated",
+          url: "https://www.scribblehub.com/read/1056226-outrun-renamed/chapter/111/",
+          downloaded: true,
+          filePath: "file://chapter-1.html",
+        },
+        {
+          id: "sh_222",
+          title: "Chapter 2",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/222/",
+          downloaded: false,
+        },
+      ],
+    };
+    const mockProvider = {
+      getChapterId: (url: string) => {
+        const match = url.match(/\/chapter\/(\d+)/);
+        return match ? `sh_${match[1]}` : undefined;
+      },
+      getChapterList: jest.fn().mockResolvedValue([
+        {
+          id: "sh_111",
+          url: "https://www.scribblehub.com/read/1056226-outrun-renamed/chapter/111/",
+          title: "Chapter 1 - Updated",
+        },
+        {
+          id: "sh_222",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/222/",
+          title: "Chapter 2",
+        },
+      ]),
+      parseMetadata: jest.fn().mockReturnValue({ tags: ["tag1"] }),
+    };
+
+    (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
+    (fetcher.fetchPage as jest.Mock).mockResolvedValue("<html></html>");
+    (downloadService.downloadChaptersByIds as jest.Mock).mockResolvedValue(
+      queuedStory,
+    );
+
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: scribbleStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.syncChapters();
+    });
+
+    const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
+    expect(savedStory.chapters[0]).toEqual(
+      expect.objectContaining({
+        id: "sh_111",
+        title: "Chapter 1 - Updated",
+        downloaded: true,
+        filePath: "file://chapter-1.html",
+        url: "https://www.scribblehub.com/read/1056226-outrun-renamed/chapter/111/",
+      }),
+    );
+    expect(savedStory.lastReadChapterId).toBe("sh_111");
+    expect(savedStory.pendingNewChapterIds).toEqual(["sh_222"]);
+    expect(downloadService.downloadChaptersByIds).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "sh_1056226",
+        totalChapters: 2,
+      }),
+      ["sh_222"],
+    );
+  });
+
   it("should archive and update when source chapters were removed but are fully downloaded", async () => {
     const storyWithArchivedCandidate: Story = {
       ...mockStory,
@@ -548,6 +647,56 @@ describe("useStoryDownload", () => {
     expect(mockShowAlert).toHaveBeenCalledWith(
       "Download Started",
       "Selected chapters have been queued.",
+    );
+  });
+
+  it("should map Scribble Hub range input to normalized reader-order indexes", async () => {
+    const scribbleStory: Story = {
+      ...mockStory,
+      id: "sh_1056226",
+      sourceUrl:
+        "https://www.scribblehub.com/series/1056226/outrun--cyberpunk-litrpg/",
+      totalChapters: 3,
+      chapters: [
+        {
+          id: "sh_100",
+          title: "Chapter 1",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/100/",
+          downloaded: false,
+        },
+        {
+          id: "sh_200",
+          title: "Chapter 2",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/200/",
+          downloaded: false,
+        },
+        {
+          id: "sh_300",
+          title: "Chapter 3",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/300/",
+          downloaded: false,
+        },
+      ],
+    };
+    (downloadService.downloadRange as jest.Mock).mockResolvedValue(
+      scribbleStory,
+    );
+
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: scribbleStory,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.downloadRange(2, 3);
+    });
+
+    expect(downloadService.downloadRange).toHaveBeenCalledWith(
+      scribbleStory,
+      1,
+      2,
     );
   });
 

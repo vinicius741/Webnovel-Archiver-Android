@@ -9,6 +9,13 @@ jest.mock("../providers/RoyalRoadProvider", () => ({
   },
 }));
 
+jest.mock("../providers/ScribbleHubProvider", () => ({
+  ScribbleHubProvider: {
+    name: "Scribble Hub",
+    isSource: (url: string) => url.includes("scribblehub.com/series/"),
+  },
+}));
+
 describe("SourceRegistry", () => {
   describe("default registration", () => {
     it("should register RoyalRoadProvider by default", () => {
@@ -18,6 +25,15 @@ describe("SourceRegistry", () => {
 
       expect(provider).toBeDefined();
       expect(provider?.name).toBe("RoyalRoad");
+    });
+
+    it("should register ScribbleHubProvider by default", () => {
+      const provider = sourceRegistry.getProvider(
+        "https://www.scribblehub.com/series/1056226/outrun--cyberpunk-litrpg/",
+      );
+
+      expect(provider).toBeDefined();
+      expect(provider?.name).toBe("Scribble Hub");
     });
   });
 
@@ -122,6 +138,9 @@ describe("SourceRegistry", () => {
       ).toBeDefined();
       expect(
         sourceRegistry.getProvider("https://royalroad.com/fiction/12345/title"),
+      ).toBeDefined();
+      expect(
+        sourceRegistry.getProvider("https://www.scribblehub.com/series/123/title"),
       ).toBeDefined();
     });
   });

@@ -196,4 +196,61 @@ describe("DownloadManager", () => {
       expect(allCompleteSpy).toBeDefined();
     });
   });
+
+  describe("Executing Downloads", () => {
+    it("should use the source provider parser for Scribble Hub chapter content", async () => {
+      const { storageService } = require("../StorageService");
+      const { sourceRegistry } = require("../source/SourceRegistry");
+      const { fetchPage } = require("../network/fetcher");
+      const { saveChapter } = require("../storage/fileSystem");
+
+      const provider = {
+        parseChapterContent: jest
+          .fn()
+          .mockReturnValue("<p>This is long enough parsed Scribble Hub chapter content for saving.</p>"),
+      };
+      storageService.getStory.mockResolvedValue({
+        id: "sh_1056226",
+        title: "Outrun",
+        sourceUrl:
+          "https://www.scribblehub.com/series/1056226/outrun--cyberpunk-litrpg/",
+        chapters: [],
+      });
+      sourceRegistry.getProvider.mockReturnValue(provider);
+      fetchPage.mockResolvedValue("<html><div id=\"chp_raw\">Raw chapter</div></html>");
+
+      const job: DownloadJob = {
+        id: "sh_1056226_0",
+        storyId: "sh_1056226",
+        storyTitle: "Outrun",
+        chapterIndex: 0,
+        chapter: {
+          id: "sh_2294631",
+          title: "Chapter 376",
+          url: "https://www.scribblehub.com/read/1056226-outrun/chapter/2294631/",
+          downloaded: false,
+        },
+        status: "pending",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+
+      const filePath = await (manager as any).executeDownload(job);
+
+      expect(sourceRegistry.getProvider).toHaveBeenCalledWith(
+        "https://www.scribblehub.com/series/1056226/outrun--cyberpunk-litrpg/",
+      );
+      expect(fetchPage).toHaveBeenCalledWith(job.chapter.url);
+      expect(provider.parseChapterContent).toHaveBeenCalledWith(
+        "<html><div id=\"chp_raw\">Raw chapter</div></html>",
+      );
+      expect(saveChapter).toHaveBeenCalledWith(
+        "sh_1056226",
+        0,
+        "Chapter 376",
+        "<p>This is long enough parsed Scribble Hub chapter content for saving.</p>",
+      );
+      expect(filePath).toBe("/path/to/chapter.txt");
+    });
+  });
 });
