@@ -40,7 +40,7 @@ The app uses a `SourceProvider` interface (`src/services/source/types.ts`) to ab
 - `getChapterList(html, url, onProgress)` - Fetch all chapter URLs (with pagination support)
 - `parseChapterContent(html)` - Extract clean chapter content
 
-New sources are registered in `src/services/source/SourceRegistry.ts`. Current implementations: RoyalRoadProvider.
+New sources are registered in `src/services/source/SourceRegistry.ts`. Current implementations: RoyalRoadProvider, ScribbleHubProvider.
 
 ### Download System Architecture
 

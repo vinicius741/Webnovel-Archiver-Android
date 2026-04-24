@@ -7,7 +7,7 @@ This document outlines the current functionalities of the Webnovel Archiver CLI 
 The core purpose of the application is to download, process, and archive webnovels.
 
 ### Current Functionality
--   **Source Support:** Currently supports **RoyalRoad**. The system uses a `FetcherFactory` to select the appropriate fetcher based on the URL.
+-   **Source Support:** Currently supports **RoyalRoad** and **Scribble Hub**. The system uses a `FetcherFactory` to select the appropriate fetcher based on the URL.
 -   **Download Process:**
     -   Fetches story metadata (title, author, cover image, synopsis).
     -   Fetches the list of chapters.

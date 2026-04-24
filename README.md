@@ -4,7 +4,7 @@ Webnovel Archiver is a powerful, local-first Android application designed to dow
 
 ## Key Features
 
-- **Multi-Source Support**: Extensible `SourceProvider` architecture (currently RoyalRoad, easily add more via `SourceRegistry`).
+- **Multi-Source Support**: Extensible `SourceProvider` architecture (currently RoyalRoad and Scribble Hub, easily add more via `SourceRegistry`).
 - **Webnovel Scraping**: Automatically fetches chapters and metadata from supported sites.
 - **Offline Reading**: Downloaded chapters are stored locally, accessible anytime without an internet connection.
 - **Built-in Reader**: WebView-based chapter reader with TTS integration, image viewing, and last-read position tracking.
@@ -96,7 +96,7 @@ npm test -- --testNamePattern="should generate epub"
 
 ### 1. Adding a Story
 - Tap the **"+"** button on the home screen.
-- Paste the URL of the webnovel (e.g., a RoyalRoad fiction page).
+- Paste the URL of the webnovel (e.g., a RoyalRoad or Scribble Hub story page).
 - Choose a tab (optional) and tap **"Add"**. The app fetches metadata and adds it to your library.
 
 ### 2. Downloading Content
@@ -201,11 +201,12 @@ src/
       EpubContentProcessor.ts         #     Chapter XHTML/CSS generation
       EpubMetadataGenerator.ts        #     OPF, NCX, TOC metadata generation
     network/                          #   HTTP
-      fetcher.ts                      #     Page fetcher with UA spoofing
+      fetcher.ts                      #     Page fetcher (GET/POST) with UA spoofing
     source/                           #   Novel source providers
       SourceRegistry.ts               #     Provider registry (singleton)
       types.ts                        #     SourceProvider interface
       providers/RoyalRoadProvider.ts  #     RoyalRoad.com implementation
+      providers/ScribbleHubProvider.ts #     ScribbleHub.com implementation
     storage/                          #   Focused storage modules
       storageKeys.ts                  #     Centralized key constants
       libraryStorage.ts               #     LibraryStorage (CRUD, archive, tabs)
