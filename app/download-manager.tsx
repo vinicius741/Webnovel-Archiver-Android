@@ -66,26 +66,25 @@ export default function DownloadManagerScreen() {
   }, [widthClass]);
 
   const queueMaxWidth = widthClass === "expanded" ? 1080 : 920;
-  const statsColumns = useMemo(() => {
-    if (screenWidth >= 1024) {
-      return 5;
-    }
-    if (screenWidth >= 720) {
-      return 3;
-    }
-    if (screenWidth >= 420) {
-      return 3;
-    }
-    return 2;
-  }, [screenWidth]);
+  const MIN_STAT_WIDTH = 88;
+  const GAP = 8;
 
-  const statsGridWidth =
+  const cardWidth =
     screenWidth > 0
       ? Math.min(queueMaxWidth, Math.max(screenWidth - shellPadding * 2, 0))
       : queueMaxWidth;
+  const contentWidth = Math.max(0, cardWidth - 32);
+
+  const maxCols = Math.floor(
+    (contentWidth + GAP) / (MIN_STAT_WIDTH + GAP),
+  );
+  const statsColumns = maxCols >= 5 ? 5 : maxCols >= 3 ? 3 : 1;
+
   const statItemWidth = Math.max(
-    132,
-    Math.floor(statsGridWidth / statsColumns) - 16,
+    MIN_STAT_WIDTH,
+    Math.floor(
+      (contentWidth - (statsColumns - 1) * GAP) / statsColumns,
+    ),
   );
   const statItemStyle = useMemo(
     () => ({
@@ -264,6 +263,7 @@ const styles = StyleSheet.create({
     marginRight: -8,
   },
   statsCard: {
+    marginTop: 8,
     marginBottom: 8,
     width: "100%",
   },
@@ -271,6 +271,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
+    gap: 8,
     paddingVertical: 12,
   },
 });

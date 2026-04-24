@@ -39,7 +39,7 @@ export const StatItem = memo(
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    minWidth: 120,
+    minWidth: 88,
     paddingVertical: 4,
   },
   icon: {
