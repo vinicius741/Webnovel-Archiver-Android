@@ -6,6 +6,7 @@ import { ChapterInfo, NovelMetadata, SourceProvider } from "../types";
 const SCRIBBLE_HUB_BASE_URL = "https://www.scribblehub.com";
 const SCRIBBLE_HUB_AJAX_URL =
   "https://www.scribblehub.com/wp-admin/admin-ajax.php";
+const SCRIBBLE_HUB_MAX_TOC_PAGES = 500;
 
 const toAbsoluteUrl = (href: string, baseUrl: string): string => {
   if (!href) return "";
@@ -23,6 +24,10 @@ const unique = (values: string[]): string[] => {
 
 const stableFallbackId = (url: string): string => {
   return `sh_url_${encodeURIComponent(url.toLowerCase())}`;
+};
+
+const normalizeAjaxPageHtml = (html: string): string => {
+  return html.replace(/0\s*$/, "").trim();
 };
 
 const parseTocItems = (html: string, baseUrl: string): ChapterInfo[] => {
@@ -155,16 +160,54 @@ export const ScribbleHubProvider: SourceProvider = {
     const postId = $("#mypostid").attr("value");
     const totalPages = parsePaginationPageCount(html);
     const chapters = parseTocItems(html, baseUrl);
+    const seenChapterUrls = new Set(chapters.map((chapter) => chapter.url));
+    const shouldFetchPaginatedChapters =
+      Boolean(postId) && (totalPages > 1 || chapters.length >= 15);
 
-    if (postId && totalPages > 1) {
-      for (let page = 2; page <= totalPages; page++) {
-        onProgress?.(`Fetching chapter page ${page}/${totalPages}...`);
+    if (shouldFetchPaginatedChapters && postId) {
+      for (let page = 2; page <= SCRIBBLE_HUB_MAX_TOC_PAGES; page++) {
+        const progressLabel =
+          totalPages > 1
+            ? `Fetching chapter page ${page}/${totalPages}${
+                page > totalPages ? "+" : ""
+              }...`
+            : `Fetching chapter page ${page}...`;
+
+        onProgress?.(progressLabel);
+
         const pageHtml = await fetchFormPage(SCRIBBLE_HUB_AJAX_URL, {
           action: "wi_getreleases_pagination",
           pagenum: page,
           mypostid: postId,
         });
-        chapters.push(...parseTocItems(pageHtml.replace(/0\s*$/, ""), baseUrl));
+
+        const pageChapters = parseTocItems(
+          normalizeAjaxPageHtml(pageHtml),
+          baseUrl,
+        );
+
+        if (pageChapters.length === 0) {
+          break;
+        }
+
+        const newChapters = pageChapters.filter((chapter) => {
+          if (seenChapterUrls.has(chapter.url)) {
+            return false;
+          }
+
+          seenChapterUrls.add(chapter.url);
+          return true;
+        });
+
+        if (newChapters.length === 0) {
+          break;
+        }
+
+        chapters.push(...newChapters);
+
+        if (pageChapters.length < 15) {
+          break;
+        }
       }
     }
 
