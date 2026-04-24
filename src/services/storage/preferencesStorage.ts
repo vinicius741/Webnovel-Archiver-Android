@@ -4,6 +4,7 @@ import type {
   AppSettings,
   ChapterFilterSettings,
   FoldLayoutMode,
+  SourceDownloadSettingsMap,
   TTSSettings,
   TTSSession,
 } from "../../types";
@@ -187,6 +188,32 @@ export class PreferencesStorage {
       await AsyncStorage.setItem(STORAGE_KEYS.FOLD_LAYOUT_MODE, mode);
     } catch (e) {
       console.error("Failed to save fold layout mode", e);
+    }
+  }
+
+  async getSourceDownloadSettings(): Promise<SourceDownloadSettingsMap> {
+    try {
+      const jsonValue = await AsyncStorage.getItem(
+        STORAGE_KEYS.SOURCE_DOWNLOAD_SETTINGS,
+      );
+      return jsonValue != null ? JSON.parse(jsonValue) : {};
+    } catch (e) {
+      console.error("Failed to load source download settings", e);
+      return {};
+    }
+  }
+
+  async saveSourceDownloadSettings(
+    settings: SourceDownloadSettingsMap,
+  ): Promise<void> {
+    try {
+      const jsonValue = JSON.stringify(settings);
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.SOURCE_DOWNLOAD_SETTINGS,
+        jsonValue,
+      );
+    } catch (e) {
+      console.error("Failed to save source download settings", e);
     }
   }
 }

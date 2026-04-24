@@ -17,6 +17,7 @@ jest.mock("../../services/StorageService", () => ({
     getSettings: jest
       .fn()
       .mockResolvedValue({ downloadConcurrency: 3, downloadDelay: 500 }),
+    getSourceDownloadSettings: jest.fn().mockResolvedValue({}),
     getLibrary: jest.fn(),
     addStory: jest.fn(),
     getStory: jest.fn(),

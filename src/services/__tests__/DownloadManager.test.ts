@@ -1,12 +1,15 @@
 import { DownloadManager } from "../download/DownloadManager";
 import { DownloadJob } from "../download/types";
+import { HttpError } from "../network/fetcher";
 
 jest.mock("../download/DownloadQueue", () => ({
   downloadQueue: {
     init: jest.fn().mockResolvedValue(undefined),
     addJob: jest.fn(),
     getNextPending: jest.fn(),
+    getAllJobs: jest.fn().mockReturnValue([]),
     updateJobStatus: jest.fn(),
+    pausePendingForStory: jest.fn(),
     getStats: jest.fn().mockReturnValue({ pending: 0, active: 0, total: 0 }),
   },
 }));
@@ -14,12 +17,21 @@ jest.mock("../download/DownloadQueue", () => ({
 jest.mock("../source/SourceRegistry", () => ({
   sourceRegistry: {
     getProvider: jest.fn(),
+    getAllProviders: jest.fn().mockReturnValue([
+      { name: "RoyalRoad" },
+      { name: "ScribbleHub" },
+    ]),
   },
 }));
 
-jest.mock("../network/fetcher", () => ({
-  fetchPage: jest.fn().mockResolvedValue("<html><p>Test content</p></html>"),
-}));
+jest.mock("../network/fetcher", () => {
+  const actual = jest.requireActual("../network/fetcher");
+
+  return {
+    ...actual,
+    fetchPage: jest.fn().mockResolvedValue("<html><p>Test content</p></html>"),
+  };
+});
 
 jest.mock("../storage/fileSystem", () => ({
   saveChapter: jest.fn().mockResolvedValue("/path/to/chapter.txt"),
@@ -27,7 +39,8 @@ jest.mock("../storage/fileSystem", () => ({
 
 jest.mock("../StorageService", () => ({
   storageService: {
-    getSettings: jest.fn().mockResolvedValue({ downloadConcurrency: 3 }),
+    getSettings: jest.fn().mockResolvedValue({ downloadConcurrency: 3, downloadDelay: 500 }),
+    getSourceDownloadSettings: jest.fn().mockResolvedValue({}),
     getStory: jest.fn().mockResolvedValue(null),
     updateStory: jest.fn().mockResolvedValue(undefined),
     getSentenceRemovalList: jest.fn().mockResolvedValue([]),
@@ -50,6 +63,9 @@ describe("DownloadManager", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    const { storageService } = require("../StorageService");
+    storageService.getSettings.mockResolvedValue({ downloadConcurrency: 3, downloadDelay: 500 });
+    storageService.getSourceDownloadSettings.mockResolvedValue({});
     manager = new DownloadManager();
   });
 
@@ -62,6 +78,7 @@ describe("DownloadManager", () => {
 
       expect(downloadQueue.init).toHaveBeenCalled();
       expect(storageService.getSettings).toHaveBeenCalled();
+      expect(storageService.getSourceDownloadSettings).toHaveBeenCalled();
     });
   });
 
@@ -158,7 +175,7 @@ describe("DownloadManager", () => {
   describe("Concurrency Control", () => {
     it("should respect concurrency setting from storage", async () => {
       const { storageService } = require("../StorageService");
-      storageService.getSettings.mockResolvedValue({ downloadConcurrency: 5 });
+      storageService.getSettings.mockResolvedValue({ downloadConcurrency: 5, downloadDelay: 500 });
 
       await manager.init();
 
@@ -167,7 +184,7 @@ describe("DownloadManager", () => {
 
     it("should default to 3 if setting is invalid", async () => {
       const { storageService } = require("../StorageService");
-      storageService.getSettings.mockResolvedValue({ downloadConcurrency: 0 });
+      storageService.getSettings.mockResolvedValue({ downloadConcurrency: 0, downloadDelay: 0 });
 
       await manager.init();
 
@@ -251,6 +268,272 @@ describe("DownloadManager", () => {
         "<p>This is long enough parsed Scribble Hub chapter content for saving.</p>",
       );
       expect(filePath).toBe("/path/to/chapter.txt");
+    });
+
+    it("should pause remaining ScribbleHub jobs after repeated 403 failures", async () => {
+      const { downloadQueue } = require("../download/DownloadQueue");
+      const { storageService } = require("../StorageService");
+
+      storageService.getStory.mockResolvedValue({
+        id: "sh_849523",
+        title: "Eternal Lotus Flower",
+        sourceUrl:
+          "https://www.scribblehub.com/series/849523/eternal-lotus-flower/",
+        chapters: [],
+      });
+
+      const firstJob: DownloadJob = {
+        id: "sh_849523_12",
+        storyId: "sh_849523",
+        storyTitle: "Eternal Lotus Flower",
+        chapterIndex: 12,
+        chapter: {
+          id: "sh_1401215",
+          title: "Chapter 13",
+          url: "https://www.scribblehub.com/read/849523-story/chapter/1401215/",
+          downloaded: false,
+        },
+        status: "pending",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+      const secondJob: DownloadJob = {
+        ...firstJob,
+        id: "sh_849523_13",
+        chapterIndex: 13,
+        chapter: {
+          ...firstJob.chapter,
+          id: "sh_1412162",
+          title: "Chapter 14",
+          url: "https://www.scribblehub.com/read/849523-story/chapter/1412162/",
+        },
+      };
+
+      await (manager as any).handleRateLimitFailure(
+        firstJob,
+        new HttpError(403, firstJob.chapter.url),
+      );
+      expect(downloadQueue.pausePendingForStory).not.toHaveBeenCalled();
+
+      await (manager as any).handleRateLimitFailure(
+        secondJob,
+        new HttpError(403, secondJob.chapter.url),
+      );
+
+      expect(downloadQueue.pausePendingForStory).toHaveBeenCalledWith(
+        "sh_849523",
+        expect.stringContaining("Paused remaining chapter downloads"),
+      );
+    });
+  });
+
+  describe("Source-Specific Settings", () => {
+    it("should return global settings when no source override exists", async () => {
+      await manager.init();
+
+      const settings = manager.getSourceSettings("UnknownSource");
+      expect(settings.concurrency).toBe(3);
+      expect(settings.delay).toBe(500);
+    });
+
+    it("should return source override when one exists", async () => {
+      const { storageService } = require("../StorageService");
+      storageService.getSourceDownloadSettings.mockResolvedValue({
+        ScribbleHub: { concurrency: 1, delay: 2000 },
+      });
+
+      await manager.init();
+
+      const settings = manager.getSourceSettings("ScribbleHub");
+      expect(settings.concurrency).toBe(1);
+      expect(settings.delay).toBe(2000);
+    });
+
+    it("should fall back to global for non-overridden properties", async () => {
+      const { storageService } = require("../StorageService");
+      storageService.getSourceDownloadSettings.mockResolvedValue({
+        ScribbleHub: { concurrency: 2, delay: 1000 },
+      });
+
+      await manager.init();
+
+      const royalRoadSettings = manager.getSourceSettings("RoyalRoad");
+      expect(royalRoadSettings.concurrency).toBe(3);
+      expect(royalRoadSettings.delay).toBe(500);
+    });
+
+    it("should update settings at runtime via updateSettings", async () => {
+      await manager.init();
+
+      manager.updateSettings(5, 1000, {
+        ScribbleHub: { concurrency: 1, delay: 3000 },
+      });
+
+      expect(manager.getSourceSettings("ScribbleHub")).toEqual({
+        concurrency: 1,
+        delay: 3000,
+      });
+      expect(manager.getSourceSettings("RoyalRoad")).toEqual({
+        concurrency: 5,
+        delay: 1000,
+      });
+    });
+
+    it("should not change concurrency when updateSettings receives 0", async () => {
+      await manager.init();
+      const before = manager.getSourceSettings("RoyalRoad").concurrency;
+
+      manager.updateSettings(0, 500, {});
+
+      expect(manager.getSourceSettings("RoyalRoad").concurrency).toBe(before);
+    });
+  });
+
+  describe("pickNextEligibleJob", () => {
+    it("should skip jobs whose source has reached concurrency limit", async () => {
+      const { downloadQueue } = require("../download/DownloadQueue");
+      const { sourceRegistry } = require("../source/SourceRegistry");
+
+      sourceRegistry.getProvider.mockImplementation((url: string) => {
+        if (url.includes("scribblehub.com")) {
+          return { name: "ScribbleHub" };
+        }
+        if (url.includes("royalroad.com")) {
+          return { name: "RoyalRoad" };
+        }
+        return undefined;
+      });
+
+      manager.updateSettings(3, 0, {
+        ScribbleHub: { concurrency: 1, delay: 0 },
+      });
+
+      const scribbleJob: DownloadJob = {
+        id: "sh_1",
+        storyId: "sh_1",
+        storyTitle: "SH Story",
+        chapterIndex: 0,
+        chapter: {
+          id: "c1",
+          title: "Ch1",
+          url: "https://www.scribblehub.com/read/1-story/chapter/1/",
+          downloaded: false,
+        },
+        status: "pending",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+
+      downloadQueue.getAllJobs.mockReturnValue([scribbleJob]);
+
+      // Simulate 1 active worker for ScribbleHub (at limit of 1)
+      (manager as any).activeWorkersBySource.set("ScribbleHub", 1);
+
+      const result = (manager as any).pickNextEligibleJob();
+      expect(result).toBeUndefined();
+    });
+
+    it("should pick a job from a different source when one is at capacity", async () => {
+      const { downloadQueue } = require("../download/DownloadQueue");
+      const { sourceRegistry } = require("../source/SourceRegistry");
+
+      sourceRegistry.getProvider.mockImplementation((url: string) => {
+        if (url.includes("scribblehub.com")) {
+          return { name: "ScribbleHub" };
+        }
+        if (url.includes("royalroad.com")) {
+          return { name: "RoyalRoad" };
+        }
+        return undefined;
+      });
+
+      manager.updateSettings(3, 0, {
+        ScribbleHub: { concurrency: 1, delay: 0 },
+      });
+
+      const scribbleJob: DownloadJob = {
+        id: "sh_1",
+        storyId: "sh_1",
+        storyTitle: "SH Story",
+        chapterIndex: 0,
+        chapter: {
+          id: "c1",
+          title: "Ch1",
+          url: "https://www.scribblehub.com/read/1-story/chapter/1/",
+          downloaded: false,
+        },
+        status: "pending",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+
+      const rrJob: DownloadJob = {
+        id: "rr_1",
+        storyId: "rr_1",
+        storyTitle: "RR Story",
+        chapterIndex: 0,
+        chapter: {
+          id: "c1",
+          title: "Ch1",
+          url: "https://www.royalroad.com/fiction/1/test/chapter/1/",
+          downloaded: false,
+        },
+        status: "pending",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+
+      downloadQueue.getAllJobs.mockReturnValue([scribbleJob, rrJob]);
+
+      // ScribbleHub at limit
+      (manager as any).activeWorkersBySource.set("ScribbleHub", 1);
+
+      const result = (manager as any).pickNextEligibleJob();
+      expect(result).toBeDefined();
+      expect(result.id).toBe("rr_1");
+    });
+
+    it("should skip jobs whose source is on cooldown", async () => {
+      const { downloadQueue } = require("../download/DownloadQueue");
+      const { sourceRegistry } = require("../source/SourceRegistry");
+
+      sourceRegistry.getProvider.mockImplementation((url: string) => {
+        if (url.includes("scribblehub.com")) {
+          return { name: "ScribbleHub" };
+        }
+        return undefined;
+      });
+
+      manager.updateSettings(3, 0, {
+        ScribbleHub: { concurrency: 2, delay: 2000 },
+      });
+
+      const job: DownloadJob = {
+        id: "sh_1",
+        storyId: "sh_1",
+        storyTitle: "SH Story",
+        chapterIndex: 0,
+        chapter: {
+          id: "c1",
+          title: "Ch1",
+          url: "https://www.scribblehub.com/read/1-story/chapter/1/",
+          downloaded: false,
+        },
+        status: "pending",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+
+      downloadQueue.getAllJobs.mockReturnValue([job]);
+
+      // Cooldown for 2 seconds from now
+      (manager as any).nextAllowedJobAtBySource.set(
+        "ScribbleHub",
+        Date.now() + 2000,
+      );
+
+      const result = (manager as any).pickNextEligibleJob();
+      expect(result).toBeUndefined();
     });
   });
 });

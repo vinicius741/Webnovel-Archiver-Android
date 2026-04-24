@@ -17,6 +17,9 @@ jest.mock("../download/DownloadQueue", () => {
         }
         return null;
       }),
+      getAllJobs: jest.fn(() => {
+        return Array.from(mockJobs.values());
+      }),
       updateJobStatus: jest.fn((id: string, status: string) => {
         const job = mockJobs.get(id);
         if (job) {
@@ -75,6 +78,7 @@ jest.mock("../storage/fileSystem", () => ({
 jest.mock("../StorageService", () => ({
   storageService: {
     getSettings: jest.fn().mockResolvedValue({ downloadConcurrency: 2 }),
+    getSourceDownloadSettings: jest.fn().mockResolvedValue({}),
     getStory: jest.fn().mockImplementation(async (storyId: string) => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       return {
@@ -99,8 +103,10 @@ jest.mock("../StorageService", () => ({
 jest.mock("../source/SourceRegistry", () => ({
   sourceRegistry: {
     getProvider: jest.fn(() => ({
+      name: "RoyalRoad",
       parseChapterContent: jest.fn((html: string) => `<p>${html}</p>`),
     })),
+    getAllProviders: jest.fn(() => [{ name: "RoyalRoad" }]),
   },
 }));
 

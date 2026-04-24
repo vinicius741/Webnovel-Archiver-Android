@@ -7,6 +7,7 @@ import type {
   DownloadStatus,
   FoldLayoutMode,
   RegexCleanupRule,
+  SourceDownloadSettingsMap,
   Story,
   TTSSettings,
   TTSSession,
@@ -25,6 +26,8 @@ export type {
   ChapterFilterMode,
   ChapterFilterSettings,
   FoldLayoutMode,
+  SourceDownloadSettings,
+  SourceDownloadSettingsMap,
   TTSSettings,
   TTSSession,
 } from "../types";
@@ -166,6 +169,16 @@ class StorageService {
     tabId: string | null,
   ): Promise<void> {
     await this.libraryStorage.moveStoriesToTab(storyIds, tabId);
+  }
+
+  async getSourceDownloadSettings(): Promise<SourceDownloadSettingsMap> {
+    return this.preferencesStorage.getSourceDownloadSettings();
+  }
+
+  async saveSourceDownloadSettings(
+    settings: SourceDownloadSettingsMap,
+  ): Promise<void> {
+    await this.preferencesStorage.saveSourceDownloadSettings(settings);
   }
 }
 

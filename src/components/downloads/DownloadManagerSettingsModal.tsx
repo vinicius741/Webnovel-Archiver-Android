@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet } from "react-native";
 import {
   Text,
@@ -7,6 +7,7 @@ import {
   Button,
   TextInput,
   Divider,
+  Menu,
 } from "react-native-paper";
 import { useScreenLayout } from "../../hooks/useScreenLayout";
 
@@ -22,6 +23,10 @@ interface Props {
   onConcurrencyBlur: () => void;
   onDelayBlur: () => void;
   onClearCompletedPress: () => void;
+  selectedSource: string | null;
+  onSourceSelect: (source: string | null) => void;
+  availableProviders: string[];
+  onResetSource: () => void;
 }
 
 type ScreenLayout = ReturnType<typeof useScreenLayout> & {
@@ -42,9 +47,14 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
   onConcurrencyBlur,
   onDelayBlur,
   onClearCompletedPress,
+  selectedSource,
+  onSourceSelect,
+  availableProviders,
+  onResetSource,
 }) => {
   const theme = useTheme();
   const layout = useScreenLayout() as ScreenLayout;
+  const [menuVisible, setMenuVisible] = useState(false);
   const screenWidth = layout.screenWidth || 0;
   const widthClass =
     layout.widthClass ||
@@ -57,6 +67,8 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
   const modalMaxWidth = widthClass === "expanded" ? 560 : 480;
   const modalMaxHeight =
     layout.isCompactHeight || layout.heightClass === "compact" ? "92%" : "80%";
+
+  const sourceLabel = selectedSource ?? "Global (default)";
 
   return (
     <Modal
@@ -85,6 +97,64 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
       >
         Clear Completed Downloads
       </Button>
+
+      <Divider style={styles.divider} />
+
+      <Text variant="labelLarge" style={styles.sectionLabel}>
+        Source Override
+      </Text>
+      <Menu
+        visible={menuVisible}
+        onDismiss={() => setMenuVisible(false)}
+        anchor={
+          <Button
+            mode="outlined"
+            onPress={() => setMenuVisible(true)}
+            icon="chevron-down"
+            style={styles.sourceButton}
+            contentStyle={styles.sourceButtonContent}
+          >
+            {sourceLabel}
+          </Button>
+        }
+      >
+        <Menu.Item
+          onPress={() => {
+            onSourceSelect(null);
+            setMenuVisible(false);
+          }}
+          title="Global (default)"
+          leadingIcon={
+            selectedSource === null ? "check" : undefined
+          }
+        />
+        {availableProviders.map((name) => (
+          <Menu.Item
+            key={name}
+            onPress={() => {
+              onSourceSelect(name);
+              setMenuVisible(false);
+            }}
+            title={name}
+            leadingIcon={
+              selectedSource === name ? "check" : undefined
+            }
+          />
+        ))}
+      </Menu>
+
+      {selectedSource && (
+        <Button
+          mode="text"
+          icon="restore"
+          onPress={onResetSource}
+          compact
+          textColor={theme.colors.onSurfaceVariant}
+          style={styles.resetButton}
+        >
+          Reset to Default
+        </Button>
+      )}
 
       <Divider style={styles.divider} />
 
@@ -151,6 +221,19 @@ const styles = StyleSheet.create({
   },
   divider: {
     marginVertical: 12,
+  },
+  sectionLabel: {
+    marginBottom: 8,
+  },
+  sourceButton: {
+    marginBottom: 8,
+  },
+  sourceButtonContent: {
+    flexDirection: "row-reverse",
+  },
+  resetButton: {
+    marginBottom: 4,
+    alignSelf: "flex-start",
   },
   input: {
     marginBottom: 12,

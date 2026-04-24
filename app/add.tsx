@@ -28,7 +28,6 @@ export default function AddStoryScreen() {
       : screenLayout.screenWidth >= 600
         ? "medium"
         : "compact");
-  const isCompact = widthClass === "compact";
   const { url, setUrl, loading, statusMessage, handlePaste, handleAdd } =
     useAddStory();
   const { tabs, hasCustomTabs } = useTabs();
@@ -58,12 +57,7 @@ export default function AddStoryScreen() {
           <Text variant="titleMedium" style={styles.label}>
             Webnovel URL
           </Text>
-          <View
-            style={[
-              styles.inputContainer,
-              isCompact && styles.inputContainerCompact,
-            ]}
-          >
+          <View style={styles.inputContainer}>
             <TextInput
               mode="outlined"
               placeholder="Royal Road or Scribble Hub story URL"
@@ -71,13 +65,13 @@ export default function AddStoryScreen() {
               onChangeText={setUrl}
               autoCapitalize="none"
               keyboardType="url"
-              style={[styles.input, isCompact && styles.inputCompact]}
+              style={styles.input}
             />
             <IconButton
               icon="content-paste"
               mode="contained-tonal"
               onPress={handlePaste}
-              style={[styles.pasteButton, isCompact && styles.pasteButtonCompact]}
+              style={styles.pasteButton}
             />
           </View>
 
@@ -163,24 +157,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  inputContainerCompact: {
-    flexDirection: "column",
-    alignItems: "stretch",
-  },
+
   input: {
     flex: 1,
     marginRight: 8,
   },
-  inputCompact: {
-    width: "100%",
-    marginRight: 0,
-    marginBottom: 8,
-  },
   pasteButton: {
     margin: 0,
-  },
-  pasteButtonCompact: {
-    alignSelf: "flex-end",
   },
   tabSection: {
     marginBottom: 16,

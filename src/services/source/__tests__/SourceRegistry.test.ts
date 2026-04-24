@@ -87,6 +87,24 @@ describe("SourceRegistry", () => {
     });
   });
 
+  describe("getAllProviders", () => {
+    it("should return all registered providers", () => {
+      const providers = sourceRegistry.getAllProviders();
+
+      expect(providers.length).toBeGreaterThanOrEqual(2);
+      expect(providers.some((p) => p.name === "RoyalRoad")).toBe(true);
+      expect(providers.some((p) => p.name === "Scribble Hub")).toBe(true);
+    });
+
+    it("should return a shallow copy", () => {
+      const providers1 = sourceRegistry.getAllProviders();
+      const providers2 = sourceRegistry.getAllProviders();
+
+      expect(providers1).not.toBe(providers2);
+      expect(providers1).toEqual(providers2);
+    });
+  });
+
   describe("getProvider", () => {
     it("should return provider for matching URL", () => {
       const provider: SourceProvider = {

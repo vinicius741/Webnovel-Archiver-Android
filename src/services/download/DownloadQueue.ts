@@ -155,6 +155,23 @@ export class DownloadQueue {
     }
   }
 
+  pausePendingForStory(storyId: string, reason?: string): void {
+    let changed = false;
+    this.jobs.forEach((job) => {
+      if (job.storyId === storyId && job.status === "pending") {
+        job.status = "paused";
+        job.pausedAt = Date.now();
+        if (reason) {
+          job.error = reason;
+        }
+        changed = true;
+      }
+    });
+    if (changed) {
+      void this._save();
+    }
+  }
+
   resumeAll(): void {
     let changed = false;
     this.jobs.forEach((job) => {

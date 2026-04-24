@@ -17,6 +17,10 @@ class SourceRegistry {
   getProvider(url: string): SourceProvider | undefined {
     return this.providers.find((p) => p.isSource(url));
   }
+
+  getAllProviders(): SourceProvider[] {
+    return [...this.providers];
+  }
 }
 
 export const sourceRegistry = new SourceRegistry();

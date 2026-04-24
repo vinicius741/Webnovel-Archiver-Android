@@ -42,6 +42,10 @@ export default function DownloadManagerScreen() {
     handleDelayChange,
     handleConcurrencyBlur,
     handleDelayBlur,
+    selectedSource,
+    setSelectedSource,
+    availableProviders,
+    handleResetSource,
   } = useSettings();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -250,6 +254,10 @@ export default function DownloadManagerScreen() {
           onConcurrencyBlur={handleConcurrencyBlur}
           onDelayBlur={handleDelayBlur}
           onClearCompletedPress={handleClearCompletedPress}
+          selectedSource={selectedSource}
+          onSourceSelect={setSelectedSource}
+          availableProviders={availableProviders}
+          onResetSource={handleResetSource}
         />
       </Portal>
     </ScreenContainer>

@@ -1,8 +1,12 @@
-import { fetchPage } from "../../network/fetcher";
+import { fetchPage, HttpError } from "../../network/fetcher";
 
 describe("fetchPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it("should fetch page with user agent header", async () => {
@@ -20,6 +24,7 @@ describe("fetchPage", () => {
           "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
       },
     });
     expect(result).toBe("<html><body>Test Content</body></html>");
@@ -44,8 +49,8 @@ describe("fetchPage", () => {
       statusText: "Not Found",
     }) as any;
 
-    await expect(fetchPage("https://example.com")).rejects.toThrow(
-      "HTTP error! status: 404",
+    await expect(fetchPage("https://example.com")).rejects.toEqual(
+      new HttpError(404, "https://example.com"),
     );
   });
 
@@ -82,5 +87,35 @@ describe("fetchPage", () => {
     const result = await fetchPage("https://example.com");
 
     expect(result).toBe(largeContent);
+  });
+
+  it("should retry ScribbleHub 403 responses before succeeding", async () => {
+    jest.useFakeTimers();
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve("<html><body>Recovered</body></html>"),
+      }) as any;
+
+    const resultPromise = fetchPage(
+      "https://www.scribblehub.com/read/123-series/chapter/456/",
+    );
+
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(2500);
+
+    await expect(resultPromise).resolves.toBe(
+      "<html><body>Recovered</body></html>",
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

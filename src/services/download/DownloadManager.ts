@@ -4,20 +4,27 @@ import { DownloadJob } from "./types";
 import { DownloadStoryCache } from "./DownloadStoryCache";
 import { DownloadNotificationManager } from "./DownloadNotificationManager";
 import { sourceRegistry } from "../source/SourceRegistry";
-import { fetchPage } from "../network/fetcher";
+import { fetchPage, HttpError } from "../network/fetcher";
 import { saveChapter } from "../storage/fileSystem";
 import { storageService } from "../StorageService";
-import { DownloadStatus } from "../../types";
+import { DownloadStatus, SourceDownloadSettingsMap } from "../../types";
 import { applyDownloadCleanup } from "../../utils/textCleanup";
 
 const FLUSH_INTERVAL = 2000;
+const STORY_RATE_LIMIT_FAILURE_THRESHOLD = 2;
 
 export class DownloadManager extends EventEmitter {
   private isRunning = false;
   private activeWorkers = 0;
   private concurrency = 3;
+  private globalDelay = 0;
   private cancelRequested = false;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private consecutiveRateLimitFailuresByStory = new Map<string, number>();
+
+  private sourceSettings: SourceDownloadSettingsMap = {};
+  private activeWorkersBySource = new Map<string, number>();
+  private nextAllowedJobAtBySource = new Map<string, number>();
 
   private storyCache = new DownloadStoryCache();
   private notificationManager = new DownloadNotificationManager();
@@ -29,14 +36,70 @@ export class DownloadManager extends EventEmitter {
 
   async init() {
     await downloadQueue.init();
-    const settings = await storageService.getSettings();
+    const [settings, sourceSettings] = await Promise.all([
+      storageService.getSettings(),
+      storageService.getSourceDownloadSettings(),
+    ]);
     this.concurrency =
       settings.downloadConcurrency > 0 ? settings.downloadConcurrency : 3;
+    this.globalDelay = settings.downloadDelay ?? 0;
+    this.sourceSettings = sourceSettings;
 
     const stats = downloadQueue.getStats();
     if (stats.pending > 0) {
       void this.start();
     }
+  }
+
+  updateSettings(
+    globalConcurrency: number,
+    globalDelay: number,
+    sourceMap: SourceDownloadSettingsMap,
+  ) {
+    this.concurrency =
+      globalConcurrency > 0 ? globalConcurrency : this.concurrency;
+    this.globalDelay = globalDelay;
+    this.sourceSettings = sourceMap;
+  }
+
+  getSourceSettings(providerName: string): {
+    concurrency: number;
+    delay: number;
+  } {
+    const override = this.sourceSettings[providerName];
+    return {
+      concurrency: override?.concurrency ?? this.concurrency,
+      delay: override?.delay ?? this.globalDelay,
+    };
+  }
+
+  private getProviderNameForJob(job: DownloadJob): string | undefined {
+    return sourceRegistry.getProvider(job.chapter.url)?.name;
+  }
+
+  private pickNextEligibleJob(): DownloadJob | undefined {
+    const allJobs = downloadQueue.getAllJobs();
+    const now = Date.now();
+
+    for (const job of allJobs) {
+      if (job.status !== "pending") continue;
+
+      const providerName = this.getProviderNameForJob(job);
+      if (!providerName) continue;
+
+      const sourceConcurrency = this.getSourceSettings(providerName).concurrency;
+      const activeForSource =
+        this.activeWorkersBySource.get(providerName) ?? 0;
+      if (activeForSource >= sourceConcurrency) continue;
+
+      const nextAllowedAt =
+        this.nextAllowedJobAtBySource.get(providerName) ?? 0;
+      if (nextAllowedAt > now) continue;
+
+      return job;
+    }
+
+    return undefined;
   }
 
   private startFlushTimer() {
@@ -89,23 +152,84 @@ export class DownloadManager extends EventEmitter {
         continue;
       }
 
-      const pending = downloadQueue.getNextPending();
+      const pending = this.pickNextEligibleJob();
 
       if (!pending) {
         if (this.activeWorkers === 0) {
-          break;
+          const allJobs = downloadQueue.getAllJobs();
+          const now = Date.now();
+          let sleepUntil = 0;
+          let hasPending = false;
+          for (const job of allJobs) {
+            if (job.status !== "pending") continue;
+            const providerName = this.getProviderNameForJob(job);
+            if (!providerName) continue;
+            hasPending = true;
+            const nextAllowedAt =
+              this.nextAllowedJobAtBySource.get(providerName) ?? 0;
+            if (nextAllowedAt > now) {
+              if (sleepUntil === 0 || nextAllowedAt < sleepUntil) {
+                sleepUntil = nextAllowedAt;
+              }
+            }
+          }
+          if (!hasPending) {
+            break;
+          }
+          if (sleepUntil > now) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, sleepUntil - now),
+            );
+            continue;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
         }
         await new Promise((resolve) => setTimeout(resolve, 200));
         continue;
       }
 
+      const providerName = this.getProviderNameForJob(pending);
+
       this.activeWorkers++;
+      if (providerName) {
+        this.activeWorkersBySource.set(
+          providerName,
+          (this.activeWorkersBySource.get(providerName) ?? 0) + 1,
+        );
+      }
+
+      const sourceDelay = providerName
+        ? this.getSourceSettings(providerName).delay
+        : 0;
+
       // We do NOT await here. We fire and forget (the promise is handled).
       this.processJob(pending).then(() => {
         this.activeWorkers--;
+        if (providerName) {
+          const current = this.activeWorkersBySource.get(providerName) ?? 0;
+          this.activeWorkersBySource.set(
+            providerName,
+            Math.max(0, current - 1),
+          );
+          if (sourceDelay > 0) {
+            this.nextAllowedJobAtBySource.set(
+              providerName,
+              Date.now() + sourceDelay,
+            );
+          }
+        }
         this.emit("queue-updated");
         void this.notificationManager.update();
       }).catch((err) => {
+        this.activeWorkers--;
+        if (providerName) {
+          const current = this.activeWorkersBySource.get(providerName) ?? 0;
+          this.activeWorkersBySource.set(
+            providerName,
+            Math.max(0, current - 1),
+          );
+        }
         console.error("[DownloadManager] Worker failed:", err);
       });
 
@@ -247,13 +371,45 @@ export class DownloadManager extends EventEmitter {
       }
 
       downloadQueue.updateJobStatus(job.id, "completed");
+      this.consecutiveRateLimitFailuresByStory.delete(job.storyId);
       this.emit("job-completed", job, filePath);
     } catch (error: unknown) {
+      await this.handleRateLimitFailure(job, error);
       console.error(`[DownloadManager] Job ${job.id} failed`, error);
       const message = error instanceof Error ? error.message : "Unknown error";
       downloadQueue.updateJobStatus(job.id, "failed", message);
       this.emit("job-failed", job, error);
     }
+  }
+
+  private async handleRateLimitFailure(
+    job: DownloadJob,
+    error: unknown,
+  ): Promise<void> {
+    const story = await storageService.getStory(job.storyId);
+    const isScribbleHubStory = story?.sourceUrl?.includes("scribblehub.com");
+    const isRateLimitError =
+      error instanceof HttpError &&
+      (error.status === 403 || error.status === 429);
+
+    if (!isScribbleHubStory || !isRateLimitError) {
+      this.consecutiveRateLimitFailuresByStory.delete(job.storyId);
+      return;
+    }
+
+    const failureCount =
+      (this.consecutiveRateLimitFailuresByStory.get(job.storyId) ?? 0) + 1;
+    this.consecutiveRateLimitFailuresByStory.set(job.storyId, failureCount);
+
+    if (failureCount < STORY_RATE_LIMIT_FAILURE_THRESHOLD) {
+      return;
+    }
+
+    const pauseReason =
+      "Paused remaining chapter downloads after repeated ScribbleHub 403/429 responses. Resume later to retry.";
+    downloadQueue.pausePendingForStory(job.storyId, pauseReason);
+    this.emit("queue-updated");
+    this.emit("notification-update");
   }
 
   private async executeDownload(job: DownloadJob): Promise<string> {

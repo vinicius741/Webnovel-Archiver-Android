@@ -8,4 +8,5 @@ export const STORAGE_KEYS = {
   CHAPTER_FILTER_SETTINGS: "wa_chapter_filter_settings_v1",
   TABS: "wa_tabs_v1",
   FOLD_LAYOUT_MODE: "wa_fold_layout_mode_v1",
+  SOURCE_DOWNLOAD_SETTINGS: "wa_source_download_settings_v1",
 } as const;

@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { router } from "expo-router";
 import { storageService } from "../services/StorageService";
+import { downloadManager } from "../services/download/DownloadManager";
+import { sourceRegistry } from "../services/source/SourceRegistry";
 import { backupService } from "../services/BackupService";
 import { useTheme } from "../theme/ThemeContext";
 import { useAppAlert } from "../context/AlertContext";
+import type { SourceDownloadSettingsMap } from "../types";
 
 // Validation boundary constants
 const CONCURRENCY_MIN = 1;
@@ -28,23 +31,41 @@ const validateDelay = (value: string): { valid: string; actual: number } => {
 export const useSettings = () => {
   const { themeMode, setThemeMode } = useTheme();
   const { showAlert } = useAppAlert();
-  const [concurrency, setConcurrency] = useState("1");
-  const [delay, setDelay] = useState("500");
+  const [globalConcurrency, setGlobalConcurrency] = useState("1");
+  const [globalDelay, setGlobalDelay] = useState("500");
   const [persistedMaxChaptersPerEpub, setPersistedMaxChaptersPerEpub] =
     useState(150);
   const [concurrencyError, setConcurrencyError] = useState<
     string | undefined
   >();
   const [delayError, setDelayError] = useState<string | undefined>();
+  const [sourceSettings, setSourceSettings] =
+    useState<SourceDownloadSettingsMap>({});
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [availableProviders] = useState(() =>
+    sourceRegistry.getAllProviders().map((p) => p.name),
+  );
+
+  // Working text values for source overrides (tracks what the user is typing)
+  const [sourceConcurrencyText, setSourceConcurrencyText] = useState("");
+  const [sourceDelayText, setSourceDelayText] = useState("");
+
+  // Compute display values for text inputs
+  const concurrency = selectedSource ? sourceConcurrencyText : globalConcurrency;
+  const delay = selectedSource ? sourceDelayText : globalDelay;
 
   useEffect(() => {
     let mounted = true;
     const loadSettings = async () => {
-      const settings = await storageService.getSettings();
+      const [settings, loadedSourceSettings] = await Promise.all([
+        storageService.getSettings(),
+        storageService.getSourceDownloadSettings(),
+      ]);
       if (!mounted) return;
-      setConcurrency(settings.downloadConcurrency.toString());
-      setDelay(settings.downloadDelay.toString());
+      setGlobalConcurrency(settings.downloadConcurrency.toString());
+      setGlobalDelay(settings.downloadDelay.toString());
       setPersistedMaxChaptersPerEpub(settings.maxChaptersPerEpub);
+      setSourceSettings(loadedSourceSettings);
       setConcurrencyError(undefined);
       setDelayError(undefined);
     };
@@ -55,28 +76,97 @@ export const useSettings = () => {
     };
   }, []);
 
+  // When selected source changes, initialize working text from loaded settings
+  const handleSourceSelect = useCallback(
+    (source: string | null) => {
+      setSelectedSource(source);
+      if (source) {
+        const override = sourceSettings[source];
+        const globalConc = parseInt(globalConcurrency, 10) || 1;
+        const globalDel = parseInt(globalDelay, 10) || 0;
+        setSourceConcurrencyText(
+          (override?.concurrency ?? globalConc).toString(),
+        );
+        setSourceDelayText((override?.delay ?? globalDel).toString());
+      }
+      setConcurrencyError(undefined);
+      setDelayError(undefined);
+    },
+    [sourceSettings, globalConcurrency, globalDelay],
+  );
+
+  const persistGlobalSettings = useCallback(
+    async (concResult: { actual: number }, delayRes: { actual: number }) => {
+      await storageService.saveSettings({
+        downloadConcurrency: concResult.actual,
+        downloadDelay: delayRes.actual,
+        maxChaptersPerEpub: persistedMaxChaptersPerEpub,
+      });
+      downloadManager.updateSettings(
+        concResult.actual,
+        delayRes.actual,
+        sourceSettings,
+      );
+    },
+    [persistedMaxChaptersPerEpub, sourceSettings],
+  );
+
+  const persistSourceSettings = useCallback(
+    async (updated: SourceDownloadSettingsMap) => {
+      setSourceSettings(updated);
+      await storageService.saveSourceDownloadSettings(updated);
+      const globalConcurrencyResult = validateConcurrency(globalConcurrency);
+      const globalDelayResult = validateDelay(globalDelay);
+      downloadManager.updateSettings(
+        globalConcurrencyResult.actual,
+        globalDelayResult.actual,
+        updated,
+      );
+    },
+    [globalConcurrency, globalDelay],
+  );
+
   const saveSettings = useCallback(async () => {
-    const concurrencyResult = validateConcurrency(concurrency);
-    const delayResult = validateDelay(delay);
+    const activeConcurrency = selectedSource ? sourceConcurrencyText : globalConcurrency;
+    const activeDelay = selectedSource ? sourceDelayText : globalDelay;
 
-    // Update state with validated values
-    setConcurrency(concurrencyResult.valid);
-    setDelay(delayResult.valid);
+    const concurrencyResult = validateConcurrency(activeConcurrency);
+    const delayResult = validateDelay(activeDelay);
 
-    // Clear errors since we're applying validated values
     setConcurrencyError(undefined);
     setDelayError(undefined);
 
-    await storageService.saveSettings({
-      downloadConcurrency: concurrencyResult.actual,
-      downloadDelay: delayResult.actual,
-      maxChaptersPerEpub: persistedMaxChaptersPerEpub,
-    });
-  }, [concurrency, delay, persistedMaxChaptersPerEpub]);
+    if (selectedSource) {
+      const updated = {
+        ...sourceSettings,
+        [selectedSource]: {
+          concurrency: concurrencyResult.actual,
+          delay: delayResult.actual,
+        },
+      };
+      await persistSourceSettings(updated);
+    } else {
+      setGlobalConcurrency(concurrencyResult.valid);
+      setGlobalDelay(delayResult.valid);
+      await persistGlobalSettings(concurrencyResult, delayResult);
+    }
+  }, [
+    sourceConcurrencyText,
+    sourceDelayText,
+    globalConcurrency,
+    globalDelay,
+    selectedSource,
+    sourceSettings,
+    persistGlobalSettings,
+    persistSourceSettings,
+  ]);
 
   const handleConcurrencyChange = (text: string) => {
-    setConcurrency(text);
-    // Validate immediately for feedback
+    if (selectedSource) {
+      setSourceConcurrencyText(text);
+    } else {
+      setGlobalConcurrency(text);
+    }
     const num = parseInt(text, 10);
     if (isNaN(num) || num < CONCURRENCY_MIN || num > CONCURRENCY_MAX) {
       setConcurrencyError(
@@ -85,11 +175,14 @@ export const useSettings = () => {
     } else {
       setConcurrencyError(undefined);
     }
-    // Debounced save will be triggered on blur
   };
 
   const handleDelayChange = (text: string) => {
-    setDelay(text);
+    if (selectedSource) {
+      setSourceDelayText(text);
+    } else {
+      setGlobalDelay(text);
+    }
     const num = parseInt(text, 10);
     if (isNaN(num) || num < DELAY_MIN) {
       setDelayError(`Must be ${DELAY_MIN} or greater`);
@@ -105,6 +198,18 @@ export const useSettings = () => {
   const handleDelayBlur = () => {
     void saveSettings();
   };
+
+  const handleResetSource = useCallback(() => {
+    if (!selectedSource) return;
+    const updated = { ...sourceSettings };
+    delete updated[selectedSource];
+    void persistSourceSettings(updated);
+    // Reset working text to global defaults
+    const globalConc = parseInt(globalConcurrency, 10) || 1;
+    const globalDel = parseInt(globalDelay, 10) || 0;
+    setSourceConcurrencyText(globalConc.toString());
+    setSourceDelayText(globalDel.toString());
+  }, [selectedSource, sourceSettings, persistSourceSettings, globalConcurrency, globalDelay]);
 
   const clearData = () => {
     showAlert(
@@ -171,5 +276,9 @@ export const useSettings = () => {
     clearData,
     handleExportBackup,
     handleImportBackup,
+    selectedSource,
+    setSelectedSource: handleSourceSelect,
+    availableProviders,
+    handleResetSource,
   };
 };

@@ -74,6 +74,13 @@ export interface AppSettings {
   maxChaptersPerEpub: number;
 }
 
+export interface SourceDownloadSettings {
+  concurrency: number;
+  delay: number;
+}
+
+export type SourceDownloadSettingsMap = Record<string, SourceDownloadSettings>;
+
 export type FoldLayoutMode = "auto" | "cover" | "inner";
 
 export interface TTSSettings {
