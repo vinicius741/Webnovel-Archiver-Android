@@ -250,6 +250,44 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
     [stopSpeech],
   );
 
+  const startSpeechAt = useCallback(
+    async (
+      newChunks: string[],
+      title: string = "Reading",
+      startIndex: number,
+      context?: TTSPlaybackContext,
+    ) => {
+      if (!newChunks || newChunks.length === 0) return;
+      const boundedIndex = Math.max(
+        0,
+        Math.min(startIndex, newChunks.length - 1),
+      );
+      const currentState = ttsStateManager.getState();
+      const isSameChapter =
+        currentState?.chunks.length === newChunks.length &&
+        currentState.chunks[boundedIndex] === newChunks[boundedIndex];
+
+      if (
+        currentState &&
+        (currentState.isSpeaking || currentState.isPaused) &&
+        isSameChapter
+      ) {
+        await ttsStateManager.seekToUnit(boundedIndex);
+      } else {
+        await ttsStateManager.start({
+          chunks: newChunks,
+          title,
+          storyId: context?.storyId || "",
+          chapterId: context?.chapterId || "",
+          chapterTitle: context?.chapterTitle || title,
+          startChunkIndex: boundedIndex,
+        });
+      }
+      setIsControllerVisible(true);
+    },
+    [],
+  );
+
   return {
     isSpeaking,
     isPaused,
@@ -261,6 +299,7 @@ export const useTTS = (options?: { onFinish?: () => void }) => {
     setIsSettingsVisible,
     setIsControllerVisible,
     toggleSpeech,
+    startSpeechAt,
     stopSpeech,
     handlePlayPause,
     handleNextChunk,

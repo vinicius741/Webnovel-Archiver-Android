@@ -1,6 +1,6 @@
 import { TTSSettings, TTSSession } from "../../types";
 import { storageService } from "../StorageService";
-import { TTSState } from "./TTSPlaybackController";
+import type { TTSState } from "../TTSStateManager";
 
 const TTS_SESSION_VERSION = 1;
 const STORAGE_WRITE_THROTTLE_MS = 500;

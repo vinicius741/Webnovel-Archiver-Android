@@ -17,9 +17,12 @@ import {
   MD3Theme,
 } from "react-native-paper";
 import Slider from "@react-native-community/slider";
-import * as Speech from "expo-speech";
 import type { TTSSettings } from "../types";
 import { useScreenLayout } from "../hooks/useScreenLayout";
+import {
+  ttsMediaSessionService,
+  type NativeTtsVoice,
+} from "../services/TtsMediaSessionService";
 
 interface Props {
   visible: boolean;
@@ -46,7 +49,7 @@ const ModalContent = React.memo(
     onDismiss: () => void;
     theme: MD3Theme;
   }) => {
-    const [voices, setVoices] = useState<Speech.Voice[]>([]);
+    const [voices, setVoices] = useState<NativeTtsVoice[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const settingsRef = useRef(settings);
 
@@ -56,9 +59,9 @@ const ModalContent = React.memo(
 
     useEffect(() => {
       const loadVoices = async () => {
-        const availableVoices = await Speech.getAvailableVoicesAsync();
+        const availableVoices = await ttsMediaSessionService.getVoices();
         setVoices(
-          availableVoices.sort((a: Speech.Voice, b: Speech.Voice) => {
+          availableVoices.sort((a: NativeTtsVoice, b: NativeTtsVoice) => {
             const aQuality = a.quality as string;
             const bQuality = b.quality as string;
             if (aQuality === "Enhanced" && bQuality !== "Enhanced") return -1;
@@ -91,7 +94,7 @@ const ModalContent = React.memo(
     const surfaceVariantColor = theme.colors.surfaceVariant;
 
     const VoiceItem = useCallback(
-      ({ voice }: { voice: Speech.Voice }) => {
+      ({ voice }: { voice: NativeTtsVoice }) => {
         const isSelected = settings.voiceIdentifier === voice.identifier;
         const icon = isSelected ? (
           <List.Icon icon="check" color={primaryColor} />

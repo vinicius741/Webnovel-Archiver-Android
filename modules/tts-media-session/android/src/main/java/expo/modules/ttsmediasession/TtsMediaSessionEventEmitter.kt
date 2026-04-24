@@ -28,4 +28,35 @@ object TtsMediaSessionEventEmitter {
       }
     }
   }
+
+  fun emitPlaybackState(
+    status: String,
+    title: String,
+    currentIndex: Int,
+    total: Int,
+    isPlaying: Boolean,
+    isPaused: Boolean,
+    storyId: String?,
+    chapterId: String?,
+  ) {
+    val module = moduleRef?.get() ?: return
+    val payload = Bundle().apply {
+      putString("status", status)
+      putString("title", title)
+      putInt("currentIndex", currentIndex)
+      putInt("total", total)
+      putBoolean("isPlaying", isPlaying)
+      putBoolean("isPaused", isPaused)
+      putString("storyId", storyId)
+      putString("chapterId", chapterId)
+    }
+
+    handler.post {
+      try {
+        module.sendEvent("onPlaybackState", payload)
+      } catch (e: Exception) {
+        Log.w("TtsMediaSession", "Failed to emit playback state: ${e.message}")
+      }
+    }
+  }
 }

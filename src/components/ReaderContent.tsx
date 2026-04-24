@@ -9,6 +9,7 @@ interface ReaderContentProps {
   maxWidth?: number;
   contentPadding?: number;
   bottomPadding?: number;
+  onTTSUnitPress?: (index: number) => void;
 }
 
 export const ReaderContent = ({
@@ -17,6 +18,7 @@ export const ReaderContent = ({
   maxWidth,
   contentPadding = 20,
   bottomPadding = 112,
+  onTTSUnitPress,
 }: ReaderContentProps) => {
   const theme = useTheme();
 
@@ -56,6 +58,43 @@ export const ReaderContent = ({
             </head>
             <body>
                 ${processedContent}
+                <script>
+                    (function() {
+                        let lastTapAt = 0;
+                        let lastTapGroup = null;
+                        function findTtsGroup(target) {
+                            let node = target;
+                            while (node && node !== document.body) {
+                                if (node.dataset && node.dataset.ttsGroup) {
+                                    return node.dataset.ttsGroup;
+                                }
+                                node = node.parentElement;
+                            }
+                            return null;
+                        }
+                        function sendTtsStart(group) {
+                            if (!window.ReactNativeWebView || group === null) return;
+                            window.ReactNativeWebView.postMessage(JSON.stringify({
+                                type: "tts-start",
+                                index: Number(group)
+                            }));
+                        }
+                        document.addEventListener("dblclick", function(event) {
+                            const group = findTtsGroup(event.target);
+                            if (group !== null) sendTtsStart(group);
+                        });
+                        document.addEventListener("touchend", function(event) {
+                            const group = findTtsGroup(event.target);
+                            const now = Date.now();
+                            if (group !== null && group === lastTapGroup && now - lastTapAt < 350) {
+                                sendTtsStart(group);
+                                event.preventDefault();
+                            }
+                            lastTapAt = now;
+                            lastTapGroup = group;
+                        }, { passive: false });
+                    })();
+                </script>
             </body>
             </html>
         `;
@@ -68,6 +107,24 @@ export const ReaderContent = ({
         originWhitelist={["*"]}
         source={{ html: htmlContent }}
         style={[styles.webView, { backgroundColor: theme.colors.surface }]}
+        onMessage={(event) => {
+          if (!onTTSUnitPress) return;
+          try {
+            const payload = JSON.parse(event.nativeEvent.data) as {
+              type?: string;
+              index?: number;
+            };
+            if (
+              payload.type === "tts-start" &&
+              typeof payload.index === "number" &&
+              Number.isInteger(payload.index)
+            ) {
+              onTTSUnitPress(payload.index);
+            }
+          } catch {
+            // Ignore non-TTS WebView messages.
+          }
+        }}
       />
     </View>
   );

@@ -1,19 +1,29 @@
 import {
   addMediaButtonListener,
+  addPlaybackStateListener,
+  getNativeVoices,
   isAvailable,
-  startSession,
-  stopSession,
-  updateSession,
-  type TtsMediaSessionPayload,
+  next,
+  pausePlayback,
+  playPause,
+  previous,
+  resumePlayback,
+  seekToUnit,
+  startPlayback,
+  stopPlayback,
+  type NativeTtsPlaybackState,
+  type NativeTtsVoice,
+  type TtsPlaybackPayload,
 } from "tts-media-session";
 import { isAndroidNative } from "../utils/platform";
 
 export type MediaButtonHandler = (action: "playPause") => void;
+export type NativeTtsStateHandler = (state: NativeTtsPlaybackState) => void;
 
 class TtsMediaSessionService {
   private initialized = false;
-  private listening = false;
-  private started = false;
+  private mediaButtonListening = false;
+  private playbackStateListening = false;
 
   constructor() {
     if (!isAndroidNative()) return;
@@ -24,9 +34,13 @@ class TtsMediaSessionService {
     this.initialized = true;
   }
 
+  public isNativePlaybackAvailable(): boolean {
+    return this.initialized;
+  }
+
   public registerMediaButtonHandler(handler: MediaButtonHandler) {
-    if (!this.initialized || this.listening) return;
-    this.listening = true;
+    if (!this.initialized || this.mediaButtonListening) return;
+    this.mediaButtonListening = true;
     addMediaButtonListener((event) => {
       if (event?.action === "playPause") {
         handler("playPause");
@@ -34,26 +48,57 @@ class TtsMediaSessionService {
     });
   }
 
-  public async startSession(payload: TtsMediaSessionPayload) {
-    if (!this.initialized) return;
-    this.started = true;
-    await startSession(payload);
+  public registerPlaybackStateHandler(handler: NativeTtsStateHandler) {
+    if (!this.initialized || this.playbackStateListening) return;
+    this.playbackStateListening = true;
+    addPlaybackStateListener(handler);
   }
 
-  public async updateSession(payload: TtsMediaSessionPayload) {
+  public async startPlayback(payload: TtsPlaybackPayload) {
     if (!this.initialized) return;
-    if (!this.started) {
-      await this.startSession(payload);
-      return;
-    }
-    await updateSession(payload);
+    await startPlayback(payload);
   }
 
-  public async stopSession() {
+  public async pausePlayback() {
     if (!this.initialized) return;
-    this.started = false;
-    await stopSession();
+    await pausePlayback();
+  }
+
+  public async resumePlayback() {
+    if (!this.initialized) return;
+    await resumePlayback();
+  }
+
+  public async playPause() {
+    if (!this.initialized) return;
+    await playPause();
+  }
+
+  public async next() {
+    if (!this.initialized) return;
+    await next();
+  }
+
+  public async previous() {
+    if (!this.initialized) return;
+    await previous();
+  }
+
+  public async seekToUnit(index: number) {
+    if (!this.initialized) return;
+    await seekToUnit(index);
+  }
+
+  public async stopPlayback() {
+    if (!this.initialized) return;
+    await stopPlayback();
+  }
+
+  public async getVoices(): Promise<NativeTtsVoice[]> {
+    if (!this.initialized) return [];
+    return getNativeVoices();
   }
 }
 
 export const ttsMediaSessionService = new TtsMediaSessionService();
+export type { NativeTtsPlaybackState, NativeTtsVoice };

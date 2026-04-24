@@ -1,6 +1,7 @@
 package expo.modules.ttsmediasession
 
 import android.util.Log
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -8,52 +9,105 @@ class TtsMediaSessionModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("TtsMediaSession")
 
-    Events("onMediaButton")
+    Events("onMediaButton", "onPlaybackState")
 
     OnCreate {
       TtsMediaSessionEventEmitter.register(this@TtsMediaSessionModule)
     }
 
-    AsyncFunction("startSession") { title: String, body: String, isPlaying: Boolean, storyId: String?, chapterId: String? ->
+    AsyncFunction("startPlayback") {
+      units: List<String>,
+      title: String,
+      storyId: String?,
+      chapterId: String?,
+      startIndex: Int,
+      pitch: Double,
+      rate: Double,
+      voiceIdentifier: String? ->
       val context = appContext.reactContext
       if (context == null) {
-        Log.w(TAG, "startSession called with null reactContext")
+        Log.w(TAG, "startPlayback called with null reactContext")
         return@AsyncFunction null
       }
       runCatching {
-        TtsMediaSessionService.start(context, title, body, isPlaying, storyId, chapterId)
+        TtsMediaSessionService.startPlayback(
+          context = context,
+          units = ArrayList(units),
+          title = title,
+          storyId = storyId,
+          chapterId = chapterId,
+          startIndex = startIndex,
+          pitch = pitch.toFloat(),
+          rate = rate.toFloat(),
+          voiceIdentifier = voiceIdentifier,
+        )
       }.onFailure { error ->
-        Log.e(TAG, "Failed to start media session", error)
+        Log.e(TAG, "Failed to start native TTS playback", error)
       }
       null
     }
 
-    AsyncFunction("updateSession") { title: String, body: String, isPlaying: Boolean, storyId: String?, chapterId: String? ->
-      val context = appContext.reactContext
-      if (context == null) {
-        Log.w(TAG, "updateSession called with null reactContext")
-        return@AsyncFunction null
-      }
-      runCatching {
-        TtsMediaSessionService.update(context, title, body, isPlaying, storyId, chapterId)
-      }.onFailure { error ->
-        Log.e(TAG, "Failed to update media session", error)
-      }
+    AsyncFunction("pausePlayback") {
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.command(context, "expo.modules.ttsmediasession.action.PAUSE")
       null
     }
 
-    AsyncFunction("stopSession") {
+    AsyncFunction("resumePlayback") {
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.command(context, "expo.modules.ttsmediasession.action.RESUME")
+      null
+    }
+
+    AsyncFunction("playPause") {
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.command(context, "expo.modules.ttsmediasession.action.PLAY_PAUSE")
+      null
+    }
+
+    AsyncFunction("next") {
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.command(context, "expo.modules.ttsmediasession.action.NEXT")
+      null
+    }
+
+    AsyncFunction("previous") {
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.command(context, "expo.modules.ttsmediasession.action.PREVIOUS")
+      null
+    }
+
+    AsyncFunction("seekToUnit") { index: Int ->
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.seekToUnit(context, index)
+      null
+    }
+
+    AsyncFunction("stopPlayback") {
+      val context = appContext.reactContext ?: return@AsyncFunction null
+      TtsMediaSessionService.command(context, "expo.modules.ttsmediasession.action.STOP")
+      null
+    }
+
+    AsyncFunction("getVoices") { promise: Promise ->
       val context = appContext.reactContext
       if (context == null) {
-        Log.w(TAG, "stopSession called with null reactContext")
-        return@AsyncFunction null
+        promise.resolve(emptyList<Map<String, String>>())
+        return@AsyncFunction
       }
-      runCatching {
-        TtsMediaSessionService.stop(context)
-      }.onFailure { error ->
-        Log.e(TAG, "Failed to stop media session", error)
+      TtsMediaSessionService.getVoices(context) { voices ->
+        promise.resolve(
+          voices.map {
+            mapOf(
+              "identifier" to it.name,
+              "name" to it.name,
+              "language" to it.locale.toLanguageTag(),
+              "quality" to it.quality.toString(),
+              "latency" to it.latency.toString(),
+            )
+          }
+        )
       }
-      null
     }
   }
 

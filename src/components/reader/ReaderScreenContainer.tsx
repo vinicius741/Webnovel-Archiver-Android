@@ -58,6 +58,7 @@ export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
     copyFeedbackVisible,
     setCopyFeedbackVisible,
     handleToggleSpeech,
+    handleTTSUnitPress,
     handleCopy,
     markAsRead,
     navigateToChapter,
@@ -191,6 +192,7 @@ export const ReaderScreenContainer: React.FC<ReaderScreenContainerProps> = ({
             maxWidth={readerColumnWidth}
             contentPadding={readerBodyPadding}
             bottomPadding={readerBottomPadding}
+            onTTSUnitPress={handleTTSUnitPress}
           />
         </View>
 

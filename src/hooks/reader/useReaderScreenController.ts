@@ -85,6 +85,7 @@ export const useReaderScreenController = ({
     isControllerVisible,
     setIsSettingsVisible,
     toggleSpeech,
+    startSpeechAt,
     stopSpeech,
     handlePlayPause,
     handleNextChunk,
@@ -223,6 +224,25 @@ export const useReaderScreenController = ({
     decodedChapterId,
   ]);
 
+  const handleTTSUnitPress = useCallback(
+    (index: number) => {
+      if (!cleanupRulesLoaded) return;
+      void startSpeechAt(ttsChunks, chapterTitle, index, {
+        storyId,
+        chapterId: decodedChapterId,
+        chapterTitle,
+      });
+    },
+    [
+      cleanupRulesLoaded,
+      startSpeechAt,
+      ttsChunks,
+      chapterTitle,
+      storyId,
+      decodedChapterId,
+    ],
+  );
+
   const handleCopy = useCallback(async () => {
     if (!content) return;
     await Clipboard.setStringAsync(extractFormattedText(content));
@@ -253,6 +273,7 @@ export const useReaderScreenController = ({
     copyFeedbackVisible,
     setCopyFeedbackVisible,
     handleToggleSpeech,
+    handleTTSUnitPress,
     handleCopy,
     markAsRead,
     navigateToChapter,

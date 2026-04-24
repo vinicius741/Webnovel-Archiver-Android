@@ -4,21 +4,23 @@ import { View } from "react-native";
 import { TTSSettingsModal } from "../TTSSettingsModal";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-jest.mock("expo-speech", () => ({
-  getAvailableVoicesAsync: jest.fn().mockResolvedValue([
-    {
-      identifier: "en-us-voice1",
-      name: "English US Voice 1",
-      language: "en-US",
-      quality: "Default",
-    },
-    {
-      identifier: "en-us-voice2",
-      name: "English US Voice 2",
-      language: "en-US",
-      quality: "Enhanced",
-    },
-  ]),
+jest.mock("../../services/TtsMediaSessionService", () => ({
+  ttsMediaSessionService: {
+    getVoices: jest.fn().mockResolvedValue([
+      {
+        identifier: "en-us-voice1",
+        name: "English US Voice 1",
+        language: "en-US",
+        quality: "Default",
+      },
+      {
+        identifier: "en-us-voice2",
+        name: "English US Voice 2",
+        language: "en-US",
+        quality: "Enhanced",
+      },
+    ]),
+  },
 }));
 
 jest.mock("react-native-paper", () => {
@@ -209,7 +211,8 @@ describe("TTSSettingsModal", () => {
 
     await waitFor(() => {
       expect(
-        require("expo-speech").getAvailableVoicesAsync,
+        require("../../services/TtsMediaSessionService").ttsMediaSessionService
+          .getVoices,
       ).toHaveBeenCalled();
     });
 
