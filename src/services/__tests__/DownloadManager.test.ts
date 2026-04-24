@@ -9,8 +9,10 @@ jest.mock("../download/DownloadQueue", () => ({
     getNextPending: jest.fn(),
     getAllJobs: jest.fn().mockReturnValue([]),
     updateJobStatus: jest.fn(),
+    cancelJob: jest.fn(),
     pausePendingForStory: jest.fn(),
     getStats: jest.fn().mockReturnValue({ pending: 0, active: 0, total: 0 }),
+    cancelAll: jest.fn(),
   },
 }));
 
@@ -211,6 +213,59 @@ describe("DownloadManager", () => {
       expect(failedSpy).toBeDefined();
       expect(queueUpdatedSpy).toBeDefined();
       expect(allCompleteSpy).toBeDefined();
+    });
+  });
+
+  describe("Cancellation", () => {
+    it("should cancel an active downloading job through the queue", async () => {
+      const job: DownloadJob = {
+        id: "job1",
+        storyId: "story1",
+        storyTitle: "Test Story",
+        chapterIndex: 0,
+        chapter: {
+          id: "c1",
+          title: "Chapter 1",
+          url: "http://example.com/ch1",
+          downloaded: false,
+        },
+        status: "downloading",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+      const { downloadQueue } = require("../download/DownloadQueue");
+      downloadQueue.getAllJobs.mockReturnValue([job]);
+
+      await manager.cancelJob(job.id);
+
+      expect(downloadQueue.cancelJob).toHaveBeenCalledWith(
+        job.id,
+        "cancelled by user",
+      );
+    });
+
+    it("should mark active downloading jobs cancelled when cancelAll is called", async () => {
+      const job: DownloadJob = {
+        id: "job1",
+        storyId: "story1",
+        storyTitle: "Test Story",
+        chapterIndex: 0,
+        chapter: {
+          id: "c1",
+          title: "Chapter 1",
+          url: "http://example.com/ch1",
+          downloaded: false,
+        },
+        status: "downloading",
+        addedAt: Date.now(),
+        retryCount: 0,
+      };
+      const { downloadQueue } = require("../download/DownloadQueue");
+      downloadQueue.getAllJobs.mockReturnValue([job]);
+
+      await manager.cancelAll();
+
+      expect(downloadQueue.cancelAll).toHaveBeenCalled();
     });
   });
 

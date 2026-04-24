@@ -19,6 +19,7 @@ export class DownloadManager extends EventEmitter {
   private concurrency = 3;
   private globalDelay = 0;
   private cancelRequested = false;
+  private cancelledJobIds = new Set<string>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveRateLimitFailuresByStory = new Map<string, number>();
 
@@ -117,12 +118,14 @@ export class DownloadManager extends EventEmitter {
   }
 
   async addJob(job: DownloadJob) {
+    this.cancelledJobIds.delete(job.id);
     downloadQueue.addJob(job);
     this.emit("queue-updated");
     void this.start();
   }
 
   async addJobs(jobs: DownloadJob[]) {
+    jobs.forEach((job) => this.cancelledJobIds.delete(job.id));
     jobs.forEach((j) => downloadQueue.addJob(j));
     this.emit("queue-updated");
     void this.start();
@@ -286,7 +289,8 @@ export class DownloadManager extends EventEmitter {
         job.status === "paused" ||
         job.status === "downloading")
     ) {
-      downloadQueue.updateJobStatus(jobId, "failed", "cancelled by user");
+      this.cancelledJobIds.add(jobId);
+      downloadQueue.cancelJob(jobId, "cancelled by user");
       this.emit("job-failed", job, new Error("cancelled by user"));
       this.emit("queue-updated");
       this.emit("notification-update");
@@ -294,6 +298,16 @@ export class DownloadManager extends EventEmitter {
   }
 
   async cancelAll() {
+    this.cancelRequested = true;
+    downloadQueue
+      .getAllJobs()
+      .filter(
+        (job) =>
+          job.status === "pending" ||
+          job.status === "paused" ||
+          job.status === "downloading",
+      )
+      .forEach((job) => this.cancelledJobIds.add(job.id));
     downloadQueue.cancelAll();
     this.emit("queue-updated");
     this.emit("notification-update");
@@ -328,6 +342,10 @@ export class DownloadManager extends EventEmitter {
 
     try {
       const filePath = await this.executeDownload(job);
+      if (this.cancelledJobIds.has(job.id)) {
+        this.cancelledJobIds.delete(job.id);
+        return;
+      }
 
       const story = await this.storyCache.getCachedStory(job.storyId);
       if (story) {
@@ -374,6 +392,10 @@ export class DownloadManager extends EventEmitter {
       this.consecutiveRateLimitFailuresByStory.delete(job.storyId);
       this.emit("job-completed", job, filePath);
     } catch (error: unknown) {
+      if (this.cancelledJobIds.has(job.id)) {
+        this.cancelledJobIds.delete(job.id);
+        return;
+      }
       await this.handleRateLimitFailure(job, error);
       console.error(`[DownloadManager] Job ${job.id} failed`, error);
       const message = error instanceof Error ? error.message : "Unknown error";

@@ -46,7 +46,10 @@ export class DownloadQueue {
     const existingIndex = this.jobs.findIndex((j) => j.id === job.id);
     if (existingIndex !== -1) {
       const existing = this.jobs[existingIndex];
-      if (existing.status === "failed" || existing.status === "completed") {
+      if (
+        existing.status === "failed" ||
+        existing.status === "completed"
+      ) {
         this.jobs[existingIndex] = { ...job, status: "pending", retryCount: 0 };
         void this._save();
       }
@@ -189,7 +192,11 @@ export class DownloadQueue {
   cancelAll(): void {
     let changed = false;
     this.jobs.forEach((job) => {
-      if (job.status === "pending" || job.status === "paused") {
+      if (
+        job.status === "pending" ||
+        job.status === "paused" ||
+        job.status === "downloading"
+      ) {
         job.status = "failed";
         job.error = "cancelled";
         changed = true;
@@ -226,6 +233,21 @@ export class DownloadQueue {
       }
     });
     if (changed) {
+      void this._save();
+    }
+  }
+
+  cancelJob(id: string, reason: string = "cancelled"): void {
+    const job = this.jobs.find((j) => j.id === id);
+    if (
+      job &&
+      (job.status === "pending" ||
+        job.status === "paused" ||
+        job.status === "downloading")
+    ) {
+      job.status = "failed";
+      job.error = reason;
+      job.pausedAt = undefined;
       void this._save();
     }
   }

@@ -298,6 +298,31 @@ describe("DownloadQueue", () => {
     expect(stats.total).toBe(0);
   });
 
+  it("should cancel an active downloading job", async () => {
+    const queue = new DownloadQueue();
+    await queue.init();
+    queue.addJob(mockJob2);
+
+    queue.cancelJob("job2", "cancelled by user");
+
+    const [job] = queue.getAllJobs();
+    expect(job.status).toBe("failed");
+    expect(job.error).toBe("cancelled by user");
+  });
+
+  it("should cancel downloading jobs when cancelAll is called", async () => {
+    const queue = new DownloadQueue();
+    await queue.init();
+    queue.addJob(mockJob);
+    queue.addJob(mockJob2);
+
+    queue.cancelAll();
+
+    const jobs = queue.getAllJobs();
+    expect(jobs.find((job) => job.id === "job1")?.status).toBe("failed");
+    expect(jobs.find((job) => job.id === "job2")?.status).toBe("failed");
+  });
+
   it("should handle storage error gracefully", async () => {
     (AsyncStorage.getItem as jest.Mock).mockRejectedValue(
       new Error("Storage error"),
