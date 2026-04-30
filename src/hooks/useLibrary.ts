@@ -71,41 +71,64 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
     void loadLibrary();
   }, []);
 
-  const { allTags, sourceNames } = useMemo(() => {
-    const sources = new Set<string>();
-    const tags = new Set<string>();
+  const { allTags, sourceNames, tagCounts } = useMemo(() => {
+    const sourceCounts = new Map<string, number>();
 
-    // Collect sources and tags from tab-filtered stories in a single pass
+    // Count sources from tab-filtered stories
     stories.forEach((story) => {
       if (!matchesTab(story, activeTabId, hasCustomTabs)) return;
 
       const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
       if (providerName) {
-        sources.add(providerName);
+        sourceCounts.set(
+          providerName,
+          (sourceCounts.get(providerName) ?? 0) + 1,
+        );
       }
     });
-    const sortedSources = Array.from(sources).sort();
+
+    const sortedSources = Array.from(sourceCounts.entries())
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([name]) => name);
 
     // Determine if a source is currently selected
     const activeSource = selectedTags.find((tag) =>
       sortedSources.includes(tag),
     );
 
-    // Collect tags from tab-filtered stories (respecting source filter)
+    const tagCountsMap = new Map<string, number>();
+
+    // Count tags from tab-filtered stories (respecting source filter)
     stories.forEach((story) => {
       if (!matchesTab(story, activeTabId, hasCustomTabs)) return;
 
       const providerName = sourceRegistry.getProvider(story.sourceUrl)?.name;
       if (activeSource && providerName !== activeSource) return;
 
-      story.tags?.forEach((tag) => tags.add(tag));
+      story.tags?.forEach((tag) => {
+        tagCountsMap.set(tag, (tagCountsMap.get(tag) ?? 0) + 1);
+      });
     });
 
-    const sortedTags = Array.from(tags).sort();
+    const sortedTags = Array.from(tagCountsMap.entries())
+      .sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1];
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([name]) => name);
+
+    // Merge source counts so UI can display them too
+    sourceCounts.forEach((count, name) => {
+      tagCountsMap.set(name, count);
+    });
 
     return {
       allTags: [...sortedSources, ...sortedTags],
       sourceNames: sortedSources,
+      tagCounts: tagCountsMap,
     };
   }, [stories, selectedTags, activeTabId, hasCustomTabs]);
 
@@ -320,6 +343,7 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
     selectedTags,
     toggleTag,
     allTags,
+    tagCounts,
     sortOption,
     setSortOption,
     sortDirection,

@@ -128,6 +128,7 @@ export default function HomeScreen() {
     selectedTags,
     toggleTag,
     allTags,
+    tagCounts,
     sortOption,
     setSortOption,
     sortDirection,
@@ -393,7 +394,7 @@ export default function HomeScreen() {
               showSelectedOverlay
               compact
             >
-              {tag}
+              {tag} ({tagCounts.get(tag) ?? 0})
             </Chip>
           ))}
         </ScrollView>

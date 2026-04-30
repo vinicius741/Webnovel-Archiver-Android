@@ -380,4 +380,92 @@ describe("useLibrary", () => {
 
     expect(result.current.loading).toBe(false);
   });
+
+  it("should sort sources by popularity (count descending)", async () => {
+    const { result } = renderHook(() => useLibrary());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // ExampleSource appears in 2 stories, OtherSource in 1
+    expect(result.current.allTags[0]).toBe("ExampleSource");
+    expect(result.current.allTags[1]).toBe("OtherSource");
+  });
+
+  it("should sort tags by popularity (count descending)", async () => {
+    const { result } = renderHook(() => useLibrary());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // After sources, action has count 2; the rest have count 1
+    // and tie-break alphabetically: fantasy, romance, sci-fi
+    expect(result.current.allTags[2]).toBe("action");
+    expect(result.current.allTags[3]).toBe("fantasy");
+    expect(result.current.allTags[4]).toBe("romance");
+    expect(result.current.allTags[5]).toBe("sci-fi");
+  });
+
+  it("should provide tag counts", async () => {
+    const { result } = renderHook(() => useLibrary());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(result.current.tagCounts.get("ExampleSource")).toBe(2);
+    expect(result.current.tagCounts.get("OtherSource")).toBe(1);
+    expect(result.current.tagCounts.get("action")).toBe(2);
+    expect(result.current.tagCounts.get("fantasy")).toBe(1);
+    expect(result.current.tagCounts.get("romance")).toBe(1);
+    expect(result.current.tagCounts.get("sci-fi")).toBe(1);
+  });
+
+  it("should recalculate tag counts when a source is selected", async () => {
+    const { result } = renderHook(() => useLibrary());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    await act(async () => {
+      result.current.toggleTag("OtherSource");
+    });
+
+    // Only Story Beta (romance) remains visible
+    expect(result.current.tagCounts.get("romance")).toBe(1);
+    expect(result.current.tagCounts.get("action")).toBeUndefined();
+    expect(result.current.allTags).toContain("OtherSource");
+    expect(result.current.allTags).toContain("romance");
+  });
+
+  it("should handle stories with no tags gracefully", async () => {
+    (storageService.getLibrary as jest.Mock).mockResolvedValue([
+      {
+        id: "4",
+        title: "Story Delta",
+        author: "Author D",
+        sourceUrl: "http://example.com/story4",
+        coverUrl: "http://cover4",
+        chapters: [],
+        status: DownloadStatus.Completed,
+        totalChapters: 1,
+        downloadedChapters: 1,
+        dateAdded: 1000,
+        lastUpdated: 1000,
+        tags: undefined,
+      },
+    ]);
+
+    const { result } = renderHook(() => useLibrary());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(result.current.allTags).toEqual(["ExampleSource"]);
+    expect(result.current.tagCounts.get("ExampleSource")).toBe(1);
+  });
 });
