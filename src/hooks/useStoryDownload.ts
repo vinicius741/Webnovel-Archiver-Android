@@ -76,9 +76,18 @@ export const useStoryDownload = ({
     oldChapterCount: number,
     newChapterCount: number,
     removedChapterCount: number,
+    downloadedRemovedChapterCount: number,
     queuedNewChapterCount: number,
   ): Promise<boolean> => {
     return new Promise((resolve) => {
+      const undownloadedRemovedChapterCount =
+        removedChapterCount - downloadedRemovedChapterCount;
+      const downloadedLine =
+        `The archive will preserve text for ${downloadedRemovedChapterCount} downloaded removed chapter${downloadedRemovedChapterCount === 1 ? "" : "s"}.`;
+      const undownloadedLine =
+        undownloadedRemovedChapterCount > 0
+          ? ` ${undownloadedRemovedChapterCount} removed chapter${undownloadedRemovedChapterCount === 1 ? " is" : "s are"} not downloaded, so the archive can only keep ${undownloadedRemovedChapterCount === 1 ? "its" : "their"} metadata and URLs, not chapter text.`
+          : "";
       const newChapterLine =
         queuedNewChapterCount > 0
           ? `\n\n${queuedNewChapterCount} brand new chapter${queuedNewChapterCount === 1 ? "" : "s"} will be queued after the update.`
@@ -86,7 +95,7 @@ export const useStoryDownload = ({
 
       showAlert(
         "Source Chapters Removed",
-        `This story used to list ${oldChapterCount} chapters, but the source now lists ${newChapterCount}. ${removedChapterCount} saved chapter${removedChapterCount === 1 ? "" : "s"} would disappear from the active story.${newChapterLine}\n\nArchive the current version before updating?`,
+        `This story used to list ${oldChapterCount} chapters, but the source now lists ${newChapterCount}. ${removedChapterCount} saved chapter${removedChapterCount === 1 ? "" : "s"} were removed from the source and would disappear from the active story.\n\n${downloadedLine}${undownloadedLine}${newChapterLine}\n\nArchive the current version before updating?`,
         [
           {
             text: "Cancel",
@@ -158,22 +167,14 @@ export const useStoryDownload = ({
         newChapterCount > 0 || tagsChanged || removedChapterCount > 0;
 
       if (removedChapterCount > 0) {
-        const missingDownloads = mergeResult.removedChapters.filter(
-          (chapter) => !chapter.downloaded,
-        );
-
-        if (missingDownloads.length > 0) {
-          showAlert(
-            "Sync Canceled",
-            `The source shrank from ${oldTotal} chapters to ${newTotal}. ${missingDownloads.length} removed chapter${missingDownloads.length === 1 ? "" : "s"} are not downloaded, so the update was canceled to avoid data loss.`,
-          );
-          return;
-        }
-
+        const downloadedRemovedChapterCount = mergeResult.removedChapters.filter(
+          (chapter) => chapter.downloaded,
+        ).length;
         const shouldArchive = await confirmArchiveAndUpdate(
           oldTotal,
           newTotal,
           removedChapterCount,
+          downloadedRemovedChapterCount,
           newChapterCount,
         );
 

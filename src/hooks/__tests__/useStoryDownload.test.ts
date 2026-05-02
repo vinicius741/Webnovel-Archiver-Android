@@ -350,6 +350,15 @@ describe("useStoryDownload", () => {
         expect.any(Array),
       );
     });
+    const archivePrompt = mockShowAlert.mock.calls.find(
+      (call) => call[0] === "Source Chapters Removed",
+    );
+    expect(archivePrompt?.[1]).toEqual(
+      expect.stringContaining("preserve text for 2 downloaded removed chapters"),
+    );
+    expect(archivePrompt?.[1]).not.toEqual(
+      expect.stringContaining("0 removed chapters are not downloaded"),
+    );
 
     const confirmArchive = findAndPressButton(
       mockShowAlert,
@@ -448,7 +457,7 @@ describe("useStoryDownload", () => {
     expect(downloadService.downloadChaptersByIds).not.toHaveBeenCalled();
   });
 
-  it("should cancel sync when removed chapters are not downloaded", async () => {
+  it("should show archive confirmation and cancel cleanly when removed chapters are not downloaded", async () => {
     const storyWithMissingDownload: Story = {
       ...mockStory,
       chapters: [
@@ -488,16 +497,133 @@ describe("useStoryDownload", () => {
       }),
     );
 
+    let syncPromise!: Promise<void>;
+    act(() => {
+      syncPromise = result.current.syncChapters();
+    });
+
+    await waitFor(() => {
+      expect(mockShowAlert).toHaveBeenCalledWith(
+        "Source Chapters Removed",
+        expect.stringContaining("1 removed chapter is not downloaded"),
+        expect.any(Array),
+      );
+    });
+
+    const cancelArchive = findAndPressButton(
+      mockShowAlert,
+      "Source Chapters Removed",
+      "Cancel",
+    );
+
     await act(async () => {
-      await result.current.syncChapters();
+      cancelArchive();
+      await syncPromise;
     });
 
     expect(storageService.createArchivedStorySnapshot).not.toHaveBeenCalled();
     expect(storageService.addStory).not.toHaveBeenCalled();
     expect(downloadService.downloadChaptersByIds).not.toHaveBeenCalled();
+  });
+
+  it("should archive and update when removed chapters include undownloaded chapters", async () => {
+    const storyWithMissingDownload: Story = {
+      ...mockStory,
+      chapters: [
+        {
+          id: "http://test.com/c1",
+          title: "Chapter 1",
+          url: "http://test.com/c1",
+          downloaded: true,
+          filePath: "path/c1",
+        },
+        {
+          id: "http://test.com/c2",
+          title: "Chapter 2",
+          url: "http://test.com/c2",
+          downloaded: true,
+          filePath: "path/c2",
+        },
+        {
+          id: "http://test.com/c3",
+          title: "Chapter 3",
+          url: "http://test.com/c3",
+          downloaded: false,
+        },
+      ],
+      totalChapters: 3,
+      downloadedChapters: 2,
+      status: DownloadStatus.Partial,
+    };
+
+    const mockProvider = {
+      getChapterList: jest.fn().mockResolvedValue([
+        { url: "http://test.com/c1", title: "Chapter 1" },
+      ]),
+      parseMetadata: jest.fn().mockReturnValue({ tags: ["tag1"] }),
+    };
+
+    (sourceRegistry.getProvider as jest.Mock).mockReturnValue(mockProvider);
+    (fetcher.fetchPage as jest.Mock).mockResolvedValue("<html></html>");
+    (storageService.createArchivedStorySnapshot as jest.Mock).mockResolvedValue({
+      ...storyWithMissingDownload,
+      id: "1__archive_123",
+      isArchived: true,
+    });
+
+    const { result } = renderHook(() =>
+      useStoryDownload({
+        story: storyWithMissingDownload,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
+
+    let syncPromise!: Promise<void>;
+    act(() => {
+      syncPromise = result.current.syncChapters();
+    });
+
+    await waitFor(() => {
+      expect(mockShowAlert).toHaveBeenCalledWith(
+        "Source Chapters Removed",
+        expect.stringContaining("1 removed chapter is not downloaded"),
+        expect.any(Array),
+      );
+    });
+
+    const confirmArchive = findAndPressButton(
+      mockShowAlert,
+      "Source Chapters Removed",
+      "Archive & Update",
+    );
+
+    await act(async () => {
+      confirmArchive();
+      await syncPromise;
+    });
+
+    expect(storageService.createArchivedStorySnapshot).toHaveBeenCalledWith(
+      storyWithMissingDownload,
+      "source_chapters_removed",
+    );
+    expect(storageService.addStory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        totalChapters: 1,
+        downloadedChapters: 1,
+      }),
+    );
+    const savedStory = (storageService.addStory as jest.Mock).mock.calls[0][0];
+    expect(savedStory.chapters).toEqual([
+      expect.objectContaining({
+        id: "http://test.com/c1",
+        downloaded: true,
+        filePath: "path/c1",
+      }),
+    ]);
+    expect(downloadService.downloadChaptersByIds).not.toHaveBeenCalled();
     expect(mockShowAlert).toHaveBeenCalledWith(
-      "Sync Canceled",
-      expect.stringContaining("canceled to avoid data loss"),
+      "Archive Created",
+      expect.stringContaining("updated the active story from 3 chapters to 1"),
     );
   });
 
