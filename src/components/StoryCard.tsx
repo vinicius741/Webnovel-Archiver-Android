@@ -6,7 +6,6 @@ import {
   useTheme,
   ProgressBar,
   IconButton,
-  Chip,
 } from "react-native-paper";
 
 interface Props {
@@ -81,6 +80,23 @@ export const StoryCard = ({
             )}
           </View>
         )}
+        {isArchived && (
+          <View
+            style={[
+              styles.archiveBadge,
+              { backgroundColor: theme.colors.primary },
+              selectionMode && styles.archiveBadgeWithSelection,
+            ]}
+          >
+            <IconButton
+              icon="archive"
+              size={14}
+              iconColor={theme.colors.onPrimary}
+              style={styles.archiveIcon}
+              testID="story-card-archive-icon"
+            />
+          </View>
+        )}
         {coverUrl ? (
           <Image
             source={{ uri: coverUrl }}
@@ -119,11 +135,6 @@ export const StoryCard = ({
           >
             {author}
           </Text>
-          {isArchived ? (
-            <Chip compact icon="archive" style={styles.archiveChip}>
-              Archived
-            </Chip>
-          ) : null}
           {sourceName && (
             <Text
               variant="labelSmall"
@@ -247,8 +258,24 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
   },
-  archiveChip: {
-    alignSelf: "flex-start",
-    marginBottom: 4,
+  archiveBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
+  },
+  archiveBadgeWithSelection: {
+    top: 36,
+  },
+  archiveIcon: {
+    margin: 0,
+    padding: 0,
+    width: 20,
+    height: 20,
   },
 });

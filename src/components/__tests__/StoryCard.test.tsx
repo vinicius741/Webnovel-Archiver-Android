@@ -190,17 +190,29 @@ describe("StoryCard", () => {
     expect(getByText("Test Author")).toBeTruthy();
     expect(getByText("RoyalRoad")).toBeTruthy();
     expect(getByText("4.8")).toBeTruthy();
-    expect(getByText("Archived")).toBeTruthy();
+    expect(getByTestId("story-card-archive-icon")).toBeTruthy();
     expect(getByText(/Last read: Chapter 42/)).toBeTruthy();
     expect(getByTestId("story-card-cover")).toBeTruthy();
     expect(getByTestId("story-card-progress")).toBeTruthy();
   });
 
-  it("should render archived badge when story is archived", () => {
-    const { getByText } = renderWithTheme(
+  it("should render archived badge when story is archived with cover", () => {
+    const { getByTestId } = renderWithTheme(
+      <StoryCard
+        {...defaultProps}
+        isArchived={true}
+        coverUrl="https://example.com/cover.jpg"
+      />,
+    );
+
+    expect(getByTestId("story-card-archive-icon")).toBeTruthy();
+  });
+
+  it("should not render archived badge without cover image", () => {
+    const { queryByTestId } = renderWithTheme(
       <StoryCard {...defaultProps} isArchived={true} />,
     );
 
-    expect(getByText("Archived")).toBeTruthy();
+    expect(queryByTestId("story-card-archive-icon")).toBeNull();
   });
 });
