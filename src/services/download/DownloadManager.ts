@@ -141,6 +141,8 @@ export class DownloadManager extends EventEmitter {
   }
 
   private async processLoop() {
+    const processedStoryIds = new Set<string>();
+
     while (true) {
       if (this.activeWorkers >= this.concurrency) {
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -193,6 +195,7 @@ export class DownloadManager extends EventEmitter {
       }
 
       const providerName = this.getProviderNameForJob(pending);
+      processedStoryIds.add(pending.storyId);
 
       this.activeWorkers++;
       if (providerName) {
@@ -244,7 +247,7 @@ export class DownloadManager extends EventEmitter {
     this.stopFlushTimer();
     await this.storyCache.flushAllPending();
     await this.notificationManager.showCompletion(this.cancelRequested);
-    this.emit("all-complete");
+    this.emit("all-complete", Array.from(processedStoryIds));
   }
 
   async pauseJob(jobId: string) {

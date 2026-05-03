@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { useStoryDetails } from "../useStoryDetails";
 import { storageService } from "../../services/StorageService";
 import { Story, Chapter, DownloadStatus } from "../../types";
@@ -148,21 +148,18 @@ describe("useStoryDetails", () => {
   });
 
   it("should reload story after download completes", async () => {
-    let downloadState = true;
-
-    const { useDownloadProgress } = require("../useDownloadProgress");
-    useDownloadProgress.mockReturnValue({
-      progress: 50,
-      status: "downloading",
-      isDownloading: downloadState,
-    });
-
-    const { result, rerender } = renderHook(
-      ({ id }: { id: string | undefined }) => useStoryDetails(id),
-      {
-        initialProps: { id: "123" },
+    const { downloadManager } = require("../../services/download/DownloadManager");
+    let allCompleteHandler: ((storyIds: string[]) => void) | undefined;
+    downloadManager.on.mockImplementation(
+      (event: string, handler: (storyIds: string[]) => void) => {
+        if (event === "all-complete") {
+          allCompleteHandler = handler;
+        }
+        return downloadManager;
       },
     );
+
+    const { result } = renderHook(() => useStoryDetails("123"));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -170,14 +167,9 @@ describe("useStoryDetails", () => {
 
     expect(storageService.getStory).toHaveBeenCalledTimes(1);
 
-    downloadState = false;
-    useDownloadProgress.mockReturnValue({
-      progress: 100,
-      status: "completed",
-      isDownloading: downloadState,
+    await act(async () => {
+      allCompleteHandler?.(["123"]);
     });
-
-    rerender({ id: "123" });
 
     await waitFor(() => {
       expect(storageService.getStory).toHaveBeenCalledTimes(2);
@@ -185,43 +177,60 @@ describe("useStoryDetails", () => {
   });
 
   it("should handle error when reloading story", async () => {
-    let downloadState = true;
-
-    const { useDownloadProgress } = require("../useDownloadProgress");
-    useDownloadProgress.mockReturnValue({
-      progress: 50,
-      status: "downloading",
-      isDownloading: downloadState,
-    });
-
-    const { result, rerender } = renderHook(
-      ({ id }: { id: string | undefined }) => useStoryDetails(id),
-      {
-        initialProps: { id: "123" },
+    const { downloadManager } = require("../../services/download/DownloadManager");
+    let allCompleteHandler: ((storyIds: string[]) => void) | undefined;
+    downloadManager.on.mockImplementation(
+      (event: string, handler: (storyIds: string[]) => void) => {
+        if (event === "all-complete") {
+          allCompleteHandler = handler;
+        }
+        return downloadManager;
       },
     );
 
+    const { result } = renderHook(() => useStoryDetails("123"));
+
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
-    });
-
-    downloadState = false;
-    useDownloadProgress.mockReturnValue({
-      progress: 100,
-      status: "completed",
-      isDownloading: downloadState,
     });
 
     (storageService.getStory as jest.Mock).mockRejectedValueOnce(
       new Error("Fetch failed"),
     );
 
-    rerender({ id: "123" });
+    await act(async () => {
+      allCompleteHandler?.(["123"]);
+    });
 
     await waitFor(() => {
       const current = result.current as any;
       expect(current.story).toBeNull();
     });
+  });
+
+  it("should not reload story when another story completes downloading", async () => {
+    const { downloadManager } = require("../../services/download/DownloadManager");
+    let allCompleteHandler: ((storyIds: string[]) => void) | undefined;
+    downloadManager.on.mockImplementation(
+      (event: string, handler: (storyIds: string[]) => void) => {
+        if (event === "all-complete") {
+          allCompleteHandler = handler;
+        }
+        return downloadManager;
+      },
+    );
+
+    const { result } = renderHook(() => useStoryDetails("123"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      allCompleteHandler?.(["other-story"]);
+    });
+
+    expect(storageService.getStory).toHaveBeenCalledTimes(1);
   });
 
   it("should expose story actions", async () => {

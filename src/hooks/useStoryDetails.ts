@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 
 import { storageService } from "../services/StorageService";
@@ -25,7 +25,19 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
     isDownloading: isDownloadingHook,
   } = useDownloadProgress(storyId);
 
-  const prevDownloading = useRef(isDownloadingHook);
+  const reloadStory = useCallback(async () => {
+    if (!storyId) return;
+
+    try {
+      const data = await storageService.getStory(storyId);
+      if (data) {
+        setStory(data);
+      }
+    } catch (error) {
+      console.error("Failed to reload story", error);
+      setStory(null);
+    }
+  }, [storyId]);
 
   useEffect(() => {
     const loadStory = async () => {
@@ -41,22 +53,18 @@ export const useStoryDetails = (id: string | string[] | undefined) => {
   }, [storyId]);
 
   useEffect(() => {
-    if (prevDownloading.current && !isDownloadingHook && storyId) {
-      const reloadStory = async () => {
-        try {
-          const data = await storageService.getStory(storyId);
-          if (data) {
-            setStory(data);
-          }
-        } catch (error) {
-          console.error("Failed to reload story", error);
-          setStory(null);
-        }
-      };
+    const onAllComplete = (completedStoryIds: string[]) => {
+      if (!completedStoryIds.includes(storyId)) return;
+
       void reloadStory();
-    }
-    prevDownloading.current = isDownloadingHook;
-  }, [isDownloadingHook, storyId]);
+    };
+
+    downloadManager.on("all-complete", onAllComplete);
+
+    return () => {
+      downloadManager.off("all-complete", onAllComplete);
+    };
+  }, [reloadStory, storyId]);
 
   useEffect(() => {
     const onJobCompleted = (job: DownloadJob, filePath: string) => {
