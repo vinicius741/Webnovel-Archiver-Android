@@ -46,5 +46,8 @@ yarn-error.*
 # Jest
 coverage/
 
+# Quality reports
+quality-report/
+
 # Module build artifacts
 modules/tts-media-session/android/build/

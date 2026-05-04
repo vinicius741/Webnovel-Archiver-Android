@@ -1,0 +1,107 @@
+{
+  "generatedAt": "2026-05-04T17:07:40.307Z",
+  "sourceDirs": [
+    "app",
+    "src",
+    "modules/tts-media-session/src"
+  ],
+  "duplication": {
+    "duplicatedLines": 2304,
+    "duplicatedPercentage": 5.59,
+    "clones": 182,
+    "scannedLines": 41232,
+    "scannedFiles": 269
+  },
+  "files": {
+    "sourceFiles": 203,
+    "totalLines": 36857,
+    "largestFileLines": 865,
+    "largestFiles": [
+      {
+        "file": "src/hooks/__tests__/useStoryDownload.test.ts",
+        "lines": 865
+      },
+      {
+        "file": "src/services/__tests__/DownloadManager.concurrent.test.ts",
+        "lines": 706
+      },
+      {
+        "file": "app/index.tsx",
+        "lines": 673
+      },
+      {
+        "file": "src/services/story/__tests__/storySyncOrchestrator.test.ts",
+        "lines": 630
+      },
+      {
+        "file": "src/services/__tests__/DownloadManager.test.ts",
+        "lines": 595
+      },
+      {
+        "file": "src/services/__tests__/ForegroundServiceCoordinator.concurrent.test.ts",
+        "lines": 570
+      },
+      {
+        "file": "src/services/download/DownloadManager.ts",
+        "lines": 476
+      },
+      {
+        "file": "src/hooks/__tests__/useLibrary.test.ts",
+        "lines": 472
+      },
+      {
+        "file": "src/hooks/__tests__/useDownloadProgress.test.ts",
+        "lines": 454
+      },
+      {
+        "file": "src/services/TTSStateManager.ts",
+        "lines": 443
+      }
+    ],
+    "oversizedFileLineThreshold": 500,
+    "oversizedFileCount": 6,
+    "oversizedFiles": [
+      {
+        "file": "src/hooks/__tests__/useStoryDownload.test.ts",
+        "lines": 865
+      },
+      {
+        "file": "src/services/__tests__/DownloadManager.concurrent.test.ts",
+        "lines": 706
+      },
+      {
+        "file": "app/index.tsx",
+        "lines": 673
+      },
+      {
+        "file": "src/services/story/__tests__/storySyncOrchestrator.test.ts",
+        "lines": 630
+      },
+      {
+        "file": "src/services/__tests__/DownloadManager.test.ts",
+        "lines": 595
+      },
+      {
+        "file": "src/services/__tests__/ForegroundServiceCoordinator.concurrent.test.ts",
+        "lines": 570
+      }
+    ]
+  },
+  "dependencies": {
+    "circularDependencyCount": 2,
+    "circularDependencies": [
+      [
+        "src/services/TTSStateManager.ts",
+        "src/services/tts/TTSSessionPersistence.ts"
+      ],
+      [
+        "src/services/TTSStateManager.ts",
+        "src/services/tts/TTSStateEmitter.ts"
+      ]
+    ]
+  },
+  "unusedCode": {
+    "unusedCodeIssueCount": 16,
+    "unusedCodeFilesWithIssues": 5
+  }
+}

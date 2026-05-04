@@ -14,7 +14,10 @@ This file provides guidelines for agentic coding assistants working on this code
 - `npm run lint` - Run ESLint on all TypeScript files
 - `npm run lint:fix` - Run ESLint with auto-fix
 - `npm run typecheck` - Run TypeScript validation with `tsc --noEmit`
-- `npm run check` - Run lint, typecheck, and coverage in sequence
+- `npm run quality` - Check code quality metrics against the committed baseline
+- `npm run quality:report` - Generate and print code quality metrics without failing on regressions
+- `npm run quality:baseline` - Refresh the committed code quality baseline intentionally
+- `npm run check` - Run lint, typecheck, coverage, and quality checks in sequence
 
 ### Running Single Tests
 - `npm test -- src/services/__tests__/EpubGenerator.test.ts` - Run specific test file
@@ -22,6 +25,12 @@ This file provides guidelines for agentic coding assistants working on this code
 - `npm test -- --testNamePattern="should generate epub"` - Run tests matching name
 
 TypeScript is configured with strict mode.
+
+### Code Quality Baseline
+- After making code changes, run `npm run quality` or the full `npm run check`.
+- If `npm run quality` reports that quality is worse than the baseline, continue improving the code by reducing duplication, file size, circular dependencies, or unused-code issues until the gate passes.
+- Do not refresh the baseline as the default response to a regression. Use `npm run quality:baseline` only for intentional baseline maintenance.
+- The quality gate includes both app code and tests.
 
 ## Code Style Guidelines
 

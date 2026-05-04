@@ -12,9 +12,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run lint` - Lint `src/` and `app/` with ESLint
 - `npm run lint:fix` - Lint and auto-fix
 - `npm run typecheck` - TypeScript strict check (`tsc --noEmit`)
-- `npm run check` - Run lint + typecheck + test:coverage in sequence
+- `npm run quality` - Check code quality metrics against the committed baseline
+- `npm run quality:report` - Generate and print code quality metrics without failing on regressions
+- `npm run quality:baseline` - Refresh the committed code quality baseline intentionally
+- `npm run check` - Run lint + typecheck + test:coverage + quality in sequence
 - Run specific test file: `npm test -- src/services/__tests__/StorageService.test.ts`
 - Run tests matching name: `npm test -- --testNamePattern="test name"`
+
+## Code Quality Baseline
+
+After making code changes, run `npm run quality` or the full `npm run check`. If the quality check reports that metrics are worse than the committed baseline, keep improving the code by reducing duplication, file size, circular dependencies, or unused-code issues until the gate passes. Do not refresh the baseline as the default response to a regression; use `npm run quality:baseline` only for intentional baseline maintenance. The quality gate includes both app code and tests.
 
 ## Project Overview
 
