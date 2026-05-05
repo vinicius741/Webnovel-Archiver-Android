@@ -12,6 +12,7 @@ import {
 
 import { DOWNLOAD_DEFAULT_CHAPTER_COUNT } from "../../constants/epub";
 import type { DownloadRangeMode } from "../../types";
+import { dialogStyles } from "./sharedDialogStyles";
 
 interface DownloadRangeDialogProps {
   visible: boolean;
@@ -190,24 +191,24 @@ const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
           />
 
           {mode === "range" && (
-            <View style={styles.rangeRow}>
+            <View style={dialogStyles.rangeRow}>
               <TextInput
                 testID="download-range-start-input"
                 label="From"
                 value={rangeStart}
                 onChangeText={setRangeStart}
                 keyboardType="number-pad"
-                style={[styles.input, styles.rangeInput]}
+                style={[dialogStyles.input, dialogStyles.rangeInput]}
                 mode="outlined"
               />
-              <Text style={styles.separator}>-</Text>
+              <Text style={dialogStyles.separator}>-</Text>
               <TextInput
                 testID="download-range-end-input"
                 label="To"
                 value={rangeEnd}
                 onChangeText={setRangeEnd}
                 keyboardType="number-pad"
-                style={[styles.input, styles.rangeInput]}
+                style={[dialogStyles.input, dialogStyles.rangeInput]}
                 mode="outlined"
               />
             </View>
@@ -225,7 +226,7 @@ const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
                 onChangeText={setCount}
                 keyboardType="number-pad"
                 mode="outlined"
-                style={styles.input}
+                style={dialogStyles.input}
                 right={<TextInput.Affix text="chapters" />}
               />
               <HelperText type="info" visible>
@@ -243,7 +244,7 @@ const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
                 onChangeText={setCountStart}
                 keyboardType="number-pad"
                 mode="outlined"
-                style={styles.input}
+                style={dialogStyles.input}
               />
               <TextInput
                 testID="download-count-input"
@@ -252,7 +253,7 @@ const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
                 onChangeText={setCount}
                 keyboardType="number-pad"
                 mode="outlined"
-                style={styles.input}
+                style={dialogStyles.input}
                 right={<TextInput.Affix text="chapters" />}
               />
             </View>
@@ -308,20 +309,6 @@ const styles = StyleSheet.create({
   },
   segmented: {
     marginBottom: 16,
-  },
-  rangeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  rangeInput: {
-    flex: 1,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  separator: {
-    marginHorizontal: 12,
-    fontSize: 20,
   },
   bookmarkInfo: {
     marginBottom: 12,

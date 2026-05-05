@@ -15,6 +15,7 @@ import {
   EPUB_MAX_CHAPTERS_MAX,
 } from "../../constants/epub";
 import { EpubConfig } from "../../types";
+import { dialogStyles } from "./sharedDialogStyles";
 
 interface EpubConfigDialogProps {
   visible: boolean;
@@ -128,10 +129,10 @@ const EpubConfigDialogContent: React.FC<
             onChangeText={setMaxChapters}
             keyboardType="number-pad"
             mode="outlined"
-            style={styles.input}
+            style={dialogStyles.input}
             right={<TextInput.Affix text="chapters" />}
           />
-          <View style={styles.rangeRow}>
+          <View style={dialogStyles.rangeRow}>
             <TextInput
               testID="epub-range-start-input"
               label="From"
@@ -139,9 +140,9 @@ const EpubConfigDialogContent: React.FC<
               onChangeText={setRangeStart}
               keyboardType="number-pad"
               mode="outlined"
-              style={[styles.input, styles.rangeInput]}
+              style={[dialogStyles.input, dialogStyles.rangeInput]}
             />
-            <Text style={styles.separator}>-</Text>
+            <Text style={dialogStyles.separator}>-</Text>
             <TextInput
               testID="epub-range-end-input"
               label="To"
@@ -149,7 +150,7 @@ const EpubConfigDialogContent: React.FC<
               onChangeText={setRangeEnd}
               keyboardType="number-pad"
               mode="outlined"
-              style={[styles.input, styles.rangeInput]}
+              style={[dialogStyles.input, dialogStyles.rangeInput]}
             />
           </View>
           <View style={styles.switchRow}>
@@ -227,20 +228,6 @@ export const EpubConfigDialog: React.FC<EpubConfigDialogProps> = ({
 const styles = StyleSheet.create({
   subtitle: {
     marginBottom: 16,
-  },
-  input: {
-    marginBottom: 12,
-  },
-  rangeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  rangeInput: {
-    flex: 1,
-  },
-  separator: {
-    marginHorizontal: 12,
-    fontSize: 20,
   },
   switchRow: {
     marginTop: 4,

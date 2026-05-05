@@ -1,15 +1,9 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
-import {
-  List,
-  IconButton,
-  Divider,
-  Text,
-  Button,
-  Switch,
-} from "react-native-paper";
+import { View } from "react-native";
+import { List, IconButton, Divider, Switch } from "react-native-paper";
 import { RegexCleanupRule } from "../../types";
 import { TARGET_LABEL_MAP } from "../../types/sentenceRemoval";
+import { ListSectionLayout, listItemStyles } from "./ListSectionLayout";
 
 interface RegexRuleListProps {
   rules: RegexCleanupRule[];
@@ -27,75 +21,40 @@ export function RegexRuleList({
   onToggle,
 }: RegexRuleListProps) {
   return (
-    <List.Section>
-      <View style={styles.sectionHeader}>
-        <List.Subheader>Regex Cleanup Rules</List.Subheader>
-        <Button icon="plus" mode="text" onPress={onAdd}>
-          Add
-        </Button>
-      </View>
-      <Text variant="bodySmall" style={styles.sectionDescription}>
-        Remove patterns like long separators. Rules run in guarded mode and skip
-        invalid patterns.
-      </Text>
-      <Divider />
-      {rules.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text variant="bodyMedium">No regex cleanup rules yet.</Text>
+    <ListSectionLayout
+      title="Regex Cleanup Rules"
+      description="Remove patterns like long separators. Rules run in guarded mode and skip invalid patterns."
+      emptyText="No regex cleanup rules yet."
+      onAdd={onAdd}
+      itemCount={rules.length}
+    >
+      {rules.map((rule) => (
+        <View key={rule.id}>
+          <List.Item
+            title={rule.name}
+            description={`/${rule.pattern}/${rule.flags} • ${TARGET_LABEL_MAP[rule.appliesTo]}`}
+            right={() => (
+              <View style={listItemStyles.rowActions}>
+                <Switch
+                  value={rule.enabled}
+                  onValueChange={(value) => onToggle(rule.id, value)}
+                />
+                <IconButton icon="pencil" onPress={() => onEdit(rule)} />
+                <IconButton
+                  icon="delete"
+                  iconColor="red"
+                  onPress={() => onDelete(rule.id)}
+                />
+              </View>
+            )}
+            style={[
+              listItemStyles.listItem,
+              !rule.enabled && listItemStyles.disabledItem,
+            ]}
+          />
+          <Divider />
         </View>
-      ) : (
-        rules.map((rule) => (
-          <View key={rule.id}>
-            <List.Item
-              title={rule.name}
-              description={`/${rule.pattern}/${rule.flags} • ${TARGET_LABEL_MAP[rule.appliesTo]}`}
-              right={() => (
-                <View style={styles.rowActions}>
-                  <Switch
-                    value={rule.enabled}
-                    onValueChange={(value) => onToggle(rule.id, value)}
-                  />
-                  <IconButton icon="pencil" onPress={() => onEdit(rule)} />
-                  <IconButton
-                    icon="delete"
-                    iconColor="red"
-                    onPress={() => onDelete(rule.id)}
-                  />
-                </View>
-              )}
-              style={[styles.listItem, !rule.enabled && styles.disabledItem]}
-            />
-            <Divider />
-          </View>
-        ))
-      )}
-    </List.Section>
+      ))}
+    </ListSectionLayout>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  sectionDescription: {
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    opacity: 0.75,
-  },
-  listItem: {
-    paddingVertical: 4,
-  },
-  rowActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  emptyContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-  },
-  disabledItem: {
-    opacity: 0.5,
-  },
-});
