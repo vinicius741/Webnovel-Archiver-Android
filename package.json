@@ -13,9 +13,9 @@
     "lint": "eslint src app --ext .ts,.tsx",
     "lint:fix": "eslint src app --ext .ts,.tsx --fix",
     "typecheck": "tsc --noEmit",
-    "quality": "node scripts/code-quality.js check",
-    "quality:report": "node scripts/code-quality.js report",
-    "quality:baseline": "node scripts/code-quality.js baseline",
+    "quality": "tsx scripts/code-quality/index.ts check",
+    "quality:report": "tsx scripts/code-quality/index.ts report",
+    "quality:baseline": "tsx scripts/code-quality/index.ts baseline",
     "check": "npm run lint && npm run typecheck && npm run test:coverage && npm run quality"
   },
   "dependencies": {
@@ -78,6 +78,7 @@
     "knip": "^6.11.0",
     "madge": "^8.0.0",
     "patch-package": "^8.0.1",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.58.0"
   },
