@@ -1,48 +1,18 @@
-import { useState, useCallback, useMemo } from "react";
-import { useFocusEffect } from "expo-router";
+import { useCallback } from "react";
 import { storageService } from "../services/StorageService";
 import { Tab } from "../types/tab";
-import { Story } from "../types";
+import { useTabData } from "./useTabData";
 
 export const useTabManagement = () => {
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [stories, setStories] = useState<Story[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    const [loadedTabs, loadedStories] = await Promise.all([
-      storageService.getTabs(),
-      storageService.getLibrary(),
-    ]);
-    // Sort tabs by order
-    setTabs(loadedTabs.sort((a, b) => a.order - b.order));
-    setStories(loadedStories);
-    setLoading(false);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void loadData();
-    }, [loadData]),
-  );
-
-  const storyCountByTab = useMemo(() => {
-    const counts: Record<string, number> = {};
-    tabs.forEach((tab) => {
-      counts[tab.id] = 0;
-    });
-    stories.forEach((story) => {
-      if (story.tabId && counts[story.tabId] !== undefined) {
-        counts[story.tabId]++;
-      }
-    });
-    return counts;
-  }, [tabs, stories]);
-
-  const unassignedCount = useMemo(() => {
-    return stories.filter((s) => !s.tabId).length;
-  }, [stories]);
+  const {
+    tabs,
+    setTabs,
+    stories,
+    loading,
+    storyCountByTab,
+    unassignedCount,
+    refresh,
+  } = useTabData();
 
   const addTab = useCallback(
     async (name: string): Promise<boolean> => {
@@ -60,7 +30,7 @@ export const useTabManagement = () => {
       setTabs(updatedTabs);
       return true;
     },
-    [tabs],
+    [tabs, setTabs],
   );
 
   const updateTab = useCallback(
@@ -74,22 +44,19 @@ export const useTabManagement = () => {
       setTabs(updatedTabs);
       return true;
     },
-    [tabs],
+    [tabs, setTabs],
   );
 
   const deleteTab = useCallback(
     async (id: string): Promise<number> => {
-      // Get count of stories in this tab
       const count = storyCountByTab[id] || 0;
 
-      // Remove tab and re-order remaining tabs
       const filteredTabs = tabs.filter((tab) => tab.id !== id);
       const reorderedTabs = filteredTabs.map((tab, index) => ({
         ...tab,
         order: index,
       }));
 
-      // Move stories in this tab to unassigned
       await storageService.moveStoriesToTab(
         stories.filter((s) => s.tabId === id).map((s) => s.id),
         null,
@@ -100,7 +67,7 @@ export const useTabManagement = () => {
 
       return count;
     },
-    [tabs, storyCountByTab, stories],
+    [tabs, storyCountByTab, stories, setTabs],
   );
 
   const reorderTabs = useCallback(
@@ -117,7 +84,7 @@ export const useTabManagement = () => {
       await storageService.saveTabs(reorderedTabs);
       setTabs(reorderedTabs);
     },
-    [tabs],
+    [tabs, setTabs],
   );
 
   const moveTabUp = useCallback(
@@ -146,6 +113,6 @@ export const useTabManagement = () => {
     deleteTab,
     moveTabUp,
     moveTabDown,
-    refresh: loadData,
+    refresh,
   };
 };
