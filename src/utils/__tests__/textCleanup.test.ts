@@ -123,6 +123,42 @@ describe("textCleanup", () => {
       const expected = "This is a test.  More content.";
       expect(removeUnwantedSentences(content, removalList)).toBe(expected);
     });
+
+    it("should match case-insensitively", () => {
+      const content = "stolen from its rightful author, this tale is not meant to be on amazon";
+      const removalList = ["Stolen from its rightful author, this tale is not meant to be on Amazon"];
+      expect(removeUnwantedSentences(content, removalList)).toBe("");
+    });
+
+    it("should match with flexible whitespace", () => {
+      const content = "Hello   world  foo";
+      const removalList = ["Hello world foo"];
+      expect(removeUnwantedSentences(content, removalList)).toBe("");
+    });
+
+    it("should match across newlines and tabs", () => {
+      const content = "Stolen\tfrom\nits rightful author";
+      const removalList = ["Stolen from its rightful author"];
+      expect(removeUnwantedSentences(content, removalList)).toBe("");
+    });
+
+    it("should handle empty removal list", () => {
+      expect(removeUnwantedSentences("Hello", [])).toBe("Hello");
+    });
+
+    it("should handle empty content", () => {
+      expect(removeUnwantedSentences("", ["test"])).toBe("");
+    });
+
+    it("should skip empty removal sentences", () => {
+      expect(removeUnwantedSentences("Hello", [""])).toBe("Hello");
+    });
+
+    it("should escape regex special characters in sentences", () => {
+      const content = "Price: $100 (USD) file.txt";
+      const removalList = ["Price: $100 (USD) file.txt"];
+      expect(removeUnwantedSentences(content, removalList)).toBe("");
+    });
   });
 
   describe("applyTtsCleanupLines", () => {
@@ -307,6 +343,50 @@ describe("textCleanup", () => {
       const cleaned = applyDownloadCleanup(html, [], rules);
       expect(cleaned).toContain('<script>var x = "=====";</script>');
       expect(cleaned).not.toContain("<p>=====</p>");
+    });
+
+    it("should match sentences across HTML entities", () => {
+      const html = "<p>It&rsquo;s a great story</p><p>Keep this</p>";
+      const sentenceList = ["It's a great story"];
+      const cleaned = applyDownloadCleanup(html, sentenceList, []);
+      expect(cleaned).not.toContain("It");
+      expect(cleaned).toContain("Keep this");
+    });
+
+    it("should match sentences with HTML ampersand entity", () => {
+      const html = "<p>Rock &amp; Roll forever</p><p>Keep this</p>";
+      const sentenceList = ["Rock & Roll forever"];
+      const cleaned = applyDownloadCleanup(html, sentenceList, []);
+      expect(cleaned).not.toContain("Rock");
+      expect(cleaned).toContain("Keep this");
+    });
+
+    it("should match sentences case-insensitively in HTML", () => {
+      const html = "<p>stolen from its rightful author</p><p>Keep this</p>";
+      const sentenceList = ["Stolen from its rightful author"];
+      const cleaned = applyDownloadCleanup(html, sentenceList, []);
+      expect(cleaned).not.toContain("stolen");
+      expect(cleaned).toContain("Keep this");
+    });
+
+    it("should match sentences with flexible whitespace in HTML", () => {
+      const html = "<p>Stolen  from\tits   rightful author</p><p>Keep this</p>";
+      const sentenceList = ["Stolen from its rightful author"];
+      const cleaned = applyDownloadCleanup(html, sentenceList, []);
+      expect(cleaned).not.toContain("Stolen");
+      expect(cleaned).toContain("Keep this");
+    });
+
+    it("should match a sentence that is an entire paragraph", () => {
+      const html =
+        "<p>Normal paragraph.</p><p>Stolen from its rightful author, this tale is not meant to be on Amazon; report any sightings.</p><p>Another paragraph.</p>";
+      const sentenceList = [
+        "Stolen from its rightful author, this tale is not meant to be on Amazon; report any sightings.",
+      ];
+      const cleaned = applyDownloadCleanup(html, sentenceList, []);
+      expect(cleaned).toContain("Normal paragraph.");
+      expect(cleaned).toContain("Another paragraph.");
+      expect(cleaned).not.toContain("Stolen");
     });
   });
 });

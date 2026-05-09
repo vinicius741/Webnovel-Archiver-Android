@@ -22,15 +22,58 @@ interface CompiledRule {
 
 type CleanupTarget = "download" | "tts";
 
+const escapeRegex = (str: string): string =>
+  str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const SINGLE_QUOTE_RE = /['\u2018\u2019]/g;
+const DOUBLE_QUOTE_RE = /["\u201C\u201D]/g;
+const SINGLE_QUOTE_CLASS = "['\\u2018\\u2019]";
+const DOUBLE_QUOTE_CLASS = '["\\u201C\\u201D"]';
+
+const buildSentencePattern = (sentence: string): RegExp | null => {
+  const trimmed = sentence.trim();
+  if (!trimmed) return null;
+  let escaped = escapeRegex(trimmed);
+  escaped = escaped.replace(SINGLE_QUOTE_RE, SINGLE_QUOTE_CLASS);
+  escaped = escaped.replace(DOUBLE_QUOTE_RE, DOUBLE_QUOTE_CLASS);
+  escaped = escaped.replace(/ /g, "\\s+");
+  try {
+    return new RegExp(escaped, "gi");
+  } catch {
+    return null;
+  }
+};
+
+const compileSentencePatterns = (
+  sentenceRemovalList: string[],
+): RegExp[] => {
+  const patterns: RegExp[] = [];
+  for (const sentence of sentenceRemovalList) {
+    const pattern = buildSentencePattern(sentence);
+    if (pattern) patterns.push(pattern);
+  }
+  return patterns;
+};
+
+const applySentencePatternsToText = (
+  text: string,
+  patterns: RegExp[],
+): string => {
+  let result = text;
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, "");
+  }
+  return result;
+};
+
 export const removeUnwantedSentences = (
   content: string,
   sentenceRemovalList: string[],
 ): string => {
-  let cleanContent = content;
-  for (const sentence of sentenceRemovalList) {
-    cleanContent = cleanContent.split(sentence).join("");
-  }
-  return cleanContent;
+  if (!content || !sentenceRemovalList.length) return content;
+  const patterns = compileSentencePatterns(sentenceRemovalList);
+  return applySentencePatternsToText(content, patterns);
 };
 
 const isRuleApplicable = (
@@ -170,14 +213,11 @@ export const applyDownloadCleanup = (
   sentenceRemovalList: string[],
   regexRules: RegexCleanupRule[],
 ): string => {
-  const cleanedSentenceContent = removeUnwantedSentences(
-    html,
-    sentenceRemovalList,
-  );
+  const sentencePatterns = compileSentencePatterns(sentenceRemovalList);
   const cleanupRunner = createRegexCleanupRunner(regexRules, "download");
 
   try {
-    const $ = cheerio.load(cleanedSentenceContent);
+    const $ = cheerio.load(html);
 
     const processNode = (node: AnyNode) => {
       if (!node) return;
@@ -187,7 +227,11 @@ export const applyDownloadCleanup = (
         typeof node.data === "string" &&
         !hasSkippedAncestor(node)
       ) {
-        node.data = cleanupRunner(node.data);
+        // Apply sentence removal at the text-node level so HTML entities
+        // are decoded by cheerio and matching works against plain text.
+        let text = applySentencePatternsToText(node.data, sentencePatterns);
+        text = cleanupRunner(text);
+        node.data = text;
       }
 
       const children = (node as Element).children;
@@ -199,9 +243,9 @@ export const applyDownloadCleanup = (
     $("body")
       .contents()
       .each((_, node) => processNode(node));
-    return $("body").html() || cleanedSentenceContent;
+    return $("body").html() || html;
   } catch (error) {
     console.error("[TextCleanup] Failed to apply download cleanup.", error);
-    return cleanedSentenceContent;
+    return html;
   }
 };
