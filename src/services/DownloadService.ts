@@ -121,13 +121,14 @@ class DownloadService {
   async applySentenceRemovalToStory(
     story: Story,
     onProgress?: (current: number, total: number, chapterTitle: string) => void,
-  ): Promise<{ processed: number; errors: number }> {
+  ): Promise<{ processed: number; errors: number; sentencesRemoved: number }> {
     const [sentenceRemovalList, regexCleanupRules] = await Promise.all([
       storageService.getSentenceRemovalList(),
       storageService.getRegexCleanupRules(),
     ]);
     let processed = 0;
     let errors = 0;
+    let sentencesRemoved = 0;
 
     for (let i = 0; i < story.chapters.length; i++) {
       const chapter = story.chapters[i];
@@ -136,12 +137,13 @@ class DownloadService {
         try {
           const html = await readChapterFile(chapter.filePath);
           if (html) {
-            const cleanedContent = applyDownloadCleanup(
+            const result = applyDownloadCleanup(
               html,
               sentenceRemovalList,
               regexCleanupRules,
             );
-            await saveChapter(story.id, i, chapter.title, cleanedContent);
+            await saveChapter(story.id, i, chapter.title, result.html);
+            sentencesRemoved += result.sentencesRemoved;
             processed++;
           }
         } catch (error) {
@@ -165,7 +167,7 @@ class DownloadService {
     };
     await storageService.updateStory(updatedStory);
 
-    return { processed, errors };
+    return { processed, errors, sentencesRemoved };
   }
 
   /**

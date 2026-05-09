@@ -26,7 +26,7 @@ jest.mock("../storage/fileSystem", () => ({
 }));
 
 jest.mock("../../utils/textCleanup", () => ({
-  applyDownloadCleanup: jest.fn((html) => html),
+  applyDownloadCleanup: jest.fn((html) => ({ html, sentencesRemoved: 0 })),
 }));
 
 describe("DownloadService", () => {
@@ -201,7 +201,7 @@ describe("DownloadService", () => {
         "<p>Chapter content with bad sentence.</p>",
       );
       (applyDownloadCleanup as jest.Mock).mockReturnValue(
-        "<p>Chapter content.</p>",
+        { html: "<p>Chapter content.</p>", sentencesRemoved: 0 },
       );
 
       const onProgress = jest.fn();

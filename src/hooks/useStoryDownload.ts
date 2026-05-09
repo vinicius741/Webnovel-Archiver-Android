@@ -293,7 +293,7 @@ export const useStoryDownload = ({
               setSyncing(true);
               setSyncStatus("Processing...");
 
-              const { processed, errors } =
+              const { processed, errors, sentencesRemoved } =
                 await downloadService.applySentenceRemovalToStory(
                   story!,
                   (current, total, title) => {
@@ -304,15 +304,19 @@ export const useStoryDownload = ({
               setSyncing(false);
               setSyncStatus("");
 
+              const statsLine = sentencesRemoved > 0
+                ? ` ${sentencesRemoved} sentence${sentencesRemoved !== 1 ? "s" : ""} removed.`
+                : "";
+
               if (errors > 0) {
                 showAlert(
                   "Processing Complete with Errors",
-                  `Processed ${processed} chapters, ${errors} had errors.`,
+                  `Processed ${processed} chapters, ${errors} had errors.${statsLine}`,
                 );
               } else {
                 showAlert(
                   "Processing Complete",
-                  `Successfully applied text cleanup to ${processed} chapters. Please regenerate the EPUB.`,
+                  `Successfully applied text cleanup to ${processed} chapters.${statsLine} Please regenerate the EPUB.`,
                 );
               }
 

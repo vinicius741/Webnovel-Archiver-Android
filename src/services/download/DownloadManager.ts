@@ -467,7 +467,7 @@ export class DownloadManager extends EventEmitter {
       job.storyId,
       job.chapterIndex,
       job.chapter.title,
-      cleanedContent,
+      cleanedContent.html,
     );
   }
 }

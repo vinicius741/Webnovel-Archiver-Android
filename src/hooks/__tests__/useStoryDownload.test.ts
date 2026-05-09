@@ -852,7 +852,7 @@ describe("useStoryDownload", () => {
     // Simulate press
     (
       downloadService.applySentenceRemovalToStory as jest.Mock
-    ).mockResolvedValue({ processed: 1, errors: 0 });
+    ).mockResolvedValue({ processed: 1, errors: 0, sentencesRemoved: 0 });
 
     await act(async () => {
       await applyButton.onPress();

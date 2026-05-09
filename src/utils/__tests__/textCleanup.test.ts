@@ -320,11 +320,11 @@ describe("textCleanup", () => {
         },
       ];
 
-      const cleaned = applyDownloadCleanup(html, sentenceList, rules);
-      expect(cleaned).toContain("Intro ");
-      expect(cleaned).not.toContain("bad");
-      expect(cleaned).not.toContain("=====");
-      expect(cleaned).toContain("Outro");
+      const result = applyDownloadCleanup(html, sentenceList, rules);
+      expect(result.html).toContain("Intro ");
+      expect(result.html).not.toContain("bad");
+      expect(result.html).not.toContain("=====");
+      expect(result.html).toContain("Outro");
     });
 
     it("should not alter script tag contents", () => {
@@ -340,41 +340,41 @@ describe("textCleanup", () => {
         },
       ];
 
-      const cleaned = applyDownloadCleanup(html, [], rules);
-      expect(cleaned).toContain('<script>var x = "=====";</script>');
-      expect(cleaned).not.toContain("<p>=====</p>");
+      const result = applyDownloadCleanup(html, [], rules);
+      expect(result.html).toContain('<script>var x = "=====";</script>');
+      expect(result.html).not.toContain("<p>=====</p>");
     });
 
     it("should match sentences across HTML entities", () => {
       const html = "<p>It&rsquo;s a great story</p><p>Keep this</p>";
       const sentenceList = ["It's a great story"];
-      const cleaned = applyDownloadCleanup(html, sentenceList, []);
-      expect(cleaned).not.toContain("It");
-      expect(cleaned).toContain("Keep this");
+      const result = applyDownloadCleanup(html, sentenceList, []);
+      expect(result.html).not.toContain("It");
+      expect(result.html).toContain("Keep this");
     });
 
     it("should match sentences with HTML ampersand entity", () => {
       const html = "<p>Rock &amp; Roll forever</p><p>Keep this</p>";
       const sentenceList = ["Rock & Roll forever"];
-      const cleaned = applyDownloadCleanup(html, sentenceList, []);
-      expect(cleaned).not.toContain("Rock");
-      expect(cleaned).toContain("Keep this");
+      const result = applyDownloadCleanup(html, sentenceList, []);
+      expect(result.html).not.toContain("Rock");
+      expect(result.html).toContain("Keep this");
     });
 
     it("should match sentences case-insensitively in HTML", () => {
       const html = "<p>stolen from its rightful author</p><p>Keep this</p>";
       const sentenceList = ["Stolen from its rightful author"];
-      const cleaned = applyDownloadCleanup(html, sentenceList, []);
-      expect(cleaned).not.toContain("stolen");
-      expect(cleaned).toContain("Keep this");
+      const result = applyDownloadCleanup(html, sentenceList, []);
+      expect(result.html).not.toContain("stolen");
+      expect(result.html).toContain("Keep this");
     });
 
     it("should match sentences with flexible whitespace in HTML", () => {
       const html = "<p>Stolen  from\tits   rightful author</p><p>Keep this</p>";
       const sentenceList = ["Stolen from its rightful author"];
-      const cleaned = applyDownloadCleanup(html, sentenceList, []);
-      expect(cleaned).not.toContain("Stolen");
-      expect(cleaned).toContain("Keep this");
+      const result = applyDownloadCleanup(html, sentenceList, []);
+      expect(result.html).not.toContain("Stolen");
+      expect(result.html).toContain("Keep this");
     });
 
     it("should match a sentence that is an entire paragraph", () => {
@@ -383,10 +383,10 @@ describe("textCleanup", () => {
       const sentenceList = [
         "Stolen from its rightful author, this tale is not meant to be on Amazon; report any sightings.",
       ];
-      const cleaned = applyDownloadCleanup(html, sentenceList, []);
-      expect(cleaned).toContain("Normal paragraph.");
-      expect(cleaned).toContain("Another paragraph.");
-      expect(cleaned).not.toContain("Stolen");
+      const result = applyDownloadCleanup(html, sentenceList, []);
+      expect(result.html).toContain("Normal paragraph.");
+      expect(result.html).toContain("Another paragraph.");
+      expect(result.html).not.toContain("Stolen");
     });
   });
 });

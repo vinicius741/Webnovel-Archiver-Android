@@ -58,13 +58,17 @@ const compileSentencePatterns = (
 const applySentencePatternsToText = (
   text: string,
   patterns: RegExp[],
-): string => {
+): { text: string; removed: number } => {
   let result = text;
+  let removed = 0;
   for (const pattern of patterns) {
     pattern.lastIndex = 0;
-    result = result.replace(pattern, "");
+    result = result.replace(pattern, () => {
+      removed++;
+      return "";
+    });
   }
-  return result;
+  return { text: result, removed };
 };
 
 export const removeUnwantedSentences = (
@@ -73,7 +77,7 @@ export const removeUnwantedSentences = (
 ): string => {
   if (!content || !sentenceRemovalList.length) return content;
   const patterns = compileSentencePatterns(sentenceRemovalList);
-  return applySentencePatternsToText(content, patterns);
+  return applySentencePatternsToText(content, patterns).text;
 };
 
 const isRuleApplicable = (
@@ -208,13 +212,19 @@ const hasSkippedAncestor = (node: AnyNode): boolean => {
   return false;
 };
 
+export interface CleanupResult {
+  html: string;
+  sentencesRemoved: number;
+}
+
 export const applyDownloadCleanup = (
   html: string,
   sentenceRemovalList: string[],
   regexRules: RegexCleanupRule[],
-): string => {
+): CleanupResult => {
   const sentencePatterns = compileSentencePatterns(sentenceRemovalList);
   const cleanupRunner = createRegexCleanupRunner(regexRules, "download");
+  let totalSentencesRemoved = 0;
 
   try {
     const $ = cheerio.load(html);
@@ -227,11 +237,12 @@ export const applyDownloadCleanup = (
         typeof node.data === "string" &&
         !hasSkippedAncestor(node)
       ) {
-        // Apply sentence removal at the text-node level so HTML entities
-        // are decoded by cheerio and matching works against plain text.
-        let text = applySentencePatternsToText(node.data, sentencePatterns);
-        text = cleanupRunner(text);
-        node.data = text;
+        const { text, removed } = applySentencePatternsToText(
+          node.data,
+          sentencePatterns,
+        );
+        totalSentencesRemoved += removed;
+        node.data = cleanupRunner(text);
       }
 
       const children = (node as Element).children;
@@ -243,9 +254,12 @@ export const applyDownloadCleanup = (
     $("body")
       .contents()
       .each((_, node) => processNode(node));
-    return $("body").html() || html;
+    return {
+      html: $("body").html() || html,
+      sentencesRemoved: totalSentencesRemoved,
+    };
   } catch (error) {
     console.error("[TextCleanup] Failed to apply download cleanup.", error);
-    return html;
+    return { html, sentencesRemoved: 0 };
   }
 };

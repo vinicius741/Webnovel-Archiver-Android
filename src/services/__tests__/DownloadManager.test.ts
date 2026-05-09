@@ -57,7 +57,7 @@ jest.mock("../ForegroundServiceCoordinator", () => ({
 }));
 
 jest.mock("../../utils/textCleanup", () => ({
-  applyDownloadCleanup: jest.fn((content) => content),
+  applyDownloadCleanup: jest.fn((content) => ({ html: content, sentencesRemoved: 0 })),
 }));
 
 describe("DownloadManager", () => {
