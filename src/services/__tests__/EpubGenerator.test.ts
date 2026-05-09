@@ -55,7 +55,7 @@ describe("EpubGenerator", () => {
     );
   });
 
-  it("generates a single epub and returns uri/filename metadata", async () => {
+  it("generates a single epub without chapter range (backward compatible)", async () => {
     const result = await epubGenerator.generateEpub(mockStory, mockChapters);
 
     expect(result).toEqual({
@@ -64,6 +64,24 @@ describe("EpubGenerator", () => {
     });
     expect(fileSystem.saveEpub).toHaveBeenCalledWith(
       "test_story.epub",
+      "base64data",
+    );
+  });
+
+  it("generates a single epub with chapter range in filename", async () => {
+    const result = await epubGenerator.generateEpub(
+      mockStory,
+      mockChapters,
+      undefined,
+      { start: 5, end: 10 },
+    );
+
+    expect(result).toEqual({
+      uri: "file://test.epub",
+      filename: "test_story_Ch5-10.epub",
+    });
+    expect(fileSystem.saveEpub).toHaveBeenCalledWith(
+      "test_story_Ch5-10.epub",
       "base64data",
     );
   });
@@ -79,6 +97,7 @@ describe("EpubGenerator", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].chapterRange).toEqual({ start: 10, end: 11 });
+    expect(results[0].filename).toBe("test_story_Ch10-11.epub");
   });
 
   it("maps chapter ranges to original chapter numbers for split generation", async () => {
@@ -125,8 +144,11 @@ describe("EpubGenerator", () => {
 
     expect(results).toHaveLength(3);
     expect(results[0].chapterRange).toEqual({ start: 51, end: 52 });
+    expect(results[0].filename).toBe("test_story_Ch51-52.epub");
     expect(results[1].chapterRange).toEqual({ start: 53, end: 54 });
+    expect(results[1].filename).toBe("test_story_Ch53-54.epub");
     expect(results[2].chapterRange).toEqual({ start: 55, end: 55 });
+    expect(results[2].filename).toBe("test_story_Ch55-55.epub");
   });
 
   it("keeps backward-compatible range numbering without mapping", async () => {
@@ -138,6 +160,7 @@ describe("EpubGenerator", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].chapterRange).toEqual({ start: 1, end: 2 });
+    expect(results[0].filename).toBe("test_story_Ch1-2.epub");
   });
 
   it("throws when no chapters are provided", async () => {

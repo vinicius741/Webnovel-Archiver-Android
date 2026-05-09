@@ -34,8 +34,7 @@ export class EpubGenerator {
     story: Story,
     chapters: Chapter[],
     onProgress?: (progress: EpubProgress) => void,
-    fileNumber?: number,
-    _totalFiles?: number,
+    chapterRange?: { start: number; end: number },
   ): Promise<GenerateEpubResult> {
     onProgress?.({
       current: 0,
@@ -132,8 +131,8 @@ export class EpubGenerator {
     onProgress?.({ current: 2, total: 3, percentage: 96, stage: "finalizing" });
 
     const baseFilename = EpubMetadataGenerator.sanitizeFilename(story.title);
-    const filename = fileNumber
-      ? `${baseFilename}_Vol${fileNumber}.epub`
+    const filename = chapterRange
+      ? `${baseFilename}_Ch${chapterRange.start}-${chapterRange.end}.epub`
       : `${baseFilename}.epub`;
     const uri = await saveEpub(filename, base64);
 
@@ -168,19 +167,25 @@ export class EpubGenerator {
 
     if (chapters.length <= maxChaptersPerEpub) {
       // Single EPUB is sufficient
-      const result = await this.generateEpub(story, chapters, onProgress);
+      const singleRange = {
+        start: hasOriginalChapterNumbers
+          ? (originalChapterNumbers)[0]
+          : 1,
+        end: hasOriginalChapterNumbers
+          ? (originalChapterNumbers)[chapters.length - 1]
+          : chapters.length,
+      };
+      const result = await this.generateEpub(
+        story,
+        chapters,
+        onProgress,
+        singleRange,
+      );
       return [
         {
           uri: result.uri,
           filename: result.filename,
-          chapterRange: {
-            start: hasOriginalChapterNumbers
-              ? (originalChapterNumbers)[0]
-              : 1,
-            end: hasOriginalChapterNumbers
-              ? (originalChapterNumbers)[chapters.length - 1]
-              : chapters.length,
-          },
+          chapterRange: singleRange,
         },
       ];
     }
@@ -234,25 +239,26 @@ export class EpubGenerator {
         }
       };
 
+      const batchRange = {
+        start: hasOriginalChapterNumbers
+          ? (originalChapterNumbers)[startIndex]
+          : startIndex + 1,
+        end: hasOriginalChapterNumbers
+          ? (originalChapterNumbers)[endIndex - 1]
+          : endIndex,
+      };
+
       const { uri, filename } = await this.generateEpub(
         volumeStory,
         fileChapters,
         wrappedProgress,
-        fileIndex + 1,
-        totalFiles,
+        batchRange,
       );
 
       results.push({
         uri,
         filename,
-        chapterRange: {
-          start: hasOriginalChapterNumbers
-            ? (originalChapterNumbers)[startIndex]
-            : startIndex + 1,
-          end: hasOriginalChapterNumbers
-            ? (originalChapterNumbers)[endIndex - 1]
-            : endIndex,
-        },
+        chapterRange: batchRange,
       });
     }
 
