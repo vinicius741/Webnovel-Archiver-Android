@@ -1,6 +1,7 @@
 import React from "react";
 import { View, StyleSheet, Animated } from "react-native";
 import { Surface, IconButton, Text, useTheme } from "react-native-paper";
+import { useAppTheme } from "../theme/useAppTheme";
 
 interface TTSControllerProps {
   onPlayPause: () => void;
@@ -34,6 +35,7 @@ export const TTSController: React.FC<TTSControllerProps> = ({
   compactHeight = false,
 }) => {
   const theme = useTheme();
+  const appTheme = useAppTheme();
   const [fadeAnim] = React.useState(new Animated.Value(0));
 
   const [isRendered, setIsRendered] = React.useState(visible);
@@ -77,6 +79,7 @@ export const TTSController: React.FC<TTSControllerProps> = ({
         style={[
           styles.surface,
           {
+            borderRadius: appTheme.shapes.fabRadius,
             backgroundColor: theme.colors.elevation.level3,
             maxWidth,
             paddingVertical: compactHeight ? 6 : 10,
@@ -159,7 +162,6 @@ const styles = StyleSheet.create({
   surface: {
     width: "100%",
     alignSelf: "center",
-    borderRadius: 24,
     paddingHorizontal: 16,
   },
   content: {

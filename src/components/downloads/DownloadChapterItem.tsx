@@ -122,7 +122,6 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   chapterTitle: {
-    fontWeight: "500",
   },
   chapterActions: {
     flexDirection: "row",

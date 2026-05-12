@@ -1,6 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Appbar, Text, useTheme } from "react-native-paper";
+import { useAppTheme } from "../theme/useAppTheme";
 
 interface ReaderNavigationProps {
   currentChapterIndex: number;
@@ -28,6 +29,7 @@ export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
   onCopy,
 }) => {
   const theme = useTheme();
+  const appTheme = useAppTheme();
 
   return (
     <View
@@ -43,6 +45,7 @@ export const ReaderNavigation: React.FC<ReaderNavigationProps> = ({
         style={[
           styles.bottomBar,
           {
+            borderRadius: appTheme.shapes.fabRadius,
             backgroundColor: theme.colors.elevation.level2,
             maxWidth,
           },
@@ -88,7 +91,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     justifyContent: "space-between",
     paddingHorizontal: 8,
-    borderRadius: 24,
   },
   spacer: {
     flex: 1,

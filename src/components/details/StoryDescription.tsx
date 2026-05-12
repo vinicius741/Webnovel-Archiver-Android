@@ -71,7 +71,8 @@ export const StoryDescription: React.FC<StoryDescriptionProps> = ({
           testID="read-more-button"
         >
           <Text
-            style={[styles.readMoreText, { color: theme.colors.primary }]}
+            variant="labelLarge"
+            style={[{ color: theme.colors.primary }]}
             testID="read-more-text"
           >
             {isExpanded ? "Show less" : "Read more"}
@@ -99,8 +100,5 @@ const styles = StyleSheet.create({
   },
   readMoreButtonStart: {
     alignSelf: "flex-start",
-  },
-  readMoreText: {
-    fontWeight: "600",
   },
 });

@@ -1,12 +1,12 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import {
-  Button,
   Text,
   ProgressBar,
   useTheme,
   ActivityIndicator,
 } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 import { Story } from "../../types";
 
 interface StoryActionsProps {
@@ -56,8 +56,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
 
   return (
     <View style={styles.container}>
-      <Button
-        mode="contained"
+      <AppButton
         style={styles.actionBtn}
         loading={syncing}
         disabled={syncing || downloading || generating || isArchived}
@@ -65,15 +64,14 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
         testID="sync-button"
       >
         {syncing ? "Syncing..." : "Sync Chapters"}
-      </Button>
+      </AppButton>
 
       {/* Show "Download All" only for stories with zero downloads */}
       {story.downloadedChapters === 0 &&
         story.totalChapters > 0 &&
         !isArchived &&
         onDownloadAll && (
-          <Button
-            mode="contained-tonal"
+          <AppButton
             icon="download-multiple"
             style={styles.actionBtn}
             disabled={downloading || syncing || generating}
@@ -81,7 +79,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             testID="download-all-button"
           >
             Download All
-          </Button>
+          </AppButton>
         )}
 
       {downloading && (
@@ -96,14 +94,14 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             {downloadStatus}
           </Text>
           {onViewDownloads && (
-            <Button
+            <AppButton
               mode="text"
               compact
               onPress={onViewDownloads}
               style={styles.viewDownloadsBtn}
             >
               Go to Downloads Manager
-            </Button>
+            </AppButton>
           )}
         </View>
       )}
@@ -118,8 +116,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
       )}
 
       <View style={[styles.buttonRow, stacked && styles.buttonRowStacked]} testID="story-actions-row">
-        <Button
-          mode="outlined"
+        <AppButton
           disabled={story.downloadedChapters === 0 || generating}
           loading={generating}
           onPress={onGenerate}
@@ -127,16 +124,15 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
           testID="generate-button"
         >
           Generate EPUB
-        </Button>
-        <Button
-          mode="contained"
+        </AppButton>
+        <AppButton
           disabled={!hasEpub || generating}
           onPress={onRead}
           style={[styles.actionRowButton, stacked && styles.actionRowButtonStacked]}
           testID="read-button"
         >
           Read EPUB
-        </Button>
+        </AppButton>
       </View>
 
       {showStale ? (

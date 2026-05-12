@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
-  Button,
   Dialog,
   HelperText,
   Portal,
@@ -9,6 +8,7 @@ import {
   Text,
   TextInput,
 } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 
 import { DOWNLOAD_DEFAULT_CHAPTER_COUNT } from "../../constants/epub";
 import type { DownloadRangeMode } from "../../types";
@@ -272,10 +272,10 @@ const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
           ) : null}
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
-          <Button testID="download-range-download-button" onPress={handleDownload}>
+          <AppButton onPress={onDismiss}>Cancel</AppButton>
+          <AppButton testID="download-range-download-button" onPress={handleDownload}>
             Download
-          </Button>
+          </AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

@@ -7,6 +7,7 @@ import {
   ProgressBar,
   IconButton,
 } from "react-native-paper";
+import { useAppTheme } from "../theme/useAppTheme";
 
 interface Props {
   title: string;
@@ -40,6 +41,7 @@ export const StoryCard = ({
   compact = false,
 }: Props) => {
   const theme = useTheme();
+  const appTheme = useAppTheme();
 
   const handlePress = () => {
     if (selectionMode && onLongPress) {
@@ -53,6 +55,7 @@ export const StoryCard = ({
     <Card
       style={[
         styles.card,
+        { borderRadius: appTheme.shapes.cardRadius },
         compact && styles.cardCompact,
         selected && { borderColor: theme.colors.primary, borderWidth: 2 },
       ]}
@@ -152,7 +155,7 @@ export const StoryCard = ({
                 style={styles.scoreIcon}
                 testID="story-card-score-icon"
               />
-              <Text variant="labelSmall" style={styles.scoreText}>
+              <Text variant="labelLarge" style={styles.scoreText}>
                 {score}
               </Text>
             </View>
@@ -182,8 +185,7 @@ export const StoryCard = ({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    marginBottom: 0, // Handled by parent container now for grid gaps
-    borderRadius: 12,
+    marginBottom: 0,
     marginTop: 8,
     flexDirection: "column",
     justifyContent: "space-between",
@@ -237,7 +239,6 @@ const styles = StyleSheet.create({
     margin: 0,
   },
   scoreText: {
-    fontWeight: "bold",
     marginLeft: -4,
   },
   selectionIndicator: {

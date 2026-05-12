@@ -137,6 +137,19 @@ jest.mock("react-native-paper", () => {
   };
 });
 
+jest.mock("../../theme/useAppTheme", () => ({
+  useAppTheme: jest.fn().mockReturnValue({
+    shapes: { dialogRadius: 16, fabRadius: 16, cardRadius: 12, buttonRadius: 8, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+    buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+    colors: {
+      primary: "#6200ee",
+      onPrimary: "#ffffff",
+      surface: "#ffffff",
+      surfaceVariant: "#f0f0f0",
+    },
+  }),
+}));
+
 jest.mock("../../hooks/useScreenLayout", () => ({
   useScreenLayout: jest.fn().mockReturnValue({
     screenWidth: 1024,

@@ -5,7 +5,7 @@ import { useSettings } from "../useSettings";
 import { storageService } from "../../services/StorageService";
 import { downloadManager } from "../../services/download/DownloadManager";
 import { backupService } from "../../services/BackupService";
-import { useTheme } from "../../theme/ThemeContext";
+import { useThemeContext } from "../../theme/ThemeContext";
 
 jest.mock("../../services/StorageService");
 jest.mock("../../services/download/DownloadManager", () => ({
@@ -35,7 +35,7 @@ describe("useSettings", () => {
     const { useAppAlert } = require("../../context/AlertContext");
     useAppAlert.mockReturnValue({ showAlert: mockShowAlert });
 
-    (useTheme as jest.Mock).mockReturnValue({
+    (useThemeContext as jest.Mock).mockReturnValue({
       themeMode: "dark",
       setThemeMode: mockSetThemeMode,
     });

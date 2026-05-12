@@ -9,13 +9,14 @@ import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Modal,
   Text,
-  Button,
   useTheme,
   List,
   Divider,
   Searchbar,
   MD3Theme,
 } from "react-native-paper";
+import { AppButton } from "./theme/AppButton";
+import { useAppTheme } from "../theme/useAppTheme";
 import Slider from "@react-native-community/slider";
 import type { TTSSettings } from "../types";
 import { useScreenLayout } from "../hooks/useScreenLayout";
@@ -208,9 +209,9 @@ const ModalContent = React.memo(
           ))}
         </ScrollView>
 
-        <Button mode="contained" onPress={onDismiss} style={styles.closeButton}>
+        <AppButton onPress={onDismiss} style={styles.closeButton}>
           Done
-        </Button>
+        </AppButton>
       </>
     );
   },
@@ -223,6 +224,7 @@ export const TTSSettingsModal: React.FC<Props> = ({
   onSettingsChange,
 }) => {
   const theme = useTheme();
+  const appTheme = useAppTheme();
   const layout = useScreenLayout() as ScreenLayout;
   const screenWidth = layout.screenWidth || 0;
   const widthClass =
@@ -251,6 +253,7 @@ export const TTSSettingsModal: React.FC<Props> = ({
       contentContainerStyle={[
         styles.modalContent,
         {
+          borderRadius: appTheme.shapes.dialogRadius,
           backgroundColor: theme.colors.surface,
           margin: modalMargin,
           maxWidth: modalMaxWidth,
@@ -274,12 +277,10 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
     padding: 20,
-    borderRadius: 12,
     elevation: 5,
   },
   title: {
     marginBottom: 16,
-    fontWeight: "bold",
   },
   scroll: {
     marginBottom: 16,
@@ -290,7 +291,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginTop: 8,
     marginBottom: 8,
-    fontWeight: "bold",
   },
   slider: {
     width: "100%",

@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { List, Divider, Text, Button } from "react-native-paper";
+import { List, Divider, Text } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 
 interface ListSectionLayoutProps {
   title: string;
@@ -23,9 +24,9 @@ export function ListSectionLayout({
     <List.Section>
       <View style={styles.sectionHeader}>
         <List.Subheader>{title}</List.Subheader>
-        <Button icon="plus" mode="text" onPress={onAdd}>
+        <AppButton icon="plus" mode="text" onPress={onAdd}>
           Add
-        </Button>
+        </AppButton>
       </View>
       <Text variant="bodySmall" style={styles.sectionDescription}>
         {description}

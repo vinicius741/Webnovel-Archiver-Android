@@ -9,4 +9,7 @@ export const STORAGE_KEYS = {
   TABS: "wa_tabs_v1",
   FOLD_LAYOUT_MODE: "wa_fold_layout_mode_v1",
   SOURCE_DOWNLOAD_SETTINGS: "wa_source_download_settings_v1",
+  THEME_DARK_VARIANT: "wa_theme_dark_variant_v1",
+  THEME_LIGHT_VARIANT: "wa_theme_light_variant_v1",
+  THEME_FOLLOW_SYSTEM: "wa_theme_follow_system_v1",
 } as const;

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Dialog, Portal, TextInput, Button } from "react-native-paper";
+import { Dialog, Portal, TextInput } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 
 interface TabDialogProps {
   visible: boolean;
@@ -50,10 +51,10 @@ export const TabDialog = ({
           />
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={handleDismiss}>Cancel</Button>
-          <Button onPress={handleSave} disabled={!name.trim()}>
+          <AppButton onPress={handleDismiss}>Cancel</AppButton>
+          <AppButton onPress={handleSave} disabled={!name.trim()}>
             Save
-          </Button>
+          </AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

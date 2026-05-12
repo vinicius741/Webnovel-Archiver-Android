@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { View, StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
-import { useTheme } from "react-native-paper";
+import { useAppTheme } from "../theme/useAppTheme";
 
 interface ReaderContentProps {
   webViewRef: React.RefObject<WebView>;
@@ -20,7 +20,7 @@ export const ReaderContent = ({
   bottomPadding = 112,
   onTTSUnitPress,
 }: ReaderContentProps) => {
-  const theme = useTheme();
+  const theme = useAppTheme();
 
   const htmlContent = useMemo(() => {
     if (!processedContent) return "";
@@ -30,9 +30,9 @@ export const ReaderContent = ({
                 margin: 0;
                 background-color: ${theme.colors.surface};
                 color: ${theme.colors.onSurface};
-                font-family: sans-serif;
+                font-family: ${theme.typography.readerFontFamily};
                 padding: ${contentPadding}px;
-                line-height: 1.6;
+                line-height: ${theme.typography.readerLineHeight};
                 font-size: 18px;
                 padding-bottom: ${bottomPadding}px;
                 box-sizing: border-box;

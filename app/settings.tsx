@@ -1,19 +1,16 @@
 import React from "react";
-import { Text, SegmentedButtons, List } from "react-native-paper";
+import { SegmentedButtons, List } from "react-native-paper";
 import { StyleSheet, View, ScrollView } from "react-native";
 import { ScreenContainer } from "../src/components/ScreenContainer";
+import { ThemePicker } from "../src/components/settings/ThemePicker";
 import { useFoldLayoutMode } from "../src/context/FoldLayoutContext";
 import { useSettings } from "../src/hooks/useSettings";
 import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { router } from "expo-router";
-import type { ThemeMode } from "../src/theme/ThemeContext";
 
 type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
   widthClass?: "compact" | "medium" | "expanded";
 };
-
-const isThemeMode = (value: string): value is ThemeMode =>
-  value === "system" || value === "light" || value === "dark";
 
 export default function SettingsScreen() {
   const screenLayout = useScreenLayout() as AdaptiveLayout;
@@ -26,8 +23,6 @@ export default function SettingsScreen() {
         ? "medium"
         : "compact");
   const {
-    themeMode,
-    setThemeMode,
     clearData,
     handleExportBackup,
     handleImportBackup,
@@ -47,39 +42,9 @@ export default function SettingsScreen() {
         <List.Section>
           <List.Subheader>Appearance</List.Subheader>
           <View style={styles.container}>
-            <Text variant="bodyMedium" style={styles.label}>
-              Theme
-            </Text>
-            <SegmentedButtons
-              value={themeMode}
-              onValueChange={(value) => {
-                if (isThemeMode(value)) {
-                  void setThemeMode(value);
-                }
-              }}
-              buttons={[
-                {
-                  value: "system",
-                  label: "System",
-                  icon: "theme-light-dark",
-                },
-                {
-                  value: "light",
-                  label: "Light",
-                  icon: "weather-sunny",
-                },
-                {
-                  value: "dark",
-                  label: "Dark",
-                  icon: "weather-night",
-                },
-              ]}
-            />
+            <ThemePicker />
           </View>
           <View style={styles.container}>
-            <Text variant="bodyMedium" style={styles.label}>
-              Fold Layout (Expo Go)
-            </Text>
             <SegmentedButtons
               value={foldLayoutMode}
               onValueChange={(value) => {
@@ -190,8 +155,5 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     paddingBottom: 8,
-  },
-  label: {
-    marginBottom: 8,
   },
 });

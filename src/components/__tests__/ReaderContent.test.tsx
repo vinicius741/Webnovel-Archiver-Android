@@ -6,13 +6,19 @@ jest.mock("react-native-webview", () => ({
   WebView: "WebView",
 }));
 
-jest.mock("react-native-paper", () => ({
-  ...jest.requireActual("react-native-paper"),
-  useTheme: jest.fn().mockReturnValue({
+jest.mock("../../theme/useAppTheme", () => ({
+  useAppTheme: jest.fn().mockReturnValue({
     colors: {
       surface: "#ffffff",
       onSurface: "#000000",
       primary: "#6200ee",
+    },
+    typography: {
+      fontFamily: "sans-serif",
+      headingFontFamily: "sans-serif",
+      monoFontFamily: "monospace",
+      readerFontFamily: "serif",
+      readerLineHeight: 1.7,
     },
   }),
 }));
@@ -38,6 +44,8 @@ describe("ReaderContent", () => {
     expect(webView.props.source.html).toContain(".tts-active");
     expect(webView.props.source.html).toContain("padding: 20px");
     expect(webView.props.source.html).toContain("padding-bottom: 112px");
+    expect(webView.props.source.html).toContain("font-family: serif");
+    expect(webView.props.source.html).toContain("line-height: 1.7");
   });
 
   it("should apply custom reader padding values", () => {

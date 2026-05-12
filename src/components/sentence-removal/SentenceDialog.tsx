@@ -1,5 +1,6 @@
 import React from "react";
-import { Portal, Dialog, TextInput, Button } from "react-native-paper";
+import { Portal, Dialog, TextInput } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 
 interface SentenceDialogProps {
   visible: boolean;
@@ -36,8 +37,8 @@ export function SentenceDialog({
           />
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
-          <Button onPress={onSave}>Save</Button>
+          <AppButton onPress={onDismiss}>Cancel</AppButton>
+          <AppButton onPress={onSave}>Save</AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

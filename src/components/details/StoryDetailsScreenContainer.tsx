@@ -3,7 +3,6 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import {
   ActivityIndicator,
-  Button,
   FAB,
   List,
   Text,
@@ -16,6 +15,7 @@ import { useStoryDetails } from "../../hooks/useStoryDetails";
 import { useStoryDetailsViewState } from "../../hooks/details/useStoryDetailsViewState";
 import { EpubConfig } from "../../types";
 import { ScreenContainer } from "../ScreenContainer";
+import { AppButton } from "../theme/AppButton";
 import { StoryMenu } from "./StoryMenu";
 import { StoryDetailsChaptersList } from "./StoryDetailsChaptersList";
 import { StoryDetailsInfoPanel } from "./StoryDetailsInfoPanel";
@@ -117,7 +117,7 @@ export const StoryDetailsScreenContainer: React.FC<
       <ScreenContainer>
         <View style={styles.center}>
           <Text variant="headlineSmall">Story not found</Text>
-          <Button onPress={() => router.back()}>Go Back</Button>
+          <AppButton onPress={() => router.back()}>Go Back</AppButton>
         </View>
       </ScreenContainer>
     );

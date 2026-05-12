@@ -130,7 +130,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tabText: {
-    fontWeight: "600",
   },
   row: {
     flexDirection: "row",

@@ -261,7 +261,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   storyTitle: {
-    fontWeight: "600",
   },
   storySubtitle: {
     opacity: 0.7,

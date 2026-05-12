@@ -4,11 +4,12 @@ import {
   Text,
   useTheme,
   Modal,
-  Button,
   TextInput,
   Divider,
   Menu,
 } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
+import { useAppTheme } from "../../theme/useAppTheme";
 import { useScreenLayout } from "../../hooks/useScreenLayout";
 
 interface Props {
@@ -53,6 +54,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
   onResetSource,
 }) => {
   const theme = useTheme();
+  const appTheme = useAppTheme();
   const layout = useScreenLayout() as ScreenLayout;
   const [menuVisible, setMenuVisible] = useState(false);
   const screenWidth = layout.screenWidth || 0;
@@ -77,6 +79,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
       contentContainerStyle={[
         styles.modalContent,
         {
+          borderRadius: appTheme.shapes.dialogRadius,
           backgroundColor: theme.colors.surface,
           margin: modalMargin,
           maxWidth: modalMaxWidth,
@@ -88,7 +91,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
         Download Manager
       </Text>
 
-      <Button
+      <AppButton
         mode="outlined"
         icon="delete-sweep"
         onPress={onClearCompletedPress}
@@ -96,7 +99,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
         style={styles.clearButton}
       >
         Clear Completed Downloads
-      </Button>
+      </AppButton>
 
       <Divider style={styles.divider} />
 
@@ -107,7 +110,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
         visible={menuVisible}
         onDismiss={() => setMenuVisible(false)}
         anchor={
-          <Button
+          <AppButton
             mode="outlined"
             onPress={() => setMenuVisible(true)}
             icon="chevron-down"
@@ -115,7 +118,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
             contentStyle={styles.sourceButtonContent}
           >
             {sourceLabel}
-          </Button>
+          </AppButton>
         }
       >
         <Menu.Item
@@ -144,7 +147,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
       </Menu>
 
       {selectedSource && (
-        <Button
+        <AppButton
           mode="text"
           icon="restore"
           onPress={onResetSource}
@@ -153,7 +156,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
           style={styles.resetButton}
         >
           Reset to Default
-        </Button>
+        </AppButton>
       )}
 
       <Divider style={styles.divider} />
@@ -198,9 +201,9 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
         </Text>
       ) : null}
 
-      <Button mode="contained" onPress={onDismiss} style={styles.closeButton}>
+      <AppButton onPress={onDismiss} style={styles.closeButton}>
         Done
-      </Button>
+      </AppButton>
     </Modal>
   );
 };
@@ -210,11 +213,9 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
     padding: 20,
-    borderRadius: 12,
   },
   modalTitle: {
     marginBottom: 16,
-    fontWeight: "bold",
   },
   clearButton: {
     marginBottom: 8,

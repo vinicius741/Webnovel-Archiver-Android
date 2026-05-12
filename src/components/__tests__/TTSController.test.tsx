@@ -3,20 +3,18 @@ import { render, fireEvent } from "@testing-library/react-native";
 import { TTSController } from "../TTSController";
 import { ThemeProvider } from "react-native-paper";
 
+const themeColors = {
+  primary: "#6200ee",
+  onPrimary: "#ffffff",
+  elevation: {
+    level3: "#ffffff",
+  },
+};
+
 jest.mock("react-native-paper", () => {
   const React = require("react");
   const { Text, View } = jest.requireActual("react-native");
   const OriginalModule = jest.requireActual("react-native-paper");
-
-  const mockTheme = {
-    colors: {
-      primary: "#6200ee",
-      onPrimary: "#ffffff",
-      elevation: {
-        level3: "#ffffff",
-      },
-    },
-  };
 
   const MockIconButton = ({
     icon,
@@ -48,21 +46,21 @@ jest.mock("react-native-paper", () => {
 
   return {
     ...OriginalModule,
-    useTheme: jest.fn().mockReturnValue(mockTheme),
+    useTheme: jest.fn().mockReturnValue({
+      colors: themeColors,
+    }),
     IconButton: MockIconButton,
   };
 });
 
+jest.mock("../../theme/useAppTheme", () => ({
+  useAppTheme: jest.fn().mockReturnValue({
+    colors: themeColors,
+    shapes: { fabRadius: 16 },
+  }),
+}));
+
 describe("TTSController", () => {
-  const mockTheme = {
-    colors: {
-      primary: "#6200ee",
-      onPrimary: "#ffffff",
-      elevation: {
-        level3: "#ffffff",
-      },
-    },
-  };
 
   const defaultProps = {
     onPlayPause: jest.fn(),
@@ -86,7 +84,7 @@ describe("TTSController", () => {
 
   const renderWithTheme = (component: React.ReactElement) => {
     return render(
-      <ThemeProvider theme={mockTheme as any}>{component}</ThemeProvider>,
+      <ThemeProvider theme={{ colors: themeColors } as any}>{component}</ThemeProvider>,
     );
   };
 

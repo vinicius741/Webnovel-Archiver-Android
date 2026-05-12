@@ -127,7 +127,7 @@ function AppLayout() {
           },
           headerTintColor: theme.colors.onSurface,
           headerTitleStyle: {
-            fontWeight: "bold",
+            fontFamily: theme.fonts.titleLarge.fontFamily,
           },
         }}
       >

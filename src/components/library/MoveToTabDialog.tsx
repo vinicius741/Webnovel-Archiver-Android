@@ -5,8 +5,8 @@ import {
   Portal,
   Text,
   RadioButton,
-  Button,
 } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 import { Tab } from "../../types/tab";
 
 interface MoveToTabDialogProps {
@@ -84,8 +84,8 @@ export const MoveToTabDialog = ({
           </ScrollView>
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
-          <Button onPress={handleMove}>Move</Button>
+          <AppButton onPress={onDismiss}>Cancel</AppButton>
+          <AppButton onPress={handleMove}>Move</AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

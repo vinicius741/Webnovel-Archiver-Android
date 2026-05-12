@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { Text, Button, useTheme, Surface } from "react-native-paper";
+import { Text, useTheme, Surface } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface SelectionActionBarProps {
@@ -30,16 +31,15 @@ export const SelectionActionBar = ({
           {selectedCount} selected
         </Text>
         <View style={styles.actions}>
-          <Button onPress={onCancel} mode="text">
+          <AppButton onPress={onCancel} mode="text">
             Cancel
-          </Button>
-          <Button
+          </AppButton>
+          <AppButton
             onPress={onMove}
-            mode="contained"
             disabled={selectedCount === 0}
           >
             Move
-          </Button>
+          </AppButton>
         </View>
       </View>
     </Surface>

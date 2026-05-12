@@ -1,9 +1,16 @@
-import { MD3LightTheme as DefaultTheme } from "react-native-paper";
+import { MD3LightTheme } from "react-native-paper";
+import type { AppTheme } from "../types";
 
-export const LightTheme = {
-  ...DefaultTheme,
+export const classicLightTheme: AppTheme = {
+  ...MD3LightTheme,
+  id: "classic-light",
+  name: "Classic Light",
+  description: "Warm cream light theme with navy accents",
+  icon: "white-balance-sunny",
+  isDark: false,
+  roundness: 8,
   colors: {
-    ...DefaultTheme.colors,
+    ...MD3LightTheme.colors,
     primary: "#1B3A5F",
     onPrimary: "#FFFFFF",
     primaryContainer: "#D4E4F7",
@@ -55,4 +62,26 @@ export const LightTheme = {
     onSurfaceDisabled: "rgba(30, 28, 26, 0.38)",
     backdrop: "rgba(51, 48, 44, 0.4)",
   },
-};
+  typography: {
+    fontFamily: "sans-serif",
+    headingFontFamily: "sans-serif",
+    monoFontFamily: "monospace",
+    readerFontFamily: "serif",
+    readerLineHeight: 1.7,
+  },
+  shapes: {
+    cardRadius: 12,
+    buttonRadius: 8,
+    dialogRadius: 16,
+    fabRadius: 16,
+    chipRadius: 8,
+    searchBarRadius: 8,
+    elevationStyle: "shadow",
+  },
+  buttonDefaults: {
+    mode: "contained-tonal",
+    textTransform: "none",
+    borderWidth: 0,
+    buttonHeight: 42,
+  },
+}

@@ -4,7 +4,6 @@ import {
   Portal,
   Dialog,
   TextInput,
-  Button,
   Text,
   Divider,
   Switch,
@@ -12,6 +11,7 @@ import {
   List,
   useTheme,
 } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 import { RegexCleanupRule } from "../../types";
 import {
   RuleDraft,
@@ -272,10 +272,10 @@ export function RuleDialog({
           </ScrollView>
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
-          <Button onPress={onSave} disabled={!ruleValidation.valid}>
+          <AppButton onPress={onDismiss}>Cancel</AppButton>
+          <AppButton onPress={onSave} disabled={!ruleValidation.valid}>
             Save
-          </Button>
+          </AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

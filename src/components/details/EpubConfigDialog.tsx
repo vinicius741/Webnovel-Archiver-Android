@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import {
-  Button,
   Dialog,
   HelperText,
   Portal,
@@ -9,6 +8,7 @@ import {
   Text,
   TextInput,
 } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 
 import {
   EPUB_MAX_CHAPTERS_MIN,
@@ -181,10 +181,10 @@ const EpubConfigDialogContent: React.FC<
           ) : null}
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
-          <Button testID="epub-save-button" onPress={() => void handleSave()}>
+          <AppButton onPress={onDismiss}>Cancel</AppButton>
+          <AppButton testID="epub-save-button" onPress={() => void handleSave()}>
             Save
-          </Button>
+          </AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

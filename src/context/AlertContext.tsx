@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from "react";
-import { Button, Dialog, Portal, Text, useTheme } from "react-native-paper";
+import { Dialog, Portal, Text, useTheme } from "react-native-paper";
+import { AppButton } from "../components/theme/AppButton";
+import { useAppTheme } from "../theme/useAppTheme";
 import { View } from "react-native";
 
 interface AlertButton {
@@ -20,6 +22,7 @@ export const AlertProvider = ({ children }: { children: ReactNode }) => {
   const [message, setMessage] = useState<string | undefined>("");
   const [buttons, setButtons] = useState<AlertButton[]>([]);
   const theme = useTheme();
+  const appTheme = useAppTheme();
 
   const showAlert = (
     newTitle: string,
@@ -52,7 +55,7 @@ export const AlertProvider = ({ children }: { children: ReactNode }) => {
           onDismiss={hideAlert}
           style={{
             backgroundColor: theme.colors.elevation.level3,
-            borderRadius: 16,
+            borderRadius: appTheme.shapes.dialogRadius,
           }}
         >
           <Dialog.Icon icon="alert-circle-outline" />
@@ -82,7 +85,7 @@ export const AlertProvider = ({ children }: { children: ReactNode }) => {
               }}
             >
               {buttons.map((btn, index) => (
-                <Button
+                <AppButton
                   key={index}
                   mode={btn.style === "cancel" ? "outlined" : "text"}
                   onPress={() => {
@@ -97,7 +100,7 @@ export const AlertProvider = ({ children }: { children: ReactNode }) => {
                   style={{ minWidth: 80 }}
                 >
                   {btn.text}
-                </Button>
+                </AppButton>
               ))}
             </View>
           </Dialog.Actions>

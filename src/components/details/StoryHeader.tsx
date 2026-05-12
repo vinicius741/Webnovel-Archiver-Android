@@ -123,7 +123,7 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({
               size={16}
               style={styles.statIcon}
             />
-            <Text variant="bodyMedium" style={styles.scoreText}>
+            <Text variant="titleSmall" style={styles.scoreText}>
               {story.score}
             </Text>
           </View>
@@ -218,6 +218,5 @@ const styles = StyleSheet.create({
     marginRight: -4,
   },
   scoreText: {
-    fontWeight: "bold",
   },
 });

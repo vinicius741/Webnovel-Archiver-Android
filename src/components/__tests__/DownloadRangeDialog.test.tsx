@@ -3,14 +3,29 @@ import { render, fireEvent } from "@testing-library/react-native";
 import { DownloadRangeDialog } from "../details/DownloadRangeDialog";
 import { MD3LightTheme, PaperProvider } from "react-native-paper";
 
-describe("DownloadRangeDialog", () => {
-  const mockTheme = {
-    ...MD3LightTheme,
+const mockTheme = {
+  ...MD3LightTheme,
+  colors: {
+    ...MD3LightTheme.colors,
+    primary: "#6200ee",
+  },
+  buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+  shapes: { cardRadius: 12, buttonRadius: 8, dialogRadius: 16, fabRadius: 16, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+};
+
+jest.mock("../../theme/useAppTheme", () => ({
+  useAppTheme: jest.fn().mockReturnValue({
+    ...jest.requireActual("react-native-paper").MD3LightTheme,
     colors: {
-      ...MD3LightTheme.colors,
+      ...jest.requireActual("react-native-paper").MD3LightTheme.colors,
       primary: "#6200ee",
     },
-  };
+    buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+    shapes: { cardRadius: 12, buttonRadius: 8, dialogRadius: 16, fabRadius: 16, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+  }),
+}));
+
+describe("DownloadRangeDialog", () => {
 
   const defaultProps = {
     visible: true,
@@ -21,7 +36,7 @@ describe("DownloadRangeDialog", () => {
   };
 
   const renderWithTheme = (component: React.ReactElement) => {
-    return render(<PaperProvider theme={mockTheme}>{component}</PaperProvider>);
+    return render(<PaperProvider theme={mockTheme as any}>{component}</PaperProvider>);
   };
 
   const switchMode = (container: ReturnType<typeof render>, mode: string) => {

@@ -260,7 +260,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   tabName: {
-    fontWeight: "500",
   },
   tabActions: {
     flexDirection: "row",

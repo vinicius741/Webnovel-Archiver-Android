@@ -3,6 +3,22 @@ import { render, fireEvent } from "@testing-library/react-native";
 import { StoryCard } from "../StoryCard";
 import { ThemeProvider } from "react-native-paper";
 
+const themeData = {
+  colors: {
+    surface: "#ffffff",
+    onSurface: "#000000",
+    onSurfaceVariant: "#666666",
+    primary: "#6200ee",
+  },
+  animation: { scale: 1 },
+  fonts: {
+    regular: { fontFamily: "System", fontWeight: "400" as const },
+  },
+  shapes: { cardRadius: 12, buttonRadius: 8, dialogRadius: 16, fabRadius: 16, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+  buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+  roundness: 8,
+};
+
 jest.mock("react-native-paper", () => ({
   ...jest.requireActual("react-native-paper"),
   useTheme: jest.fn().mockReturnValue({
@@ -12,31 +28,36 @@ jest.mock("react-native-paper", () => ({
       onSurfaceVariant: "#666666",
       primary: "#6200ee",
     },
+    animation: { scale: 1 },
+    fonts: {
+      regular: { fontFamily: "System", fontWeight: "400" as const },
+    },
+    roundness: 8,
   }),
 }));
 
-describe("StoryCard", () => {
-  const mockTheme = {
+jest.mock("../../theme/useAppTheme", () => ({
+  useAppTheme: jest.fn().mockReturnValue({
     colors: {
       surface: "#ffffff",
       onSurface: "#000000",
       onSurfaceVariant: "#666666",
       primary: "#6200ee",
     },
-    animation: {
-      scale: 1,
-    },
+    animation: { scale: 1 },
     fonts: {
-      regular: {
-        fontFamily: "System",
-        fontWeight: "400" as const,
-      },
+      regular: { fontFamily: "System", fontWeight: "400" as const },
     },
-  };
+    shapes: { cardRadius: 12, buttonRadius: 8, dialogRadius: 16, fabRadius: 16, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+    buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+    roundness: 8,
+  }),
+}));
 
+describe("StoryCard", () => {
   const renderWithTheme = (component: React.ReactElement) => {
     return render(
-      <ThemeProvider theme={mockTheme as any}>{component}</ThemeProvider>,
+      <ThemeProvider theme={themeData as any}>{component}</ThemeProvider>,
     );
   };
 

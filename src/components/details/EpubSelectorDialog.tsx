@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View, FlatList } from "react-native";
-import { Button, Dialog, Portal, Text, List } from "react-native-paper";
+import { Dialog, Portal, Text, List } from "react-native-paper";
+import { AppButton } from "../theme/AppButton";
 
 interface EpubSelectorDialogProps {
   visible: boolean;
@@ -70,7 +71,7 @@ export const EpubSelectorDialog: React.FC<EpubSelectorDialogProps> = ({
           </View>
         </Dialog.Content>
         <Dialog.Actions>
-          <Button onPress={onDismiss}>Cancel</Button>
+          <AppButton onPress={onDismiss}>Cancel</AppButton>
         </Dialog.Actions>
       </Dialog>
     </Portal>

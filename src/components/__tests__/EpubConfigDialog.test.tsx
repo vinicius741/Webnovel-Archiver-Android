@@ -4,6 +4,20 @@ import { MD3LightTheme, PaperProvider } from "react-native-paper";
 
 import { EpubConfigDialog } from "../details/EpubConfigDialog";
 
+const mockAppTheme = {
+  ...MD3LightTheme,
+  buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+  shapes: { cardRadius: 12, buttonRadius: 8, dialogRadius: 16, fabRadius: 16, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+};
+
+jest.mock("../../theme/useAppTheme", () => ({
+  useAppTheme: jest.fn().mockReturnValue({
+    ...jest.requireActual("react-native-paper").MD3LightTheme,
+    buttonDefaults: { mode: "contained-tonal", textTransform: "none", borderWidth: 0, buttonHeight: 42 },
+    shapes: { cardRadius: 12, buttonRadius: 8, dialogRadius: 16, fabRadius: 16, chipRadius: 8, searchBarRadius: 8, elevationStyle: "shadow" },
+  }),
+}));
+
 describe("EpubConfigDialog", () => {
   const baseProps = {
     visible: true,

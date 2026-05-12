@@ -169,7 +169,6 @@ const styles = StyleSheet.create({
   chapterTitle: {
     flex: 1,
     marginRight: 8,
-    fontWeight: "500",
   },
   statusChip: {
     height: 22,

@@ -2,13 +2,13 @@ import React, { useState, useCallback } from "react";
 import { StyleSheet, View, TouchableOpacity, ScrollView } from "react-native";
 import {
   TextInput,
-  Button,
   Text,
   IconButton,
   useTheme,
   RadioButton,
   Divider,
 } from "react-native-paper";
+import { AppButton } from "../src/components/theme/AppButton";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useAddStory } from "../src/hooks/useAddStory";
 import { useScreenLayout } from "../src/hooks/useScreenLayout";
@@ -118,15 +118,14 @@ export default function AddStoryScreen() {
             </View>
           )}
 
-          <Button
-            mode="contained"
+          <AppButton
             onPress={onAdd}
             loading={loading}
             disabled={loading || !url}
             style={styles.button}
           >
             Fetch Story
-          </Button>
+          </AppButton>
           {loading && statusMessage ? (
             <Text style={styles.status} variant="bodySmall">
               {statusMessage}
