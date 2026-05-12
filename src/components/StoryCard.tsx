@@ -147,7 +147,7 @@ export const StoryCard = ({
             <View style={styles.scoreContainer}>
               <IconButton
                 icon="star"
-                iconColor="#FFD700"
+                iconColor={theme.colors.tertiary}
                 size={12}
                 style={styles.scoreIcon}
                 testID="story-card-score-icon"

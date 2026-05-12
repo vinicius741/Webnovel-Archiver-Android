@@ -193,7 +193,7 @@ const ModalContent = React.memo(
               placeholder="Search voices..."
               onChangeText={setSearchQuery}
               value={searchQuery}
-              style={styles.searchbar}
+              style={[styles.searchbar, { backgroundColor: theme.colors.surfaceVariant }]}
               inputStyle={styles.searchbarInput}
             />
           </View>
@@ -315,7 +315,6 @@ const styles = StyleSheet.create({
     marginVertical: 8,
     height: 45,
     elevation: 0,
-    backgroundColor: "rgba(0,0,0,0.05)",
   },
   searchbarInput: {
     minHeight: 0,

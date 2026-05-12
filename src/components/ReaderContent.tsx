@@ -43,7 +43,7 @@ export const ReaderContent = ({
                 height: auto;
             }
             .tts-active {
-                background-color: rgba(255, 235, 59, 0.3);
+                background-color: ${theme.colors.primary}33;
                 border-left: 3px solid ${theme.colors.primary};
                 padding-left: 4px;
             }

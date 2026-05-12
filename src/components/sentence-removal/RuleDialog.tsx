@@ -10,6 +10,7 @@ import {
   Switch,
   SegmentedButtons,
   List,
+  useTheme,
 } from "react-native-paper";
 import { RegexCleanupRule } from "../../types";
 import {
@@ -50,6 +51,7 @@ export function RuleDialog({
   onSave,
   onDismiss,
 }: RuleDialogProps) {
+  const theme = useTheme();
   const { mode, quickConfig } = ruleDraft;
 
   const handleQuickConfigChange = (newConfig: QuickBuilderConfig) => {
@@ -264,7 +266,7 @@ export function RuleDialog({
             <Text variant="bodySmall" style={styles.previewLabel}>
               Preview output
             </Text>
-            <View style={styles.previewBox}>
+            <View style={[styles.previewBox, { borderColor: theme.colors.outline }]}>
               <Text variant="bodySmall">{previewOutput || "(No output)"}</Text>
             </View>
           </ScrollView>
@@ -347,7 +349,6 @@ const styles = StyleSheet.create({
   },
   previewBox: {
     borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.2)",
     borderRadius: 8,
     padding: 10,
     minHeight: 52,

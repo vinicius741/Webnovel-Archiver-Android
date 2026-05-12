@@ -116,10 +116,10 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({
 
       <View style={[styles.stats, isStartAligned && styles.statsStart]}>
         {story.score && (
-          <View style={styles.statItem}>
+          <View style={[styles.statItem, { backgroundColor: theme.colors.surfaceVariant }]}>
             <IconButton
               icon="star"
-              iconColor="#FFD700"
+              iconColor={theme.colors.tertiary}
               size={16}
               style={styles.statIcon}
             />
@@ -128,7 +128,7 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({
             </Text>
           </View>
         )}
-        <View style={styles.statItem}>
+        <View style={[styles.statItem, { backgroundColor: theme.colors.surfaceVariant }]}>
           <IconButton
             icon="book-open-variant"
             size={16}
@@ -136,7 +136,7 @@ export const StoryHeader: React.FC<StoryHeaderProps> = ({
           />
           <Text variant="bodyMedium">{story.totalChapters} Chs</Text>
         </View>
-        <View style={styles.statItem}>
+        <View style={[styles.statItem, { backgroundColor: theme.colors.surfaceVariant }]}>
           <IconButton icon="download" size={16} style={styles.statIcon} />
           <Text variant="bodyMedium">{story.downloadedChapters} Saved</Text>
         </View>
@@ -209,7 +209,6 @@ const styles = StyleSheet.create({
   statItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.05)",
     borderRadius: 20,
     paddingRight: 12,
     height: 32,
