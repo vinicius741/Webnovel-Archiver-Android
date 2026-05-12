@@ -12,4 +12,6 @@ export const STORAGE_KEYS = {
   THEME_DARK_VARIANT: "wa_theme_dark_variant_v1",
   THEME_LIGHT_VARIANT: "wa_theme_light_variant_v1",
   THEME_FOLLOW_SYSTEM: "wa_theme_follow_system_v1",
+  THEME_MODE: "wa_theme_mode_v2",
+  THEME_ACTIVE: "wa_theme_active_v1",
 } as const;

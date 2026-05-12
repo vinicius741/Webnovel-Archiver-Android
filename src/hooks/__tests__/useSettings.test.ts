@@ -5,7 +5,6 @@ import { useSettings } from "../useSettings";
 import { storageService } from "../../services/StorageService";
 import { downloadManager } from "../../services/download/DownloadManager";
 import { backupService } from "../../services/BackupService";
-import { useThemeContext } from "../../theme/ThemeContext";
 
 jest.mock("../../services/StorageService");
 jest.mock("../../services/download/DownloadManager", () => ({
@@ -22,23 +21,16 @@ jest.mock("../../services/source/SourceRegistry", () => ({
   },
 }));
 jest.mock("../../services/BackupService");
-jest.mock("../../theme/ThemeContext");
 jest.mock("expo-router");
 jest.mock("../../context/AlertContext");
 
 describe("useSettings", () => {
-  const mockSetThemeMode = jest.fn();
   const mockShowAlert = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
     const { useAppAlert } = require("../../context/AlertContext");
     useAppAlert.mockReturnValue({ showAlert: mockShowAlert });
-
-    (useThemeContext as jest.Mock).mockReturnValue({
-      themeMode: "dark",
-      setThemeMode: mockSetThemeMode,
-    });
 
     (storageService.getSettings as jest.Mock).mockResolvedValue({
       downloadConcurrency: 3,

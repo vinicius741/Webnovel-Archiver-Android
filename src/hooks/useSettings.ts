@@ -4,7 +4,6 @@ import { storageService } from "../services/StorageService";
 import { downloadManager } from "../services/download/DownloadManager";
 import { sourceRegistry } from "../services/source/SourceRegistry";
 import { backupService } from "../services/BackupService";
-import { useThemeContext } from "../theme/ThemeContext";
 import { useAppAlert } from "../context/AlertContext";
 import type { SourceDownloadSettingsMap } from "../types";
 
@@ -29,7 +28,6 @@ const validateDelay = (value: string): { valid: string; actual: number } => {
 };
 
 export const useSettings = () => {
-  const { themeMode, setThemeMode } = useThemeContext();
   const { showAlert } = useAppAlert();
   const [globalConcurrency, setGlobalConcurrency] = useState("1");
   const [globalDelay, setGlobalDelay] = useState("500");
@@ -263,8 +261,6 @@ export const useSettings = () => {
   };
 
   return {
-    themeMode,
-    setThemeMode,
     concurrency,
     delay,
     concurrencyError,
