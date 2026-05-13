@@ -3,11 +3,11 @@ import { StyleSheet, View, ScrollView } from "react-native";
 import {
   Appbar,
   ActivityIndicator,
-  SegmentedButtons,
 } from "react-native-paper";
 import { router, Stack } from "expo-router";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { TabValue } from "../src/types/sentenceRemoval";
+import { AppSegmentedButtons } from "../src/components/theme/AppSegmentedButtons";
 import { useSentenceRemovalData } from "../src/hooks/useSentenceRemovalData";
 import { useSentenceManagement } from "../src/hooks/useSentenceManagement";
 import { useRegexRuleManagement } from "../src/hooks/useRegexRuleManagement";
@@ -82,7 +82,7 @@ export default function SentenceRemovalScreen() {
             contentMaxWidth ? { maxWidth: contentMaxWidth } : undefined,
           ]}
         >
-          <SegmentedButtons
+          <AppSegmentedButtons
             value={activeTab}
             onValueChange={(value) => setActiveTab(value)}
             buttons={[

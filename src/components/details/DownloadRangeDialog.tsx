@@ -4,11 +4,11 @@ import {
   Dialog,
   HelperText,
   Portal,
-  SegmentedButtons,
   Text,
   TextInput,
 } from "react-native-paper";
 import { AppButton } from "../theme/AppButton";
+import { AppSegmentedButtons } from "../theme/AppSegmentedButtons";
 
 import { DOWNLOAD_DEFAULT_CHAPTER_COUNT } from "../../constants/epub";
 import type { DownloadRangeMode } from "../../types";
@@ -175,7 +175,7 @@ const DownloadRangeDialogContent: React.FC<DownloadRangeDialogContentProps> = ({
           <Text variant="bodyMedium" style={styles.subtitle}>
             Total Chapters: {totalChapters}
           </Text>
-          <SegmentedButtons
+          <AppSegmentedButtons
             value={mode}
             onValueChange={handleModeChange}
             buttons={[

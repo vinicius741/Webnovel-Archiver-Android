@@ -1,5 +1,6 @@
 import React from "react";
-import { SegmentedButtons, List } from "react-native-paper";
+import { List } from "react-native-paper";
+import { AppSegmentedButtons } from "../src/components/theme/AppSegmentedButtons";
 import { StyleSheet, View, ScrollView } from "react-native";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { ThemePicker } from "../src/components/settings/ThemePicker";
@@ -45,7 +46,7 @@ export default function SettingsScreen() {
             <ThemePicker />
           </View>
           <View style={styles.container}>
-            <SegmentedButtons
+            <AppSegmentedButtons
               value={foldLayoutMode}
               onValueChange={(value) => {
                 if (value === "auto" || value === "cover" || value === "inner") {

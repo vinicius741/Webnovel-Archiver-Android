@@ -7,11 +7,11 @@ import {
   Text,
   Divider,
   Switch,
-  SegmentedButtons,
   List,
   useTheme,
 } from "react-native-paper";
 import { AppButton } from "../theme/AppButton";
+import { AppSegmentedButtons } from "../theme/AppSegmentedButtons";
 import { RegexCleanupRule } from "../../types";
 import {
   RuleDraft,
@@ -126,7 +126,7 @@ export function RuleDialog({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={true}
           >
-            <SegmentedButtons
+            <AppSegmentedButtons
               value={mode}
               onValueChange={handleModeChange}
               buttons={[
@@ -182,7 +182,7 @@ export function RuleDialog({
             )}
 
             {!ruleValidation.valid && (
-              <Text variant="bodySmall" style={styles.errorText}>
+              <Text variant="bodySmall" style={[styles.errorText, { color: theme.colors.error }]}>
                 {ruleValidation.error}
               </Text>
             )}
@@ -206,6 +206,7 @@ export function RuleDialog({
                   <View
                     style={[
                       styles.patternBox,
+                      { backgroundColor: theme.colors.surfaceVariant },
                       !isQuickValid && styles.patternBoxEmpty,
                     ]}
                   >
@@ -221,7 +222,7 @@ export function RuleDialog({
               <Text variant="labelMedium" style={styles.targetLabel}>
                 Apply To
               </Text>
-              <SegmentedButtons
+              <AppSegmentedButtons
                 value={ruleDraft.appliesTo}
                 onValueChange={(value) =>
                   onDraftChange({
@@ -307,7 +308,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   errorText: {
-    color: "red",
     marginBottom: 8,
   },
   accordion: {
@@ -321,7 +321,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   patternBox: {
-    backgroundColor: "rgba(0, 0, 0, 0.05)",
     borderRadius: 6,
     padding: 10,
   },

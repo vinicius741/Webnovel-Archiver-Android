@@ -1,6 +1,6 @@
 import React from "react";
 import { View } from "react-native";
-import { List, IconButton, Divider, Switch } from "react-native-paper";
+import { List, IconButton, Divider, Switch, useTheme } from "react-native-paper";
 import { RegexCleanupRule } from "../../types";
 import { TARGET_LABEL_MAP } from "../../types/sentenceRemoval";
 import { ListSectionLayout, listItemStyles } from "./ListSectionLayout";
@@ -20,6 +20,7 @@ export function RegexRuleList({
   onDelete,
   onToggle,
 }: RegexRuleListProps) {
+  const theme = useTheme();
   return (
     <ListSectionLayout
       title="Regex Cleanup Rules"
@@ -42,7 +43,7 @@ export function RegexRuleList({
                 <IconButton icon="pencil" onPress={() => onEdit(rule)} />
                 <IconButton
                   icon="delete"
-                  iconColor="red"
+                  iconColor={theme.colors.error}
                   onPress={() => onDelete(rule.id)}
                 />
               </View>

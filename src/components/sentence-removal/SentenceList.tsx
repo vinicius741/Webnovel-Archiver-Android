@@ -1,6 +1,6 @@
 import React from "react";
 import { View } from "react-native";
-import { List, IconButton, Divider } from "react-native-paper";
+import { List, IconButton, Divider, useTheme } from "react-native-paper";
 import { ListSectionLayout, listItemStyles } from "./ListSectionLayout";
 
 interface SentenceListProps {
@@ -16,6 +16,7 @@ export function SentenceList({
   onEdit,
   onDelete,
 }: SentenceListProps) {
+  const theme = useTheme();
   return (
     <ListSectionLayout
       title="Exact Sentence Removal"
@@ -37,7 +38,7 @@ export function SentenceList({
                 />
                 <IconButton
                   icon="delete"
-                  iconColor="red"
+                  iconColor={theme.colors.error}
                   onPress={() => onDelete(index)}
                 />
               </View>

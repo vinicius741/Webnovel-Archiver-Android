@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-05-04T17:09:33.955Z",
+  "generatedAt": "2026-05-13T17:03:51.529Z",
   "sourceDirs": [
     "app",
     "src",
     "modules/tts-media-session/src"
   ],
   "duplication": {
-    "duplicatedLines": 2304,
-    "duplicatedPercentage": 5.59,
-    "clones": 182,
-    "scannedLines": 41232,
-    "scannedFiles": 269
+    "duplicatedLines": 2315,
+    "duplicatedPercentage": 5.48,
+    "clones": 186,
+    "scannedLines": 42282,
+    "scannedFiles": 289
   },
   "files": {
-    "sourceFiles": 203,
-    "totalLines": 36857,
+    "sourceFiles": 220,
+    "totalLines": 37926,
     "largestFileLines": 865,
     "largestFiles": [
       {
