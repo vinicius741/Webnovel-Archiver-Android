@@ -32,7 +32,7 @@ export function AppButton({
         style,
       ]}
       contentStyle={[
-        { height: theme.buttonDefaults.buttonHeight - 8 },
+        { minHeight: theme.buttonDefaults.buttonHeight - 8 },
         contentStyle,
       ]}
       {...rest}
