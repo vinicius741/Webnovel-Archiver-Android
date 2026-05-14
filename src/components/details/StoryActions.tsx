@@ -179,6 +179,7 @@ const styles = StyleSheet.create({
   },
   buttonRowStacked: {
     flexDirection: "column",
+    gap: 20,
   },
   actionRowButton: {
     flex: 1,
