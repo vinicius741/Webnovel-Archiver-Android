@@ -69,7 +69,7 @@ npm test              # Jest tests
 npm run check         # lint + typecheck + coverage + quality
 ```
 
-See `AGENTS.md` for the full list of scripts, testing instructions, and code quality gates.
+See `AGENTS.md` for the full list of scripts, architecture details, and code quality gates.
 
 ## Project Structure
 
@@ -85,7 +85,7 @@ src/
   theme/              # Theme configurations
 modules/              # Custom native modules (Kotlin)
 plugins/              # Expo config plugins
-documentation/        # Detailed tech docs and decision logs
+documentation/        # Detailed tech docs, decision logs, and quality reports
 ```
 
 TypeScript path aliases are configured for `src/*` and `app/*`.
