@@ -287,6 +287,33 @@ describe("DownloadQueue", () => {
     expect(stats.total).toBe(2);
   });
 
+  it("should clear completed and failed jobs", async () => {
+    const queue = new DownloadQueue();
+    await queue.init();
+    queue.addJob(mockJob);
+    queue.addJob(mockJob2);
+    queue.addJob(mockJob3);
+    queue.addJob({ ...mockJob, id: "failed-job", status: "failed" });
+    queue.clearFinished();
+
+    const stats = queue.getStats();
+    expect(stats.total).toBe(2);
+    expect(stats.failed).toBe(0);
+    expect(stats.completed).toBe(0);
+  });
+
+  it("should remove all jobs for a story", async () => {
+    const queue = new DownloadQueue();
+    await queue.init();
+    queue.addJob(mockJob);
+    queue.addJob(mockJob2);
+    queue.addJob(mockJob3);
+    queue.removeJobsForStory("story1");
+
+    expect(queue.getJobsForStory("story1")).toHaveLength(0);
+    expect(queue.getJobsForStory("story2")).toHaveLength(1);
+  });
+
   it("should clear all jobs", async () => {
     const queue = new DownloadQueue();
     await queue.init();

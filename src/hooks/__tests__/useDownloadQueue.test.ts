@@ -29,7 +29,7 @@ jest.mock("../../services/download/DownloadQueue", () => ({
       failed: 0,
       paused: 0,
     }),
-    clearCompleted: jest.fn(),
+    clearFinished: jest.fn(),
   },
 }));
 
@@ -220,15 +220,15 @@ describe("useDownloadQueue", () => {
     });
   });
 
-  describe("clearCompleted", () => {
-    it("should call downloadQueue.clearCompleted and refresh", () => {
+  describe("clearFinished", () => {
+    it("should call downloadQueue.clearFinished and refresh", () => {
       const { result } = renderHook(() => useDownloadQueue());
 
       act(() => {
-        result.current.clearCompleted();
+        result.current.clearFinished();
       });
 
-      expect(downloadQueue.clearCompleted).toHaveBeenCalled();
+      expect(downloadQueue.clearFinished).toHaveBeenCalled();
       expect(downloadQueue.getAllJobs).toHaveBeenCalledTimes(2); // Initial + refresh
     });
   });

@@ -29,7 +29,7 @@ export default function DownloadManagerScreen() {
     pauseAll,
     resumeAll,
     cancelAll,
-    clearCompleted,
+    clearFinished,
     refreshState,
   } = useDownloadQueue();
 
@@ -118,17 +118,17 @@ export default function DownloadManagerScreen() {
     );
   };
 
-  const handleClearCompletedPress = () => {
+  const handleClearFinishedPress = () => {
     showAlert(
-      "Clear Completed Downloads",
-      "Remove all completed downloads from the queue?",
+      "Clear Finished Downloads",
+      "Remove completed and failed downloads from the queue?",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Clear",
           style: "default",
           onPress: () => {
-            clearCompleted();
+            clearFinished();
             setSettingsModalVisible(false);
           },
         },
@@ -253,7 +253,7 @@ export default function DownloadManagerScreen() {
           onDelayChange={handleDelayChange}
           onConcurrencyBlur={handleConcurrencyBlur}
           onDelayBlur={handleDelayBlur}
-          onClearCompletedPress={handleClearCompletedPress}
+          onClearFinishedPress={handleClearFinishedPress}
           selectedSource={selectedSource}
           onSourceSelect={setSelectedSource}
           availableProviders={availableProviders}

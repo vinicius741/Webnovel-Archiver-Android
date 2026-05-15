@@ -218,6 +218,28 @@ export class DownloadQueue {
     void this._save();
   }
 
+  clearFinished(storyId?: string): void {
+    if (storyId) {
+      this.jobs = this.jobs.filter(
+        (j) =>
+          !(
+            j.storyId === storyId &&
+            (j.status === "completed" || j.status === "failed")
+          ),
+      );
+    } else {
+      this.jobs = this.jobs.filter(
+        (j) => j.status !== "completed" && j.status !== "failed",
+      );
+    }
+    void this._save();
+  }
+
+  removeJobsForStory(storyId: string): void {
+    this.jobs = this.jobs.filter((j) => j.storyId !== storyId);
+    void this._save();
+  }
+
   clearAll(): void {
     this.jobs = [];
     void this._save();

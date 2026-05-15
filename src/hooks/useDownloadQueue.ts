@@ -81,8 +81,8 @@ export const useDownloadQueue = () => {
     await downloadManager.cancelAll();
   }, []);
 
-  const clearCompleted = useCallback(() => {
-    downloadQueue.clearCompleted();
+  const clearFinished = useCallback(() => {
+    downloadQueue.clearFinished();
     refreshState();
   }, [refreshState]);
 
@@ -119,7 +119,7 @@ export const useDownloadQueue = () => {
     pauseAll,
     resumeAll,
     cancelAll,
-    clearCompleted,
+    clearFinished,
     refreshState,
   };
 };

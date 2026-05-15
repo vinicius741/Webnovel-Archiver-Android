@@ -23,7 +23,7 @@ interface Props {
   onDelayChange: (text: string) => void;
   onConcurrencyBlur: () => void;
   onDelayBlur: () => void;
-  onClearCompletedPress: () => void;
+  onClearFinishedPress: () => void;
   selectedSource: string | null;
   onSourceSelect: (source: string | null) => void;
   availableProviders: string[];
@@ -47,7 +47,7 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
   onDelayChange,
   onConcurrencyBlur,
   onDelayBlur,
-  onClearCompletedPress,
+  onClearFinishedPress,
   selectedSource,
   onSourceSelect,
   availableProviders,
@@ -94,11 +94,11 @@ export const DownloadManagerSettingsModal: React.FC<Props> = ({
       <AppButton
         mode="outlined"
         icon="delete-sweep"
-        onPress={onClearCompletedPress}
+        onPress={onClearFinishedPress}
         textColor={theme.colors.error}
         style={styles.clearButton}
       >
-        Clear Completed Downloads
+        Clear Finished Downloads
       </AppButton>
 
       <Divider style={styles.divider} />
