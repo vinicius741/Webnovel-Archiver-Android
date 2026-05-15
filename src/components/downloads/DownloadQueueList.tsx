@@ -150,6 +150,7 @@ const styles = StyleSheet.create({
   emptyContent: {
     width: "100%",
     alignSelf: "center",
+    alignItems: "center",
   },
   emptyIcon: {
     marginBottom: 16,
