@@ -316,6 +316,17 @@ export class DownloadManager extends EventEmitter {
     this.emit("notification-update");
   }
 
+  async removeStory(storyId: string) {
+    downloadQueue
+      .getJobsForStory(storyId)
+      .forEach((job) => this.cancelledJobIds.add(job.id));
+    downloadQueue.removeJobsForStory(storyId);
+    this.storyCache.clearStoryCache(storyId);
+    this.consecutiveRateLimitFailuresByStory.delete(storyId);
+    this.emit("queue-updated");
+    this.emit("notification-update");
+  }
+
   async retryJob(jobId: string): Promise<boolean> {
     const job = downloadQueue.getAllJobs().find((j) => j.id === jobId);
     if (!job) {

@@ -14,6 +14,7 @@ import type {
 } from "../types";
 import type { Tab } from "../types/tab";
 import * as fileSystem from "./storage/fileSystem";
+import { downloadQueue } from "./download/DownloadQueue";
 import { LibraryStorage } from "./storage/libraryStorage";
 import { PreferencesStorage } from "./storage/preferencesStorage";
 import {
@@ -82,6 +83,7 @@ class StorageService {
 
   async clearAll(): Promise<void> {
     try {
+      downloadQueue.clearAll();
       await AsyncStorage.clear();
       await fileSystem.clearAllFiles();
       console.log("[StorageService] All data cleared.");

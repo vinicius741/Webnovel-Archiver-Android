@@ -1,4 +1,5 @@
 import { storageService } from "../services/StorageService";
+import { downloadManager } from "../services/download/DownloadManager";
 import { useAppAlert } from "../context/AlertContext";
 import { Story, Chapter } from "../types";
 import { validateStory, validateChapter } from "../utils/storyValidation";
@@ -32,6 +33,7 @@ export const useStoryActions = ({
           text: "Delete",
           style: "destructive",
           onPress: async () => {
+            await downloadManager.removeStory(story.id);
             await storageService.deleteStory(story.id);
             onStoryDeleted?.();
           },

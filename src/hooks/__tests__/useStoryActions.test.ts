@@ -1,11 +1,17 @@
 import { renderHook, act } from "@testing-library/react-native";
 import { useStoryActions } from "../useStoryActions";
 import { storageService } from "../../services/StorageService";
+import { downloadManager } from "../../services/download/DownloadManager";
 import { useAppAlert } from "../../context/AlertContext";
 import { Story, Chapter, DownloadStatus } from "../../types";
 import { findAndPressButton } from "../../test-utils";
 
 jest.mock("../../services/StorageService");
+jest.mock("../../services/download/DownloadManager", () => ({
+  downloadManager: {
+    removeStory: jest.fn().mockResolvedValue(undefined),
+  },
+}));
 jest.mock("../../context/AlertContext");
 jest.mock("../../utils/storyValidation");
 
@@ -34,6 +40,7 @@ describe("useStoryActions", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (useAppAlert as jest.Mock).mockReturnValue({ showAlert: mockShowAlert });
+    (downloadManager.removeStory as jest.Mock).mockResolvedValue(undefined);
     (storageService.deleteStory as jest.Mock).mockResolvedValue(undefined);
     (storageService.updateLastRead as jest.Mock).mockResolvedValue(undefined);
     (storageService.addStory as jest.Mock).mockResolvedValue(undefined);
@@ -109,6 +116,7 @@ describe("useStoryActions", () => {
         deleteButtonPress();
       });
 
+      expect(downloadManager.removeStory).toHaveBeenCalledWith(mockStory.id);
       expect(storageService.deleteStory).toHaveBeenCalledWith(mockStory.id);
       expect(mockOnStoryDeleted).toHaveBeenCalled();
     });

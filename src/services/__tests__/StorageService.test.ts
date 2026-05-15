@@ -8,6 +8,11 @@ jest.mock("../storage/fileSystem", () => ({
   clearAllFiles: jest.fn(),
   copyChapterToNovel: jest.fn(),
 }));
+jest.mock("../download/DownloadQueue", () => ({
+  downloadQueue: {
+    clearAll: jest.fn(),
+  },
+}));
 
 describe("StorageService", () => {
   beforeEach(() => {
@@ -351,6 +356,8 @@ describe("StorageService", () => {
   describe("clearAll", () => {
     it("should clear storage and files", async () => {
       await storageService.clearAll();
+      const { downloadQueue } = require("../download/DownloadQueue");
+      expect(downloadQueue.clearAll).toHaveBeenCalled();
       expect(AsyncStorage.clear).toHaveBeenCalled();
       expect(fileSystem.clearAllFiles).toHaveBeenCalled();
     });
