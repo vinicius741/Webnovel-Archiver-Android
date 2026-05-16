@@ -2,6 +2,7 @@ import { renderHook, act } from "@testing-library/react-native";
 import { useLibrary } from "../useLibrary";
 import { storageService } from "../../services/StorageService";
 import { sourceRegistry } from "../../services/source/SourceRegistry";
+import { downloadQueue } from "../../services/download/DownloadQueue";
 import { Story, DownloadStatus } from "../../types";
 
 jest.mock("../../services/StorageService", () => ({
@@ -11,6 +12,19 @@ jest.mock("../../services/StorageService", () => ({
 }));
 
 jest.mock("../../services/source/SourceRegistry");
+
+jest.mock("../../services/download/DownloadManager", () => ({
+  downloadManager: {
+    on: jest.fn(),
+    off: jest.fn(),
+  },
+}));
+
+jest.mock("../../services/download/DownloadQueue", () => ({
+  downloadQueue: {
+    getAllJobs: jest.fn().mockReturnValue([]),
+  },
+}));
 
 describe("useLibrary", () => {
   const mockStories: Story[] = [
@@ -61,6 +75,7 @@ describe("useLibrary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (storageService.getLibrary as jest.Mock).mockResolvedValue(mockStories);
+    (downloadQueue.getAllJobs as jest.Mock).mockReturnValue([]);
 
     (sourceRegistry.getProvider as jest.Mock).mockImplementation(
       (url: string) => {
@@ -76,7 +91,11 @@ describe("useLibrary", () => {
   });
 
   it("should load library on mount", async () => {
-    const { result } = renderHook(() => useLibrary());
+    renderHook(() => useLibrary());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     expect(storageService.getLibrary).toHaveBeenCalled();
   });

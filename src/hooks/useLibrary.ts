@@ -1,8 +1,11 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useFocusEffect } from "expo-router";
 import { storageService } from "../services/StorageService";
-import { Story } from "../types";
+import { DownloadStatus, Story } from "../types";
 import { sourceRegistry } from "../services/source/SourceRegistry";
+import { downloadManager } from "../services/download/DownloadManager";
+import { downloadQueue } from "../services/download/DownloadQueue";
+import type { DownloadJob } from "../services/download/types";
 
 export type SortOption =
   | "default"
@@ -34,6 +37,67 @@ const matchesTab = (
   return true;
 };
 
+const withLiveDownloadProgress = (stories: Story[]): Story[] => {
+  const completedJobs = downloadQueue
+    .getAllJobs()
+    .filter((job) => job.status === "completed");
+
+  if (completedJobs.length === 0) {
+    return stories;
+  }
+
+  const completedJobsByStoryId = completedJobs.reduce(
+    (map, job) => {
+      const jobs = map.get(job.storyId);
+      if (jobs) {
+        jobs.push(job);
+      } else {
+        map.set(job.storyId, [job]);
+      }
+      return map;
+    },
+    new Map<string, DownloadJob[]>(),
+  );
+
+  return stories.map((story) => {
+    const completedStoryJobs = completedJobsByStoryId.get(story.id);
+    if (!completedStoryJobs) {
+      return story;
+    }
+
+    const chapters = [...story.chapters];
+    completedStoryJobs.forEach((job) => {
+      const chapterIndex = chapters.findIndex(
+        (chapter) => chapter.id === job.chapter.id,
+      );
+      const chapter = chapters[chapterIndex];
+      if (chapter) {
+        chapters[chapterIndex] = {
+          ...chapter,
+          downloaded: true,
+        };
+      }
+    });
+
+    const downloadedChapters = chapters.filter((chapter) => chapter.downloaded)
+      .length;
+
+    if (downloadedChapters === story.downloadedChapters) {
+      return story;
+    }
+
+    return {
+      ...story,
+      chapters,
+      downloadedChapters,
+      status:
+        downloadedChapters === chapters.length
+          ? DownloadStatus.Completed
+          : DownloadStatus.Partial,
+    };
+  });
+};
+
 export const useLibrary = (options: UseLibraryOptions = {}) => {
   const { activeTabId, hasCustomTabs } = options;
 
@@ -46,30 +110,53 @@ export const useLibrary = (options: UseLibraryOptions = {}) => {
   const [sortOption, setSortOption] = useState<SortOption>("default");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  const loadLibrary = async () => {
+  const loadLibrary = useCallback(async (showRefreshing = true) => {
     try {
-      setRefreshing(true);
+      if (showRefreshing) {
+        setRefreshing(true);
+      }
       const library = await storageService.getLibrary();
       // We'll handle sorting in the useMemo below, so we just set raw data here
       // But to keep initial state consistent or if useMemo is expensive, we could sort here.
       // However, dynamic sorting is requested.
-      setStories(library);
+      setStories(withLiveDownloadProgress(library));
     } catch (e) {
       console.error(e);
     } finally {
-      setRefreshing(false);
+      if (showRefreshing) {
+        setRefreshing(false);
+      }
     }
-  };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       void loadLibrary();
-    }, []),
+    }, [loadLibrary]),
   );
+
+  useEffect(() => {
+    const updateLiveProgress = () => {
+      setStories((currentStories) => withLiveDownloadProgress(currentStories));
+    };
+    const reloadAfterFlush = () => {
+      void loadLibrary(false);
+    };
+
+    downloadManager.on("queue-updated", updateLiveProgress);
+    downloadManager.on("job-completed", updateLiveProgress);
+    downloadManager.on("all-complete", reloadAfterFlush);
+
+    return () => {
+      downloadManager.off("queue-updated", updateLiveProgress);
+      downloadManager.off("job-completed", updateLiveProgress);
+      downloadManager.off("all-complete", reloadAfterFlush);
+    };
+  }, [loadLibrary]);
 
   const onRefresh = useCallback(() => {
     void loadLibrary();
-  }, []);
+  }, [loadLibrary]);
 
   const { allTags, sourceNames, tagCounts } = useMemo(() => {
     const sourceCounts = new Map<string, number>();
