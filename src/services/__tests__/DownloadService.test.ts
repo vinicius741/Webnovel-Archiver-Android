@@ -1,7 +1,7 @@
 import { downloadService } from "../DownloadService";
 import { downloadManager } from "../download/DownloadManager";
 import { storageService } from "../StorageService";
-import { readChapterFile, saveChapter } from "../storage/fileSystem";
+import { readChapterFile, writeChapterFile } from "../storage/fileSystem";
 import { applyDownloadCleanup } from "../../utils/textCleanup";
 import { Story, Chapter, DownloadStatus } from "../../types";
 
@@ -22,7 +22,7 @@ jest.mock("../StorageService", () => ({
 
 jest.mock("../storage/fileSystem", () => ({
   readChapterFile: jest.fn(),
-  saveChapter: jest.fn().mockResolvedValue("file://chapter.html"),
+  writeChapterFile: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../../utils/textCleanup", () => ({
@@ -212,10 +212,8 @@ describe("DownloadService", () => {
 
       expect(result.processed).toBe(1);
       expect(result.errors).toBe(0);
-      expect(saveChapter).toHaveBeenCalledWith(
-        "test-story-1",
-        2,
-        "Chapter 3",
+      expect(writeChapterFile).toHaveBeenCalledWith(
+        "file://c3.html",
         "<p>Chapter content.</p>",
       );
       expect(onProgress).toHaveBeenCalledWith(3, 4, "Chapter 3");
@@ -309,7 +307,7 @@ describe("DownloadService", () => {
         await downloadService.applySentenceRemovalToStory(storyWithoutFilePath);
 
       expect(result.processed).toBe(1);
-      expect(saveChapter).toHaveBeenCalledTimes(1);
+      expect(writeChapterFile).toHaveBeenCalledTimes(1);
     });
 
     it("should skip chapters with empty content", async () => {
@@ -319,7 +317,7 @@ describe("DownloadService", () => {
         await downloadService.applySentenceRemovalToStory(mockStory);
 
       expect(result.processed).toBe(0);
-      expect(saveChapter).not.toHaveBeenCalled();
+      expect(writeChapterFile).not.toHaveBeenCalled();
     });
 
     it("should mark epub as stale after processing", async () => {

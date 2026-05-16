@@ -152,6 +152,14 @@ export const readChapterFile = async (uri: string): Promise<string> => {
   return "";
 };
 
+export const writeChapterFile = async (
+  uri: string,
+  content: string,
+): Promise<void> => {
+  const file = new File(uri);
+  file.write(content);
+};
+
 export const checkFileExists = async (uri: string): Promise<boolean> => {
   try {
     const file = new File(uri);

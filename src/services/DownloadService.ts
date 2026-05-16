@@ -1,7 +1,7 @@
 import { Story, Chapter, DownloadStatus } from "../types";
 import { downloadManager } from "./download/DownloadManager";
 import { storageService } from "./StorageService";
-import { readChapterFile, saveChapter } from "./storage/fileSystem";
+import { readChapterFile, writeChapterFile } from "./storage/fileSystem";
 import { applyDownloadCleanup } from "../utils/textCleanup";
 import { DownloadJob } from "./download/types";
 
@@ -142,7 +142,7 @@ class DownloadService {
               sentenceRemovalList,
               regexCleanupRules,
             );
-            await saveChapter(story.id, i, chapter.title, result.html);
+            await writeChapterFile(chapter.filePath, result.html);
             sentencesRemoved += result.sentencesRemoved;
             processed++;
           }
