@@ -104,7 +104,7 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
   isTwoPane = false,
   widthClass = "compact",
 }) => {
-  const stackedControls = widthClass === "compact";
+  const stackedControls = isTwoPane || widthClass === "compact";
   const contentAlign = "center";
 
   return (

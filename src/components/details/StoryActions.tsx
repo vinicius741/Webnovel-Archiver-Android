@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   actionBtn: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   buttonRow: {
     flexDirection: "row",
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   },
   buttonRowStacked: {
     flexDirection: "column",
-    gap: 20,
+    gap: 12,
   },
   actionRowButton: {
     flex: 1,

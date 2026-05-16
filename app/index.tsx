@@ -74,7 +74,7 @@ const TabFlatList = React.memo(function TabFlatList({
         data={stories}
         numColumns={numColumns}
         extraData={numColumns}
-        columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
+        columnWrapperStyle={numColumns > 1 ? styles.storyRow : undefined}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
@@ -314,11 +314,11 @@ export default function HomeScreen() {
   const renderStoryItem = useCallback(
     ({ item }: { item: (typeof filteredStories)[number] }) => (
       <View
-        style={{
-          width: numColumns > 1 ? itemWidth : undefined,
-          flex: numColumns === 1 ? 1 : undefined,
-          marginBottom: 8,
-        }}
+        style={[
+          styles.storyItem,
+          numColumns > 1 && styles.storyGridItem,
+          numColumns > 1 ? { width: itemWidth } : styles.storySingleItem,
+        ]}
       >
         <StoryCard
           title={item.title}
@@ -519,7 +519,7 @@ export default function HomeScreen() {
           data={filteredStories}
           numColumns={numColumns}
           extraData={numColumns}
-          columnWrapperStyle={numColumns > 1 ? { gap: 8 } : undefined}
+          columnWrapperStyle={numColumns > 1 ? styles.storyRow : undefined}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.listContent,
@@ -590,6 +590,19 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
     paddingBottom: 80,
+  },
+  storyRow: {
+    alignItems: "stretch",
+    gap: 8,
+  },
+  storyItem: {
+    marginBottom: 8,
+  },
+  storyGridItem: {
+    alignSelf: "stretch",
+  },
+  storySingleItem: {
+    flex: 1,
   },
   largeListContent: {
     width: "100%",
