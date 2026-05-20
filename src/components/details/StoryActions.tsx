@@ -66,8 +66,8 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
         {syncing ? "Syncing..." : "Sync Chapters"}
       </AppButton>
 
-      {/* Show "Download All" only for stories with zero downloads */}
-      {story.downloadedChapters === 0 &&
+      {/* Show "Download All" / "Download Remaining" when undownloaded chapters exist */}
+      {story.downloadedChapters < story.totalChapters &&
         story.totalChapters > 0 &&
         !isArchived &&
         onDownloadAll && (
@@ -78,7 +78,9 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
             onPress={onDownloadAll}
             testID="download-all-button"
           >
-            Download All
+            {story.downloadedChapters === 0
+              ? "Download All"
+              : `Download Remaining (${story.totalChapters - story.downloadedChapters})`}
           </AppButton>
         )}
 
