@@ -11,7 +11,6 @@ import { WebView, WebViewNavigation } from "react-native-webview";
 import {
   Text,
   IconButton,
-  FAB,
   Portal,
   Dialog,
   useTheme,
@@ -148,9 +147,8 @@ export default function SourceBrowserScreen() {
   }, []);
 
   const handleHome = useCallback(() => {
-    setShowBrowser(false);
-    setInputUrl("");
-    setCurrentUrl("");
+    router.dismissAll();
+    router.replace("/");
   }, []);
 
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
@@ -243,6 +241,15 @@ export default function SourceBrowserScreen() {
           <View style={styles.browserActions}>
             <IconButton icon="refresh" size={22} onPress={handleRefresh} style={styles.actionButton} />
             <IconButton icon="home" size={22} onPress={handleHome} style={styles.actionButton} />
+            {isNovel && (
+              <IconButton
+                icon="download"
+                size={22}
+                onPress={() => setShowDownloadDialog(true)}
+                style={styles.actionButton}
+                testID="download-button"
+              />
+            )}
           </View>
         ) : (
           <IconButton
@@ -291,17 +298,6 @@ export default function SourceBrowserScreen() {
           <BrowserLanding onNavigate={handleNavigate} />
         )}
       </View>
-
-      {/* Floating Download Button */}
-      {showBrowser && isNovel && (
-        <FAB
-          icon="download"
-          label="Download Story"
-          onPress={() => setShowDownloadDialog(true)}
-          style={[styles.downloadFab, { backgroundColor: theme.colors.primary }]}
-          color={theme.colors.onPrimary}
-        />
-      )}
 
       {/* Dialog for selecting Tab & Importing */}
       <Portal>
@@ -393,12 +389,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  downloadFab: {
-    position: "absolute",
-    margin: 16,
-    right: 8,
-    bottom: 16,
   },
   importLoadingContainer: {
     alignItems: "center",

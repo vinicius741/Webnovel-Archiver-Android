@@ -192,12 +192,12 @@ describe("SourceBrowserScreen", () => {
     expect(webView.props.source.uri).toBe("https://www.scribblehub.com");
   });
 
-  it("should show download FAB when novel detail page is detected", async () => {
+  it("should show download icon button when novel detail page is detected", async () => {
     mockBrowserSearchParams.url = "https://www.royalroad.com/fiction/12345/my-story" as any;
-    const { getByTestId, getByText } = render(<SourceBrowserScreen />);
+    const { getByTestId } = render(<SourceBrowserScreen />);
 
     const webView = getByTestId("mock-webview");
-    
+
     // Simulate navigation to novel details page
     act(() => {
       webView.props.onNavigationStateChange({
@@ -209,16 +209,16 @@ describe("SourceBrowserScreen", () => {
       });
     });
 
-    const downloadFab = getByText("Download Story");
-    expect(downloadFab).toBeTruthy();
+    const downloadButton = getByTestId("download-button");
+    expect(downloadButton).toBeTruthy();
   });
 
-  it("should NOT show download FAB on non-story pages or chapter pages", () => {
+  it("should NOT show download icon button on non-story pages or chapter pages", () => {
     mockBrowserSearchParams.url = "https://www.royalroad.com" as any;
-    const { getByTestId, queryByText } = render(<SourceBrowserScreen />);
+    const { getByTestId, queryByTestId } = render(<SourceBrowserScreen />);
 
     const webView = getByTestId("mock-webview");
-    
+
     // Simulate navigation to home page
     act(() => {
       webView.props.onNavigationStateChange({
@@ -230,7 +230,7 @@ describe("SourceBrowserScreen", () => {
       });
     });
 
-    expect(queryByText("Download Story")).toBeNull();
+    expect(queryByTestId("download-button")).toBeNull();
 
     // Simulate navigation to chapter page
     act(() => {
@@ -243,15 +243,15 @@ describe("SourceBrowserScreen", () => {
       });
     });
 
-    expect(queryByText("Download Story")).toBeNull();
+    expect(queryByTestId("download-button")).toBeNull();
   });
 
   it("should show import dialog and handle success", async () => {
     mockBrowserSearchParams.url = "https://www.scribblehub.com/series/12345/my-series" as any;
-    const { getByTestId, getByText, getAllByText } = render(<SourceBrowserScreen />);
+    const { getByTestId, getByText } = render(<SourceBrowserScreen />);
 
     const webView = getByTestId("mock-webview");
-    
+
     // Navigate to novel page
     act(() => {
       webView.props.onNavigationStateChange({
@@ -263,11 +263,11 @@ describe("SourceBrowserScreen", () => {
       });
     });
 
-    const downloadFab = getByText("Download Story");
-    fireEvent.press(downloadFab);
+    const downloadButton = getByTestId("download-button");
+    fireEvent.press(downloadButton);
 
     // Dialog should show up
-    expect(getAllByText("Download Story").length).toBe(2);
+    expect(getByText("Download Story")).toBeTruthy();
     expect(getByText("Would you like to import this webnovel into your library?")).toBeTruthy();
 
     // Mock orchestrator
