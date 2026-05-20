@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Keyboard,
   BackHandler,
+  Linking,
 } from "react-native";
 import { WebView, WebViewNavigation } from "react-native-webview";
 import {
@@ -63,6 +64,24 @@ const resolveUrl = (input: string): string => {
 
   // If not a URL, search on Google
   return `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
+};
+
+const isGoogleAuthUrl = (url: string): boolean => {
+  if (!url) return false;
+
+  try {
+    const { hostname, pathname } = new URL(url);
+    const normalizedHost = hostname.toLowerCase();
+
+    return (
+      normalizedHost === "accounts.google.com" ||
+      normalizedHost.endsWith(".accounts.google.com") ||
+      (normalizedHost === "google.com" || normalizedHost.endsWith(".google.com")) &&
+        pathname.startsWith("/o/oauth2")
+    );
+  } catch {
+    return false;
+  }
 };
 
 export default function SourceBrowserScreen() {
@@ -146,10 +165,24 @@ export default function SourceBrowserScreen() {
     }
   }, []);
 
+  const openExternalBrowser = useCallback((url: string) => {
+    Linking.openURL(url).catch((error) => {
+      console.error("[Browser] Failed to open external browser", error);
+      showAlert("Open Browser Failed", "Could not open this page in your device browser.");
+    });
+  }, [showAlert]);
+
+  const handleOpenCurrentUrlExternally = useCallback(() => {
+    const url = currentUrl || inputUrl;
+    if (url) {
+      openExternalBrowser(url);
+    }
+  }, [currentUrl, inputUrl, openExternalBrowser]);
+
   const handleHome = useCallback(() => {
     router.dismissAll();
     router.replace("/");
-  }, []);
+  }, [router]);
 
   const handleNavigationStateChange = useCallback((navState: WebViewNavigation) => {
     setCurrentUrl(navState.url);
@@ -158,6 +191,15 @@ export default function SourceBrowserScreen() {
     setCanGoForward(navState.canGoForward);
     setLoading(navState.loading);
   }, []);
+
+  const handleShouldStartLoad = useCallback((request: { url: string }) => {
+    if (isGoogleAuthUrl(request.url)) {
+      openExternalBrowser(request.url);
+      return false;
+    }
+
+    return true;
+  }, [openExternalBrowser]);
 
   const handleImportStory = async () => {
     if (!currentUrl) return;
@@ -240,6 +282,13 @@ export default function SourceBrowserScreen() {
         {showBrowser ? (
           <View style={styles.browserActions}>
             <IconButton icon="refresh" size={22} onPress={handleRefresh} style={styles.actionButton} />
+            <IconButton
+              icon="open-in-new"
+              size={22}
+              onPress={handleOpenCurrentUrlExternally}
+              style={styles.actionButton}
+              testID="open-external-button"
+            />
             <IconButton icon="home" size={22} onPress={handleHome} style={styles.actionButton} />
             {isNovel && (
               <IconButton
@@ -283,6 +332,7 @@ export default function SourceBrowserScreen() {
             ref={webViewRef}
             source={{ uri: currentUrl }}
             onNavigationStateChange={handleNavigationStateChange}
+            onShouldStartLoadWithRequest={handleShouldStartLoad}
             onLoadProgress={({ nativeEvent }) => setWebProgress(nativeEvent.progress)}
             style={styles.webView}
             javaScriptEnabled={true}

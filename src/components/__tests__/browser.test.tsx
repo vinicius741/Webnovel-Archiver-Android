@@ -1,5 +1,6 @@
 import React from "react";
 import { render, fireEvent, act } from "@testing-library/react-native";
+import { Linking } from "react-native";
 import SourceBrowserScreen from "../../../app/browser";
 import { storageService } from "../../services/StorageService";
 import { useTabs } from "../../hooks/useTabs";
@@ -158,9 +159,16 @@ jest.mock("../../services/story/storySyncOrchestrator", () => ({
 }));
 
 describe("SourceBrowserScreen", () => {
+  let openURLSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockBrowserSearchParams.url = undefined;
+    openURLSpy = jest.spyOn(Linking, "openURL").mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    openURLSpy.mockRestore();
   });
 
   it("should render landing page initially when no URL is provided", () => {
@@ -244,6 +252,44 @@ describe("SourceBrowserScreen", () => {
     });
 
     expect(queryByTestId("download-button")).toBeNull();
+  });
+
+  it("should open Google auth URLs in the external browser", () => {
+    mockBrowserSearchParams.url = "https://www.royalroad.com" as any;
+    const { getByTestId } = render(<SourceBrowserScreen />);
+
+    const webView = getByTestId("mock-webview");
+    const googleAuthUrl =
+      "https://accounts.google.com/o/oauth2/v2/auth?client_id=test";
+
+    const shouldLoad = webView.props.onShouldStartLoadWithRequest({
+      url: googleAuthUrl,
+    });
+
+    expect(shouldLoad).toBe(false);
+    expect(openURLSpy).toHaveBeenCalledWith(googleAuthUrl);
+  });
+
+  it("should allow non-Google auth URLs to load inside the WebView", () => {
+    mockBrowserSearchParams.url = "https://www.royalroad.com" as any;
+    const { getByTestId } = render(<SourceBrowserScreen />);
+
+    const webView = getByTestId("mock-webview");
+    const shouldLoad = webView.props.onShouldStartLoadWithRequest({
+      url: "https://www.royalroad.com/fiction/12345/my-story",
+    });
+
+    expect(shouldLoad).toBe(true);
+    expect(openURLSpy).not.toHaveBeenCalled();
+  });
+
+  it("should open the current page in the external browser", () => {
+    mockBrowserSearchParams.url = "https://www.royalroad.com" as any;
+    const { getByTestId } = render(<SourceBrowserScreen />);
+
+    fireEvent.press(getByTestId("open-external-button"));
+
+    expect(openURLSpy).toHaveBeenCalledWith("https://www.royalroad.com");
   });
 
   it("should show import dialog and handle success", async () => {
