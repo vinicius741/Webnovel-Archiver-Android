@@ -83,7 +83,7 @@ export const StoryCard = ({
             )}
           </View>
         )}
-        {isArchived && (
+        {isArchived && !!coverUrl && (
           <View
             style={[
               styles.archiveBadge,
