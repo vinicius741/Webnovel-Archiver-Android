@@ -141,6 +141,10 @@ function AppLayout() {
           name="download-manager"
           options={{ title: "Download Manager" }}
         />
+        <Stack.Screen
+          name="browser"
+          options={{ headerShown: false }}
+        />
       </Stack>
     </>
   );

@@ -1,25 +1,26 @@
 import React, { useState, useCallback } from "react";
-import { StyleSheet, View, TouchableOpacity, ScrollView } from "react-native";
+import { StyleSheet, View, ScrollView } from "react-native";
 import {
   TextInput,
   Text,
   IconButton,
-  useTheme,
-  RadioButton,
   Divider,
 } from "react-native-paper";
+import { useRouter } from "expo-router";
 import { AppButton } from "../src/components/theme/AppButton";
 import { ScreenContainer } from "../src/components/ScreenContainer";
 import { useAddStory } from "../src/hooks/useAddStory";
 import { useScreenLayout } from "../src/hooks/useScreenLayout";
 import { useTabs } from "../src/hooks/useTabs";
+import { SourceCard } from "../src/components/browser/SourceCard";
+import { TabSelectionList } from "../src/components/tabs/TabSelectionList";
 
 type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
   widthClass?: "compact" | "medium" | "expanded";
 };
 
 export default function AddStoryScreen() {
-  const theme = useTheme();
+  const router = useRouter();
   const screenLayout = useScreenLayout() as AdaptiveLayout;
   const widthClass =
     screenLayout.widthClass ??
@@ -37,11 +38,6 @@ export default function AddStoryScreen() {
     void handleAdd(selectedTabId);
   }, [handleAdd, selectedTabId]);
 
-  const handleSelectTab = (value: string) => {
-    setSelectedTabId(value === "unassigned" ? undefined : value);
-  };
-
-  const currentValue = selectedTabId === undefined ? "unassigned" : selectedTabId;
   const contentMaxWidth =
     widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
 
@@ -76,46 +72,11 @@ export default function AddStoryScreen() {
           </View>
 
           {hasCustomTabs && (
-            <View style={styles.tabSection}>
-              <Text variant="titleMedium" style={styles.label}>
-                Add to Tab
-              </Text>
-              <View style={[styles.tabList, { borderColor: theme.colors.outlineVariant }]}>
-                <TouchableOpacity
-                  style={styles.tabOption}
-                  onPress={() => handleSelectTab("unassigned")}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: currentValue === "unassigned" }}
-                >
-                  <RadioButton
-                    value="unassigned"
-                    status={currentValue === "unassigned" ? "checked" : "unchecked"}
-                  />
-                  <Text variant="bodyLarge" style={styles.tabLabel}>
-                    Unassigned
-                  </Text>
-                </TouchableOpacity>
-                {tabs.map((tab) => (
-                  <React.Fragment key={tab.id}>
-                    <Divider />
-                    <TouchableOpacity
-                      style={styles.tabOption}
-                      onPress={() => handleSelectTab(tab.id)}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: currentValue === tab.id }}
-                    >
-                      <RadioButton
-                        value={tab.id}
-                        status={currentValue === tab.id ? "checked" : "unchecked"}
-                      />
-                      <Text variant="bodyLarge" style={styles.tabLabel}>
-                        {tab.name}
-                      </Text>
-                    </TouchableOpacity>
-                  </React.Fragment>
-                ))}
-              </View>
-            </View>
+            <TabSelectionList
+              tabs={tabs}
+              selectedTabId={selectedTabId}
+              onSelectTab={setSelectedTabId}
+            />
           )}
 
           <AppButton
@@ -131,6 +92,32 @@ export default function AddStoryScreen() {
               {statusMessage}
             </Text>
           ) : null}
+
+          <Divider style={styles.divider} />
+
+          <Text variant="titleMedium" style={styles.label}>
+            Or Browse Sources
+          </Text>
+          <Text variant="bodyMedium" style={styles.subtext}>
+            Browse Royal Road or Scribble Hub directly and import novels from their web pages.
+          </Text>
+
+          <View style={styles.cardsContainer}>
+            <SourceCard
+              title="Royal Road"
+              subtitle="royalroad.com"
+              icon="compass-outline"
+              accentColor="#D85A38"
+              onPress={() => router.push("/browser?url=https://www.royalroad.com")}
+            />
+            <SourceCard
+              title="Scribble Hub"
+              subtitle="scribblehub.com"
+              icon="book-open-variant"
+              accentColor="#7B2CBF"
+              onPress={() => router.push("/browser?url=https://www.scribblehub.com")}
+            />
+          </View>
         </View>
       </ScrollView>
     </ScreenContainer>
@@ -164,23 +151,6 @@ const styles = StyleSheet.create({
   pasteButton: {
     margin: 0,
   },
-  tabSection: {
-    marginBottom: 16,
-  },
-  tabList: {
-    borderWidth: 1,
-    borderRadius: 8,
-    overflow: "hidden",
-  },
-  tabOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  tabLabel: {
-    marginLeft: 8,
-  },
   button: {
     marginTop: 8,
     width: "100%",
@@ -189,5 +159,17 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: "center",
     color: "#666",
+  },
+  divider: {
+    marginVertical: 24,
+  },
+  subtext: {
+    color: "#666",
+    marginBottom: 16,
+  },
+  cardsContainer: {
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
   },
 });
