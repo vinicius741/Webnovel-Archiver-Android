@@ -1,20 +1,20 @@
 {
-  "generatedAt": "2026-05-13T17:03:51.529Z",
+  "generatedAt": "2026-05-23T23:54:21.921Z",
   "sourceDirs": [
     "app",
     "src",
     "modules/tts-media-session/src"
   ],
   "duplication": {
-    "duplicatedLines": 2315,
-    "duplicatedPercentage": 5.48,
-    "clones": 186,
-    "scannedLines": 42282,
-    "scannedFiles": 289
+    "duplicatedLines": 2337,
+    "duplicatedPercentage": 5.27,
+    "clones": 188,
+    "scannedLines": 44384,
+    "scannedFiles": 306
   },
   "files": {
-    "sourceFiles": 220,
-    "totalLines": 37926,
+    "sourceFiles": 228,
+    "totalLines": 39693,
     "largestFileLines": 865,
     "largestFiles": [
       {
@@ -27,7 +27,7 @@
       },
       {
         "file": "app/index.tsx",
-        "lines": 673
+        "lines": 686
       },
       {
         "file": "src/services/story/__tests__/storySyncOrchestrator.test.ts",
@@ -43,19 +43,19 @@
       },
       {
         "file": "src/services/download/DownloadManager.ts",
-        "lines": 476
+        "lines": 498
       },
       {
         "file": "src/hooks/__tests__/useLibrary.test.ts",
-        "lines": 472
+        "lines": 491
+      },
+      {
+        "file": "app/browser.tsx",
+        "lines": 457
       },
       {
         "file": "src/hooks/__tests__/useDownloadProgress.test.ts",
-        "lines": 454
-      },
-      {
-        "file": "src/services/TTSStateManager.ts",
-        "lines": 443
+        "lines": 455
       }
     ],
     "oversizedFileLineThreshold": 500,
@@ -71,7 +71,7 @@
       },
       {
         "file": "app/index.tsx",
-        "lines": 673
+        "lines": 686
       },
       {
         "file": "src/services/story/__tests__/storySyncOrchestrator.test.ts",
