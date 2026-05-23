@@ -62,7 +62,7 @@ describe("ScribbleHubProvider", () => {
       ScribbleHubProvider.isSource(
         "https://www.scribblehub.com/read/1056226-outrun--cyberpunk-litrpg/chapter/1/",
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("should parse the first TOC page and normalize newest-first order", async () => {

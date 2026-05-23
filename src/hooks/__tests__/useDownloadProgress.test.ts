@@ -10,6 +10,7 @@ jest.mock("../../services/download/DownloadQueue", () => ({
     init: jest.fn().mockResolvedValue(undefined),
     getJobsForStory: jest.fn(),
     getStats: jest.fn(() => ({ pending: 0, active: 0, total: 0, failed: 0 })),
+    getAllJobs: jest.fn(() => []),
   },
 }));
 

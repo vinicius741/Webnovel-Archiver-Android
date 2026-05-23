@@ -3,6 +3,7 @@ import { downloadQueue } from "./DownloadQueue";
 import { DownloadJob } from "./types";
 import { DownloadStoryCache } from "./DownloadStoryCache";
 import { DownloadNotificationManager } from "./DownloadNotificationManager";
+import { cleanupOrphanedJobs } from "./orphanJobCleaner";
 import { sourceRegistry } from "../source/SourceRegistry";
 import { fetchPage, HttpError } from "../network/fetcher";
 import { saveChapter } from "../storage/fileSystem";
@@ -46,6 +47,8 @@ export class DownloadManager extends EventEmitter {
     this.globalDelay = settings.downloadDelay ?? 0;
     this.sourceSettings = sourceSettings;
 
+    this.cleanupOrphanedJobs();
+
     const stats = downloadQueue.getStats();
     if (stats.pending > 0) {
       void this.start();
@@ -76,6 +79,14 @@ export class DownloadManager extends EventEmitter {
 
   private getProviderNameForJob(job: DownloadJob): string | undefined {
     return sourceRegistry.getProvider(job.chapter.url)?.name;
+  }
+
+  private cleanupOrphanedJobs(): void {
+    const result = cleanupOrphanedJobs();
+    if (result.cleanedJobCount > 0) {
+      this.emit("queue-updated");
+      this.emit("notification-update");
+    }
   }
 
   private pickNextEligibleJob(): DownloadJob | undefined {

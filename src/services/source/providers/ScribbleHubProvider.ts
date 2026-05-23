@@ -72,7 +72,7 @@ export const ScribbleHubProvider: SourceProvider = {
   baseUrl: SCRIBBLE_HUB_BASE_URL,
 
   isSource: (url: string) => {
-    return /https?:\/\/(?:www\.)?scribblehub\.com\/series\/\d+/i.test(url);
+    return /https?:\/\/(?:www\.)?scribblehub\.com\/(series|read)\//i.test(url);
   },
 
   getStoryId: (url: string): string => {
