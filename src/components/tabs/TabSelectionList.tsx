@@ -30,6 +30,7 @@ export const TabSelectionList: React.FC<TabSelectionListProps> = ({
           <RadioButton
             value="unassigned"
             status={currentValue === "unassigned" ? "checked" : "unchecked"}
+            onPress={() => onSelectTab(undefined)}
           />
           <Text variant="bodyLarge" style={styles.tabLabel}>
             Unassigned
@@ -47,6 +48,7 @@ export const TabSelectionList: React.FC<TabSelectionListProps> = ({
               <RadioButton
                 value={tab.id}
                 status={currentValue === tab.id ? "checked" : "unchecked"}
+                onPress={() => onSelectTab(tab.id)}
               />
               <Text variant="bodyLarge" style={styles.tabLabel}>
                 {tab.name}
