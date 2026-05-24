@@ -66,6 +66,7 @@ The download system is event-driven and concurrent:
 - **DownloadManager** (`src/services/download/DownloadManager.ts`): EventEmitter-based worker pool with configurable concurrency (default 3)
 - **DownloadStoryCache** (`src/services/download/DownloadStoryCache.ts`): In-memory story cache with batched storage flushes and story-level mutex locks
 - **DownloadNotificationManager** (`src/services/download/DownloadNotificationManager.ts`): Throttled download progress notification lifecycle
+- **Orphan Job Cleaner** (`src/services/download/orphanJobCleaner.ts`): Runs during `DownloadManager.init()` to clean up orphaned download jobs with unrecognized source providers (e.g. invalid ScribbleHub URLs), helping the queue self-heal on app launch.
 
 Download flow:
 1. Jobs added to queue → `queue-updated` event fires
@@ -73,6 +74,7 @@ Download flow:
 3. Each worker: fetches HTML → parses content → saves to disk → updates story metadata
 4. Story updates are batched in DownloadStoryCache with story-level mutex locks
 5. Notifications update throughout process via DownloadNotificationManager
+6. **Live Library Updates**: The library view blends active/completed queue jobs in real-time using `withLiveDownloadProgress()` in `useLibrary.ts` by subscribing to `DownloadManager` events.
 
 ### Service Layer Organization
 - `src/services/source/` - Website scraping and parsing (providers)
@@ -116,6 +118,25 @@ Story synchronization logic is extracted into `storySyncOrchestrator.ts`:
 - `buildStoryForSync()` - Updates existing story with new data
 - `mergeChapters()` utility - Handles chapter list merging with existing downloads
 
+#### In-App Source Browser
+An embedded WebView-based browser screen (`app/browser.tsx`) allows users to directly browse and import novels from supported sites (Royal Road, Scribble Hub):
+- **WebView Navigation**: Integrates address bar URL resolution, standard history navigation (back/forward/reload), and loading progress indicator bar.
+- **Google OAuth Redirect**: Google authentication URLs (which fail inside standard WebViews due to security restrictions) are intercepted and redirected to the device's system browser via `Linking.openURL()`.
+- **One-Click Novel Importing**: Automatically detects supported story pages and displays an inline action button to trigger the import flow via the orchestrator.
+- **Shared Tab Dialog**: Reuses the shared `TabSelectionList` component to prompt users to choose target library tabs upon import.
+
+#### Multi-Theme System
+The application uses a pluggable, registry-based theme system replacing generic Material Design colors:
+- **Theme Registry** (`src/theme/registry.ts`): Dynamic runtime theme registration and queries.
+- **Theme Configurations** (`src/theme/themes/`): Custom variations of `AppTheme` configured with the "Refined Bibliophile" color schemes:
+  - *Obsidian* (Warm charcoal with gold accents)
+  - *Midnight* (OLED pure black with blue accents)
+  - *Forest* (Warm earth-toned green theme)
+  - *Classic Light* (Cream parchment with navy accents)
+- **Design Tokens** (`src/theme/types.ts`): Custom properties extending React Native Paper's `MD3Theme` to include shapes (`ThemeShapes`), typography (`ThemeTypography`), and default button settings (`ThemeButtonDefaults`).
+- **AppButton Component** (`src/components/theme/AppButton.tsx`): A central button wrapper adapting its heights, shapes, border widths, and text transformations directly from the active theme tokens.
+- **Theme Picker settings** (`src/components/settings/ThemePicker.tsx`): Manages theme selection with dark/light variant separation and automatic legacy storage migration.
+
 ### EPUB Generation
 Node.js EPUB libraries don't work in React Native. The app uses `jszip` with custom XML templating to build standard EPUB files. The logic is split across:
 - `EpubMetadataGenerator.ts` - OPF manifest, NCX table of contents
@@ -154,6 +175,12 @@ Use `src/utils/platform.ts` for environment detection:
 - `isExpoGo()` - Returns true when running in Expo Go (limited native module support)
 - `isAndroidNative()` - Returns true on Android with full native module support
 - Use these instead of checking `Constants.executionEnvironment` directly
+
+### Custom Image Viewer
+A styled native and web wrapper (`src/components/ImageViewer.tsx`) encapsulates image viewing features:
+- Uses `react-native-image-viewing` on native and custom fallback on web.
+- Configures consistent behavior: fade animation, double-tap zoom, and swipe-to-close disabled to avoid conflicts with pinch-zooming.
+- Features a header overlay displaying a close button and interactive help text ("Pinch or double tap to zoom").
 
 ### Performance
 - Chapters saved to disk immediately, not held in memory

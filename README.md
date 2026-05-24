@@ -5,16 +5,17 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 ## Key Features
 
 - **Multi-Source Support** — Extensible `SourceProvider` architecture (RoyalRoad, Scribble Hub; add more via `SourceRegistry`).
+- **In-App Browser** — Browse supported sites directly and import novels from their detail pages with a single click, featuring Google OAuth compatibility and external redirects.
 - **Offline Library** — Download chapters for reading without an internet connection.
-- **Built-in Reader** — WebView-based reader with TTS, image viewing, and last-read position tracking.
+- **Built-in Reader** — WebView-based reader with TTS highlighting, pinch-to-zoom Image Viewer, and last-read position tracking.
 - **Text-to-Speech** — Background playback, lock-screen media controls, configurable voice/rate/pitch.
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting and configurable chapter ranges.
-- **Background Downloads** — Concurrent engine with persistent queue, pause/resume/retry.
+- **Background Downloads** — Concurrent engine with persistent queue, real-time library progress updates, automatic queue self-healing, and partial download continuation.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both).
-- **Library Organization** — Custom tabs, multi-select, search, tag filtering, and sorting.
+- **Library Organization** — Custom tabs, multi-select, search, tag popularity sorting/filtering, and custom tag chips.
 - **Smart Updates** — New-chapter detection with intelligent merge and stale-EPUB marking.
 - **Backup & Restore** — JSON-based export/import with merge-on-import.
-- **Theming** — System, Light, or Dark mode (Material Design 3).
+- **Pluggable Theme System** — Pluggable registry supporting multiple curated dark/light variants (Obsidian, Midnight, Forest, Classic Light) with custom typography, shape tokens, and "Refined Bibliophile" aesthetics.
 
 ## Tech Stack
 
@@ -23,7 +24,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 | Framework | React Native via Expo SDK 54 |
 | Language | TypeScript (strict mode) |
 | Navigation | Expo Router (file-based) |
-| UI | React Native Paper (Material Design 3) |
+| UI | React Native Paper (Material Design 3) with Custom Multi-Theme Registry |
 | HTML Parsing | cheerio |
 | Storage | expo-file-system + @react-native-async-storage/async-storage |
 | EPUB | Custom engine using jszip |
