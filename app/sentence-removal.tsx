@@ -5,20 +5,20 @@ import {
   ActivityIndicator,
 } from "react-native-paper";
 import { router, Stack } from "expo-router";
-import { ScreenContainer } from "../src/components/ScreenContainer";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { TabValue } from "../src/types/sentenceRemoval";
 import { AppSegmentedButtons } from "../src/components/theme/AppSegmentedButtons";
-import { useSentenceRemovalData } from "../src/hooks/useSentenceRemovalData";
-import { useSentenceManagement } from "../src/hooks/useSentenceManagement";
-import { useRegexRuleManagement } from "../src/hooks/useRegexRuleManagement";
-import { useExportRules } from "../src/hooks/useExportRules";
+import { useSentenceRemovalData } from "../src/hooks/sentence-removal/useSentenceRemovalData";
+import { useSentenceManagement } from "../src/hooks/sentence-removal/useSentenceManagement";
+import { useRegexRuleManagement } from "../src/hooks/sentence-removal/useRegexRuleManagement";
+import { useExportRules } from "../src/hooks/sentence-removal/useExportRules";
 import {
   SentenceList,
   RegexRuleList,
   SentenceDialog,
   RuleDialog,
 } from "../src/components/sentence-removal";
-import { useScreenLayout } from "../src/hooks/useScreenLayout";
+import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
 
 type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
   widthClass?: "compact" | "medium" | "expanded";

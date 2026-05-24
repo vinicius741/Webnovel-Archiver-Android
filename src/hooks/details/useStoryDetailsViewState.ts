@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { storageService } from "../../services/StorageService";
+import { storageService } from "../../services/storage/StorageService";
 import type { ChapterFilterMode, EpubConfig, Story } from "../../types";
 
 interface UseStoryDetailsViewStateParams {

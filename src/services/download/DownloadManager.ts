@@ -7,7 +7,7 @@ import { cleanupOrphanedJobs } from "./orphanJobCleaner";
 import { sourceRegistry } from "../source/SourceRegistry";
 import { fetchPage, HttpError } from "../network/fetcher";
 import { saveChapter } from "../storage/fileSystem";
-import { storageService } from "../StorageService";
+import { storageService } from "../storage/StorageService";
 import { DownloadStatus, SourceDownloadSettingsMap } from "../../types";
 import { applyDownloadCleanup } from "../../utils/textCleanup";
 

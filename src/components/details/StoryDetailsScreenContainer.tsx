@@ -10,11 +10,11 @@ import {
 } from "react-native-paper";
 
 import { useAppAlert } from "../../context/AlertContext";
-import { useScreenLayout } from "../../hooks/useScreenLayout";
-import { useStoryDetails } from "../../hooks/useStoryDetails";
+import { useScreenLayout } from "../../hooks/common/useScreenLayout";
+import { useStoryDetails } from "../../hooks/details/useStoryDetails";
 import { useStoryDetailsViewState } from "../../hooks/details/useStoryDetailsViewState";
 import { EpubConfig } from "../../types";
-import { ScreenContainer } from "../ScreenContainer";
+import { ScreenContainer } from "../common/ScreenContainer";
 import { AppButton } from "../theme/AppButton";
 import { StoryMenu } from "./StoryMenu";
 import { StoryDetailsChaptersList } from "./StoryDetailsChaptersList";

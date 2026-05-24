@@ -4,12 +4,12 @@ import { Stack } from "expo-router";
 import { Snackbar } from "react-native-paper";
 import { WebView } from "react-native-webview";
 
-import { ReaderNavigation } from "../ReaderNavigation";
-import { ReaderContent } from "../ReaderContent";
-import { ScreenContainer } from "../ScreenContainer";
-import { TTSController } from "../TTSController";
-import { TTSSettingsModal } from "../TTSSettingsModal";
-import { useScreenLayout } from "../../hooks/useScreenLayout";
+import { ReaderNavigation } from "./ReaderNavigation";
+import { ReaderContent } from "./ReaderContent";
+import { ScreenContainer } from "../common/ScreenContainer";
+import { TTSController } from "../tts/TTSController";
+import { TTSSettingsModal } from "../tts/TTSSettingsModal";
+import { useScreenLayout } from "../../hooks/common/useScreenLayout";
 import { useReaderScreenController } from "../../hooks/reader/useReaderScreenController";
 import { ReaderHeaderRight } from "./ReaderHeaderRight";
 

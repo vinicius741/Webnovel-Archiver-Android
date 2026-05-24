@@ -2,11 +2,11 @@ import React from "react";
 import { List } from "react-native-paper";
 import { AppSegmentedButtons } from "../src/components/theme/AppSegmentedButtons";
 import { StyleSheet, View, ScrollView } from "react-native";
-import { ScreenContainer } from "../src/components/ScreenContainer";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { ThemePicker } from "../src/components/settings/ThemePicker";
 import { useFoldLayoutMode } from "../src/context/FoldLayoutContext";
-import { useSettings } from "../src/hooks/useSettings";
-import { useScreenLayout } from "../src/hooks/useScreenLayout";
+import { useSettings } from "../src/hooks/common/useSettings";
+import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
 import { router } from "expo-router";
 
 type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {

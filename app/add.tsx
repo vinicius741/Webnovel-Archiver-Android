@@ -8,10 +8,10 @@ import {
 } from "react-native-paper";
 import { useRouter } from "expo-router";
 import { AppButton } from "../src/components/theme/AppButton";
-import { ScreenContainer } from "../src/components/ScreenContainer";
-import { useAddStory } from "../src/hooks/useAddStory";
-import { useScreenLayout } from "../src/hooks/useScreenLayout";
-import { useTabs } from "../src/hooks/useTabs";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
+import { useAddStory } from "../src/hooks/library/useAddStory";
+import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
+import { useTabs } from "../src/hooks/library/useTabs";
 import { SourceCard } from "../src/components/browser/SourceCard";
 import { TabSelectionList } from "../src/components/tabs/TabSelectionList";
 

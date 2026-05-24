@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { View, StyleSheet, Image, Linking, Pressable } from "react-native";
 import { Text, useTheme, Chip, IconButton } from "react-native-paper";
-import ImageView from "../ImageViewer";
+import ImageView from "../common/ImageViewer/index";
 import { Story } from "../../types";
 import { sourceRegistry } from "../../services/source/SourceRegistry";
 

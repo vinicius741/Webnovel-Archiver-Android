@@ -1,12 +1,12 @@
 import { cleanupOrphanedJobs } from "../orphanJobCleaner";
 import { downloadQueue } from "../../download/DownloadQueue";
 import { sourceRegistry } from "../../source/SourceRegistry";
-import { storageService } from "../../StorageService";
+import { storageService } from "../../storage/StorageService";
 import { DownloadJob } from "../types";
 
 jest.mock("../../download/DownloadQueue");
 jest.mock("../../source/SourceRegistry");
-jest.mock("../../StorageService");
+jest.mock("../../storage/StorageService");
 
 const mockDownloadQueue = downloadQueue as jest.Mocked<typeof downloadQueue>;
 const mockSourceRegistry = sourceRegistry as jest.Mocked<typeof sourceRegistry>;

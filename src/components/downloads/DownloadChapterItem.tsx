@@ -1,7 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Text, IconButton, useTheme } from "react-native-paper";
-import { useScreenLayout } from "../../hooks/useScreenLayout";
+import { useScreenLayout } from "../../hooks/common/useScreenLayout";
 import { DownloadJob } from "../../services/download/types";
 import { getStatusColor, getStatusLabel } from "./downloadStatusUtils";
 

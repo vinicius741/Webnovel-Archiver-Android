@@ -10,7 +10,7 @@ import {
 } from "react-native-paper";
 import { AppButton } from "../theme/AppButton";
 import { useAppTheme } from "../../theme/useAppTheme";
-import { useScreenLayout } from "../../hooks/useScreenLayout";
+import { useScreenLayout } from "../../hooks/common/useScreenLayout";
 
 interface Props {
   visible: boolean;

@@ -6,7 +6,7 @@ import React, {
   type ReactNode,
 } from "react";
 
-import { storageService } from "../services/StorageService";
+import { storageService } from "../services/storage/StorageService";
 import type { FoldLayoutMode } from "../types";
 
 interface FoldLayoutContextValue {

@@ -1,4 +1,4 @@
-import { storageService } from "../services/StorageService";
+import { storageService } from "../services/storage/StorageService";
 import { Story } from "../types";
 
 export const saveAndNotify = async (

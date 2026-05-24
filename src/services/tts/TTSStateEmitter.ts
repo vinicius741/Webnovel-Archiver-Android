@@ -1,6 +1,6 @@
 import { DeviceEventEmitter } from "react-native";
-import type { TTSState } from "../TTSStateManager";
-import { TTS_STATE_EVENTS } from "../TTSStateManager";
+import type { TTSState } from "./TTSStateManager";
+import { TTS_STATE_EVENTS } from "./TTSStateManager";
 
 const STATE_EMIT_DEBOUNCE_MS = 100;
 

@@ -1,5 +1,5 @@
 import { DownloadStatus, Story } from "../../types";
-import { storageService } from "../StorageService";
+import { storageService } from "../storage/StorageService";
 
 const FLUSH_THRESHOLD = 3;
 

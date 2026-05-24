@@ -3,7 +3,7 @@ import {
   clearDownloadState,
   setDownloadState,
   showDownloadCompletionNotification,
-} from "../ForegroundServiceCoordinator";
+} from "./ForegroundServiceCoordinator";
 
 export class DownloadNotificationManager {
   private lastNotificationUpdate = 0;

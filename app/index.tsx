@@ -20,16 +20,16 @@ import {
 } from "react-native-paper";
 import { useRouter, Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ScreenContainer } from "../src/components/ScreenContainer";
-import { StoryCard } from "../src/components/StoryCard";
-import { SortButton } from "../src/components/SortButton";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
+import { StoryCard } from "../src/components/library/StoryCard";
+import { SortButton } from "../src/components/library/SortButton";
 import { LibraryTabBar } from "../src/components/library/LibraryTabBar";
 import { MoveToTabDialog } from "../src/components/library/MoveToTabDialog";
 import { SelectionActionBar } from "../src/components/library/SelectionActionBar";
-import { useScreenLayout } from "../src/hooks/useScreenLayout";
-import { useLibrary, SortOption } from "../src/hooks/useLibrary";
-import { useTabs } from "../src/hooks/useTabs";
-import { useLibrarySelection } from "../src/hooks/useLibrarySelection";
+import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
+import { useLibrary, SortOption } from "../src/hooks/library/useLibrary";
+import { useTabs } from "../src/hooks/library/useTabs";
+import { useLibrarySelection } from "../src/hooks/library/useLibrarySelection";
 import { sourceRegistry } from "../src/services/source/SourceRegistry";
 import { Story } from "../src/types";
 

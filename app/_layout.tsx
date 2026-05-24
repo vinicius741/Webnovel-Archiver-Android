@@ -5,14 +5,14 @@ import { useTheme as usePaperTheme } from "react-native-paper";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Platform } from "react-native";
 
-import { notificationService } from "../src/services/NotificationService";
+import { notificationService } from "../src/services/download/NotificationService";
 import { ThemeProvider } from "../src/theme/ThemeContext";
 import { AlertProvider } from "../src/context/AlertContext";
 import { FoldLayoutProvider } from "../src/context/FoldLayoutContext";
-import { initializeBackgroundService } from "../src/services/BackgroundService";
-import { ttsLifecycleService } from "../src/services/TTSLifecycleService";
-import { ttsStateManager } from "../src/services/TTSStateManager";
-import { TTS_RELIABILITY_V2 } from "../src/services/TTSFeatureFlags";
+import { initializeBackgroundService } from "../src/services/download/BackgroundService";
+import { ttsLifecycleService } from "../src/services/tts/TTSLifecycleService";
+import { ttsStateManager } from "../src/services/tts/TTSStateManager";
+import { TTS_RELIABILITY_V2 } from "../src/services/tts/TTSFeatureFlags";
 import { isAndroidNative } from "../src/utils/platform";
 
 let FoldingFeatureProvider: React.ComponentType<{ children: React.ReactNode }> | null = null;

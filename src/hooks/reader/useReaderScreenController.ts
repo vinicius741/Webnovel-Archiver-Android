@@ -9,12 +9,12 @@ import {
   prepareTTSContent,
 } from "../../utils/htmlUtils";
 import { sanitizeTitle } from "../../utils/stringUtils";
-import { useReaderContent } from "../useReaderContent";
-import { useReaderNavigation } from "../useReaderNavigation";
-import { useTTS } from "../useTTS";
-import { useWebViewHighlight } from "../useWebViewHighlight";
-import { ttsStateManager } from "../../services/TTSStateManager";
-import { storageService } from "../../services/StorageService";
+import { useReaderContent } from "./useReaderContent";
+import { useReaderNavigation } from "./useReaderNavigation";
+import { useTTS } from "../tts/useTTS";
+import { useWebViewHighlight } from "../browser/useWebViewHighlight";
+import { ttsStateManager } from "../../services/tts/TTSStateManager";
+import { storageService } from "../../services/storage/StorageService";
 import { RegexCleanupRule } from "../../types";
 
 interface UseReaderScreenControllerParams {

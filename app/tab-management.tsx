@@ -14,9 +14,9 @@ import {
   Divider,
 } from "react-native-paper";
 import { Stack } from "expo-router";
-import { ScreenContainer } from "../src/components/ScreenContainer";
-import { useTabManagement } from "../src/hooks/useTabManagement";
-import { useScreenLayout } from "../src/hooks/useScreenLayout";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
+import { useTabManagement } from "../src/hooks/tabs/useTabManagement";
+import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
 import { TabDialog } from "../src/components/tabs/TabDialog";
 import { Tab } from "../src/types/tab";
 

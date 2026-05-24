@@ -2,14 +2,14 @@ import React, { useState, useCallback, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useTheme, Card, IconButton, Portal } from "react-native-paper";
 import { Stack } from "expo-router";
-import { ScreenContainer } from "../src/components/ScreenContainer";
-import { useDownloadQueue } from "../src/hooks/useDownloadQueue";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
+import { useDownloadQueue } from "../src/hooks/downloads/useDownloadQueue";
 import { DownloadQueueList } from "../src/components/downloads/DownloadQueueList";
 import { StatItem } from "../src/components/downloads/StatItem";
 import { DownloadManagerSettingsModal } from "../src/components/downloads/DownloadManagerSettingsModal";
 import { useAppAlert } from "../src/context/AlertContext";
-import { useScreenLayout } from "../src/hooks/useScreenLayout";
-import { useSettings } from "../src/hooks/useSettings";
+import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
+import { useSettings } from "../src/hooks/common/useSettings";
 
 type ScreenLayout = ReturnType<typeof useScreenLayout> & {
   widthClass?: "compact" | "medium" | "expanded";

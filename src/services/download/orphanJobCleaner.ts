@@ -1,6 +1,6 @@
 import { downloadQueue } from "./DownloadQueue";
 import { sourceRegistry } from "../source/SourceRegistry";
-import { storageService } from "../StorageService";
+import { storageService } from "../storage/StorageService";
 import { DownloadStatus } from "../../types";
 
 export interface OrphanCleanupResult {

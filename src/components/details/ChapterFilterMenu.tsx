@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { Menu, IconButton, useTheme, Searchbar } from "react-native-paper";
-import { ChapterFilterMode } from "../../services/StorageService";
+import { ChapterFilterMode } from "../../services/storage/StorageService";
 
 interface ChapterFilterMenuProps {
   filterMode: ChapterFilterMode;

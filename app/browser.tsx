@@ -19,12 +19,12 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ScreenContainer } from "../src/components/ScreenContainer";
+import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { AppButton } from "../src/components/theme/AppButton";
 import { BrowserLanding } from "../src/components/browser/BrowserLanding";
 import { TabSelectionList } from "../src/components/tabs/TabSelectionList";
-import { storageService } from "../src/services/StorageService";
-import { useTabs } from "../src/hooks/useTabs";
+import { storageService } from "../src/services/storage/StorageService";
+import { useTabs } from "../src/hooks/library/useTabs";
 import { useAppAlert } from "../src/context/AlertContext";
 import {
   buildStoryForAdd,
