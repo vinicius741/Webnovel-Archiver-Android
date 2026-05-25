@@ -16,6 +16,7 @@ interface StoryDetailsInfoPanelProps {
   downloading: boolean;
   syncing: boolean;
   generating: boolean;
+  opening?: boolean;
   epubProgress: {
     current: number;
     total: number;
@@ -71,6 +72,7 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
   downloading,
   syncing,
   generating,
+  opening,
   epubProgress,
   syncStatus,
   downloadProgress,
@@ -116,6 +118,7 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
         downloading={downloading}
         syncing={syncing}
         generating={generating}
+        opening={opening}
         epubProgress={epubProgress}
         syncStatus={syncStatus}
         downloadProgress={downloadProgress}

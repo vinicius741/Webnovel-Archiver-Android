@@ -295,6 +295,65 @@ describe("useStoryEPUB", () => {
     expect(epubGenerator.generateEpubs).not.toHaveBeenCalled();
   });
 
+  it("prevents concurrent reads by setting and maintaining opening state", async () => {
+    let resolveStartActivity: (value: any) => void = () => {};
+    const startActivityPromise = new Promise((resolve) => {
+      resolveStartActivity = resolve;
+    });
+    (startActivityAsync as jest.Mock).mockReturnValue(startActivityPromise);
+
+    const storyWithEpub: Story = {
+      ...baseStory,
+      epubPath: "file://existing.epub",
+      epubStale: false,
+    };
+    const { result } = renderHook(() =>
+      useStoryEPUB({
+        story: storyWithEpub,
+        onStoryUpdated: mockOnStoryUpdated,
+      }),
+    );
+
+    // Verify initial state
+    expect(result.current.opening).toBe(false);
+
+    let readPromise1: Promise<boolean>;
+    act(() => {
+      readPromise1 = result.current.readEpub();
+    });
+
+    // Flush microtasks to allow readExistingEpub to proceed past getInfoAsync and getContentUriAsync
+    // to the startActivityAsync call.
+    await act(async () => {
+      await Promise.resolve(); // Resolves getInfoAsync
+      await Promise.resolve(); // Resolves getContentUriAsync
+    });
+
+    // opening should now be true
+    expect(result.current.opening).toBe(true);
+    expect(startActivityAsync).toHaveBeenCalledTimes(1);
+
+    // Call readEpub again while first is opening
+    let readPromise2: Promise<boolean>;
+    act(() => {
+      readPromise2 = result.current.readEpub();
+    });
+
+    // readPromise2 should resolve immediately to false, and startActivityAsync should NOT be called again
+    const res2 = await readPromise2!;
+    expect(res2).toBe(false);
+    expect(startActivityAsync).toHaveBeenCalledTimes(1);
+
+    // Resolve the first read call
+    await act(async () => {
+      resolveStartActivity({});
+      await readPromise1!;
+    });
+
+    // opening should be false again
+    expect(result.current.opening).toBe(false);
+  });
+
   it("handles generator errors", async () => {
     (epubGenerator.generateEpubs as jest.Mock).mockRejectedValue(
       new Error("Generation failed"),

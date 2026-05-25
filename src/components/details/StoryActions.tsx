@@ -14,6 +14,7 @@ interface StoryActionsProps {
   downloading: boolean;
   syncing: boolean;
   generating: boolean;
+  opening?: boolean;
   epubProgress: {
     current: number;
     total: number;
@@ -37,6 +38,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
   downloading,
   syncing,
   generating,
+  opening,
   epubProgress,
   syncStatus,
   downloadProgress,
@@ -128,7 +130,7 @@ export const StoryActions: React.FC<StoryActionsProps> = ({
           Generate EPUB
         </AppButton>
         <AppButton
-          disabled={!hasEpub || generating}
+          disabled={!hasEpub || generating || opening}
           onPress={onRead}
           style={[styles.actionRowButton, stacked && styles.actionRowButtonStacked]}
           testID="read-button"

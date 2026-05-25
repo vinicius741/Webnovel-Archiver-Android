@@ -56,6 +56,7 @@ export const StoryDetailsScreenContainer: React.FC<
     downloading,
     syncing,
     generating,
+    opening,
     epubProgress,
     syncStatus,
     downloadProgress,
@@ -145,6 +146,7 @@ export const StoryDetailsScreenContainer: React.FC<
       downloading={downloading}
       syncing={syncing}
       generating={generating}
+      opening={opening}
       epubProgress={epubProgress}
       syncStatus={syncStatus}
       downloadProgress={downloadProgress}

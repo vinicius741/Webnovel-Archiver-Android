@@ -79,6 +79,7 @@ export const useStoryEPUB = ({
 }: UseStoryEPUBParams) => {
   const { showAlert } = useAppAlert();
   const [generating, setGenerating] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [progress, setProgress] = useState<EpubGenerationProgress | null>(null);
 
   const readExistingEpub = async (
@@ -86,8 +87,10 @@ export const useStoryEPUB = ({
     isFromMultiple: boolean = false,
   ): Promise<boolean> => {
     if (!validateStory(story)) return false;
+    if (opening) return false;
 
     try {
+      setOpening(true);
       const fileInfo = await getInfoAsync(epubPath);
       if (!fileInfo.exists) {
         if (isFromMultiple && story.epubPaths && story.epubPaths.length > 1) {
@@ -147,6 +150,8 @@ export const useStoryEPUB = ({
       const message = e instanceof Error ? e.message : "Could not open EPUB";
       showAlert("Read Error", "Could not open EPUB: " + message);
       return false;
+    } finally {
+      setOpening(false);
     }
   };
 
@@ -327,6 +332,7 @@ export const useStoryEPUB = ({
 
   return {
     generating,
+    opening,
     progress,
     generateEpub,
     readEpub,
