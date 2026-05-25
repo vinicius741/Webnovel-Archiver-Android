@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
 
-import { ChapterFilterMode, Story } from "../../types";
+import { ChapterFilterMode, EpubConfig, Story } from "../../types";
 import { StoryHeader } from "./StoryHeader";
 import { StoryActions } from "./StoryActions";
 import { DownloadRangeDialog } from "./DownloadRangeDialog";
@@ -11,8 +11,7 @@ import { StoryTags } from "./StoryTags";
 import { StoryDescription } from "./StoryDescription";
 import { ChapterFilterMenu } from "./ChapterFilterMenu";
 
-interface StoryDetailsInfoPanelProps {
-  story: Story;
+export interface StoryStatus {
   downloading: boolean;
   syncing: boolean;
   generating: boolean;
@@ -27,23 +26,33 @@ interface StoryDetailsInfoPanelProps {
   syncStatus?: string;
   downloadProgress: number;
   downloadStatus: string;
+}
+
+export interface StoryDialogState {
   showDownloadRange: boolean;
   showEpubConfig: boolean;
   showEpubSelector: boolean;
+}
+
+export interface StoryEpubState {
   availableEpubs: string[];
-  filterMode: ChapterFilterMode;
+  initialConfig: EpubConfig;
+}
+
+export interface StoryChapterFilter {
+  mode: ChapterFilterMode;
   searchQuery: string;
   selectionMode: boolean;
   chapterCount: number;
   downloadedChapterCount: number;
-  hasValidBookmark: boolean;
-  bookmarkChapterNumber?: number;
-  initialEpubConfig: {
-    maxChaptersPerEpub: number;
-    rangeStart: number;
-    rangeEnd: number;
-    startAfterBookmark: boolean;
-  };
+}
+
+export interface StoryBookmarkInfo {
+  isValid: boolean;
+  chapterNumber?: number;
+}
+
+export interface StoryDetailsHandlers {
   onSync: () => void;
   onGenerate: () => void;
   onRead: () => void;
@@ -53,59 +62,40 @@ interface StoryDetailsInfoPanelProps {
   onDownloadRange: (start: number, end: number) => void;
   onSetShowDownloadRange: (visible: boolean) => void;
   onSetShowEpubConfig: (visible: boolean) => void;
-  onSaveEpubConfig: (config: {
-    maxChaptersPerEpub: number;
-    rangeStart: number;
-    rangeEnd: number;
-    startAfterBookmark: boolean;
-  }) => void | Promise<void>;
+  onSaveEpubConfig: (config: EpubConfig) => void | Promise<void>;
   onSetShowEpubSelector: (visible: boolean) => void;
   onFilterSelect: (mode: ChapterFilterMode) => void | Promise<void>;
   onSearchChange: (value: string) => void;
   onToggleSelectionMode: () => void;
+}
+
+export interface StoryLayoutConfig {
   isTwoPane?: boolean;
   widthClass?: "compact" | "medium" | "expanded";
 }
 
+interface StoryDetailsInfoPanelProps {
+  story: Story;
+  status: StoryStatus;
+  dialogs: StoryDialogState;
+  epub: StoryEpubState;
+  chapterFilter: StoryChapterFilter;
+  bookmark: StoryBookmarkInfo;
+  handlers: StoryDetailsHandlers;
+  layout?: StoryLayoutConfig;
+}
+
 export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
   story,
-  downloading,
-  syncing,
-  generating,
-  opening,
-  epubProgress,
-  syncStatus,
-  downloadProgress,
-  downloadStatus,
-  showDownloadRange,
-  showEpubConfig,
-  showEpubSelector,
-  availableEpubs,
-  filterMode,
-  searchQuery,
-  selectionMode,
-  chapterCount,
-  downloadedChapterCount,
-  hasValidBookmark,
-  bookmarkChapterNumber,
-  initialEpubConfig,
-  onSync,
-  onGenerate,
-  onRead,
-  onReadEpubAtPath,
-  onDownloadAll,
-  onViewDownloads,
-  onDownloadRange,
-  onSetShowDownloadRange,
-  onSetShowEpubConfig,
-  onSaveEpubConfig,
-  onSetShowEpubSelector,
-  onFilterSelect,
-  onSearchChange,
-  onToggleSelectionMode,
-  isTwoPane = false,
-  widthClass = "compact",
+  status,
+  dialogs,
+  epub,
+  chapterFilter,
+  bookmark,
+  handlers,
+  layout = {},
 }) => {
+  const { isTwoPane = false, widthClass = "compact" } = layout;
   const stackedControls = isTwoPane || widthClass === "compact";
   const contentAlign = "center";
 
@@ -115,46 +105,46 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
 
       <StoryActions
         story={story}
-        downloading={downloading}
-        syncing={syncing}
-        generating={generating}
-        opening={opening}
-        epubProgress={epubProgress}
-        syncStatus={syncStatus}
-        downloadProgress={downloadProgress}
-        downloadStatus={downloadStatus}
-        onSync={onSync}
-        onGenerate={onGenerate}
-        onRead={onRead}
-        onDownloadAll={onDownloadAll}
-        onViewDownloads={onViewDownloads}
+        downloading={status.downloading}
+        syncing={status.syncing}
+        generating={status.generating}
+        opening={status.opening}
+        epubProgress={status.epubProgress}
+        syncStatus={status.syncStatus}
+        downloadProgress={status.downloadProgress}
+        downloadStatus={status.downloadStatus}
+        onSync={handlers.onSync}
+        onGenerate={handlers.onGenerate}
+        onRead={handlers.onRead}
+        onDownloadAll={handlers.onDownloadAll}
+        onViewDownloads={handlers.onViewDownloads}
         stacked={stackedControls}
       />
 
       <DownloadRangeDialog
-        visible={showDownloadRange}
-        onDismiss={() => onSetShowDownloadRange(false)}
-        onDownload={onDownloadRange}
+        visible={dialogs.showDownloadRange}
+        onDismiss={() => handlers.onSetShowDownloadRange(false)}
+        onDownload={handlers.onDownloadRange}
         totalChapters={story.totalChapters}
-        hasBookmark={hasValidBookmark}
-        bookmarkChapterNumber={bookmarkChapterNumber}
+        hasBookmark={bookmark.isValid}
+        bookmarkChapterNumber={bookmark.chapterNumber}
       />
 
       <EpubConfigDialog
-        visible={showEpubConfig}
-        onDismiss={() => onSetShowEpubConfig(false)}
-        onSave={onSaveEpubConfig}
-        initialConfig={initialEpubConfig}
-        totalChapters={chapterCount}
-        downloadedChapterCount={downloadedChapterCount}
-        hasBookmark={hasValidBookmark}
+        visible={dialogs.showEpubConfig}
+        onDismiss={() => handlers.onSetShowEpubConfig(false)}
+        onSave={handlers.onSaveEpubConfig}
+        initialConfig={epub.initialConfig}
+        totalChapters={chapterFilter.chapterCount}
+        downloadedChapterCount={chapterFilter.downloadedChapterCount}
+        hasBookmark={bookmark.isValid}
       />
 
       <EpubSelectorDialog
-        visible={showEpubSelector}
-        onDismiss={() => onSetShowEpubSelector(false)}
-        onSelect={onReadEpubAtPath}
-        epubs={availableEpubs}
+        visible={dialogs.showEpubSelector}
+        onDismiss={() => handlers.onSetShowEpubSelector(false)}
+        onSelect={handlers.onReadEpubAtPath}
+        epubs={epub.availableEpubs}
       />
 
       <StoryTags tags={story.tags} align={contentAlign} />
@@ -162,13 +152,13 @@ export const StoryDetailsInfoPanel: React.FC<StoryDetailsInfoPanelProps> = ({
 
       <View style={[styles.filterContainer, isTwoPane && styles.filterContainerTwoPane]}>
         <ChapterFilterMenu
-          filterMode={filterMode}
+          filterMode={chapterFilter.mode}
           hasBookmark={!!story.lastReadChapterId}
-          onFilterSelect={onFilterSelect}
-          searchQuery={searchQuery}
-          onSearchChange={onSearchChange}
-          selectionMode={selectionMode}
-          onToggleSelectionMode={onToggleSelectionMode}
+          onFilterSelect={handlers.onFilterSelect}
+          searchQuery={chapterFilter.searchQuery}
+          onSearchChange={handlers.onSearchChange}
+          selectionMode={chapterFilter.selectionMode}
+          onToggleSelectionMode={handlers.onToggleSelectionMode}
           selectionDisabled={!!story.isArchived}
           stacked={stackedControls}
         />

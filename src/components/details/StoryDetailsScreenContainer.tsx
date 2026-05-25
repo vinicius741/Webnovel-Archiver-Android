@@ -18,7 +18,15 @@ import { ScreenContainer } from "../common/ScreenContainer";
 import { AppButton } from "../theme/AppButton";
 import { StoryMenu } from "./StoryMenu";
 import { StoryDetailsChaptersList } from "./StoryDetailsChaptersList";
-import { StoryDetailsInfoPanel } from "./StoryDetailsInfoPanel";
+import {
+  StoryDetailsInfoPanel,
+  StoryStatus,
+  StoryDialogState,
+  StoryEpubState,
+  StoryChapterFilter,
+  StoryBookmarkInfo,
+  StoryDetailsHandlers,
+} from "./StoryDetailsInfoPanel";
 
 interface StoryDetailsScreenContainerProps {
   id: string | string[] | undefined;
@@ -143,42 +151,56 @@ export const StoryDetailsScreenContainer: React.FC<
   const infoPanel = (
     <StoryDetailsInfoPanel
       story={story}
-      downloading={downloading}
-      syncing={syncing}
-      generating={generating}
-      opening={opening}
-      epubProgress={epubProgress}
-      syncStatus={syncStatus}
-      downloadProgress={downloadProgress}
-      downloadStatus={downloadStatus}
-      showDownloadRange={showDownloadRange}
-      showEpubConfig={showEpubConfig}
-      showEpubSelector={showEpubSelector}
-      availableEpubs={availableEpubs}
-      filterMode={filterMode}
-      searchQuery={searchQuery}
-      selectionMode={selectionMode}
-      chapterCount={chapterCount}
-      downloadedChapterCount={downloadedChapterCount}
-      hasValidBookmark={hasValidBookmark}
-      bookmarkChapterNumber={bookmarkChapterNumber}
-      initialEpubConfig={initialEpubConfig}
-      onSync={syncChapters}
-      onGenerate={generateEpub}
-      onRead={readEpub}
-      onReadEpubAtPath={readEpubAtPath}
-      onDownloadAll={downloadAll}
-      onViewDownloads={() => router.push("/download-manager")}
-      onDownloadRange={downloadRange}
-      onSetShowDownloadRange={setShowDownloadRange}
-      onSetShowEpubConfig={setShowEpubConfig}
-      onSaveEpubConfig={handleSaveEpubConfig}
-      onSetShowEpubSelector={setShowEpubSelector}
-      onFilterSelect={handleFilterSelect}
-      onSearchChange={setSearchQuery}
-      onToggleSelectionMode={handleToggleSelectionMode}
-      isTwoPane={isTwoPane}
-      widthClass={isNarrowTwoPane ? "compact" : widthClass}
+      status={{
+        downloading,
+        syncing,
+        generating,
+        opening,
+        epubProgress,
+        syncStatus,
+        downloadProgress,
+        downloadStatus,
+      } satisfies StoryStatus}
+      dialogs={{
+        showDownloadRange,
+        showEpubConfig,
+        showEpubSelector,
+      } satisfies StoryDialogState}
+      epub={{
+        availableEpubs,
+        initialConfig: initialEpubConfig,
+      } satisfies StoryEpubState}
+      chapterFilter={{
+        mode: filterMode,
+        searchQuery,
+        selectionMode,
+        chapterCount,
+        downloadedChapterCount,
+      } satisfies StoryChapterFilter}
+      bookmark={{
+        isValid: hasValidBookmark,
+        chapterNumber: bookmarkChapterNumber,
+      } satisfies StoryBookmarkInfo}
+      handlers={{
+        onSync: syncChapters,
+        onGenerate: generateEpub,
+        onRead: readEpub,
+        onReadEpubAtPath: readEpubAtPath,
+        onDownloadAll: downloadAll,
+        onViewDownloads: () => router.push("/download-manager"),
+        onDownloadRange: downloadRange,
+        onSetShowDownloadRange: setShowDownloadRange,
+        onSetShowEpubConfig: setShowEpubConfig,
+        onSaveEpubConfig: handleSaveEpubConfig,
+        onSetShowEpubSelector: setShowEpubSelector,
+        onFilterSelect: handleFilterSelect,
+        onSearchChange: setSearchQuery,
+        onToggleSelectionMode: handleToggleSelectionMode,
+      } satisfies StoryDetailsHandlers}
+      layout={{
+        isTwoPane,
+        widthClass: isNarrowTwoPane ? "compact" : widthClass,
+      }}
     />
   );
 
