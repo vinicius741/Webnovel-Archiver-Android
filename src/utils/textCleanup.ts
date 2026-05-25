@@ -15,7 +15,7 @@ export type { RegexValidationResult } from "./regexValidation";
 const MAX_TOTAL_REPLACEMENTS = 5000;
 const SKIP_TAGS = new Set(["script", "style", "noscript", "iframe"]);
 
-interface CompiledRule {
+export interface CompiledRule {
   ruleId: string;
   regex: RegExp;
 }
@@ -217,13 +217,41 @@ export interface CleanupResult {
   sentencesRemoved: number;
 }
 
+export const compileSentencePatternsExport = compileSentencePatterns;
+
+export const compileRegexRules = (
+  rules: RegexCleanupRule[],
+  target: CleanupTarget,
+): CompiledRule[] => compileRules(rules, target);
+
+export const createRegexCleanupRunnerFromCompiled = (
+  compiledRules: CompiledRule[],
+): ((text: string) => string) => {
+  if (compiledRules.length === 0) {
+    return (text: string) => text;
+  }
+
+  const replacementState = { total: 0 };
+  return (text: string) =>
+    cleanTextWithCompiledRules(text, compiledRules, replacementState);
+};
+
 export const applyDownloadCleanup = (
   html: string,
   sentenceRemovalList: string[],
   regexRules: RegexCleanupRule[],
 ): CleanupResult => {
   const sentencePatterns = compileSentencePatterns(sentenceRemovalList);
-  const cleanupRunner = createRegexCleanupRunner(regexRules, "download");
+  const compiledRules = compileRules(regexRules, "download");
+  return applyDownloadCleanupPrecompiled(html, sentencePatterns, compiledRules);
+};
+
+export const applyDownloadCleanupPrecompiled = (
+  html: string,
+  sentencePatterns: RegExp[],
+  compiledRules: CompiledRule[],
+): CleanupResult => {
+  const cleanupRunner = createRegexCleanupRunnerFromCompiled(compiledRules);
   let totalSentencesRemoved = 0;
 
   try {

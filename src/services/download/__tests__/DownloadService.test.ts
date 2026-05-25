@@ -2,7 +2,12 @@ import { downloadService } from "../DownloadService";
 import { downloadManager } from "../DownloadManager";
 import { storageService } from "../../storage/StorageService";
 import { readChapterFile, writeChapterFile } from "../../storage/fileSystem";
-import { applyDownloadCleanup } from "../../../utils/textCleanup";
+import {
+  applyDownloadCleanup,
+  applyDownloadCleanupPrecompiled,
+  compileSentencePatternsExport,
+  compileRegexRules,
+} from "../../../utils/textCleanup";
 import { Story, Chapter, DownloadStatus } from "../../../types";
 
 jest.mock("../DownloadManager", () => ({
@@ -27,6 +32,9 @@ jest.mock("../../storage/fileSystem", () => ({
 
 jest.mock("../../../utils/textCleanup", () => ({
   applyDownloadCleanup: jest.fn((html) => ({ html, sentencesRemoved: 0 })),
+  compileSentencePatternsExport: jest.fn(() => []),
+  compileRegexRules: jest.fn(() => []),
+  applyDownloadCleanupPrecompiled: jest.fn((html) => ({ html, sentencesRemoved: 0 })),
 }));
 
 describe("DownloadService", () => {
@@ -200,7 +208,7 @@ describe("DownloadService", () => {
       (readChapterFile as jest.Mock).mockResolvedValue(
         "<p>Chapter content with bad sentence.</p>",
       );
-      (applyDownloadCleanup as jest.Mock).mockReturnValue(
+      (applyDownloadCleanupPrecompiled as jest.Mock).mockReturnValue(
         { html: "<p>Chapter content.</p>", sentencesRemoved: 0 },
       );
 
@@ -216,7 +224,7 @@ describe("DownloadService", () => {
         "file://c3.html",
         "<p>Chapter content.</p>",
       );
-      expect(onProgress).toHaveBeenCalledWith(3, 4, "Chapter 3");
+      expect(onProgress).toHaveBeenCalledWith(1, 4, "Chapter 3");
     });
 
     it("should call onProgress for each chapter", async () => {
@@ -317,6 +325,7 @@ describe("DownloadService", () => {
         await downloadService.applySentenceRemovalToStory(mockStory);
 
       expect(result.processed).toBe(0);
+      expect(result.errors).toBe(0);
       expect(writeChapterFile).not.toHaveBeenCalled();
     });
 
@@ -333,7 +342,7 @@ describe("DownloadService", () => {
       );
     });
 
-    it("should use sentence removal list from storage", async () => {
+    it("should pre-compile patterns and rules once", async () => {
       (storageService.getSentenceRemovalList as jest.Mock).mockResolvedValue([
         "remove this",
       ]);
@@ -342,13 +351,42 @@ describe("DownloadService", () => {
 
       await downloadService.applySentenceRemovalToStory(mockStory);
 
-      expect(storageService.getSentenceRemovalList).toHaveBeenCalled();
-      expect(storageService.getRegexCleanupRules).toHaveBeenCalled();
-      expect(applyDownloadCleanup).toHaveBeenCalledWith(
+      expect(compileSentencePatternsExport).toHaveBeenCalledWith([
+        "remove this",
+      ]);
+      expect(compileRegexRules).toHaveBeenCalledWith([], "download");
+      expect(applyDownloadCleanupPrecompiled).toHaveBeenCalledWith(
         "<p>remove this</p>",
-        ["remove this"],
-        [],
+        expect.any(Array),
+        expect.any(Array),
       );
+    });
+
+    it("should process chapters in parallel batches", async () => {
+      const chapters = Array.from({ length: 12 }, (_, i) => ({
+        id: `c${i}`,
+        title: `Chapter ${i}`,
+        url: `http://test.com/c${i}`,
+        downloaded: true,
+        filePath: `file://c${i}.html`,
+      }));
+      const largeStory: Story = {
+        ...mockStory,
+        chapters,
+        totalChapters: 12,
+      };
+      (readChapterFile as jest.Mock).mockResolvedValue("<p>Content</p>");
+
+      const onProgress = jest.fn();
+      const result = await downloadService.applySentenceRemovalToStory(
+        largeStory,
+        onProgress,
+      );
+
+      expect(result.processed).toBe(12);
+      expect(result.errors).toBe(0);
+      expect(applyDownloadCleanupPrecompiled).toHaveBeenCalledTimes(12);
+      expect(onProgress).toHaveBeenCalledTimes(12);
     });
   });
 

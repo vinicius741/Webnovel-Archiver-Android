@@ -2,7 +2,11 @@ import { Story, Chapter, DownloadStatus } from "../../types";
 import { downloadManager } from "./DownloadManager";
 import { storageService } from "../storage/StorageService";
 import { readChapterFile, writeChapterFile } from "../storage/fileSystem";
-import { applyDownloadCleanup } from "../../utils/textCleanup";
+import {
+  compileSentencePatternsExport,
+  compileRegexRules,
+  applyDownloadCleanupPrecompiled,
+} from "../../utils/textCleanup";
 import { DownloadJob } from "./types";
 
 class DownloadService {
@@ -115,8 +119,13 @@ class DownloadService {
     return this.downloadRange(story, 0, story.chapters.length - 1);
   }
 
+  private static readonly CLEANUP_CONCURRENCY = 5;
+
   /**
    * Applies text cleanup rules to already downloaded chapters offline.
+   *
+   * Processes chapters in parallel batches to overlap async file I/O
+   * and avoid recompiling regex patterns per chapter.
    */
   async applySentenceRemovalToStory(
     story: Story,
@@ -126,36 +135,57 @@ class DownloadService {
       storageService.getSentenceRemovalList(),
       storageService.getRegexCleanupRules(),
     ]);
+
+    const sentencePatterns = compileSentencePatternsExport(sentenceRemovalList);
+    const compiledRegexRules = compileRegexRules(regexCleanupRules, "download");
+
+    const downloadable = story.chapters
+      .map((chapter, index) => ({ chapter, index }))
+      .filter(({ chapter }) => chapter.downloaded && !!chapter.filePath);
+
+    const total = story.chapters.length;
     let processed = 0;
     let errors = 0;
     let sentencesRemoved = 0;
 
-    for (let i = 0; i < story.chapters.length; i++) {
-      const chapter = story.chapters[i];
+    const concurrency = DownloadService.CLEANUP_CONCURRENCY;
 
-      if (chapter.downloaded && chapter.filePath) {
-        try {
-          const html = await readChapterFile(chapter.filePath);
-          if (html) {
-            const result = applyDownloadCleanup(
-              html,
-              sentenceRemovalList,
-              regexCleanupRules,
-            );
-            await writeChapterFile(chapter.filePath, result.html);
-            sentencesRemoved += result.sentencesRemoved;
+    for (let batch = 0; batch < downloadable.length; batch += concurrency) {
+      const chunk = downloadable.slice(batch, batch + concurrency);
+
+      const results = await Promise.allSettled(
+        chunk.map(async ({ chapter }) => {
+          const html = await readChapterFile(chapter.filePath!);
+          if (!html) return null;
+          const result = applyDownloadCleanupPrecompiled(
+            html,
+            sentencePatterns,
+            compiledRegexRules,
+          );
+          await writeChapterFile(chapter.filePath!, result.html);
+          return result;
+        }),
+      );
+
+      for (let j = 0; j < results.length; j++) {
+        const chapter = chunk[j].chapter;
+        const settled = results[j];
+
+        if (settled.status === "fulfilled") {
+          if (settled.value) {
             processed++;
+            sentencesRemoved += settled.value.sentencesRemoved;
           }
-        } catch (error) {
+        } else {
           console.error(
-            `Failed to process chapter ${i}: ${chapter.title}`,
-            error,
+            `Failed to process chapter: ${chapter.title}`,
+            settled.reason,
           );
           errors++;
         }
 
         if (onProgress) {
-          onProgress(i + 1, story.chapters.length, chapter.title);
+          onProgress(batch + j + 1, total, chapter.title);
         }
       }
     }
