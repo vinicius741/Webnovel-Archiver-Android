@@ -1,10 +1,9 @@
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   FAB,
-  List,
   Text,
   useTheme,
 } from "react-native-paper";
@@ -17,7 +16,7 @@ import { EpubConfig } from "../../types";
 import { ScreenContainer } from "../common/ScreenContainer";
 import { AppButton } from "../theme/AppButton";
 import { StoryMenu } from "./StoryMenu";
-import { StoryDetailsChaptersList } from "./StoryDetailsChaptersList";
+import { StoryDetailsLayout } from "./StoryDetailsLayout";
 import {
   StoryDetailsInfoPanel,
   StoryStatus,
@@ -222,55 +221,19 @@ export const StoryDetailsScreenContainer: React.FC<
         }}
       />
 
-      {isTwoPane ? (
-        <View style={styles.twoPaneShell}>
-          <View
-            style={[
-              styles.twoPaneContainer,
-              isCompactHeight && styles.twoPaneContainerCompactHeight,
-              isNarrowTwoPane && styles.twoPaneContainerNarrow,
-            ]}
-          >
-            <View style={[styles.leftColumn, isNarrowTwoPane && styles.leftColumnNarrow]}>
-              <ScrollView contentContainerStyle={styles.leftColumnContent}>
-                {infoPanel}
-              </ScrollView>
-            </View>
-
-            <View style={styles.rightColumn}>
-              <List.Section style={styles.chapterSection} title="Chapters">
-                <StoryDetailsChaptersList
-                  story={story}
-                  chapters={filteredChapters}
-                  selectionMode={selectionMode}
-                  selectedChapterIds={selectedChapterIds}
-                  onOpenChapter={handleOpenChapter}
-                  onMarkChapterAsRead={markChapterAsRead}
-                  onToggleChapter={handleToggleChapter}
-                  contentContainerStyle={styles.chapterListContent}
-                />
-              </List.Section>
-            </View>
-          </View>
-        </View>
-      ) : (
-        <StoryDetailsChaptersList
-          story={story}
-          chapters={filteredChapters}
-          selectionMode={selectionMode}
-          selectedChapterIds={selectedChapterIds}
-          onOpenChapter={handleOpenChapter}
-          onMarkChapterAsRead={markChapterAsRead}
-          onToggleChapter={handleToggleChapter}
-          contentContainerStyle={styles.content}
-          listHeaderComponent={
-            <View style={styles.compactInfoPanel}>
-              {infoPanel}
-            </View>
-          }
-          listHeaderComponentStyle={styles.listHeader}
-        />
-      )}
+      <StoryDetailsLayout
+        story={story}
+        chapters={filteredChapters}
+        selectionMode={selectionMode}
+        selectedChapterIds={selectedChapterIds}
+        infoPanel={infoPanel}
+        isTwoPane={isTwoPane}
+        isCompactHeight={isCompactHeight}
+        isNarrowTwoPane={isNarrowTwoPane}
+        onOpenChapter={handleOpenChapter}
+        onMarkChapterAsRead={markChapterAsRead}
+        onToggleChapter={handleToggleChapter}
+      />
 
       {selectionMode && selectedChapterIds.size > 0 && !story.isArchived && (
         <FAB
@@ -290,68 +253,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  content: {
-    padding: 16,
-    paddingTop: 20,
-    flexGrow: 1,
-    width: "100%",
-    maxWidth: 840,
-    alignSelf: "center",
-    paddingBottom: 104,
-  },
-  compactInfoPanel: {
-    width: "100%",
-  },
-  listHeader: {
-    marginBottom: 16,
-  },
-  twoPaneShell: {
-    flex: 1,
-    width: "100%",
-    maxWidth: 1280,
-    alignSelf: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  twoPaneContainer: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 32,
-  },
-  twoPaneContainerCompactHeight: {
-    gap: 24,
-  },
-  twoPaneContainerNarrow: {
-    gap: 12,
-  },
-  leftColumn: {
-    flexBasis: 360,
-    flexGrow: 0,
-    flexShrink: 1,
-    minWidth: 280,
-    maxWidth: 440,
-    alignItems: "stretch",
-  },
-  leftColumnNarrow: {
-    flexBasis: 168,
-    minWidth: 150,
-    maxWidth: 190,
-  },
-  leftColumnContent: {
-    paddingTop: 16,
-    paddingBottom: 120,
-  },
-  rightColumn: {
-    flex: 1,
-    minWidth: 0,
-  },
-  chapterSection: {
-    flex: 1,
-    marginTop: 0,
-  },
-  chapterListContent: {
-    paddingBottom: 120,
   },
   fab: {
     position: "absolute",
