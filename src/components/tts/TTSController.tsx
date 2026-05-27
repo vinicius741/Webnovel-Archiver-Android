@@ -24,7 +24,6 @@ export const TTSController: React.FC<TTSControllerProps> = ({
   onStop,
   onNext,
   onPrevious,
-  _isSpeaking,
   isPaused,
   currentChunk,
   totalChunks,
