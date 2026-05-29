@@ -111,6 +111,20 @@ export class LibraryStorage {
     await this.saveLibrary(newLibrary);
   }
 
+  async deleteStories(ids: string[]): Promise<void> {
+    const idSet = new Set(ids);
+    for (const id of ids) {
+      try {
+        await fileSystem.deleteNovel(id);
+      } catch (e) {
+        console.warn("Failed to delete files for story", id, e);
+      }
+    }
+    const library = await this.getLibrary();
+    const newLibrary = library.filter((s) => !idSet.has(s.id));
+    await this.saveLibrary(newLibrary);
+  }
+
   async updateStoryStatus(id: string, status: DownloadStatus): Promise<void> {
     const library = await this.getLibrary();
     const story = library.find((s) => s.id === id);

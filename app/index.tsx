@@ -20,6 +20,7 @@ import {
 } from "react-native-paper";
 import { useRouter, Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Alert } from "react-native";
 import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { StoryCard } from "../src/components/library/StoryCard";
 import { SortButton } from "../src/components/library/SortButton";
@@ -146,6 +147,7 @@ export default function HomeScreen() {
     toggleSelection,
     isSelected,
     moveSelectedToTab,
+    deleteSelectedStories,
   } = useLibrarySelection();
 
   const [moveDialogVisible, setMoveDialogVisible] = useState(false);
@@ -297,6 +299,24 @@ export default function HomeScreen() {
     },
     [moveSelectedToTab, onRefresh],
   );
+
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      "Delete Novels",
+      `Are you sure you want to delete ${selectedCount} novel${selectedCount === 1 ? "" : "s"}? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteSelectedStories();
+            onRefresh();
+          },
+        },
+      ],
+    );
+  }, [selectedCount, deleteSelectedStories, onRefresh]);
 
   const GAP = 8;
   const totalPadding = 32;
@@ -561,6 +581,7 @@ export default function HomeScreen() {
         <SelectionActionBar
           selectedCount={selectedCount}
           onMove={handleOpenMoveDialog}
+          onDelete={handleDelete}
           onCancel={exitSelectionMode}
         />
       )}

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { storageService } from "../../services/storage/StorageService";
+import { downloadManager } from "../../services/download/DownloadManager";
 
 export const useLibrarySelection = () => {
   const [selectionMode, setSelectionMode] = useState(false);
@@ -54,6 +55,25 @@ export const useLibrarySelection = () => {
     [selectedIds, exitSelectionMode],
   );
 
+  const deleteSelectedStories = useCallback(
+    async (): Promise<void> => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      try {
+        // Cancel and remove all download jobs for each story
+        for (const id of ids) {
+          await downloadManager.removeStory(id);
+        }
+        await storageService.deleteStories(ids);
+        exitSelectionMode();
+      } catch (error) {
+        console.error("Failed to delete stories", error);
+        throw error;
+      }
+    },
+    [selectedIds, exitSelectionMode],
+  );
+
   return {
     selectionMode,
     selectedCount,
@@ -63,5 +83,6 @@ export const useLibrarySelection = () => {
     selectAll,
     isSelected,
     moveSelectedToTab,
+    deleteSelectedStories,
   };
 };

@@ -73,6 +73,10 @@ class StorageService {
     await this.libraryStorage.deleteStory(id);
   }
 
+  async deleteStories(ids: string[]): Promise<void> {
+    await this.libraryStorage.deleteStories(ids);
+  }
+
   async updateStoryStatus(id: string, status: DownloadStatus): Promise<void> {
     await this.libraryStorage.updateStoryStatus(id, status);
   }

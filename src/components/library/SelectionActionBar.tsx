@@ -7,12 +7,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 interface SelectionActionBarProps {
   selectedCount: number;
   onMove: () => void;
+  onDelete: () => void;
   onCancel: () => void;
 }
 
 export const SelectionActionBar = ({
   selectedCount,
   onMove,
+  onDelete,
   onCancel,
 }: SelectionActionBarProps) => {
   const theme = useTheme();
@@ -33,6 +35,13 @@ export const SelectionActionBar = ({
         <View style={styles.actions}>
           <AppButton onPress={onCancel} mode="text">
             Cancel
+          </AppButton>
+          <AppButton
+            onPress={onDelete}
+            disabled={selectedCount === 0}
+            textColor={theme.colors.error}
+          >
+            Delete
           </AppButton>
           <AppButton
             onPress={onMove}
