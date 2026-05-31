@@ -1,5 +1,7 @@
 export const STORAGE_KEYS = {
-  LIBRARY: "wa_library_v1",
+  LIBRARY_LEGACY: "wa_library_v1",
+  LIBRARY_INDEX: "wa_library_index_v1",
+  LIBRARY: "wa_library_v1", // kept for backward-compat detection; new code uses per-story keys
   SETTINGS: "wa_settings_v1",
   SENTENCE_REMOVAL: "wa_sentence_removal_v1",
   REGEX_CLEANUP_RULES: "wa_regex_cleanup_rules_v1",
@@ -15,3 +17,11 @@ export const STORAGE_KEYS = {
   THEME_MODE: "wa_theme_mode_v2",
   THEME_ACTIVE: "wa_theme_active_v1",
 } as const;
+
+/** Per-story key: `wa_story_{storyId}` → JSON of that story */
+export const STORY_KEY_PREFIX = "wa_story_";
+
+/** Build the AsyncStorage key for an individual story */
+export function storyKey(storyId: string): string {
+  return `${STORY_KEY_PREFIX}${storyId}`;
+}

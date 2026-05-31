@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { storageService } from "../StorageService";
 import * as fileSystem from "../fileSystem";
 import { Story, DownloadStatus } from "../../../types";
+import { STORAGE_KEYS, storyKey } from "../storageKeys";
 
 jest.mock("../fileSystem", () => ({
   deleteNovel: jest.fn(),
@@ -17,28 +18,38 @@ jest.mock("../../download/DownloadQueue", () => ({
 describe("StorageService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: per-story storage already migrated with empty index
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+      if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify([]);
+      if (key === STORAGE_KEYS.LIBRARY_LEGACY) return null;
+      return null;
+    });
   });
 
   describe("getLibrary", () => {
     it("should return empty array if storage is null", async () => {
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
       const result = await storageService.getLibrary();
       expect(result).toEqual([]);
     });
 
     it("should return parsed library", async () => {
-      const mockLibrary = [{ id: "1", title: "Test Story" }];
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-        JSON.stringify(mockLibrary),
-      );
+      const story = { id: "1", title: "Test Story" } as Story;
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify(["1"]);
+        if (key === storyKey("1")) return JSON.stringify(story);
+        return null;
+      });
       const result = await storageService.getLibrary();
-      expect(result).toEqual(mockLibrary);
+      expect(result).toEqual([story]);
     });
 
     it("should handle errors gracefully", async () => {
-      (AsyncStorage.getItem as jest.Mock).mockRejectedValue(
-        new Error("Storage error"),
-      );
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify(["1"]);
+        if (key === storyKey("1")) throw new Error("Storage error");
+        return null;
+      });
+      // Per-story read errors are caught gracefully via Promise.allSettled
       const result = await storageService.getLibrary();
       expect(result).toEqual([]);
     });
@@ -46,7 +57,6 @@ describe("StorageService", () => {
 
   describe("addStory", () => {
     it("should add a new story", async () => {
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([]));
       const newStory: Story = {
         id: "1",
         title: "New Story",
@@ -61,9 +71,15 @@ describe("StorageService", () => {
 
       await storageService.addStory(newStory);
 
+      // Should write individual story key
       expect(AsyncStorage.setItem).toHaveBeenCalledWith(
-        "wa_library_v1",
-        expect.stringContaining(JSON.stringify(newStory.title)),
+        storyKey("1"),
+        expect.stringContaining("New Story"),
+      );
+      // Should update index to include new story
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+        STORAGE_KEYS.LIBRARY_INDEX,
+        JSON.stringify(["1"]),
       );
     });
 
@@ -80,18 +96,25 @@ describe("StorageService", () => {
         totalChapters: 0,
         downloadedChapters: 0,
       };
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-        JSON.stringify([existingStory]),
-      );
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify(["1"]);
+        if (key === storyKey("1")) return JSON.stringify(existingStory);
+        return null;
+      });
 
       const updatedStory: Story = { ...existingStory, title: "New Title" };
       await storageService.addStory(updatedStory);
 
-      expect(AsyncStorage.setItem).toHaveBeenCalled();
-      const saveCall = (AsyncStorage.setItem as jest.Mock).mock.calls[0];
-      const savedLibrary = JSON.parse(saveCall[1]);
-      expect(savedLibrary[0].title).toBe("New Title");
-      expect(savedLibrary[0].dateAdded).toBe(12345); // Should preserve dateAdded
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+        storyKey("1"),
+        expect.any(String),
+      );
+      const saveCall = (AsyncStorage.setItem as jest.Mock).mock.calls.find(
+        (c: string[]) => c[0] === storyKey("1"),
+      );
+      const savedStory = JSON.parse(saveCall![1]);
+      expect(savedStory.title).toBe("New Title");
+      expect(savedStory.dateAdded).toBe(12345); // Should preserve dateAdded
     });
   });
 
@@ -108,20 +131,31 @@ describe("StorageService", () => {
         totalChapters: 0,
         downloadedChapters: 0,
       };
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-        JSON.stringify([story]),
-      );
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify(["1"]);
+        if (key === storyKey("1")) return JSON.stringify(story);
+        return null;
+      });
 
       await storageService.deleteStory("1");
 
       expect(fileSystem.deleteNovel).toHaveBeenCalledWith("1");
-      expect(AsyncStorage.setItem).toHaveBeenCalledWith("wa_library_v1", "[]");
+      // Should update index to empty
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+        STORAGE_KEYS.LIBRARY_INDEX,
+        JSON.stringify([]),
+      );
+      // Should remove individual story key
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith(storyKey("1"));
     });
   });
 
   describe("createArchivedStorySnapshot", () => {
     it("should create an archived snapshot with copied chapter files", async () => {
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(JSON.stringify([]));
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify([]);
+        return null;
+      });
       (fileSystem.copyChapterToNovel as jest.Mock)
         .mockResolvedValueOnce("file://archive/c1.html")
         .mockResolvedValueOnce("file://archive/c2.html");
@@ -189,15 +223,19 @@ describe("StorageService", () => {
         totalChapters: 0,
         downloadedChapters: 0,
       };
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-        JSON.stringify([story]),
-      );
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify(["1"]);
+        if (key === storyKey("1")) return JSON.stringify(story);
+        return null;
+      });
 
       await storageService.updateStoryStatus("1", DownloadStatus.Downloading);
 
-      const saveCall = (AsyncStorage.setItem as jest.Mock).mock.calls[0];
-      const savedLibrary = JSON.parse(saveCall[1]);
-      expect(savedLibrary[0].status).toBe(DownloadStatus.Downloading);
+      const saveCall = (AsyncStorage.setItem as jest.Mock).mock.calls.find(
+        (c: string[]) => c[0] === storyKey("1"),
+      );
+      const savedStory = JSON.parse(saveCall![1]);
+      expect(savedStory.status).toBe(DownloadStatus.Downloading);
     });
   });
 
@@ -214,16 +252,20 @@ describe("StorageService", () => {
         totalChapters: 0,
         downloadedChapters: 0,
       };
-      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
-        JSON.stringify([story]),
-      );
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
+        if (key === STORAGE_KEYS.LIBRARY_INDEX) return JSON.stringify(["1"]);
+        if (key === storyKey("1")) return JSON.stringify(story);
+        return null;
+      });
 
       await storageService.updateLastRead("1", "chap1");
 
-      const saveCall = (AsyncStorage.setItem as jest.Mock).mock.calls[0];
-      const savedLibrary = JSON.parse(saveCall[1]);
-      expect(savedLibrary[0].lastReadChapterId).toBe("chap1");
-      expect(savedLibrary[0].lastUpdated).toBeDefined();
+      const saveCall = (AsyncStorage.setItem as jest.Mock).mock.calls.find(
+        (c: string[]) => c[0] === storyKey("1"),
+      );
+      const savedStory = JSON.parse(saveCall![1]);
+      expect(savedStory.lastReadChapterId).toBe("chap1");
+      expect(savedStory.lastUpdated).toBeDefined();
     });
   });
 
