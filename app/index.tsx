@@ -33,6 +33,7 @@ import { useTabs } from "../src/hooks/library/useTabs";
 import { useLibrarySelection } from "../src/hooks/library/useLibrarySelection";
 import { sourceRegistry } from "../src/services/source/SourceRegistry";
 import { Story } from "../src/types";
+import { ErrorBoundary } from "../src/components/common/ErrorBoundary";
 
 interface TabFlatListProps {
   tabId: string;
@@ -423,6 +424,7 @@ export default function HomeScreen() {
   );
 
   return (
+    <ErrorBoundary contextLabel="Library">
     <ScreenContainer
       edges={["bottom", "left", "right"]}
       style={{ paddingTop: 16, paddingBottom: 0 }}
@@ -594,6 +596,7 @@ export default function HomeScreen() {
         onMove={handleMove}
       />
     </ScreenContainer>
+    </ErrorBoundary>
   );
 }
 

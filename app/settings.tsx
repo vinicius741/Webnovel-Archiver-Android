@@ -8,6 +8,7 @@ import { useFoldLayoutMode } from "../src/context/FoldLayoutContext";
 import { useSettings } from "../src/hooks/common/useSettings";
 import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
 import { router } from "expo-router";
+import { ErrorBoundary } from "../src/components/common/ErrorBoundary";
 
 type AdaptiveLayout = ReturnType<typeof useScreenLayout> & {
   widthClass?: "compact" | "medium" | "expanded";
@@ -32,7 +33,8 @@ export default function SettingsScreen() {
     widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
 
   return (
-    <ScreenContainer edges={["bottom", "left", "right"]} style={styles.screen}>
+    <ErrorBoundary contextLabel="Settings">
+      <ScreenContainer edges={["bottom", "left", "right"]} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View
           style={[
@@ -138,6 +140,7 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
     </ScreenContainer>
+    </ErrorBoundary>
   );
 }
 

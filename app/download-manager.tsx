@@ -10,6 +10,7 @@ import { DownloadManagerSettingsModal } from "../src/components/downloads/Downlo
 import { useAppAlert } from "../src/context/AlertContext";
 import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
 import { useSettings } from "../src/hooks/common/useSettings";
+import { ErrorBoundary } from "../src/components/common/ErrorBoundary";
 
 type ScreenLayout = ReturnType<typeof useScreenLayout> & {
   widthClass?: "compact" | "medium" | "expanded";
@@ -137,6 +138,7 @@ export default function DownloadManagerScreen() {
   };
 
   return (
+    <ErrorBoundary contextLabel="Download Manager">
     <ScreenContainer edges={["bottom", "left", "right"]}>
       <Stack.Screen
         options={{
@@ -261,6 +263,7 @@ export default function DownloadManagerScreen() {
         />
       </Portal>
     </ScreenContainer>
+    </ErrorBoundary>
   );
 }
 

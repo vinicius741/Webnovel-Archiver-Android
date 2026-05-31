@@ -14,6 +14,7 @@ import { ttsLifecycleService } from "../src/services/tts/TTSLifecycleService";
 import { ttsStateManager } from "../src/services/tts/TTSStateManager";
 import { TTS_RELIABILITY_V2 } from "../src/services/tts/TTSFeatureFlags";
 import { isAndroidNative } from "../src/utils/platform";
+import { RootErrorBoundary } from "../src/components/common/RootErrorBoundary";
 
 let FoldingFeatureProvider: React.ComponentType<{ children: React.ReactNode }> | null = null;
 if (Platform.OS === "android") {
@@ -152,16 +153,18 @@ function AppLayout() {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <SafeFoldingProvider>
-        <ThemeProvider>
-          <FoldLayoutProvider>
-            <AlertProvider>
-              <AppLayout />
-            </AlertProvider>
-          </FoldLayoutProvider>
-        </ThemeProvider>
-      </SafeFoldingProvider>
-    </SafeAreaProvider>
+    <RootErrorBoundary>
+      <SafeAreaProvider>
+        <SafeFoldingProvider>
+          <ThemeProvider>
+            <FoldLayoutProvider>
+              <AlertProvider>
+                <AppLayout />
+              </AlertProvider>
+            </FoldLayoutProvider>
+          </ThemeProvider>
+        </SafeFoldingProvider>
+      </SafeAreaProvider>
+    </RootErrorBoundary>
   );
 }
