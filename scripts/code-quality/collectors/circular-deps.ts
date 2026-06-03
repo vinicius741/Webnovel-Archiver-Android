@@ -1,9 +1,12 @@
 import { run, logStep } from "../utils";
-import { SOURCE_DIRS } from "../constants";
+import { SOURCE_DIRS, TEST_DIR_SEGMENTS } from "../constants";
 import { CircularDependencyMetrics } from "../types";
 
 export const collectCircularDependencyMetrics = (): CircularDependencyMetrics => {
   logStep("Checking circular dependencies...");
+
+  const testExcludeRegex =
+    `(${[...TEST_DIR_SEGMENTS].map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})|\\.(test|spec)\\.(ts|tsx)$`;
 
   const result = run("npx", [
     "madge",
@@ -12,6 +15,8 @@ export const collectCircularDependencyMetrics = (): CircularDependencyMetrics =>
     "ts,tsx",
     "--ts-config",
     "tsconfig.json",
+    "--exclude",
+    testExcludeRegex,
     "--circular",
     "--json",
     "--no-spinner",

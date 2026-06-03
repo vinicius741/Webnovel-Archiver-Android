@@ -99,6 +99,15 @@
       "jscpd",
       "knip",
       "madge"
+    ],
+    "ignore": [
+      "**/__tests__/**",
+      "**/__mocks__/**",
+      "**/__test_helpers__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx"
     ]
   },
   "expo": {

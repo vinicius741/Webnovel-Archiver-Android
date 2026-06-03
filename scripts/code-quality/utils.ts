@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
-import { ROOT, SOURCE_EXTENSIONS, EXCLUDED_DIRS } from "./constants";
+import { ROOT, SOURCE_EXTENSIONS, EXCLUDED_DIRS, TEST_DIR_SEGMENTS } from "./constants";
 
 export const logStep = (message: string): void => {
   console.log(`[quality] ${message}`);
@@ -25,6 +25,13 @@ export const run = (command: string, args: string[], options: Record<string, unk
 export const isSourceFile = (filePath: string): boolean =>
   SOURCE_EXTENSIONS.has(path.extname(filePath));
 
+export const isTestFile = (filePath: string): boolean => {
+  const parts = filePath.split(/[/\\]/);
+  if (parts.some((segment) => TEST_DIR_SEGMENTS.has(segment))) return true;
+  const base = path.basename(filePath);
+  return base.endsWith(".test.ts") || base.endsWith(".test.tsx") || base.endsWith(".spec.ts") || base.endsWith(".spec.tsx");
+};
+
 export const walkFiles = (directory: string): string[] => {
   const absoluteDirectory = path.join(ROOT, directory);
   if (!fs.existsSync(absoluteDirectory)) {
@@ -46,7 +53,7 @@ export const walkFiles = (directory: string): string[] => {
       continue;
     }
 
-    if (entry.isFile() && isSourceFile(absolutePath) && !absolutePath.endsWith(".d.ts")) {
+    if (entry.isFile() && isSourceFile(absolutePath) && !absolutePath.endsWith(".d.ts") && !isTestFile(relativePath)) {
       files.push(relativePath);
     }
   }

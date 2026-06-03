@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { run, logStep } from "../utils";
-import { SOURCE_DIRS, MIN_CLONE_LINES, MIN_CLONE_TOKENS } from "../constants";
+import { SOURCE_DIRS, MIN_CLONE_LINES, MIN_CLONE_TOKENS, TEST_IGNORE_PATTERNS } from "../constants";
 import { DuplicationMetrics, JscpdReport } from "../types";
 
 export const collectDuplicationMetrics = (): DuplicationMetrics => {
@@ -25,6 +25,8 @@ export const collectDuplicationMetrics = (): DuplicationMetrics => {
       String(MIN_CLONE_LINES),
       "--min-tokens",
       String(MIN_CLONE_TOKENS),
+      "--ignore",
+      TEST_IGNORE_PATTERNS.join(","),
       "--exitCode",
       "0",
     ]);
