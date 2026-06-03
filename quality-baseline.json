@@ -1,89 +1,93 @@
 {
-  "generatedAt": "2026-05-23T23:54:21.921Z",
+  "generatedAt": "2026-06-03T16:51:16.472Z",
   "sourceDirs": [
     "app",
     "src",
     "modules/tts-media-session/src"
   ],
   "duplication": {
-    "duplicatedLines": 2337,
-    "duplicatedPercentage": 5.27,
-    "clones": 188,
-    "scannedLines": 44384,
-    "scannedFiles": 306
+    "duplicatedLines": 2449,
+    "duplicatedPercentage": 5.28,
+    "clones": 202,
+    "scannedLines": 46341,
+    "scannedFiles": 324
   },
   "files": {
-    "sourceFiles": 228,
-    "totalLines": 39693,
+    "sourceFiles": 237,
+    "totalLines": 41339,
     "largestFileLines": 865,
     "largestFiles": [
       {
-        "file": "src/hooks/__tests__/useStoryDownload.test.ts",
+        "file": "src/hooks/details/__tests__/useStoryDownload.test.ts",
         "lines": 865
       },
       {
-        "file": "src/services/__tests__/DownloadManager.concurrent.test.ts",
-        "lines": 706
+        "file": "app/index.tsx",
+        "lines": 710
       },
       {
-        "file": "app/index.tsx",
-        "lines": 686
+        "file": "src/services/download/__tests__/DownloadManager.concurrent.test.ts",
+        "lines": 706
       },
       {
         "file": "src/services/story/__tests__/storySyncOrchestrator.test.ts",
         "lines": 630
       },
       {
-        "file": "src/services/__tests__/DownloadManager.test.ts",
+        "file": "src/services/download/__tests__/DownloadManager.test.ts",
         "lines": 595
       },
       {
-        "file": "src/services/__tests__/ForegroundServiceCoordinator.concurrent.test.ts",
+        "file": "src/services/download/__tests__/ForegroundServiceCoordinator.concurrent.test.ts",
         "lines": 570
+      },
+      {
+        "file": "src/services/storage/__tests__/libraryStorage.test.ts",
+        "lines": 505
       },
       {
         "file": "src/services/download/DownloadManager.ts",
         "lines": 498
       },
       {
-        "file": "src/hooks/__tests__/useLibrary.test.ts",
+        "file": "src/hooks/library/__tests__/useLibrary.test.ts",
         "lines": 491
       },
       {
         "file": "app/browser.tsx",
         "lines": 457
-      },
-      {
-        "file": "src/hooks/__tests__/useDownloadProgress.test.ts",
-        "lines": 455
       }
     ],
     "oversizedFileLineThreshold": 500,
-    "oversizedFileCount": 6,
+    "oversizedFileCount": 7,
     "oversizedFiles": [
       {
-        "file": "src/hooks/__tests__/useStoryDownload.test.ts",
+        "file": "src/hooks/details/__tests__/useStoryDownload.test.ts",
         "lines": 865
       },
       {
-        "file": "src/services/__tests__/DownloadManager.concurrent.test.ts",
-        "lines": 706
+        "file": "app/index.tsx",
+        "lines": 710
       },
       {
-        "file": "app/index.tsx",
-        "lines": 686
+        "file": "src/services/download/__tests__/DownloadManager.concurrent.test.ts",
+        "lines": 706
       },
       {
         "file": "src/services/story/__tests__/storySyncOrchestrator.test.ts",
         "lines": 630
       },
       {
-        "file": "src/services/__tests__/DownloadManager.test.ts",
+        "file": "src/services/download/__tests__/DownloadManager.test.ts",
         "lines": 595
       },
       {
-        "file": "src/services/__tests__/ForegroundServiceCoordinator.concurrent.test.ts",
+        "file": "src/services/download/__tests__/ForegroundServiceCoordinator.concurrent.test.ts",
         "lines": 570
+      },
+      {
+        "file": "src/services/storage/__tests__/libraryStorage.test.ts",
+        "lines": 505
       }
     ]
   },
@@ -91,17 +95,17 @@
     "circularDependencyCount": 2,
     "circularDependencies": [
       [
-        "src/services/TTSStateManager.ts",
+        "src/services/tts/TTSStateManager.ts",
         "src/services/tts/TTSSessionPersistence.ts"
       ],
       [
-        "src/services/TTSStateManager.ts",
+        "src/services/tts/TTSStateManager.ts",
         "src/services/tts/TTSStateEmitter.ts"
       ]
     ]
   },
   "unusedCode": {
-    "unusedCodeIssueCount": 16,
-    "unusedCodeFilesWithIssues": 5
+    "unusedCodeIssueCount": 17,
+    "unusedCodeFilesWithIssues": 6
   }
 }

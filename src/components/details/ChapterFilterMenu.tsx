@@ -1,7 +1,10 @@
-import React, { useState, useCallback, useRef } from "react";
+import React from "react";
 import { View, StyleSheet } from "react-native";
-import { Menu, IconButton, useTheme, Searchbar } from "react-native-paper";
 import { ChapterFilterMode } from "../../services/storage/StorageService";
+import { useChapterFilterMenu } from "../../hooks/details/useChapterFilterMenu";
+import { ChapterSearchbar } from "./ChapterSearchbar";
+import { ChapterSelectionButton } from "./ChapterSelectionButton";
+import { ChapterFilterDropdown } from "./ChapterFilterDropdown";
 
 interface ChapterFilterMenuProps {
   filterMode: ChapterFilterMode;
@@ -26,102 +29,31 @@ export const ChapterFilterMenu: React.FC<ChapterFilterMenuProps> = ({
   selectionDisabled = false,
   stacked = false,
 }) => {
-  const theme = useTheme();
-  const [visible, setVisible] = useState(false);
-  const [menuKey, setMenuKey] = useState(0);
-  const isDismissedRef = useRef(false);
-
-  const openMenu = useCallback(() => {
-    // Prevent reopening immediately after dismiss (touch event conflict)
-    if (isDismissedRef.current) {
-      isDismissedRef.current = false;
-      return;
-    }
-    setVisible(true);
-  }, []);
-
-  const closeMenu = useCallback(() => {
-    setVisible(false);
-    // Force remount of Menu component to reset internal state
-    setMenuKey((k) => k + 1);
-  }, []);
-
-  const handleDismiss = useCallback(() => {
-    isDismissedRef.current = true;
-    closeMenu();
-    // Reset the flag after a short delay
-    setTimeout(() => {
-      isDismissedRef.current = false;
-    }, 150);
-  }, [closeMenu]);
-
-  const handleSelect = useCallback(
-    (mode: ChapterFilterMode) => {
-      closeMenu();
-      // Small delay to let menu close animation complete before callback
-      setTimeout(() => {
-        onFilterSelect(mode);
-      }, 100);
-    },
-    [onFilterSelect, closeMenu],
-  );
+  const { visible, menuKey, openMenu, handleDismiss, handleSelect } =
+    useChapterFilterMenu({ onFilterSelect });
 
   return (
     <View style={styles.container}>
-      <Searchbar
-        placeholder="Search chapters"
-        onChangeText={onSearchChange}
-        value={searchQuery}
-        style={[styles.searchbar, stacked && styles.searchbarStacked]}
-        inputStyle={styles.searchInput}
+      <ChapterSearchbar
+        searchQuery={searchQuery}
+        onSearchChange={onSearchChange}
+        stacked={stacked}
       />
       <View style={[styles.buttonGroup, stacked && styles.buttonGroupStacked]}>
-        <IconButton
-          icon={selectionMode ? "close" : "checkbox-marked-outline"}
-          onPress={onToggleSelectionMode}
-          size={20}
-          disabled={selectionDisabled}
-          style={[
-            styles.filterButton,
-            styles.selectionButton,
-            selectionMode && { backgroundColor: theme.colors.primaryContainer },
-          ]}
-          iconColor={selectionMode ? theme.colors.primary : undefined}
-          testID="chapter-selection-button"
+        <ChapterSelectionButton
+          selectionMode={selectionMode}
+          onToggleSelectionMode={onToggleSelectionMode}
+          selectionDisabled={selectionDisabled}
         />
-        <Menu
-          key={menuKey}
+        <ChapterFilterDropdown
+          filterMode={filterMode}
+          hasBookmark={hasBookmark}
           visible={visible}
-          onDismiss={handleDismiss}
-          anchor={
-            <View collapsable={false}>
-              <IconButton
-                icon="filter-variant"
-                onPress={openMenu}
-                size={20}
-                style={styles.filterButton}
-                testID="chapter-filter-button"
-              />
-            </View>
-          }
-        >
-          <Menu.Item
-            onPress={() => handleSelect("all")}
-            title="Show all chapters"
-            leadingIcon={filterMode === "all" ? "check" : undefined}
-          />
-          <Menu.Item
-            onPress={() => handleSelect("hideNonDownloaded")}
-            title="Hide non-downloaded"
-            leadingIcon={filterMode === "hideNonDownloaded" ? "check" : undefined}
-          />
-          <Menu.Item
-            onPress={() => handleSelect("hideAboveBookmark")}
-            title="Hide chapters above bookmark"
-            leadingIcon={filterMode === "hideAboveBookmark" ? "check" : undefined}
-            disabled={!hasBookmark}
-          />
-        </Menu>
+          menuKey={menuKey}
+          openMenu={openMenu}
+          handleDismiss={handleDismiss}
+          handleSelect={handleSelect}
+        />
       </View>
     </View>
   );
@@ -134,32 +66,11 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
-  searchbar: {
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: 260,
-    height: 48,
-    alignItems: "center",
-  },
-  searchbarStacked: {
-    flexBasis: "100%",
-  },
-  searchInput: {
-    minHeight: 0,
-    alignSelf: "center",
-  },
   buttonGroup: {
     flexDirection: "row",
     alignItems: "center",
   },
   buttonGroupStacked: {
     alignSelf: "flex-end",
-  },
-  filterButton: {
-    margin: 0,
-    marginRight: 4,
-  },
-  selectionButton: {
-    marginLeft: 8,
   },
 });
