@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   FlatList,
-  Alert,
   Pressable,
 } from "react-native";
 import {
@@ -14,6 +13,7 @@ import {
   Divider,
 } from "react-native-paper";
 import { Stack } from "expo-router";
+import { useAppAlert } from "../src/context/AlertContext";
 import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { useTabManagement } from "../src/hooks/tabs/useTabManagement";
 import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
@@ -56,6 +56,8 @@ export default function TabManagementScreen() {
     [editingTab, updateTab],
   );
 
+  const { showAlert } = useAppAlert();
+
   const handleDeleteTab = useCallback(
     (tab: Tab) => {
       const count = storyCountByTab[tab.id] || 0;
@@ -64,7 +66,7 @@ export default function TabManagementScreen() {
           ? `This tab contains ${count} novel${count > 1 ? "s" : ""}. They will be moved to Unassigned.`
           : "This tab is empty.";
 
-      Alert.alert(
+      showAlert(
         "Delete Tab",
         `Are you sure you want to delete "${tab.name}"?\n\n${message}`,
         [
@@ -75,7 +77,7 @@ export default function TabManagementScreen() {
             onPress: async () => {
               const deletedCount = await deleteTab(tab.id);
               if (deletedCount > 0) {
-                Alert.alert(
+                showAlert(
                   "Tab Deleted",
                   `${deletedCount} novel${deletedCount > 1 ? "s" : ""} moved to Unassigned.`,
                 );
@@ -85,7 +87,7 @@ export default function TabManagementScreen() {
         ],
       );
     },
-    [deleteTab, storyCountByTab],
+    [deleteTab, storyCountByTab, showAlert],
   );
 
   const openEditDialog = (tab: Tab) => {
