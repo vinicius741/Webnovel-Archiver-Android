@@ -1,7 +1,6 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { Text, useTheme, Surface } from "react-native-paper";
-import { AppButton } from "../theme/AppButton";
+import { Text, useTheme, Surface, IconButton } from "react-native-paper";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface SelectionActionBarProps {
@@ -19,6 +18,7 @@ export const SelectionActionBar = ({
 }: SelectionActionBarProps) => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const canAct = selectedCount > 0;
 
   return (
     <Surface
@@ -33,22 +33,28 @@ export const SelectionActionBar = ({
           {selectedCount} selected
         </Text>
         <View style={styles.actions}>
-          <AppButton onPress={onCancel} mode="text">
-            Cancel
-          </AppButton>
-          <AppButton
+          <IconButton
+            icon="close"
+            mode="contained-tonal"
+            onPress={onCancel}
+            accessibilityLabel="Cancel selection"
+          />
+          <IconButton
+            icon="trash-can-outline"
+            mode="contained-tonal"
+            iconColor={theme.colors.error}
+            containerColor={theme.colors.errorContainer}
+            disabled={!canAct}
             onPress={onDelete}
-            disabled={selectedCount === 0}
-            textColor={theme.colors.error}
-          >
-            Delete
-          </AppButton>
-          <AppButton
+            accessibilityLabel="Delete selected"
+          />
+          <IconButton
+            icon="folder-arrow-right-outline"
+            mode="contained-tonal"
+            disabled={!canAct}
             onPress={onMove}
-            disabled={selectedCount === 0}
-          >
-            Move
-          </AppButton>
+            accessibilityLabel="Move selected"
+          />
         </View>
       </View>
     </Surface>
@@ -68,8 +74,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     minHeight: 56,
   },
   countText: {
@@ -77,6 +83,6 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: "row",
-    gap: 8,
+    gap: 4,
   },
 });
