@@ -1,24 +1,18 @@
-import React, { useState, useCallback, useMemo } from "react";
-import { StyleSheet, View } from "react-native";
-import { useTheme, Card, IconButton, Portal } from "react-native-paper";
+import React, { useState, useCallback } from "react";
+import { Portal } from "react-native-paper";
 import { Stack } from "expo-router";
 import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { useDownloadQueue } from "../src/hooks/downloads/useDownloadQueue";
+import { useDownloadManagerLayout } from "../src/hooks/downloads/useDownloadManagerLayout";
 import { DownloadQueueList } from "../src/components/downloads/DownloadQueueList";
-import { StatItem } from "../src/components/downloads/StatItem";
+import { DownloadStatsBar } from "../src/components/downloads/DownloadStatsBar";
+import { DownloadManagerHeaderActions } from "../src/components/downloads/DownloadManagerHeaderActions";
 import { DownloadManagerSettingsModal } from "../src/components/downloads/DownloadManagerSettingsModal";
 import { useAppAlert } from "../src/context/AlertContext";
-import { useScreenLayout } from "../src/hooks/common/useScreenLayout";
 import { useSettings } from "../src/hooks/common/useSettings";
 import { ErrorBoundary } from "../src/components/common/ErrorBoundary";
 
-type ScreenLayout = ReturnType<typeof useScreenLayout> & {
-  widthClass?: "compact" | "medium" | "expanded";
-};
-
 export default function DownloadManagerScreen() {
-  const theme = useTheme();
-  const layout = useScreenLayout() as ScreenLayout;
   const { showAlert } = useAppAlert();
   const {
     jobsByStory,
@@ -52,62 +46,15 @@ export default function DownloadManagerScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const screenWidth = layout.screenWidth || 0;
-  const widthClass =
-    layout.widthClass ||
-    (screenWidth >= 960
-      ? "expanded"
-      : screenWidth >= 600
-        ? "medium"
-        : "compact");
 
-  const shellPadding = useMemo(() => {
-    if (widthClass === "expanded") {
-      return 32;
-    }
-    if (widthClass === "medium") {
-      return 24;
-    }
-    return 16;
-  }, [widthClass]);
-
-  const queueMaxWidth = widthClass === "expanded" ? 1080 : 920;
-  const MIN_STAT_WIDTH = 88;
-  const GAP = 8;
-
-  const cardWidth =
-    screenWidth > 0
-      ? Math.min(queueMaxWidth, Math.max(screenWidth - shellPadding * 2, 0))
-      : queueMaxWidth;
-  const contentWidth = Math.max(0, cardWidth - 32);
-
-  const maxCols = Math.floor(
-    (contentWidth + GAP) / (MIN_STAT_WIDTH + GAP),
-  );
-  const statsColumns = maxCols >= 5 ? 5 : maxCols >= 3 ? 3 : 1;
-
-  const statItemWidth = Math.max(
-    MIN_STAT_WIDTH,
-    Math.floor(
-      (contentWidth - (statsColumns - 1) * GAP) / statsColumns,
-    ),
-  );
-  const statItemStyle = useMemo(
-    () => ({
-      width: statItemWidth,
-    }),
-    [statItemWidth],
-  );
+  const { shellPadding, queueMaxWidth, statItemStyle } =
+    useDownloadManagerLayout();
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     refreshState();
     setTimeout(() => setRefreshing(false), 300);
   }, [refreshState]);
-
-  const hasActiveJobs = stats.pending > 0 || stats.active > 0;
-  const hasPausedJobs = stats.paused > 0;
-  const hasFailedJobs = stats.failed > 0;
 
   const handleCancelAll = () => {
     showAlert(
@@ -148,150 +95,60 @@ export default function DownloadManagerScreen() {
 
   return (
     <ErrorBoundary contextLabel="Download Manager">
-    <ScreenContainer edges={["bottom", "left", "right"]}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              {hasActiveJobs && (
-                <IconButton
-                  icon="pause-circle"
-                  size={24}
-                  onPress={pauseAll}
-                  iconColor={theme.colors.onSurface}
-                />
-              )}
-              {hasPausedJobs && (
-                <IconButton
-                  icon="play-circle"
-                  size={24}
-                  onPress={resumeAll}
-                  iconColor={theme.colors.onSurface}
-                />
-              )}
-              {(hasActiveJobs || hasPausedJobs) && (
-                <IconButton
-                  icon="stop-circle"
-                  size={24}
-                  onPress={handleCancelAll}
-                  iconColor={theme.colors.error}
-                />
-              )}
-              <IconButton
-                icon="tune"
-                size={24}
-                onPress={() => setSettingsModalVisible(true)}
-                iconColor={theme.colors.onSurfaceVariant}
+      <ScreenContainer edges={["bottom", "left", "right"]}>
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <DownloadManagerHeaderActions
+                stats={stats}
+                onPauseAll={pauseAll}
+                onResumeAll={resumeAll}
+                onCancelAll={handleCancelAll}
+                onOpenSettings={() => setSettingsModalVisible(true)}
               />
-            </View>
-          ),
-        }}
-      />
-
-      <Card
-        style={[
-          styles.statsCard,
-          {
-            marginHorizontal: shellPadding,
-            maxWidth: queueMaxWidth,
-            alignSelf: "center",
-          },
-        ]}
-      >
-        <Card.Content style={styles.statsContent}>
-          <StatItem
-            icon="download"
-            value={stats.active}
-            label="Active"
-            color={theme.colors.primary}
-            theme={theme}
-            style={statItemStyle}
-          />
-          <StatItem
-            icon="clock-outline"
-            value={stats.pending}
-            label="Queued"
-            theme={theme}
-            style={statItemStyle}
-          />
-          <StatItem
-            icon="pause"
-            value={stats.paused}
-            label="Paused"
-            theme={theme}
-            style={statItemStyle}
-          />
-          <StatItem
-            icon="check-circle"
-            value={stats.completed}
-            label="Done"
-            color={theme.colors.secondary}
-            theme={theme}
-            style={statItemStyle}
-          />
-          <StatItem
-            icon="alert-circle"
-            value={stats.failed}
-            label="Failed"
-            color={hasFailedJobs ? theme.colors.error : undefined}
-            theme={theme}
-            style={statItemStyle}
-          />
-        </Card.Content>
-      </Card>
-
-      <DownloadQueueList
-        jobsByStory={jobsByStory}
-        onPause={pauseJob}
-        onResume={resumeJob}
-        onCancel={cancelJob}
-        onRetry={retryJob}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        contentMaxWidth={queueMaxWidth}
-        horizontalPadding={shellPadding}
-      />
-
-      <Portal>
-        <DownloadManagerSettingsModal
-          visible={settingsModalVisible}
-          onDismiss={handleSettingsDismiss}
-          concurrency={concurrency}
-          concurrencyError={concurrencyError}
-          delay={delay}
-          delayError={delayError}
-          onConcurrencyChange={handleConcurrencyChange}
-          onDelayChange={handleDelayChange}
-          onConcurrencyBlur={handleConcurrencyBlur}
-          onDelayBlur={handleDelayBlur}
-          onClearFinishedPress={handleClearFinishedPress}
-          selectedSource={selectedSource}
-          onSourceSelect={setSelectedSource}
-          availableProviders={availableProviders}
-          onResetSource={handleResetSource}
+            ),
+          }}
         />
-      </Portal>
-    </ScreenContainer>
+
+        <DownloadStatsBar
+          stats={stats}
+          statItemStyle={statItemStyle}
+          shellPadding={shellPadding}
+          queueMaxWidth={queueMaxWidth}
+        />
+
+        <DownloadQueueList
+          jobsByStory={jobsByStory}
+          onPause={pauseJob}
+          onResume={resumeJob}
+          onCancel={cancelJob}
+          onRetry={retryJob}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          contentMaxWidth={queueMaxWidth}
+          horizontalPadding={shellPadding}
+        />
+
+        <Portal>
+          <DownloadManagerSettingsModal
+            visible={settingsModalVisible}
+            onDismiss={handleSettingsDismiss}
+            concurrency={concurrency}
+            concurrencyError={concurrencyError}
+            delay={delay}
+            delayError={delayError}
+            onConcurrencyChange={handleConcurrencyChange}
+            onDelayChange={handleDelayChange}
+            onConcurrencyBlur={handleConcurrencyBlur}
+            onDelayBlur={handleDelayBlur}
+            onClearFinishedPress={handleClearFinishedPress}
+            selectedSource={selectedSource}
+            onSourceSelect={setSelectedSource}
+            availableProviders={availableProviders}
+            onResetSource={handleResetSource}
+          />
+        </Portal>
+      </ScreenContainer>
     </ErrorBoundary>
   );
 }
-
-const styles = StyleSheet.create({
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginRight: -8,
-  },
-  statsCard: {
-    marginTop: 8,
-    marginBottom: 8,
-    width: "100%",
-  },
-  statsContent: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-  },
-});
