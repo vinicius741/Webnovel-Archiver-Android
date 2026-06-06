@@ -269,6 +269,7 @@ export const useSettings = () => {
     handleDelayChange,
     handleConcurrencyBlur,
     handleDelayBlur,
+    saveSettings,
     clearData,
     handleExportBackup,
     handleImportBackup,

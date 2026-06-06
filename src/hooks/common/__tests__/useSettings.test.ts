@@ -122,6 +122,29 @@ describe("useSettings", () => {
     });
   });
 
+  it("saves the current delay when explicitly saved without blur", async () => {
+    const { result } = renderHook(() => useSettings());
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    act(() => {
+      result.current.handleDelayChange("1200");
+    });
+
+    await act(async () => {
+      await result.current.saveSettings();
+    });
+
+    expect(storageService.saveSettings).toHaveBeenCalledWith({
+      downloadConcurrency: 3,
+      downloadDelay: 1200,
+      maxChaptersPerEpub: 150,
+    });
+    expect(downloadManager.updateSettings).toHaveBeenCalledWith(3, 1200, {});
+  });
+
   it("clears data after delete confirmation", async () => {
     const { result } = renderHook(() => useSettings());
 

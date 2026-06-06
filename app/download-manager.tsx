@@ -43,6 +43,7 @@ export default function DownloadManagerScreen() {
     handleDelayChange,
     handleConcurrencyBlur,
     handleDelayBlur,
+    saveSettings,
     selectedSource,
     setSelectedSource,
     availableProviders,
@@ -130,12 +131,20 @@ export default function DownloadManagerScreen() {
           style: "default",
           onPress: () => {
             clearFinished();
-            setSettingsModalVisible(false);
+            void saveSettings().finally(() => {
+              setSettingsModalVisible(false);
+            });
           },
         },
       ],
     );
   };
+
+  const handleSettingsDismiss = useCallback(() => {
+    void saveSettings().finally(() => {
+      setSettingsModalVisible(false);
+    });
+  }, [saveSettings]);
 
   return (
     <ErrorBoundary contextLabel="Download Manager">
@@ -246,7 +255,7 @@ export default function DownloadManagerScreen() {
       <Portal>
         <DownloadManagerSettingsModal
           visible={settingsModalVisible}
-          onDismiss={() => setSettingsModalVisible(false)}
+          onDismiss={handleSettingsDismiss}
           concurrency={concurrency}
           concurrencyError={concurrencyError}
           delay={delay}
