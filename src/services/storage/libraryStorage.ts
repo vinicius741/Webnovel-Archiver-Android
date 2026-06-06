@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { ArchiveReason, DownloadStatus, Story } from "../../types";
-import { STORAGE_KEYS, storyKey } from "./storageKeys";
+import { STORAGE_KEYS, STORY_KEY_PREFIX, storyKey } from "./storageKeys";
 import * as fileSystem from "./fileSystem";
 
 export class LibraryStorage {
@@ -29,58 +29,117 @@ export class LibraryStorage {
 
   // ── Migration ──────────────────────────────────────────────────────
 
+  private parseLegacyLibrary(json: string | null): Story[] | null {
+    if (json === null) return null;
+
+    try {
+      const library = JSON.parse(json);
+      return Array.isArray(library) ? library : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async persistStories(stories: Story[]): Promise<string[]> {
+    const storyIds: string[] = [];
+    const writes: [string, string][] = [];
+
+    for (const story of stories) {
+      if (story && typeof story.id === "string") {
+        storyIds.push(story.id);
+        writes.push([storyKey(story.id), JSON.stringify(story)]);
+      }
+    }
+
+    await Promise.all(
+      writes.map(([key, value]) => AsyncStorage.setItem(key, value)),
+    );
+
+    return storyIds;
+  }
+
+  private async recoverIndexFromStoryKeys(): Promise<string[]> {
+    try {
+      const keys = await AsyncStorage.getAllKeys();
+      if (!Array.isArray(keys)) return [];
+
+      const storyIds = keys
+        .filter((key) => key.startsWith(STORY_KEY_PREFIX))
+        .map((key) => key.slice(STORY_KEY_PREFIX.length));
+
+      if (storyIds.length > 0) {
+        await this.saveIndex(storyIds);
+        console.warn(
+          `[LibraryStorage] Rebuilt missing library index from ${storyIds.length} story keys.`,
+        );
+      }
+
+      return storyIds;
+    } catch (e) {
+      console.error("[LibraryStorage] Failed to rebuild library index", e);
+      return [];
+    }
+  }
+
   /**
    * Migrates the legacy monolithic `wa_library_v1` blob into per-story keys
-   * + an index. Safe to call repeatedly — it's a no-op once migration is done.
+   * + an index. It intentionally keeps the legacy blob as a recovery source
+   * until a later cleanup migration can prove users have upgraded safely.
    */
   private async migrateIfNeeded(): Promise<void> {
     if (this.migrationDone) return;
 
     const indexExists = await AsyncStorage.getItem(STORAGE_KEYS.LIBRARY_INDEX);
     if (indexExists !== null) {
-      // Index already present — migration already ran previously.
+      const migrationComplete = await AsyncStorage.getItem(
+        STORAGE_KEYS.LIBRARY_MIGRATION_COMPLETE,
+      );
+      const currentIndex = this.parseIndex(indexExists) ?? [];
+      const legacyLibrary = migrationComplete
+        ? null
+        : this.parseLegacyLibrary(
+          await AsyncStorage.getItem(STORAGE_KEYS.LIBRARY_LEGACY),
+        );
+
+      if (
+        legacyLibrary &&
+        legacyLibrary.length > 0 &&
+        currentIndex.length < legacyLibrary.length
+      ) {
+        const storyIds = await this.persistStories(legacyLibrary);
+        await this.saveIndex(storyIds);
+        console.warn(
+          `[LibraryStorage] Recovered ${storyIds.length} stories from legacy library storage.`,
+        );
+        await AsyncStorage.setItem(
+          STORAGE_KEYS.LIBRARY_MIGRATION_COMPLETE,
+          "true",
+        );
+      }
       this.migrationDone = true;
       return;
     }
 
     // Load legacy blob
-    const legacyJson = await AsyncStorage.getItem(STORAGE_KEYS.LIBRARY_LEGACY);
-    if (legacyJson === null) {
+    const library = this.parseLegacyLibrary(
+      await AsyncStorage.getItem(STORAGE_KEYS.LIBRARY_LEGACY),
+    );
+    if (library === null) {
       // No legacy data at all — nothing to migrate.
       this.migrationDone = true;
       return;
     }
 
     try {
-      const library: Story[] = JSON.parse(legacyJson);
-      if (!Array.isArray(library)) {
-        this.migrationDone = true;
-        return;
-      }
-
-      // Collect valid stories
-      const storyIds: string[] = [];
-      const writes: [string, string][] = [];
-      for (const story of library) {
-        if (story && typeof story.id === "string") {
-          storyIds.push(story.id);
-          writes.push([storyKey(story.id), JSON.stringify(story)]);
-        }
-      }
-
       // 1. Write all individual story keys first (parallel is safe — independent)
-      await Promise.all(
-        writes.map(([k, v]) => AsyncStorage.setItem(k, v)),
-      );
+      const storyIds = await this.persistStories(library);
 
       // 2. Only persist the index after all story writes succeed
+      await this.saveIndex(storyIds);
       await AsyncStorage.setItem(
-        STORAGE_KEYS.LIBRARY_INDEX,
-        JSON.stringify(storyIds),
+        STORAGE_KEYS.LIBRARY_MIGRATION_COMPLETE,
+        "true",
       );
-
-      // 3. Remove legacy blob last — only on full success
-      await AsyncStorage.removeItem(STORAGE_KEYS.LIBRARY_LEGACY);
 
       this.migrationDone = true;
       console.log(
@@ -94,14 +153,23 @@ export class LibraryStorage {
 
   // ── Index helpers ──────────────────────────────────────────────────
 
+  private parseIndex(json: string | null): string[] | null {
+    if (json === null) return null;
+
+    try {
+      const ids = JSON.parse(json);
+      return Array.isArray(ids)
+        ? ids.filter((id): id is string => typeof id === "string")
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   private async getIndex(): Promise<string[]> {
     const json = await AsyncStorage.getItem(STORAGE_KEYS.LIBRARY_INDEX);
-    if (json === null) return [];
-    try {
-      return JSON.parse(json);
-    } catch {
-      return [];
-    }
+    const ids = this.parseIndex(json);
+    return ids ?? this.recoverIndexFromStoryKeys();
   }
 
   private async saveIndex(ids: string[]): Promise<void> {

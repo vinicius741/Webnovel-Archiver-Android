@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   LIBRARY_LEGACY: "wa_library_v1",
   LIBRARY_INDEX: "wa_library_index_v1",
+  LIBRARY_MIGRATION_COMPLETE: "wa_library_migration_complete_v1",
   LIBRARY: "wa_library_v1", // kept for backward-compat detection; new code uses per-story keys
   SETTINGS: "wa_settings_v1",
   SENTENCE_REMOVAL: "wa_sentence_removal_v1",

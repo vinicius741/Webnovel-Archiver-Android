@@ -62,6 +62,7 @@ describe("LibraryStorage", () => {
       if (key === STORAGE_KEYS.LIBRARY_LEGACY) return null;
       return null;
     });
+    (AsyncStorage.getAllKeys as jest.Mock).mockResolvedValue([]);
   });
 
   // ── Migration ────────────────────────────────────────────────────
@@ -75,7 +76,6 @@ describe("LibraryStorage", () => {
 
       (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => store.get(key) ?? null);
       (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => { store.set(key, value); });
-      (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => { store.delete(key); });
 
       const result = await libraryStorage.getLibrary();
 
@@ -89,9 +89,13 @@ describe("LibraryStorage", () => {
         storyKey("test-story-1"),
         JSON.stringify(mockStory),
       );
-      // Should have removed legacy blob
-      expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
-        STORAGE_KEYS.LIBRARY_LEGACY,
+      // Keep the legacy blob available as a recovery source for upgrade builds.
+      expect(store.get(STORAGE_KEYS.LIBRARY_LEGACY)).toBe(
+        JSON.stringify(legacy),
+      );
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+        STORAGE_KEYS.LIBRARY_MIGRATION_COMPLETE,
+        "true",
       );
       expect(result).toEqual([mockStory]);
     });
@@ -108,6 +112,26 @@ describe("LibraryStorage", () => {
       expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
     });
 
+    it("should recover from legacy storage when an empty index exists before migration completes", async () => {
+      const legacy = [mockStory];
+      const store = new Map<string, string>();
+      store.set(STORAGE_KEYS.LIBRARY_INDEX, JSON.stringify([]));
+      store.set(STORAGE_KEYS.LIBRARY_LEGACY, JSON.stringify(legacy));
+
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => store.get(key) ?? null);
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => { store.set(key, value); });
+
+      const result = await libraryStorage.getLibrary();
+
+      expect(result).toEqual([mockStory]);
+      expect(store.get(STORAGE_KEYS.LIBRARY_INDEX)).toBe(
+        JSON.stringify(["test-story-1"]),
+      );
+      expect(store.get(storyKey("test-story-1"))).toBe(
+        JSON.stringify(mockStory),
+      );
+    });
+
     it("should handle empty legacy store gracefully", async () => {
       (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => {
         if (key === STORAGE_KEYS.LIBRARY_INDEX) return null;
@@ -117,6 +141,39 @@ describe("LibraryStorage", () => {
 
       const result = await libraryStorage.getLibrary();
       expect(result).toEqual([]);
+    });
+
+    it("should rebuild the index from existing per-story keys", async () => {
+      const store = new Map<string, string>();
+      store.set(storyKey("test-story-1"), JSON.stringify(mockStory));
+
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => store.get(key) ?? null);
+      (AsyncStorage.getAllKeys as jest.Mock).mockImplementation(async () => Array.from(store.keys()));
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => { store.set(key, value); });
+
+      const result = await libraryStorage.getLibrary();
+
+      expect(result).toEqual([mockStory]);
+      expect(store.get(STORAGE_KEYS.LIBRARY_INDEX)).toBe(
+        JSON.stringify(["test-story-1"]),
+      );
+    });
+
+    it("should not rebuild from story keys when the stored index is intentionally empty", async () => {
+      const store = new Map<string, string>();
+      store.set(STORAGE_KEYS.LIBRARY_INDEX, JSON.stringify([]));
+      store.set(storyKey("test-story-1"), JSON.stringify(mockStory));
+
+      (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => store.get(key) ?? null);
+      (AsyncStorage.getAllKeys as jest.Mock).mockImplementation(async () => Array.from(store.keys()));
+
+      const result = await libraryStorage.getLibrary();
+
+      expect(result).toEqual([]);
+      expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(
+        STORAGE_KEYS.LIBRARY_INDEX,
+        JSON.stringify(["test-story-1"]),
+      );
     });
   });
 
