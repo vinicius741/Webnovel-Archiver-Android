@@ -2,13 +2,17 @@ import { epubGenerator } from "../EpubGenerator";
 import { Chapter, Story } from "../../../types";
 import * as fileSystem from "../../storage/fileSystem";
 
+const mockZipFile = jest.fn();
+const mockOebpsFile = jest.fn();
+const mockGenerateAsync = jest.fn().mockResolvedValue("base64data");
+
 jest.mock("jszip", () => {
   return jest.fn().mockImplementation(() => ({
-    file: jest.fn(),
+    file: mockZipFile,
     folder: jest.fn(() => ({
-      file: jest.fn(),
+      file: mockOebpsFile,
     })),
-    generateAsync: jest.fn().mockResolvedValue("base64data"),
+    generateAsync: mockGenerateAsync,
   }));
 });
 
@@ -49,9 +53,67 @@ describe("EpubGenerator", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGenerateAsync.mockResolvedValue("base64data");
     (fileSystem.checkFileExists as jest.Mock).mockResolvedValue(true);
     (fileSystem.readChapterFile as jest.Mock).mockResolvedValue(
       "<html><body><p>Content</p></body></html>",
+    );
+  });
+
+  it("adds cover and details pages before chapters", async () => {
+    await epubGenerator.generateEpub(
+      {
+        ...mockStory,
+        description: "Story description",
+        tags: ["Fantasy", "Action"],
+      },
+      mockChapters,
+    );
+
+    expect(mockOebpsFile).toHaveBeenCalledWith(
+      "cover.xhtml",
+      expect.stringContaining('<body class="cover-page">'),
+    );
+    expect(mockOebpsFile).toHaveBeenCalledWith(
+      "details.xhtml",
+      expect.stringContaining("Story description"),
+    );
+    expect(mockOebpsFile).toHaveBeenCalledWith(
+      "content.opf",
+      expect.stringMatching(
+        /<itemref idref="cover"\/>[\s\S]*<itemref idref="details"\/>[\s\S]*<itemref idref="toc"\/>[\s\S]*<itemref idref="chapter_1"\/>/,
+      ),
+    );
+  });
+
+  it("embeds fetched cover image assets", async () => {
+    const coverData = new ArrayBuffer(4);
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      headers: {
+        get: jest.fn().mockReturnValue("image/png; charset=utf-8"),
+      },
+      arrayBuffer: jest.fn().mockResolvedValue(coverData),
+    });
+
+    await epubGenerator.generateEpub(
+      {
+        ...mockStory,
+        coverUrl: "https://example.com/cover",
+      },
+      mockChapters,
+    );
+
+    expect(mockOebpsFile).toHaveBeenCalledWith("images/cover.png", coverData);
+    expect(mockOebpsFile).toHaveBeenCalledWith(
+      "cover.xhtml",
+      expect.stringContaining('src="images/cover.png"'),
+    );
+    expect(mockOebpsFile).toHaveBeenCalledWith(
+      "content.opf",
+      expect.stringContaining(
+        '<item id="cover-image" href="images/cover.png" media-type="image/png"/>',
+      ),
     );
   });
 

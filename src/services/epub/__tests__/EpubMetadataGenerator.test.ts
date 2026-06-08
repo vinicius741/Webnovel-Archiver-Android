@@ -11,6 +11,8 @@ describe("EpubMetadataGenerator", () => {
     totalChapters: 0,
     downloadedChapters: 0,
     status: DownloadStatus.Idle,
+    description: "A <good> story & more",
+    tags: ["Fantasy", "Action & Adventure"],
   };
 
   const mockChapters: Chapter[] = [
@@ -185,6 +187,63 @@ describe("EpubMetadataGenerator", () => {
       );
     });
 
+    it("should include frontmatter pages in manifest and spine", () => {
+      const opf = EpubMetadataGenerator.generateOpf(
+        mockStory,
+        mockChapters,
+        "test-uid",
+      );
+
+      expect(opf).toContain(
+        '<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>',
+      );
+      expect(opf).toContain(
+        '<item id="details" href="details.xhtml" media-type="application/xhtml+xml"/>',
+      );
+      expect(opf.indexOf('<itemref idref="cover"/>')).toBeLessThan(
+        opf.indexOf('<itemref idref="details"/>'),
+      );
+      expect(opf.indexOf('<itemref idref="details"/>')).toBeLessThan(
+        opf.indexOf('<itemref idref="toc"/>'),
+      );
+    });
+
+    it("should include embedded cover image metadata when available", () => {
+      const opf = EpubMetadataGenerator.generateOpf(
+        mockStory,
+        mockChapters,
+        "test-uid",
+        {
+          href: "images/cover.jpg",
+          mediaType: "image/jpeg",
+        },
+      );
+
+      expect(opf).toContain('<meta name="cover" content="cover-image" />');
+      expect(opf).toContain(
+        '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg"/>',
+      );
+      expect(opf).toContain(
+        '<reference type="cover" title="Cover" href="cover.xhtml"/>',
+      );
+    });
+
+    it("should include description and tags in metadata", () => {
+      const opf = EpubMetadataGenerator.generateOpf(
+        mockStory,
+        mockChapters,
+        "test-uid",
+      );
+
+      expect(opf).toContain(
+        "<dc:description>A &lt;good&gt; story &amp; more</dc:description>",
+      );
+      expect(opf).toContain("<dc:subject>Fantasy</dc:subject>");
+      expect(opf).toContain(
+        "<dc:subject>Action &amp; Adventure</dc:subject>",
+      );
+    });
+
     it("should include all chapters in spine", () => {
       const opf = EpubMetadataGenerator.generateOpf(
         mockStory,
@@ -307,9 +366,28 @@ describe("EpubMetadataGenerator", () => {
         "test-uid",
       );
 
-      expect(ncx).toContain('<navPoint id="navPoint-1" playOrder="1">');
-      expect(ncx).toContain('<navPoint id="navPoint-2" playOrder="2">');
-      expect(ncx).toContain('<navPoint id="navPoint-3" playOrder="3">');
+      expect(ncx).toContain('<navPoint id="navPoint-1" playOrder="4">');
+      expect(ncx).toContain('<navPoint id="navPoint-2" playOrder="5">');
+      expect(ncx).toContain('<navPoint id="navPoint-3" playOrder="6">');
+    });
+
+    it("should include frontmatter navPoints before chapters", () => {
+      const ncx = EpubMetadataGenerator.generateNcx(
+        mockStory,
+        mockChapters,
+        "test-uid",
+      );
+
+      expect(ncx).toContain(
+        '<navPoint id="navPoint-cover" playOrder="1">',
+      );
+      expect(ncx).toContain(
+        '<navPoint id="navPoint-details" playOrder="2">',
+      );
+      expect(ncx).toContain('<navPoint id="navPoint-toc" playOrder="3">');
+      expect(ncx.indexOf("navPoint-details")).toBeLessThan(
+        ncx.indexOf("navPoint-1"),
+      );
     });
 
     it("should include chapter titles in navLabels", () => {

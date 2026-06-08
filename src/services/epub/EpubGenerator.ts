@@ -25,7 +25,22 @@ interface GenerateEpubResult {
   filename: string;
 }
 
+interface EmbeddedCover {
+  data: ArrayBuffer;
+  href: string;
+  mediaType: string;
+}
+
 export class EpubGenerator {
+  private static readonly COVER_MEDIA_TYPES: Record<string, string> = {
+    gif: "image/gif",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    png: "image/png",
+    svg: "image/svg+xml",
+    webp: "image/webp",
+  };
+
   /**
    * Generates a single EPUB file for a story.
    * @returns { uri: string, filename: string } - The file URI and generated filename
@@ -85,7 +100,17 @@ export class EpubGenerator {
     const oebps = fileSystem.createOEBPSFolder();
     if (!oebps) throw new Error("Failed to create OEBPS folder");
 
+    const cover = await this.fetchCover(story.coverUrl);
+    if (cover) {
+      oebps.file(cover.href, cover.data);
+    }
+
     oebps.file("style.css", EpubContentProcessor.generateCss());
+    oebps.file(
+      "cover.xhtml",
+      EpubContentProcessor.generateCoverHtml(story, cover),
+    );
+    oebps.file("details.xhtml", EpubContentProcessor.generateDetailsHtml(story));
     oebps.file(
       "toc.xhtml",
       EpubContentProcessor.generateTocHtml(story, cleanChapters),
@@ -117,7 +142,7 @@ export class EpubGenerator {
     const uid = EpubMetadataGenerator.generateBookId(story);
     oebps.file(
       "content.opf",
-      EpubMetadataGenerator.generateOpf(story, cleanChapters, uid),
+      EpubMetadataGenerator.generateOpf(story, cleanChapters, uid, cover),
     );
     oebps.file(
       "toc.ncx",
@@ -144,6 +169,70 @@ export class EpubGenerator {
     });
 
     return { uri, filename };
+  }
+
+  private async fetchCover(coverUrl?: string): Promise<EmbeddedCover | undefined> {
+    if (!coverUrl) return undefined;
+
+    try {
+      const response = await fetch(coverUrl);
+      if (!response.ok) return undefined;
+
+      const mediaType = this.normalizeCoverMediaType(
+        response.headers.get("content-type"),
+        coverUrl,
+      );
+      if (!mediaType.startsWith("image/")) return undefined;
+
+      const extension = this.getCoverExtension(coverUrl, mediaType);
+      const data = await response.arrayBuffer();
+
+      return {
+        data,
+        href: `images/cover.${extension}`,
+        mediaType,
+      };
+    } catch (error) {
+      console.warn("[EPUB] Failed to fetch cover image", error);
+      return undefined;
+    }
+  }
+
+  private getCoverMediaType(coverUrl: string): string {
+    const extension = this.getExtensionFromUrl(coverUrl);
+    if (extension && EpubGenerator.COVER_MEDIA_TYPES[extension]) {
+      return EpubGenerator.COVER_MEDIA_TYPES[extension];
+    }
+    return "image/jpeg";
+  }
+
+  private normalizeCoverMediaType(
+    contentType: string | null,
+    coverUrl: string,
+  ): string {
+    return contentType?.split(";")[0]?.trim() ?? this.getCoverMediaType(coverUrl);
+  }
+
+  private getCoverExtension(coverUrl: string, mediaType: string): string {
+    const extension = this.getExtensionFromUrl(coverUrl);
+    if (extension && EpubGenerator.COVER_MEDIA_TYPES[extension] === mediaType) {
+      return extension;
+    }
+
+    const matchedExtension = Object.entries(EpubGenerator.COVER_MEDIA_TYPES).find(
+      ([, type]) => type === mediaType,
+    )?.[0];
+
+    return matchedExtension === "jpeg" ? "jpg" : matchedExtension ?? "jpg";
+  }
+
+  private getExtensionFromUrl(url: string): string | undefined {
+    try {
+      const pathname = new URL(url).pathname;
+      return pathname.split(".").pop()?.toLowerCase();
+    } catch {
+      return url.split("?")[0]?.split(".").pop()?.toLowerCase();
+    }
   }
 
   /**

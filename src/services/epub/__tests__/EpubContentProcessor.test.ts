@@ -14,6 +14,8 @@ describe("EpubContentProcessor", () => {
     status: "idle",
     totalChapters: 0,
     downloadedChapters: 0,
+    description: "A story about <magic> & survival.\nNew allies appear.",
+    tags: ["Fantasy", "Adventure & Action"],
   };
 
   const mockChapters: Chapter[] = [
@@ -21,6 +23,52 @@ describe("EpubContentProcessor", () => {
     { id: "c2", title: "Chapter 2", url: "http://c2", downloaded: true },
     { id: "c3", title: "Chapter 3", url: "http://c3", downloaded: true },
   ];
+
+  describe("generateCoverHtml", () => {
+    it("should generate cover page with embedded cover image", () => {
+      const html = EpubContentProcessor.generateCoverHtml(mockStory, {
+        href: "images/cover.jpg",
+        mediaType: "image/jpeg",
+      });
+
+      expect(html).toContain('<?xml version="1.0"');
+      expect(html).toContain('<body class="cover-page">');
+      expect(html).toContain('src="images/cover.jpg"');
+      expect(html).toContain('alt="Test Story cover"');
+    });
+
+    it("should generate cover placeholder when image is unavailable", () => {
+      const html = EpubContentProcessor.generateCoverHtml(mockStory);
+
+      expect(html).toContain("No cover image available");
+      expect(html).toContain("cover-placeholder");
+    });
+  });
+
+  describe("generateDetailsHtml", () => {
+    it("should generate details page with description and tags", () => {
+      const html = EpubContentProcessor.generateDetailsHtml(mockStory);
+
+      expect(html).toContain("<h2>Description</h2>");
+      expect(html).toContain("A story about &lt;magic&gt; &amp; survival.");
+      expect(html).toContain("<h2>Tags</h2>");
+      expect(html).toContain('<span class="tag">Fantasy</span>');
+      expect(html).toContain(
+        '<span class="tag">Adventure &amp; Action</span>',
+      );
+    });
+
+    it("should generate empty-state copy for missing details", () => {
+      const html = EpubContentProcessor.generateDetailsHtml({
+        ...mockStory,
+        description: undefined,
+        tags: [],
+      });
+
+      expect(html).toContain("No description available.");
+      expect(html).toContain("No tags available.");
+    });
+  });
 
   describe("generateTocHtml", () => {
     it("should generate TOC HTML with all chapters", () => {
