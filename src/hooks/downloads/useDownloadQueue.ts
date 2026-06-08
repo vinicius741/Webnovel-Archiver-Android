@@ -13,6 +13,8 @@ const DOWNLOAD_MANAGER_EVENTS = [
   "job-started",
   "job-completed",
   "job-failed",
+  "job-cancelled",
+  "job-retry-scheduled",
   "job-paused",
   "job-resumed",
 ] as const;
@@ -23,6 +25,7 @@ const INITIAL_STATS: QueueStats = {
   active: 0,
   completed: 0,
   failed: 0,
+  cancelled: 0,
   paused: 0,
 };
 
@@ -90,6 +93,18 @@ export const useDownloadQueue = () => {
     await downloadManager.retryJob(jobId);
   }, []);
 
+  const retryFailedForStory = useCallback(async (storyId: string) => {
+    await downloadManager.retryFailedForStory(storyId);
+  }, []);
+
+  const retryAllFailed = useCallback(async () => {
+    await downloadManager.retryAllFailed();
+  }, []);
+
+  const removeJob = useCallback(async (jobId: string) => {
+    await downloadManager.removeJob(jobId);
+  }, []);
+
   const jobsByStory = state.jobs.reduce(
     (acc, job) => {
       if (!acc[job.storyId]) {
@@ -115,7 +130,10 @@ export const useDownloadQueue = () => {
     pauseJob,
     resumeJob,
     cancelJob,
+    removeJob,
     retryJob,
+    retryFailedForStory,
+    retryAllFailed,
     pauseAll,
     resumeAll,
     cancelAll,

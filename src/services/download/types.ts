@@ -5,7 +5,26 @@ export type JobStatus =
   | "downloading"
   | "failed"
   | "completed"
-  | "paused";
+  | "paused"
+  | "cancelled";
+
+export type DownloadErrorCategory =
+  | "network"
+  | "rate_limit"
+  | "parse"
+  | "storage"
+  | "missing_story"
+  | "missing_provider"
+  | "invalid_chapter"
+  | "cancelled"
+  | "unknown";
+
+export interface DownloadJobErrorDetails {
+  message: string;
+  category: DownloadErrorCategory;
+  code?: string;
+  failedAt: number;
+}
 
 export interface DownloadJob {
   id: string; // usually `${storyId}_${chapterIndex}`
@@ -17,6 +36,11 @@ export interface DownloadJob {
   addedAt: number;
   retryCount: number;
   error?: string;
+  errorCategory?: DownloadErrorCategory;
+  errorCode?: string;
+  lastFailedAt?: number;
+  nextRetryAt?: number;
+  maxRetries?: number;
   pausedAt?: number;
 }
 
@@ -27,4 +51,5 @@ export interface QueueStats {
   completed: number;
   failed: number;
   paused: number;
+  cancelled: number;
 }

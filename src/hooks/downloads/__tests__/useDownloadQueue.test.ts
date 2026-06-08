@@ -15,6 +15,9 @@ jest.mock("../../../services/download/DownloadManager", () => ({
     resumeAll: jest.fn().mockResolvedValue(undefined),
     cancelAll: jest.fn().mockResolvedValue(undefined),
     retryJob: jest.fn().mockResolvedValue(undefined),
+    retryFailedForStory: jest.fn().mockResolvedValue(undefined),
+    retryAllFailed: jest.fn().mockResolvedValue(undefined),
+    removeJob: jest.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -27,6 +30,7 @@ jest.mock("../../../services/download/DownloadQueue", () => ({
       active: 0,
       completed: 0,
       failed: 0,
+      cancelled: 0,
       paused: 0,
     }),
     clearFinished: jest.fn(),
@@ -55,6 +59,7 @@ describe("useDownloadQueue", () => {
     active: 0,
     completed: 0,
     failed: 0,
+    cancelled: 0,
     paused: 0,
   };
 
@@ -67,6 +72,7 @@ describe("useDownloadQueue", () => {
       active: 0,
       completed: 0,
       failed: 0,
+      cancelled: 0,
       paused: 0,
     });
   });
@@ -82,6 +88,7 @@ describe("useDownloadQueue", () => {
         active: 0,
         completed: 0,
         failed: 0,
+        cancelled: 0,
         paused: 0,
       });
     });
@@ -106,6 +113,14 @@ describe("useDownloadQueue", () => {
         expect.any(Function),
       );
       expect(downloadManager.on).toHaveBeenCalledWith(
+        "job-cancelled",
+        expect.any(Function),
+      );
+      expect(downloadManager.on).toHaveBeenCalledWith(
+        "job-retry-scheduled",
+        expect.any(Function),
+      );
+      expect(downloadManager.on).toHaveBeenCalledWith(
         "job-paused",
         expect.any(Function),
       );
@@ -120,7 +135,7 @@ describe("useDownloadQueue", () => {
 
       unmount();
 
-      expect(downloadManager.off).toHaveBeenCalledTimes(6);
+      expect(downloadManager.off).toHaveBeenCalledTimes(8);
     });
   });
 

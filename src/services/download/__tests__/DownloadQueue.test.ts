@@ -325,7 +325,7 @@ describe("DownloadQueue", () => {
     expect(stats.total).toBe(0);
   });
 
-  it("should cancel an active downloading job", async () => {
+  it("should cancel an active downloading job without marking it failed", async () => {
     const queue = new DownloadQueue();
     await queue.init();
     queue.addJob(mockJob2);
@@ -333,11 +333,12 @@ describe("DownloadQueue", () => {
     queue.cancelJob("job2", "cancelled by user");
 
     const [job] = queue.getAllJobs();
-    expect(job.status).toBe("failed");
+    expect(job.status).toBe("cancelled");
     expect(job.error).toBe("cancelled by user");
+    expect(job.errorCategory).toBe("cancelled");
   });
 
-  it("should cancel downloading jobs when cancelAll is called", async () => {
+  it("should mark downloading jobs cancelled when cancelAll is called", async () => {
     const queue = new DownloadQueue();
     await queue.init();
     queue.addJob(mockJob);
@@ -346,8 +347,8 @@ describe("DownloadQueue", () => {
     queue.cancelAll();
 
     const jobs = queue.getAllJobs();
-    expect(jobs.find((job) => job.id === "job1")?.status).toBe("failed");
-    expect(jobs.find((job) => job.id === "job2")?.status).toBe("failed");
+    expect(jobs.find((job) => job.id === "job1")?.status).toBe("cancelled");
+    expect(jobs.find((job) => job.id === "job2")?.status).toBe("cancelled");
   });
 
   it("should handle storage error gracefully", async () => {

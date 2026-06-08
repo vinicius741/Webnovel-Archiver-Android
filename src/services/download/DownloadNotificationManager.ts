@@ -13,7 +13,12 @@ export class DownloadNotificationManager {
     if (stats.pending > 0 || stats.active > 0) {
       const completed = Math.max(
         0,
-        stats.total - stats.pending - stats.active - stats.paused,
+        stats.total -
+          stats.pending -
+          stats.active -
+          stats.paused -
+          stats.failed -
+          stats.cancelled,
       );
       await setDownloadState({
         title: "Downloading chapters",
@@ -37,7 +42,12 @@ export class DownloadNotificationManager {
 
     const completed = Math.max(
       0,
-      stats.total - stats.pending - stats.active - stats.paused,
+      stats.total -
+        stats.pending -
+        stats.active -
+        stats.paused -
+        stats.failed -
+        stats.cancelled,
     );
     await setDownloadState({
       title: "Downloading...",

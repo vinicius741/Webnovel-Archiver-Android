@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { DownloadJob, JobStatus } from "./types";
+import { DownloadJob, DownloadJobErrorDetails, JobStatus } from "./types";
 
 const QUEUE_STORAGE_KEY = "wa_download_queue_v2";
 
@@ -48,14 +48,17 @@ export class DownloadQueue {
       const existing = this.jobs[existingIndex];
       if (
         existing.status === "failed" ||
-        existing.status === "completed"
+        existing.status === "completed" ||
+        existing.status === "cancelled"
       ) {
-        this.jobs[existingIndex] = { ...job, status: "pending", retryCount: 0 };
+        this.jobs[existingIndex] = this.preparePendingJob(job, {
+          retryCount: existing.retryCount ?? 0,
+        });
         void this._save();
       }
       return;
     }
-    this.jobs.push(job);
+    this.jobs.push({ ...job });
     void this._save();
   }
 
@@ -64,11 +67,38 @@ export class DownloadQueue {
     void this._save();
   }
 
-  updateJobStatus(id: string, status: JobStatus, error?: string): void {
+  updateJobStatus(
+    id: string,
+    status: JobStatus,
+    error?: string,
+    details?: Partial<DownloadJobErrorDetails>,
+  ): void {
     const job = this.jobs.find((j) => j.id === id);
     if (job) {
       job.status = status;
-      if (error) job.error = error;
+      if (error !== undefined) {
+        job.error = error;
+      }
+      if (details?.category) {
+        job.errorCategory = details.category;
+      }
+      if (details?.code !== undefined) {
+        job.errorCode = details.code;
+      }
+      if (details?.failedAt !== undefined) {
+        job.lastFailedAt = details.failedAt;
+      }
+      if (status === "paused") {
+        job.pausedAt = Date.now();
+        job.nextRetryAt = undefined;
+      }
+      if (status === "downloading" || status === "completed") {
+        job.nextRetryAt = undefined;
+        job.pausedAt = undefined;
+      }
+      if (status === "completed") {
+        this.clearError(job);
+      }
       void this._save();
     }
   }
@@ -100,12 +130,14 @@ export class DownloadQueue {
     paused: number;
     completed: number;
     failed: number;
+    cancelled: number;
   } {
     const pending = this.jobs.filter((j) => j.status === "pending").length;
     const active = this.jobs.filter((j) => j.status === "downloading").length;
     const paused = this.jobs.filter((j) => j.status === "paused").length;
     const completed = this.jobs.filter((j) => j.status === "completed").length;
     const failed = this.jobs.filter((j) => j.status === "failed").length;
+    const cancelled = this.jobs.filter((j) => j.status === "cancelled").length;
     return {
       pending,
       active,
@@ -113,6 +145,7 @@ export class DownloadQueue {
       paused,
       completed,
       failed,
+      cancelled,
     };
   }
 
@@ -130,6 +163,7 @@ export class DownloadQueue {
     if (job && job.status === "paused") {
       job.status = "pending";
       job.pausedAt = undefined;
+      job.nextRetryAt = undefined;
       void this._save();
     }
   }
@@ -137,11 +171,52 @@ export class DownloadQueue {
   retryJob(id: string): void {
     const job = this.jobs.find((j) => j.id === id);
     if (job && job.status === "failed") {
-      job.status = "pending";
+      this.markPending(job);
       job.retryCount = (job.retryCount || 0) + 1;
-      job.error = undefined;
       void this._save();
     }
+  }
+
+  retryFailedForStory(storyId: string): number {
+    return this.retryFailedJobs((job) => job.storyId === storyId);
+  }
+
+  retryAllFailed(): number {
+    return this.retryFailedJobs(() => true);
+  }
+
+  private retryFailedJobs(shouldRetry: (job: DownloadJob) => boolean): number {
+    let count = 0;
+    this.jobs.forEach((job) => {
+      if (job.status === "failed" && shouldRetry(job)) {
+        this.markPending(job);
+        job.retryCount = (job.retryCount || 0) + 1;
+        count++;
+      }
+    });
+    if (count > 0) {
+      void this._save();
+    }
+    return count;
+  }
+
+  scheduleRetry(
+    id: string,
+    nextRetryAt: number,
+    error: string,
+    details: Partial<DownloadJobErrorDetails> = {},
+  ): void {
+    const job = this.jobs.find((j) => j.id === id);
+    if (!job) return;
+    job.status = "pending";
+    job.retryCount = (job.retryCount || 0) + 1;
+    job.error = error;
+    job.errorCategory = details.category;
+    job.errorCode = details.code;
+    job.lastFailedAt = details.failedAt ?? Date.now();
+    job.nextRetryAt = nextRetryAt;
+    job.pausedAt = undefined;
+    void this._save();
   }
 
   pauseAll(): void {
@@ -150,6 +225,7 @@ export class DownloadQueue {
       if (job.status === "pending" || job.status === "downloading") {
         job.status = "paused";
         job.pausedAt = Date.now();
+        job.nextRetryAt = undefined;
         changed = true;
       }
     });
@@ -181,6 +257,7 @@ export class DownloadQueue {
       if (job.status === "paused") {
         job.status = "pending";
         job.pausedAt = undefined;
+        job.nextRetryAt = undefined;
         changed = true;
       }
     });
@@ -197,8 +274,13 @@ export class DownloadQueue {
         job.status === "paused" ||
         job.status === "downloading"
       ) {
-        job.status = "failed";
+        job.status = "cancelled";
         job.error = "cancelled";
+        job.errorCategory = "cancelled";
+        job.errorCode = "CANCELLED";
+        job.lastFailedAt = Date.now();
+        job.nextRetryAt = undefined;
+        job.pausedAt = undefined;
         changed = true;
       }
     });
@@ -224,12 +306,17 @@ export class DownloadQueue {
         (j) =>
           !(
             j.storyId === storyId &&
-            (j.status === "completed" || j.status === "failed")
+            (j.status === "completed" ||
+              j.status === "failed" ||
+              j.status === "cancelled")
           ),
       );
     } else {
       this.jobs = this.jobs.filter(
-        (j) => j.status !== "completed" && j.status !== "failed",
+        (j) =>
+          j.status !== "completed" &&
+          j.status !== "failed" &&
+          j.status !== "cancelled",
       );
     }
     void this._save();
@@ -249,8 +336,12 @@ export class DownloadQueue {
     let changed = false;
     this.jobs.forEach((job) => {
       if (job.status === "pending") {
-        job.status = "failed";
+        job.status = "cancelled";
         job.error = reason;
+        job.errorCategory = "cancelled";
+        job.errorCode = "CANCELLED";
+        job.lastFailedAt = Date.now();
+        job.nextRetryAt = undefined;
         changed = true;
       }
     });
@@ -267,11 +358,46 @@ export class DownloadQueue {
         job.status === "paused" ||
         job.status === "downloading")
     ) {
-      job.status = "failed";
+      job.status = "cancelled";
       job.error = reason;
+      job.errorCategory = "cancelled";
+      job.errorCode = "CANCELLED";
+      job.lastFailedAt = Date.now();
       job.pausedAt = undefined;
+      job.nextRetryAt = undefined;
       void this._save();
     }
+  }
+
+  private preparePendingJob(
+    job: DownloadJob,
+    overrides: Partial<DownloadJob> = {},
+  ): DownloadJob {
+    return {
+      ...job,
+      ...overrides,
+      status: "pending",
+      error: undefined,
+      errorCategory: undefined,
+      errorCode: undefined,
+      lastFailedAt: undefined,
+      nextRetryAt: undefined,
+      pausedAt: undefined,
+    };
+  }
+
+  private markPending(job: DownloadJob): void {
+    job.status = "pending";
+    this.clearError(job);
+    job.nextRetryAt = undefined;
+    job.pausedAt = undefined;
+  }
+
+  private clearError(job: DownloadJob): void {
+    job.error = undefined;
+    job.errorCategory = undefined;
+    job.errorCode = undefined;
+    job.lastFailedAt = undefined;
   }
 }
 

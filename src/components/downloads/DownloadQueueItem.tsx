@@ -67,6 +67,15 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
             />
           </>
         );
+      case "cancelled":
+        return (
+          <IconButton
+            icon="close"
+            size={20}
+            onPress={onCancel}
+            iconColor={theme.colors.onSurfaceVariant}
+          />
+        );
       default:
         return null;
     }
@@ -115,7 +124,7 @@ export const DownloadQueueItem: React.FC<DownloadQueueItemProps> = ({
           />
         </View>
 
-        {job.status === "failed" && job.error && (
+        {(job.status === "failed" || job.status === "cancelled") && job.error && (
           <TouchableOpacity onPress={() => setShowError(!showError)}>
             <Text
               variant="bodySmall"

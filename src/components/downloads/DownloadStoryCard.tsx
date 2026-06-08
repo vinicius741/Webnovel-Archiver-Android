@@ -4,6 +4,7 @@ import { Text, IconButton, Card, useTheme, Divider } from "react-native-paper";
 import { useScreenLayout } from "../../hooks/common/useScreenLayout";
 import { DownloadJob } from "../../services/download/types";
 import { DownloadChapterItem } from "./DownloadChapterItem";
+import { DownloadJobActionHandlers } from "./downloadActionTypes";
 
 export interface StoryGroup {
   storyId: string;
@@ -11,14 +12,11 @@ export interface StoryGroup {
   jobs: DownloadJob[];
 }
 
-interface DownloadStoryCardProps {
+interface DownloadStoryCardProps extends DownloadJobActionHandlers {
   item: StoryGroup;
   isExpanded: boolean;
   onToggleExpanded: (storyId: string) => void;
-  onPause: (jobId: string) => void;
-  onResume: (jobId: string) => void;
-  onCancel: (jobId: string) => void;
-  onRetry: (jobId: string) => void;
+  onRetryStoryFailed: (storyId: string) => void;
 }
 
 interface StatusSummary {
@@ -27,6 +25,7 @@ interface StatusSummary {
   paused: number;
   completed: number;
   failed: number;
+  cancelled: number;
 }
 
 type ScreenLayout = ReturnType<typeof useScreenLayout> & {
@@ -39,7 +38,8 @@ const getStatusSummary = (jobs: DownloadJob[]): StatusSummary => {
   const paused = jobs.filter((j) => j.status === "paused").length;
   const completed = jobs.filter((j) => j.status === "completed").length;
   const failed = jobs.filter((j) => j.status === "failed").length;
-  return { downloading, pending, paused, completed, failed };
+  const cancelled = jobs.filter((j) => j.status === "cancelled").length;
+  return { downloading, pending, paused, completed, failed, cancelled };
 };
 
 const getSubtitleText = (
@@ -52,6 +52,7 @@ const getSubtitleText = (
   if (summary.pending > 0) parts.push(`${summary.pending} queued`);
   if (summary.paused > 0) parts.push(`${summary.paused} paused`);
   if (summary.failed > 0) parts.push(`${summary.failed} failed`);
+  if (summary.cancelled > 0) parts.push(`${summary.cancelled} cancelled`);
   return parts.join(" • ");
 };
 
@@ -62,7 +63,9 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
   onPause,
   onResume,
   onCancel,
+  onRemove,
   onRetry,
+  onRetryStoryFailed,
 }) => {
   const theme = useTheme();
   const layout = useScreenLayout() as ScreenLayout;
@@ -107,11 +110,7 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
   };
 
   const handleRetryAll = () => {
-    item.jobs.forEach((job) => {
-      if (job.status === "failed") {
-        onRetry(job.id);
-      }
-    });
+    onRetryStoryFailed(item.storyId);
   };
 
   return (
@@ -186,6 +185,17 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
                 }}
                 iconColor={theme.colors.error}
               />
+              {hasFailed && (
+                <IconButton
+                  icon="refresh"
+                  size={18}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleRetryAll();
+                  }}
+                  iconColor={theme.colors.primary}
+                />
+              )}
             </View>
           )}
           {!isInProgress && hasFailed && (
@@ -219,6 +229,7 @@ export const DownloadStoryCard: React.FC<DownloadStoryCardProps> = ({
                 onPause={onPause}
                 onResume={onResume}
                 onCancel={onCancel}
+                onRemove={onRemove}
                 onRetry={onRetry}
               />
               {index < item.jobs.length - 1 && (

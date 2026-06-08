@@ -2,13 +2,11 @@ import React, { useMemo, useState } from "react";
 import { View, FlatList, StyleSheet, RefreshControl } from "react-native";
 import { Text, IconButton, useTheme } from "react-native-paper";
 import { DownloadStoryCard, StoryGroup } from "./DownloadStoryCard";
+import { DownloadJobActionHandlers } from "./downloadActionTypes";
 
-interface DownloadQueueListProps {
+interface DownloadQueueListProps extends DownloadJobActionHandlers {
   jobsByStory: StoryGroup[];
-  onPause: (jobId: string) => void;
-  onResume: (jobId: string) => void;
-  onCancel: (jobId: string) => void;
-  onRetry: (jobId: string) => void;
+  onRetryStoryFailed: (storyId: string) => void;
   refreshing: boolean;
   onRefresh: () => void;
   contentMaxWidth?: number;
@@ -20,7 +18,9 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
   onPause,
   onResume,
   onCancel,
+  onRemove,
   onRetry,
+  onRetryStoryFailed,
   refreshing,
   onRefresh,
   contentMaxWidth,
@@ -101,7 +101,9 @@ export const DownloadQueueList: React.FC<DownloadQueueListProps> = ({
           onPause={onPause}
           onResume={onResume}
           onCancel={onCancel}
+          onRemove={onRemove}
           onRetry={onRetry}
+          onRetryStoryFailed={onRetryStoryFailed}
         />
       </View>
     );

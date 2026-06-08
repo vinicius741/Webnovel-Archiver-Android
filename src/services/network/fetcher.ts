@@ -67,6 +67,10 @@ const shouldRetryRequest = (url: string, status: number, attempt: number): boole
   );
 };
 
+interface FetchPageOptions {
+  signal?: AbortSignal;
+}
+
 const fetchWithRetries = async (
   url: string,
   init: RequestInit,
@@ -96,17 +100,21 @@ const fetchWithRetries = async (
   }
 };
 
-export const fetchPage = async (url: string): Promise<string> => {
+export const fetchPage = async (
+  url: string,
+  options: FetchPageOptions = {},
+): Promise<string> => {
   try {
     console.log(`[Fetcher] Requesting: ${url}`);
     return await fetchWithRetries(
       url,
       {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: DEFAULT_ACCEPT,
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+        signal: options.signal,
+        headers: {
+          "User-Agent": USER_AGENT,
+          Accept: DEFAULT_ACCEPT,
+          "Accept-Language": "en-US,en;q=0.9",
+        },
       },
       "[Fetcher]",
     );

@@ -20,6 +20,7 @@ export function DownloadStatsBar({
 }: DownloadStatsBarProps) {
   const theme = useTheme<MD3Theme>();
   const hasFailedJobs = stats.failed > 0;
+  const hasCancelledJobs = stats.cancelled > 0;
 
   return (
     <Card
@@ -71,6 +72,15 @@ export function DownloadStatsBar({
           theme={theme}
           style={statItemStyle}
         />
+        {hasCancelledJobs && (
+          <StatItem
+            icon="cancel"
+            value={stats.cancelled}
+            label="Cancelled"
+            theme={theme}
+            style={statItemStyle}
+          />
+        )}
       </Card.Content>
     </Card>
   );

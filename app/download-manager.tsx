@@ -20,7 +20,10 @@ export default function DownloadManagerScreen() {
     pauseJob,
     resumeJob,
     cancelJob,
+    removeJob,
     retryJob,
+    retryFailedForStory,
+    retryAllFailed,
     pauseAll,
     resumeAll,
     cancelAll,
@@ -70,7 +73,7 @@ export default function DownloadManagerScreen() {
   const handleClearFinishedPress = () => {
     showAlert(
       "Clear Finished Downloads",
-      "Remove completed and failed downloads from the queue?",
+      "Remove completed, failed, and cancelled downloads from the queue?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -104,6 +107,7 @@ export default function DownloadManagerScreen() {
                 onPauseAll={pauseAll}
                 onResumeAll={resumeAll}
                 onCancelAll={handleCancelAll}
+                onRetryAllFailed={retryAllFailed}
                 onOpenSettings={() => setSettingsModalVisible(true)}
               />
             ),
@@ -122,7 +126,9 @@ export default function DownloadManagerScreen() {
           onPause={pauseJob}
           onResume={resumeJob}
           onCancel={cancelJob}
+          onRemove={removeJob}
           onRetry={retryJob}
+          onRetryStoryFailed={retryFailedForStory}
           refreshing={refreshing}
           onRefresh={onRefresh}
           contentMaxWidth={queueMaxWidth}

@@ -25,14 +25,25 @@ export const useDownloadProgress = (storyId: string) => {
       const active = jobs.filter((j) => j.status === "downloading").length;
       const pending = jobs.filter((j) => j.status === "pending").length;
       const failed = jobs.filter((j) => j.status === "failed").length;
+      const paused = jobs.filter((j) => j.status === "paused").length;
+      const cancelled = jobs.filter((j) => j.status === "cancelled").length;
 
-      if (pending === 0 && active === 0) {
-        // All done (or failed)
+      if (pending === 0 && active === 0 && paused === 0) {
         setIsDownloading(false);
-        setProgress(1); // 100%
-        setStatus(
-          failed > 0 ? `Finished (${failed} failed)` : "Download Complete",
-        );
+        setProgress(total > 0 ? completed / total : 0);
+        if (failed > 0 || cancelled > 0) {
+          const parts = [`${completed}/${total} downloaded`];
+          if (failed > 0) parts.push(`${failed} failed`);
+          if (cancelled > 0) parts.push(`${cancelled} cancelled`);
+          setStatus(`Finished (${parts.join(", ")})`);
+        } else {
+          setProgress(1);
+          setStatus("Download Complete");
+        }
+      } else if (paused > 0 && pending === 0 && active === 0) {
+        setIsDownloading(false);
+        setProgress(total > 0 ? completed / total : 0);
+        setStatus(`Paused (${completed}/${total})`);
       } else {
         setIsDownloading(true);
         const p = total > 0 ? completed / total : 0;
@@ -68,12 +79,16 @@ export const useDownloadProgress = (storyId: string) => {
     downloadManager.on("job-started", onJobStarted);
     downloadManager.on("job-completed", onJobCompleted);
     downloadManager.on("job-failed", onJobFailed);
+    downloadManager.on("job-cancelled", onJobFailed);
+    downloadManager.on("job-retry-scheduled", onJobFailed);
 
     return () => {
       downloadManager.off("queue-updated", onQueueUpdate);
       downloadManager.off("job-started", onJobStarted);
       downloadManager.off("job-completed", onJobCompleted);
       downloadManager.off("job-failed", onJobFailed);
+      downloadManager.off("job-cancelled", onJobFailed);
+      downloadManager.off("job-retry-scheduled", onJobFailed);
     };
   }, [storyId]);
 

@@ -9,7 +9,13 @@ jest.mock("../../../services/download/DownloadQueue", () => ({
   downloadQueue: {
     init: jest.fn().mockResolvedValue(undefined),
     getJobsForStory: jest.fn(),
-    getStats: jest.fn(() => ({ pending: 0, active: 0, total: 0, failed: 0 })),
+    getStats: jest.fn(() => ({
+      pending: 0,
+      active: 0,
+      total: 0,
+      failed: 0,
+      cancelled: 0,
+    })),
     getAllJobs: jest.fn(() => []),
   },
 }));
@@ -28,6 +34,7 @@ describe("useDownloadProgress", () => {
       active: 0,
       total: 0,
       failed: 0,
+      cancelled: 0,
     });
     (downloadManager.on as jest.Mock).mockReturnValue(downloadManager);
     (downloadManager.off as jest.Mock).mockReturnValue(downloadManager);
@@ -187,8 +194,10 @@ describe("useDownloadProgress", () => {
     const { result } = renderHook(() => useDownloadProgress(storyId));
 
     expect(result.current.isDownloading).toBe(false);
-    expect(result.current.progress).toBe(1);
-    expect(result.current.status).toBe("Finished (1 failed)");
+    expect(result.current.progress).toBe(2 / 3);
+    expect(result.current.status).toBe(
+      "Finished (2/3 downloaded, 1 failed)",
+    );
   });
 
   it("should subscribe to download events", () => {

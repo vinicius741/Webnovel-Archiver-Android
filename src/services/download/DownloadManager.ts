@@ -4,6 +4,11 @@ import { DownloadJob } from "./types";
 import { DownloadStoryCache } from "./DownloadStoryCache";
 import { DownloadNotificationManager } from "./DownloadNotificationManager";
 import { cleanupOrphanedJobs } from "./orphanJobCleaner";
+import {
+  classifyDownloadError,
+  getDownloadRetryDelayMs,
+  shouldAutoRetryDownload,
+} from "./DownloadErrorClassifier";
 import { sourceRegistry } from "../source/SourceRegistry";
 import { fetchPage, HttpError } from "../network/fetcher";
 import { saveChapter } from "../storage/fileSystem";
@@ -21,6 +26,7 @@ export class DownloadManager extends EventEmitter {
   private globalDelay = 0;
   private cancelRequested = false;
   private cancelledJobIds = new Set<string>();
+  private activeAbortControllers = new Map<string, AbortController>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private consecutiveRateLimitFailuresByStory = new Map<string, number>();
 
@@ -95,6 +101,7 @@ export class DownloadManager extends EventEmitter {
 
     for (const job of allJobs) {
       if (job.status !== "pending") continue;
+      if (job.nextRetryAt && job.nextRetryAt > now) continue;
 
       const providerName = this.getProviderNameForJob(job);
       if (!providerName) continue;
@@ -181,6 +188,11 @@ export class DownloadManager extends EventEmitter {
             const providerName = this.getProviderNameForJob(job);
             if (!providerName) continue;
             hasPending = true;
+            if (job.nextRetryAt && job.nextRetryAt > now) {
+              if (sleepUntil === 0 || job.nextRetryAt < sleepUntil) {
+                sleepUntil = job.nextRetryAt;
+              }
+            }
             const nextAllowedAt =
               this.nextAllowedJobAtBySource.get(providerName) ?? 0;
             if (nextAllowedAt > now) {
@@ -304,8 +316,9 @@ export class DownloadManager extends EventEmitter {
         job.status === "downloading")
     ) {
       this.cancelledJobIds.add(jobId);
+      this.activeAbortControllers.get(jobId)?.abort();
       downloadQueue.cancelJob(jobId, "cancelled by user");
-      this.emit("job-failed", job, new Error("cancelled by user"));
+      this.emit("job-cancelled", job);
       this.emit("queue-updated");
       this.emit("notification-update");
     }
@@ -322,6 +335,7 @@ export class DownloadManager extends EventEmitter {
           job.status === "downloading",
       )
       .forEach((job) => this.cancelledJobIds.add(job.id));
+    this.activeAbortControllers.forEach((controller) => controller.abort());
     downloadQueue.cancelAll();
     this.emit("queue-updated");
     this.emit("notification-update");
@@ -359,14 +373,48 @@ export class DownloadManager extends EventEmitter {
     return true;
   }
 
+  async retryFailedForStory(storyId: string): Promise<number> {
+    const retryCount = downloadQueue.retryFailedForStory(storyId);
+    if (retryCount > 0) {
+      this.consecutiveRateLimitFailuresByStory.delete(storyId);
+      this.emit("queue-updated");
+      this.emit("notification-update");
+      void this.start();
+    }
+    return retryCount;
+  }
+
+  async retryAllFailed(): Promise<number> {
+    const retryCount = downloadQueue.retryAllFailed();
+    if (retryCount > 0) {
+      this.consecutiveRateLimitFailuresByStory.clear();
+      this.emit("queue-updated");
+      this.emit("notification-update");
+      void this.start();
+    }
+    return retryCount;
+  }
+
+  async removeJob(jobId: string): Promise<void> {
+    const job = downloadQueue.getAllJobs().find((j) => j.id === jobId);
+    if (!job) return;
+    this.cancelledJobIds.add(jobId);
+    this.activeAbortControllers.get(jobId)?.abort();
+    downloadQueue.removeJob(jobId);
+    this.emit("queue-updated");
+    this.emit("notification-update");
+  }
+
   private async processJob(job: DownloadJob) {
     if (job.status !== "pending") return;
 
     downloadQueue.updateJobStatus(job.id, "downloading");
     this.emit("job-started", job);
+    const abortController = new AbortController();
+    this.activeAbortControllers.set(job.id, abortController);
 
     try {
-      const filePath = await this.executeDownload(job);
+      const filePath = await this.executeDownload(job, abortController.signal);
       if (this.cancelledJobIds.has(job.id)) {
         this.cancelledJobIds.delete(job.id);
         return;
@@ -421,27 +469,58 @@ export class DownloadManager extends EventEmitter {
         this.cancelledJobIds.delete(job.id);
         return;
       }
-      await this.handleRateLimitFailure(job, error);
+      const classifiedError = classifyDownloadError(error);
+      const pausedForRateLimit = await this.handleRateLimitFailure(job, error);
       console.error(`[DownloadManager] Job ${job.id} failed`, error);
-      const message = error instanceof Error ? error.message : "Unknown error";
-      downloadQueue.updateJobStatus(job.id, "failed", message);
+
+      if (pausedForRateLimit) {
+        const pauseReason =
+          "Paused after repeated 403/429 responses. Resume later to retry.";
+        downloadQueue.updateJobStatus(job.id, "paused", pauseReason, {
+          category: "rate_limit",
+          code: classifiedError.code,
+          failedAt: Date.now(),
+        });
+        this.emit("job-paused", job);
+        this.emit("queue-updated");
+        return;
+      }
+
+      if (shouldAutoRetryDownload(job, classifiedError)) {
+        const nextRetryAt = Date.now() + getDownloadRetryDelayMs(job);
+        downloadQueue.scheduleRetry(job.id, nextRetryAt, classifiedError.message, {
+          category: classifiedError.category,
+          code: classifiedError.code,
+          failedAt: Date.now(),
+        });
+        this.emit("job-retry-scheduled", job, classifiedError, nextRetryAt);
+        this.emit("queue-updated");
+        return;
+      }
+
+      downloadQueue.updateJobStatus(job.id, "failed", classifiedError.message, {
+        category: classifiedError.category,
+        code: classifiedError.code,
+        failedAt: Date.now(),
+      });
+      await this.recoverStoryStatusAfterTerminalJob(job.storyId);
       this.emit("job-failed", job, error);
+    } finally {
+      this.activeAbortControllers.delete(job.id);
     }
   }
 
   private async handleRateLimitFailure(
     job: DownloadJob,
     error: unknown,
-  ): Promise<void> {
-    const story = await storageService.getStory(job.storyId);
-    const isScribbleHubStory = story?.sourceUrl?.includes("scribblehub.com");
+  ): Promise<boolean> {
     const isRateLimitError =
       error instanceof HttpError &&
       (error.status === 403 || error.status === 429);
 
-    if (!isScribbleHubStory || !isRateLimitError) {
+    if (!isRateLimitError) {
       this.consecutiveRateLimitFailuresByStory.delete(job.storyId);
-      return;
+      return false;
     }
 
     const failureCount =
@@ -449,17 +528,44 @@ export class DownloadManager extends EventEmitter {
     this.consecutiveRateLimitFailuresByStory.set(job.storyId, failureCount);
 
     if (failureCount < STORY_RATE_LIMIT_FAILURE_THRESHOLD) {
-      return;
+      return false;
     }
 
     const pauseReason =
-      "Paused remaining chapter downloads after repeated ScribbleHub 403/429 responses. Resume later to retry.";
+      "Paused remaining chapter downloads after repeated 403/429 responses. Resume later to retry.";
     downloadQueue.pausePendingForStory(job.storyId, pauseReason);
     this.emit("queue-updated");
     this.emit("notification-update");
+    return true;
   }
 
-  private async executeDownload(job: DownloadJob): Promise<string> {
+  private async recoverStoryStatusAfterTerminalJob(storyId: string): Promise<void> {
+    try {
+      const jobs = downloadQueue.getJobsForStory(storyId);
+      const hasActiveJobs = jobs.some(
+        (job) => job.status === "pending" || job.status === "downloading",
+      );
+      if (hasActiveJobs) return;
+
+      const story = await storageService.getStory(storyId);
+      if (!story || story.status !== DownloadStatus.Downloading) return;
+
+      const downloadedCount = story.chapters.filter((chapter) => chapter.downloaded).length;
+      const recoveredStatus =
+        downloadedCount > 0 ? DownloadStatus.Partial : DownloadStatus.Failed;
+      await storageService.updateStoryStatus(storyId, recoveredStatus);
+    } catch (err) {
+      console.error(
+        `[DownloadManager] Failed to recover story status for ${storyId}`,
+        err,
+      );
+    }
+  }
+
+  private async executeDownload(
+    job: DownloadJob,
+    signal?: AbortSignal,
+  ): Promise<string> {
     const story = await storageService.getStory(job.storyId);
     if (!story) throw new Error("Story not found");
 
@@ -468,7 +574,9 @@ export class DownloadManager extends EventEmitter {
 
     if (!job.chapter.url) throw new Error("Chapter has no URL");
 
-    const html = await fetchPage(job.chapter.url);
+    const html = signal
+      ? await fetchPage(job.chapter.url, { signal })
+      : await fetchPage(job.chapter.url);
     const content = provider.parseChapterContent(html);
 
     if (!content || content.length < 50) {

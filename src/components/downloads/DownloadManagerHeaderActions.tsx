@@ -9,6 +9,7 @@ interface DownloadManagerHeaderActionsProps {
   onPauseAll: () => void;
   onResumeAll: () => void;
   onCancelAll: () => void;
+  onRetryAllFailed: () => void;
   onOpenSettings: () => void;
 }
 
@@ -17,6 +18,7 @@ export function DownloadManagerHeaderActions({
   onPauseAll,
   onResumeAll,
   onCancelAll,
+  onRetryAllFailed,
   onOpenSettings,
 }: DownloadManagerHeaderActionsProps) {
   const theme = useTheme<MD3Theme>();
@@ -47,6 +49,14 @@ export function DownloadManagerHeaderActions({
           size={24}
           onPress={onCancelAll}
           iconColor={theme.colors.error}
+        />
+      )}
+      {stats.failed > 0 && (
+        <IconButton
+          icon="refresh"
+          size={24}
+          onPress={onRetryAllFailed}
+          iconColor={theme.colors.primary}
         />
       )}
       <IconButton

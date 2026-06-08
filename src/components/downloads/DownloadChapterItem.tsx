@@ -1,16 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Text, IconButton, useTheme } from "react-native-paper";
 import { useScreenLayout } from "../../hooks/common/useScreenLayout";
 import { DownloadJob } from "../../services/download/types";
 import { getStatusColor, getStatusLabel } from "./downloadStatusUtils";
+import { DownloadJobActionHandlers } from "./downloadActionTypes";
 
-interface DownloadChapterItemProps {
+interface DownloadChapterItemProps extends DownloadJobActionHandlers {
   job: DownloadJob;
-  onPause: (jobId: string) => void;
-  onResume: (jobId: string) => void;
-  onCancel: (jobId: string) => void;
-  onRetry: (jobId: string) => void;
 }
 
 type ScreenLayout = ReturnType<typeof useScreenLayout> & {
@@ -22,12 +19,18 @@ export const DownloadChapterItem: React.FC<DownloadChapterItemProps> = ({
   onPause,
   onResume,
   onCancel,
+  onRemove,
   onRetry,
 }) => {
   const theme = useTheme();
+  const [expandedError, setExpandedError] = useState(false);
   const layout = useScreenLayout() as ScreenLayout;
   const statusColor = getStatusColor(job.status, theme);
-  const statusLabel = getStatusLabel(job.status);
+  const isScheduledRetry =
+    job.status === "pending" && !!job.nextRetryAt;
+  const statusLabel = isScheduledRetry
+    ? "Retrying soon"
+    : getStatusLabel(job.status);
   const screenWidth = layout.screenWidth || 0;
   const isCompactLayout =
     layout.widthClass === "compact" ||
@@ -53,7 +56,19 @@ export const DownloadChapterItem: React.FC<DownloadChapterItemProps> = ({
           style={{ color: statusColor }}
         >
           {statusLabel}
+          {job.retryCount > 0 ? ` • attempt ${job.retryCount + 1}` : ""}
         </Text>
+        {!!job.error && (
+          <Text
+            variant="bodySmall"
+            numberOfLines={expandedError ? undefined : 2}
+            onPress={() => setExpandedError((current) => !current)}
+            style={[styles.errorText, { color: theme.colors.onSurfaceVariant }]}
+          >
+            {job.errorCode ? `${job.errorCode}: ` : ""}
+            {job.error}
+          </Text>
+        )}
       </View>
       <View
         style={[
@@ -88,10 +103,18 @@ export const DownloadChapterItem: React.FC<DownloadChapterItemProps> = ({
             <IconButton
               icon="close"
               size={16}
-              onPress={() => onCancel(job.id)}
+              onPress={() => onRemove(job.id)}
               iconColor={theme.colors.onSurfaceVariant}
             />
           </>
+        )}
+        {job.status === "cancelled" && (
+          <IconButton
+            icon="close"
+            size={16}
+            onPress={() => onRemove(job.id)}
+            iconColor={theme.colors.onSurfaceVariant}
+          />
         )}
         {(job.status === "pending" || job.status === "paused") && (
           <IconButton
@@ -122,6 +145,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   chapterTitle: {
+  },
+  errorText: {
+    marginTop: 2,
   },
   chapterActions: {
     flexDirection: "row",

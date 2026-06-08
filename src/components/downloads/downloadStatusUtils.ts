@@ -13,6 +13,8 @@ export const getStatusColor = (status: JobStatus, theme: MD3Theme): string => {
       return theme.colors.secondary;
     case "failed":
       return theme.colors.error;
+    case "cancelled":
+      return theme.colors.onSurfaceVariant;
     default:
       return theme.colors.secondary;
   }
@@ -30,6 +32,8 @@ export const getStatusLabel = (status: JobStatus): string => {
       return "Done";
     case "failed":
       return "Failed";
+    case "cancelled":
+      return "Cancelled";
     default:
       return status;
   }
