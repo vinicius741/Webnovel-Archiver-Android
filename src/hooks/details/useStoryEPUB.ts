@@ -300,7 +300,7 @@ export const useStoryEPUB = ({
             .join("\n")}`,
         );
       } else {
-        showAlert("Success", `EPUB exported to: ${results[0].uri}`);
+        showAlert("Success", `EPUB generated: ${results[0].filename}`);
       }
       return epubUris;
     } catch (error: unknown) {

@@ -125,6 +125,7 @@ describe("EpubGenerator", () => {
       filename: "test_story.epub",
     });
     expect(fileSystem.saveEpub).toHaveBeenCalledWith(
+      "123",
       "test_story.epub",
       "base64data",
     );
@@ -143,6 +144,7 @@ describe("EpubGenerator", () => {
       filename: "test_story_Ch5-10.epub",
     });
     expect(fileSystem.saveEpub).toHaveBeenCalledWith(
+      "123",
       "test_story_Ch5-10.epub",
       "base64data",
     );

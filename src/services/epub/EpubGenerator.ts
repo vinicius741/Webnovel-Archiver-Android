@@ -159,7 +159,7 @@ export class EpubGenerator {
     const filename = chapterRange
       ? `${baseFilename}_Ch${chapterRange.start}-${chapterRange.end}.epub`
       : `${baseFilename}.epub`;
-    const uri = await saveEpub(filename, base64);
+    const uri = await saveEpub(story.id, filename, base64);
 
     onProgress?.({
       current: 3,
