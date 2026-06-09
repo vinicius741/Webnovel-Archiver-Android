@@ -52,6 +52,20 @@ describe("useSettings", () => {
       success: true,
       message: "Import successful",
     });
+    (backupService.exportFullBackup as jest.Mock).mockResolvedValue({
+      success: true,
+      message: "Full backup created",
+      uri: "file://backup.zip",
+      filename: "backup.zip",
+    });
+    (backupService.shareFullBackup as jest.Mock).mockResolvedValue({
+      success: true,
+      message: "Full backup shared",
+    });
+    (backupService.importFullBackup as jest.Mock).mockResolvedValue({
+      success: true,
+      message: "Full import successful",
+    });
 
     (router.back as jest.Mock).mockImplementation(() => {});
   });
@@ -180,6 +194,87 @@ describe("useSettings", () => {
     expect(mockShowAlert).toHaveBeenCalledWith(
       "Export Complete",
       "Export successful",
+    );
+  });
+
+  it("sets loading state while exporting a full backup", async () => {
+    let resolveExport: (
+      value: { success: boolean; message: string; uri?: string },
+    ) => void = () => {};
+    (backupService.exportFullBackup as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useSettings());
+
+    act(() => {
+      void result.current.handleExportFullBackup();
+    });
+
+    expect(result.current.isExportingFullBackup).toBe(true);
+
+    await act(async () => {
+      resolveExport({
+        success: true,
+        message: "Full backup created",
+        uri: "file://backup.zip",
+      });
+    });
+
+    expect(result.current.isExportingFullBackup).toBe(false);
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Backup Created",
+      "Full backup created",
+      expect.any(Array),
+    );
+  });
+
+  it("ignores repeated full backup export presses while export is running", async () => {
+    let resolveExport: (
+      value: { success: boolean; message: string; uri?: string },
+    ) => void = () => {};
+    (backupService.exportFullBackup as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useSettings());
+
+    act(() => {
+      void result.current.handleExportFullBackup();
+      void result.current.handleExportFullBackup();
+    });
+
+    expect(backupService.exportFullBackup).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveExport({ success: true, message: "Full backup created" });
+    });
+  });
+
+  it("shares a created full backup from the completion dialog", async () => {
+    const { result } = renderHook(() => useSettings());
+
+    await act(async () => {
+      await result.current.handleExportFullBackup();
+    });
+
+    const exportAlertButtons = mockShowAlert.mock.calls[0][2];
+    const shareButton = exportAlertButtons.find(
+      (button: any) => button.text === "Share Backup",
+    );
+
+    await act(async () => {
+      await shareButton.onPress();
+    });
+
+    expect(backupService.shareFullBackup).toHaveBeenCalledWith(
+      "file://backup.zip",
+    );
+    expect(mockShowAlert).toHaveBeenCalledWith(
+      "Share Complete",
+      "Full backup shared",
     );
   });
 

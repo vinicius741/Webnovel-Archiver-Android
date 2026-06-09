@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { router } from "expo-router";
 import { storageService } from "../../services/storage/StorageService";
 import { downloadManager } from "../../services/download/DownloadManager";
@@ -40,6 +40,8 @@ export const useSettings = () => {
   const [sourceSettings, setSourceSettings] =
     useState<SourceDownloadSettingsMap>({});
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
+  const [isExportingFullBackup, setIsExportingFullBackup] = useState(false);
+  const isExportingFullBackupRef = useRef(false);
   const [availableProviders] = useState(() =>
     sourceRegistry.getAllProviders().map((p) => p.name),
   );
@@ -261,11 +263,41 @@ export const useSettings = () => {
   };
 
   const handleExportFullBackup = async () => {
-    const result = await backupService.exportFullBackup();
-    showAlert(
-      result.success ? "Export Complete" : "Export Failed",
-      result.message,
-    );
+    if (isExportingFullBackupRef.current) return;
+
+    isExportingFullBackupRef.current = true;
+    setIsExportingFullBackup(true);
+    try {
+      const result = await backupService.exportFullBackup();
+      const backupUri = result.uri;
+      const actions =
+        result.success && backupUri
+          ? [
+              { text: "Done" },
+              {
+                text: "Share Backup",
+                onPress: async () => {
+                  const shareResult = await backupService.shareFullBackup(
+                    backupUri,
+                  );
+                  showAlert(
+                    shareResult.success ? "Share Complete" : "Share Failed",
+                    shareResult.message,
+                  );
+                },
+              },
+            ]
+          : undefined;
+
+      showAlert(
+        result.success ? "Backup Created" : "Backup Failed",
+        result.message,
+        actions,
+      );
+    } finally {
+      isExportingFullBackupRef.current = false;
+      setIsExportingFullBackup(false);
+    }
   };
 
   const handleImportFullBackup = async () => {
@@ -306,6 +338,7 @@ export const useSettings = () => {
     handleImportBackup,
     handleExportFullBackup,
     handleImportFullBackup,
+    isExportingFullBackup,
     selectedSource,
     setSelectedSource: handleSourceSelect,
     availableProviders,

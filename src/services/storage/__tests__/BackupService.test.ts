@@ -15,9 +15,16 @@ jest.mock("../fileSystem");
 
 // Define mock factory for expo-file-system
 jest.mock("expo-file-system", () => {
+  const Directory = jest.fn().mockImplementation(() => ({
+    exists: true,
+    create: jest.fn(),
+    uri: "file://backups",
+  }));
+
   return {
+    Directory,
     File: jest.fn(),
-    Paths: { cache: "cache://" },
+    Paths: { cache: "cache://", document: "document://" },
   };
 });
 
@@ -295,9 +302,8 @@ describe("BackupService", () => {
   });
 
   describe("full backup", () => {
-    it("should export a ZIP backup with manifest and chapter files", async () => {
+    it("should create a local ZIP backup with manifest and chapter files", async () => {
       (storageService.getLibrary as jest.Mock).mockResolvedValue([mockStory]);
-      (Sharing.isAvailableAsync as jest.Mock).mockResolvedValue(true);
       (readChapterFile as jest.Mock).mockResolvedValue("<p>Chapter</p>");
 
       const mockFile = setupFileMock({ exists: false });
@@ -305,7 +311,10 @@ describe("BackupService", () => {
       const result = await backupService.exportFullBackup();
 
       expect(result.success).toBe(true);
+      expect(result.uri).toBe("file://test");
+      expect(result.filename).toMatch(/^webnovel_full_backup_.*\.zip$/);
       expect(mockFile.write).toHaveBeenCalledWith(expect.any(Uint8Array));
+      expect(Sharing.shareAsync).not.toHaveBeenCalled();
 
       const zip = await JSZip.loadAsync(mockFile.write.mock.calls[0][0]);
       const manifest = JSON.parse(
@@ -318,6 +327,19 @@ describe("BackupService", () => {
       expect(await zip.file(manifest.chapterFiles[0].path)!.async("string")).toBe(
         "<p>Chapter</p>",
       );
+    });
+
+    it("should share a created full backup on request", async () => {
+      (Sharing.isAvailableAsync as jest.Mock).mockResolvedValue(true);
+
+      const result = await backupService.shareFullBackup("file://backup.zip");
+
+      expect(result.success).toBe(true);
+      expect(Sharing.shareAsync).toHaveBeenCalledWith("file://backup.zip", {
+        mimeType: "application/zip",
+        dialogTitle: "Share Full Backup",
+        UTI: "public.zip-archive",
+      });
     });
 
     it("should restore a full ZIP backup and downloaded chapter files", async () => {

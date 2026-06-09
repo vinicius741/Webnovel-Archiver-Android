@@ -1,7 +1,7 @@
 import React from "react";
 import { List } from "react-native-paper";
 import { AppSegmentedButtons } from "../src/components/theme/AppSegmentedButtons";
-import { StyleSheet, View, ScrollView } from "react-native";
+import { ActivityIndicator, StyleSheet, View, ScrollView } from "react-native";
 import { ScreenContainer } from "../src/components/common/ScreenContainer";
 import { ThemePicker } from "../src/components/settings/ThemePicker";
 import { useFoldLayoutMode } from "../src/context/FoldLayoutContext";
@@ -30,6 +30,7 @@ export default function SettingsScreen() {
     handleExportFullBackup,
     handleImportBackup,
     handleImportFullBackup,
+    isExportingFullBackup,
   } = useSettings();
   const contentMaxWidth =
     widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
@@ -138,10 +139,25 @@ export default function SettingsScreen() {
               onPress={handleImportBackup}
             />
             <List.Item
-              title="Export Full Backup"
-              description="Export settings, tabs, library, and downloaded chapters to a ZIP file"
+              title="Create Full Backup"
+              description={
+                isExportingFullBackup
+                  ? "Preparing ZIP backup..."
+                  : "Save settings, tabs, library, and downloaded chapters to a local ZIP file"
+              }
               left={(props) => <List.Icon {...props} icon="archive-arrow-up" />}
-              onPress={handleExportFullBackup}
+              right={(props) =>
+                isExportingFullBackup ? (
+                  <ActivityIndicator
+                    {...props}
+                    animating
+                    size="small"
+                    style={styles.itemActivityIndicator}
+                  />
+                ) : undefined
+              }
+              disabled={isExportingFullBackup}
+              onPress={isExportingFullBackup ? undefined : handleExportFullBackup}
             />
             <List.Item
               title="Restore Full Backup"
@@ -175,5 +191,8 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  itemActivityIndicator: {
+    alignSelf: "center",
   },
 });

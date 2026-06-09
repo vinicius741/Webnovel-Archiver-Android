@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as DocumentPicker from "expo-document-picker";
-import { File, Paths } from "expo-file-system";
+import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import JSZip from "jszip";
 import { storageService } from "./StorageService";
@@ -55,9 +55,18 @@ interface FullBackupManifest {
   chapterFiles: FullBackupChapterFile[];
 }
 
+export interface FullBackupExportResult {
+  success: boolean;
+  message: string;
+  uri?: string;
+  filename?: string;
+  chapterCount?: number;
+}
+
 const BACKUP_VERSION = 2;
 const FULL_BACKUP_VERSION = 1;
 const FULL_BACKUP_FORMAT = "webnovel-archiver-full-backup";
+const FULL_BACKUP_DIR_NAME = "backups";
 const THEME_STORAGE_KEYS = [
   STORAGE_KEYS.THEME_DARK_VARIANT,
   STORAGE_KEYS.THEME_LIGHT_VARIANT,
@@ -255,7 +264,7 @@ class BackupService {
     }
   }
 
-  async exportFullBackup(): Promise<{ success: boolean; message: string }> {
+  async exportFullBackup(): Promise<FullBackupExportResult> {
     try {
       const [library, config] = await Promise.all([
         storageService.getLibrary(),
@@ -322,21 +331,44 @@ class BackupService {
         .replace(/[:.]/g, "-")
         .slice(0, -5);
       const filename = `webnovel_full_backup_${timestamp}.zip`;
-      const file = new File(Paths.cache, filename);
+      const backupDir = this.ensureFullBackupDirExists();
+      const file = new File(backupDir, filename);
       if (!file.exists) {
         file.create();
       }
       file.write(bytes);
 
+      return {
+        success: true,
+        message: `Full backup created successfully (${chapterFiles.length} downloaded chapters included)`,
+        uri: file.uri,
+        filename,
+        chapterCount: chapterFiles.length,
+      };
+    } catch (error) {
+      console.error("Full backup export failed", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      return {
+        success: false,
+        message: `Failed to create full backup: ${errorMessage}`,
+      };
+    }
+  }
+
+  async shareFullBackup(
+    uri: string,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
+        await Sharing.shareAsync(uri, {
           mimeType: "application/zip",
-          dialogTitle: "Export Full Backup",
+          dialogTitle: "Share Full Backup",
           UTI: "public.zip-archive",
         });
         return {
           success: true,
-          message: `Full backup exported successfully (${chapterFiles.length} downloaded chapters included)`,
+          message: "Full backup shared successfully",
         };
       }
 
@@ -345,12 +377,12 @@ class BackupService {
         message: "Sharing is not available on this device",
       };
     } catch (error) {
-      console.error("Full backup export failed", error);
+      console.error("Full backup share failed", error);
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error";
       return {
         success: false,
-        message: `Failed to export full backup: ${errorMessage}`,
+        message: `Failed to share full backup: ${errorMessage}`,
       };
     }
   }
@@ -494,6 +526,14 @@ class BackupService {
       sourceDownloadSettings,
       themeStorage,
     };
+  }
+
+  private ensureFullBackupDirExists(): Directory {
+    const backupDir = new Directory(Paths.document, FULL_BACKUP_DIR_NAME);
+    if (!backupDir.exists) {
+      backupDir.create();
+    }
+    return backupDir;
   }
 
   private async getThemeStorage(): Promise<Record<string, string>> {
