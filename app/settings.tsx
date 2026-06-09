@@ -27,7 +27,9 @@ export default function SettingsScreen() {
   const {
     clearData,
     handleExportBackup,
+    handleExportFullBackup,
     handleImportBackup,
+    handleImportFullBackup,
   } = useSettings();
   const contentMaxWidth =
     widthClass === "expanded" ? 840 : widthClass === "medium" ? 720 : undefined;
@@ -125,15 +127,29 @@ export default function SettingsScreen() {
           <View style={styles.container}>
             <List.Item
               title="Export Backup"
-              description="Export your library to a JSON file"
+              description="Export library metadata and tabs to a JSON file"
               left={(props) => <List.Icon {...props} icon="export-variant" />}
               onPress={handleExportBackup}
             />
             <List.Item
               title="Import Backup"
-              description="Merge library from a backup file"
+              description="Merge novels and tabs from a JSON backup file"
               left={(props) => <List.Icon {...props} icon="import" />}
               onPress={handleImportBackup}
+            />
+            <List.Item
+              title="Export Full Backup"
+              description="Export settings, tabs, library, and downloaded chapters to a ZIP file"
+              left={(props) => <List.Icon {...props} icon="archive-arrow-up" />}
+              onPress={handleExportFullBackup}
+            />
+            <List.Item
+              title="Restore Full Backup"
+              description="Replace local data from a full ZIP backup"
+              left={(props) => (
+                <List.Icon {...props} icon="archive-arrow-down" />
+              )}
+              onPress={handleImportFullBackup}
             />
           </View>
         </List.Section>

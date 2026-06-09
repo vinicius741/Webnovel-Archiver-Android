@@ -240,7 +240,7 @@ export const useSettings = () => {
   const handleImportBackup = async () => {
     showAlert(
       "Import Backup",
-      "This will merge the backup with your existing library. Continue?",
+      "This will merge novels and tabs from the JSON backup with your existing library. Continue?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -249,6 +249,37 @@ export const useSettings = () => {
             const result = await backupService.importBackup();
             showAlert(
               result.success ? "Import Complete" : "Import Failed",
+              result.message,
+              result.success
+                ? [{ text: "OK", onPress: () => router.back() }]
+                : undefined,
+            );
+          },
+        },
+      ],
+    );
+  };
+
+  const handleExportFullBackup = async () => {
+    const result = await backupService.exportFullBackup();
+    showAlert(
+      result.success ? "Export Complete" : "Export Failed",
+      result.message,
+    );
+  };
+
+  const handleImportFullBackup = async () => {
+    showAlert(
+      "Restore Full Backup",
+      "This will replace all local novels, settings, tabs, and downloaded chapter files with the contents of the ZIP backup. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Restore",
+          onPress: async () => {
+            const result = await backupService.importFullBackup();
+            showAlert(
+              result.success ? "Restore Complete" : "Restore Failed",
               result.message,
               result.success
                 ? [{ text: "OK", onPress: () => router.back() }]
@@ -273,6 +304,8 @@ export const useSettings = () => {
     clearData,
     handleExportBackup,
     handleImportBackup,
+    handleExportFullBackup,
+    handleImportFullBackup,
     selectedSource,
     setSelectedSource: handleSourceSelect,
     availableProviders,
