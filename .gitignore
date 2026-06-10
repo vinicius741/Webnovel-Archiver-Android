@@ -38,7 +38,15 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+
+# Android native app build/local artifacts
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/debug.keystore
+/android/.kotlin/
+/android/local.properties
+/android/captures/
 
 # Android build artifacts
 *.apk
@@ -50,4 +58,5 @@ coverage/
 quality-report/
 
 # Module build artifacts
+modules/tts-media-session/android/.gradle/
 modules/tts-media-session/android/build/
