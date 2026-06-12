@@ -50,6 +50,7 @@ yarn-error.*
 
 # Android build artifacts
 *.apk
+*.aab
 
 # Jest
 coverage/

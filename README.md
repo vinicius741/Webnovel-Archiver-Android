@@ -43,20 +43,67 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - JDK 17
 - Android SDK with compileSdk 36
 
-### Build & Run
+### Build an APK to Install on a Phone
 
 ```bash
 cd android
-./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
 
-Install the debug APK from `android/app/build/outputs/apk/debug/app-debug.apk`.
+Install the signed release APK from `apk-output/WebnovelArchiver-Native-release.apk`.
+
+The native Kotlin app installs as a separate app from the legacy React Native app. Its package ID is `com.vinicius741.webnovelarchiver.nativeapp`, and its launcher name is `Webnovel Archiver Native`.
+
+If Android shows only `App not installed`, first remove any previous install of `Webnovel Archiver Native` and try the generated APK again. Android will reject an update when an already-installed app has the same package ID but was signed with a different certificate, or when the installed app has a newer version code. With USB debugging enabled, the equivalent cleanup command is:
+
+```bash
+adb uninstall com.vinicius741.webnovelarchiver.nativeapp
+```
+
+Make sure the file copied to the phone is the current Gradle output, `apk-output/WebnovelArchiver-Native-release.apk`. The release APK produced by this project is only a few MB; a large `build-*.apk` file is usually an older or unrelated artifact.
+
+Do not use `./gradlew :app:assembleDebug` for the APK you send to your phone. That command creates `apk-output/WebnovelArchiver-Test-debug.apk`, which is a development build signed with the Android debug key and labeled `Webnovel Archiver Native Test`. When sideloaded, Play Protect is expected to warn that it has not seen the developer before.
+
+Sideloaded release APKs can still receive a Play Protect "unknown developer" warning until the signing certificate/app gains reputation or the app is distributed through Google Play testing/production channels, but `assembleRelease` is the correct command for a normal signed APK.
+
+### First-Time Release Signing Setup
+
+Release signing is already configured on this machine through `android/local.properties`. If you move to a new computer or delete the local keystore, recreate the release keystore and keep it outside the repo.
+
+Create the keystore:
+
+```bash
+keytool -genkeypair -v \
+  -keystore "$HOME/.android/webnovel-archiver-release.jks" \
+  -alias webnovel-archiver \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000
+```
+
+Then add these values to `android/local.properties`, or export them before running Gradle:
+
+```bash
+WEBNOVEL_RELEASE_STORE_FILE=/Users/ilia/.android/webnovel-archiver-release.jks
+WEBNOVEL_RELEASE_STORE_PASSWORD=your-keystore-password
+WEBNOVEL_RELEASE_KEY_ALIAS=webnovel-archiver
+WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
+```
 
 ### Development
 
 Open the `android/` directory in Android Studio. The project uses:
 - `compileSdk` 36, `minSdk` 26, `targetSdk` 36
 - Kotlin 2.1.20, AGP 8.13.2, Gradle wrapper 9.0
+
+For a side-by-side development build:
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+```
+
+This produces `apk-output/WebnovelArchiver-Test-debug.apk` with package ID `com.vinicius741.webnovelarchiver.nativeapp.debug`.
 
 ### Testing
 

@@ -13,16 +13,24 @@ The app was originally built with React Native / Expo and has been fully rewritt
 ## Build / Lint / Test Commands
 
 ### Core Commands
-- `./gradlew :app:assembleDebug` — Build the debug APK.
+- `./gradlew :app:assembleRelease` — Build the signed release APK for installing on a phone.
+- `./gradlew :app:assembleDebug` — Build the side-by-side debug/test APK for development only.
 - `./gradlew :app:testDebugUnitTest` — Run all unit tests.
 - `./gradlew :app:lintDebug` — Run Android lint checks.
 - `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` — Full build + test + lint (recommended CI command).
+
+### Installable APKs
+- Phone install artifact: `apk-output/WebnovelArchiver-Native-release.apk` from `./gradlew :app:assembleRelease`.
+- Development artifact: `apk-output/WebnovelArchiver-Test-debug.apk` from `./gradlew :app:assembleDebug`.
+- Native Kotlin package ID: `com.vinicius741.webnovelarchiver.nativeapp`, intentionally separate from the legacy React Native app.
+- Do not use the debug/test APK for normal phone installs; it is signed with the Android debug key and is expected to trigger Google Play Protect unknown-developer warnings.
 
 ### Running a Single Test
 - `./gradlew :app:testDebugUnitTest --tests "com.vinicius741.webnovelarchiver.core.TextCleanupTest"` — Run a specific test class.
 - `./gradlew :app:testDebugUnitTest --tests "*.TextCleanupTest.cleanupRemovesScripts"` — Run a specific test method.
 
 ### Output
+- Release APK: `apk-output/WebnovelArchiver-Native-release.apk`
 - Debug APK: `android/app/build/outputs/apk/debug/app-debug.apk`
 - Test reports: `android/app/build/reports/tests/testDebugUnitTest/`
 - Lint reports: `android/app/build/reports/lint-results-debug.html`
