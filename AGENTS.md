@@ -35,6 +35,15 @@ The app was originally built with React Native / Expo and has been fully rewritt
 - Test reports: `android/app/build/reports/tests/testDebugUnitTest/`
 - Lint reports: `android/app/build/reports/lint-results-debug.html`
 
+### Android Emulator Workflow
+- Preferred AVD for simulator work: `webnovel_api36`.
+- Preferred debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`.
+- Main activity: `com.vinicius741.webnovelarchiver.MainActivity`.
+- When asked to run or QA the native app in a simulator, use the repo-local skill at `.codex/skills/run-android-emulator/SKILL.md`.
+- If the emulator is already running, reuse it. Check with `adb devices -l` before creating or starting another AVD.
+- For stable long-running simulator sessions, start the emulator in tmux: `tmux new-session -d -s webnovel-emulator "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full"`.
+- Launch command after install: `adb shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity`.
+
 ### Legacy React Native Commands (reference only)
 - `npm run check` — Runs lint, typecheck, coverage, and quality checks for the old RN codebase.
 - `npm start` — Starts the Expo dev server (legacy).
