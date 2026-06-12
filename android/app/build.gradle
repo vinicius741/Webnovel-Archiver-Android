@@ -1,0 +1,111 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+def signingValue = { name ->
+    findProperty(name) ?: System.getenv(name) ?: localProperties.getProperty(name)
+}
+def releaseStoreFile = signingValue('WEBNOVEL_RELEASE_STORE_FILE')
+def releaseStorePassword = signingValue('WEBNOVEL_RELEASE_STORE_PASSWORD')
+def releaseKeyAlias = signingValue('WEBNOVEL_RELEASE_KEY_ALIAS')
+def releaseKeyPassword = signingValue('WEBNOVEL_RELEASE_KEY_PASSWORD')
+def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
+
+android {
+    namespace 'com.vinicius741.webnovelarchiver'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.vinicius741.webnovelarchiver.nativeapp'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0-native'
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+                enableV1Signing true
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+        }
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.activity:activity-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'org.jsoup:jsoup:1.21.2'
+    implementation 'com.google.code.gson:gson:2.13.2'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.register('copyDebugApkToProjectRoot', Copy) {
+    from layout.buildDirectory.file('outputs/apk/debug/app-debug.apk')
+    into rootProject.layout.projectDirectory.dir('../apk-output')
+    rename { 'WebnovelArchiver-Test-debug.apk' }
+}
+
+tasks.register('copyReleaseApkToProjectRoot', Copy) {
+    from layout.buildDirectory.file('outputs/apk/release/app-release.apk')
+    into rootProject.layout.projectDirectory.dir('../apk-output')
+    rename { 'WebnovelArchiver-Native-release.apk' }
+    onlyIf { hasReleaseSigning }
+}
+
+tasks.register('requireReleaseSigning') {
+    doLast {
+        if (!hasReleaseSigning) {
+            throw new GradleException('Release signing is not configured. Set WEBNOVEL_RELEASE_STORE_FILE, WEBNOVEL_RELEASE_STORE_PASSWORD, WEBNOVEL_RELEASE_KEY_ALIAS, and WEBNOVEL_RELEASE_KEY_PASSWORD.')
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.named('assembleDebug') {
+        finalizedBy 'copyDebugApkToProjectRoot'
+    }
+    tasks.named('preReleaseBuild') {
+        dependsOn 'requireReleaseSigning'
+    }
+    tasks.named('assembleRelease') {
+        finalizedBy 'copyReleaseApkToProjectRoot'
+    }
+}
