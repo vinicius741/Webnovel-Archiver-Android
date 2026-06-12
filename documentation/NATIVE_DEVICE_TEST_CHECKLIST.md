@@ -2,6 +2,9 @@
 
 Use this checklist on a physical Android device or emulator with network access.
 
+**Build:** `cd android && ./gradlew :app:assembleDebug`
+**APK:** `android/app/build/outputs/apk/debug/app-debug.apk`
+
 ## Install
 - Install `android/app/build/outputs/apk/debug/app-debug.apk`.
 - Launch the app and grant notification permission when prompted.

@@ -1,77 +1,52 @@
-# Android Port Development Plan
+# Android Development Plan
 
-This plan outlines the phased development implementation for porting the Webnovel Archiver to Android, mirroring the functionalities of the existing Python CLI and adhering to the specified tech stack.
+> **Status: COMPLETE.** The native Kotlin app has been fully implemented under `android/`. This document is retained for historical reference.
 
-## Proposed Development Phases
+This document was the original development plan for the Android port. All phases have been completed in the native Kotlin rewrite.
 
-### Phase 1: Foundation & UI Shell
-**Goal**: Establish the project structure, navigation, and core UI theme.
-- **Project Init**: Initialize Expo project with TypeScript.
-- **Navigation**: Setup `expo-router` with file-based routing.
-    - `/` (Home/Library)
-    - `/add` (Add New Story)
-    - `/details/[id]` (Story Details)
-    - `/settings` (Settings/Backup)
-- **UI System**: Install and configure `react-native-paper`. Setup theme (Dark/Light mode).
-- **Core Components**: Create reusable components (StoryCard, ProgressBar, ScreenContainer).
+## Completed Phases
 
-### Phase 2: Core Archiving Engine (Scraping)
-**Goal**: Implement the logic to fetch and parse content locally.
-- **Networking Utility**:
-    - Implement `fetch` wrapper with custom `User-Agent`.
-    - Implement `Headless WebView` component for Cloudflare fallback.
-- **Parsing Logic**:
-    - Port `BeautifulSoup` logic to `cheerio`.
-    - Implement `MetadataFetcher` (Title, Author, Cover).
-    - Implement `ChapterListFetcher`.
-    - Implement `ContentFetcher` (Chapter text cleaning).
-- **Storage Layer (Files)**:
-    - Setup `expo-file-system` to write raw/processed HTML to `AppContext.documentDirectory`.
+### Phase 1: Foundation & UI Shell ✅
+- **Project Init**: Native Android project with Kotlin 2.1.20, AGP 8.13.2, Gradle 9.0.
+- **UI System**: Programmatic Android Views (no XML layouts). Single `MainActivity` with screen-based navigation.
+- **Core Components**: Library screen, story details, add story, browser (WebView), reader, queue, settings.
 
-### Phase 3: Library & Data Persistence
-**Goal**: Persist data across app restarts and manage the library state.
-- **Data Model**: Define TypeScript interfaces (`Story`, `Chapter`, `DownloadStatus`).
-- **Persistence**:
-    - Implement `StorageService` using `@react-native-async-storage/async-storage`.
-    - Store/Retrieve the list of stories.
-    - Implement `progress_status` tracking logic.
-- **UI Integration**:
-    - Connect Home Screen `FlatList` to the storage data.
-    - Implement "Pull to Refresh" or Resume functionality for interrupted downloads.
+### Phase 2: Core Archiving Engine ✅
+- **Networking**: OkHttp client with mobile User-Agent, per-host rate limiting, retry logic.
+- **HTML Parsing**: Jsoup-based parsing for RoyalRoad and Scribble Hub.
+- **Source Providers**: `RoyalRoadProvider` and `ScribbleHubProvider` implementing `SourceProvider` interface.
+- **Storage**: File-based JSON persistence via Gson (`AppStorage`).
 
-### Phase 4: EPUB Generator
-**Goal**: Enable offline reading by compiling chapters into EPUBs.
-- **Engine**: Implement `EpubGenerator` class.
-- **Logic**:
-    - Generate `mimetype` file.
-    - Generate `container.xml`.
-    - Generate `content.opf` (manifest).
-    - Generate `toc.ncx` (navigation).
-    - Build chapter XHTML files from stored HTML.
-- **Packaging**: Use `JSZip` to bundle files.
-- **Output**: Save `.epub` file to scoped storage or export via `Storage Access Framework` (Sharing Intent).
+### Phase 3: Library & Data Persistence ✅
+- **Data Model**: Kotlin data classes in `core/Models.kt` — `Story`, `Chapter`, `Tab`, `AppSettings`, etc.
+- **Persistence**: Gson JSON files under `context.filesDir` (stories/, novels/, epubs/, backups/).
+- **Library Features**: Custom tabs, search, tag/source filtering, sort controls, bulk selection.
 
-### Phase 5: Background Tasks
-**Goal**: Ensure data safety and reliable long-running operations.
-- **Background Tasks**:
-    - Implement `expo-task-manager` / `expo-background-fetch` for periodic sync.
-    - (Note: For long downloads while app is open, use `expo-keep-awake`).
+### Phase 4: EPUB Generator ✅
+- **Engine**: `EpubEngine` using `java.util.zip` for ZIP generation.
+- **Structure**: EPUB 2.0 compliant — mimetype, container.xml, content.opf, toc.ncx, XHTML chapters, CSS.
+- **Features**: Volume splitting, cover embedding, configurable chapter ranges, start-after-bookmark.
 
-### Phase 6: Optimization & Polish
-**Goal**: Ensure a smooth, premium user experience.
-- **Performance**: Implement batching for downloads (process 10 chapters, then yield).
-- **UI Polish**: Add skeletons during loading, animations for progress, empty states.
-- **Error Handling**: Graceful failures for network issues or parsing errors.
+### Phase 5: Background Tasks ✅
+- **Download Service**: `DownloadForegroundService` with `dataSync` foreground service type, persistent notification with pause/resume/stop actions.
+- **TTS Service**: `TtsForegroundService` with `mediaPlayback` foreground service type, notification with play/pause/next/previous/stop actions.
+- **Recovery**: Interrupted jobs recover to pending on service startup. Exponential backoff retry for transient errors.
 
-## Verification Plan
+### Phase 6: Optimization & Polish ✅
+- **Error Handling**: Download error classification, retryable transient error detection, user-facing error categories.
+- **Archive Snapshots**: Automatic read-only snapshots when source sync detects removed chapters.
+- **Backup System**: JSON metadata export/import and full ZIP backup/restore with validation and merge logic.
+- **Text Cleanup**: Sentence removal and regex cleanup rules with download/TTS/both targeting.
+
+## Verification
 
 ### Automated Tests
-- **Unit Tests (`jest`)**:
-    - Verify `cheerio` parsing logic against sample HTML snippets.
-    - Verify `EpubGenerator` produces valid XML structures.
+- **36 JUnit 4 test files** under `android/app/src/test/java/` with 1:1 coverage of all planning modules.
+- Tests cover: text cleanup, source parsing, URL validation, browser planning, tab management, network requests, archive snapshots, EPUB generation, download scheduling, queue control, error classification, story sync, backup validation, and more.
+- Run with: `./gradlew :app:testDebugUnitTest`
 
-### Manual Verification
-- **Emulator/Device Testing**:
-    - **Scraping**: Test with a real RoyalRoad URL. Verify HTML is saved to file system.
-    - **EPUB**: export a generated EPUB and open it in a reader app (e.g., Google Play Books).
-    - **Backup**: Verify files appear in the connected Google Drive account.
+### Build Verification
+- `./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` — All pass.
+
+### Remaining Runtime Validation
+- Full device/emulator flow validation for long-running downloads, WebView navigation, file sharing, TTS audio, and EPUB opening in third-party readers. See `documentation/NATIVE_DEVICE_TEST_CHECKLIST.md`.

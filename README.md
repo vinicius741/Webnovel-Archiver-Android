@@ -1,96 +1,114 @@
 # Webnovel Archiver (Android)
 
-A local-first Android app for downloading, archiving, and reading webnovels offline. Built with **React Native** and **Expo**.
+A local-first Android app for downloading, archiving, and reading webnovels offline. Built with **native Kotlin**.
+
+> **Note:** This app was originally developed with React Native / Expo and has been fully rewritten in native Kotlin. The legacy React Native source (`app/`, `src/`, `modules/`) remains in the repository for reference. Active development targets the native app under `android/`.
 
 ## Key Features
 
 - **Multi-Source Support** — Extensible `SourceProvider` architecture (RoyalRoad, Scribble Hub; add more via `SourceRegistry`).
-- **In-App Browser** — Browse supported sites directly and import novels from their detail pages with a single click, featuring Google OAuth compatibility and external redirects.
+- **In-App Browser** — Embedded WebView for browsing supported sites and importing novels with a single click.
 - **Offline Library** — Download chapters for reading without an internet connection.
-- **Built-in Reader** — WebView-based reader with TTS highlighting, pinch-to-zoom Image Viewer, and last-read position tracking.
-- **Text-to-Speech** — Background playback, lock-screen media controls, configurable voice/rate/pitch.
+- **Built-in Reader** — WebView-based reader with TTS highlighting, image support, and last-read position tracking.
+- **Text-to-Speech** — Foreground service with media playback, notification controls, configurable voice/rate/pitch, and auto-resume.
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting and configurable chapter ranges.
-- **Background Downloads** — Concurrent engine with persistent queue, real-time library progress updates, automatic queue self-healing, and partial download continuation.
+- **Background Downloads** — Foreground service with concurrent engine, persistent queue, notification controls, automatic recovery, and error classification with exponential backoff retry.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both).
-- **Library Organization** — Custom tabs, multi-select, search, tag popularity sorting/filtering, and custom tag chips.
+- **Library Organization** — Custom tabs, search, tag filtering, sort controls, and archive snapshots.
 - **Smart Updates** — New-chapter detection with intelligent merge and stale-EPUB marking.
-- **Backup & Restore** — JSON-based export/import with merge-on-import.
-- **Pluggable Theme System** — Pluggable registry supporting multiple curated dark/light variants (Obsidian, Midnight, Forest, Classic Light) with custom typography, shape tokens, and "Refined Bibliophile" aesthetics.
+- **Backup & Restore** — JSON metadata export/import with merge-on-import, plus full ZIP backup/restore.
+- **Pluggable Theme System** — Obsidian, Midnight, Forest, and Classic Light themes with custom typography.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | React Native via Expo SDK 54 |
-| Language | TypeScript (strict mode) |
-| Navigation | Expo Router (file-based) |
-| UI | React Native Paper (Material Design 3) with Custom Multi-Theme Registry |
-| HTML Parsing | cheerio |
-| Storage | expo-file-system + @react-native-async-storage/async-storage |
-| EPUB | Custom engine using jszip |
-| TTS | expo-speech + custom native Kotlin module for Android Media Session |
-| Notifications | @notifee/react-native |
+| Language | Kotlin 2.1.20 |
+| UI | Programmatic Android Views (no XML layouts) |
+| Build | Gradle 9.0 + AGP 8.13.2 |
+| HTTP Client | OkHttp 4.12 |
+| HTML Parsing | Jsoup 1.21 |
+| JSON | Gson 2.13 |
+| Async | Kotlin Coroutines 1.10 |
+| Storage | File-based JSON (no Room/SQLite) |
+| TTS | Android TextToSpeech API |
+| Services | Foreground Services (dataSync, mediaPlayback) |
+| Testing | JUnit 4 |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (LTS)
-- Expo Go app (for development)
+- Android Studio (latest)
+- JDK 17
+- Android SDK with compileSdk 36
 
-### Install
+### Build & Run
 
 ```bash
-git clone https://github.com/vinicius741/Webnovel-Archiver-Android.git
-cd Webnovel-Archiver-Android
-npm install
+cd android
+./gradlew :app:assembleDebug
 ```
+
+Install the debug APK from `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Development
 
-```bash
-npx expo start
-```
+Open the `android/` directory in Android Studio. The project uses:
+- `compileSdk` 36, `minSdk` 26, `targetSdk` 36
+- Kotlin 2.1.20, AGP 8.13.2, Gradle wrapper 9.0
 
-Scan the QR code with **Expo Go** (Android) or the **Camera** app (iOS).
-
-### Build APK
+### Testing
 
 ```bash
-npm install -g eas-cli
-npx eas build -p android --profile preview --local
+cd android
+./gradlew :app:testDebugUnitTest              # All unit tests
+./gradlew :app:testDebugUnitTest --tests "*.TextCleanupTest"  # Single test class
+./gradlew :app:lintDebug                       # Android lint
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug  # Full check
 ```
 
-## Development
-
-```bash
-npm run lint          # ESLint
-npm run typecheck     # TypeScript validation
-npm test              # Jest tests
-npm run check         # lint + typecheck + coverage + quality
-```
-
-See `AGENTS.md` for the full list of scripts, architecture details, and code quality gates.
+See `AGENTS.md` for architecture details, coding standards, and development guidelines.
 
 ## Project Structure
 
 ```
-app/                  # Expo Router screens
-src/
-  components/         # UI components (details, reader, library, downloads, tabs)
-  hooks/              # Custom React hooks
-  services/           # Business logic (download, epub, source, storage, tts)
-  types/              # TypeScript type definitions
-  utils/              # Pure utility functions
-  context/            # React contexts
-  theme/              # Theme configurations
-modules/              # Custom native modules (Kotlin)
-plugins/              # Expo config plugins
-documentation/        # Detailed tech docs, decision logs, and quality reports
+android/
+  app/
+    src/
+      main/
+        java/com/vinicius741/webnovelarchiver/
+          MainActivity.kt              # Single-activity app, programmatic UI
+          WebnovelArchiverApp.kt       # Application class
+          core/
+            Models.kt                  # Data classes (Story, Chapter, etc.)
+            Engines.kt                 # Stateful engines (Sync, Download, EPUB, TTS)
+            Storage.kt                 # AppStorage — file-based JSON persistence
+            Sources.kt                 # Source providers + network client
+            *Planning.kt              # Pure-logic planning functions
+            *.kt                       # Utilities, validators, renderers
+          download/
+            DownloadForegroundService.kt
+          tts/
+            TtsForegroundService.kt
+        AndroidManifest.xml
+      test/
+        java/com/vinicius741/webnovelarchiver/core/
+          *Test.kt                     # 1:1 test files for each core module
+    build.gradle
+  build.gradle
+  settings.gradle
+
+app/                  # Legacy React Native screens (reference only)
+src/                  # Legacy React Native services/hooks/components (reference only)
+modules/              # Legacy Expo native modules (reference only)
+documentation/        # Technical documentation
 ```
 
-TypeScript path aliases are configured for `src/*` and `app/*`.
+## Legacy React Native Codebase
+
+The directories `app/`, `src/`, `modules/`, and the root config files (`package.json`, `tsconfig.json`, `metro.config.js`, etc.) belong to the original React Native / Expo implementation. They are preserved for reference but are **not actively maintained**. The `npm` scripts (`npm run check`, `npm start`, etc.) operate on this legacy code only.
 
 ## Contributing
 
-Contributions are welcome! Please read `AGENTS.md` and the `documentation/` folder before submitting a PR.
+Contributions are welcome! Please read `AGENTS.md` and the `documentation/` folder before submitting a PR. All changes should target the native Kotlin app under `android/`.

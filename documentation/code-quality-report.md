@@ -1,152 +1,91 @@
 # Code Quality Report
 
-Generated: 2026-05-05  
-Script: `npm run quality:report` (`scripts/code-quality.js`)  
-Status: **At baseline** (no regressions)
+Generated: 2026-06-11
+Scope: **Native Kotlin app** (`android/`)
+Status: Active development
 
 ---
 
 ## Executive Summary
 
-| Metric | Current | Baseline | Status |
-|---|---|---|---|
-| Source files | 203 | 203 | = |
-| Total lines | 36,857 | 36,857 | = |
-| Duplicated lines | 2,304 | 2,304 | = |
-| Duplication % | 5.59% | 5.59% | = |
-| Duplicate clones | 182 | 182 | = |
-| Oversized files (>500 lines) | 6 | 6 | = |
-| Circular dependencies | 2 | 2 | = |
-| Unused code issues (knip) | 16 | 16 | = |
+The native Kotlin implementation is a fresh rewrite with no inherited technical debt from the React Native codebase. This report tracks code quality metrics for the active `android/` source tree.
 
 ---
 
-## Priority 1: Code Duplication (2,304 duplicated lines, 5.59%, 182 clones)
+## Source Metrics
 
-### Non-Test Duplication (highest impact)
-
-These are the most actionable since they affect production code, not just test files.
-
-| Clone | Lines | Files |
-|---|---|---|
-| `RegexRuleList.tsx` ↔ `SentenceList.tsx` | 48 | Nearly identical list components in `src/components/sentence-removal/` |
-| `DownloadRangeDialog.tsx` ↔ `EpubConfigDialog.tsx` | 30 | Shared dialog patterns in `src/components/details/` |
-| `useTabManagement.ts` ↔ `useTabs.ts` | 22 | Duplicated hook logic |
-
-**Recommendation:** Extract a shared `ListEditor` component for `RegexRuleList`/`SentenceList`. Create a shared dialog utility for the dialog duplication. Consolidate `useTabManagement.ts` and `useTabs.ts`.
-
-### Test-to-Test Duplication (largest volume)
-
-| File | Self-duplication (lines) | Clones |
-|---|---|---|
-| `useStoryDownload.test.ts` | 223 | 15 |
-| `useDownloadProgress.test.ts` | 214 | 14 |
-| `DownloadManager.concurrent.test.ts` | 190 | 11 |
-| `useReaderContent.test.ts` | 170 | 15 |
-| `useLibrary.test.ts` | 154 | 17 |
-| `useTabManagement.test.ts` | 134 | 14 |
-| `DownloadManager.test.ts` | 127 | 7 |
-| `storySyncOrchestrator.test.ts` | 121 | 7 |
-
-**Recommendation:** Extract shared test setup/teardown into factory functions or `describe` blocks. Use `beforeEach` patterns and test data builders to reduce repeated mock setup.
-
-### Cross-File Test Duplication
-
-| Clone | Lines | Files |
-|---|---|---|
-| `ForegroundServiceCoordinator.concurrent` ↔ `.test` | 90 | 3 clones |
-| `TTSStateManager.concurrent` ↔ `.test` | 37 | 1 clone |
-| `useTTS.concurrent` ↔ `TTSStateManager.test` | 32 | 2 clones |
-| `BackgroundService.test` ↔ `ForegroundServiceCoordinator.test` | 18 | 1 clone |
-
-**Recommendation:** The `.concurrent.test.ts` files share large blocks with their non-concurrent counterparts. Extract shared mock factories into `__tests__/helpers/` or `__tests__/fixtures/`.
+| Metric | Value |
+|--------|-------|
+| Kotlin source files | ~39 (`android/app/src/main/java/`) |
+| Kotlin test files | ~36 (`android/app/src/test/java/`) |
+| Largest source file | `MainActivity.kt` (~1400 lines) |
+| Second largest | `Engines.kt` (~1086 lines) |
+| Architecture pattern | Planning + Engine |
+| Test framework | JUnit 4 |
+| Dependencies | Minimal (OkHttp, Jsoup, Gson, coroutines, AndroidX) |
 
 ---
 
-## Priority 2: Oversized Files (6 files exceed 500 lines)
+## Priority 1: Large Files
 
 ### Production Code
 
 | File | Lines | Recommendation |
-|---|---|---|
-| `app/index.tsx` | 673 | Split into smaller components and hooks. Extract tab navigation logic, screen layout, and state management into separate modules. |
-| `src/services/download/DownloadManager.ts` | 476 (near threshold) | Monitor; approaching 500-line threshold. Consider splitting download coordination from queue management. |
-| `src/services/TTSStateManager.ts` | 443 (near threshold) | Monitor; approaching threshold. The circular dependencies (see below) suggest this module has grown too broad. |
+|------|-------|----------------|
+| `MainActivity.kt` | ~1400 | **Highest priority.** Extract screens into separate Fragment/Activity classes. See `documentation/REFACTORING_OPPORTUNITIES.md`. |
+| `Engines.kt` | ~1086 | Split each engine class into its own file. Contains 4 engine classes + 2 utility classes. |
+| `Sources.kt` | ~236 | Moderate size. Contains interface + registry + 2 providers + network client. Consider splitting providers. |
 
-### Test Files
-
-| File | Lines | Recommendation |
-|---|---|---|
-| `useStoryDownload.test.ts` | 865 | Largest file. Extract mock factories and test helpers. |
-| `DownloadManager.concurrent.test.ts` | 706 | Heavy duplication with non-concurrent variant. |
-| `storySyncOrchestrator.test.ts` | 630 | Split by test category. |
-| `DownloadManager.test.ts` | 595 | Split by test category. |
-| `ForegroundServiceCoordinator.concurrent.test.ts` | 570 | Shares setup with non-concurrent variant. |
+### Test Code
+All test files follow a 1:1 pattern with planning modules and are reasonably sized.
 
 ---
 
-## Priority 3: Circular Dependencies (2 cycles)
+## Priority 2: Architecture Concerns
 
-Both cycles involve `TTSStateManager.ts`, which at 443 lines is already one of the largest production files:
+### No Dependency Injection
+Engines are manually instantiated in `MainActivity` and independently in each foreground service. This leads to:
+- Duplicated engine construction in `DownloadForegroundService` and `TtsForegroundService`.
+- No shared singleton lifecycle for `AppStorage` or `NetworkClient`.
 
-| Cycle | Files |
-|---|---|
-| #1 | `src/services/TTSStateManager.ts` ↔ `src/services/tts/TTSSessionPersistence.ts` |
-| #2 | `src/services/TTSStateManager.ts` ↔ `src/services/tts/TTSStateEmitter.ts` |
+**Recommendation:** Use `Application`-level singletons or a lightweight DI framework (Hilt/Koin).
 
-**Root cause:** `TTSStateManager` imports from both sub-modules, and they import back from it.
+### No Room/SQLite
+All persistence is file-based JSON via Gson. Adequate for current scale but may need migration for complex queries or large libraries.
 
-**Recommendation:** Introduce an interface or event-based decoupling layer:
-- Extract shared types into `src/services/tts/types.ts`
-- Have `TTSSessionPersistence` and `TTSStateEmitter` depend on the types, not on `TTSStateManager` directly
-- Use dependency injection or a simple event emitter to break the reverse dependency
+**Recommendation:** Monitor performance. Migrate to Room if library query performance becomes an issue.
 
----
+### No Robolectric / Instrumented Tests
+All tests are pure JUnit unit tests. No Android framework component testing (Activity, Service, WebView).
 
-## Priority 4: Unused Code (16 issues across 5 files)
-
-### Unused Dependencies in `package.json` (7 production deps)
-
-| Package | Line | Notes |
-|---|---|---|
-| `buffer` | 26 | Likely used via bundler polyfill; verify if still needed |
-| `events` | 28 | Likely used via bundler polyfill; verify if still needed |
-| `expo-background-task` | 30 | Not referenced in source |
-| `expo-status-bar` | 43 | Not referenced in source |
-| `expo-task-manager` | 44 | Not referenced in source |
-| `string_decoder` | 57 | Likely used via bundler polyfill; verify if still needed |
-| `url` | 60 | Likely used via bundler polyfill; verify if still needed |
-
-### Unused Dev Dependencies (3 packages)
-
-| Package | Notes |
-|---|---|
-| `@babel/preset-typescript` | May be unused if Expo handles TS compilation |
-| `eslint-config-prettier` | Check if ESLint config references it |
-| `typescript` (devDep) | Duplicated in both `dependencies` and `devDependencies` |
-
-### Unlisted Dependencies (runtime imports without package.json entry)
-
-| File | Missing Package |
-|---|---|
-| `app.json` | `expo-updates`, `expo-system-ui` |
-| `eslint.config.cjs` | `@eslint/js` |
-| `src/utils/textCleanup.ts` | `domelementtype`, `domhandler` |
-| `modules/tts-media-session/src/index.ts` | `expo-modules-core` |
-
-**Note:** Some unlisted packages may be transitive dependencies that are safe to use (e.g., `expo-modules-core` in a native module). The Node polyfills (`buffer`, `events`, `url`, `string_decoder`) may be required by the Metro bundler config.
-
-**Recommendation:** Audit each unused dependency. Remove confirmed unused packages. For Node polyfills, check `metro.config.js` or bundler config to confirm they're still needed. Move `typescript` from `dependencies` to `devDependencies` only (currently listed in both).
+**Recommendation:** Add `androidTest/` instrumented tests or Robolectric for Activity and Service coverage.
 
 ---
 
-## Summary of Recommended Actions (by impact)
+## Priority 3: Legacy Artifacts
 
-1. **Break circular dependencies in TTSStateManager** — Architectural improvement; prevents future coupling issues
-2. **Refactor `app/index.tsx`** (673 lines) — Split into smaller components/hooks for maintainability
-3. **Extract shared test utilities** — Addresses the largest source of duplication (test self-duplication accounts for ~70% of all clones)
-4. **Consolidate `RegexRuleList`/`SentenceList`** — 48 lines of identical production code; easy win
-5. **Deduplicate dialog components** — `DownloadRangeDialog`/`EpubConfigDialog` share 30 lines
-6. **Consolidate `useTabManagement`/`useTabs`** — 22 lines of duplicated hook logic
-7. **Audit unused dependencies** — Remove dead weight from `package.json`
-8. **Clean up concurrent test files** — Share setup with their non-concurrent counterparts to reduce 159+ lines of cross-file duplication
+The following items are remnants of the React Native era and should be cleaned up:
+
+| Item | Location | Recommendation |
+|------|----------|----------------|
+| `gradle.properties` RN properties | `android/gradle.properties` | Remove `hermesEnabled`, `reactNativeArchitectures`, `edgeToEdgeEnabled`, `newArchEnabled` entries. |
+| `proguard-rules.pro` RN rules | `android/app/proguard-rules.pro` | Remove Reanimated and React Native ProGuard rules. |
+| `app/`, `src/`, `modules/` directories | Project root | Consider moving to an `archive/` or `legacy/` directory, or removing entirely. |
+| Root config files | `package.json`, `tsconfig.json`, `metro.config.js`, etc. | Consider removing or moving with the legacy RN code. |
+
+---
+
+## Build Verification
+
+```bash
+cd android
+./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+```
+
+All three tasks should pass cleanly for a green build.
+
+---
+
+## Legacy React Native Report
+
+The previous version of this report tracked React Native code quality metrics (203 source files, 36,857 lines, 5.59% duplication, 6 oversized files, 2 circular dependencies, 16 unused code issues). Those metrics apply only to the legacy `app/` and `src/` directories and are preserved in version control history.
