@@ -56,6 +56,15 @@ internal fun ScreenHost.copyToClipboard(label: String, value: String) {
     clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
 }
 
+/** Returns the current clipboard text, or null when it is empty or unavailable. */
+internal fun ScreenHost.clipboardText(): String? {
+    val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    if (!clipboard.hasPrimaryClip()) return null
+    val clip = clipboard.primaryClip ?: return null
+    if (clip.itemCount == 0) return null
+    return clip.getItemAt(0).coerceToText(app)?.toString()
+}
+
 internal fun ScreenHost.loadImage(url: String, image: ImageView) {
     scope.launch {
         val bitmap = withContext(Dispatchers.IO) {
