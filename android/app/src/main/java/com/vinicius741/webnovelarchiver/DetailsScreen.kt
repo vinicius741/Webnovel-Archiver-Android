@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.text.Editable
@@ -19,7 +20,12 @@ import com.vinicius741.webnovelarchiver.ui.*
 internal fun ScreenHost.showDetails(storyId: String) {
     val story = storage.getStory(storyId) ?: return showLibrary()
     activeStory = story
-    screen(title = story.title, subtitle = "by ${story.author}", onBack = { showLibrary() }) {
+    screen(
+        title = story.title,
+        subtitle = "by ${story.author}",
+        onBack = { showLibrary() },
+        actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
+    ) {
         row {
             addView(coverImage(story, widthDp = 120, heightDp = 180, tapToOpen = true))
             addView(LinearLayout(context).apply {
@@ -58,19 +64,22 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 setPadding(0, dp(10), 0, dp(2))
             })
         }
+        if (StoryActionGuards.canSync(story)) {
+            fullButton("Sync Chapters", Btn.FILLED, R.drawable.wna_refresh) { syncStory(story) }
+        }
+        if (StoryActionGuards.canQueueDownloads(story)) {
+            val remainingChapters = story.chapters.count { !it.downloaded }
+            if (remainingChapters > 0) {
+                val downloadLabel = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
+                fullButton(downloadLabel, Btn.FILLED, R.drawable.wna_download) {
+                    queueDownload(story, story.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null })
+                    showDetails(story.id)
+                }
+            }
+        }
         grid(columns = 2) {
-            button("Open Source", Btn.TONAL, R.drawable.wna_open_external) { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
-            if (StoryActionGuards.canSync(story)) {
-                button("Sync", Btn.TONAL, R.drawable.wna_refresh) { syncStory(story) }
-            }
-            if (StoryActionGuards.canQueueDownloads(story)) {
-                button("Download All", Btn.FILLED, R.drawable.wna_download) { queueDownload(story, story.chapters.indices.toList()); showDetails(story.id) }
-                button("Select", Btn.TEXT, R.drawable.wna_filter) { showChapterSelection(story.id) }
-                button("Range", Btn.TEXT, R.drawable.wna_list) { showDownloadRangeDialog(story) }
-            }
-            button("Text Cleanup", Btn.TEXT, R.drawable.wna_brush) { applyCleanup(story) }
-            button("EPUB", Btn.TONAL, R.drawable.wna_menu_book) { showEpubConfigDialog(story) }
-            button("Open EPUB", Btn.TEXT, R.drawable.wna_book_open) { openEpubForStory(story) }
+            button("Generate EPUB", Btn.TONAL, R.drawable.wna_menu_book) { showEpubConfigDialog(story) }
+            button("Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open) { openEpubForStory(story) }
         }
         section("Chapters")
         var chapterFilter = storage.getChapterFilterSettings().filterMode
@@ -94,6 +103,30 @@ internal fun ScreenHost.showDetails(storyId: String) {
         })
         renderChapterList(story, list, chapterQuery, chapterFilter)
     }
+}
+
+/**
+ * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that
+ * don't warrant a primary button: opening the source site, the two advanced download-selection
+ * flows, and text cleanup. Mirrors the React Native StoryMenu (Download Range / EPUB Settings /
+ * Apply Text Cleanup) plus Open Source.
+ */
+internal fun ScreenHost.showDetailsOverflow(story: Story) {
+    val options = mutableListOf<Pair<String, () -> Unit>>()
+    options += "Open Source" to {
+        runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
+            .onFailure { toast("No app available to open source") }
+    }
+    if (StoryActionGuards.canQueueDownloads(story)) {
+        options += "Select Chapters" to { showChapterSelection(story.id) }
+        options += "Download Range" to { showDownloadRangeDialog(story) }
+    }
+    options += "Apply Text Cleanup" to { applyCleanup(story) }
+    AlertDialog.Builder(app)
+        .setTitle("More options")
+        .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
+        .setNegativeButton("Cancel", null)
+        .show()
 }
 
 internal fun ScreenHost.showChapterSelection(storyId: String) {
