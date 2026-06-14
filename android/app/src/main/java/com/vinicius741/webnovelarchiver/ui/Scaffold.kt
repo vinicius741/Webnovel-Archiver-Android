@@ -1,0 +1,150 @@
+package com.vinicius741.webnovelarchiver.ui
+
+import android.content.Context
+import android.content.res.ColorStateList
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.Space
+import android.widget.TextView
+import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ScreenHost
+import com.vinicius741.webnovelarchiver.core.Story
+import com.vinicius741.webnovelarchiver.showCoverDialog
+
+internal data class AppBarAction(val icon: Int, val label: String, val onClick: () -> Unit)
+
+internal fun ScreenHost.screen(
+    title: String,
+    subtitle: String? = null,
+    onBack: (() -> Unit)? = null,
+    actions: List<AppBarAction> = emptyList(),
+    fab: (() -> Unit)? = null,
+    block: LinearLayout.() -> Unit,
+) {
+    frame.removeAllViews()
+    val column = LinearLayout(app).apply {
+        orientation = LinearLayout.VERTICAL
+        setBackgroundColor(ThemeManager.colors.background)
+    }
+    column.addView(appBar(title, subtitle, onBack, actions))
+    val content = LinearLayout(app).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(8), dp(16), dp(24) + systemBarBottom())
+        block()
+    }
+    column.addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+    frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    fab?.let { onClick ->
+        val fabView = makeFab(app) { onClick() }
+        val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END)
+        lp.setMargins(dp(16), dp(16), dp(16), dp(16) + systemBarBottom())
+        frame.addView(fabView, lp)
+    }
+}
+
+private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> Unit)?, actions: List<AppBarAction>): View {
+    val t = ThemeManager.current
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setBackgroundColor(t.colors.elevation2)
+        setPadding(dp(8), systemBarTop() + dp(8), dp(4), dp(8))
+        if (onBack != null) {
+            addView(iconButton(R.drawable.wna_arrow_back, "Back") { onBack() })
+        } else {
+            addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(12), dp(1)) })
+        }
+        val titleCol = LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(6), 0, dp(8), 0)
+        }
+        titleCol.addView(makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply { includeFontPadding = false })
+        subtitle?.let {
+            titleCol.addView(makeText(app, it, Type.BODY_SMALL, t.colors.onSurfaceVariant).apply {
+                includeFontPadding = false
+                setPadding(0, dp(2), 0, 0)
+            })
+        }
+        addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        actions.forEach { a ->
+            addView(iconButton(a.icon, a.label) { a.onClick() })
+        }
+    }
+}
+
+private fun ScreenHost.iconButton(iconRes: Int, desc: String, onClick: () -> Unit): View {
+    val t = ThemeManager.current
+    val size = dp(46)
+    return ImageView(app).apply {
+        contentDescription = desc
+        setImageDrawable(app.tintedIcon(iconRes, t.colors.onSurface))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(11), dp(11), dp(11), dp(11))
+        background = selectableRipple(t.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(size, size)
+    }
+}
+
+private fun makeFab(context: Context, onClick: () -> Unit): View {
+    val t = ThemeManager.current
+    val size = context.dp(56)
+    return ImageView(context).apply {
+        contentDescription = "Add"
+        setImageDrawable(context.tintedIcon(R.drawable.wna_add, t.colors.onPrimary))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(context.dp(16), context.dp(16), context.dp(16), context.dp(16))
+        background = ripple(roundedBg(t.colors.primary, context.dp(16).toFloat()), context.dp(16).toFloat(), t.colors.onPrimary)
+        elevate(6f)
+        setOnClickListener { onClick() }
+        layoutParams = FrameLayout.LayoutParams(size, size)
+    }
+}
+
+internal fun LinearLayout.centerLoading(message: String) {
+    val col = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(0, context.dp(40), 0, context.dp(40))
+    }
+    col.addView(ProgressBar(context).apply {
+        val lp = LinearLayout.LayoutParams(context.dp(40), context.dp(40))
+        lp.bottomMargin = context.dp(16)
+        layoutParams = lp
+        indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+    })
+    col.addView(makeText(context, message, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface))
+    addView(col)
+}
+
+internal fun ScreenHost.systemBarTop(): Int {
+    val res = app.resources.getIdentifier("status_bar_height", "dimen", "android")
+    return if (res > 0) app.resources.getDimensionPixelSize(res) else dp(24)
+}
+
+internal fun ScreenHost.systemBarBottom(): Int {
+    val res = app.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+    return if (res > 0) app.resources.getDimensionPixelSize(res) else 0
+}
+
+/**
+ * Builds a cover image (or placeholder). Returns the view without attaching it — callers
+ * `addView` it into the current container, matching how `card {}` etc. behave.
+ */
+internal fun ScreenHost.coverImage(story: Story, widthDp: Int, heightDp: Int, tapToOpen: Boolean): View {
+    val url = story.coverUrl?.takeIf { it.isNotBlank() }
+    val coverView: View = if (url == null) makeCoverPlaceholder(app, widthDp, heightDp)
+    else makeCover(app, widthDp, heightDp)
+    if (url != null) {
+        if (tapToOpen) coverView.setOnClickListener { showCoverDialog(story) }
+        loadImage(url, coverView as ImageView)
+    }
+    return coverView
+}
