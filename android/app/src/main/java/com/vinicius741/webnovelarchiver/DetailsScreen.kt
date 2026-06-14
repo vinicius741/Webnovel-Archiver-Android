@@ -58,7 +58,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 setPadding(0, dp(10), 0, dp(2))
             })
         }
-        flow {
+        grid(columns = 2) {
             button("Open Source", Btn.TONAL, R.drawable.wna_open_external) { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
             if (StoryActionGuards.canSync(story)) {
                 button("Sync", Btn.TONAL, R.drawable.wna_refresh) { syncStory(story) }
@@ -169,7 +169,7 @@ internal fun ScreenHost.renderChapterList(story: Story, list: LinearLayout, quer
                     addView(makeBadge(context, "BOOKMARK", ThemeManager.colors.secondaryContainer, ThemeManager.colors.onSecondaryContainer))
                 }
             }
-            flow {
+            grid(columns = 2) {
                 button("Read", Btn.TONAL, R.drawable.wna_book_open) { showReader(story.id, chapter.id) }
                 button("Download", Btn.TEXT, R.drawable.wna_download) { queueDownload(story, listOf(index)); showDetails(story.id) }
                 button("Mark Read", Btn.TEXT, R.drawable.wna_check) {

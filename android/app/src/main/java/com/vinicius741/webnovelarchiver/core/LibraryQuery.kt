@@ -41,7 +41,10 @@ object LibraryQuery {
         return if (sortAscending) sorted else sorted.asReversed()
     }
 
-    fun availableFilterLabels(stories: List<Story>, selectedTabId: String?): List<String> {
+    fun availableFilterLabels(stories: List<Story>, selectedTabId: String?): List<String> =
+        availableFilterLabelsWithCounts(stories, selectedTabId).map { it.first }
+
+    fun availableFilterLabelsWithCounts(stories: List<Story>, selectedTabId: String?): List<Pair<String, Int>> {
         val visibleStories = stories.filter { selectedTabId == "__all__" || it.tabId == selectedTabId }
         val sources = visibleStories
             .mapNotNull { SourceRegistry.getProvider(it.sourceUrl)?.name }
@@ -49,7 +52,7 @@ object LibraryQuery {
             .eachCount()
             .entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-            .map { it.key }
+            .map { it.key to it.value }
         val tags = visibleStories
             .flatMap { it.tags.orEmpty() }
             .filter { it.isNotBlank() }
@@ -57,7 +60,7 @@ object LibraryQuery {
             .eachCount()
             .entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-            .map { it.key }
+            .map { it.key to it.value }
         return sources + tags
     }
 

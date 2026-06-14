@@ -1,21 +1,27 @@
 package com.vinicius741.webnovelarchiver
 
 import android.app.AlertDialog
+import android.content.Context
+import android.graphics.Typeface
 import android.text.Editable
-import android.text.InputType
-import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.core.LibraryQuery
 import com.vinicius741.webnovelarchiver.core.SourceRegistry
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StoryActionGuards
+import com.vinicius741.webnovelarchiver.core.Tab
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showLibrary() {
@@ -27,6 +33,7 @@ internal fun ScreenHost.showLibrary() {
         actions = listOf(
             AppBarAction(R.drawable.wna_globe, "Browser") { showBrowser("https://www.royalroad.com") },
             AppBarAction(R.drawable.wna_list, "Queue") { showQueue() },
+            AppBarAction(R.drawable.wna_check, "Select") { showLibrarySelection() },
             AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
         ),
         fab = { showAddStory() },
@@ -35,49 +42,34 @@ internal fun ScreenHost.showLibrary() {
             addView(makeEmptyState(context, "No novels yet. Tap + to add a Royal Road or Scribble Hub story.", R.drawable.wna_menu_book))
             return@screen
         }
+
         val tabs = storage.getTabs().sortedBy { it.order }
-        val search = makeSearchField(context, "Search title or author")
-        addView(search)
+        val search = makeSearchField(context, "Search stories")
+        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
         var selectedTabId: String? = "__all__"
         val selectedTags = mutableSetOf<String>()
         var sortOption = "updated"
         var sortAscending = false
-        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
         val rerender = {
             renderLibraryList(stories, list, search.text.toString(), selectedTabId, selectedTags, sortOption, sortAscending)
         }
-        section("Tabs")
-        flow {
-            chip("All", selectedTabId == "__all__") { selectedTabId = "__all__"; rerender() }
-            chip("Unassigned", selectedTabId == null) { selectedTabId = null; rerender() }
-            tabs.forEach { tab ->
-                chip(tab.name, selectedTabId == tab.id) { selectedTabId = tab.id; rerender() }
-            }
-        }
-        section("Sort")
-        flow {
-            chip("Default", sortOption == "default") { if (sortOption == "default") sortAscending = !sortAscending else { sortOption = "default"; sortAscending = false }; rerender() }
-            chip("Title", sortOption == "title") { if (sortOption == "title") sortAscending = !sortAscending else { sortOption = "title"; sortAscending = true }; rerender() }
-            chip("Added", sortOption == "dateAdded") { if (sortOption == "dateAdded") sortAscending = !sortAscending else { sortOption = "dateAdded"; sortAscending = false }; rerender() }
-            chip("Updated", sortOption == "lastUpdated") { if (sortOption == "lastUpdated") sortAscending = !sortAscending else { sortOption = "lastUpdated"; sortAscending = false }; rerender() }
-            chip("Chapters", sortOption == "totalChapters") { if (sortOption == "totalChapters") sortAscending = !sortAscending else { sortOption = "totalChapters"; sortAscending = false }; rerender() }
-            chip("Score", sortOption == "score") { if (sortOption == "score") sortAscending = !sortAscending else { sortOption = "score"; sortAscending = false }; rerender() }
-            button("Select", Btn.TEXT, R.drawable.wna_check) { showLibrarySelection() }
-        }
-        val filterLabels = LibraryQuery.availableFilterLabels(stories, selectedTabId)
-        if (filterLabels.isNotEmpty()) {
-            section("Sources & Tags")
-            flow {
-                filterLabels.take(10).forEach { label ->
-                    chip(label, selectedTags.contains(label)) {
-                        if (!selectedTags.add(label)) selectedTags.remove(label)
-                        rerender()
-                    }
-                }
-            }
-            if (filterLabels.size > 10) text("${filterLabels.size - 10} more filters available on individual stories.", Type.BODY_SMALL)
-        }
+
+        addView(makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+            selectedTabId = newTabId
+            rerender()
+        })
+        addView(makeLibraryFilters(context, search, tabs.isNotEmpty(), stories, selectedTabId, selectedTags, sortOption, sortAscending, { newSort ->
+            sortOption = newSort.first
+            sortAscending = newSort.second
+            rerender()
+        }, { tag ->
+            if (!selectedTags.add(tag)) selectedTags.remove(tag)
+            rerender()
+        }))
         addView(scroll(list), verticalFill())
+
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -86,6 +78,250 @@ internal fun ScreenHost.showLibrary() {
             override fun afterTextChanged(s: Editable?) = Unit
         })
         renderLibraryList(stories, list, "", selectedTabId, selectedTags, sortOption, sortAscending)
+    }
+}
+
+private fun ScreenHost.makeLibraryTabBar(
+    context: Context,
+    tabs: List<Tab>,
+    stories: List<Story>,
+    selectedTabId: String?,
+    onSelect: (String?) -> Unit,
+): View {
+    val unassignedCount = stories.count { it.tabId == null }
+    val scroll = HorizontalScrollView(context).apply {
+        isHorizontalScrollBarEnabled = false
+        setPadding(0, dp(8), 0, 0)
+    }
+    val row = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+    }
+
+    fun addTab(label: String, id: String?, isSelected: Boolean) {
+        val text = makeText(context, label, Type.LABEL_LARGE, if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant).apply {
+            typeface = Typeface.create(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+            setPadding(dp(4), dp(10), dp(4), dp(10))
+            minWidth = dp(60)
+            gravity = Gravity.CENTER
+        }
+        val underline = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2)).apply { topMargin = dp(2) }
+            setBackgroundColor(if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.outlineVariant)
+        }
+        val tabContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, 0, dp(16), 0)
+            addView(text)
+            addView(underline)
+            isClickable = true
+            isFocusable = true
+            background = selectableRipple(ThemeManager.colors.onSurface)
+            setOnClickListener { onSelect(id) }
+        }
+        row.addView(tabContainer)
+    }
+
+    addTab("All", "__all__", selectedTabId == "__all__")
+    if (unassignedCount > 0) {
+        addTab("Unassigned ($unassignedCount)", null, selectedTabId == null)
+    }
+    tabs.forEach { tab ->
+        addTab(tab.name, tab.id, selectedTabId == tab.id)
+    }
+    scroll.addView(row)
+    return scroll
+}
+
+private fun ScreenHost.makeLibraryFilters(
+    context: Context,
+    search: EditText,
+    hasCustomTabs: Boolean,
+    stories: List<Story>,
+    selectedTabId: String?,
+    selectedTags: Set<String>,
+    sortOption: String,
+    sortAscending: Boolean,
+    onSortChanged: (Pair<String, Boolean>) -> Unit,
+    onTagToggled: (String) -> Unit,
+): View {
+    val filtersContainer = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(8), 0, 0)
+    }
+
+    // Search + sort row
+    val searchRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    searchRow.addView(search, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+    val sortIcon = if (sortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
+    val sortButton = context.iconButtonSmall(sortIcon, "Sort") {
+        showSortDialog(context, sortOption, sortAscending, onSortChanged)
+    }
+    searchRow.addView(sortButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(8) })
+    filtersContainer.addView(searchRow)
+
+    // Tag chips
+    val labelsWithCounts = LibraryQuery.availableFilterLabelsWithCounts(stories, selectedTabId)
+    if (labelsWithCounts.isNotEmpty()) {
+        val tagScroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(0, dp(12), 0, 0)
+        }
+        val tagRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        labelsWithCounts.take(10).forEach { (label, count) ->
+            val chipLabel = "$label ($count)"
+            val selected = selectedTags.contains(label)
+            val chip = makeChip(context, chipLabel, selected) { onTagToggled(label) }
+            tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                rightMargin = dp(8)
+            })
+        }
+        tagScroll.addView(tagRow)
+        filtersContainer.addView(tagScroll)
+    }
+
+    if (!hasCustomTabs) return filtersContainer
+
+    // Collapsible wrapper when tabs exist
+    val wrapper = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    val hasActiveFilters = selectedTags.isNotEmpty() || search.text.isNotBlank()
+    val toggleIcon = context.iconButtonSmall(R.drawable.wna_chevron_down, "Toggle filters") { }
+    val toggleWrap = FrameLayout(context).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+            gravity = Gravity.END
+        }
+        addView(toggleIcon)
+        if (hasActiveFilters) {
+            addView(View(context).apply {
+                layoutParams = FrameLayout.LayoutParams(dp(8), dp(8), Gravity.TOP or Gravity.END).apply { topMargin = dp(6); rightMargin = dp(6) }
+                background = roundedBg(ThemeManager.colors.primary, dp(4).toFloat())
+            })
+        }
+    }
+    val headerRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    headerRow.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
+    headerRow.addView(toggleWrap)
+    wrapper.addView(headerRow)
+    wrapper.addView(filtersContainer)
+
+    var expanded = false
+    filtersContainer.visibility = View.GONE
+    toggleWrap.setOnClickListener {
+        expanded = !expanded
+        filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+        toggleIcon.animate().rotation(if (expanded) 180f else 0f).setDuration(200).start()
+    }
+    return wrapper
+}
+
+private fun showSortDialog(
+    context: Context,
+    currentOption: String,
+    ascending: Boolean,
+    onChanged: (Pair<String, Boolean>) -> Unit,
+) {
+    val options = listOf(
+        "default" to "Default (Smart)",
+        "title" to "Title",
+        "lastUpdated" to "Last Updated",
+        "dateAdded" to "Date Added",
+        "totalChapters" to "Chapter Count",
+        "score" to "Score",
+    )
+
+    val dialogView = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
+    }
+
+    val checkIcon = context.tintedIcon(R.drawable.wna_check, ThemeManager.colors.primary)
+    var dialogRef: AlertDialog? = null
+
+    options.forEach { (key, label) ->
+        val isSelected = key == currentOption
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, context.dp(12), 0, context.dp(12))
+            isClickable = true
+            isFocusable = true
+            background = selectableRipple(ThemeManager.colors.onSurface)
+        }
+        val check = ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
+            if (isSelected) setImageDrawable(checkIcon)
+        }
+        val text = makeText(context, label, Type.BODY_LARGE, ThemeManager.colors.onSurface)
+        row.addView(check)
+        row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.setOnClickListener {
+            val newAscending = if (key == currentOption) !ascending else defaultDirectionFor(key)
+            onChanged(key to newAscending)
+            dialogRef?.dismiss()
+        }
+        dialogView.addView(row)
+    }
+
+    // Direction toggle row
+    val directionRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, context.dp(12), 0, context.dp(12))
+        isClickable = true
+        isFocusable = true
+        background = selectableRipple(ThemeManager.colors.onSurface)
+    }
+    val directionIcon = context.tintedIcon(
+        if (ascending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending,
+        ThemeManager.colors.primary,
+    )
+    val directionImage = ImageView(context).apply {
+        layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
+        setImageDrawable(directionIcon)
+    }
+    val directionText = makeText(context, if (ascending) "Ascending" else "Descending", Type.BODY_LARGE, ThemeManager.colors.onSurface)
+    directionRow.addView(directionImage)
+    directionRow.addView(directionText)
+    directionRow.setOnClickListener {
+        onChanged(currentOption to !ascending)
+        dialogRef?.dismiss()
+    }
+    dialogView.addView(makeDivider(context))
+    dialogView.addView(directionRow)
+
+    dialogRef = AlertDialog.Builder(context)
+        .setTitle("Sort by")
+        .setView(dialogView)
+        .setNegativeButton("Cancel", null)
+        .show()
+}
+
+private fun defaultDirectionFor(option: String): Boolean = when (option) {
+    "title" -> true
+    else -> false
+}
+
+private fun Context.iconButtonSmall(iconRes: Int, desc: String, onClick: () -> Unit): ImageView {
+    val size = dp(40)
+    return ImageView(this).apply {
+        contentDescription = desc
+        setImageDrawable(tintedIcon(iconRes, ThemeManager.colors.onSurfaceVariant))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(8), dp(8), dp(8), dp(8))
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(size, size)
     }
 }
 
@@ -104,43 +340,30 @@ internal fun ScreenHost.renderLibraryList(
         list.addView(makeEmptyState(app, "No novels match this view.", R.drawable.wna_search))
         return
     }
-    if (selectedTags.isNotEmpty()) {
-        list.addView(makeText(app, "Filtered by: ${selectedTags.joinToString(", ")}", Type.LABEL_MEDIUM, ThemeManager.colors.secondary).apply {
-            setPadding(dp(2), dp(10), dp(2), dp(6))
-        })
-    }
     visible.forEach { story ->
         list.addView(list.card {
             val content = row {
-                addView(coverImage(story, widthDp = 72, heightDp = 108, tapToOpen = false))
+                addView(coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false))
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(makeText(context, "${story.title}${if (story.isArchived == true) "" else ""}", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+                    addView(makeText(context, story.title, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
                         maxLines = 2
-                        ellipsize = TextUtils.TruncateAt.END
+                        ellipsize = android.text.TextUtils.TruncateAt.END
                     })
                     addView(makeText(context, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                        setPadding(0, dp(2), 0, 0)
+                        setPadding(0, dp(4), 0, 0)
                     })
                     SourceRegistry.getProvider(story.sourceUrl)?.let {
-                        addView(makeText(context, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply { setPadding(0, dp(2), 0, 0) })
-                    }
-                    story.score?.takeIf { it.isNotBlank() }?.let { score ->
-                        addView(LinearLayout(context).apply {
-                            orientation = LinearLayout.HORIZONTAL
-                            gravity = Gravity.CENTER_VERTICAL
-                            addView(ImageView(context).apply {
-                                setImageDrawable(context.tintedIcon(R.drawable.wna_star, ThemeManager.colors.tertiary))
-                                layoutParams = LinearLayout.LayoutParams(dp(13), dp(13))
-                            })
-                            addView(makeText(context, score, Type.LABEL_LARGE, ThemeManager.colors.onSurface).apply {
-                                setPadding(dp(3), 0, 0, 0)
-                            })
+                        addView(makeText(context, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+                            setPadding(0, dp(4), 0, 0)
                         })
                     }
-                    story.tags?.takeIf { it.isNotEmpty() }?.let {
-                        addView(makeText(context, it.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                            setPadding(0, dp(2), 0, 0)
+                    story.score?.takeIf { it.isNotBlank() }?.let { score ->
+                        addView(scoreRow(score))
+                    }
+                    story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
+                        addView(makeText(context, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                            setPadding(0, dp(4), 0, 0)
                         })
                     }
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -154,24 +377,36 @@ internal fun ScreenHost.renderLibraryList(
             content.background = selectableRipple(ThemeManager.colors.onSurface)
             content.isClickable = true
             content.setOnClickListener { showDetails(story.id) }
+            content.setOnLongClickListener {
+                showStoryActionsDialog(story)
+                true
+            }
             if (story.totalChapters > 0) {
                 addView(makeProgress(context, story.downloadedChapters.toFloat() / story.totalChapters).apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4)).apply { topMargin = dp(10) }
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4)).apply { topMargin = dp(12) }
                 })
-            }
-            addView(makeText(context, "${story.downloadedChapters}/${story.totalChapters} chapters • ${story.status.displayName()}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                setPadding(0, dp(6), 0, dp(4))
-            })
-            flow {
-                button("Open", Btn.TEXT, R.drawable.wna_book_open) { showDetails(story.id) }
-                if (StoryActionGuards.canSync(story)) {
-                    button("Sync", Btn.TONAL, R.drawable.wna_refresh) { syncStory(story) }
-                }
-                button("Move", Btn.TEXT, R.drawable.wna_folder) { showMoveStoryDialog(story) }
-                button("Delete", Btn.TEXT, R.drawable.wna_delete) { confirm("Delete ${story.title}?") { storage.deleteStory(story.id); showLibrary() } }
             }
         })
     }
+}
+
+private fun ScreenHost.showStoryActionsDialog(story: Story) {
+    val items = mutableListOf("Open")
+    if (StoryActionGuards.canSync(story)) items.add("Sync")
+    items.add("Move")
+    items.add("Delete")
+    AlertDialog.Builder(app)
+        .setTitle(story.title)
+        .setItems(items.toTypedArray()) { _, which ->
+            when (items[which]) {
+                "Open" -> showDetails(story.id)
+                "Sync" -> syncStory(story)
+                "Move" -> showMoveStoryDialog(story)
+                "Delete" -> confirm("Delete ${story.title}?") { storage.deleteStory(story.id); showLibrary() }
+            }
+        }
+        .setNegativeButton("Cancel", null)
+        .show()
 }
 
 internal fun ScreenHost.showLibrarySelection() {
@@ -231,7 +466,7 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 internal fun ScreenHost.showAddStory() {
     val tabs = storage.getTabs().sortedBy { it.order }
     screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
-        val url = makeField(context, "", "Royal Road or Scribble Hub story URL", InputType.TYPE_TEXT_VARIATION_URI)
+        val url = makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI)
         addView(url)
         section("Save to tab")
         val tabSpinner = Spinner(context)

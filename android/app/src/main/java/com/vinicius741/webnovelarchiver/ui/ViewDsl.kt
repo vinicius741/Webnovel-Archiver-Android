@@ -29,6 +29,17 @@ internal fun ViewGroup.flow(spacing: Int = 8, block: WrapLayout.() -> Unit): Wra
     return f
 }
 
+internal fun ViewGroup.grid(columns: Int = 2, spacing: Int = 8, block: GridLayout.() -> Unit): GridLayout {
+    val g = GridLayout(context).apply {
+        columnCount = columns
+        horizontalSpacingDp = spacing
+        verticalSpacingDp = spacing
+        block()
+    }
+    addView(g, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    return g
+}
+
 internal fun ViewGroup.card(elevation: Int = 1, block: LinearLayout.() -> Unit): LinearLayout {
     val c = makeCard(context, elevation)
     c.block()
