@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.widget.FrameLayout
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -46,6 +47,23 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
 
+    /**
+     * The single system-back callback. Always registered, but enabled only while a screen has
+     * provided in-app back navigation (see [backHandler]'s setter). Disabled on the root screen so
+     * the OS default — exit to home, with the predictive-back home preview — applies unchanged.
+     */
+    private val backCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            backHandler?.invoke()
+        }
+    }
+
+    override var backHandler: (() -> Unit)? = null
+        set(value) {
+            field = value
+            backCallback.isEnabled = value != null
+        }
+
     override val importBackupLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
         scope.launch { toast(withContext(Dispatchers.IO) { storage.importBackupUri(uri) }); showSettings() }
@@ -70,6 +88,7 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         downloadEngine.onChanged = { runOnUiThread { if (activeStory == null) showLibrary() else activeStory?.let { showDetails(it.id) } } }
         frame = FrameLayout(this)
         setContentView(frame)
+        onBackPressedDispatcher.addCallback(this, backCallback)
         requestNotificationPermissionIfNeeded()
         val resumeTarget = TtsSessionPlanning.readerResumeTarget(storage.getTtsSession()) { storyId ->
             storage.getStory(storyId)

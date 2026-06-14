@@ -29,6 +29,9 @@ internal fun ScreenHost.screen(
     block: LinearLayout.() -> Unit,
 ) {
     frame.removeAllViews()
+    // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
+    // hardware/gesture back navigation so the OS default (exit) applies.
+    backHandler = onBack
     val column = LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(ThemeManager.colors.background)

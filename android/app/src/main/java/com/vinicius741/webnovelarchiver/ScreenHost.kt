@@ -31,6 +31,13 @@ interface ScreenHost {
     val epubEngine: EpubEngine
     val ttsEngine: TtsEngine
     var activeStory: Story?
+    /**
+     * The current screen's in-app back navigation, set by [com.vinicius741.webnovelarchiver.ui.screen].
+     * The system back button (wired in [com.vinicius741.webnovelarchiver.MainActivity]) invokes this so
+     * the hardware/gesture back press mirrors the app-bar back arrow instead of closing the app. `null`
+     * on the root (Library) screen, where back exits the app as usual.
+     */
+    var backHandler: (() -> Unit)?
     val frame: FrameLayout
     val importBackupLauncher: ActivityResultLauncher<Array<String>>
     val importFullBackupLauncher: ActivityResultLauncher<Array<String>>

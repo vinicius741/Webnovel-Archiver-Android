@@ -14,7 +14,13 @@ import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showBrowser(startUrl: String) {
     val tabs = storage.getTabs().sortedBy { it.order }
-    screen(title = "Browser", subtitle = "Browse and import novels", onBack = { showLibrary() }) {
+    // System/app-bar back steps through in-webview history first, then returns to the Library —
+    // matching the on-screen "Back" button. `webRef` is populated inside the screen block below.
+    var webRef: WebView? = null
+    screen(title = "Browser", subtitle = "Browse and import novels", onBack = {
+        val web = webRef
+        if (web != null && web.canGoBack()) web.goBack() else showLibrary()
+    }) {
         val input = makeField(context, startUrl, "Address", InputType.TYPE_TEXT_VARIATION_URI)
         addView(input)
         val progress = makeText(context, "Ready", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
@@ -28,6 +34,7 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
         if (tabs.isNotEmpty()) addView(tabSpinner)
         val activity = app
         val web = WebView(context)
+        webRef = web
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.webViewClient = object : WebViewClient() {
