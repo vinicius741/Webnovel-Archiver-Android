@@ -77,7 +77,7 @@ internal fun ScreenHost.showQueue() {
                     addQueueJobCard(groupList, job)
                 }
             }
-        addView(scroll(groupList), matchWrap())
+        addView(scroll(groupList), verticalFill())
     }
 }
 

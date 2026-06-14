@@ -46,7 +46,7 @@ internal fun ScreenHost.showDownloadRangeDialog(story: Story) {
     view.addView(count)
     val dialog = AlertDialog.Builder(app)
         .setTitle("Download Range")
-        .setView(view)
+        .setView(scroll(view))
         .setPositiveButton("Download", null)
         .setNegativeButton("Cancel", null)
         .create()
@@ -109,7 +109,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
 
     AlertDialog.Builder(app)
         .setTitle("EPUB Settings")
-        .setView(view)
+        .setView(scroll(view))
         .setPositiveButton("Generate") { _, _ ->
             val max = maxChapters.text.toString().toIntOrNull()?.coerceIn(10, 1000) ?: 150
             val start = rangeStart.text.toString().toIntOrNull()?.coerceIn(1, story.chapters.size) ?: 1

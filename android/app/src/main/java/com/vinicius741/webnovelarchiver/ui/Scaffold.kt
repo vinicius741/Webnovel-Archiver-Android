@@ -9,6 +9,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
@@ -24,20 +25,34 @@ internal fun ScreenHost.screen(
     onBack: (() -> Unit)? = null,
     actions: List<AppBarAction> = emptyList(),
     fab: (() -> Unit)? = null,
+    scrollable: Boolean = false,
     block: LinearLayout.() -> Unit,
 ) {
     frame.removeAllViews()
     val column = LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
         setBackgroundColor(ThemeManager.colors.background)
+        // Edge-to-edge window: reserve the gesture/navigation bar on the non-scrolling root so
+        // content stays clear of it whether the body scrolls or not.
+        setPadding(0, 0, 0, systemBarBottom())
     }
     column.addView(appBar(title, subtitle, onBack, actions))
     val content = LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(8), dp(16), dp(24) + systemBarBottom())
+        setPadding(dp(16), dp(8), dp(16), dp(24))
         block()
     }
-    column.addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+    val body: View = if (scrollable) {
+        // Wrap the whole body in a single scroller so tall forms (Settings, Cleanup, Tabs) can
+        // always be reached instead of being clipped by the fixed-weight content area.
+        ScrollView(app).apply {
+            isFillViewport = true
+            addView(content)
+        }
+    } else {
+        content
+    }
+    column.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
     frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     fab?.let { onClick ->
         val fabView = makeFab(app) { onClick() }

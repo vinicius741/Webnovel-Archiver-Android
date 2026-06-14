@@ -25,9 +25,15 @@ import java.net.URL
 /** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)
 
-internal fun ScreenHost.scroll(child: View): ScrollView = ScrollView(app).apply { addView(child) }
+internal fun ScreenHost.scroll(child: View): ScrollView = ScrollView(app).apply {
+    // Fill the allocated area when content is short; scroll when it overflows.
+    isFillViewport = true
+    addView(child)
+}
 
-internal fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+/** MATCH_PARENT width with height 0 + weight 1, so a child fills all remaining vertical space.
+ *  Use for scrolling lists placed below pinned controls so the list area never collapses to 0. */
+internal fun verticalFill() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
 internal fun ScreenHost.toast(message: String) =
     Toast.makeText(app, message, Toast.LENGTH_LONG).show()

@@ -14,7 +14,7 @@ import com.vinicius741.webnovelarchiver.core.TextCleanup
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showCleanupRules() {
-    screen(title = "Text Cleanup", subtitle = "Sentence removal & regex rules", onBack = { showSettings() }) {
+    screen(title = "Text Cleanup", subtitle = "Sentence removal & regex rules", onBack = { showSettings() }, scrollable = true) {
         flow {
             button("Export JSON", Btn.TONAL, R.drawable.wna_share) { share(storage.exportCleanupRules()) }
         }
@@ -115,7 +115,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
 
     val dialog = AlertDialog.Builder(app)
         .setTitle(if (existing == null) "Add Regex Rule" else "Edit Regex Rule")
-        .setView(view)
+        .setView(scroll(view))
         .setPositiveButton("Save", null)
         .setNegativeButton("Cancel", null)
         .create()
@@ -183,7 +183,7 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPat
 
     val dialog = AlertDialog.Builder(app)
         .setTitle("Quick Separator Rule")
-        .setView(view)
+        .setView(scroll(view))
         .setPositiveButton("Use Pattern", null)
         .setNegativeButton("Cancel", null)
         .create()

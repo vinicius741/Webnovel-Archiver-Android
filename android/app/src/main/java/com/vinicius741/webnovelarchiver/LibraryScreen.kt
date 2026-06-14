@@ -77,7 +77,7 @@ internal fun ScreenHost.showLibrary() {
             }
             if (filterLabels.size > 10) text("${filterLabels.size - 10} more filters available on individual stories.", Type.BODY_SMALL)
         }
-        addView(scroll(list), matchWrap())
+        addView(scroll(list), verticalFill())
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -205,7 +205,7 @@ internal fun ScreenHost.showLibrarySelection() {
                 styledCheckBox(cb)
                 addView(cb)
             }
-        }), matchWrap())
+        }), verticalFill())
     }
 }
 
@@ -230,7 +230,7 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 
 internal fun ScreenHost.showAddStory() {
     val tabs = storage.getTabs().sortedBy { it.order }
-    screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }) {
+    screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
         val url = makeField(context, "", "Royal Road or Scribble Hub story URL", InputType.TYPE_TEXT_VARIATION_URI)
         addView(url)
         section("Save to tab")

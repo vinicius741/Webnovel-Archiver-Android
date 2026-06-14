@@ -83,7 +83,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chip("Downloaded", chapterFilter == "hideNonDownloaded") { chapterFilter = "hideNonDownloaded"; storage.saveChapterFilterSettings(ChapterFilterSettings(chapterFilter)); renderChapterList(story, list, chapterQuery, chapterFilter) }
             chip("From Bookmark", chapterFilter == "hideAboveBookmark") { chapterFilter = "hideAboveBookmark"; storage.saveChapterFilterSettings(ChapterFilterSettings(chapterFilter)); renderChapterList(story, list, chapterQuery, chapterFilter) }
         }
-        addView(scroll(list), matchWrap())
+        addView(scroll(list), verticalFill())
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -131,7 +131,7 @@ internal fun ScreenHost.showChapterSelection(storyId: String) {
                     addView(cb)
                 }
             }
-        }), matchWrap())
+        }), verticalFill())
     }
 }
 

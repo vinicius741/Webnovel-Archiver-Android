@@ -22,7 +22,7 @@ internal fun ScreenHost.showSettings() {
     val sourceSettings = storage.getSourceDownloadSettings()
     val ttsSettings = storage.getTtsSettings()
     val displayPreferences = storage.getDisplayPreferences()
-    screen(title = "Settings", onBack = { showLibrary() }) {
+    screen(title = "Settings", onBack = { showLibrary() }, scrollable = true) {
         section("Appearance")
         text("Theme", Type.TITLE_SMALL)
         flow {
@@ -165,7 +165,7 @@ internal fun ScreenHost.applyThemePreference(themeId: String) {
 }
 
 internal fun ScreenHost.showTabs() {
-    screen(title = "Manage Tabs", onBack = { showSettings() }) {
+    screen(title = "Manage Tabs", onBack = { showSettings() }, scrollable = true) {
         val tabs = TabPlanning.normalizeOrders(storage.getTabs())
         row {
             val name = EditText(context).apply {
