@@ -21,4 +21,18 @@ class ReaderContentRendererTest {
         assertTrue(html.contains("max-width: 100%"))
         assertTrue(html.contains("<meta name=\"viewport\""))
     }
+
+    @Test
+    fun fontScaleScalesBaseFontSize() {
+        val html = ReaderContentRenderer.document("T", "<p>x</p>", fontScale = 1.5f, dark = false)
+        // 18 * 1.5 = 27
+        assertTrue(html.contains("font-size: 27px"))
+    }
+
+    @Test
+    fun darkModeSwapsBackgroundAndForeground() {
+        val html = ReaderContentRenderer.document("T", "<p>x</p>", fontScale = 1.0f, dark = true)
+        assertTrue(html.contains("background-color: #121212"))
+        assertTrue(html.contains("color: #e6e6e6"))
+    }
 }

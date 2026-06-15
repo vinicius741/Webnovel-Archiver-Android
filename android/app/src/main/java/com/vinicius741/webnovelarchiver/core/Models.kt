@@ -73,6 +73,10 @@ data class ChapterFilterSettings(
 data class DisplayPreferences(
     var activeThemeId: String = "obsidian",
     var foldLayoutMode: String = "auto",
+    /** Multiplier applied to the reader WebView base font-size (1.0 = 18px). Clamped to 0.8–1.6. */
+    var readerFontScale: Float = 1.0f,
+    /** When true the reader WebView renders on a dark background (dark-reader toggle). */
+    var readerDark: Boolean = false,
 )
 
 data class RegexCleanupRule(

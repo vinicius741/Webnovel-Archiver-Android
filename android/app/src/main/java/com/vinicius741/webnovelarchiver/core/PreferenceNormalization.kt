@@ -3,6 +3,8 @@ package com.vinicius741.webnovelarchiver.core
 object PreferenceNormalization {
     private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark")
     private val foldLayoutModes = setOf("auto", "cover", "inner")
+    const val READER_FONT_SCALE_MIN = 0.8f
+    const val READER_FONT_SCALE_MAX = 1.6f
 
     fun appSettings(settings: AppSettings): AppSettings = settings.copy(
         downloadConcurrency = settings.downloadConcurrency.coerceIn(
@@ -36,6 +38,7 @@ object PreferenceNormalization {
         preferences.copy(
             activeThemeId = preferences.activeThemeId.ifBlank { DisplayPreferences().activeThemeId },
             foldLayoutMode = preferences.foldLayoutMode.takeIf { it in foldLayoutModes } ?: DisplayPreferences().foldLayoutMode,
+            readerFontScale = preferences.readerFontScale.coerceIn(READER_FONT_SCALE_MIN, READER_FONT_SCALE_MAX),
         )
 
     fun ttsSettings(settings: TtsSettings): TtsSettings = settings.copy(
