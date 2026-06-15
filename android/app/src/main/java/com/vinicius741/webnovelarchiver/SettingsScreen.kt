@@ -17,9 +17,6 @@ import com.vinicius741.webnovelarchiver.ui.*
 import java.util.UUID
 
 internal fun ScreenHost.showSettings() {
-    val settings = storage.getSettings()
-    val sourceSettings = storage.getSourceDownloadSettings()
-    val ttsSettings = storage.getTtsSettings()
     val displayPreferences = storage.getDisplayPreferences()
     screen(title = "Settings", onBack = { showLibrary() }, scrollable = true) {
         section("Appearance")
@@ -39,11 +36,37 @@ internal fun ScreenHost.showSettings() {
         }
         divider()
         section("Downloads")
+        settingRow(R.drawable.wna_list, "Download Manager", "View and manage active downloads") { showQueue() }
+        settingRow(R.drawable.wna_download, "Download Settings", "Concurrency, delay, and EPUB volume size") { showDownloadSettings() }
+        settingRow(R.drawable.wna_globe, "Source Overrides", "Per-source concurrency and delay") { showSourceOverrides() }
+        divider()
+        section("Text To Speech")
+        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, chunk size, and voice") { showTtsSettings() }
+        divider()
+        section("Library Organization")
+        settingRow(R.drawable.wna_folder, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
+        divider()
+        section("Data")
+        settingRow(R.drawable.wna_brush, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
+        settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {
+            confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") { storage.clearAll(); showLibrary() }
+        }
+        divider()
+        section("Backup")
+        settingRow(R.drawable.wna_share, "Export Backup", "Export library metadata and tabs to a JSON file") { exportAndShare { storage.exportBackup() } }
+        settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") { importBackupLauncher.launch(arrayOf("application/json", "text/*")) }
+        settingRow(R.drawable.wna_archive, "Create Full Backup", "Save settings, tabs, library, and chapters to a local ZIP file") { exportAndShare { storage.exportFullBackup() } }
+        settingRow(R.drawable.wna_archive, "Restore Full Backup", "Replace local data from a full ZIP backup") { importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+    }
+}
+
+/** Download tuning sub-screen (concurrency / delay / max chapters per EPUB), reached from Settings. */
+internal fun ScreenHost.showDownloadSettings() {
+    val settings = storage.getSettings()
+    screen(title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
         val concurrency = labeledField("Concurrency", settings.downloadConcurrency.toString(), InputType.TYPE_CLASS_NUMBER)
         val delay = labeledField("Delay (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
         val maxChapters = labeledField("Max chapters per EPUB", settings.maxChaptersPerEpub.toString(), InputType.TYPE_CLASS_NUMBER)
-        // S1: each editable section persists itself, so a TTS-only edit doesn't require scrolling to a
-        // global Save at the bottom.
         fullButton("Save Downloads", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
             storage.saveSettings(settings.copy(
                 downloadConcurrency = SettingsValidation.concurrency(concurrency.text.toString(), settings.downloadConcurrency),
@@ -52,8 +75,14 @@ internal fun ScreenHost.showSettings() {
             ))
             toast("Download settings saved")
         }
-        divider()
-        section("Source Overrides")
+    }
+}
+
+/** Per-source override sub-screen (one card per registered provider), reached from Settings. */
+internal fun ScreenHost.showSourceOverrides() {
+    val settings = storage.getSettings()
+    val sourceSettings = storage.getSourceDownloadSettings()
+    screen(title = "Source Overrides", onBack = { showSettings() }, scrollable = true) {
         val sourceInputs = SourceRegistry.all().associate { provider ->
             val override = sourceSettings[provider.name]
             val sourceEnabled = CheckBox(context).apply { text = "Override"; isChecked = override != null }
@@ -71,7 +100,7 @@ internal fun ScreenHost.showSettings() {
                         val updated = storage.getSourceDownloadSettings().toMutableMap()
                         updated.remove(provider.name)
                         storage.saveSourceDownloadSettings(updated)
-                        showSettings()
+                        showSourceOverrides()
                     }
                 }
             })
@@ -91,8 +120,13 @@ internal fun ScreenHost.showSettings() {
             }.toMap())
             toast("Source overrides saved")
         }
-        divider()
-        section("Text To Speech")
+    }
+}
+
+/** TTS sub-screen (pitch / rate / chunk size / voice + optional saved-session card), reached from Settings. */
+internal fun ScreenHost.showTtsSettings() {
+    val ttsSettings = storage.getTtsSettings()
+    screen(title = "Voice & Speech", onBack = { showSettings() }, scrollable = true) {
         storage.getTtsSession()?.let { session ->
             addView(card {
                 text("Saved TTS session", Type.TITLE_SMALL)
@@ -103,7 +137,7 @@ internal fun ScreenHost.showSettings() {
                     }
                     button("Clear Session", Btn.TEXT, R.drawable.wna_delete) {
                         storage.clearTtsSession()
-                        showSettings()
+                        showTtsSettings()
                     }
                 }
             })
@@ -118,38 +152,14 @@ internal fun ScreenHost.showSettings() {
             val voiceBtn = makeButton(context, voiceLabel, Btn.TEXT, R.drawable.wna_speaker) { showTtsVoicePicker() }
             addView(voiceBtn)
         }
-        // S1: TTS saves independently. G3: the two related row actions sit in a 2-col grid so the
-        // flow row doesn't end with one wrapped button + a ragged gap.
-        grid(columns = 2) {
-            button("Save TTS", Btn.FILLED, R.drawable.wna_check) {
-                storage.saveTtsSettings(ttsSettings.copy(
-                    pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
-                    rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
-                    chunkSize = SettingsValidation.ttsChunkSize(chunkSize.text.toString(), ttsSettings.chunkSize),
-                ))
-                toast("TTS settings saved")
-            }
-            button("Manage Tabs", Btn.OUTLINED, R.drawable.wna_folder) { showTabs() }
+        fullButton("Save TTS", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
+            storage.saveTtsSettings(ttsSettings.copy(
+                pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
+                rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
+                chunkSize = SettingsValidation.ttsChunkSize(chunkSize.text.toString(), ttsSettings.chunkSize),
+            ))
+            toast("TTS settings saved")
         }
-        fullButton("Cleanup Rules", Btn.OUTLINED, R.drawable.wna_brush, bottomMarginDp = Space.SM) { showCleanupRules() }
-        divider()
-        section("Backup")
-        // G3: pair the two outbound formats in a grid so each row is filled instead of wrapping
-        // unevenly with dead space on the right.
-        text("Export", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
-        grid(columns = 2) {
-            button("Export JSON", Btn.TONAL, R.drawable.wna_share) { exportAndShare { storage.exportBackup() } }
-            button("Full Backup", Btn.TONAL, R.drawable.wna_share) { exportAndShare { storage.exportFullBackup() } }
-        }
-        text("Import", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
-        grid(columns = 2) {
-            button("Import JSON", Btn.TEXT, R.drawable.wna_download) { importBackupLauncher.launch(arrayOf("application/json", "text/*")) }
-            button("Restore Full", Btn.TEXT, R.drawable.wna_download) { importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
-        }
-        divider()
-        // S5: destructive action visually separated under its own header with a distinct confirm label.
-        section("Danger Zone")
-        fullButton("Clear Local Storage", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) { confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") { storage.clearAll(); showLibrary() } }
     }
 }
 
@@ -164,7 +174,7 @@ internal fun ScreenHost.showTtsVoicePicker() {
         label to {
             val current = storage.getTtsSettings()
             storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-            showSettings()
+            showTtsSettings()
         }
     }
     showStyledOptionsDialog("TTS Voice", options)

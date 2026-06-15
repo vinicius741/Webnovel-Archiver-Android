@@ -135,3 +135,8 @@ internal fun ViewGroup.labeledField(label: String, value: String, inputType: Int
     addView(field)
     return field
 }
+
+/** Navigational settings row: leading icon + title (+ optional description), whole row tappable. */
+internal fun ViewGroup.settingRow(iconRes: Int, title: String, description: String? = null, onClick: () -> Unit) {
+    addView(makeSettingRow(context, iconRes, title, description, onClick))
+}

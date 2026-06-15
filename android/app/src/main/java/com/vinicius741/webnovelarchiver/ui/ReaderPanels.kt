@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.core.DisplayPreferences
 import com.vinicius741.webnovelarchiver.core.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.showSettings
+import com.vinicius741.webnovelarchiver.showTtsSettings
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import kotlin.math.roundToInt
 
@@ -107,7 +108,7 @@ internal fun ScreenHost.showReaderTtsPanel(story: Story, chapter: Chapter) {
                 TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT)
             }
         }
-        panelRow("Voice settings", this@showReaderTtsPanel) { showSettings() }
+        panelRow("Voice settings", this@showReaderTtsPanel) { showTtsSettings() }
     }
 }
 

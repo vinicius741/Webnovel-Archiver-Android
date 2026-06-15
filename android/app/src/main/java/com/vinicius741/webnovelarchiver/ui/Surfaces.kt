@@ -61,6 +61,63 @@ fun makeDivider(context: Context): View = View(context).apply {
     }
 }
 
+/**
+ * A flat, navigational settings row in the style of react-native-paper's `List.Item`: a leading
+ * icon tinted to the surface-variant color, a vertical column of title + optional description, and
+ * a themed ripple across the whole row. No trailing chevron — matches the old RN settings screen,
+ * which used leading icons only. Used for every non-Appearance entry on the Settings page.
+ */
+fun makeSettingRow(
+    context: Context,
+    iconRes: Int,
+    title: CharSequence,
+    description: CharSequence? = null,
+    onClick: () -> Unit,
+): LinearLayout {
+    val t = ThemeManager.current
+    return LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        isClickable = true
+        isFocusable = true
+        setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
+        background = selectableRipple(t.colors.surface)
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        // Leading icon, sized to match the Material list-item leading icon (~24dp).
+        addView(ImageView(context).apply {
+            setImageDrawable(context.tintedIcon(iconRes, t.colors.onSurfaceVariant))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }, LinearLayout.LayoutParams(context.dp(24), context.dp(24)))
+        // Title (+ optional description) column.
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(context).apply {
+                text = title
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.TITLE_SMALL.size())
+                typeface = android.graphics.Typeface.create(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(t.colors.onSurface)
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                includeFontPadding = false
+            })
+            description?.let {
+                addView(TextView(context).apply {
+                    text = it
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
+                    setTextColor(t.colors.onSurfaceVariant)
+                    setPadding(0, context.dp(2), 0, 0)
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                    includeFontPadding = false
+                })
+            }
+        }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            marginStart = context.dp(Space.MD)
+        })
+        setOnClickListener { onClick() }
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* Selectable card row — a card surface with an embedded checkbox. Used by the
  * selection screens (Select Novels / Select Chapters) so multi-select reuses the
