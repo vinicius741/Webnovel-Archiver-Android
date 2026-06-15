@@ -21,15 +21,18 @@ internal fun ScreenHost.showSettings() {
     screen(title = "Settings", onBack = { showLibrary() }, scrollable = true) {
         section("Appearance")
         text("Theme", Type.TITLE_SMALL)
-        flow {
+        spacer(Space.XS)
+        flow(spacing = Space.MD) {
             Themes.all.forEach { theme ->
                 chip(theme.name, displayPreferences.activeThemeId == theme.id) { saveThemePreference(theme.id) }
             }
         }
+        spacer(Space.MD)
         text("Fold Layout", Type.TITLE_SMALL)
         // S6: explain what fold layout controls.
         text("How chapters fold inside EPUB volumes. Auto picks based on length.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-        flow {
+        spacer(Space.XS)
+        flow(spacing = Space.MD) {
             chip("Auto", displayPreferences.foldLayoutMode == "auto") { storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "auto")); showSettings() }
             chip("Cover", displayPreferences.foldLayoutMode == "cover") { storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "cover")); showSettings() }
             chip("Inner", displayPreferences.foldLayoutMode == "inner") { storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "inner")); showSettings() }
@@ -67,7 +70,7 @@ internal fun ScreenHost.showDownloadSettings() {
         val concurrency = labeledField("Concurrency", settings.downloadConcurrency.toString(), InputType.TYPE_CLASS_NUMBER)
         val delay = labeledField("Delay (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
         val maxChapters = labeledField("Max chapters per EPUB", settings.maxChaptersPerEpub.toString(), InputType.TYPE_CLASS_NUMBER)
-        fullButton("Save Downloads", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
+        fullButton("Save Downloads", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.SM) {
             storage.saveSettings(settings.copy(
                 downloadConcurrency = SettingsValidation.concurrency(concurrency.text.toString(), settings.downloadConcurrency),
                 downloadDelay = SettingsValidation.delay(delay.text.toString(), settings.downloadDelay),

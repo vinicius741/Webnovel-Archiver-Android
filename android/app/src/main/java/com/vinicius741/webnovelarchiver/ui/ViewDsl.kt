@@ -9,6 +9,14 @@ import android.widget.TextView
 
 /* ---- container builders (operate on any ViewGroup) ---- */
 
+/** Fixed vertical gap inserted between siblings in a vertical [LinearLayout] body, e.g. between a
+ *  section label and the row of chips below it. [heightDp] is in density-independent pixels. */
+internal fun ViewGroup.spacer(heightDp: Int = Space.SM) {
+    addView(android.widget.Space(context).apply {
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, context.dp(heightDp))
+    })
+}
+
 internal fun ViewGroup.row(gravity: Int = Gravity.CENTER_VERTICAL, block: LinearLayout.() -> Unit): LinearLayout {
     val h = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
