@@ -5,6 +5,7 @@ import android.os.Looper
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.core.DownloadJob
@@ -12,18 +13,32 @@ import com.vinicius741.webnovelarchiver.core.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.core.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.core.QueueAction
 import com.vinicius741.webnovelarchiver.core.QueueStatusCounts
+import com.vinicius741.webnovelarchiver.core.queueMaxWidth
 import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showQueue() {
     val queue = storage.getQueue()
     val counts = QueueStatusCounts.from(queue)
+    // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
+    rerender = { showQueue() }
+    val layout = currentScreenLayout()
     screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(counts)) {
+        // Center everything in a width-capped column (920/1080dp by width class) so the queue doesn't
+        // stretch edge-to-edge on tablets/the Fold inner display. On phone widths the cap is larger
+        // than the screen so it has no effect.
+        val centered = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val centeredShell = MaxWidthFrameLayout(context).apply {
+            maxContentWidthDp = queueMaxWidth(layout.widthClass)
+            addView(centered, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER_HORIZONTAL))
+        }
         if (queue.isNotEmpty()) {
-            row {
+            centered.row {
                 addView(makeProgressSummary(context, counts.completed, counts.total))
             }
-            flow {
+            centered.flow {
                 addView(makeCountChip(context, "active", counts.downloading, ThemeManager.colors.primary))
                 addView(makeCountChip(context, "queued", counts.pending, ThemeManager.colors.onSurfaceVariant))
                 addView(makeCountChip(context, "paused", counts.paused, ThemeManager.colors.secondary))
@@ -32,7 +47,8 @@ internal fun ScreenHost.showQueue() {
             }
         }
         if (queue.isEmpty()) {
-            addView(makeEmptyState(context, "No active downloads. Downloaded chapters will appear here.", R.drawable.wna_download))
+            centered.addView(makeEmptyState(context, "No active downloads. Downloaded chapters will appear here.", R.drawable.wna_download))
+            addView(centeredShell, verticalFill())
             return@screen
         }
         val groupList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -40,7 +56,8 @@ internal fun ScreenHost.showQueue() {
             .values
             .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
             .forEach { jobs -> groupList.addView(addStoryGroup(jobs)) }
-        addView(scroll(groupList), verticalFill())
+        centered.addView(scroll(groupList), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        addView(centeredShell, verticalFill())
     }
     // Refresh every 30s so the "retry in Xm" countdown and status pills don't go stale while the
     // screen stays open. Tag the root view so the refresher can tell if the user has navigated away

@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -21,6 +22,7 @@ import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StorySyncEngine
 import com.vinicius741.webnovelarchiver.core.TtsEngine
 import com.vinicius741.webnovelarchiver.core.TtsSessionPlanning
+import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
@@ -47,6 +49,10 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
+    /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
+    override var rerender: (() -> Unit)? = null
+    /** Foldable detector. Created in [onCreate] once engines/storage are up. */
+    override lateinit var foldTracker: FoldTracker
 
     /**
      * The single system-back callback. Always registered, but enabled only while a screen has
@@ -91,6 +97,13 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         setContentView(frame)
         onBackPressedDispatcher.addCallback(this, backCallback)
         requestNotificationPermissionIfNeeded()
+        // Foldable hinge/inner-display detection. The activity declares all configChanges in the
+        // manifest, so fold/unfold/rotation does NOT recreate it — we must observe the fold sensor
+        // (here) and re-render the live screen on change (below) for the responsive layout to adapt.
+        foldTracker = FoldTracker(this, scope)
+        scope.launch {
+            foldTracker.isFoldingFeature.collect { runOnUiThread { rerender?.invoke() } }
+        }
         val resumeTarget = TtsSessionPlanning.readerResumeTarget(storage.getTtsSession()) { storyId ->
             storage.getStory(storyId)
         }
@@ -104,6 +117,18 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override fun onDestroy() {
         ttsEngine.shutdown()
         super.onDestroy()
+    }
+
+    /**
+     * The manifest declares all configChanges (orientation, screenSize, screenLayout, uiMode,
+     * smallestScreenSize), so Android does NOT recreate this activity on rotate/fold/unfold/theme
+     * change. That preserves in-memory state, but the already-built view tree would otherwise never
+     * adapt to the new size. Re-render whatever screen is on the [frame] so the responsive layout
+     * (multi-column library, two-pane details, adaptive reader padding) reflows immediately.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        rerender?.invoke()
     }
 
     private fun applyWindowTheme() {

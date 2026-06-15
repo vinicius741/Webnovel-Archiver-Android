@@ -26,15 +26,18 @@ import com.vinicius741.webnovelarchiver.ui.*
 internal fun ScreenHost.showDetails(storyId: String) {
     val story = storage.getStory(storyId) ?: return showLibrary()
     activeStory = story
+    // Re-render on fold/unfold/rotation so the two-pane ↔ single-scroll layout can switch live.
+    rerender = { showDetails(storyId) }
+    val layout = currentScreenLayout()
     screen(
         title = story.title,
         subtitle = "by ${story.author}",
         onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
-        // D1: the whole body is a single ScrollView (header, actions, description, tags, filter, and
-        // chapter list all scroll together). The "Hide details" toggle still tucks the bulky header
-        // away while browsing, so the cover doesn't push the chapter list below the fold.
-        scrollable = true,
+        // When two-pane we manage scrolling per-pane (info scrolls left, chapters scroll right), so
+        // the body must NOT be wrapped in a single ScrollView. Compact mode keeps the original
+        // single-surface scroll (D1) where header + chapters scroll together.
+        scrollable = !layout.isTwoPane,
     ) {
         // ---- Info panel: header + actions + description + tags ----
         val infoPanel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -131,32 +134,35 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             })
         }
-        // Collapse/expand toggle so the info panel can be tucked away while browsing chapters.
-        var infoExpanded = true
-        val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
-        collapseToggle.setOnClickListener {
-            infoExpanded = !infoExpanded
-            infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
-            collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
-        }
-        addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
-        addView(infoPanel)
 
         // ---- Pinned chapter filter (search + chips) ----
-        addView(makeDivider(context))
+        val chapterSection = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        if (!layout.isTwoPane) {
+            // Compact: collapse toggle so the info panel can be tucked away while browsing chapters.
+            var infoExpanded = true
+            val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
+            collapseToggle.setOnClickListener {
+                infoExpanded = !infoExpanded
+                infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
+                collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
+            }
+            addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
+            addView(infoPanel)
+            chapterSection.addView(makeDivider(context))
+        }
         val search = makeSearchField(context, "Search chapters")
-        addView(search)
+        chapterSection.addView(search)
         val chipsContainer = WrapLayout(context).apply {
             horizontalSpacingDp = Space.SM
             verticalSpacingDp = Space.SM
             setPadding(0, dp(Space.SM), 0, dp(Space.SM))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        addView(chipsContainer)
+        chapterSection.addView(chipsContainer)
 
-        // ---- Chapter List (flows in the same scroll surface as the header above) ----
+        // ---- Chapter List ----
         val chaptersContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        addView(chaptersContainer)
+        chapterSection.addView(chaptersContainer)
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
         var chapterFilter = storage.getChapterFilterSettings().filterMode
@@ -181,8 +187,29 @@ internal fun ScreenHost.showDetails(storyId: String) {
         })
         renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
         renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter)
+
+        if (layout.isTwoPane) {
+            // Two-pane: info scrolls on the left, chapter filter + list scroll on the right. The info
+            // pane stays pinned at a fixed width (RN StoryDetailsLayout: 280–440dp) while the chapter
+            // list takes the remaining space, each with its own scroll surface. No divider is drawn
+            // between the panes — they flow together cleanly.
+            val leftScroll = scroll(infoPanel)
+            val rightScroll = scroll(chapterSection)
+            val shell = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(leftScroll, LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(rightScroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            }
+            addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        } else {
+            // Compact: chapter section flows in the same scroll surface as the info header above.
+            addView(chapterSection)
+        }
     }
 }
+
+/** Fixed width (dp) of the left info pane in the two-pane details layout, within the RN range. */
+private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 
 /**
  * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that

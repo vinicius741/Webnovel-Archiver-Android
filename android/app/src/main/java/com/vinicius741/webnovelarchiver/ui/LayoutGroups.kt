@@ -2,7 +2,9 @@ package com.vinicius741.webnovelarchiver.ui
 
 import android.content.Context
 import android.util.AttributeSet
+import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.FrameLayout
 
 private const val WRAP_CONTENT = ViewGroup.LayoutParams.WRAP_CONTENT
 
@@ -180,4 +182,35 @@ class GridLayout(context: Context) : ViewGroup(context) {
     override fun generateLayoutParams(p: LayoutParams): LayoutParams = MarginLayoutParams(p)
     override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams = MarginLayoutParams(context, attrs)
     override fun generateDefaultLayoutParams(): LayoutParams = MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT)
+}
+
+/**
+ * Full-width wrapper that measures its children at no more than [maxContentWidthDp] and centers them.
+ * This lets screens apply large-screen content caps without forcing an oversized exact width on
+ * compact windows.
+ */
+class MaxWidthFrameLayout(context: Context) : FrameLayout(context) {
+    var maxContentWidthDp: Int = 0
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val mode = MeasureSpec.getMode(widthMeasureSpec)
+        val parentWidth = MeasureSpec.getSize(widthMeasureSpec)
+        val maxWidthPx = if (maxContentWidthDp > 0) context.dp(maxContentWidthDp) else parentWidth
+        val contentWidth = when (mode) {
+            MeasureSpec.UNSPECIFIED -> maxWidthPx
+            else -> minOf(parentWidth, maxWidthPx)
+        }.coerceAtLeast(0)
+
+        super.onMeasure(MeasureSpec.makeMeasureSpec(contentWidth, MeasureSpec.EXACTLY), heightMeasureSpec)
+
+        val resolvedWidth = when (mode) {
+            MeasureSpec.EXACTLY -> parentWidth
+            MeasureSpec.AT_MOST -> minOf(parentWidth, measuredWidth)
+            else -> measuredWidth
+        }
+        setMeasuredDimension(resolvedWidth, measuredHeight)
+    }
+
+    override fun generateDefaultLayoutParams(): LayoutParams =
+        LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL)
 }

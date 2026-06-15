@@ -20,14 +20,21 @@ import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.core.LibraryQuery
+import com.vinicius741.webnovelarchiver.core.LibraryTabSelection
+import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.core.SourceRegistry
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StoryActionGuards
 import com.vinicius741.webnovelarchiver.core.Tab
+import com.vinicius741.webnovelarchiver.core.libraryMaxContentWidth
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showLibrary() {
     activeStory = null
+    // Re-render this screen when the window changes (fold/unfold/rotation) or the Large Screen Layout
+    // setting toggles, so the column count reflows 1 → 2 → 3 live.
+    rerender = { showLibrary() }
+    val layoutResult = currentScreenLayout()
     val stories = storage.getLibrary()
     screen(
         title = "Library",
@@ -47,19 +54,44 @@ internal fun ScreenHost.showLibrary() {
 
         val tabs = storage.getTabs().sortedBy { it.order }
         val search = makeSearchField(context, "Search stories")
-        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        // The story list is a fixed-column [GridLayout] (1/2/3 from the size class) rather than a flat
+        // vertical list, so the Fold's inner display shows multiple columns. columnCount is re-read on
+        // every render so unfolding the device reflows the grid in place.
+        val list = GridLayout(context).apply {
+            columnCount = layoutResult.numColumns.coerceAtLeast(1)
+            horizontalSpacingDp = Space.MD
+            verticalSpacingDp = Space.SM + 2
+        }
 
-        var selectedTabId: String? = "__all__"
+        // Restore the last-selected tab from persisted prefs (survives navigating away AND app restarts).
+        // Resolve against the live tabs so a deleted tab's stale id falls back to All instead of an
+        // empty, un-selectable view.
+        val hasUnassigned = stories.any { it.tabId == null }
+        var selectedTabId: String? = LibraryTabSelection.resolve(
+            storage.getDisplayPreferences().libraryTabId,
+            tabs,
+            hasUnassigned,
+        )
         val selectedTags = mutableSetOf<String>()
         var sortOption = "updated"
         var sortAscending = false
 
+        fun persistTab(id: String?) {
+            val encoded = LibraryTabSelection.encode(id)
+            val display = storage.getDisplayPreferences()
+            // Avoid a disk write when the selection hasn't actually changed.
+            if (display.libraryTabId != encoded) {
+                storage.saveDisplayPreferences(display.copy(libraryTabId = encoded))
+            }
+        }
+
         val rerender = {
-            renderLibraryList(stories, list, search.text.toString(), selectedTabId, selectedTags, sortOption, sortAscending)
+            renderLibraryList(stories, list, layoutResult, search.text.toString(), selectedTabId, selectedTags, sortOption, sortAscending)
         }
 
         addView(makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
             selectedTabId = newTabId
+            persistTab(newTabId)
             rerender()
         })
         addView(makeLibraryFilters(context, search, tabs.isNotEmpty(), stories, selectedTabId, selectedTags, sortOption, sortAscending, { newSort ->
@@ -70,16 +102,22 @@ internal fun ScreenHost.showLibrary() {
             if (!selectedTags.add(tag)) selectedTags.remove(tag)
             rerender()
         }))
-        addView(scroll(list), verticalFill().apply { topMargin = dp(Space.LG) })
+        val gridShell = MaxWidthFrameLayout(context).apply {
+            // Center the grid and cap its width at the size-class content max (760/1040/1320dp) so it
+            // never stretches edge-to-edge on tablets, matching the RN library layout.
+            maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
+            addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
+        }
+        addView(scroll(gridShell), verticalFill().apply { topMargin = dp(Space.LG) })
 
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                renderLibraryList(stories, list, s?.toString().orEmpty(), selectedTabId, selectedTags, sortOption, sortAscending)
+                renderLibraryList(stories, list, layoutResult, s?.toString().orEmpty(), selectedTabId, selectedTags, sortOption, sortAscending)
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
-        renderLibraryList(stories, list, "", selectedTabId, selectedTags, sortOption, sortAscending)
+        renderLibraryList(stories, list, layoutResult, "", selectedTabId, selectedTags, sortOption, sortAscending)
     }
 }
 
@@ -143,7 +181,7 @@ private fun ScreenHost.makeLibraryTabBar(
         tabViews += TabView(id, text, underline)
     }
 
-    addTab("All", "__all__")
+    addTab("All", LibraryTabSelection.ALL_TAB_ID)
     if (unassignedCount > 0) {
         addTab("Unassigned ($unassignedCount)", null)
     }
@@ -411,7 +449,8 @@ private fun Context.iconButtonSmall(iconRes: Int, desc: String, onClick: () -> U
 
 internal fun ScreenHost.renderLibraryList(
     stories: List<Story>,
-    list: LinearLayout,
+    list: GridLayout,
+    layout: ScreenLayoutResult,
     filter: String,
     selectedTabId: String?,
     selectedTags: Set<String>,
@@ -419,45 +458,17 @@ internal fun ScreenHost.renderLibraryList(
     sortAscending: Boolean,
 ) {
     list.removeAllViews()
+    // Re-apply the column count in case the window refolded since the grid was created.
+    list.columnCount = layout.numColumns.coerceAtLeast(1)
     val visible = LibraryQuery.filterAndSort(stories, filter, selectedTabId, selectedTags, sortOption, sortAscending)
     if (visible.isEmpty()) {
         list.addView(makeEmptyState(app, "No novels match this view.", R.drawable.wna_search))
         return
     }
+    val compact = layout.numColumns >= 2
     visible.forEach { story ->
         list.addView(list.card {
-            val content = row {
-                addView(coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false))
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(makeText(context, story.title, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
-                        maxLines = 2
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    })
-                    addView(makeText(context, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                        setPadding(0, dp(Space.XS), 0, 0)
-                    })
-                    SourceRegistry.getProvider(story.sourceUrl)?.let {
-                        addView(makeText(context, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
-                            setPadding(0, dp(Space.XS), 0, 0)
-                        })
-                    }
-                    story.score?.takeIf { it.isNotBlank() }?.let { score ->
-                        addView(scoreRow(score))
-                    }
-                    story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
-                        addView(makeText(context, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                            setPadding(0, dp(Space.XS), 0, 0)
-                        })
-                    }
-                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                if (story.isArchived == true) {
-                    addView(ImageView(context).apply {
-                        setImageDrawable(context.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
-                        layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
-                    })
-                }
-            }
+            val content = if (compact) buildCompactStoryCard(story) else buildStoryCard(story)
             content.background = selectableRipple(ThemeManager.colors.onSurface)
             content.isClickable = true
             content.setOnClickListener { showDetails(story.id) }
@@ -465,6 +476,7 @@ internal fun ScreenHost.renderLibraryList(
                 showStoryActionsDialog(story)
                 true
             }
+            addView(content)
             if (story.totalChapters > 0) {
                 // L5: show the download-count text alongside the thin progress bar so you don't have
                 // to open the story to see "12 / 140 chapters".
@@ -472,6 +484,81 @@ internal fun ScreenHost.renderLibraryList(
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(Space.MD) }
                 })
             }
+        })
+    }
+}
+
+/** Full-width horizontal card content for the single-column library: 80×120 cover + stacked text. */
+private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
+    val row = LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+    row.addView(coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false))
+    row.addView(LinearLayout(app).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(makeText(app, story.title, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        addView(makeText(app, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            setPadding(0, dp(Space.XS), 0, 0)
+        })
+        SourceRegistry.getProvider(story.sourceUrl)?.let {
+            addView(makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+                setPadding(0, dp(Space.XS), 0, 0)
+            })
+        }
+        story.score?.takeIf { it.isNotBlank() }?.let { score ->
+            addView(scoreRow(score))
+        }
+        story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
+            addView(makeText(app, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                setPadding(0, dp(Space.XS), 0, 0)
+            })
+        }
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    if (story.isArchived == true) {
+        row.addView(ImageView(app).apply {
+            setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
+        })
+    }
+    return row
+}
+
+/**
+ * Vertical "compact" card content for the multi-column library grid: smaller 64×96 cover stacked
+ * above the text, so a narrow grid cell still shows cover + title + author. Mirrors the RN StoryCard
+ * compact mode (64×96 cover, tighter layout).
+ */
+private fun ScreenHost.buildCompactStoryCard(story: Story): LinearLayout = LinearLayout(app).apply {
+    orientation = LinearLayout.VERTICAL
+    addView(coverImage(story, widthDp = 64, heightDp = 96, tapToOpen = false).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+    })
+    addView(makeText(app, story.title, Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        setPadding(0, dp(Space.SM), 0, 0)
+    })
+    addView(makeText(app, "by ${story.author}", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+        maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        setPadding(0, dp(Space.XS), 0, 0)
+    })
+    SourceRegistry.getProvider(story.sourceUrl)?.let {
+        addView(makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+            setPadding(0, dp(Space.XS), 0, 0)
+        })
+    }
+    story.score?.takeIf { it.isNotBlank() }?.let { score ->
+        addView(scoreRow(score).apply { setPadding(0, dp(Space.XS), 0, 0) })
+    }
+    if (story.isArchived == true) {
+        addView(ImageView(app).apply {
+            setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { topMargin = dp(Space.XS) }
         })
     }
 }

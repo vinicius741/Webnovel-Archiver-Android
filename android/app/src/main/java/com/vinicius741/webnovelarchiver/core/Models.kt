@@ -73,10 +73,17 @@ data class ChapterFilterSettings(
 data class DisplayPreferences(
     var activeThemeId: String = "obsidian",
     var foldLayoutMode: String = "auto",
+    /** User override for how the app treats the screen size/fold: "auto" (detect), "cover" (force
+     *  phone/1-column), or "inner" (force tablet/multi-column). Fed into [resolveScreenLayout].
+     *  NOTE: unrelated to [foldLayoutMode], which only governs EPUB volume nesting. */
+    var screenLayoutMode: String = "auto",
     /** Multiplier applied to the reader WebView base font-size (1.0 = 18px). Clamped to 0.8–1.6. */
     var readerFontScale: Float = 1.0f,
     /** When true the reader WebView renders on a dark background (dark-reader toggle). */
     var readerDark: Boolean = false,
+    /** Persisted Library tab selection. Encoded form of the runtime id (see [LibraryTabSelection]);
+     *  `null`/blank means "never set", which resolves to the All tab. Survives app restarts. */
+    var libraryTabId: String? = null,
 )
 
 data class RegexCleanupRule(

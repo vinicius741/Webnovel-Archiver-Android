@@ -70,6 +70,9 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.17.0'
     implementation 'androidx.activity:activity-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
+    // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
+    implementation 'androidx.window:window:1.4.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jsoup:jsoup:1.21.2'

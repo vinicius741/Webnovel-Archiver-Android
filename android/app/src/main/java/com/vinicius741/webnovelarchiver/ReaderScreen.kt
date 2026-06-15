@@ -2,16 +2,22 @@ package com.vinicius741.webnovelarchiver
 
 import android.view.Gravity
 import android.webkit.WebView
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.core.ReaderContentRenderer
+import com.vinicius741.webnovelarchiver.core.ScreenLayoutPlanning
 import com.vinicius741.webnovelarchiver.core.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.core.TextCleanup
+import com.vinicius741.webnovelarchiver.core.readerSidePadding
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
     val story = storage.getStory(storyId) ?: return
     val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return
     val currentIndex = story.chapters.indexOfFirst { it.id == chapter.id }
+    // Re-render on fold/unfold/rotation so the reading column + side padding can reflow.
+    rerender = { showReader(story.id, chapter.id) }
+    val layout = currentScreenLayout()
 
     // Build the reader WebView + its live render function up front so the header action panels can
     // mutate the same `display` instance and re-render the WebView in place (live preview behind
@@ -69,9 +75,20 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
         actions = actions,
     ) {
         renderReader()
-        // Body is now the WebView only — it fills the area between the app bar and the docked
-        // chapter-nav bar below, so the reading content is no longer squeezed under button rows.
-        addView(reader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        // Center the WebView in a capped reading column (800dp max) with width-class side padding,
+        // so text lines stay comfortable on the Fold's wide inner display instead of spanning edge
+        // to edge. The column still fills all vertical space between the app bar and the nav bar.
+        val sidePad = readerSidePadding(layout.widthClass)
+        val column = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(sidePad), 0, dp(sidePad), 0)
+        }
+        column.addView(reader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        addView(MaxWidthFrameLayout(context).apply {
+            // Cap the column width and center it; compact screens still measure at the parent width.
+            maxContentWidthDp = ScreenLayoutPlanning.READER_COLUMN_MAX_WIDTH
+            addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL))
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
         // Docked chapter navigation: thumb-reachable Prev / Next pinned at the bottom of the screen.
         // Disabled at the story boundaries so the controls always communicate their availability.

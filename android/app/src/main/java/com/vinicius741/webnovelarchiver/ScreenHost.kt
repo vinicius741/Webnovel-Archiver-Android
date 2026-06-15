@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.core.EpubEngine
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StorySyncEngine
 import com.vinicius741.webnovelarchiver.core.TtsEngine
+import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -46,6 +47,15 @@ interface ScreenHost {
      */
     var backHandler: (() -> Unit)?
     val frame: FrameLayout
+    /**
+     * Re-renders the screen that is currently on the [frame]. Each screen sets this to a lambda that
+     * re-invokes its own `showXxx()` (which rebuilds the view tree), so fold/unfold/rotation and the
+     * "Large Screen Layout" setting toggle can reflow the live screen in place. `null` until a screen
+     * opts in.
+     */
+    var rerender: (() -> Unit)?
+    /** Foldable hinge/inner-display detector (androidx.window). Read on every screen render. */
+    val foldTracker: FoldTracker
     val importBackupLauncher: ActivityResultLauncher<Array<String>>
     val importFullBackupLauncher: ActivityResultLauncher<Array<String>>
 }

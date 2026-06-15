@@ -12,12 +12,16 @@ import com.vinicius741.webnovelarchiver.core.SettingsValidation
 import com.vinicius741.webnovelarchiver.core.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.core.SourceRegistry
 import com.vinicius741.webnovelarchiver.core.TabPlanning
+import com.vinicius741.webnovelarchiver.core.settingsMaxWidth
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.*
 import java.util.UUID
 
 internal fun ScreenHost.showSettings() {
     val displayPreferences = storage.getDisplayPreferences()
+    // Re-render so toggling "Large Screen Layout" / width changes re-centers the capped content live.
+    rerender = { showSettings() }
+    val layout = currentScreenLayout()
     screen(title = "Settings", onBack = { showLibrary() }, scrollable = true) {
         section("Appearance")
         text("Theme", Type.TITLE_SMALL)
@@ -28,8 +32,27 @@ internal fun ScreenHost.showSettings() {
             }
         }
         spacer(Space.MD)
-        text("Fold Layout", Type.TITLE_SMALL)
-        // S6: explain what fold layout controls.
+        text("Large Screen Layout", Type.TITLE_SMALL)
+        // Controls how the app treats the screen on foldables/large displays. "Auto" detects the fold
+        // sensor + window size, "Cover" forces a single-column phone layout, "Inner" forces the
+        // multi-column tablet layout. This is the native equivalent of the RN app's FoldLayoutMode.
+        text("How multi-column layouts behave on large/folded screens. Auto detects the display.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+        spacer(Space.XS)
+        flow(spacing = Space.MD) {
+            chip("Auto", displayPreferences.screenLayoutMode == "auto") {
+                storage.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "auto")); showSettings()
+            }
+            chip("Cover", displayPreferences.screenLayoutMode == "cover") {
+                storage.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "cover")); showSettings()
+            }
+            chip("Inner", displayPreferences.screenLayoutMode == "inner") {
+                storage.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "inner")); showSettings()
+            }
+        }
+        spacer(Space.MD)
+        text("EPUB Volume Folding", Type.TITLE_SMALL)
+        // S6: explain what EPUB volume folding controls. Renamed from "Fold Layout" to avoid confusion
+        // with the screen-fold "Large Screen Layout" setting above — this one is about EPUB structure.
         text("How chapters fold inside EPUB volumes. Auto picks based on length.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         spacer(Space.XS)
         flow(spacing = Space.MD) {
@@ -50,7 +73,7 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_folder, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
         divider()
         section("Data")
-        settingRow(R.drawable.wna_brush, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
+        settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
         settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {
             confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") { storage.clearAll(); showLibrary() }
         }
@@ -60,6 +83,17 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") { importBackupLauncher.launch(arrayOf("application/json", "text/*")) }
         settingRow(R.drawable.wna_archive, "Create Full Backup", "Save settings, tabs, library, and chapters to a local ZIP file") { exportAndShare { storage.exportFullBackup() } }
         settingRow(R.drawable.wna_archive, "Restore Full Backup", "Replace local data from a full ZIP backup") { importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
+        // Width cap: on large screens, constrain this content LinearLayout and center it within the
+        // ScrollView so Settings doesn't stretch edge-to-edge (expanded → 840dp, medium → 720dp).
+        // No-op on compact widths where the cap exceeds the screen.
+        val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
+        if (layout.widthClass != com.vinicius741.webnovelarchiver.core.WidthClass.COMPACT) {
+            layoutParams = (layoutParams as? LinearLayout.LayoutParams)?.apply {
+                width = context.dp(contentMaxWidthDp)
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+            } ?: layoutParams
+            (parent as? android.widget.ScrollView)?.isFillViewport = true
+        }
     }
 }
 

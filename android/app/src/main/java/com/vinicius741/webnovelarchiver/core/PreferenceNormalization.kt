@@ -38,7 +38,12 @@ object PreferenceNormalization {
         preferences.copy(
             activeThemeId = preferences.activeThemeId.ifBlank { DisplayPreferences().activeThemeId },
             foldLayoutMode = preferences.foldLayoutMode.takeIf { it in foldLayoutModes } ?: DisplayPreferences().foldLayoutMode,
+            screenLayoutMode = preferences.screenLayoutMode.takeIf { it in ScreenLayoutPlanning.screenLayoutModes }
+                ?: DisplayPreferences().screenLayoutMode,
             readerFontScale = preferences.readerFontScale.coerceIn(READER_FONT_SCALE_MIN, READER_FONT_SCALE_MAX),
+            // A blank persisted value means "never set" (resolves to All on render); normalize all
+            // whitespace to that same state rather than carrying it through.
+            libraryTabId = preferences.libraryTabId?.takeIf { it.isNotBlank() },
         )
 
     fun ttsSettings(settings: TtsSettings): TtsSettings = settings.copy(

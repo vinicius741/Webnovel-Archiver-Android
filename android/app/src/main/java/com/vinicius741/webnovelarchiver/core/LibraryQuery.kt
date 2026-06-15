@@ -12,7 +12,7 @@ object LibraryQuery {
         val sourceNames = SourceRegistry.all().map { it.name }.toSet()
         val query = searchQuery.trim()
         val filtered = stories
-            .filter { selectedTabId == "__all__" || it.tabId == selectedTabId }
+            .filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
             .filter { story ->
                 query.isBlank() ||
                     story.title.contains(query, ignoreCase = true) ||
@@ -58,7 +58,7 @@ object LibraryQuery {
         stories: List<Story>,
         selectedTabId: String?,
     ): Pair<List<Pair<String, Int>>, List<Pair<String, Int>>> {
-        val visibleStories = stories.filter { selectedTabId == "__all__" || it.tabId == selectedTabId }
+        val visibleStories = stories.filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
         val sources = visibleStories
             .mapNotNull { SourceRegistry.getProvider(it.sourceUrl)?.name }
             .groupingBy { it }

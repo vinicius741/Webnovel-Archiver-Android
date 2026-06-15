@@ -14,9 +14,15 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
+import androidx.window.layout.WindowMetricsCalculator
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ScreenHost
+import com.vinicius741.webnovelarchiver.core.DisplayPreferences
 import com.vinicius741.webnovelarchiver.core.DownloadStatus
+import com.vinicius741.webnovelarchiver.core.ScreenLayout
+import com.vinicius741.webnovelarchiver.core.ScreenLayoutMode
+import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
+import com.vinicius741.webnovelarchiver.core.resolveScreenLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -24,6 +30,28 @@ import java.net.URL
 
 /** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)
+
+/**
+ * Captures the live window dimensions (dp) + fold sensor + user "Large Screen Layout" override into
+ * a [ScreenLayout] input. Uses Jetpack WindowManager's [WindowMetricsCalculator] so the size reflects
+ * the real window (incl. foldable inner display / multi-window), not the legacy display metrics.
+ */
+internal fun ScreenHost.screenMetrics(): ScreenLayout {
+    val bounds = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(app).bounds
+    val density = app.resources.displayMetrics.density
+    val widthDp = ((bounds.width().toFloat()) / density.coerceAtLeast(0.001f)).toInt().coerceAtLeast(0)
+    val heightDp = ((bounds.height().toFloat()) / density.coerceAtLeast(0.001f)).toInt().coerceAtLeast(0)
+    val prefs: DisplayPreferences = storage.getDisplayPreferences()
+    return ScreenLayout(
+        widthDp = widthDp,
+        heightDp = heightDp,
+        hasFoldingFeature = foldTracker.isFoldingFeature.value,
+        mode = ScreenLayoutMode.fromStored(prefs.screenLayoutMode),
+    )
+}
+
+/** Resolves the current [ScreenLayoutResult] for the live window. Screens call this on every render. */
+internal fun ScreenHost.currentScreenLayout(): ScreenLayoutResult = resolveScreenLayout(screenMetrics())
 
 internal fun ScreenHost.scroll(child: View): ScrollView = ScrollView(app).apply {
     // Fill the allocated area when content is short; scroll when it overflows.
