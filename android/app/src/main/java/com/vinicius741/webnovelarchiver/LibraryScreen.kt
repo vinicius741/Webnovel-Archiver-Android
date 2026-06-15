@@ -166,7 +166,6 @@ private fun ScreenHost.makeLibraryTabBar(
         val tabContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(0, 0, dp(Space.SM + 2), 0)
             addView(text)
             addView(underline)
             isClickable = true
@@ -177,7 +176,13 @@ private fun ScreenHost.makeLibraryTabBar(
                 onSelect(id)
             }
         }
-        row.addView(tabContainer)
+        // Space tabs apart with an end margin (outside the ripple) rather than right padding, so the
+        // label and underline stay centered within each tab's tap target instead of shifting left.
+        val tabLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+        ).apply { marginEnd = dp(Space.SM + 2) }
+        row.addView(tabContainer, tabLp)
         tabViews += TabView(id, text, underline)
     }
 

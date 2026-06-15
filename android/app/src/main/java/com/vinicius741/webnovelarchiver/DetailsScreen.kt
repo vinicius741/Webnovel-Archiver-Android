@@ -192,12 +192,14 @@ internal fun ScreenHost.showDetails(storyId: String) {
             // Two-pane: info scrolls on the left, chapter filter + list scroll on the right. The info
             // pane stays pinned at a fixed width (RN StoryDetailsLayout: 280–440dp) while the chapter
             // list takes the remaining space, each with its own scroll surface. No divider is drawn
-            // between the panes — they flow together cleanly.
+            // between the panes — a marginEnd on the info pane keeps the columns from touching.
             val leftScroll = scroll(infoPanel)
             val rightScroll = scroll(chapterSection)
             val shell = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                addView(leftScroll, LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT))
+                addView(leftScroll, LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                    marginEnd = dp(DETAILS_TWO_PANE_GAP_DP)
+                })
                 addView(rightScroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
             }
             addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -210,6 +212,10 @@ internal fun ScreenHost.showDetails(storyId: String) {
 
 /** Fixed width (dp) of the left info pane in the two-pane details layout, within the RN range. */
 private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
+
+/** Gap (dp) between the info pane and the chapter list in the two-pane layout, replacing the old
+ *  1dp divider with clear whitespace. */
+private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
 
 /**
  * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that
