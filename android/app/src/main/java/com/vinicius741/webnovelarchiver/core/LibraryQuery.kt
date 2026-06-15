@@ -45,6 +45,19 @@ object LibraryQuery {
         availableFilterLabelsWithCounts(stories, selectedTabId).map { it.first }
 
     fun availableFilterLabelsWithCounts(stories: List<Story>, selectedTabId: String?): List<Pair<String, Int>> {
+        val (sources, tags) = availableFilterGroups(stories, selectedTabId)
+        return sources + tags
+    }
+
+    /**
+     * Splits the available filter labels into two groups so the UI can render source filters
+     * distinctly from genre tags (audit L4): [sourceNamesWithCounts, tagsWithCounts].
+     * Sources come from registered providers; tags come from each story's `tags`.
+     */
+    fun availableFilterGroups(
+        stories: List<Story>,
+        selectedTabId: String?,
+    ): Pair<List<Pair<String, Int>>, List<Pair<String, Int>>> {
         val visibleStories = stories.filter { selectedTabId == "__all__" || it.tabId == selectedTabId }
         val sources = visibleStories
             .mapNotNull { SourceRegistry.getProvider(it.sourceUrl)?.name }
@@ -61,7 +74,7 @@ object LibraryQuery {
             .entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .map { it.key to it.value }
-        return sources + tags
+        return sources to tags
     }
 
     private fun parseScore(score: String?): Double {

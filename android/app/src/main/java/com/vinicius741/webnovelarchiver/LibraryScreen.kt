@@ -2,7 +2,9 @@ package com.vinicius741.webnovelarchiver
 
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -91,7 +93,6 @@ private fun ScreenHost.makeLibraryTabBar(
     val unassignedCount = stories.count { it.tabId == null }
     val scroll = HorizontalScrollView(context).apply {
         isHorizontalScrollBarEnabled = false
-        setPadding(0, dp(8), 0, 0)
     }
     val row = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -100,18 +101,18 @@ private fun ScreenHost.makeLibraryTabBar(
     fun addTab(label: String, id: String?, isSelected: Boolean) {
         val text = makeText(context, label, Type.LABEL_LARGE, if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant).apply {
             typeface = Typeface.create(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
-            setPadding(dp(4), dp(10), dp(4), dp(10))
+            setPadding(dp(Space.XS), dp(Space.XS + 2), dp(Space.XS), dp(Space.XS + 2))
             minWidth = dp(60)
             gravity = Gravity.CENTER
         }
         val underline = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2)).apply { topMargin = dp(2) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
             setBackgroundColor(if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.outlineVariant)
         }
         val tabContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(0, 0, dp(16), 0)
+            setPadding(0, 0, dp(Space.SM), 0)
             addView(text)
             addView(underline)
             isClickable = true
@@ -147,7 +148,6 @@ private fun ScreenHost.makeLibraryFilters(
 ): View {
     val filtersContainer = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(0, dp(8), 0, 0)
     }
 
     // Search + sort row
@@ -158,28 +158,49 @@ private fun ScreenHost.makeLibraryFilters(
     searchRow.addView(search, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
     val sortIcon = if (sortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
-    val sortButton = context.iconButtonSmall(sortIcon, "Sort") {
-        showSortDialog(context, sortOption, sortAscending, onSortChanged)
+    // L2: a labeled chip communicates the active sort + direction instead of a bare, stateless icon.
+    val sortLabel = sortOptionLabel(sortOption) + if (sortAscending) " ↑" else " ↓"
+    val sortButton = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(Space.MD), dp(Space.MD), dp(Space.MD), dp(Space.MD))
+        background = ripple(strokeBg(Color.TRANSPARENT, context.dp(ThemeManager.shapes.chipRadius).toFloat(), ThemeManager.colors.outline, context.dp(1)), context.dp(ThemeManager.shapes.chipRadius).toFloat(), ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { showSortDialog(context, sortOption, sortAscending, onSortChanged) }
+        addView(ImageView(context).apply {
+            setImageDrawable(context.tintedIcon(sortIcon, ThemeManager.colors.onSurfaceVariant))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams = LinearLayout.LayoutParams(dp(Space.SM + Space.XS + 2), dp(Space.SM + Space.XS + 2)).apply { rightMargin = dp(Space.XS + 2) }
+        })
+        addView(makeText(context, sortLabel, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
     }
-    searchRow.addView(sortButton, LinearLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(8) })
+    searchRow.addView(sortButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(Space.SM) })
     filtersContainer.addView(searchRow)
 
-    // Tag chips
-    val labelsWithCounts = LibraryQuery.availableFilterLabelsWithCounts(stories, selectedTabId)
-    if (labelsWithCounts.isNotEmpty()) {
+    // Tag chips — L4: render source filters (globe icon, filled) separately from genre tags so the
+    // two filter kinds are visually distinguishable instead of one flat row of identical chips.
+    val (sourceLabels, tagLabels) = LibraryQuery.availableFilterGroups(stories, selectedTabId)
+    if (sourceLabels.isNotEmpty() || tagLabels.isNotEmpty()) {
         val tagScroll = HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(0, dp(12), 0, 0)
         }
         val tagRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
         }
-        labelsWithCounts.take(10).forEach { (label, count) ->
+        sourceLabels.take(4).forEach { (label, count) ->
+            val selected = selectedTags.contains(label)
+            val chip = makeSourceChip(context, label, count, selected) { onTagToggled(label) }
+            tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                rightMargin = dp(Space.XS)
+            })
+        }
+        tagLabels.take(8).forEach { (label, count) ->
             val chipLabel = "$label ($count)"
             val selected = selectedTags.contains(label)
             val chip = makeChip(context, chipLabel, selected) { onTagToggled(label) }
             tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dp(8)
+                rightMargin = dp(Space.XS)
             })
         }
         tagScroll.addView(tagRow)
@@ -199,14 +220,21 @@ private fun ScreenHost.makeLibraryFilters(
         addView(toggleIcon)
         if (hasActiveFilters) {
             addView(View(context).apply {
-                layoutParams = FrameLayout.LayoutParams(dp(8), dp(8), Gravity.TOP or Gravity.END).apply { topMargin = dp(6); rightMargin = dp(6) }
-                background = roundedBg(ThemeManager.colors.primary, dp(4).toFloat())
+                layoutParams = FrameLayout.LayoutParams(dp(Space.SM), dp(Space.SM), Gravity.TOP or Gravity.END).apply { topMargin = dp(Space.XS + 2); rightMargin = dp(Space.XS + 2) }
+                background = roundedBg(ThemeManager.colors.primary, dp(Space.XS).toFloat())
             })
         }
     }
     val headerRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
+    }
+    // L3: pair the chevron with a "Filters" label so the toggle is discoverable instead of a lone arrow.
+    headerRow.addView(makeText(context, "Filters", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+        setPadding(0, 0, dp(Space.XS + 2), 0)
+    })
+    if (hasActiveFilters) {
+        headerRow.addView(makeText(context, "•", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply { setPadding(0, 0, dp(Space.XS + 2), 0) })
     }
     headerRow.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
     headerRow.addView(toggleWrap)
@@ -238,12 +266,23 @@ private fun showSortDialog(
         "score" to "Score",
     )
 
+    val colors = ThemeManager.colors
+    val shapes = ThemeManager.shapes
+    val radiusPx = context.dp(shapes.dialogRadius).toFloat()
+
     val dialogView = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
+        setPadding(context.dp(24), context.dp(20), context.dp(24), context.dp(12))
+        background = roundedBg(colors.surface, radiusPx)
+        roundCorners(shapes.dialogRadius.toFloat())
     }
 
-    val checkIcon = context.tintedIcon(R.drawable.wna_check, ThemeManager.colors.primary)
+    dialogView.addView(makeText(context, "Sort by", Type.TITLE_LARGE, colors.onSurface))
+    dialogView.addView(View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(16))
+    })
+
+    val checkIcon = context.tintedIcon(R.drawable.wna_check, colors.primary)
     var dialogRef: AlertDialog? = null
 
     options.forEach { (key, label) ->
@@ -254,13 +293,13 @@ private fun showSortDialog(
             setPadding(0, context.dp(12), 0, context.dp(12))
             isClickable = true
             isFocusable = true
-            background = selectableRipple(ThemeManager.colors.onSurface)
+            background = selectableRipple(colors.onSurface)
         }
         val check = ImageView(context).apply {
             layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
             if (isSelected) setImageDrawable(checkIcon)
         }
-        val text = makeText(context, label, Type.BODY_LARGE, ThemeManager.colors.onSurface)
+        val text = makeText(context, label, Type.BODY_LARGE, colors.onSurface)
         row.addView(check)
         row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row.setOnClickListener {
@@ -272,42 +311,60 @@ private fun showSortDialog(
     }
 
     // Direction toggle row
+    dialogView.addView(makeDivider(context))
     val directionRow = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, context.dp(12), 0, context.dp(12))
         isClickable = true
         isFocusable = true
-        background = selectableRipple(ThemeManager.colors.onSurface)
+        background = selectableRipple(colors.onSurface)
     }
     val directionIcon = context.tintedIcon(
         if (ascending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending,
-        ThemeManager.colors.primary,
+        colors.primary,
     )
     val directionImage = ImageView(context).apply {
         layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
         setImageDrawable(directionIcon)
     }
-    val directionText = makeText(context, if (ascending) "Ascending" else "Descending", Type.BODY_LARGE, ThemeManager.colors.onSurface)
+    val directionText = makeText(context, if (ascending) "Ascending" else "Descending", Type.BODY_LARGE, colors.onSurface)
     directionRow.addView(directionImage)
     directionRow.addView(directionText)
     directionRow.setOnClickListener {
         onChanged(currentOption to !ascending)
         dialogRef?.dismiss()
     }
-    dialogView.addView(makeDivider(context))
     dialogView.addView(directionRow)
 
+    val cancelButton = makeButton(context, "Cancel", Btn.TEXT) { dialogRef?.dismiss() }
+    dialogView.addView(LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.END
+        setPadding(0, context.dp(8), 0, 0)
+        addView(cancelButton)
+    })
+
     dialogRef = AlertDialog.Builder(context)
-        .setTitle("Sort by")
         .setView(dialogView)
-        .setNegativeButton("Cancel", null)
-        .show()
+        .create()
+    dialogRef.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+    dialogRef.show()
 }
 
 private fun defaultDirectionFor(option: String): Boolean = when (option) {
     "title" -> true
     else -> false
+}
+
+/** Short human label for a sort option key, shown on the Library sort chip. */
+private fun sortOptionLabel(option: String): String = when (option) {
+    "title" -> "Title"
+    "lastUpdated" -> "Updated"
+    "dateAdded" -> "Added"
+    "totalChapters" -> "Chapters"
+    "score" -> "Score"
+    else -> "Default"
 }
 
 private fun Context.iconButtonSmall(iconRes: Int, desc: String, onClick: () -> Unit): ImageView {
@@ -316,7 +373,7 @@ private fun Context.iconButtonSmall(iconRes: Int, desc: String, onClick: () -> U
         contentDescription = desc
         setImageDrawable(tintedIcon(iconRes, ThemeManager.colors.onSurfaceVariant))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(8), dp(8), dp(8), dp(8))
+        setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
         background = selectableRipple(ThemeManager.colors.onSurface)
         isClickable = true
         isFocusable = true
@@ -351,11 +408,11 @@ internal fun ScreenHost.renderLibraryList(
                         ellipsize = android.text.TextUtils.TruncateAt.END
                     })
                     addView(makeText(context, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                        setPadding(0, dp(4), 0, 0)
+                        setPadding(0, dp(Space.XS), 0, 0)
                     })
                     SourceRegistry.getProvider(story.sourceUrl)?.let {
                         addView(makeText(context, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
-                            setPadding(0, dp(4), 0, 0)
+                            setPadding(0, dp(Space.XS), 0, 0)
                         })
                     }
                     story.score?.takeIf { it.isNotBlank() }?.let { score ->
@@ -363,7 +420,7 @@ internal fun ScreenHost.renderLibraryList(
                     }
                     story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
                         addView(makeText(context, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                            setPadding(0, dp(4), 0, 0)
+                            setPadding(0, dp(Space.XS), 0, 0)
                         })
                     }
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -382,8 +439,10 @@ internal fun ScreenHost.renderLibraryList(
                 true
             }
             if (story.totalChapters > 0) {
-                addView(makeProgress(context, story.downloadedChapters.toFloat() / story.totalChapters).apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4)).apply { topMargin = dp(12) }
+                // L5: show the download-count text alongside the thin progress bar so you don't have
+                // to open the story to see "12 / 140 chapters".
+                addView(makeProgressSummary(context, story.downloadedChapters, story.totalChapters).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(Space.MD) }
                 })
             }
         })
@@ -413,34 +472,46 @@ internal fun ScreenHost.showLibrarySelection() {
     val stories = storage.getLibrary()
     val selectedIds = mutableSetOf<String>()
     screen(title = "Select Novels", onBack = { showLibrary() }) {
+        // X3: select-all / deselect-all affordance.
         flow {
-            button("Move", Btn.TONAL, R.drawable.wna_folder) {
-                if (selectedIds.isEmpty()) toast("No novels selected") else showMoveStoriesDialog(selectedIds.toList())
+            button("Select All", Btn.TEXT, R.drawable.wna_check) {
+                selectedIds.clear()
+                selectedIds.addAll(stories.map { it.id })
+                showLibrarySelection()
             }
-            button("Delete", Btn.ERROR, R.drawable.wna_delete) {
-                if (selectedIds.isEmpty()) {
-                    toast("No novels selected")
-                } else {
-                    confirm("Delete ${selectedIds.size} selected novels?") {
-                        selectedIds.forEach { storage.deleteStory(it) }
-                        showLibrary()
-                    }
-                }
+            button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
+                selectedIds.clear()
+                showLibrarySelection()
             }
         }
         addView(scroll(LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
+            // X1: card-style rows with title/author instead of bare CheckBoxes.
             stories.forEach { story ->
-                val cb = CheckBox(app).apply {
-                    text = "${story.title} - ${story.author}"
-                    setOnCheckedChangeListener { _, checked ->
-                        if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
-                    }
-                }
-                styledCheckBox(cb)
-                addView(cb)
+                addView(makeSelectableCardRow(
+                    context,
+                    title = story.title,
+                    subtitle = story.author,
+                    selected = selectedIds.contains(story.id),
+                ) { checked ->
+                    if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
+                })
             }
         }), verticalFill())
+        // X2: bulk actions docked at the bottom as full-width primary CTAs.
+        fullButton("Move ${selectedIds.size} Selected", Btn.TONAL, R.drawable.wna_folder, bottomMarginDp = 8) {
+            if (selectedIds.isEmpty()) toast("No novels selected") else showMoveStoriesDialog(selectedIds.toList())
+        }
+        fullButton("Delete Selected", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) {
+            if (selectedIds.isEmpty()) {
+                toast("No novels selected")
+            } else {
+                confirm("Delete ${selectedIds.size} selected novels?", confirmLabel = "Delete") {
+                    selectedIds.forEach { storage.deleteStory(it) }
+                    showLibrary()
+                }
+            }
+        }
     }
 }
 
@@ -468,22 +539,23 @@ internal fun ScreenHost.showAddStory() {
     screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
         val url = makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI)
         addView(url)
-        section("Save to tab")
-        val tabSpinner = Spinner(context)
-        val tabLabels = listOf("Unassigned") + tabs.map { it.name }
-        tabSpinner.adapter = ArrayAdapter(app, android.R.layout.simple_spinner_dropdown_item, tabLabels)
-        if (tabs.isNotEmpty()) addView(tabSpinner)
-        flow {
-            button("Fetch Story", Btn.FILLED, R.drawable.wna_download) {
-                val tabId = tabs.getOrNull(tabSpinner.selectedItemPosition - 1)?.id
-                syncStory(url.text.toString(), tabId)
-            }
+        // A1: only render the "Save to tab" section when there are tabs to choose from.
+        var tabSpinner: Spinner? = null
+        if (tabs.isNotEmpty()) {
+            section("Save to tab")
+            tabSpinner = Spinner(context)
+            val tabLabels = listOf("Unassigned") + tabs.map { it.name }
+            tabSpinner.adapter = ArrayAdapter(app, android.R.layout.simple_spinner_dropdown_item, tabLabels)
+            addView(tabSpinner)
         }
-        section("Or browse")
-        flow {
-            button("Royal Road", Btn.TONAL, R.drawable.wna_globe) { showBrowser("https://www.royalroad.com") }
-            button("Scribble Hub", Btn.TONAL, R.drawable.wna_globe) { showBrowser("https://www.scribblehub.com") }
+        // A2: the primary action is full-width for a consistent, large tap target.
+        fullButton("Fetch Story", Btn.FILLED, R.drawable.wna_download) {
+            val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
+            val tabId = tabs.getOrNull(spinnerPos - 1)?.id
+            syncStory(url.text.toString(), tabId)
         }
+        // A3: the "Or browse" Royal Road / Scribble Hub buttons were removed — they open the same
+        // Browser screen the app-bar globe does, just with a preset URL. Use the Browser to browse.
     }
 }
 
