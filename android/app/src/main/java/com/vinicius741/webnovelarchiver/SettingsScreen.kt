@@ -30,8 +30,9 @@ internal fun ScreenHost.showSettings() {
                 chip(theme.name, displayPreferences.activeThemeId == theme.id) { saveThemePreference(theme.id) }
             }
         }
-        text("Active: ${displayPreferences.activeThemeId}", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
         text("Fold Layout", Type.TITLE_SMALL)
+        // S6: explain what fold layout controls.
+        text("How chapters fold inside EPUB volumes. Auto picks based on length.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         flow {
             chip("Auto", displayPreferences.foldLayoutMode == "auto") { storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "auto")); showSettings() }
             chip("Cover", displayPreferences.foldLayoutMode == "cover") { storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "cover")); showSettings() }
@@ -42,21 +43,32 @@ internal fun ScreenHost.showSettings() {
         val concurrency = labeledField("Concurrency", settings.downloadConcurrency.toString(), InputType.TYPE_CLASS_NUMBER)
         val delay = labeledField("Delay (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
         val maxChapters = labeledField("Max chapters per EPUB", settings.maxChaptersPerEpub.toString(), InputType.TYPE_CLASS_NUMBER)
+        // S1: each editable section persists itself, so a TTS-only edit doesn't require scrolling to a
+        // global Save at the bottom.
+        fullButton("Save Downloads", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
+            storage.saveSettings(settings.copy(
+                downloadConcurrency = SettingsValidation.concurrency(concurrency.text.toString(), settings.downloadConcurrency),
+                downloadDelay = SettingsValidation.delay(delay.text.toString(), settings.downloadDelay),
+                maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters.text.toString(), settings.maxChaptersPerEpub),
+            ))
+            toast("Download settings saved")
+        }
         divider()
         section("Source Overrides")
         val sourceInputs = SourceRegistry.all().associate { provider ->
             val override = sourceSettings[provider.name]
-            val sourceEnabled = CheckBox(context).apply { text = "Override ${provider.name}"; isChecked = override != null }
+            val sourceEnabled = CheckBox(context).apply { text = "Override"; isChecked = override != null }
             var sourceConcurrency: EditText? = null
             var sourceDelay: EditText? = null
             addView(card {
                 text(provider.name, Type.TITLE_SMALL)
                 styledCheckBox(sourceEnabled)
                 addView(sourceEnabled)
-                sourceConcurrency = labeledField("${provider.name} concurrency", (override?.concurrency ?: settings.downloadConcurrency).toString(), InputType.TYPE_CLASS_NUMBER)
-                sourceDelay = labeledField("${provider.name} delay (ms)", (override?.delay ?: settings.downloadDelay).toString(), InputType.TYPE_CLASS_NUMBER)
+                // S3: the card is already titled with the provider name, so the inner labels repeat it.
+                sourceConcurrency = labeledField("Concurrency", (override?.concurrency ?: settings.downloadConcurrency).toString(), InputType.TYPE_CLASS_NUMBER)
+                sourceDelay = labeledField("Delay (ms)", (override?.delay ?: settings.downloadDelay).toString(), InputType.TYPE_CLASS_NUMBER)
                 flow {
-                    button("Reset ${provider.name}", Btn.TEXT, R.drawable.wna_refresh) {
+                    button("Reset", Btn.TEXT, R.drawable.wna_refresh) {
                         val updated = storage.getSourceDownloadSettings().toMutableMap()
                         updated.remove(provider.name)
                         storage.saveSourceDownloadSettings(updated)
@@ -65,6 +77,20 @@ internal fun ScreenHost.showSettings() {
                 }
             })
             provider.name to Triple(sourceEnabled, sourceConcurrency!!, sourceDelay!!)
+        }
+        // S1: Source Overrides save independently of Downloads / TTS.
+        fullButton("Save Overrides", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
+            storage.saveSourceDownloadSettings(sourceInputs.mapNotNull { (name, inputs) ->
+                if (!inputs.first.isChecked) {
+                    null
+                } else {
+                    name to SourceDownloadSettings(
+                        concurrency = SettingsValidation.concurrency(inputs.second.text.toString(), settings.downloadConcurrency),
+                        delay = SettingsValidation.delay(inputs.third.text.toString(), settings.downloadDelay),
+                    )
+                }
+            }.toMap())
+            toast("Source overrides saved")
         }
         divider()
         section("Text To Speech")
@@ -86,47 +112,45 @@ internal fun ScreenHost.showSettings() {
         val pitch = labeledField("Pitch", ttsSettings.pitch.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
         val rate = labeledField("Rate", ttsSettings.rate.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
         val chunkSize = labeledField("Chunk size", ttsSettings.chunkSize.toString(), InputType.TYPE_CLASS_NUMBER)
-        text("Voice: ${ttsSettings.voiceIdentifier ?: "System default"}", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
-        flow {
-            button("Save", Btn.FILLED, R.drawable.wna_check) {
-                storage.saveSettings(settings.copy(
-                    downloadConcurrency = SettingsValidation.concurrency(concurrency.text.toString(), settings.downloadConcurrency),
-                    downloadDelay = SettingsValidation.delay(delay.text.toString(), settings.downloadDelay),
-                    maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters.text.toString(), settings.maxChaptersPerEpub),
-                ))
-                storage.saveSourceDownloadSettings(sourceInputs.mapNotNull { (name, inputs) ->
-                    if (!inputs.first.isChecked) {
-                        null
-                    } else {
-                        name to SourceDownloadSettings(
-                            concurrency = SettingsValidation.concurrency(inputs.second.text.toString(), settings.downloadConcurrency),
-                            delay = SettingsValidation.delay(inputs.third.text.toString(), settings.downloadDelay),
-                        )
-                    }
-                }.toMap())
+        // S4: the voice label is itself the control — tap it to open the picker.
+        val voiceLabel = ttsSettings.voiceIdentifier ?: "System default"
+        row {
+            addView(makeText(context, "Voice", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val voiceBtn = makeButton(context, voiceLabel, Btn.TEXT, R.drawable.wna_speaker) { showTtsVoicePicker() }
+            addView(voiceBtn)
+        }
+        // S1: TTS saves independently. G3: the two related row actions sit in a 2-col grid so the
+        // flow row doesn't end with one wrapped button + a ragged gap.
+        grid(columns = 2) {
+            button("Save TTS", Btn.FILLED, R.drawable.wna_check) {
                 storage.saveTtsSettings(ttsSettings.copy(
                     pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
                     rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
                     chunkSize = SettingsValidation.ttsChunkSize(chunkSize.text.toString(), ttsSettings.chunkSize),
                 ))
-                toast("Settings saved")
-                showSettings()
+                toast("TTS settings saved")
             }
-            button("Voice", Btn.TONAL, R.drawable.wna_speaker) { showTtsVoicePicker() }
-            button("Manage Tabs", Btn.TEXT, R.drawable.wna_folder) { showTabs() }
-            button("Cleanup Rules", Btn.TEXT, R.drawable.wna_brush) { showCleanupRules() }
+            button("Manage Tabs", Btn.OUTLINED, R.drawable.wna_folder) { showTabs() }
         }
+        fullButton("Cleanup Rules", Btn.OUTLINED, R.drawable.wna_brush, bottomMarginDp = Space.SM) { showCleanupRules() }
         divider()
         section("Backup")
-        flow {
+        // G3: pair the two outbound formats in a grid so each row is filled instead of wrapping
+        // unevenly with dead space on the right.
+        text("Export", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+        grid(columns = 2) {
             button("Export JSON", Btn.TONAL, R.drawable.wna_share) { exportAndShare { storage.exportBackup() } }
-            button("Import JSON", Btn.TEXT, R.drawable.wna_download) { importBackupLauncher.launch(arrayOf("application/json", "text/*")) }
             button("Full Backup", Btn.TONAL, R.drawable.wna_share) { exportAndShare { storage.exportFullBackup() } }
+        }
+        text("Import", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+        grid(columns = 2) {
+            button("Import JSON", Btn.TEXT, R.drawable.wna_download) { importBackupLauncher.launch(arrayOf("application/json", "text/*")) }
             button("Restore Full", Btn.TEXT, R.drawable.wna_download) { importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream")) }
         }
-        flow {
-            button("Clear Local Storage", Btn.ERROR, R.drawable.wna_delete) { confirm("Delete all novels, settings, and downloads?") { storage.clearAll(); showLibrary() } }
-        }
+        divider()
+        // S5: destructive action visually separated under its own header with a distinct confirm label.
+        section("Danger Zone")
+        fullButton("Clear Local Storage", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) { confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") { storage.clearAll(); showLibrary() } }
     }
 }
 
@@ -167,6 +191,8 @@ internal fun ScreenHost.applyThemePreference(themeId: String) {
 internal fun ScreenHost.showTabs() {
     screen(title = "Manage Tabs", onBack = { showSettings() }, scrollable = true) {
         val tabs = TabPlanning.normalizeOrders(storage.getTabs())
+        // T1: explain what tabs are so the empty/first-run state isn't a bare input.
+        text("Tabs group novels on the Library screen. Create one (e.g. \"Reading\", \"Finished\") and assign novels to it.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         row {
             val name = EditText(context).apply {
                 hint = "New tab name"
@@ -197,7 +223,8 @@ internal fun ScreenHost.showTabs() {
                         layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
                     })
                     addView(makeText(context, tab.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(10), 0, 0, 0) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(makeText(context, "${storage.getLibrary().count { it.tabId == tab.id }}", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
+                    // T3: add a "novels" suffix so the bare count reads as a count, not a stray number.
+                    addView(makeText(context, "${storage.getLibrary().count { it.tabId == tab.id }} novels", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
                 }
                 flow {
                     button("Up", Btn.TEXT, R.drawable.wna_up) {
@@ -218,8 +245,9 @@ internal fun ScreenHost.showTabs() {
                             showTabs()
                         }
                     }
-                    button("Delete", Btn.TEXT, R.drawable.wna_delete) {
-                        confirm("Delete tab \"${tab.name}\" and move its novels to Unassigned?") {
+                    // T2: Delete uses the error variant so it reads as destructive, not routine.
+                    button("Delete", Btn.ERROR, R.drawable.wna_delete) {
+                        confirm("Delete tab \"${tab.name}\" and move its novels to Unassigned?", confirmLabel = "Delete") {
                             storage.getLibrary().forEach { story ->
                                 if (story.tabId == tab.id) {
                                     story.tabId = null
