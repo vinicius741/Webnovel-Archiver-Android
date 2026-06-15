@@ -86,13 +86,19 @@ internal fun ScreenHost.showSettings() {
         // Width cap: on large screens, constrain this content LinearLayout and center it within the
         // ScrollView so Settings doesn't stretch edge-to-edge (expanded → 840dp, medium → 720dp).
         // No-op on compact widths where the cap exceeds the screen.
-        val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
+        //
+        // This block runs inside `screen(...)`'s content builder, where `this` is the content
+        // LinearLayout *before* it is added to its ScrollView parent. At that point the view has no
+        // layout params yet (layoutParams == null), so reading/casting them NPEs. We instead set fresh
+        // FrameLayout.LayoutParams (the ScrollView is a FrameLayout) with a fixed width and centered
+        // gravity; the scaffold assigns exactly these params when it wraps content in the ScrollView.
         if (layout.widthClass != com.vinicius741.webnovelarchiver.core.WidthClass.COMPACT) {
-            layoutParams = (layoutParams as? LinearLayout.LayoutParams)?.apply {
-                width = context.dp(contentMaxWidthDp)
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
-            } ?: layoutParams
-            (parent as? android.widget.ScrollView)?.isFillViewport = true
+            val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                context.dp(contentMaxWidthDp),
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.CENTER_HORIZONTAL,
+            )
         }
     }
 }
