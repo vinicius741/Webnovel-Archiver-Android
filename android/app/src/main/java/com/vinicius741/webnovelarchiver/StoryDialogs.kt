@@ -38,12 +38,30 @@ internal fun ScreenHost.showDownloadRangeDialog(story: Story) {
     val info = makeText(app, "Total chapters: ${story.chapters.size}" + (bookmarkChapterNumber?.let { " • Bookmark at chapter $it" } ?: ""), Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
         setPadding(0, 0, 0, dp(8))
     }
+    // DL1: wrap each mode's fields so only the relevant ones are visible for the selected mode.
+    val rangeFields = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL; addView(start); addView(end) }
+    val countFields = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL; addView(countStart); addView(count) }
+    val bookmarkHint = makeText(app, "Downloads from your bookmarked chapter to the end.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+        if (bookmarkChapterNumber == null) {
+            text = "No bookmark set. Read a chapter to set one."
+            setTextColor(ThemeManager.colors.error)
+        }
+    }
+    val updateMode = {
+        val pos = modeSpinner.selectedItemPosition
+        rangeFields.visibility = if (pos == 0) android.view.View.VISIBLE else android.view.View.GONE
+        bookmarkHint.visibility = if (pos == 1) android.view.View.VISIBLE else android.view.View.GONE
+        countFields.visibility = if (pos == 2) android.view.View.VISIBLE else android.view.View.GONE
+    }
+    modeSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+        override fun onItemSelected(parent: android.widget.AdapterView<*>?, v: android.view.View?, p: Int, id: Long) = updateMode()
+        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+    }
     view.addView(info)
     view.addView(modeSpinner)
-    view.addView(start)
-    view.addView(end)
-    view.addView(countStart)
-    view.addView(count)
+    view.addView(rangeFields)
+    view.addView(bookmarkHint)
+    view.addView(countFields)
     val dialog = AlertDialog.Builder(app)
         .setTitle("Download Range")
         .setView(scroll(view))
@@ -51,6 +69,7 @@ internal fun ScreenHost.showDownloadRangeDialog(story: Story) {
         .setNegativeButton("Cancel", null)
         .create()
     dialog.setOnShowListener {
+        updateMode()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val mode = when (modeSpinner.selectedItemPosition) {
                 1 -> DownloadRangeSelection.Mode.BOOKMARK
@@ -103,6 +122,12 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     view.addView(rangeStart)
     view.addView(rangeEnd)
     view.addView(startAfterBookmark)
+    // DL2: explain why "Start after bookmark" is disabled when there is no bookmark.
+    if (story.lastReadChapterId == null) {
+        view.addView(makeText(app, "Set a bookmark by reading a chapter to enable \"Start after bookmark.\"", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            setPadding(0, dp(4), 0, 0)
+        })
+    }
     view.addView(makeText(app, "Downloaded chapters: ${story.chapters.count { it.downloaded }}. EPUB generation includes only downloaded chapters in range.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
         setPadding(0, dp(8), 0, 0)
     })
@@ -148,11 +173,14 @@ internal fun ScreenHost.showCoverDialog(story: Story) {
     val url = story.coverUrl?.takeIf { it.isNotBlank() } ?: return
     val image = ImageView(app).apply {
         contentDescription = "${story.title} cover"
+        // DL4: use adjustViewBounds so the image sizes to its aspect ratio up to a max height,
+        // instead of a fixed 520dp that letterboxes or crops.
         adjustViewBounds = true
         scaleType = ImageView.ScaleType.FIT_CENTER
         setBackgroundColor(ThemeManager.colors.surfaceVariant)
         setPadding(dp(12), dp(12), dp(12), dp(12))
-        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(520))
+        maxHeight = dp(600)
+        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         roundCorners(ThemeManager.shapes.dialogRadius.toFloat())
     }
     loadImage(url, image)
