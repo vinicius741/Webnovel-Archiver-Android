@@ -276,7 +276,14 @@ private fun ScreenHost.makeLibraryFilters(
     // Collapsible wrapper when tabs exist
     val wrapper = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     val hasActiveFilters = selectedTags.isNotEmpty() || search.text.isNotBlank()
-    val toggleIcon = context.iconButtonSmall(R.drawable.wna_chevron_down, "Toggle filters") { }
+    // The chevron is decorative only — its tap is handled by `toggleWrap`'s listener (below). It must
+    // NOT be clickable/focusable, otherwise Android dispatches the touch to this ImageView (which has
+    // its own no-op listener from iconButtonSmall), consumes it, and the parent never expands — leaving
+    // the search/sort/tag filters trapped behind View.GONE and the whole filter row unresponsive.
+    val toggleIcon = context.iconButtonSmall(R.drawable.wna_chevron_down, "Toggle filters") { }.apply {
+        isClickable = false
+        isFocusable = false
+    }
     val toggleWrap = FrameLayout(context).apply {
         layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
             gravity = Gravity.END
