@@ -44,7 +44,7 @@ internal fun ViewGroup.card(elevation: Int = 1, block: LinearLayout.() -> Unit):
     val c = makeCard(context, elevation)
     c.block()
     c.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-        bottomMargin = context.dp(10)
+        bottomMargin = context.dp(Space.SM + 2)
     }
     return c
 }
@@ -97,6 +97,25 @@ internal fun ViewGroup.fullButton(
     return b
 }
 
+/** Standalone full-width button factory for containers built outside the ViewGroup DSL receiver
+ *  (e.g. an info panel assembled before being added to the screen). `bottomMarginPx` is in pixels. */
+internal fun makeFullWidthButton(
+    context: android.content.Context,
+    label: String,
+    variant: Btn = Btn.THEME_DEFAULT,
+    icon: Int = 0,
+    bottomMarginPx: Int = 0,
+    enabled: Boolean = true,
+    action: () -> Unit,
+): Button {
+    val b = makeButton(context, label, variant, icon, action)
+    if (!enabled) disableButton(b)
+    b.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        bottomMargin = bottomMarginPx
+    }
+    return b
+}
+
 /** Visually + functionally disable a themed button: drop input and fade it. Our custom
  *  background drawables don't honour the default disabled state, so we apply alpha manually. */
 internal fun disableButton(b: Button) {
@@ -110,7 +129,7 @@ internal fun ViewGroup.chip(label: String, selected: Boolean = false, action: ()
 
 internal fun ViewGroup.labeledField(label: String, value: String, inputType: Int, hint: String? = null): EditText {
     addView(makeText(context, label, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-        setPadding(context.dp(2), context.dp(8), context.dp(2), context.dp(4))
+        setPadding(context.dp(2), context.dp(Space.SM), context.dp(2), context.dp(Space.XS))
     })
     val field = makeField(context, value, hint ?: label, inputType)
     addView(field)

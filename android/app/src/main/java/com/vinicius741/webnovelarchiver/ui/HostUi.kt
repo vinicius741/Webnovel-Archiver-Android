@@ -38,8 +38,14 @@ internal fun verticalFill() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.M
 internal fun ScreenHost.toast(message: String) =
     Toast.makeText(app, message, Toast.LENGTH_LONG).show()
 
-internal fun ScreenHost.confirm(message: String, onYes: () -> Unit) =
-    AlertDialog.Builder(app).setMessage(message).setPositiveButton("Confirm") { _, _ -> onYes() }.setNegativeButton("Cancel", null).show()
+internal fun ScreenHost.confirm(
+    message: String,
+    confirmLabel: String = "Confirm",
+    cancelLabel: String = "Cancel",
+    onYes: () -> Unit,
+) = AlertDialog.Builder(app).setMessage(message)
+    .setPositiveButton(confirmLabel) { _, _ -> onYes() }
+    .setNegativeButton(cancelLabel, null).show()
 
 internal fun ScreenHost.prompt(title: String, value: String, onSave: (String) -> Unit) {
     val input = EditText(app).apply {

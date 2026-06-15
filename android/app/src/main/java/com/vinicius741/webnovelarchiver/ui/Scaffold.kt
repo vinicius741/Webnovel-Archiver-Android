@@ -42,7 +42,7 @@ internal fun ScreenHost.screen(
     column.addView(appBar(title, subtitle, onBack, actions))
     val content = LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(8), dp(16), dp(24))
+        setPadding(dp(Spacing.LG), dp(Spacing.SM), dp(Spacing.LG), dp(Spacing.XL))
         block()
     }
     val body: View = if (scrollable) {
@@ -60,7 +60,7 @@ internal fun ScreenHost.screen(
     fab?.let { onClick ->
         val fabView = makeFab(app) { onClick() }
         val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END)
-        lp.setMargins(dp(16), dp(16), dp(16), dp(16) + systemBarBottom())
+        lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG) + systemBarBottom())
         frame.addView(fabView, lp)
     }
 }
@@ -71,15 +71,16 @@ private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> U
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundColor(t.colors.elevation2)
-        setPadding(dp(8), systemBarTop() + dp(8), dp(4), dp(8))
+        // G2: symmetric edge gap (was dp(4) right-only) so the icon strip isn't flush with the edge.
+        setPadding(dp(Spacing.SM), systemBarTop() + dp(Spacing.SM), dp(Spacing.SM), dp(Spacing.SM))
         if (onBack != null) {
             addView(iconButton(R.drawable.wna_arrow_back, "Back") { onBack() })
         } else {
-            addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(12), dp(1)) })
+            addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(Spacing.MD), dp(1)) })
         }
         val titleCol = LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(6), 0, dp(8), 0)
+            setPadding(dp(Spacing.XS + 2), 0, dp(Spacing.SM), 0)
         }
         titleCol.addView(makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply { includeFontPadding = false })
         subtitle?.let {
@@ -97,17 +98,19 @@ private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> U
 
 private fun ScreenHost.iconButton(iconRes: Int, desc: String, onClick: () -> Unit): View {
     val t = ThemeManager.current
-    val size = dp(46)
+    val size = dp(44)
     return ImageView(app).apply {
         contentDescription = desc
         setImageDrawable(app.tintedIcon(iconRes, t.colors.onSurface))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(11), dp(11), dp(11), dp(11))
+        setPadding(dp(Spacing.SM + 2), dp(Spacing.SM + 2), dp(Spacing.SM + 2), dp(Spacing.SM + 2))
         background = selectableRipple(t.colors.onSurface)
         isClickable = true
         isFocusable = true
         setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(size, size)
+        // G2: widen the gap between adjacent app-bar icons so each reads as its own action,
+        // not a single cluttered strip.
+        layoutParams = LinearLayout.LayoutParams(size, size).apply { marginStart = dp(Spacing.XS) }
     }
 }
 
@@ -118,8 +121,8 @@ private fun makeFab(context: Context, onClick: () -> Unit): View {
         contentDescription = "Add"
         setImageDrawable(context.tintedIcon(R.drawable.wna_add, t.colors.onPrimary))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(context.dp(16), context.dp(16), context.dp(16), context.dp(16))
-        background = ripple(roundedBg(t.colors.primary, context.dp(16).toFloat()), context.dp(16).toFloat(), t.colors.onPrimary)
+        setPadding(context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8))
+        background = ripple(roundedBg(t.colors.primary, context.dp(Spacing.LG).toFloat()), context.dp(Spacing.LG).toFloat(), t.colors.onPrimary)
         elevate(6f)
         setOnClickListener { onClick() }
         layoutParams = FrameLayout.LayoutParams(size, size)
@@ -130,11 +133,11 @@ internal fun LinearLayout.centerLoading(message: String) {
     val col = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        setPadding(0, context.dp(40), 0, context.dp(40))
+        setPadding(0, context.dp(Spacing.XL + Spacing.XL - 8), 0, context.dp(Spacing.XL + Spacing.XL - 8))
     }
     col.addView(ProgressBar(context).apply {
         val lp = LinearLayout.LayoutParams(context.dp(40), context.dp(40))
-        lp.bottomMargin = context.dp(16)
+        lp.bottomMargin = context.dp(Spacing.LG)
         layoutParams = lp
         indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
     })
