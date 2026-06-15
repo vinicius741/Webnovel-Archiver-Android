@@ -44,6 +44,19 @@ The app was originally built with React Native / Expo and has been fully rewritt
 - For stable long-running simulator sessions, start the emulator in tmux: `tmux new-session -d -s webnovel-emulator "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full"`.
 - Launch command after install: `adb shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity`.
 
+### Fast Iteration / Hot-Redeploy (preferred for UI work)
+There is no React-Native-style state-preserving hot reload for the native app (programmatic `View` UI, not Jetpack Compose — Compose Live Edit does not apply). The supported fast loop is **incremental rebuild + reinstall + relaunch**, automated by two scripts under `scripts/`:
+
+- `scripts/watch-redeploy.sh` — Watches `android/app/src/**/*.{kt,kts,xml}` with `fswatch` (install via `brew install fswatch`). On any save (debounced 1.5s) it rebuilds the debug APK, reinstalls it on the running emulator, and relaunches the activity. Also runs an initial deploy on startup. This is the default loop for iterating on UI/screens.
+- `scripts/redeploy.sh` — A single build + install + relaunch with no watcher. Reuses the existing APK if unchanged (then relaunches only). Use for one-shot manual deploys. Build log: `/tmp/webnovel-redeploy.log`.
+
+Tuning and notes:
+- Override debounce with `DEBOUNCE=3 scripts/watch-redeploy.sh` if saves fire double builds.
+- Requires a running emulator (`adb devices` shows it); it will not start one.
+- Installs the **debug** variant (`…nativeapp.debug`) and **cold-restarts** the app on each deploy (force-stop then start), so in-memory session state resets; anything persisted to `AppStorage` survives.
+- Build only — does not run lint or unit tests. Run those separately when needed.
+- Warm incremental builds are ~2s; the first build of a Gradle session is much slower.
+
 ### Legacy React Native Commands (reference only)
 - `npm run check` — Runs lint, typecheck, coverage, and quality checks for the old RN codebase.
 - `npm start` — Starts the Expo dev server (legacy).
