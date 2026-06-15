@@ -98,16 +98,32 @@ private fun ScreenHost.makeLibraryTabBar(
         orientation = LinearLayout.HORIZONTAL
     }
 
-    fun addTab(label: String, id: String?, isSelected: Boolean) {
-        val text = makeText(context, label, Type.LABEL_LARGE, if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant).apply {
-            typeface = Typeface.create(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+    // Keep each tab's id paired with its text + underline views so we can restyle the active
+    // tab in place on selection, instead of rebuilding the whole bar (which would leave the
+    // indicator stuck on the initially-selected tab).
+    data class TabView(val id: String?, val text: TextView, val underline: View)
+    val tabViews = mutableListOf<TabView>()
+    var currentSelection = selectedTabId
+
+    fun applySelection(id: String?) {
+        currentSelection = id
+        val colors = ThemeManager.colors
+        tabViews.forEach { tab ->
+            val selected = tab.id == id
+            tab.text.setTextColor(if (selected) colors.primary else colors.onSurfaceVariant)
+            tab.text.typeface = Typeface.create(tab.text.typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+            tab.underline.setBackgroundColor(if (selected) colors.primary else colors.outlineVariant)
+        }
+    }
+
+    fun addTab(label: String, id: String?) {
+        val text = makeText(context, label, Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
             setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
             minWidth = dp(60)
             gravity = Gravity.CENTER
         }
         val underline = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
-            setBackgroundColor(if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.outlineVariant)
         }
         val tabContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -118,18 +134,23 @@ private fun ScreenHost.makeLibraryTabBar(
             isClickable = true
             isFocusable = true
             background = selectableRipple(ThemeManager.colors.onSurface)
-            setOnClickListener { onSelect(id) }
+            setOnClickListener {
+                applySelection(id)
+                onSelect(id)
+            }
         }
         row.addView(tabContainer)
+        tabViews += TabView(id, text, underline)
     }
 
-    addTab("All", "__all__", selectedTabId == "__all__")
+    addTab("All", "__all__")
     if (unassignedCount > 0) {
-        addTab("Unassigned ($unassignedCount)", null, selectedTabId == null)
+        addTab("Unassigned ($unassignedCount)", null)
     }
     tabs.forEach { tab ->
-        addTab(tab.name, tab.id, selectedTabId == tab.id)
+        addTab(tab.name, tab.id)
     }
+    applySelection(currentSelection)
     scroll.addView(row)
     return scroll
 }
