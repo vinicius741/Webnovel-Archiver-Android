@@ -7,9 +7,9 @@ import org.junit.Test
 class DefaultCleanupTest {
     @Test
     fun defaultSentenceListMatchesReactNativeAssetShape() {
-        assertEquals(54, DefaultCleanup.sentences.size)
+        assertEquals(81, DefaultCleanup.sentences.size)
         assertEquals(
-            "Stolen from its rightful author, this tale is not meant to be on Amazon; report any sightings.",
+            "If you come across this story on Amazon, it's taken without permission from the author. Report it.",
             DefaultCleanup.sentences.first(),
         )
         assertEquals(
