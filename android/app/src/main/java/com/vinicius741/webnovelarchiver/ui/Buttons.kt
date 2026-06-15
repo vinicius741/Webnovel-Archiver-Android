@@ -113,7 +113,7 @@ fun makeChip(
     val colors = t.colors
     val radiusPx = context.dp(t.shapes.chipRadius).toFloat()
     val padH = context.dp(Space.MD + 2)
-    val padV = context.dp(Space.SM - 1)
+    val padV = context.dp(Space.XS + 1)
     val fg = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
 
     return TextView(context).apply {
@@ -151,7 +151,7 @@ fun makeSourceChip(
     val colors = t.colors
     val radiusPx = context.dp(t.shapes.chipRadius).toFloat()
     val padH = context.dp(Space.SM + 2)
-    val padV = context.dp(Space.SM - 1)
+    val padV = context.dp(Space.XS + 1)
     val containerColor = if (selected) colors.secondaryContainer else colors.surfaceVariant
     val contentColor = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
     val icon = android.widget.ImageView(context).apply {

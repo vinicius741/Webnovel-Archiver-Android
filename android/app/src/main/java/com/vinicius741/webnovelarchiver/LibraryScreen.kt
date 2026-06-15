@@ -101,7 +101,7 @@ private fun ScreenHost.makeLibraryTabBar(
     fun addTab(label: String, id: String?, isSelected: Boolean) {
         val text = makeText(context, label, Type.LABEL_LARGE, if (isSelected) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant).apply {
             typeface = Typeface.create(typeface, if (isSelected) Typeface.BOLD else Typeface.NORMAL)
-            setPadding(dp(Space.XS), dp(Space.XS + 2), dp(Space.XS), dp(Space.XS + 2))
+            setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
             minWidth = dp(60)
             gravity = Gravity.CENTER
         }
@@ -163,7 +163,7 @@ private fun ScreenHost.makeLibraryFilters(
     val sortButton = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(Space.MD), dp(Space.MD), dp(Space.MD), dp(Space.MD))
+        setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
         background = ripple(strokeBg(Color.TRANSPARENT, context.dp(ThemeManager.shapes.chipRadius).toFloat(), ThemeManager.colors.outline, context.dp(1)), context.dp(ThemeManager.shapes.chipRadius).toFloat(), ThemeManager.colors.onSurface)
         isClickable = true
         isFocusable = true

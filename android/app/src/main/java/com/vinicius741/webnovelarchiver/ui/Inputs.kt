@@ -18,7 +18,7 @@ private fun EditText.applyInputStyle(hintText: String, inputType: Int) {
     setTextColor(colors.onSurface)
     setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.BODY_LARGE.size())
     this.inputType = inputType
-    setPadding(context.dp(Space.MD + 2), context.dp(Space.SM), context.dp(Space.MD + 2), context.dp(Space.SM))
+    setPadding(context.dp(Space.MD + 2), context.dp(Space.XS + 2), context.dp(Space.MD + 2), context.dp(Space.XS + 2))
     includeFontPadding = false
     background = strokeBg(colors.surfaceVariant, radiusPx, colors.outline, context.dp(1))
     this.hint = hintText
