@@ -551,8 +551,49 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 internal fun ScreenHost.showAddStory() {
     val tabs = storage.getTabs().sortedBy { it.order }
     screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
-        val url = makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI)
-        addView(url)
+        val url = makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
+            // Roomier vertical padding than the compact field style shared with search bars/dialogs,
+            // so this primary URL input is easier to tap and read.
+            setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
+        }
+        // Paste button beside the field — mirrors the React Native app's content-paste affordance,
+        // reading the system clipboard in one tap instead of long-pressing the field.
+        val pasteButton = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            val radiusPx = context.dp(ThemeManager.current.shapes.buttonRadius).toFloat()
+            background = ripple(
+                roundedBg(ThemeManager.colors.secondaryContainer, radiusPx),
+                radiusPx,
+                ThemeManager.colors.onSecondaryContainer,
+            )
+            isClickable = true
+            isFocusable = true
+            setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD))
+            addView(ImageView(context).apply {
+                contentDescription = "Paste URL"
+                setImageDrawable(context.tintedIcon(R.drawable.wna_paste, ThemeManager.colors.onSecondaryContainer))
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            })
+            setOnClickListener {
+                val clip = clipboardText()?.trim()
+                if (clip.isNullOrEmpty()) {
+                    toast("Clipboard is empty")
+                } else {
+                    url.setText(clip)
+                    url.setSelection(clip.length)
+                }
+            }
+        }
+        val urlRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(url, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(pasteButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(Space.SM)
+            })
+        }
+        addView(urlRow)
         // A1: only render the "Save to tab" section when there are tabs to choose from.
         var tabSpinner: Spinner? = null
         if (tabs.isNotEmpty()) {
@@ -563,7 +604,7 @@ internal fun ScreenHost.showAddStory() {
             addView(tabSpinner)
         }
         // A2: the primary action is full-width for a consistent, large tap target.
-        fullButton("Fetch Story", Btn.FILLED, R.drawable.wna_download) {
+        fullButton("Fetch Story", Btn.FILLED, R.drawable.wna_download, topMarginDp = Space.LG) {
             val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
             val tabId = tabs.getOrNull(spinnerPos - 1)?.id
             syncStory(url.text.toString(), tabId)

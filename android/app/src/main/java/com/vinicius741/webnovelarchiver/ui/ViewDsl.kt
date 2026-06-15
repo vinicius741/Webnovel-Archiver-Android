@@ -78,19 +78,21 @@ internal fun ViewGroup.button(
     return b
 }
 
-/** Full-width (MATCH_PARENT) button with a bottom margin, for stacked primary actions like
+/** Full-width (MATCH_PARENT) button with optional top/bottom margins, for stacked primary actions like
  *  Sync / Download All on the details screen. */
 internal fun ViewGroup.fullButton(
     label: String,
     variant: Btn = Btn.THEME_DEFAULT,
     icon: Int = 0,
     enabled: Boolean = true,
+    topMarginDp: Int = 0,
     bottomMarginDp: Int = 10,
     action: () -> Unit,
 ): Button {
     val b = makeButton(context, label, variant, icon, action)
     if (!enabled) disableButton(b)
     val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        topMargin = context.dp(topMarginDp)
         bottomMargin = context.dp(bottomMarginDp)
     }
     addView(b, lp)
