@@ -2,7 +2,10 @@ package com.vinicius741.webnovelarchiver
 
 import android.app.AlertDialog
 import android.graphics.Color
+import android.graphics.Typeface
 import android.text.InputType
+import android.text.TextUtils
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
@@ -15,10 +18,14 @@ import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showCleanupRules() {
     screen(title = "Text Cleanup", subtitle = "Sentence removal & regex rules", onBack = { showSettings() }, scrollable = true) {
+        // C4: group the export action under a header so the lone button isn't orphaned.
+        section("Cleanup Rules")
         flow {
             button("Export JSON", Btn.TONAL, R.drawable.wna_share) { share(storage.exportCleanupRules()) }
         }
+        divider()
         section("Sentences")
+        // C2: the Add button fills the row so it matches the field height instead of floating right.
         row {
             val sentence = EditText(context).apply {
                 hint = "Sentence to remove"
@@ -27,7 +34,7 @@ internal fun ScreenHost.showCleanupRules() {
                 setTextColor(ThemeManager.colors.onSurface)
                 setSingleLine()
             }
-            addView(sentence, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(sentence, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { gravity = Gravity.CENTER_VERTICAL })
             button("Add", Btn.TONAL, R.drawable.wna_add) {
                 val list = storage.getSentenceRemovalList()
                 val result = SentenceRemovalPlanning.save(list, sentence.text.toString())
@@ -39,29 +46,25 @@ internal fun ScreenHost.showCleanupRules() {
                 }
             }
         }
+        // C1: compact single-line rows (tap to edit, trailing delete) instead of a wall of full cards.
         storage.getSentenceRemovalList().forEachIndexed { index, item ->
-            addView(card {
-                text(item, Type.BODY_MEDIUM)
-                flow {
-                    button("Edit", Btn.TEXT, R.drawable.wna_edit) {
-                        prompt("Edit Sentence", item) { updated ->
-                            val result = SentenceRemovalPlanning.save(storage.getSentenceRemovalList(), updated, index)
-                            if (!result.valid) {
-                                toast(result.error ?: "Invalid sentence")
-                            } else {
-                                storage.saveSentenceRemovalList(result.sentences)
-                                showCleanupRules()
-                            }
-                        }
-                    }
-                    button("Delete", Btn.TEXT, R.drawable.wna_delete) {
-                        confirm("Are you sure you want to remove this sentence from the blocklist?") {
-                            storage.saveSentenceRemovalList(SentenceRemovalPlanning.delete(storage.getSentenceRemovalList(), index))
-                            showCleanupRules()
-                        }
+            addView(compactRuleRow(item, onEdit = {
+                prompt("Edit Sentence", item) { updated ->
+                    val result = SentenceRemovalPlanning.save(storage.getSentenceRemovalList(), updated, index)
+                    if (!result.valid) {
+                        toast(result.error ?: "Invalid sentence")
+                    } else {
+                        storage.saveSentenceRemovalList(result.sentences)
+                        showCleanupRules()
                     }
                 }
+            }, onDelete = {
+                confirm("Remove this sentence from the blocklist?", confirmLabel = "Delete") {
+                    storage.saveSentenceRemovalList(SentenceRemovalPlanning.delete(storage.getSentenceRemovalList(), index))
+                    showCleanupRules()
+                }
             })
+            )
         }
         divider()
         section("Regex Rules")
@@ -78,7 +81,13 @@ internal fun ScreenHost.showCleanupRules() {
                     addView(LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
                         addView(makeText(context, rule.name, Type.TITLE_SMALL, ThemeManager.colors.onSurface))
-                        addView(makeText(context, "/${rule.pattern}/${rule.flags} • ${rule.appliesTo}", Type.LABEL_SMALL, ThemeManager.colors.primary).apply { setPadding(0, dp(2), 0, 0) })
+                        // C3: truncate + monospace the raw regex so long patterns don't wrap uglily.
+                        addView(makeText(context, "/${rule.pattern}/${rule.flags} • ${rule.appliesTo}", Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+                            setPadding(0, dp(2), 0, 0)
+                            typeface = Typeface.MONOSPACE
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.MIDDLE
+                        })
                     }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 }
                 flow {
@@ -89,6 +98,47 @@ internal fun ScreenHost.showCleanupRules() {
             })
         }
     }
+}
+
+/**
+ * Compact single-line rule row used by the sentence-removal list: one line of truncated text that
+ * opens an edit prompt on tap, with a trailing delete icon. Avoids the repetitive full-card +
+ * button-row wall that 10+ default rules produced (audit C1).
+ */
+private fun ScreenHost.compactRuleRow(
+    text: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+): LinearLayout {
+    val radiusPx = dp(8).toFloat()
+    val row = LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), dp(12), dp(6), dp(12))
+        background = ripple(roundedBg(ThemeManager.colors.elevation1, radiusPx), radiusPx, ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onEdit() }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(6)
+        }
+    }
+    row.addView(makeText(app, text, Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+    })
+    row.addView(ImageView(app).apply {
+        setImageDrawable(app.tintedIcon(R.drawable.wna_delete, ThemeManager.colors.onSurfaceVariant))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(10), dp(10), dp(10), dp(10))
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onDelete() }
+        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+    })
+    return row
 }
 
 internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
@@ -180,6 +230,24 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPat
     view.addView(characters)
     view.addView(minCount)
     view.addView(wholeLine)
+    // C5: live preview of the pattern that will be generated, so the user sees what it matches
+    // before tapping "Use Pattern".
+    val preview = makeText(app, "Pattern preview: —", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+        setPadding(0, dp(8), 0, dp(4))
+        typeface = Typeface.MONOSPACE
+    }
+    view.addView(preview)
+    val updatePreview = {
+        val generated = TextCleanup.generateQuickPattern(
+            characters.text.toString(),
+            minCount.text.toString().toIntOrNull() ?: 0,
+            wholeLine.isChecked,
+        )
+        preview.text = if (generated == null) "Pattern preview: enter characters and count" else "Pattern preview: /${generated.pattern}/${generated.flags}"
+    }
+    characters.addTextChangedListener(simpleTextWatcher { updatePreview() })
+    minCount.addTextChangedListener(simpleTextWatcher { updatePreview() })
+    wholeLine.setOnCheckedChangeListener { _, _ -> updatePreview() }
 
     val dialog = AlertDialog.Builder(app)
         .setTitle("Quick Separator Rule")
@@ -188,6 +256,7 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPat
         .setNegativeButton("Cancel", null)
         .create()
     dialog.setOnShowListener {
+        updatePreview()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val generated = TextCleanup.generateQuickPattern(
                 characters.text.toString(),
@@ -203,4 +272,11 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPat
         }
     }
     dialog.show()
+}
+
+/** Minimal TextWatcher that only forwards onTextChanged, for concise inline listeners. */
+internal fun simpleTextWatcher(onChanged: () -> Unit) = object : android.text.TextWatcher {
+    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = onChanged()
+    override fun afterTextChanged(s: android.text.Editable?) = Unit
 }
