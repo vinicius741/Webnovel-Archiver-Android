@@ -142,7 +142,11 @@ object RoyalRoadProvider : SourceProvider {
 
     override fun parseChapterContent(html: String): String {
         val doc = Jsoup.parse(html)
-        val content = doc.selectFirst(".chapter-inner") ?: return "No content found"
+        // Throw rather than returning a placeholder string: a returned string would be saved as the
+        // chapter body and baked into the EPUB. Throwing routes the failure through DownloadEngine →
+        // DownloadErrorClassifier, where it shows up on the download job (retryable parse error) and
+        // never pollutes the generated book.
+        val content = doc.selectFirst(".chapter-inner") ?: error("Chapter content not found on page")
         content.select("div.portlet, script, .bold.uppercase.text-center").remove()
         return content.html()
     }
@@ -197,7 +201,9 @@ object ScribbleHubProvider : SourceProvider {
 
     override fun parseChapterContent(html: String): String {
         val doc = Jsoup.parse(html)
-        val content = doc.selectFirst("#chp_raw") ?: return "No content found"
+        // See RoyalRoadProvider.parseChapterContent: throw instead of returning a placeholder so the
+        // failure surfaces as a download-job error rather than getting embedded in the EPUB.
+        val content = doc.selectFirst("#chp_raw") ?: error("Chapter content not found on page")
         content.select("script, style, .wi_authornotes, .sharedaddy, .code-block").remove()
         return content.html().trim()
     }

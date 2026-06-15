@@ -1,7 +1,9 @@
 package com.vinicius741.webnovelarchiver.core
 
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Entities
 import org.jsoup.nodes.TextNode
 
 object EpubContent {
@@ -38,19 +40,35 @@ object EpubContent {
             """<body><h1>Table of Contents</h1><ul>${chapters.mapIndexed { index, chapter -> """<li><a href="chapter_${index + 1}.xhtml">${EpubMetadata.xml(chapter.title)}</a></li>""" }.joinToString("\n")}</ul></body>""",
         )
 
-    fun chapter(chapter: Chapter, content: String): String =
-        xhtml(
+    fun chapter(chapter: Chapter, content: String): String {
+        val sanitized = sanitizeContent(content)
+        // Fall back to a neutral placeholder so an empty chapter still renders as valid XHTML
+        // rather than a blank/broken page. Source-side parse failures are now surfaced as
+        // download-job errors (see SourceProvider.parseChapterContent), never baked into the EPUB.
+        val body = sanitized.ifBlank { """<p class="muted">This chapter has no readable content.</p>""" }
+        return xhtml(
             chapter.title,
-            """<body><h2>${EpubMetadata.xml(chapter.title)}</h2><div class="content">${sanitizeContent(content)}</div></body>""",
+            """<body><h2>${EpubMetadata.xml(chapter.title)}</h2><div class="content">$body</div></body>""",
         )
+    }
 
     fun sanitizeContent(html: String): String {
         if (html.isBlank()) return ""
-        val body = Jsoup.parse(html).body() ?: return html
+        // Chapter content comes from the source sites as HTML, but the EPUB embeds it inside an
+        // XHTML 1.1 document that EPUB readers parse with a strict XML parser. Unclosed void tags
+        // (`<br>`, `<img>`), raw ampersands, and other HTML-only constructs produce XML errors like
+        // "Opening and ending tag mismatch". Round-trip through Jsoup and re-emit with XML syntax so
+        // the fragment is always well-formed XHTML (self-closing void tags, escaped entities).
+        val doc = Jsoup.parse(html)
+        doc.outputSettings()
+            .syntax(Document.OutputSettings.Syntax.xml)
+            .escapeMode(Entities.EscapeMode.xhtml)
+            .prettyPrint(false)
+        val body = doc.body() ?: return ""
         return body.childNodes().joinToString("") { node ->
             when (node) {
                 is Element -> node.outerHtml()
-                is TextNode -> node.text()
+                is TextNode -> node.outerHtml()
                 else -> node.outerHtml()
             }
         }

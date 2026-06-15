@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.core
 
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,5 +59,44 @@ class EpubContentTest {
 
         assertTrue(sanitized.contains("<p>Just content</p>"))
         assertTrue(sanitized.contains("<blockquote>Quote</blockquote>"))
+    }
+
+    @Test
+    fun sanitizeContentSelfClosesVoidTagsForXhtml() {
+        // HTML allows unclosed <br> inside a <span>; XHTML (EPUB's body) does not. This is the exact
+        // case that produced "error on line 9 at column 8: Opening and ending tag mismatch: br".
+        val sanitized = EpubContent.sanitizeContent("<p><span>First line<br>Second line</span></p>")
+
+        assertTrue("void <br> must be self-closed for XHTML (e.g. <br/> or <br />)", sanitized.contains("<br"))
+        assertTrue("self-closing marker must be present", sanitized.contains("/>"))
+        assertFalse("unclosed <br> must not survive", sanitized.contains("<br>"))
+        assertTrue(sanitized.contains("First line"))
+        assertTrue(sanitized.contains("Second line"))
+    }
+
+    @Test
+    fun sanitizeContentEscapesRawAmpersandsForXhtml() {
+        val sanitized = EpubContent.sanitizeContent("<p>Tom &amp; Jerry &amp; Co</p>")
+
+        // Raw ampersand in text must be escaped so the body parses as XML.
+        assertFalse(sanitized.contains(" & "))
+    }
+
+    @Test
+    fun sanitizeContentSelfClosesImgTags() {
+        val sanitized = EpubContent.sanitizeContent("<p><img src=\"x.png\" alt=\"pic\"></p>")
+
+        assertTrue("img must be present", sanitized.contains("<img"))
+        assertTrue("img must be self-closed for XHTML", sanitized.contains("/>"))
+    }
+
+    @Test
+    fun chapterFallsBackToPlaceholderForBlankContent() {
+        val html = EpubContent.chapter(Chapter(title = "Empty"), "")
+
+        // Empty content must still render valid XHTML, not a blank/broken page. Crucially, source-side
+        // parse errors are no longer baked in as text (they now throw — see SourceProvider tests).
+        assertTrue(html.contains("This chapter has no readable content."))
+        assertFalse(html.contains("No content found"))
     }
 }

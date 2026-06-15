@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.core
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class SourceProviderTest {
@@ -92,5 +93,30 @@ class SourceProviderTest {
         assertEquals("Chapter 4", sanitizeTitle("Chapter 4 Nov 25, 2025"))
         assertEquals("Chapter 5", sanitizeTitle("Chapter 5 - 25 Nov 2025"))
         assertEquals("Untitled", sanitizeTitle("..."))
+    }
+
+    @Test
+    fun royalRoadThrowsWhenChapterContentMissing() {
+        // Previously this returned the literal "No content found", which got saved as the chapter body
+        // and baked into the EPUB. It must now throw so the failure routes through the download job
+        // error channel instead of polluting the generated book.
+        val noContent = "<html><body><p>no chapter-inner here</p></body></html>"
+        try {
+            RoyalRoadProvider.parseChapterContent(noContent)
+            fail("Expected IllegalStateException when chapter content selector is missing")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("content not found", ignoreCase = true))
+        }
+    }
+
+    @Test
+    fun scribbleHubThrowsWhenChapterContentMissing() {
+        val noContent = "<html><body><p>no chp_raw here</p></body></html>"
+        try {
+            ScribbleHubProvider.parseChapterContent(noContent)
+            fail("Expected IllegalStateException when chapter content selector is missing")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("content not found", ignoreCase = true))
+        }
     }
 }

@@ -406,7 +406,7 @@ object DownloadErrorClassifier {
                 ClassifiedDownloadError(message, "missing_provider", "NO_PROVIDER", false)
             lower.contains("no url") ->
                 ClassifiedDownloadError(message, "invalid_chapter", "NO_CHAPTER_URL", false)
-            lower.contains("empty") || lower.contains("too short") || lower.contains("no downloaded chapters") ->
+            lower.contains("empty") || lower.contains("too short") || lower.contains("no downloaded chapters") || lower.contains("content not found") ->
                 ClassifiedDownloadError(message, "parse", "CONTENT_TOO_SHORT", true)
             lower.contains("network") || lower.contains("timeout") || lower.contains("failed to fetch") || lower.contains("connection") ->
                 ClassifiedDownloadError(message, "network", "NETWORK_ERROR", true)
