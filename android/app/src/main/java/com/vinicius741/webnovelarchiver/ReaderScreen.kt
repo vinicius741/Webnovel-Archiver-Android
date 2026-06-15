@@ -12,10 +12,6 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
     val story = storage.getStory(storyId) ?: return
     val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return
     val currentIndex = story.chapters.indexOfFirst { it.id == chapter.id }
-    // Opening a chapter implicitly marks it as the reading position (unchanged behaviour); the
-    // header bookmark icon is the explicit toggle on top of this.
-    val readerStory = StoryBookmarkPlanning.withBookmark(story, chapter.id, toggleExisting = false)
-    storage.addOrUpdateStory(readerStory)
 
     // Build the reader WebView + its live render function up front so the header action panels can
     // mutate the same `display` instance and re-render the WebView in place (live preview behind
@@ -37,23 +33,23 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
         )
     }
 
-    fun rebuild() = showReader(readerStory.id, chapter.id)
+    fun rebuild() = showReader(story.id, chapter.id)
 
-    val bookmarkActive = readerStory.lastReadChapterId == chapter.id
+    val bookmarkActive = story.lastReadChapterId == chapter.id
     val actions = listOf(
         AppBarAction(
-            icon = R.drawable.wna_bookmark,
+            icon = if (bookmarkActive) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
             label = if (bookmarkActive) "Clear bookmark" else "Bookmark",
             tint = ThemeManager.colors.primary.takeIf { bookmarkActive },
         ) {
-            val latest = storage.getStory(readerStory.id) ?: readerStory
+            val latest = storage.getStory(story.id) ?: story
             val wasActive = latest.lastReadChapterId == chapter.id
             storage.addOrUpdateStory(StoryBookmarkPlanning.withBookmark(latest, chapter.id, toggleExisting = true))
             toast(if (wasActive) "Bookmark cleared" else "Bookmarked")
             rebuild()
         },
         AppBarAction(R.drawable.wna_speaker, "Read aloud") {
-            showReaderTtsPanel(readerStory, chapter)
+            showReaderTtsPanel(story, chapter)
         },
         AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
             // The panel mutates the shared `display` and calls back into `renderReader`, so
@@ -68,8 +64,8 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
 
     screen(
         title = sanitizeTitle(chapter.title),
-        subtitle = "${currentIndex + 1} / ${readerStory.chapters.size}",
-        onBack = { showDetails(readerStory.id) },
+        subtitle = "${currentIndex + 1} / ${story.chapters.size}",
+        onBack = { showDetails(story.id) },
         actions = actions,
     ) {
         renderReader()
@@ -89,7 +85,7 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
             setPadding(dp(Spacing.MD), dp(Spacing.SM), dp(Spacing.MD), dp(Spacing.SM))
         }
         val hasPrev = currentIndex > 0
-        val hasNext = currentIndex < readerStory.chapters.lastIndex
+        val hasNext = currentIndex < story.chapters.lastIndex
         fun navButton(label: String, icon: Int, enabled: Boolean, marginStartDp: Int, marginEndDp: Int, action: () -> Unit) =
             makeButton(context, label, Btn.TONAL, icon, action).apply {
                 if (!enabled) disableButton(this)
@@ -98,8 +94,8 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
                     marginEnd = dp(marginEndDp)
                 }
             }
-        navBar.addView(navButton("Prev", R.drawable.wna_skip_prev, hasPrev, marginStartDp = 0, marginEndDp = Spacing.XS) { navigateChapter(readerStory, chapter, -1) })
-        navBar.addView(navButton("Next", R.drawable.wna_skip_next, hasNext, marginStartDp = Spacing.XS, marginEndDp = 0) { navigateChapter(readerStory, chapter, 1) })
+        navBar.addView(navButton("Prev", R.drawable.wna_skip_prev, hasPrev, marginStartDp = 0, marginEndDp = Spacing.XS) { navigateChapter(story, chapter, -1) })
+        navBar.addView(navButton("Next", R.drawable.wna_skip_next, hasNext, marginStartDp = Spacing.XS, marginEndDp = 0) { navigateChapter(story, chapter, 1) })
         addView(navBar)
     }
 }

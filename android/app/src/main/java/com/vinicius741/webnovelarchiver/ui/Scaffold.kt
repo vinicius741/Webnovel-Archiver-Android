@@ -37,6 +37,10 @@ internal fun ScreenHost.screen(
     scrollable: Boolean = false,
     block: LinearLayout.() -> Unit,
 ) {
+    // Capture the outgoing ScrollView's position before the tree is torn down, so a re-render of the
+    // same screen (e.g. download-progress ticks, which re-run showDetails → screen(...)) doesn't snap
+    // back to the top. scrollTo clamps to the valid range, so this is safe if the new content differs.
+    val savedScrollY = if (scrollable) findScrollView(frame)?.scrollY ?: 0 else 0
     frame.removeAllViews()
     // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
     // hardware/gesture back navigation so the OS default (exit) applies.
@@ -60,6 +64,9 @@ internal fun ScreenHost.screen(
         ScrollView(app).apply {
             isFillViewport = true
             addView(content)
+            // Restore the scroll position captured before the re-render. `post` runs after this
+            // ScrollView is attached and measured, so scrollTo sees the real scrollable range.
+            if (savedScrollY > 0) post { scrollTo(0, savedScrollY) }
         }
     } else {
         content
@@ -72,6 +79,18 @@ internal fun ScreenHost.screen(
         lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG) + systemBarBottom())
         frame.addView(fabView, lp)
     }
+}
+
+/** Locates the first [ScrollView] anywhere under [root], so a re-render can capture the outgoing
+ *  scroll position before the view tree is torn down. */
+private fun findScrollView(root: View): ScrollView? {
+    if (root is ScrollView) return root
+    if (root is ViewGroup) {
+        for (i in 0 until root.childCount) {
+            findScrollView(root.getChildAt(i))?.let { return it }
+        }
+    }
+    return null
 }
 
 private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> Unit)?, actions: List<AppBarAction>): View {
