@@ -110,7 +110,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     AlertDialog.Builder(app)
         .setTitle("EPUB Settings")
         .setView(scroll(view))
-        .setPositiveButton("Generate") { _, _ ->
+        .setPositiveButton("Save") { _, _ ->
             val max = maxChapters.text.toString().toIntOrNull()?.coerceIn(10, 1000) ?: 150
             val start = rangeStart.text.toString().toIntOrNull()?.coerceIn(1, story.chapters.size) ?: 1
             val end = rangeEnd.text.toString().toIntOrNull()?.coerceIn(start, story.chapters.size) ?: story.chapters.size
@@ -122,7 +122,8 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
             )
             story.epubConfig = config
             storage.addOrUpdateStory(story)
-            generateConfiguredEpub(story, config)
+            toast("EPUB settings saved")
+            showDetails(story.id)
         }
         .setNegativeButton("Cancel", null)
         .show()

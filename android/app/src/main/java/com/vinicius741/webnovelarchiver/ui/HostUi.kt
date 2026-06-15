@@ -127,4 +127,13 @@ internal fun truncateDescription(description: String): String {
     return "$trimmed..."
 }
 
+private val trailingDotsRegex = Regex("\\s*(\\.{2,}|…|⋯|⋮)$")
+
+/** Mirrors src/utils/stringUtils.ts sanitizeTitle: strip trailing ellipsis/multi-dot noise that
+ *  some novel sites append to truncated list titles. */
+internal fun sanitizeTitle(title: String?): String {
+    if (title.isNullOrBlank()) return ""
+    return trailingDotsRegex.replace(title.trim(), "").trim()
+}
+
 internal fun DownloadStatus.displayName(): String = name.replace('_', ' ').lowercase()

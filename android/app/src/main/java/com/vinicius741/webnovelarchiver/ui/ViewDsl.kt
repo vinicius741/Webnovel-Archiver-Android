@@ -65,8 +65,15 @@ internal fun ViewGroup.text(value: CharSequence, type: Type = Type.BODY_MEDIUM, 
     return tv
 }
 
-internal fun ViewGroup.button(label: String, variant: Btn = Btn.THEME_DEFAULT, icon: Int = 0, action: () -> Unit): Button {
+internal fun ViewGroup.button(
+    label: String,
+    variant: Btn = Btn.THEME_DEFAULT,
+    icon: Int = 0,
+    enabled: Boolean = true,
+    action: () -> Unit,
+): Button {
     val b = makeButton(context, label, variant, icon, action)
+    if (!enabled) disableButton(b)
     addView(b)
     return b
 }
@@ -77,15 +84,24 @@ internal fun ViewGroup.fullButton(
     label: String,
     variant: Btn = Btn.THEME_DEFAULT,
     icon: Int = 0,
+    enabled: Boolean = true,
     bottomMarginDp: Int = 10,
     action: () -> Unit,
 ): Button {
     val b = makeButton(context, label, variant, icon, action)
+    if (!enabled) disableButton(b)
     val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
         bottomMargin = context.dp(bottomMarginDp)
     }
     addView(b, lp)
     return b
+}
+
+/** Visually + functionally disable a themed button: drop input and fade it. Our custom
+ *  background drawables don't honour the default disabled state, so we apply alpha manually. */
+internal fun disableButton(b: Button) {
+    b.isEnabled = false
+    b.alpha = 0.4f
 }
 
 internal fun ViewGroup.chip(label: String, selected: Boolean = false, action: () -> Unit) {
