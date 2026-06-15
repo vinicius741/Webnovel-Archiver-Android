@@ -8,11 +8,13 @@ import android.text.Editable
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import com.vinicius741.webnovelarchiver.core.Chapter
 import com.vinicius741.webnovelarchiver.core.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.core.EpubConfig
@@ -31,51 +33,69 @@ internal fun ScreenHost.showDetails(storyId: String) {
         subtitle = "by ${story.author}",
         onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
-        // One scroll surface: header + actions + description + filter + chapters scroll together,
-        // mirroring the RN details screen where the info panel is the FlatList header.
-        scrollable = true,
+        // D1: the body is no longer one giant ScrollView. The info panel (header/actions/description/tags)
+        // gets its own collapsible scroll region, the chapter filter controls are pinned, and the chapter
+        // list scrolls on its own — so Sync/Download and the chapter search never scroll out of view.
+        scrollable = false,
     ) {
-        // ---- Header (centered, mirrors RN StoryHeader) ----
-        addView(buildDetailsHeader(story))
+        // ---- Info panel: header + actions + description + tags (own scroll surface) ----
+        val infoPanel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        infoPanel.addView(buildDetailsHeader(story))
 
-        // ---- Status / actions (mirror RN StoryActions ordering) ----
         if (story.isArchived == true) {
-            addView(makeText(context, "Archived snapshot: sync and downloads disabled", Type.LABEL_MEDIUM, ThemeManager.colors.tertiary).apply {
+            infoPanel.addView(makeText(context, "Archived snapshot: sync and downloads disabled", Type.LABEL_MEDIUM, ThemeManager.colors.tertiary).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, dp(8), 0, dp(4))
+                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
             })
         }
         if (StoryActionGuards.canSync(story)) {
-            fullButton("Sync Chapters", Btn.FILLED, R.drawable.wna_refresh) { syncStory(story) }
+            infoPanel.addView(makeFullWidthButton(context, "Sync Chapters", Btn.FILLED, R.drawable.wna_refresh, dp(Space.SM + 2)) { syncStory(story) })
         }
         if (StoryActionGuards.canQueueDownloads(story)) {
             val remainingChapters = story.chapters.count { !it.downloaded }
             if (remainingChapters > 0) {
                 val downloadLabel = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
-                fullButton(downloadLabel, Btn.FILLED, R.drawable.wna_download) {
+                infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2)) {
                     queueDownload(story, story.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null })
                     showDetails(story.id)
-                }
+                })
             }
         }
         val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
-        grid(columns = 2) {
-            // Generate uses the saved epubConfig (or sensible defaults) — one tap, no dialog.
-            button("Generate EPUB", Btn.TONAL, R.drawable.wna_menu_book, enabled = story.downloadedChapters > 0) {
-                val config = story.epubConfig ?: EpubConfig(
-                    maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
-                    rangeStart = 1,
-                    rangeEnd = story.chapters.size,
-                    startAfterBookmark = false,
-                )
-                generateConfiguredEpub(story, config)
-            }
-            button("Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open, enabled = hasEpub) { openEpubForStory(story) }
-        }
+        // D2: Generate EPUB is the primary action — promote it to a full-width button so its visual
+        // weight matches its usage, leaving Read EPUB as a secondary flow action.
+        infoPanel.addView(makeFullWidthButton(context, "Generate EPUB", Btn.TONAL, R.drawable.wna_menu_book, dp(Space.SM + 2), enabled = story.downloadedChapters > 0) {
+            val config = story.epubConfig ?: EpubConfig(
+                maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
+                rangeStart = 1,
+                rangeEnd = story.chapters.size,
+                startAfterBookmark = false,
+            )
+            generateConfiguredEpub(story, config)
+        })
+        infoPanel.addView(WrapLayout(context).apply {
+            horizontalSpacingDp = Spacing.SM
+            verticalSpacingDp = Spacing.SM
+            val readEpub = makeButton(context, "Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open) { openEpubForStory(story) }
+            if (!hasEpub) disableButton(readEpub)
+            addView(readEpub)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        // D6: make the stale notice actionable with an inline Regenerate button.
         if (story.epubStale == true && hasEpub) {
-            addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                gravity = Gravity.CENTER
-                setPadding(0, dp(2), 0, dp(8))
+            infoPanel.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant))
+                addView(makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
+                    val config = story.epubConfig ?: EpubConfig(
+                        maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
+                        rangeStart = 1,
+                        rangeEnd = story.chapters.size,
+                        startAfterBookmark = false,
+                    )
+                    generateConfiguredEpub(story, config)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(Space.SM) })
             })
         }
 
@@ -85,11 +105,11 @@ internal fun ScreenHost.showDetails(storyId: String) {
             var expanded = false
             val descCol = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                setPadding(0, dp(8), 0, dp(4))
+                gravity = Gravity.START
+                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
             }
             val descText = makeText(context, if (canExpand) truncateDescription(description) else description, Type.BODY_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-                gravity = Gravity.CENTER
+                gravity = Gravity.START
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
             descCol.addView(descText)
@@ -102,34 +122,50 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 }
                 descCol.addView(toggle)
             }
-            descCol.addView(makeButton(context, "Copy", Btn.TEXT, R.drawable.wna_copy) {
-                copyToClipboard("Story description", description)
-                toast("Description copied")
-            })
-            addView(descCol)
+            infoPanel.addView(descCol)
         }
 
         // ---- Tags (new; were missing on native) ----
         story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
-            flow {
+            infoPanel.addView(WrapLayout(context).apply {
+                horizontalSpacingDp = Space.SM
+                verticalSpacingDp = Space.SM
+                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
                 tags.forEach { tag ->
                     addView(makeBadge(context, tag, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
                 }
-            }.apply { setPadding(0, dp(8), 0, dp(4)) }
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            })
         }
+        // Collapse/expand toggle so the info panel can be tucked away while browsing chapters.
+        val infoScroller = ScrollView(context).apply { isFillViewport = true; addView(infoPanel) }
+        var infoExpanded = true
+        val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
+        collapseToggle.setOnClickListener {
+            infoExpanded = !infoExpanded
+            infoScroller.visibility = if (infoExpanded) View.VISIBLE else View.GONE
+            collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
+        }
+        addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
+        addView(infoScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.6f))
 
-        // ---- Chapter filter (search + chips) ----
+        // ---- Pinned chapter filter (search + chips) ----
+        addView(makeDivider(context))
         val search = makeSearchField(context, "Search chapters")
         addView(search)
         val chipsContainer = WrapLayout(context).apply {
-            horizontalSpacingDp = 8
-            verticalSpacingDp = 8
-            setPadding(0, dp(8), 0, dp(8))
+            horizontalSpacingDp = Space.SM
+            verticalSpacingDp = Space.SM
+            setPadding(0, dp(Space.SM), 0, dp(Space.SM))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         addView(chipsContainer)
+
+        // ---- Chapter list (own scroll surface) ----
+        val chaptersScroller = ScrollView(context).apply { isFillViewport = true }
         val chaptersContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        addView(chaptersContainer)
+        chaptersScroller.addView(chaptersContainer)
+        addView(chaptersScroller, verticalFill())
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
         var chapterFilter = storage.getChapterFilterSettings().filterMode
@@ -196,34 +232,46 @@ internal fun ScreenHost.showChapterSelection(storyId: String) {
     }
     val selectedIds = mutableSetOf<String>()
     screen(title = "Select Chapters", subtitle = story.title, onBack = { showDetails(story.id) }) {
+        val downloadable = story.chapters.filter { !it.downloaded }
+        // X3: select-all / deselect-all affordance for fast bulk selection.
         flow {
-            button("Download Selected", Btn.FILLED, R.drawable.wna_download) {
-                val selectedIndexes = story.chapters.mapIndexedNotNull { index, chapter ->
-                    if (selectedIds.contains(chapter.id) && !chapter.downloaded) index else null
-                }
-                if (selectedIndexes.isEmpty()) {
-                    toast("No undownloaded chapters selected")
-                } else {
-                    queueDownload(story, selectedIndexes)
-                    showDetails(story.id)
-                }
+            button("Select All", Btn.TEXT, R.drawable.wna_check) {
+                selectedIds.clear()
+                selectedIds.addAll(downloadable.map { it.id })
+                showChapterSelection(story.id)
+            }
+            button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
+                selectedIds.clear()
+                showChapterSelection(story.id)
             }
         }
         addView(scroll(LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
-            story.chapters.forEachIndexed { index, chapter ->
-                if (!chapter.downloaded) {
-                    val cb = CheckBox(app).apply {
-                        text = "${index + 1}. ${chapter.title}"
-                        setOnCheckedChangeListener { _, checked ->
-                            if (checked) selectedIds.add(chapter.id) else selectedIds.remove(chapter.id)
-                        }
-                    }
-                    styledCheckBox(cb)
-                    addView(cb)
-                }
+            // X1: reuse the card-style selectable row instead of bare CheckBoxes.
+            downloadable.forEachIndexed { index, chapter ->
+                val displayIndex = story.chapters.indexOfFirst { it.id == chapter.id } + 1
+                addView(makeSelectableCardRow(
+                    context,
+                    title = "$displayIndex. ${sanitizeTitle(chapter.title)}",
+                    subtitle = if (chapter.downloaded) "Available Offline" else null,
+                    selected = selectedIds.contains(chapter.id),
+                ) { checked ->
+                    if (checked) selectedIds.add(chapter.id) else selectedIds.remove(chapter.id)
+                })
             }
         }), verticalFill())
+        // X2: the primary bulk action is a full-width CTA docked at the bottom, next to the items.
+        fullButton("Download ${selectedIds.size} Selected", Btn.FILLED, R.drawable.wna_download, bottomMarginDp = 0) {
+            val selectedIndexes = story.chapters.mapIndexedNotNull { index, chapter ->
+                if (selectedIds.contains(chapter.id) && !chapter.downloaded) index else null
+            }
+            if (selectedIndexes.isEmpty()) {
+                toast("No undownloaded chapters selected")
+            } else {
+                queueDownload(story, selectedIndexes)
+                showDetails(story.id)
+            }
+        }
     }
 }
 
@@ -263,22 +311,22 @@ private fun ScreenHost.chapterRow(
     filter: String,
 ): LinearLayout {
     val isLastRead = story.lastReadChapterId == chapter.id
-    val radiusPx = dp(8).toFloat()
+    val radiusPx = dp(Space.SM).toFloat()
     val fill = if (isLastRead) ThemeManager.colors.primaryContainer else ThemeManager.colors.elevation1
     val row = LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(12), dp(10), dp(6), dp(10))
+        setPadding(dp(Space.MD), dp(Space.SM + 2), dp(Space.XS + 2), dp(Space.SM + 2))
         background = ripple(roundedBg(fill, radiusPx), radiusPx, ThemeManager.colors.onSurface)
         isClickable = true
         isFocusable = true
         setOnClickListener { showReader(story.id, chapter.id) }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(6)
+            bottomMargin = dp(Space.XS + 2)
         }
     }
     row.addView(chapterStatusDot(chapter.downloaded).apply {
-        (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, dp(10), 0)
+        (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, dp(Space.SM + 2), 0)
     })
     row.addView(LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
@@ -297,7 +345,7 @@ private fun ScreenHost.chapterRow(
     row.addView(ImageView(app).apply {
         setImageDrawable(app.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.onSurfaceVariant))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(10), dp(10), dp(10), dp(10))
+        setPadding(dp(Space.SM + 2), dp(Space.SM + 2), dp(Space.SM + 2), dp(Space.SM + 2))
         background = selectableRipple(ThemeManager.colors.onSurface)
         isClickable = true
         isFocusable = true
@@ -359,16 +407,18 @@ internal fun ScreenHost.renderFilterChips(
     container.addView(bookmarkChip)
 }
 
-/** Centered story header — cover, title, author, source/archived chips, and stats pills
- *  (Score / Chapters / Saved). Mirrors the RN `StoryHeader`. */
+/** Centered story header — cover, title, author, source/archived chips, and a compact
+ *  "Saved / Chapters" progress summary. Mirrors the RN `StoryHeader`; D5 collapsed the three
+ *  duplicate stat pills (Score/Chapters/Saved) — Score already shows in the tags row and the
+ *  chapter total is implied by the list — into one progress summary. */
 private fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
     val col = LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
-        setPadding(0, dp(4), 0, dp(8))
+        setPadding(0, dp(Space.XS), 0, dp(Space.SM))
     }
     val cover = coverImage(story, widthDp = 150, heightDp = 225, tapToOpen = true)
-    (cover.layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, 0, dp(16))
+    (cover.layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, 0, dp(Space.LG))
     col.addView(cover)
     col.addView(makeText(app, story.title, Type.HEADLINE, ThemeManager.colors.onSurface).apply {
         gravity = Gravity.CENTER
@@ -378,7 +428,7 @@ private fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
     col.addView(makeText(app, story.author, Type.TITLE_MEDIUM, ThemeManager.colors.secondary).apply {
         gravity = Gravity.CENTER
         includeFontPadding = false
-        setPadding(0, dp(2), 0, dp(12))
+        setPadding(0, dp(2), 0, dp(Space.MD))
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     })
     val provider = SourceRegistry.getProvider(story.sourceUrl)
@@ -392,14 +442,13 @@ private fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
             }
         }
     }
-    col.flow {
-        story.score?.takeIf { it.isNotBlank() }?.let {
-            addView(makeStatPill(context, "Score", it))
-        }
-        if (story.totalChapters > 0) {
-            addView(makeStatPill(context, "Chapters", story.totalChapters.toString()))
-        }
-        addView(makeStatPill(context, "Saved", story.downloadedChapters.toString()))
-    }.apply { setPadding(0, dp(4), 0, dp(4)) }
+    if (story.totalChapters > 0) {
+        col.addView(makeProgressSummary(app, story.downloadedChapters, story.totalChapters).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Space.XS)
+                bottomMargin = dp(Space.XS)
+            }
+        })
+    }
     return col
 }

@@ -67,6 +67,8 @@ internal fun ScreenHost.syncStory(story: Story) {
 }
 
 internal fun ScreenHost.applyCleanup(story: Story) {
+    // G5: show a loading state so the screen doesn't appear frozen while cleanup runs.
+    screen(title = "Applying Cleanup", onBack = null) { centerLoading("Cleaning chapters...") }
     scope.launch(Dispatchers.IO) {
         story.chapters.filter { it.downloaded }.forEachIndexed { _, chapter ->
             val html = storage.readChapter(chapter) ?: return@forEachIndexed
