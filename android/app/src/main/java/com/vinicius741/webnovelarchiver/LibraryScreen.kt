@@ -70,7 +70,7 @@ internal fun ScreenHost.showLibrary() {
             if (!selectedTags.add(tag)) selectedTags.remove(tag)
             rerender()
         }))
-        addView(scroll(list), verticalFill())
+        addView(scroll(list), verticalFill().apply { topMargin = dp(Space.LG) })
 
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -204,7 +204,9 @@ private fun ScreenHost.makeLibraryFilters(
             })
         }
         tagScroll.addView(tagRow)
-        filtersContainer.addView(tagScroll)
+        filtersContainer.addView(tagScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.SM)
+        })
     }
 
     if (!hasCustomTabs) return filtersContainer
@@ -450,22 +452,11 @@ internal fun ScreenHost.renderLibraryList(
 }
 
 private fun ScreenHost.showStoryActionsDialog(story: Story) {
-    val items = mutableListOf("Open")
-    if (StoryActionGuards.canSync(story)) items.add("Sync")
-    items.add("Move")
-    items.add("Delete")
-    AlertDialog.Builder(app)
-        .setTitle(story.title)
-        .setItems(items.toTypedArray()) { _, which ->
-            when (items[which]) {
-                "Open" -> showDetails(story.id)
-                "Sync" -> syncStory(story)
-                "Move" -> showMoveStoryDialog(story)
-                "Delete" -> confirm("Delete ${story.title}?") { storage.deleteStory(story.id); showLibrary() }
-            }
-        }
-        .setNegativeButton("Cancel", null)
-        .show()
+    val options = mutableListOf<Pair<String, () -> Unit>>("Open" to { showDetails(story.id) })
+    if (StoryActionGuards.canSync(story)) options += "Sync" to { syncStory(story) }
+    options += "Move" to { showMoveStoryDialog(story) }
+    options += "Delete" to { confirm("Delete ${story.title}?") { storage.deleteStory(story.id); showLibrary() } }
+    showStyledOptionsDialog(story.title, options)
 }
 
 internal fun ScreenHost.showLibrarySelection() {
@@ -517,11 +508,9 @@ internal fun ScreenHost.showLibrarySelection() {
 
 internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
     val tabs = storage.getTabs().sortedBy { it.order }
-    val labels = listOf("Unassigned") + tabs.map { it.name }
-    AlertDialog.Builder(app)
-        .setTitle("Move ${storyIds.size} Novels")
-        .setItems(labels.toTypedArray()) { _, which ->
-            val tabId = tabs.getOrNull(which - 1)?.id
+    val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
+    val options = tabOptions.map { (tabId, label) ->
+        label to {
             storyIds.forEach { id ->
                 storage.getStory(id)?.let { story ->
                     story.tabId = tabId
@@ -530,8 +519,8 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
             }
             showLibrary()
         }
-        .setNegativeButton("Cancel", null)
-        .show()
+    }
+    showStyledOptionsDialog("Move ${storyIds.size} Novels", options)
 }
 
 internal fun ScreenHost.showAddStory() {
@@ -561,14 +550,13 @@ internal fun ScreenHost.showAddStory() {
 
 internal fun ScreenHost.showMoveStoryDialog(story: Story) {
     val tabs = storage.getTabs().sortedBy { it.order }
-    val labels = listOf("Unassigned") + tabs.map { it.name }
-    AlertDialog.Builder(app)
-        .setTitle("Move Novel")
-        .setItems(labels.toTypedArray()) { _, which ->
-            story.tabId = tabs.getOrNull(which - 1)?.id
+    val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
+    val options = tabOptions.map { (tabId, label) ->
+        label to {
+            story.tabId = tabId
             storage.addOrUpdateStory(story)
             showLibrary()
         }
-        .setNegativeButton("Cancel", null)
-        .show()
+    }
+    showStyledOptionsDialog("Move Novel", options)
 }

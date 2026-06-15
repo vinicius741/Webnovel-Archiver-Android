@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver
 
-import android.app.AlertDialog
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -162,9 +161,5 @@ private fun ScreenHost.showJobActions(job: DownloadJob) {
         options += "Remove" to { downloadEngine.removeJob(job.id); showQueue() }
     }
     if (options.isEmpty()) return
-    AlertDialog.Builder(app)
-        .setTitle("${job.chapterIndex + 1}. ${job.chapter.title}")
-        .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-        .setNegativeButton("Cancel", null)
-        .show()
+    showStyledOptionsDialog("${job.chapterIndex + 1}. ${job.chapter.title}", options)
 }

@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
@@ -14,7 +13,6 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import com.vinicius741.webnovelarchiver.core.Chapter
 import com.vinicius741.webnovelarchiver.core.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.core.EpubConfig
@@ -33,12 +31,12 @@ internal fun ScreenHost.showDetails(storyId: String) {
         subtitle = "by ${story.author}",
         onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
-        // D1: the body is no longer one giant ScrollView. The info panel (header/actions/description/tags)
-        // gets its own collapsible scroll region, the chapter filter controls are pinned, and the chapter
-        // list scrolls on its own — so Sync/Download and the chapter search never scroll out of view.
-        scrollable = false,
+        // D1: the whole body is a single ScrollView (header, actions, description, tags, filter, and
+        // chapter list all scroll together). The "Hide details" toggle still tucks the bulky header
+        // away while browsing, so the cover doesn't push the chapter list below the fold.
+        scrollable = true,
     ) {
-        // ---- Info panel: header + actions + description + tags (own scroll surface) ----
+        // ---- Info panel: header + actions + description + tags ----
         val infoPanel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         infoPanel.addView(buildDetailsHeader(story))
 
@@ -63,7 +61,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         }
         val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
         // D2: Generate EPUB is the primary action — promote it to a full-width button so its visual
-        // weight matches its usage, leaving Read EPUB as a secondary flow action.
+        // weight matches its usage.
         infoPanel.addView(makeFullWidthButton(context, "Generate EPUB", Btn.TONAL, R.drawable.wna_menu_book, dp(Space.SM + 2), enabled = story.downloadedChapters > 0) {
             val config = story.epubConfig ?: EpubConfig(
                 maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
@@ -73,13 +71,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
             )
             generateConfiguredEpub(story, config)
         })
-        infoPanel.addView(WrapLayout(context).apply {
-            horizontalSpacingDp = Spacing.SM
-            verticalSpacingDp = Spacing.SM
-            val readEpub = makeButton(context, "Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open) { openEpubForStory(story) }
-            if (!hasEpub) disableButton(readEpub)
-            addView(readEpub)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        // Read EPUB is now a full-width outlined button so it aligns with the other primary actions.
+        infoPanel.addView(makeFullWidthButton(context, "Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open, dp(Space.SM + 2), enabled = hasEpub) {
+            openEpubForStory(story)
         })
         // D6: make the stale notice actionable with an inline Regenerate button.
         if (story.epubStale == true && hasEpub) {
@@ -138,16 +132,15 @@ internal fun ScreenHost.showDetails(storyId: String) {
             })
         }
         // Collapse/expand toggle so the info panel can be tucked away while browsing chapters.
-        val infoScroller = ScrollView(context).apply { isFillViewport = true; addView(infoPanel) }
         var infoExpanded = true
         val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
         collapseToggle.setOnClickListener {
             infoExpanded = !infoExpanded
-            infoScroller.visibility = if (infoExpanded) View.VISIBLE else View.GONE
+            infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
             collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
         }
         addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
-        addView(infoScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.6f))
+        addView(infoPanel)
 
         // ---- Pinned chapter filter (search + chips) ----
         addView(makeDivider(context))
@@ -161,11 +154,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
         }
         addView(chipsContainer)
 
-        // ---- Chapter list (own scroll surface) ----
-        val chaptersScroller = ScrollView(context).apply { isFillViewport = true }
+        // ---- Chapter List (flows in the same scroll surface as the header above) ----
         val chaptersContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        chaptersScroller.addView(chaptersContainer)
-        addView(chaptersScroller, verticalFill())
+        addView(chaptersContainer)
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
         var chapterFilter = storage.getChapterFilterSettings().filterMode
@@ -217,11 +208,7 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
             showLibrary()
         }
     }
-    AlertDialog.Builder(app)
-        .setTitle("More options")
-        .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-        .setNegativeButton("Cancel", null)
-        .show()
+    showStyledOptionsDialog("More options", options)
 }
 
 internal fun ScreenHost.showChapterSelection(storyId: String) {
@@ -379,11 +366,7 @@ private fun ScreenHost.showChapterActions(
         renderChapterList(updated, list, query, filter)
     }
     options += "Read Aloud (TTS)" to { TtsForegroundService.start(app, story.id, chapter.id) }
-    AlertDialog.Builder(app)
-        .setTitle(sanitizeTitle(chapter.title))
-        .setItems(options.map { it.first }.toTypedArray()) { _, which -> options[which].second() }
-        .setNegativeButton("Cancel", null)
-        .show()
+    showStyledOptionsDialog(sanitizeTitle(chapter.title), options)
 }
 
 /**
@@ -433,14 +416,23 @@ private fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
     })
     val provider = SourceRegistry.getProvider(story.sourceUrl)
     if (provider != null || story.isArchived == true) {
-        col.flow {
-            provider?.let {
-                addView(makeBadge(context, it.name, ThemeManager.colors.secondaryContainer, ThemeManager.colors.onSecondaryContainer))
-            }
-            if (story.isArchived == true) {
-                addView(makeBadge(context, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
-            }
+        val badgeRow = LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
         }
+        provider?.let {
+            badgeRow.addView(makeBadge(app, it.name, ThemeManager.colors.secondaryContainer, ThemeManager.colors.onSecondaryContainer))
+        }
+        if (story.isArchived == true) {
+            if (provider != null) {
+                val spacer = View(app).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(Space.SM), 0)
+                }
+                badgeRow.addView(spacer)
+            }
+            badgeRow.addView(makeBadge(app, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
+        }
+        col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
     if (story.totalChapters > 0) {
         col.addView(makeProgressSummary(app, story.downloadedChapters, story.totalChapters).apply {

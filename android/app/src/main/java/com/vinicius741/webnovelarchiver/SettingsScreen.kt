@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver
 
-import android.app.AlertDialog
 import android.graphics.Color
 import android.text.InputType
 import android.view.ViewGroup
@@ -160,16 +159,15 @@ internal fun ScreenHost.showTtsVoicePicker() {
         toast("No local TTS voices available yet")
         return
     }
-    val labels = listOf("System default") + voices.map { "${it.name} (${it.language})" }
-    AlertDialog.Builder(app)
-        .setTitle("TTS Voice")
-        .setItems(labels.toTypedArray()) { _, which ->
+    val voiceOptions = listOf(null to "System default") + voices.map { it to "${it.name} (${it.language})" }
+    val options = voiceOptions.map { (voice, label) ->
+        label to {
             val current = storage.getTtsSettings()
-            storage.saveTtsSettings(current.copy(voiceIdentifier = voices.getOrNull(which - 1)?.identifier))
+            storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
             showSettings()
         }
-        .setNegativeButton("Cancel", null)
-        .show()
+    }
+    showStyledOptionsDialog("TTS Voice", options)
 }
 
 internal fun ScreenHost.saveThemePreference(themeId: String) {

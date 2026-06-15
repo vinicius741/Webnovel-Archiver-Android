@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -165,12 +164,10 @@ internal fun ScreenHost.openEpubForStory(story: Story) {
         return
     }
 
-    val labels = existing.map { EpubSelection.displayNameForPath(it) }.toTypedArray()
-    AlertDialog.Builder(app)
-        .setTitle("Select EPUB to Read")
-        .setItems(labels) { _, which -> openFile(existing[which]) }
-        .setNegativeButton("Cancel", null)
-        .show()
+    val options = existing.map { file ->
+        EpubSelection.displayNameForPath(file) to { openFile(file) }
+    }
+    showStyledOptionsDialog("Select EPUB to Read", options)
 }
 
 internal fun ScreenHost.share(file: File) {
