@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override lateinit var ttsEngine: TtsEngine
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
+    override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /**
      * The single system-back callback. Always registered, but enabled only while a screen has

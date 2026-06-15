@@ -3,41 +3,33 @@ package com.vinicius741.webnovelarchiver
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
+import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.core.DownloadJob
+import com.vinicius741.webnovelarchiver.core.DownloadManagerPlanning
+import com.vinicius741.webnovelarchiver.core.GlobalQueueAction
+import com.vinicius741.webnovelarchiver.core.QueueAction
+import com.vinicius741.webnovelarchiver.core.QueueStatusCounts
 import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showQueue() {
-    screen(title = "Download Manager", onBack = { showLibrary() }) {
-        val queue = storage.getQueue()
-        val stats = queue.groupingBy { it.status }.eachCount()
+    val queue = storage.getQueue()
+    val counts = QueueStatusCounts.from(queue)
+    screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(counts)) {
         if (queue.isNotEmpty()) {
-            // Q1: one headline summary instead of six stat pills dominated by zeroes, plus compact
-            // count chips that only appear for nonzero buckets.
-            val done = stats["completed"] ?: 0
             row {
-                addView(makeProgressSummary(context, done, queue.size))
+                addView(makeProgressSummary(context, counts.completed, counts.total))
             }
             flow {
-                addView(makeCountChip(context, "active", stats["downloading"] ?: 0, ThemeManager.colors.primary))
-                addView(makeCountChip(context, "queued", stats["pending"] ?: 0, ThemeManager.colors.onSurfaceVariant))
-                addView(makeCountChip(context, "paused", stats["paused"] ?: 0, ThemeManager.colors.secondary))
-                addView(makeCountChip(context, "failed", stats["failed"] ?: 0, ThemeManager.colors.error))
-                addView(makeCountChip(context, "cancelled", stats["cancelled"] ?: 0, ThemeManager.colors.error))
+                addView(makeCountChip(context, "active", counts.downloading, ThemeManager.colors.primary))
+                addView(makeCountChip(context, "queued", counts.pending, ThemeManager.colors.onSurfaceVariant))
+                addView(makeCountChip(context, "paused", counts.paused, ThemeManager.colors.secondary))
+                addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
+                addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
             }
-        }
-        // Q2: group global actions by purpose; isolate the destructive Cancel All.
-        flow {
-            button("Resume All", Btn.TONAL, R.drawable.wna_play) { downloadEngine.resumeAll(); DownloadForegroundService.start(app); showQueue() }
-            button("Pause All", Btn.TEXT, R.drawable.wna_pause) { downloadEngine.pauseAll(); showQueue() }
-            button("Retry Failed", Btn.TEXT, R.drawable.wna_refresh) { downloadEngine.retryFailed(); DownloadForegroundService.start(app); showQueue() }
-            button("Clear Done", Btn.TEXT, R.drawable.wna_check) { downloadEngine.clearFinished(); showQueue() }
-        }
-        flow {
-            button("Cancel All", Btn.ERROR, R.drawable.wna_close) { confirm("Cancel all active and pending downloads?", confirmLabel = "Cancel All") { downloadEngine.cancelAll(); showQueue() } }
         }
         if (queue.isEmpty()) {
             addView(makeEmptyState(context, "No active downloads. Downloaded chapters will appear here.", R.drawable.wna_download))
@@ -47,54 +39,10 @@ internal fun ScreenHost.showQueue() {
         queue.groupBy { it.storyId }
             .values
             .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
-            .forEach { jobs ->
-                val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
-                val summary = jobs.groupingBy { it.status }.eachCount()
-                groupList.addView(groupList.card {
-                    addView(makeText(context, storyTitle, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface))
-                    // Q3: scannable progress summary + count chips for nonzero buckets, instead of one run-on line.
-                    addView(makeProgressSummary(context, summary["completed"] ?: 0, jobs.size).apply { setPadding(0, dp(Space.XS + 2), 0, dp(Space.XS + 2)) })
-                    flow {
-                        addView(makeCountChip(context, "active", summary["downloading"] ?: 0, ThemeManager.colors.primary))
-                        addView(makeCountChip(context, "queued", summary["pending"] ?: 0, ThemeManager.colors.onSurfaceVariant))
-                        addView(makeCountChip(context, "paused", summary["paused"] ?: 0, ThemeManager.colors.secondary))
-                        addView(makeCountChip(context, "failed", summary["failed"] ?: 0, ThemeManager.colors.error))
-                    }
-                    if (jobs.any { it.status == "pending" || it.status == "downloading" } ||
-                        jobs.any { it.status == "paused" } ||
-                        jobs.any { it.status == "failed" || it.status == "cancelled" }
-                    ) {
-                        flow {
-                            if (jobs.any { it.status == "pending" || it.status == "downloading" }) {
-                                button("Pause Story", Btn.TEXT, R.drawable.wna_pause) {
-                                    jobs.filter { it.status == "pending" || it.status == "downloading" }.forEach { downloadEngine.pauseJob(it.id) }
-                                    showQueue()
-                                }
-                            }
-                            if (jobs.any { it.status == "paused" }) {
-                                button("Resume Story", Btn.TONAL, R.drawable.wna_play) {
-                                    jobs.filter { it.status == "paused" }.forEach { downloadEngine.resumeJob(it.id) }
-                                    DownloadForegroundService.start(app)
-                                    showQueue()
-                                }
-                            }
-                            if (jobs.any { it.status == "failed" || it.status == "cancelled" }) {
-                                button("Retry Story", Btn.TEXT, R.drawable.wna_refresh) {
-                                    downloadEngine.retryFailedForStory(jobs.first().storyId)
-                                    DownloadForegroundService.start(app)
-                                    showQueue()
-                                }
-                            }
-                        }
-                    }
-                })
-                jobs.sortedBy { it.chapterIndex }.forEach { job ->
-                    addQueueJobCard(groupList, job)
-                }
-            }
+            .forEach { jobs -> groupList.addView(addStoryGroup(jobs)) }
         addView(scroll(groupList), verticalFill())
     }
-    // Q5: refresh every 30s so the "retry in Xm" countdown and status pills don't go stale while the
+    // Refresh every 30s so the "retry in Xm" countdown and status pills don't go stale while the
     // screen stays open. Tag the root view so the refresher can tell if the user has navigated away
     // (a different screen replaces this view and its tag), in which case it stops itself.
     if (frame.childCount > 0) {
@@ -112,54 +60,171 @@ internal fun ScreenHost.showQueue() {
 private const val QUEUE_TAG = "queue-screen"
 private const val QUEUE_REFRESH_MS = 30_000L
 
-internal fun ScreenHost.addQueueJobCard(container: LinearLayout, job: DownloadJob) {
-    container.addView(container.card {
-        row {
-            addView(jobStatusDot(job.status))
+/** Global (whole-queue) actions rendered as the app-bar icon strip, conditional on queue state. */
+private fun ScreenHost.globalAppBarActions(counts: QueueStatusCounts): List<AppBarAction> =
+    DownloadManagerPlanning.globalActions(counts).map { action ->
+        when (action) {
+            GlobalQueueAction.RESUME_ALL -> AppBarAction(R.drawable.wna_play, "Resume All") {
+                downloadEngine.resumeAll(); DownloadForegroundService.start(app); showQueue()
+            }
+            GlobalQueueAction.PAUSE_ALL -> AppBarAction(R.drawable.wna_pause, "Pause All") {
+                downloadEngine.pauseAll(); showQueue()
+            }
+            GlobalQueueAction.RETRY_ALL -> AppBarAction(R.drawable.wna_refresh, "Retry Failed", ThemeManager.colors.primary) {
+                downloadEngine.retryFailed(); DownloadForegroundService.start(app); showQueue()
+            }
+            GlobalQueueAction.CANCEL_ALL -> AppBarAction(R.drawable.wna_stop, "Cancel All", ThemeManager.colors.error) {
+                confirm("Cancel all active and pending downloads?", confirmLabel = "Cancel All") {
+                    downloadEngine.cancelAll(); showQueue()
+                }
+            }
+            GlobalQueueAction.CLEAR_DONE -> AppBarAction(R.drawable.wna_check, "Clear Done") {
+                downloadEngine.clearFinished(); showQueue()
+            }
+        }
+    }
+
+/** One collapsible card per story: a clickable header (chevron + title/subtitle + story action
+ *  icons) followed by its chapter rows when expanded. Novel grouping is unmistakable because the
+ *  header and its chapters share a single card. */
+private fun ScreenHost.addStoryGroup(jobs: List<DownloadJob>): LinearLayout {
+    val storyId = jobs.first().storyId
+    val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
+    val counts = QueueStatusCounts.from(jobs)
+    val expanded = storyExpandOverride[storyId] ?: (counts.hasActive || counts.hasFailed)
+    val card = makeCard(app).apply {
+        val header = row {
+            addView(chevronIcon(expanded))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(makeText(context, "${job.chapterIndex + 1}. ${job.chapter.title}", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
-                val retryDetail = if (job.retryCount > 0) " • retries ${job.retryCount}/${job.maxRetries}" else ""
-                val nextRetry = job.nextRetryAt?.let { " • retry in ${formatRelativeTime(it)}" }.orEmpty()
-                addView(makeText(context, "${job.status}${job.error?.let { " • $it" } ?: ""}$retryDetail$nextRetry", Type.LABEL_SMALL, statusColor(job.status)).apply { setPadding(0, dp(2), 0, 0) })
-                job.errorCategory?.let {
-                    addView(makeText(context, "Category: $it${job.errorCode?.let { code -> " ($code)" } ?: ""}", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) })
-                }
+                addView(makeText(context, storyTitle, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+                    maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                })
+                addView(makeText(context, DownloadManagerPlanning.storySubtitle(counts), Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    setPadding(0, dp(2), 0, 0)
+                })
+                addView(makeProgressSummary(context, counts.completed, counts.total).apply { setPadding(0, dp(Space.XS + 2), 0, 0) })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            // Q4: collapse the per-job Pause/Resume/Cancel/Retry/Remove button wall into a single
-            // overflow (⋮) so a 9-job story shows ~9 status rows instead of ~27 buttons.
-            addView(ImageView(context).apply {
-                setImageDrawable(context.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.onSurfaceVariant))
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPadding(dp(Space.SM + 2), dp(Space.SM + 2), dp(Space.SM + 2), dp(Space.SM + 2))
-                background = selectableRipple(ThemeManager.colors.onSurface)
-                isClickable = true
-                isFocusable = true
-                setOnClickListener { showJobActions(job) }
-                layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
-            })
+            addView(storyActionGroup(storyId, jobs, counts))
         }
-    })
+        header.isClickable = true
+        header.isFocusable = true
+        header.background = selectableRipple(ThemeManager.colors.onSurface)
+        header.setOnClickListener {
+            storyExpandOverride[storyId] = !expanded
+            showQueue()
+        }
+        if (expanded) {
+            divider()
+            jobs.sortedBy { it.chapterIndex }.forEachIndexed { index, job ->
+                if (index > 0) divider()
+                addView(addQueueJobRow(job))
+            }
+        }
+    }
+    card.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        bottomMargin = app.dp(Space.SM + 2)
+    }
+    return card
 }
 
-/** Per-job overflow menu: the actions that previously sat as a 3–5 button flow on every card. */
-private fun ScreenHost.showJobActions(job: DownloadJob) {
-    val options = mutableListOf<Pair<String, () -> Unit>>()
-    if (job.status == "pending" || job.status == "downloading") {
-        options += "Pause" to { downloadEngine.pauseJob(job.id); showQueue() }
+/** Inline story-header action icons (pause/resume/cancel/retry as relevant). Tapping the header
+ *  row toggles expand; these icons are clickable children so they consume the touch and don't. */
+private fun ScreenHost.storyActionGroup(storyId: String, jobs: List<DownloadJob>, counts: QueueStatusCounts): View =
+    LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        DownloadManagerPlanning.storyHeaderActions(counts).forEach { action -> addView(storyActionButton(action, storyId, jobs)) }
     }
-    if (job.status == "paused") {
-        options += "Resume" to { downloadEngine.resumeJob(job.id); DownloadForegroundService.start(app); showQueue() }
+
+private fun ScreenHost.storyActionButton(action: QueueAction, storyId: String, jobs: List<DownloadJob>): View = when (action) {
+    QueueAction.PAUSE -> iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause story", 44) {
+        jobs.filter { it.status == "pending" || it.status == "downloading" }.forEach { downloadEngine.pauseJob(it.id) }
+        showQueue()
     }
-    if (job.status == "pending" || job.status == "downloading" || job.status == "paused") {
-        options += "Cancel" to { downloadEngine.cancelJob(job.id); showQueue() }
+    QueueAction.RESUME -> iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume story", 44) {
+        jobs.filter { it.status == "paused" }.forEach { downloadEngine.resumeJob(it.id) }
+        DownloadForegroundService.start(app); showQueue()
     }
-    if (job.status == "failed" || job.status == "cancelled") {
-        options += "Retry" to { downloadEngine.retryJob(job.id); DownloadForegroundService.start(app); showQueue() }
+    QueueAction.CANCEL -> iconAction(R.drawable.wna_stop, ThemeManager.colors.error, "Cancel story", 44) {
+        jobs.filter { it.status == "pending" || it.status == "downloading" || it.status == "paused" }.forEach { downloadEngine.cancelJob(it.id) }
+        showQueue()
     }
-    if (job.status in setOf("completed", "failed", "cancelled")) {
-        options += "Remove" to { downloadEngine.removeJob(job.id); showQueue() }
+    QueueAction.RETRY -> iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry story", 44) {
+        downloadEngine.retryFailedForStory(storyId); DownloadForegroundService.start(app); showQueue()
     }
-    if (options.isEmpty()) return
-    showStyledOptionsDialog("${job.chapterIndex + 1}. ${job.chapter.title}", options)
+    QueueAction.REMOVE -> iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove story", 44) {
+        jobs.forEach { downloadEngine.removeJob(it.id) }; showQueue()
+    }
 }
+
+/** Down chevron rotated to point left (collapsed) when the group is folded. */
+private fun ScreenHost.chevronIcon(expanded: Boolean): View = ImageView(app).apply {
+    setImageDrawable(app.tintedIcon(R.drawable.wna_chevron_down, ThemeManager.colors.onSurfaceVariant))
+    scaleType = ImageView.ScaleType.CENTER_INSIDE
+    setPadding(0, dp(Space.SM), dp(Space.SM), dp(Space.SM))
+    rotation = if (expanded) 0f else -90f
+    layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+}
+
+internal fun ScreenHost.addQueueJobRow(job: DownloadJob): View {
+    val row = LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(dp(Space.XS), dp(Space.SM), dp(Space.XS), dp(Space.SM))
+    }
+    row.addView(jobStatusDot(job.status))
+    row.addView(LinearLayout(app).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(makeText(app, "${job.chapterIndex + 1}. ${job.chapter.title}", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END })
+        val retryDetail = if (job.retryCount > 0) " • retries ${job.retryCount}/${job.maxRetries}" else ""
+        val nextRetry = job.nextRetryAt?.let { " • retry in ${formatRelativeTime(it)}" }.orEmpty()
+        addView(makeText(app, "${job.status}${job.error?.let { " • $it" } ?: ""}$retryDetail$nextRetry", Type.LABEL_SMALL, statusColor(job.status)).apply { setPadding(0, dp(2), 0, 0) })
+        job.errorCategory?.let {
+            addView(makeText(app, "Category: $it${job.errorCode?.let { code -> " ($code)" } ?: ""}", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply { setPadding(0, dp(2), 0, 0) })
+        }
+    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    addChapterActions(row, job)
+    return row
+}
+
+/** Inline status-driven action icons for a single chapter, mirroring the legacy RN layout: at most
+ *  two icons (e.g. pause + cancel, retry + remove) sit at the row's right edge. */
+private fun ScreenHost.addChapterActions(container: LinearLayout, job: DownloadJob) {
+    DownloadManagerPlanning.chapterActions(job.status).forEach { action ->
+        container.addView(chapterActionButton(action, job))
+    }
+}
+
+private fun ScreenHost.chapterActionButton(action: QueueAction, job: DownloadJob): View = when (action) {
+    QueueAction.PAUSE -> iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause", 36) {
+        downloadEngine.pauseJob(job.id); showQueue()
+    }
+    QueueAction.RESUME -> iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume", 36) {
+        downloadEngine.resumeJob(job.id); DownloadForegroundService.start(app); showQueue()
+    }
+    QueueAction.RETRY -> iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry", 36) {
+        downloadEngine.retryJob(job.id); DownloadForegroundService.start(app); showQueue()
+    }
+    QueueAction.CANCEL -> iconAction(R.drawable.wna_close, ThemeManager.colors.error, "Cancel", 36) {
+        downloadEngine.cancelJob(job.id); showQueue()
+    }
+    QueueAction.REMOVE -> iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove", 36) {
+        downloadEngine.removeJob(job.id); showQueue()
+    }
+}
+
+/** Compact tappable icon used by the inline action groups. */
+internal fun ScreenHost.iconAction(icon: Int, tint: Int, desc: String, sizeDp: Int, onClick: () -> Unit): View =
+    ImageView(app).apply {
+        contentDescription = desc
+        setImageDrawable(app.tintedIcon(icon, tint))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        val pad = dp(Space.SM)
+        setPadding(pad, pad, pad, pad)
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+    }

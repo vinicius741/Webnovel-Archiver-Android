@@ -32,6 +32,13 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
     /**
+     * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by
+     * `storyId`. A story absent from the map defaults to expanded when it has active work or
+     * failures, collapsed otherwise. Survives the screen's periodic re-renders (which rebuild the
+     * whole tree) so a user's manual collapse isn't undone 30s later.
+     */
+    val storyExpandOverride: MutableMap<String, Boolean>
+    /**
      * The current screen's in-app back navigation, set by [com.vinicius741.webnovelarchiver.ui.screen].
      * The system back button (wired in [com.vinicius741.webnovelarchiver.MainActivity]) invokes this so
      * the hardware/gesture back press mirrors the app-bar back arrow instead of closing the app. `null`
