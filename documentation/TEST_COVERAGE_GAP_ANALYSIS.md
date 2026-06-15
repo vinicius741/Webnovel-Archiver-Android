@@ -1,119 +1,100 @@
 # Test Coverage Gap Analysis
 
 ## Executive Summary
-This document outlines the current state of test coverage in the Webnovel Archiver project. **Phase 1, Phase 2, and Phase 3 (partial) of the action plan have been completed**, with critical services, most custom hooks, core functionality, and initial UI component testing now in place. Remaining gaps exist in notification services, useStoryEPUB hook, some reader hooks, and comprehensive UI component testing.
+
+The native Kotlin implementation has **36 unit test files** with 1:1 coverage of all planning modules and core utilities. Tests use JUnit 4 and run via `./gradlew :app:testDebugUnitTest`. This document tracks the current test status and remaining gaps.
 
 ## 1. Current Test Coverage Status
 
-### A. Custom Hooks (`src/hooks`) - **~80% Coverage**
-The application relies heavily on custom hooks for logic separation. Most critical hooks now have comprehensive tests.
+### A. Core Planning Modules — **100% Coverage**
+Every planning module has a dedicated test file:
 
-**Completed:**
-- ✓ **`useStoryDownload.test.ts`**: Tests the core download feature including download loop, error handling, and queue management.
-- ✓ **`useLibrary.test.ts`**: Tests for library collection management, updates, and persistence states.
-- ✓ **`useTTS.test.ts`**: Tests for Text-to-Speech state and control logic.
-- ✓ **`useSettings.test.ts`**: Tests for app-wide configuration management.
-- ✓ **`useStoryDetails.test.ts`**: Tests for story metadata fetching and management.
-- ✓ **`useStoryActions.test.ts`**: Tests for story actions (delete, update, etc.).
+| Test File | Module Tested | Status |
+|-----------|--------------|--------|
+| `TextCleanupTest` | Text cleanup, regex cleanup, script removal, TTS cleanup, chunk splitting, reader text extraction | ✅ |
+| `SentenceRemovalPlanningTest` | Sentence trimming, blank/duplicate rejection, insertion order, editing, deletion | ✅ |
+| `DefaultCleanupTest` | Default sentence removal list validation | ✅ |
+| `ReaderContentRendererTest` | Reader HTML wrapping, viewport, font sizing, image styling, fallback messages | ✅ |
+| `SourceProviderTest` | Royal Road + Scribble Hub metadata, chapter list, chapter ID, chapter body parsing, author fallbacks, chapter title cleanup | ✅ |
+| `SourceUrlValidationTest` | Story URL validation, chapter/non-story URL rejection | ✅ |
+| `BrowserUrlPlanningTest` | URL resolution, Google search fallback, Google auth external routing | ✅ |
+| `TabPlanningTest` | Tab creation, rename validation, delete reordering, move ordering | ✅ |
+| `NetworkRequestsTest` | Fetch/form request headers, Scribble Hub AJAX form body | ✅ |
+| `ArchiveUtilsTest` | ZIP traversal protection, stored EPUB mimetype entry | ✅ |
+| `ArchiveSnapshotPlanningTest` | Archive snapshots, file path copying, EPUB/pending-new cleanup | ✅ |
+| `EpubSelectionTest` | EPUB range selection, downloaded-only inclusion, start-after-bookmark, selector labels | ✅ |
+| `EpubFilenameTest` | Safe bounded filenames, chapter range suffix generation | ✅ |
+| `DownloadSchedulerTest` | Global/per-source concurrency, per-source delay scheduling | ✅ |
+| `DownloadQueuePlanningTest` | Chapter queueing, terminal duplicate reset, active duplicate suppression | ✅ |
+| `DownloadQueueControlPlanningTest` | Pause/resume/cancel/retry status transitions | ✅ |
+| `DownloadQueueMaintenanceTest` | Unsupported-source cleanup, stuck story status recovery | ✅ |
+| `DownloadErrorClassifierTest` | Error classification, retry-delay policy | ✅ |
+| `DownloadRangeSelectionTest` | Range, bookmark-forward, count-based range handling | ✅ |
+| `StorySyncPlanningTest` | Chapter merge, slug changes, bookmark remapping, pending-new tracking, EPUB stale detection | ✅ |
+| `StoryActionGuardsTest` | Archived snapshot action guards | ✅ |
+| `BackupMergePlanningTest` | JSON backup import merge, local download preservation, stale state scrubbing | ✅ |
+| `BackupExportPlanningTest` | Empty-library guards, JSON 50 MB size limit | ✅ |
+| `JsonBackupValidationTest` | JSON backup version, library, and story-ID validation | ✅ |
+| `FullBackupPathsTest` | Full-backup chapter path encoding, filename generation | ✅ |
+| `FullBackupManifestValidationTest` | Manifest validation errors, missing-manifest messaging | ✅ |
+| `FullBackupRestorePlanningTest` | Metadata scrubbing, chapter file re-linking, downloaded count recomputation | ✅ |
+| `EpubMetadataTest` | OPF description/subject/guide, cover manifest, NCX doctype, dtb metadata, navigation | ✅ |
+| `EpubContentTest` | Cover/details XHTML, escaped tags/descriptions, CSS, chapter content sanitization | ✅ |
+| `StoryBookmarkPlanningTest` | Bookmark toggling, EPUB range advancement | ✅ |
+| `LibraryQueryTest` | Source-name filtering, source+tag intersections, sorting | ✅ |
+| `TtsSessionPlanningTest` | TTS resume eligibility, chunk size restore, chunk bounds, next-chapter continuation | ✅ |
+| `TtsNotificationActionsTest` | Foreground notification pause/play actions | ✅ |
+| `SettingsValidationTest` | Download concurrency/delay, EPUB size, TTS pitch/rate/chunk size bounds | ✅ |
+| `PreferenceNormalizationTest` | Invalid/out-of-range/legacy preference normalization | ✅ |
+| `FileMimeTypesTest` | MIME types for JSON, ZIP, EPUB, fallback | ✅ |
+| `AndroidManifestIntegrationTest` | Package-visibility queries, FileProvider coverage | ✅ |
 
-**Remaining Hooks:**
-- **`useStoryEPUB.ts`**: Logic for generating EPUBs; errors here fail the export feature.
-- **`useDownloadProgress.ts`**: Download progress tracking.
-- **`useReaderContent.ts`**: Reader content loading and management.
-- **`useReaderNavigation.ts`**: Reader navigation controls.
-- **`useScreenLayout.ts`**: Screen layout calculations.
-- **`useAddStory.ts`**: Story addition flow.
-- **`useWebViewHighlight.ts`**: WebView highlighting functionality.
+### B. Engine Classes — **Partial Coverage**
+The stateful engine classes (`StorySyncEngine`, `DownloadEngine`, `EpubEngine`, `TtsEngine`) in `Engines.kt` are partially covered through planning function tests, but lack dedicated engine-level integration tests.
 
-### B. Core Services (`src/services`) - **~90% Coverage**
-Most critical services now have test coverage.
+### C. UI / Activity — **No Coverage**
+`MainActivity.kt` (~1400 lines) has no tests. All UI is programmatic and would require instrumented tests or Robolectric.
 
-**Completed:**
-- ✓ **`BackupService.test.ts`**: **CRITICAL**. Tests for data import/export integrity.
-- ✓ **`BackgroundService.test.ts`**: Tests for background task management.
-- ✓ **`DownloadService.test.ts`**: Tests for download queue and progress tracking.
-- ✓ **`StorageService.test.ts`**: Tests for file system operations.
-- ✓ **`EpubGenerator.test.ts`**: Tests for EPUB generation.
-- ✓ **`RoyalRoadProvider.test.ts`**: Tests for RoyalRoad novel source parsing.
-- ✓ **`ScribbleHubProvider.test.ts`**: Tests for Scribble Hub novel source parsing.
-- ✓ **`TTSStateManager.test.ts`**: Tests for TTS state management.
-- ✓ **`tts/TTSQueue.test.ts`**: Tests for TTS playback queue management.
-- ✓ **`tts/TTSPlaybackController.test.ts`**: Tests for TTS playback control logic.
-- ✓ **`DownloadManager.test.ts`**: Tests for download management logic.
-- ✓ **`DownloadQueue.test.ts`**: Tests for download queue implementation.
-- ✓ **`EpubContentProcessor.test.ts`**: Tests for EPUB content processing.
-- ✓ **`EpubFileSystem.test.ts`**: Tests for EPUB file system operations.
-- ✓ **`EpubMetadataGenerator.test.ts`**: Tests for EPUB metadata generation.
-- ✓ **`network/fetcher.test.ts`**: Tests for HTTP client fetching content.
+### D. Foreground Services — **No Coverage**
+`DownloadForegroundService.kt` and `TtsForegroundService.kt` have no tests. These depend on Android framework components.
 
-**Remaining Services:**
-- **`NotificationService.ts`**: User feedback mechanisms.
-- **`TTSNotificationService.ts`**: TTS-specific notifications.
+---
 
-### C. UI Components (`src/components`) - **~15% Coverage**
-Initial component testing infrastructure has been established.
+## 2. Remaining Gaps
 
-**Completed:**
-- ✓ **`StoryCard.test.tsx`**: Tests for story card rendering, optional props (cover image, source, score, progress), and user interactions.
-- ✓ **`ReaderContent.test.tsx`**: Tests for WebView HTML generation with CSS styling, content processing, empty content handling, and large content support.
+### High Priority
+1. **Engine integration tests** — Test `DownloadEngine`, `EpubEngine`, `TtsEngine`, and `StorySyncEngine` as integrated units with mock storage/network.
+2. **Storage round-trip tests** — Test `AppStorage` read/write cycles, backup export/import, and data migration.
 
-**Remaining Components:**
-- **`TTSController.tsx`**: Complex TTS playback UI with controls.
-- **`TTSSettingsModal.tsx`**: TTS settings configuration.
-- **`ProgressBar.tsx`**: Progress bar component.
-- **`ScreenContainer.tsx`**: Screen layout container.
-- **`details/`**: All detail page components (ChapterListItem, DownloadRangeDialog, StoryActions, StoryDescription, StoryHeader, StoryMenu, StoryTags).
-- **`ImageViewer.tsx`**: Image viewing component.
-- **`HeadlessWebView.tsx`**: WebView component without UI.
-- **`SortButton.tsx`**: Sorting button component.
+### Medium Priority
+3. **Android instrumented tests** — Add `androidTest/` tests for `MainActivity` screen flows (library, download, reader, settings).
+4. **Service lifecycle tests** — Test foreground service startup, notification updates, and job recovery.
 
-### D. Utils (`src/utils`) - **~100% Coverage**
-All utility functions now have comprehensive tests.
+### Low Priority
+5. **End-to-end tests** — Full flow: add story → download chapters → generate EPUB → share EPUB.
+6. **Performance tests** — Large library (100+ stories), long chapter lists (1000+ chapters), large EPUB generation.
 
-**Completed:**
-- ✓ **`htmlUtils.test.ts`**: Tests for HTML parsing utilities.
-- ✓ **`storyValidation.test.ts`**: Tests for story/chapter validation, download range validation, and update checking.
-- ✓ **`stringUtils.test.ts`**: Tests for title sanitization including ellipsis removal and whitespace handling.
-
-## 2. Existing Coverage (Maintain & Expand)
-
-The following areas have baseline tests but should be expanded:
-- **`src/services/DownloadService.test.ts`**: Add edge cases (retries, partial failures, network timeouts).
-- **`src/services/StorageService.test.ts`**: Verify migration paths and large data handling.
-- **`src/services/EpubGenerator.test.ts`**: Test with different content types and edge cases.
-- **`src/hooks/__tests__/useStoryDownload.test.ts`**: Expand error scenarios and concurrent downloads.
-- **`src/services/source/providers/__tests__/`**: Add more provider tests and edge cases (malformed HTML, missing content).
-- **`src/components/__tests__/`**: Expand UI component tests for more scenarios and edge cases.
+---
 
 ## 3. Recommended Action Plan
 
-### ✅ Phase 1: Core Logic Stability (COMPLETED)
-- ✓ **Implemented tests for `BackupService`**
-- ✓ **Mock and test `useStoryDownload`**
-- ✓ **Test `BackgroundService`**
-- ✓ **Added tests for novel source providers**
+### Phase 1: Engine Coverage (Recommended Next)
+- Create `DownloadEngineTest.kt` with mock storage and network.
+- Create `EpubEngineTest.kt` verifying end-to-end EPUB generation.
+- Create `TtsEngineTest.kt` with mock Android TTS.
+- Create `StorySyncEngineTest.kt` with mock sources.
+- Create `AppStorageTest.kt` for storage round-trips.
 
-### ✅ Phase 2: Feature Stability (COMPLETED)
-- ✓ **Added tests for `useLibrary` and `useSettings`** to ensure state consistency
-- ✓ **Added tests for `TTSStateManager` and `useTTS`**
-- ✓ **Tested remaining TTS services** (`TTSQueue`, `TTSPlaybackController`)
-- ✓ **Added tests for `useStoryActions` and `useStoryDetails`**
-- ✓ **Added tests for EPUB services** (`EpubContentProcessor`, `EpubFileSystem`, `EpubMetadataGenerator`)
-- ✓ **Added tests for download services** (`DownloadManager`, `DownloadQueue`)
-- ✓ **Added tests for network utilities** (`network/fetcher`)
-- ✓ **Added tests for utility functions** (`storyValidation`, `stringUtils`)
+### Phase 2: Instrumented Tests
+- Add Robolectric or `androidTest/` for `MainActivity` screen flows.
+- Test foreground service lifecycle with `androidTest/`.
 
-### Phase 3: UI & Integration (IN PROGRESS)
-1. ✅ **Added component testing infrastructure** for `ReaderContent` and `StoryCard`
-2. **Add component tests for TTS-related components** (`TTSController`, `TTSSettingsModal`)
-3. **Add component tests for details page components** (`StoryActions`, `StoryMenu`, `ChapterListItem`, etc.)
-4. **Add component tests for remaining UI components** (`ProgressBar`, `ScreenContainer`, `SortButton`, `ImageViewer`)
-5. **Create integration tests for the main flows** (Add Novel -> Download -> Read)
+### Phase 3: Integration Tests
+- End-to-end flow tests covering the full user journey.
+- Performance benchmarks for large libraries and long downloads.
 
-### Phase 4: Coverage Completion (Future)
-1. **Add tests for `useStoryEPUB` hook** - EPUB generation logic
-2. **Add tests for remaining reader hooks** (`useReaderContent`, `useReaderNavigation`, `useScreenLayout`, `useDownloadProgress`)
-3. **Add tests for `useAddStory` hook** - Story addition flow
-4. **Add tests for `useWebViewHighlight` hook** - WebView highlighting
-5. **Add tests for `NotificationService.ts`** - User feedback mechanisms
-6. **Add tests for `TTSNotificationService.ts`** - TTS-specific notifications
+---
+
+## Legacy React Native Test Status
+
+The React Native codebase had extensive Jest test coverage (~80% hooks, ~90% services, ~15% UI components). Those tests remain in the repository but apply only to the legacy `app/` and `src/` directories. See version control history for the previous version of this document.
