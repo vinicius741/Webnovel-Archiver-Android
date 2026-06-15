@@ -10,6 +10,45 @@ The app was originally built with React Native / Expo and has been fully rewritt
 
 ---
 
+## 🚫 🚨 🚫 DEVICE POLICY — STOP AND READ BEFORE YOU DO ANYTHING 🚫 🚨 🚫
+
+### THE ONE RULE THAT MATTERS MOST:
+
+# 	NEVER, EVER USE THE OWNER'S PHYSICAL PHONE — UNLESS THE OWNER EXPLICITLY AND DIRECTLY ASKS YOU TO IN THAT EXACT MESSAGE.
+
+This rule overrides everything else in this file. There are no exceptions, no "it's convenient," no "it's already connected," no "faster this way," no "just this once." The answer is always NO unless the owner's current message says otherwise.
+
+### When testing or deploying a feature, there is only one default target:
+
+- **ALWAYS use the simulator** (`webnovel_api36` AVD). The simulator is the default, the fallback, and the only acceptable target for every build, install, launch, redeploy, and QA run.
+
+### The physical phone is completely off-limits by default.
+
+You **must NOT**, on your own initiative:
+
+- ❌ Install, reinstall, update, or uninstall anything on the phone.
+- ❌ Push or deploy APKs to the phone.
+- ❌ Launch the app on the phone.
+- ❌ Send notifications, updates, pushes, or any data to the phone.
+- ❌ Run `adb` commands that target the phone's serial.
+- ❌ Touch the phone *even if* it appears in `adb devices`. If you see it listed, **ignore it** and use the emulator serial instead.
+- ❌ "Just test it quickly on the real device" — NO.
+- ❌ Assume a prior request to use the phone still applies later — it does NOT. Each use requires a fresh, explicit ask.
+
+### What counts as the owner "explicitly asking"?
+
+The owner's *current* message must contain something direct like: "put this on my phone," "install on the device," "test on my phone," "deploy to the phone." **Nothing else qualifies.** Vague references to "the device," a phone being "connected," or past permission do NOT count.
+
+### Why?
+
+Deploying to the phone disrupts other work on the owner's device, interrupts what they're doing, and is extremely annoying. This has happened repeatedly. It stops now. **Always use the simulator.**
+
+### BOTTOM LINE:
+
+# 	If you are not 100% certain the owner just asked you to use the phone in THIS message → USE THE SIMULATOR. No exceptions.
+
+---
+
 ## Build / Lint / Test Commands
 
 ### Core Commands
