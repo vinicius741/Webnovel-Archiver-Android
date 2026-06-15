@@ -112,7 +112,7 @@ private fun ScreenHost.makeLibraryTabBar(
         val tabContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(0, 0, dp(Space.SM), 0)
+            setPadding(0, 0, dp(Space.SM + 2), 0)
             addView(text)
             addView(underline)
             isClickable = true
@@ -148,6 +148,9 @@ private fun ScreenHost.makeLibraryFilters(
 ): View {
     val filtersContainer = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
+    }
+    val filterTopMargin = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        topMargin = dp(Space.SM)
     }
 
     // Search + sort row
@@ -192,7 +195,7 @@ private fun ScreenHost.makeLibraryFilters(
             val selected = selectedTags.contains(label)
             val chip = makeSourceChip(context, label, count, selected) { onTagToggled(label) }
             tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dp(Space.XS)
+                rightMargin = dp(Space.SM + 2)
             })
         }
         tagLabels.take(8).forEach { (label, count) ->
@@ -200,7 +203,7 @@ private fun ScreenHost.makeLibraryFilters(
             val selected = selectedTags.contains(label)
             val chip = makeChip(context, chipLabel, selected) { onTagToggled(label) }
             tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dp(Space.XS)
+                rightMargin = dp(Space.SM + 2)
             })
         }
         tagScroll.addView(tagRow)
@@ -209,7 +212,7 @@ private fun ScreenHost.makeLibraryFilters(
         })
     }
 
-    if (!hasCustomTabs) return filtersContainer
+    if (!hasCustomTabs) return filtersContainer.also { it.layoutParams = filterTopMargin }
 
     // Collapsible wrapper when tabs exist
     val wrapper = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -250,6 +253,7 @@ private fun ScreenHost.makeLibraryFilters(
         filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
         toggleIcon.animate().rotation(if (expanded) 180f else 0f).setDuration(200).start()
     }
+    wrapper.layoutParams = filterTopMargin
     return wrapper
 }
 

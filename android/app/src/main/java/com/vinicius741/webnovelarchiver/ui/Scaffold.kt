@@ -17,7 +17,16 @@ import com.vinicius741.webnovelarchiver.ScreenHost
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.showCoverDialog
 
-internal data class AppBarAction(val icon: Int, val label: String, val onClick: () -> Unit)
+internal data class AppBarAction(
+    val icon: Int,
+    val label: String,
+    /** Optional icon tint. Defaults to [ThemeColors.onSurface] when null — pass `colors.primary` to
+     *  signal an active/selected state (e.g. the reader's bookmarked chapter). Placed before
+     *  [onClick] so existing `AppBarAction(icon, label) { … }` call sites keep their trailing
+     *  lambda binding to [onClick]. */
+    val tint: Int? = null,
+    val onClick: () -> Unit,
+)
 
 internal fun ScreenHost.screen(
     title: String,
@@ -91,17 +100,18 @@ private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> U
         }
         addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach { a ->
-            addView(iconButton(a.icon, a.label) { a.onClick() })
+            addView(iconButton(a.icon, a.label, a.tint) { a.onClick() })
         }
     }
 }
 
-private fun ScreenHost.iconButton(iconRes: Int, desc: String, onClick: () -> Unit): View {
+private fun ScreenHost.iconButton(iconRes: Int, desc: String, tint: Int? = null, onClick: () -> Unit): View {
     val t = ThemeManager.current
+    val iconColor = tint ?: t.colors.onSurface
     val size = dp(44)
     return ImageView(app).apply {
         contentDescription = desc
-        setImageDrawable(app.tintedIcon(iconRes, t.colors.onSurface))
+        setImageDrawable(app.tintedIcon(iconRes, iconColor))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         setPadding(dp(Spacing.SM + 2), dp(Spacing.SM + 2), dp(Spacing.SM + 2), dp(Spacing.SM + 2))
         background = selectableRipple(t.colors.onSurface)
