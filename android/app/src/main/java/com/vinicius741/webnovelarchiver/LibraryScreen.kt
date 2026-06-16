@@ -609,6 +609,9 @@ private class LibraryPagesAdapter(
             isFillViewport = true
             addView(shell)
         }
+        // ViewPager2 requires every page's root view to fill the whole pager (match_parent on both
+        // axes); otherwise it throws "Pages must fill the whole ViewPager2 (use match_parent)".
+        scroll.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         return PageViewHolder(scroll, grid)
     }
 
