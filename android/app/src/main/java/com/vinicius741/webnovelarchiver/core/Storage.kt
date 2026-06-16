@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.core
 
 import android.content.Context
 import android.net.Uri
+import com.vinicius741.webnovelarchiver.R
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
@@ -337,7 +338,7 @@ class AppStorage(
 
     fun importBackupUri(uri: Uri): String {
         val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            ?: return "No file selected"
+            ?: return context.getString(R.string.error_no_file_selected)
         val type = object : TypeToken<Map<String, Any?>>() {}.type
         val payload = runCatching { gson.fromJson<Map<String, Any?>>(text, type) }.getOrNull()
             ?: return "Invalid backup file: not valid JSON"
@@ -389,7 +390,7 @@ class AppStorage(
             // touch [temp] again. (The previous version ran restoreFromZip *inside* the output
             // stream's `.use {}`, so restore read [temp] while it was still being written.)
             val input = context.contentResolver.openInputStream(uri)
-                ?: return "No file selected"
+                ?: return context.getString(R.string.error_no_file_selected)
             input.use { source -> temp.outputStream().use { sink -> source.copyTo(sink) } }
             // Step 2: extract + validate + stage + swap, reading [temp] only after the copy closed.
             val restoreDir = File(restoreRoot, "${System.currentTimeMillis()}").apply { mkdirs() }

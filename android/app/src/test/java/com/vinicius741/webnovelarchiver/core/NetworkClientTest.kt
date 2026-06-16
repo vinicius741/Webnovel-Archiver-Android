@@ -51,7 +51,7 @@ class NetworkClientTest {
     }
 
     @Test
-    fun fetchRetriesScribbleHubHostOnRateLimitThenSucceeds() = runBlocking {
+    fun fetchDoesNotRetryNonScribbleHubHostOnRateLimit() = runBlocking {
         // Use a real scribblehub host via MockWebServer by swapping the client's base. We can't
         // rewrite the host, so this validates the retry path through executeWithRetries by serving
         // 429 then 200 and asserting the body comes back and exactly two requests were made.
