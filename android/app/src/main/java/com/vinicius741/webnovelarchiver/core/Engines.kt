@@ -16,7 +16,6 @@ import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -829,21 +828,13 @@ class EpubEngine(private val storage: AppStorage, private val network: NetworkCl
     }
 
     private suspend fun fetchCover(url: String): CoverAsset? = runCatching {
-        withContext(Dispatchers.IO) {
-            val connection = URL(url).openConnection()
-            try {
-                if (connection is HttpURLConnection && connection.responseCode !in 200..299) {
-                    return@withContext null
-                }
-                val mediaType = normalizeCoverMediaType(connection.contentType, url)
-                if (!mediaType.startsWith("image/")) return@withContext null
-                val extension = getCoverExtension(url, mediaType)
-                val data = connection.getInputStream().use { it.readBytes() }
-                CoverAsset(data, "images/cover.$extension", mediaType)
-            } finally {
-                if (connection is HttpURLConnection) connection.disconnect()
-            }
-        }
+        // R6: route cover downloads through the shared OkHttp client with a size cap instead of
+        // raw URL.openConnection(), which has weaker timeouts/limits and bypasses the rate limiter.
+        val data = network.fetchBytes(url) ?: return@runCatching null
+        val mediaType = normalizeCoverMediaType(null, url)
+        if (!mediaType.startsWith("image/")) return@runCatching null
+        val extension = getCoverExtension(url, mediaType)
+        CoverAsset(data, "images/cover.$extension", mediaType)
     }.getOrNull()
 
     private fun entry(zip: ZipOutputStream, path: String, text: String) {

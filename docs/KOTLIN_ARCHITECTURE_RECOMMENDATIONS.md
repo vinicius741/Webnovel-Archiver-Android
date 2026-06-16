@@ -161,7 +161,7 @@ Why:
 
 Mutable models are convenient early on, but they make it difficult to know who changed state, whether UI is stale, and whether two references point to the same mutable object.
 
-### 6. Fix Network Concurrency and Timeouts
+### 6. Fix Network Concurrency and Timeouts — `[DONE]`
 
 Current state:
 
