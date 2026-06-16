@@ -36,10 +36,10 @@ data class Chapter(
 )
 
 data class EpubConfig(
-    var maxChaptersPerEpub: Int = 150,
-    var rangeStart: Int = 1,
-    var rangeEnd: Int = 1,
-    var startAfterBookmark: Boolean = false,
+    val maxChaptersPerEpub: Int = 150,
+    val rangeStart: Int = 1,
+    val rangeEnd: Int = 1,
+    val startAfterBookmark: Boolean = false,
 )
 
 data class Story(
@@ -71,25 +71,25 @@ data class Story(
 )
 
 data class Tab(
-    var id: String = "",
-    var name: String = "",
-    var order: Int = 0,
-    var createdAt: Long = System.currentTimeMillis(),
+    val id: String = "",
+    val name: String = "",
+    val order: Int = 0,
+    val createdAt: Long = System.currentTimeMillis(),
 )
 
 data class AppSettings(
-    var downloadConcurrency: Int = 1,
-    var downloadDelay: Long = 500,
-    var maxChaptersPerEpub: Int = 150,
+    val downloadConcurrency: Int = 1,
+    val downloadDelay: Long = 500,
+    val maxChaptersPerEpub: Int = 150,
 )
 
 data class SourceDownloadSettings(
-    var concurrency: Int = 1,
-    var delay: Long = 500,
+    val concurrency: Int = 1,
+    val delay: Long = 500,
 )
 
 data class ChapterFilterSettings(
-    var filterMode: String = "all",
+    val filterMode: String = "all",
 )
 
 data class DisplayPreferences(
@@ -109,19 +109,19 @@ data class DisplayPreferences(
 )
 
 data class RegexCleanupRule(
-    var id: String = "",
-    var name: String = "",
-    var pattern: String = "",
-    var flags: String = "",
-    var enabled: Boolean = true,
-    var appliesTo: String = "both",
+    val id: String = "",
+    val name: String = "",
+    val pattern: String = "",
+    val flags: String = "",
+    val enabled: Boolean = true,
+    val appliesTo: String = "both",
 )
 
 data class TtsSettings(
-    var pitch: Float = 1.0f,
-    var rate: Float = 1.0f,
-    var voiceIdentifier: String? = null,
-    var chunkSize: Int = 500,
+    val pitch: Float = 1.0f,
+    val rate: Float = 1.0f,
+    val voiceIdentifier: String? = null,
+    val chunkSize: Int = 500,
 )
 
 data class TtsSession(
@@ -156,20 +156,20 @@ data class DownloadJob(
 )
 
 data class NovelMetadata(
-    var title: String = "Unknown Title",
-    var author: String = "Unknown Author",
-    var coverUrl: String? = null,
-    var description: String? = null,
-    var tags: MutableList<String>? = null,
-    var score: String? = null,
-    var canonicalUrl: String? = null,
+    val title: String = "Unknown Title",
+    val author: String = "Unknown Author",
+    val coverUrl: String? = null,
+    val description: String? = null,
+    val tags: MutableList<String>? = null,
+    val score: String? = null,
+    val canonicalUrl: String? = null,
 )
 
 data class ChapterInfo(
-    var id: String? = null,
-    var title: String = "",
-    var url: String = "",
-    var chapterNumber: Int? = null,
+    val id: String? = null,
+    val title: String = "",
+    val url: String = "",
+    val chapterNumber: Int? = null,
 )
 
 data class EpubResult(

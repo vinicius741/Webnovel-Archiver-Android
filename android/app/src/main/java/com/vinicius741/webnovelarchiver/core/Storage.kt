@@ -305,7 +305,7 @@ class AppStorage(
                     importedTabs += 1
                 }
             }
-            currentTabs.forEachIndexed { index, tab -> tab.order = index }
+            currentTabs.forEachIndexed { index, tab -> currentTabs[index] = tab.copy(order = index) }
             saveTabs(currentTabs)
         }
         return "Imported ${added + updated} novels ($added new, $updated updated) and $importedTabs tabs"

@@ -133,7 +133,7 @@ Why:
 
 String states are easy to mistype and hard to exhaustively check. Enums make bad states impossible at compile time.
 
-### 5. Make Models Less Mutable
+### 5. Make Models Less Mutable — `[DONE]`
 
 Current state:
 
