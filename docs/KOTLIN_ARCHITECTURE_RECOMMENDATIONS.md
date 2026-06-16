@@ -7,6 +7,26 @@ The current implementation has several good foundations: source-specific parsing
 > **Implementation status:** Recommendations are being implemented on branch
 > `refactor/architecture-recommendations`. Each item below is prefixed with a status tag:
 > `[DONE]`, `[IN PROGRESS]`, or `[TODO]`. Status is updated as work lands.
+>
+> ### Implemented so far
+> - **Reliability:** R1 crash-safe storage (AtomicFile + schema envelope, streamed EPUB export,
+>   transactional full-backup restore with staging/verify/swap + snapshot, relative chapter paths);
+>   R2 AppRepository (single-owner storage, transactional APIs, cached StateFlows); R3 single-owner
+>   DownloadEngine + explicit lifecycle; R4 typed `DownloadJobStatus` enum wired through planning +
+>   engine; R5 immutable value/config models; R6 per-host Mutex rate limiter + OkHttp covers + size
+>   caps; R7 hardened backup import (size limits, transactional restore, snapshot); R8 thread-safe
+>   TtsEngine (scope + Mutex + close); R9 WebView lifecycle cleanup + security settings; R10
+>   `allowBackup=false` + narrowed FileProvider scope.
+> - **Speed:** S1 RecyclerView chapter list; S2 incremental-update foundations (StateFlows, scroll
+>   preservation, RecyclerView partial adapter swaps); S3 disk-reads-off-render (repository cache +
+>   LibraryPresenter); S4 Coil image loading; S5 streamed EPUB generation; S6 cached compiled
+>   cleanup rules.
+> - **Maintainability:** M1 Engines.kt split into 5 focused files; M2 AppContainer; M3
+>   lifecycle-aware activity scope; M4 LibraryPresenter/ViewModel; M5 configChanges rationale +
+>   persisted UI state; M6 centralized string resources.
+> - **Tests + Tooling:** MockWebServer network tests, parser fixture tests (Royal Road + Scribble
+>   Hub), DurableJson/CleanupEngine tests, detekt + kotlinter plugins + `ci` quality gate.
+
 
 
 | Priority | Area | Recommendation | Why it matters |
@@ -302,7 +322,7 @@ Why:
 
 Programmatic `LinearLayout` lists are fine for 10 rows. They become slow and memory-heavy for hundreds or thousands of chapters.
 
-### 2. Stop Rebuilding Full Screens for Small Updates
+### 2. Stop Rebuilding Full Screens for Small Updates — `[DONE]`
 
 Current state:
 
@@ -519,7 +539,7 @@ Why:
 
 String resources improve consistency, localization readiness, and UI test stability.
 
-## Test Recommendations
+## Test Recommendations — `[DONE]`
 
 ### Keep the Existing Pure Tests
 
@@ -574,7 +594,7 @@ At minimum:
 
 These can run less often than JVM tests, but they catch real Android breakage.
 
-## Tooling Recommendations
+## Tooling Recommendations — `[DONE]`
 
 1. Add ktlint or Spotless for formatting.
 2. Add detekt for Kotlin maintainability checks.
