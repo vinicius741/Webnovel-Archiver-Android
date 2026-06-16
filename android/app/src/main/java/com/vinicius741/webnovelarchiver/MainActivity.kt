@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override lateinit var ttsEngine: TtsEngine
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
+    override var storyOperation: StoryOperationState? = null
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null

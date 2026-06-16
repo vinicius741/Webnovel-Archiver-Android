@@ -12,6 +12,18 @@ import com.vinicius741.webnovelarchiver.core.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
 
+enum class StoryOperationKind {
+    EPUB,
+    CLEANUP,
+}
+
+data class StoryOperationState(
+    val storyId: String,
+    val kind: StoryOperationKind,
+    val message: String,
+    val progress: Float? = null,
+)
+
 /**
  * The contract between [MainActivity] and the screen/action extension functions split across
  * the `screens/`, `actions/`, and `ui/` files. Exposes only the shared dependencies and the
@@ -32,6 +44,7 @@ interface ScreenHost {
     val epubEngine: EpubEngine
     val ttsEngine: TtsEngine
     var activeStory: Story?
+    var storyOperation: StoryOperationState?
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by
      * `storyId`. A story absent from the map defaults to expanded when it has active work or

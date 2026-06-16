@@ -66,16 +66,46 @@ internal fun ScreenHost.syncStory(story: Story) {
 }
 
 internal fun ScreenHost.applyCleanup(story: Story) {
-    // G5: show a loading state so the screen doesn't appear frozen while cleanup runs.
-    screen(title = "Applying Cleanup", onBack = null) { centerLoading("Cleaning chapters...") }
+    if (storyOperation != null) {
+        toast("Please wait for the current operation to finish")
+        return
+    }
+    val downloaded = story.chapters.filter { it.downloaded }
+    if (downloaded.isEmpty()) {
+        toast("No downloaded chapters to process")
+        return
+    }
+    setStoryOperation(story.id, StoryOperationKind.CLEANUP, "Processing...")
     scope.launch(Dispatchers.IO) {
-        story.chapters.filter { it.downloaded }.forEachIndexed { _, chapter ->
-            val html = storage.readChapter(chapter) ?: return@forEachIndexed
-            File(chapter.filePath!!).writeText(TextCleanup.applyDownloadCleanup(html, storage.getSentenceRemovalList(), storage.getRegexRules()))
+        try {
+            val sentenceRemoval = storage.getSentenceRemovalList()
+            val regexRules = storage.getRegexRules()
+            downloaded.forEachIndexed { index, chapter ->
+                withContext(Dispatchers.Main) {
+                    setStoryOperation(
+                        story.id,
+                        StoryOperationKind.CLEANUP,
+                        "Processing ${index + 1}/${downloaded.size}: ${chapter.title}",
+                        (index + 1).toFloat() / downloaded.size,
+                    )
+                }
+                val html = storage.readChapter(chapter) ?: return@forEachIndexed
+                File(chapter.filePath!!).writeText(TextCleanup.applyDownloadCleanup(html, sentenceRemoval, regexRules))
+            }
+            story.epubStale = true
+            storage.addOrUpdateStory(story)
+            withContext(Dispatchers.Main) {
+                clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
+                toast("Cleanup applied")
+                showDetails(story.id)
+            }
+        } catch (error: Throwable) {
+            withContext(Dispatchers.Main) {
+                clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
+                toast(error.message ?: "Cleanup failed")
+                showDetails(story.id)
+            }
         }
-        story.epubStale = true
-        storage.addOrUpdateStory(story)
-        withContext(Dispatchers.Main) { toast("Cleanup applied"); showDetails(story.id) }
     }
 }
 
@@ -99,13 +129,23 @@ internal fun ScreenHost.generateEpub(
     maxChaptersPerFile: Int = storage.getSettings().maxChaptersPerEpub,
     originalChapterNumbers: List<Int>? = null,
 ) {
+    if (storyOperation != null) {
+        toast("Please wait for the current operation to finish")
+        return
+    }
     scope.launch {
         try {
-            screen(title = "Generating EPUB", onBack = null) { centerLoading("Preparing...") }
-            val results = epubEngine.generate(story, chapters, maxChaptersPerFile, originalChapterNumbers) { msg -> app.runOnUiThread { screen(title = "Generating EPUB", onBack = null) { centerLoading(msg) } } }
+            setStoryOperation(story.id, StoryOperationKind.EPUB, "Preparing...")
+            val results = epubEngine.generate(story, chapters, maxChaptersPerFile, originalChapterNumbers) { msg ->
+                app.runOnUiThread {
+                    setStoryOperation(story.id, StoryOperationKind.EPUB, msg, epubProgressFromMessage(msg))
+                }
+            }
+            clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast("Generated ${results.size} EPUB file(s)")
             showDetails(story.id)
         } catch (error: Throwable) {
+            clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast(error.message ?: "EPUB failed")
             showDetails(story.id)
         }
@@ -184,3 +224,27 @@ internal fun ScreenHost.exportAndShare(exporter: () -> File) {
 }
 
 internal fun ScreenHost.fileUri(file: File): Uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
+
+private fun ScreenHost.setStoryOperation(
+    storyId: String,
+    kind: StoryOperationKind,
+    message: String,
+    progress: Float? = null,
+) {
+    storyOperation = StoryOperationState(storyId, kind, message, progress)
+    if (activeStory?.id == storyId) showDetails(storyId)
+}
+
+private fun ScreenHost.clearStoryOperation(storyId: String, kind: StoryOperationKind, rerender: Boolean = true) {
+    if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
+        storyOperation = null
+        if (rerender && activeStory?.id == storyId) showDetails(storyId)
+    }
+}
+
+private fun epubProgressFromMessage(message: String): Float? {
+    val match = Regex("""Generating EPUB\s+(\d+)/(\d+)""").find(message) ?: return null
+    val current = match.groupValues[1].toFloatOrNull() ?: return null
+    val total = match.groupValues[2].toFloatOrNull()?.takeIf { it > 0f } ?: return null
+    return (current / total).coerceIn(0f, 1f)
+}

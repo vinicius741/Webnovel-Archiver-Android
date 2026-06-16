@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver
 
 import android.content.Intent
+import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.net.Uri
 import android.text.Editable
@@ -13,6 +15,7 @@ import android.widget.Button
 import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.core.Chapter
 import com.vinicius741.webnovelarchiver.core.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.core.EpubConfig
@@ -29,6 +32,8 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // Re-render on fold/unfold/rotation so the two-pane ↔ single-scroll layout can switch live.
     rerender = { showDetails(storyId) }
     val layout = currentScreenLayout()
+    val operation = storyOperation?.takeIf { it.storyId == story.id }
+    val isBusy = operation != null
     screen(
         title = story.title,
         subtitle = "by ${story.author}",
@@ -50,22 +55,26 @@ internal fun ScreenHost.showDetails(storyId: String) {
             })
         }
         if (StoryActionGuards.canSync(story)) {
-            infoPanel.addView(makeFullWidthButton(context, "Sync Chapters", Btn.FILLED, R.drawable.wna_refresh, dp(Space.SM + 2)) { syncStory(story) })
+            infoPanel.addView(makeFullWidthButton(context, "Sync Chapters", Btn.FILLED, R.drawable.wna_refresh, dp(Space.SM + 2), enabled = !isBusy) { syncStory(story) })
         }
         if (StoryActionGuards.canQueueDownloads(story)) {
             val remainingChapters = story.chapters.count { !it.downloaded }
             if (remainingChapters > 0) {
                 val downloadLabel = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
-                infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2)) {
+                infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2), enabled = !isBusy) {
                     queueDownload(story, story.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null })
                     showDetails(story.id)
                 })
             }
         }
+        if (operation?.kind == StoryOperationKind.CLEANUP) {
+            infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = true))
+        }
         val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
         // D2: Generate EPUB is the primary action — promote it to a full-width button so its visual
         // weight matches its usage.
-        infoPanel.addView(makeFullWidthButton(context, "Generate EPUB", Btn.TONAL, R.drawable.wna_menu_book, dp(Space.SM + 2), enabled = story.downloadedChapters > 0) {
+        val generateLabel = if (operation?.kind == StoryOperationKind.EPUB) "Generating..." else "Generate EPUB"
+        infoPanel.addView(makeFullWidthButton(context, generateLabel, Btn.TONAL, R.drawable.wna_menu_book, dp(Space.SM + 2), enabled = story.downloadedChapters > 0 && !isBusy) {
             val config = story.epubConfig ?: EpubConfig(
                 maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
                 rangeStart = 1,
@@ -74,8 +83,11 @@ internal fun ScreenHost.showDetails(storyId: String) {
             )
             generateConfiguredEpub(story, config)
         })
+        if (operation?.kind == StoryOperationKind.EPUB) {
+            infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = operation.progress == null))
+        }
         // Read EPUB is now a full-width outlined button so it aligns with the other primary actions.
-        infoPanel.addView(makeFullWidthButton(context, "Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open, dp(Space.SM + 2), enabled = hasEpub) {
+        infoPanel.addView(makeFullWidthButton(context, "Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open, dp(Space.SM + 2), enabled = hasEpub && !isBusy) {
             openEpubForStory(story)
         })
         // D6: make the stale notice actionable with an inline Regenerate button.
@@ -84,7 +96,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant))
-                addView(makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
+                val regenerateButton = makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
                     val config = story.epubConfig ?: EpubConfig(
                         maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
                         rangeStart = 1,
@@ -92,7 +104,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
                         startAfterBookmark = false,
                     )
                     generateConfiguredEpub(story, config)
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(Space.SM) })
+                }
+                if (isBusy) disableButton(regenerateButton)
+                addView(regenerateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(Space.SM) })
             })
         }
 
@@ -210,6 +224,36 @@ internal fun ScreenHost.showDetails(storyId: String) {
     }
 }
 
+private fun makeStoryOperationProgress(context: Context, operation: StoryOperationState, indeterminate: Boolean): LinearLayout {
+    return LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, 0, 0, context.dp(Space.MD))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        if (indeterminate || operation.progress == null) {
+            addView(ProgressBar(context).apply {
+                indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+                layoutParams = LinearLayout.LayoutParams(context.dp(28), context.dp(28)).apply {
+                    bottomMargin = context.dp(Space.SM)
+                }
+            })
+        } else {
+            addView(makeProgress(context, operation.progress).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(6)).apply {
+                    bottomMargin = context.dp(Space.SM)
+                }
+            })
+        }
+
+        addView(makeText(context, operation.message, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            gravity = Gravity.CENTER
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        })
+    }
+}
+
 /** Fixed width (dp) of the left info pane in the two-pane details layout, within the RN range. */
 private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 
@@ -224,21 +268,34 @@ private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
  * Apply Text Cleanup) plus Open Source.
  */
 internal fun ScreenHost.showDetailsOverflow(story: Story) {
+    val isBusy = storyOperation?.storyId == story.id
     val options = mutableListOf<Pair<String, () -> Unit>>()
     options += "Open Source" to {
         runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
             .onFailure { toast("No app available to open source") }
     }
     if (StoryActionGuards.canQueueDownloads(story)) {
-        options += "Select Chapters" to { showChapterSelection(story.id) }
-        options += "Download Range" to { showDownloadRangeDialog(story) }
+        options += "Select Chapters" to {
+            if (isBusy) toast("Please wait for the current operation to finish") else showChapterSelection(story.id)
+        }
+        options += "Download Range" to {
+            if (isBusy) toast("Please wait for the current operation to finish") else showDownloadRangeDialog(story)
+        }
     }
-    options += "EPUB Settings" to { showEpubConfigDialog(story) }
-    options += "Apply Text Cleanup" to { applyCleanup(story) }
+    options += "EPUB Settings" to {
+        if (isBusy) toast("Please wait for the current operation to finish") else showEpubConfigDialog(story)
+    }
+    options += "Apply Text Cleanup" to {
+        if (isBusy) toast("Please wait for the current operation to finish") else applyCleanup(story)
+    }
     options += "Delete Novel" to {
-        confirm("Delete \"${story.title}\"? This action cannot be undone.") {
-            storage.deleteStory(story.id)
-            showLibrary()
+        if (isBusy) {
+            toast("Please wait for the current operation to finish")
+        } else {
+            confirm("Delete \"${story.title}\"? This action cannot be undone.") {
+                storage.deleteStory(story.id)
+                showLibrary()
+            }
         }
     }
     showStyledOptionsDialog("More options", options)
