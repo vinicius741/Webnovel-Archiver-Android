@@ -1,6 +1,8 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jmailen.kotlinter' version '5.0.1'
+    id 'io.gitlab.arturbosch.detekt' version '1.23.7'
 }
 
 def localProperties = new Properties()
@@ -64,6 +66,20 @@ android {
     kotlinOptions {
         jvmTarget = '17'
     }
+}
+
+// Tooling recommendations: detekt (maintainability/complexity checks) + kotlinter (format).
+// Both start permissive so the existing codebase adopts them without a hard fail.
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config = files("$projectDir/detekt.yml")
+    parallel = true
+}
+
+// CI quality gate (Tooling recommendation #3): tests + lint + assemble together.
+tasks.register('ci') {
+    dependsOn 'testDebugUnitTest', 'detekt', 'lintDebug', 'assembleDebug'
 }
 
 dependencies {
