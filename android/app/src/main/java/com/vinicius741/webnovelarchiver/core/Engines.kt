@@ -128,7 +128,8 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
     }
 
     fun clearFinished() {
-        storage.saveQueue(storage.getQueue().filterNot { it.status in setOf("completed", "failed", "cancelled") })
+        val terminal = setOf(DownloadJobStatus.Completed.wire, DownloadJobStatus.Failed.wire, DownloadJobStatus.Cancelled.wire)
+        storage.saveQueue(storage.getQueue().filterNot { it.status in terminal })
         onChanged?.invoke()
     }
 
@@ -197,7 +198,7 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
                 }
                 break
             }
-            pending.forEach { it.status = "downloading" }
+            pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
             storage.saveQueue(queue)
             emitProgress(null)
             pending.map { job -> scope.launch { processJob(job) } }.forEach { it.join() }
@@ -245,7 +246,7 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
             story.pendingNewChapterIds = story.pendingNewChapterIds?.filterNot { it == chapter.id }?.toMutableList()?.ifEmpty { null }
             story.lastUpdated = System.currentTimeMillis()
             storage.addOrUpdateStory(story)
-            if (!isCancelled(job.id)) updateJob(job.id, "completed", null)
+            if (!isCancelled(job.id)) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: Throwable) {
             if (!isCancelled(job.id)) handleJobError(job, error)
         }
@@ -256,7 +257,7 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
         queue.find { it.id == id }?.let {
             it.status = status
             it.error = error
-            if (status == "completed") {
+            if (status == DownloadJobStatus.Completed.wire) {
                 it.errorCategory = null
                 it.errorCode = null
                 it.nextRetryAt = null
@@ -276,10 +277,10 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
             it.errorCategory = classified.category
             it.errorCode = classified.code
             if (DownloadErrorClassifier.shouldAutoRetry(it, classified)) {
-                it.status = "pending"
+                it.status = DownloadJobStatus.Pending.wire
                 it.nextRetryAt = System.currentTimeMillis() + DownloadErrorClassifier.retryDelayMs(it)
             } else {
-                it.status = if (classified.category == "cancelled") "cancelled" else "failed"
+                it.status = if (classified.category == "cancelled") DownloadJobStatus.Cancelled.wire else DownloadJobStatus.Failed.wire
                 it.nextRetryAt = null
             }
         }
@@ -288,7 +289,8 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
         onChanged?.invoke()
     }
 
-    private fun isCancelled(id: String): Boolean = storage.getQueue().any { it.id == id && it.status == "cancelled" }
+    private fun isCancelled(id: String): Boolean =
+        storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
 
     fun currentProgress(): DownloadProgress = buildProgress(null)
 
@@ -299,12 +301,12 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
     private fun buildProgress(activeJob: DownloadJob?): DownloadProgress {
         val jobs = storage.getQueue()
         return DownloadProgress(
-            pending = jobs.count { it.status == "pending" },
-            active = jobs.count { it.status == "downloading" },
-            completed = jobs.count { it.status == "completed" },
-            failed = jobs.count { it.status == "failed" },
-            cancelled = jobs.count { it.status == "cancelled" },
-            paused = jobs.count { it.status == "paused" },
+            pending = jobs.count { it.status == DownloadJobStatus.Pending.wire },
+            active = jobs.count { it.status == DownloadJobStatus.Downloading.wire },
+            completed = jobs.count { it.status == DownloadJobStatus.Completed.wire },
+            failed = jobs.count { it.status == DownloadJobStatus.Failed.wire },
+            cancelled = jobs.count { it.status == DownloadJobStatus.Cancelled.wire },
+            paused = jobs.count { it.status == DownloadJobStatus.Paused.wire },
             total = jobs.size,
             activeTitle = activeJob?.let { "${it.storyTitle}: ${it.chapter.title}" },
         )
@@ -329,7 +331,7 @@ object DownloadScheduler {
         val selectedBySource = mutableMapOf<String, Int>()
         for (job in jobs) {
             if (selected.size >= availableGlobalSlots) break
-            if (job.status != "pending") continue
+            if (job.status != DownloadJobStatus.Pending.wire) continue
             if (job.nextRetryAt != null && job.nextRetryAt!! > now) continue
 
             val providerName = providerNameForJob(job) ?: continue
@@ -352,7 +354,7 @@ object DownloadScheduler {
         providerNameForJob: (DownloadJob) -> String?,
     ): Long? {
         var next: Long? = null
-        jobs.filter { it.status == "pending" }.forEach { job ->
+        jobs.filter { it.status == DownloadJobStatus.Pending.wire }.forEach { job ->
             val retryAt = job.nextRetryAt?.takeIf { it > now }
             val providerAt = providerNameForJob(job)?.let { nextAllowedAt[it] }?.takeIf { it > now }
             listOfNotNull(retryAt, providerAt).forEach { candidate ->

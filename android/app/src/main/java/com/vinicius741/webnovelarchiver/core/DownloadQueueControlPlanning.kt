@@ -1,13 +1,17 @@
 package com.vinicius741.webnovelarchiver.core
 
 object DownloadQueueControlPlanning {
-    private val activeStatuses = setOf("pending", "downloading")
-    private val cancellableStatuses = setOf("pending", "downloading", "paused")
+    private val activeStatuses = setOf(DownloadJobStatus.Pending.wire, DownloadJobStatus.Downloading.wire)
+    private val cancellableStatuses = setOf(
+        DownloadJobStatus.Pending.wire,
+        DownloadJobStatus.Downloading.wire,
+        DownloadJobStatus.Paused.wire,
+    )
 
     fun pauseAll(jobs: List<DownloadJob>): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.status in activeStatuses) {
-                job.status = "paused"
+                job.status = DownloadJobStatus.Paused.wire
                 job.nextRetryAt = null
             }
         }
@@ -15,23 +19,23 @@ object DownloadQueueControlPlanning {
     fun pauseJob(jobs: List<DownloadJob>, jobId: String): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status in activeStatuses) {
-                job.status = "paused"
+                job.status = DownloadJobStatus.Paused.wire
                 job.nextRetryAt = null
             }
         }
 
     fun resumeAll(jobs: List<DownloadJob>): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
-            if (job.status == "paused") {
-                job.status = "pending"
+            if (job.status == DownloadJobStatus.Paused.wire) {
+                job.status = DownloadJobStatus.Pending.wire
                 job.nextRetryAt = null
             }
         }
 
     fun resumeJob(jobs: List<DownloadJob>, jobId: String): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
-            if (job.id == jobId && job.status == "paused") {
-                job.status = "pending"
+            if (job.id == jobId && job.status == DownloadJobStatus.Paused.wire) {
+                job.status = DownloadJobStatus.Pending.wire
                 job.nextRetryAt = null
             }
         }
@@ -53,20 +57,20 @@ object DownloadQueueControlPlanning {
     fun retryFailed(jobs: List<DownloadJob>, storyId: String? = null): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             val storyMatches = storyId == null || job.storyId == storyId
-            if (storyMatches && job.status == "failed") {
+            if (storyMatches && job.status == DownloadJobStatus.Failed.wire) {
                 markPendingForRetry(job)
             }
         }
 
     fun retryFailedJob(jobs: List<DownloadJob>, jobId: String): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
-            if (job.id == jobId && job.status == "failed") {
+            if (job.id == jobId && job.status == DownloadJobStatus.Failed.wire) {
                 markPendingForRetry(job)
             }
         }
 
     private fun markCancelled(job: DownloadJob, reason: String) {
-        job.status = "cancelled"
+        job.status = DownloadJobStatus.Cancelled.wire
         job.error = reason
         job.errorCategory = "cancelled"
         job.errorCode = "CANCELLED"
@@ -74,7 +78,7 @@ object DownloadQueueControlPlanning {
     }
 
     private fun markPendingForRetry(job: DownloadJob) {
-        job.status = "pending"
+        job.status = DownloadJobStatus.Pending.wire
         job.retryCount += 1
         job.error = null
         job.errorCategory = null

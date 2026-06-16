@@ -17,9 +17,10 @@ object DownloadQueueMaintenance {
         val affectedStoryIds = linkedSetOf<String>()
         var cleaned = 0
         jobs.forEach { job ->
-            if (job.status != "pending" && job.status != "downloading") return@forEach
+            val status = DownloadJobStatus.parse(job.status)
+            if (status != DownloadJobStatus.Pending && status != DownloadJobStatus.Downloading) return@forEach
             if (providerNameForJob(job) != null) return@forEach
-            job.status = "failed"
+            job.status = DownloadJobStatus.Failed.wire
             job.error = NO_PROVIDER_MESSAGE
             job.errorCategory = NO_PROVIDER_CATEGORY
             job.errorCode = NO_PROVIDER_CODE
@@ -32,7 +33,10 @@ object DownloadQueueMaintenance {
 
     fun recoverStuckDownloadingStory(story: Story, jobsForStory: List<DownloadJob>): Boolean {
         if (story.status != DownloadStatus.downloading) return false
-        val hasActiveJobs = jobsForStory.any { it.status == "pending" || it.status == "downloading" }
+        val hasActiveJobs = jobsForStory.any {
+            val s = DownloadJobStatus.parse(it.status)
+            s == DownloadJobStatus.Pending || s == DownloadJobStatus.Downloading
+        }
         if (hasActiveJobs) return false
         story.downloadedChapters = story.chapters.count { it.downloaded }
         story.status = if (story.downloadedChapters > 0) DownloadStatus.partial else DownloadStatus.idle

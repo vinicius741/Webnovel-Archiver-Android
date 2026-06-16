@@ -24,13 +24,13 @@ data class QueueStatusCounts(
             var failed = 0
             var cancelled = 0
             jobs.forEach { job ->
-                when (job.status) {
-                    "downloading" -> downloading += 1
-                    "pending" -> pending += 1
-                    "paused" -> paused += 1
-                    "completed" -> completed += 1
-                    "failed" -> failed += 1
-                    "cancelled" -> cancelled += 1
+                when (DownloadJobStatus.parse(job.status)) {
+                    DownloadJobStatus.Downloading -> downloading += 1
+                    DownloadJobStatus.Pending -> pending += 1
+                    DownloadJobStatus.Paused -> paused += 1
+                    DownloadJobStatus.Completed -> completed += 1
+                    DownloadJobStatus.Failed -> failed += 1
+                    DownloadJobStatus.Cancelled -> cancelled += 1
                 }
             }
             return QueueStatusCounts(downloading, pending, paused, completed, failed, cancelled)
@@ -45,13 +45,17 @@ enum class QueueAction { PAUSE, RESUME, RETRY, CANCEL, REMOVE }
 enum class GlobalQueueAction { RESUME_ALL, PAUSE_ALL, RETRY_ALL, CANCEL_ALL, CLEAR_DONE }
 
 object DownloadManagerPlanning {
-    fun chapterActions(status: String): List<QueueAction> = when (status) {
-        "pending" -> listOf(QueueAction.PAUSE, QueueAction.CANCEL)
-        "downloading" -> listOf(QueueAction.PAUSE)
-        "paused" -> listOf(QueueAction.RESUME, QueueAction.CANCEL)
-        "failed", "cancelled" -> listOf(QueueAction.RETRY, QueueAction.REMOVE)
-        "completed" -> listOf(QueueAction.REMOVE)
-        else -> emptyList()
+    /** Returns the inline actions for a chapter job. Unknown/legacy statuses yield no actions. */
+    fun chapterActions(status: String): List<QueueAction> = when (DownloadJobStatus.parse(status)) {
+        DownloadJobStatus.Pending -> listOf(QueueAction.PAUSE, QueueAction.CANCEL)
+        DownloadJobStatus.Downloading -> listOf(QueueAction.PAUSE)
+        DownloadJobStatus.Paused -> listOf(QueueAction.RESUME, QueueAction.CANCEL)
+        DownloadJobStatus.Failed, DownloadJobStatus.Cancelled -> listOf(QueueAction.RETRY, QueueAction.REMOVE)
+        DownloadJobStatus.Completed -> listOf(QueueAction.REMOVE)
+    }.let { actions ->
+        // `parse` maps unknown strings to Failed; recover the "no actions for unknown" contract
+        // so a status that isn't a real job lifecycle value (e.g. "idle") yields nothing.
+        if (DownloadJobStatus.wires.contains(status)) actions else emptyList()
     }
 
     /** Story-header action group. While a story has active or paused work it shows the in-progress
