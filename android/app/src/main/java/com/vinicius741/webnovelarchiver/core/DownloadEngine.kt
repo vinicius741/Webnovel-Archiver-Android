@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.core
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -231,6 +232,7 @@ class DownloadEngine(
             storage.addOrUpdateStory(story)
             if (!isCancelled(job.id)) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: Throwable) {
+            if (error is CancellationException && isPaused(job.id)) return
             if (!isCancelled(job.id)) handleJobError(job, error)
         }
     }
@@ -274,6 +276,9 @@ class DownloadEngine(
 
     private fun isCancelled(id: String): Boolean =
         storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
+
+    private fun isPaused(id: String): Boolean =
+        storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Paused.wire }
 
     fun currentProgress(): DownloadProgress = buildProgress(null)
 

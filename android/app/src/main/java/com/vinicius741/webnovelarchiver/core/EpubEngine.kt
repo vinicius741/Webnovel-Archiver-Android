@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.core
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.net.URL
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -21,7 +20,7 @@ class EpubEngine(private val storage: AppStorage, private val network: NetworkCl
         originalChapterNumbers: List<Int>? = null,
         progress: (String) -> Unit = {},
     ): List<EpubResult> = withContext(Dispatchers.IO) {
-        val available = chapters.filter { it.content != null || it.filePath?.let { path -> File(path).exists() } == true }
+        val available = chapters.filter { it.content != null || storage.readChapter(it) != null }
         if (available.isEmpty()) error("No downloaded chapters available")
         val chaptersPerFile = maxPerFile.coerceIn(
             SettingsValidation.MAX_CHAPTERS_PER_EPUB_MIN,

@@ -370,7 +370,13 @@ internal fun ScreenHost.renderChapterList(story: Story, list: androidx.recyclerv
             }
         }
     if (filtered.isEmpty()) {
-        list.adapter = ChapterListAdapter(this, listOf(-1 to Chapter(title = "No chapters match this view.")), story, list = list)
+        list.adapter = ChapterListAdapter(
+            host = this,
+            chapters = listOf(-1 to Chapter(title = "No chapters match this view.")),
+            story = story,
+            isEmptyState = true,
+            list = list,
+        )
         return
     }
     list.adapter = ChapterListAdapter(this, filtered, story, list = list, query = query, filter = filter)
