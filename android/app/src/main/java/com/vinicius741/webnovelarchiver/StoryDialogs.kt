@@ -1,13 +1,24 @@
 package com.vinicius741.webnovelarchiver
 
 import android.app.AlertDialog
+import android.app.Dialog
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.text.InputType
+import android.text.TextUtils
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.ViewGroup
+import android.view.Window
+import android.view.WindowManager
 import android.widget.ArrayAdapter
 import android.widget.CheckBox
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.core.DownloadRangeSelection
 import com.vinicius741.webnovelarchiver.core.EpubConfig
 import com.vinicius741.webnovelarchiver.core.Story
@@ -171,22 +182,68 @@ internal fun ScreenHost.showDescriptionDialog(title: String, description: String
 
 internal fun ScreenHost.showCoverDialog(story: Story) {
     val url = story.coverUrl?.takeIf { it.isNotBlank() } ?: return
-    val image = ImageView(app).apply {
+    val dialog = Dialog(app).apply {
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
+    }
+    val image = ZoomableImageView(app).apply {
         contentDescription = "${story.title} cover"
-        // DL4: use adjustViewBounds so the image sizes to its aspect ratio up to a max height,
-        // instead of a fixed 520dp that letterboxes or crops.
-        adjustViewBounds = true
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        setBackgroundColor(ThemeManager.colors.surfaceVariant)
-        setPadding(dp(12), dp(12), dp(12), dp(12))
-        maxHeight = dp(600)
-        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        roundCorners(ThemeManager.shapes.dialogRadius.toFloat())
+        setBackgroundColor(Color.BLACK)
     }
     loadImage(url, image)
-    AlertDialog.Builder(app)
-        .setTitle(story.title)
-        .setView(image)
-        .setNegativeButton("Close", null)
-        .show()
+
+    val closeButton = ImageView(app).apply {
+        contentDescription = "Close"
+        setImageDrawable(app.tintedIcon(R.drawable.wna_close, Color.WHITE))
+        scaleType = ImageView.ScaleType.CENTER
+        isClickable = true
+        isFocusable = true
+        background = ripple(
+            roundedBg(Color.TRANSPARENT, dp(24).toFloat()),
+            dp(24).toFloat(),
+            0x33FFFFFF,
+        )
+        setOnClickListener { dialog.dismiss() }
+    }
+    val title = TextView(app).apply {
+        text = story.title
+        setTextColor(Color.WHITE)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.TITLE_MEDIUM.size())
+        typeface = Typeface.create(typeface, Typeface.BOLD)
+        includeFontPadding = false
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+    }
+    val topBar = LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(16), dp(12), dp(8), dp(12))
+        setBackgroundColor(Color.argb(196, 0, 0, 0))
+        addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(closeButton, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+            marginStart = dp(12)
+        })
+    }
+    val root = FrameLayout(app).apply {
+        setBackgroundColor(Color.BLACK)
+        addView(image, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+        ))
+        addView(topBar, FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP,
+        ))
+    }
+
+    dialog.setContentView(root)
+    dialog.show()
+    dialog.window?.apply {
+        setBackgroundDrawable(ColorDrawable(Color.BLACK))
+        setDimAmount(0.82f)
+        addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        statusBarColor = Color.BLACK
+        navigationBarColor = Color.BLACK
+    }
 }
