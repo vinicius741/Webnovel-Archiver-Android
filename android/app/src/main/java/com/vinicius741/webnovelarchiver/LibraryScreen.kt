@@ -17,8 +17,11 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.core.LibraryQuery
 import com.vinicius741.webnovelarchiver.core.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
@@ -31,6 +34,9 @@ import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showLibrary() {
     activeStory = null
+    // Capture the host outside the `screen(...) { }` block: inside that block `this` is the body
+    // LinearLayout, so the pager adapter (which needs a ScreenHost to render grids) takes this ref.
+    val host = this
     // Re-render this screen when the window changes (fold/unfold/rotation) or the Large Screen Layout
     // setting toggles, so the column count reflows 1 → 2 → 3 live.
     rerender = { showLibrary() }
@@ -54,14 +60,6 @@ internal fun ScreenHost.showLibrary() {
 
         val tabs = storage.getTabs().sortedBy { it.order }
         val search = makeSearchField(context, "Search stories")
-        // The story list is a fixed-column [GridLayout] (1/2/3 from the size class) rather than a flat
-        // vertical list, so the Fold's inner display shows multiple columns. columnCount is re-read on
-        // every render so unfolding the device reflows the grid in place.
-        val list = GridLayout(context).apply {
-            columnCount = layoutResult.numColumns.coerceAtLeast(1)
-            horizontalSpacingDp = Space.LG
-            verticalSpacingDp = Space.LG
-        }
 
         // Restore the last-selected tab from persisted prefs (survives navigating away AND app restarts).
         // Resolve against the live tabs so a deleted tab's stale id falls back to All instead of an
@@ -72,6 +70,16 @@ internal fun ScreenHost.showLibrary() {
             tabs,
             hasUnassigned,
         )
+        // The single source of truth for "what is a swipeable tab", shared by the tab bar and the
+        // pager so their ordering can never drift. Matches the legacy RN `useLibraryPager.pageTabIds`:
+        // All first, then the synthetic Unassigned tab (only when stories are unassigned), then real
+        // tabs in their configured order. `null` is the runtime sentinel for Unassigned.
+        val pageTabs: List<String?> = buildList {
+            add(LibraryTabSelection.ALL_TAB_ID)
+            if (hasUnassigned) add(null)
+            addAll(tabs.map { it.id })
+        }
+
         val selectedTags = mutableSetOf<String>()
         var sortOption = "updated"
         var sortAscending = false
@@ -85,40 +93,121 @@ internal fun ScreenHost.showLibrary() {
             }
         }
 
-        val rerender = {
-            renderLibraryList(stories, list, layoutResult, search.text.toString(), selectedTabId, selectedTags, sortOption, sortAscending)
-        }
+        // Apply the current filter snapshot to whichever grid surface is showing: the single shared
+        // [GridLayout] in single-tab mode, or every page's grid via the adapter in pager mode. Kept as
+        // one closure so search/sort/tag callbacks never have to know which mode is active.
+        var applyFilters: () -> Unit = {}
 
-        addView(makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+        val tabBar = makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
             selectedTabId = newTabId
             persistTab(newTabId)
-            rerender()
-        })
+            applyFilters()
+        }
+        addView(tabBar.view)
         addView(makeLibraryFilters(context, search, tabs.isNotEmpty(), stories, selectedTabId, selectedTags, sortOption, sortAscending, { newSort ->
             sortOption = newSort.first
             sortAscending = newSort.second
-            rerender()
+            applyFilters()
         }, { tag ->
             if (!selectedTags.add(tag)) selectedTags.remove(tag)
-            rerender()
+            applyFilters()
         }))
-        val gridShell = MaxWidthFrameLayout(context).apply {
-            // Center the grid and cap its width at the size-class content max (760/1040/1320dp) so it
-            // never stretches edge-to-edge on tablets, matching the RN library layout.
-            maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
-            addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
-        }
-        addView(scroll(gridShell), verticalFill().apply { topMargin = dp(Space.LG) })
 
-        search.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                renderLibraryList(stories, list, layoutResult, s?.toString().orEmpty(), selectedTabId, selectedTags, sortOption, sortAscending)
+        // `showLibrary` runs inside the receiver scope; make `search.text` resolve here.
+        fun currentFilter(): String = search.text.toString()
+
+        if (pageTabs.size >= 2) {
+            // Swipe-between-tabs (Gap #6 parity with the legacy RN PagerView). Each page owns its own
+            // scrolling grid mirroring the single-grid shell below, so a swipe switches tabs exactly as
+            // tapping the bar does. Tab bar ⇄ pager stay two-way synced: a swipe updates the bar's
+            // active indicator, a bar tap animates the pager to that page.
+            val adapter = LibraryPagesAdapter(host, stories, pageTabs, layoutResult)
+            val pager = ViewPager2(context).apply {
+                this.adapter = adapter
+                // Disable the (default horizontal) page-over-scroll glow; the tab bar's indicator is
+                // the affordance that a swipe changed the active tab.
+                getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
             }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-        renderLibraryList(stories, list, layoutResult, "", selectedTabId, selectedTags, sortOption, sortAscending)
+            // Land on the persisted tab without animating on first show.
+            val initialPage = pageTabs.indexOf(selectedTabId).coerceAtLeast(0)
+            pager.setCurrentItem(initialPage, false)
+
+            applyFilters = {
+                adapter.updateFilter(currentFilter(), selectedTags, sortOption, sortAscending)
+            }
+            // Swipe → tab. Mirrors RN's `tabId !== activeTabId` guard so the two-way wiring never
+            // feeds back into itself.
+            var suppressingPageCallback = false
+            pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) {
+                    if (suppressingPageCallback) return
+                    val newTabId = pageTabs.getOrNull(position) ?: return
+                    if (newTabId != selectedTabId) {
+                        selectedTabId = newTabId
+                        persistTab(newTabId)
+                        tabBar.selectVisual(newTabId)
+                        // Re-filter so the newly visible page reflects the active search/tags/sort.
+                        applyFilters()
+                    }
+                }
+            })
+            // Bar tap → page (animate), in addition to the selection/persist/filter work the bar already
+            // does above. Routed through a flag so setCurrentItem's resulting onPageSelected is a no-op.
+            tabBar.onSelectFromBar = { id ->
+                val idx = pageTabs.indexOf(id)
+                if (idx in 0 until pager.adapter!!.itemCount && idx != pager.currentItem) {
+                    suppressingPageCallback = true
+                    pager.setCurrentItem(idx, true)
+                    pager.post { suppressingPageCallback = false }
+                }
+            }
+            addView(pager, verticalFill().apply { topMargin = dp(Space.LG) })
+            applyFilters()
+        } else {
+            // Single-tab path (the common case: no custom tabs and nothing unassigned). This is the
+            // original layout — one scrolling grid — untouched in behaviour.
+            val list = GridLayout(context).apply {
+                columnCount = layoutResult.numColumns.coerceAtLeast(1)
+                horizontalSpacingDp = Space.LG
+                verticalSpacingDp = Space.LG
+            }
+            applyFilters = {
+                renderTabGrid(stories, list, layoutResult, currentFilter(), selectedTabId, selectedTags, sortOption, sortAscending)
+            }
+            val gridShell = MaxWidthFrameLayout(context).apply {
+                // Center the grid and cap its width at the size-class content max (760/1040/1320dp) so it
+                // never stretches edge-to-edge on tablets, matching the RN library layout.
+                maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
+                addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
+            }
+            addView(scroll(gridShell), verticalFill().apply { topMargin = dp(Space.LG) })
+
+            search.addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    renderTabGrid(stories, list, layoutResult, s?.toString().orEmpty(), selectedTabId, selectedTags, sortOption, sortAscending)
+                }
+                override fun afterTextChanged(s: Editable?) = Unit
+            })
+            applyFilters()
+        }
     }
+}
+
+/**
+ * Tab bar for the Library. Holds the [view] to add to the screen plus hooks the pager uses to stay
+ * in two-way sync with it:
+ *  - [selectVisual] restyles the active tab indicator in place (no rebuild) when a *swipe* changes
+ *    the active tab.
+ *  - [onSelectFromBar] is invoked (when set) when the user *taps* a tab, so the caller can animate a
+ *    bound [ViewPager2] to the matching page. Left null in the single-grid (no-pager) path.
+ */
+private class LibraryTabBarHolder(
+    val view: View,
+    private val applySelection: (String?) -> Unit,
+) {
+    var onSelectFromBar: ((String?) -> Unit)? = null
+    fun selectVisual(id: String?) = applySelection(id)
 }
 
 private fun ScreenHost.makeLibraryTabBar(
@@ -127,7 +216,7 @@ private fun ScreenHost.makeLibraryTabBar(
     stories: List<Story>,
     selectedTabId: String?,
     onSelect: (String?) -> Unit,
-): View {
+): LibraryTabBarHolder {
     val unassignedCount = stories.count { it.tabId == null }
     val scroll = HorizontalScrollView(context).apply {
         isHorizontalScrollBarEnabled = false
@@ -154,6 +243,16 @@ private fun ScreenHost.makeLibraryTabBar(
         }
     }
 
+    // Invoke both the bar's selection callback (persist + filter) and, when set, the pager hook that
+    // animates to the tapped tab's page. Order matters only visually; both are idempotent. The holder
+    // is assigned after it is constructed below; fireSelect reads it at click time, never at setup time.
+    var holderRef: LibraryTabBarHolder? = null
+    fun fireSelect(id: String?) {
+        applySelection(id)
+        onSelect(id)
+        holderRef?.onSelectFromBar?.invoke(id)
+    }
+
     fun addTab(label: String, id: String?) {
         val text = makeText(context, label, Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
             setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
@@ -171,10 +270,7 @@ private fun ScreenHost.makeLibraryTabBar(
             isClickable = true
             isFocusable = true
             background = selectableRipple(ThemeManager.colors.onSurface)
-            setOnClickListener {
-                applySelection(id)
-                onSelect(id)
-            }
+            setOnClickListener { fireSelect(id) }
         }
         // Space tabs apart with an end margin (outside the ripple) rather than right padding, so the
         // label and underline stay centered within each tab's tap target instead of shifting left.
@@ -195,7 +291,9 @@ private fun ScreenHost.makeLibraryTabBar(
     }
     applySelection(currentSelection)
     scroll.addView(row)
-    return scroll
+    return LibraryTabBarHolder(scroll, ::applySelection).also { holder ->
+        holderRef = holder
+    }
 }
 
 private fun ScreenHost.makeLibraryFilters(
@@ -459,7 +557,78 @@ private fun Context.iconButtonSmall(iconRes: Int, desc: String, onClick: () -> U
     }
 }
 
-internal fun ScreenHost.renderLibraryList(
+/**
+ * Backs the Library's swipe-between-tabs [ViewPager2] (Gap #6 parity with the legacy RN `PagerView`).
+ * One page per entry in [pageTabs]; each page owns its own scrolling grid identical to the single-grid
+ * shell, so a swipe simply reveals a different tab's pre-filtered story list.
+ *
+ * The active search/tag/sort snapshot is held in [filterSnapshot] and re-applied via [updateFilter],
+ * which re-renders every visible page. Page *count* is fixed by the tab set, so filter changes never
+ * move the user off their current page — they only change what each page shows.
+ */
+private class LibraryPagesAdapter(
+    private val host: ScreenHost,
+    private val stories: List<Story>,
+    private val pageTabs: List<String?>,
+    private val layout: ScreenLayoutResult,
+) : RecyclerView.Adapter<LibraryPagesAdapter.PageViewHolder>() {
+
+    private data class FilterSnapshot(
+        val text: String,
+        val tags: Set<String>,
+        val sortOption: String,
+        val sortAscending: Boolean,
+    )
+
+    private var filterSnapshot: FilterSnapshot = FilterSnapshot("", emptySet(), "updated", false)
+
+    init {
+        // ViewPager2 plays nicely with stable item ids when set before the adapter is attached.
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long =
+        pageTabs[position]?.hashCode()?.toLong() ?: -1L
+
+    override fun getItemCount(): Int = pageTabs.size
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
+        val context = parent.context
+        val grid = GridLayout(context).apply {
+            columnCount = layout.numColumns.coerceAtLeast(1)
+            horizontalSpacingDp = Space.LG
+            verticalSpacingDp = Space.LG
+        }
+        // Same shell as the single-grid path: cap width at the size-class content max and center it,
+        // inside a scroller so a long list scrolls vertically within its page.
+        val shell = MaxWidthFrameLayout(context).apply {
+            maxContentWidthDp = libraryMaxContentWidth(layout.numColumns)
+            addView(grid, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
+        }
+        val scroll = ScrollView(context).apply {
+            isFillViewport = true
+            addView(shell)
+        }
+        return PageViewHolder(scroll, grid)
+    }
+
+    override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
+        val tabId = pageTabs[position]
+        val snap = filterSnapshot
+        host.renderTabGrid(stories, holder.grid, layout, snap.text, tabId, snap.tags, snap.sortOption, snap.sortAscending)
+    }
+
+    /** Apply a new search/tag/sort snapshot to every page. Re-renders bound pages in place without
+     *  disturbing the current page position. */
+    fun updateFilter(text: String, tags: Set<String>, sortOption: String, sortAscending: Boolean) {
+        filterSnapshot = FilterSnapshot(text, tags, sortOption, sortAscending)
+        notifyItemRangeChanged(0, itemCount)
+    }
+
+    class PageViewHolder(view: android.view.View, val grid: GridLayout) : RecyclerView.ViewHolder(view)
+}
+
+internal fun ScreenHost.renderTabGrid(
     stories: List<Story>,
     list: GridLayout,
     layout: ScreenLayoutResult,

@@ -47,7 +47,7 @@ The Webnovel Archiver Android app is a **native Kotlin** application that downlo
 
 ### Current Functionality
 - **Story List:** Title, author, tags, status, downloaded/total counts, archive marker, cover thumbnails.
-- **Tabs:** Create, rename, reorder, delete. Stories move to Unassigned on tab deletion.
+- **Tabs:** Create, rename, reorder, delete. Stories move to Unassigned on tab deletion. With two or more tabs, swipe horizontally between them (ViewPager2) with two-way tab-bar sync; selection persists and survives restarts.
 - **Search & Filter:** Search by title/author, filter by tag and source, sort by recency/title/date/updated/chapters/score.
 - **Archive Snapshots:** Read-only snapshots created automatically when source sync detects removed chapters.
 - **Bulk Operations:** Multi-select with move-to-tab and delete actions.

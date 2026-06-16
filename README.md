@@ -14,7 +14,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting and configurable chapter ranges.
 - **Background Downloads** — Foreground service with concurrent engine, persistent queue, notification controls, automatic recovery, and error classification with exponential backoff retry.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both).
-- **Library Organization** — Custom tabs, search, tag filtering, sort controls, and archive snapshots.
+- **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, sort controls, and archive snapshots.
 - **Smart Updates** — New-chapter detection with intelligent merge and stale-EPUB marking.
 - **Backup & Restore** — JSON metadata export/import with merge-on-import, plus full ZIP backup/restore.
 - **Pluggable Theme System** — Obsidian, Midnight, Forest, and Classic Light themes with custom typography.

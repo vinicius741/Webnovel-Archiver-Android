@@ -40,7 +40,7 @@ TTS experience** — plus two smaller UX touches. They are summarized here and d
 | 3 | **In-reader TTS highlighting + tap-to-start-from-paragraph** | Medium | `src/utils/htmlUtils.ts`, `src/components/reader/` |
 | 4 | **Floating in-reader TTS transport** (chunk X/Y counter, inline controls) | Medium | `src/components/tts/TTSController.tsx` |
 | 5 | **Regex rule live sample-text preview** (test a rule against pasted text) | Low | `src/components/sentence-removal/RuleDialog.tsx` |
-| 6 | **Swipe-between-tabs PagerView** in the library | Low | `app/index.tsx` (`react-native-pager-view`) |
+| ~~6~~ | ~~**Swipe-between-tabs PagerView** in the library~~ ✅ **Closed** — native `LibraryScreen.kt` now uses a `ViewPager2` (`LibraryPagesAdapter`) with two-way tab-bar sync when ≥2 tabs exist | ~~Low~~ | `app/index.tsx` (`react-native-pager-view`) |
 
 No data, source-provider, download, EPUB, backup, or cleanup *capability* is missing — only
 presentation and OS-integration details around TTS.
@@ -76,11 +76,13 @@ Both apps offer the same library management:
 - **Story cards** — cover (tap to zoom), title, author, status, progress, source badge, bookmark.
 - **Add story** — by URL (with paste button) + browse-sources cards; both offer the same flow.
 
-⚠️ **Gap — swipe-between-tabs pager.** The RN library wraps each tab's story list in a
-`PagerView` (`react-native-pager-view`) so the user can **swipe horizontally to switch tabs**
-(`app/index.tsx:186-209`, hook `useLibraryPager`). The native library switches tabs only by tapping
-the tab bar; there is no `ViewPager2`/swipe gesture in `LibraryScreen.kt`. This is a pure
-ergonomics gap with no data impact.
+⚠️ ~~**Gap — swipe-between-tabs pager.**~~ ✅ **Closed.** The RN library wraps each tab's
+story list in a `PagerView` (`react-native-pager-view`) so the user can **swipe horizontally to
+switch tabs** (`app/index.tsx:186-209`, hook `useLibraryPager`). The native `LibraryScreen.kt`
+now does the same when ≥2 tabs exist: a `ViewPager2` backed by `LibraryPagesAdapter` renders one
+scrolling grid per tab, with two-way sync (swipe → updates the active tab indicator + persists;
+tab-bar tap → animates the pager to that page). The common single-tab case keeps the original
+single-grid layout unchanged.
 
 ---
 
@@ -309,7 +311,9 @@ Ordered by user impact and effort:
 3. **Add a floating reader TTS transport with chunk progress** (Gap 4) — a small persistent bar
    mirroring `TTSController.tsx`.
 4. **Add a regex-rule sample-text preview** (Gap 5) to `showRegexRuleDialog`.
-5. **Add swipe-between-tabs** (Gap 6) via a `ViewPager2` in `LibraryScreen.kt` — lowest priority.
+5. ~~**Add swipe-between-tabs** (Gap 6) via a `ViewPager2` in `LibraryScreen.kt`~~ ✅ Done —
+   `LibraryPagesAdapter` + `ViewPager2` with two-way tab-bar sync; the recommended next step for
+   the remaining gaps (TTS media session, in-reader TTS highlight/transport) is unchanged.
 
 All five are additive and touch no data models, so they can be shipped independently without
 migration.

@@ -90,6 +90,8 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     // RecyclerView — recycles views for the Details chapter list and other long lists (Speed S1).
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    // ViewPager2 — swipe-between-tabs pager in the Library (closes the legacy RN PagerView parity gap).
+    implementation 'androidx.viewpager2:viewpager2:1.1.0'
     // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
     implementation 'androidx.window:window:1.4.0'
