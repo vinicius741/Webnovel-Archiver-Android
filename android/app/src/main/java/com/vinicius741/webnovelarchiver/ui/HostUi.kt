@@ -17,6 +17,7 @@ import androidx.window.layout.WindowMetricsCalculator
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ScreenHost
 import com.vinicius741.webnovelarchiver.core.DisplayPreferences
+import com.vinicius741.webnovelarchiver.core.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.core.DownloadStatus
 import com.vinicius741.webnovelarchiver.core.ScreenLayout
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutMode
@@ -135,12 +136,15 @@ internal fun ScreenHost.jobStatusDot(status: String): View = dot(statusColor(sta
 internal fun ScreenHost.chapterStatusDot(downloaded: Boolean): View =
     dot(if (downloaded) ThemeManager.colors.tertiary else ThemeManager.colors.outlineVariant)
 
-internal fun statusColor(status: String): Int = when (status) {
-    "completed" -> ThemeManager.colors.tertiary
-    "failed", "cancelled" -> ThemeManager.colors.error
-    "downloading" -> ThemeManager.colors.primary
-    "paused" -> ThemeManager.colors.secondary
-    else -> ThemeManager.colors.onSurfaceVariant
+internal fun statusColor(status: String): Int {
+    if (status !in DownloadJobStatus.wires) return ThemeManager.colors.onSurfaceVariant
+    return when (DownloadJobStatus.parse(status)) {
+        DownloadJobStatus.Completed -> ThemeManager.colors.tertiary
+        DownloadJobStatus.Failed, DownloadJobStatus.Cancelled -> ThemeManager.colors.error
+        DownloadJobStatus.Downloading -> ThemeManager.colors.primary
+        DownloadJobStatus.Paused -> ThemeManager.colors.secondary
+        DownloadJobStatus.Pending -> ThemeManager.colors.onSurfaceVariant
+    }
 }
 
 internal fun formatRelativeTime(timestamp: Long): String {

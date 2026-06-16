@@ -26,10 +26,10 @@ class DownloadForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // Use the process-wide container (M2) so this service shares one AppStorage + repository
-        // with the activity, and queue mutations serialize through the repository lock (R3).
+        // Use the process-wide container (M2) so this service shares one AppStorage + network with
+        // the activity; queue read-modify-writes serialize on the AppStorage monitor (R3 single-owner).
         val container = appContainer
-        engine = DownloadEngine(container.storage, container.network, container.repository)
+        engine = DownloadEngine(container.storage, container.network)
         engine.onProgress = ::updateNotification
         createNotificationChannel()
     }

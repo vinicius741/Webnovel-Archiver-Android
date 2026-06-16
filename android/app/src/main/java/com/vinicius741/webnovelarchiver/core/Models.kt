@@ -23,6 +23,15 @@ enum class DownloadJobStatus(val wire: String) {
 
         /** All wire strings — used by Gson to serialize/parse the legacy string field. */
         val wires: Set<String> = values().map { it.wire }.toSet()
+
+        /** Wire strings for jobs that count as "in progress" (queued or actively downloading). */
+        val activeWires: Set<String> = setOf(Pending.wire, Downloading.wire)
+
+        /** Wire strings for jobs the user can still cancel (not yet terminal). */
+        val cancellableWires: Set<String> = setOf(Pending.wire, Downloading.wire, Paused.wire)
+
+        /** Wire strings for terminal jobs (no further lifecycle moves). */
+        val terminalWires: Set<String> = setOf(Completed.wire, Failed.wire, Cancelled.wire)
     }
 }
 

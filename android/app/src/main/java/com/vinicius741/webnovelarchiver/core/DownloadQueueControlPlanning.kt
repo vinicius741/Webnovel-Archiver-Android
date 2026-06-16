@@ -1,12 +1,8 @@
 package com.vinicius741.webnovelarchiver.core
 
 object DownloadQueueControlPlanning {
-    private val activeStatuses = setOf(DownloadJobStatus.Pending.wire, DownloadJobStatus.Downloading.wire)
-    private val cancellableStatuses = setOf(
-        DownloadJobStatus.Pending.wire,
-        DownloadJobStatus.Downloading.wire,
-        DownloadJobStatus.Paused.wire,
-    )
+    private val activeStatuses = DownloadJobStatus.activeWires
+    private val cancellableStatuses = DownloadJobStatus.cancellableWires
 
     fun pauseAll(jobs: List<DownloadJob>): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->

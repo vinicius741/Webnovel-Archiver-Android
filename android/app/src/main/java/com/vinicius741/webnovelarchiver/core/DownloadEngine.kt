@@ -14,18 +14,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Queue-based chapter downloader (Maintainability M1: split out of Engines.kt). Owns the download
  * process loop, per-source rate-limit bookkeeping, retry/error classification, and progress emission.
  * See the class doc in Engines.kt for the R3 single-owner + lifecycle notes.
+ *
+ * R3 single-owner serialization: every queue read-modify-write goes through [AppStorage.mutateQueueInPlace]
+ * / [AppStorage.saveEnqueue], which hold the storage monitor across the whole RMW. The activity and the
+ * foreground service both hold a [DownloadEngine] over the *one* [AppStorage] from [AppContainer], so
+ * they can't interleave read-modify-writes on `download_queue.json` — without ever blocking the main
+ * thread on a coroutine mutex (the earlier [runBlocking] path was an ANR risk from UI button handlers).
+ * The process loop itself ([start]) runs only in whichever component calls it (the foreground service).
  */
 class DownloadEngine(
     private val storage: AppStorage,
     private val network: NetworkClient,
-    /**
-     * Optional shared [AppRepository] (Reliability R3). When provided, every queue mutation is
-     * serialized through [AppRepository.updateQueue] / [AppRepository.txMutex], so the activity and
-     * the foreground service — which both hold a [DownloadEngine] — cannot interleave read-modify-
-     * writes on `download_queue.json`. The process loop itself ([start]) still runs only in whichever
-     * component calls it (the foreground service).
-     */
-    private val repository: AppRepository? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
@@ -35,8 +34,11 @@ class DownloadEngine(
     var onProgress: ((DownloadProgress) -> Unit)? = null
 
     /**
-     * Enqueues chapters for download. When [repository] is set the queue + story mutation runs under
-     * the repository transaction lock (R3); otherwise it falls back to direct storage writes.
+     * Enqueues chapters for download. The queue plan + the story's status/lastUpdated are persisted
+     * together atomically via [AppStorage.saveEnqueue] (one storage-monitor acquisition), so a
+     * concurrent queue writer can't interleave and lose the enqueue (R3 single-owner). No
+     * [runBlocking] on the repository mutex — control methods like this are called from UI button
+     * handlers, so they must not block the main thread on a contended coroutine lock.
      * [startNow] launches the local process loop — the activity passes `false` and hands the runner
      * to the foreground service instead.
      */
@@ -45,12 +47,7 @@ class DownloadEngine(
         if (plan.changed) {
             story.status = DownloadStatus.downloading
             story.lastUpdated = System.currentTimeMillis()
-            if (repository != null) {
-                kotlinx.coroutines.runBlocking { repository.upsertStory(story); repository.saveQueue(plan.jobs) }
-            } else {
-                storage.addOrUpdateStory(story)
-                storage.saveQueue(plan.jobs)
-            }
+            storage.saveEnqueue(story, plan.jobs)
         }
         if (startNow && plan.hasRunnableWork) start()
         onChanged?.invoke()
@@ -77,8 +74,7 @@ class DownloadEngine(
     }
 
     fun clearFinished() {
-        val terminal = setOf(DownloadJobStatus.Completed.wire, DownloadJobStatus.Failed.wire, DownloadJobStatus.Cancelled.wire)
-        mutateQueue { jobs -> jobs.filterNot { it.status in terminal } }
+        mutateQueue { jobs -> jobs.filterNot { it.status in DownloadJobStatus.terminalWires } }
     }
 
     fun removeJob(jobId: String) = mutateQueue { jobs -> jobs.filterNot { it.id == jobId } }
@@ -102,17 +98,13 @@ class DownloadEngine(
     }
 
     /**
-     * Centralized read-modify-write for the queue. When [repository] is set the mutation runs under
-     * the repository transaction lock (R3), so concurrent engines can't lose updates. The fallback
-     * path is the legacy direct-storage write, preserved for tests that construct the engine without
-     * a repository.
+     * Centralized read-modify-write for the queue, routed through [AppStorage.mutateQueueInPlace]:
+     * the transform runs under the storage monitor so the read and write can't be interleaved by the
+     * process loop (R3 single-owner). Non-suspending and fast, so control methods invoked from UI
+     * button handlers never block the main thread on a coroutine mutex.
      */
     private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
-        if (repository != null) {
-            kotlinx.coroutines.runBlocking { repository.updateQueue(transform) }
-        } else {
-            storage.saveQueue(transform(storage.getQueue()))
-        }
+        storage.mutateQueueInPlace { transform(it) }
         onChanged?.invoke()
     }
 

@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.appContainer
+import com.vinicius741.webnovelarchiver.core.AppRepository
 import com.vinicius741.webnovelarchiver.core.AppStorage
 import com.vinicius741.webnovelarchiver.core.DownloadEngine
 import com.vinicius741.webnovelarchiver.core.EpubEngine
@@ -48,6 +49,7 @@ class MainActivity : AppCompatActivity(), ScreenHost {
      */
     override val scope: CoroutineScope by lazy { CoroutineScope(lifecycleScope.coroutineContext) }
     override lateinit var storage: AppStorage
+    override lateinit var repository: AppRepository
     override lateinit var syncEngine: StorySyncEngine
     override lateinit var downloadEngine: DownloadEngine
     override lateinit var epubEngine: EpubEngine
@@ -94,11 +96,13 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         // client, one set of engines shared with the foreground services (R3 single-owner).
         val container = appContainer
         storage = container.storage
+        repository = container.repository
         syncEngine = container.syncEngine
         epubEngine = container.epubEngine
         // The activity's download engine only enqueues/controls the queue (startNow=false); the
-        // foreground service owns the actual process loop. They share the repository's txMutex.
-        downloadEngine = DownloadEngine(storage, container.network, container.repository)
+        // foreground service owns the actual process loop. They share one AppStorage, so queue
+        // read-modify-writes serialize on its monitor (R3 single-owner).
+        downloadEngine = DownloadEngine(storage, container.network)
         ttsEngine = TtsEngine(this, storage)
         ThemeManager.apply(storage.getDisplayPreferences().activeThemeId)
         applyWindowTheme()
