@@ -40,7 +40,9 @@ internal fun ScreenHost.screen(
     // Capture the outgoing ScrollView's position before the tree is torn down, so a re-render of the
     // same screen (e.g. download-progress ticks, which re-run showDetails → screen(...)) doesn't snap
     // back to the top. scrollTo clamps to the valid range, so this is safe if the new content differs.
-    val savedScrollY = if (scrollable) findScrollView(frame)?.scrollY ?: 0 else 0
+    val screenKey = "$title|${subtitle.orEmpty()}"
+    val previousScreenKey = frame.tag as? String
+    val savedScrollY = if (scrollable && previousScreenKey == screenKey) findScrollView(frame)?.scrollY ?: 0 else 0
     // R9: destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
     disposeWebViews(frame)
@@ -76,6 +78,7 @@ internal fun ScreenHost.screen(
     }
     column.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
     frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    frame.tag = screenKey
     fab?.let { onClick ->
         val fabView = makeFab(app) { onClick() }
         val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END)

@@ -11,7 +11,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.CheckBox
+import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -552,20 +552,21 @@ private fun ScreenHost.showStoryActionsDialog(story: Story) {
     showStyledOptionsDialog(story.title, options)
 }
 
-internal fun ScreenHost.showLibrarySelection() {
+internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = emptySet()) {
     val stories = storage.getLibrary()
-    val selectedIds = mutableSetOf<String>()
+    val selectedIds = initialSelectedIds.toMutableSet()
     screen(title = "Select Novels", onBack = { showLibrary() }) {
+        var refreshBulkActions: () -> Unit = {}
         // X3: select-all / deselect-all affordance.
         flow {
             button("Select All", Btn.TEXT, R.drawable.wna_check) {
                 selectedIds.clear()
                 selectedIds.addAll(stories.map { it.id })
-                showLibrarySelection()
+                showLibrarySelection(selectedIds)
             }
             button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
                 selectedIds.clear()
-                showLibrarySelection()
+                showLibrarySelection(selectedIds)
             }
         }
         addView(scroll(LinearLayout(app).apply {
@@ -579,14 +580,17 @@ internal fun ScreenHost.showLibrarySelection() {
                     selected = selectedIds.contains(story.id),
                 ) { checked ->
                     if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
+                    refreshBulkActions()
                 })
             }
         }), verticalFill())
         // X2: bulk actions docked at the bottom as full-width primary CTAs.
-        fullButton("Move ${selectedIds.size} Selected", Btn.TONAL, R.drawable.wna_folder, bottomMarginDp = 8) {
+        lateinit var moveButton: Button
+        lateinit var deleteButton: Button
+        moveButton = fullButton("Move ${selectedIds.size} Selected", Btn.TONAL, R.drawable.wna_folder, bottomMarginDp = 8) {
             if (selectedIds.isEmpty()) toast("No novels selected") else showMoveStoriesDialog(selectedIds.toList())
         }
-        fullButton("Delete Selected", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) {
+        deleteButton = fullButton("Delete Selected", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) {
             if (selectedIds.isEmpty()) {
                 toast("No novels selected")
             } else {
@@ -596,6 +600,11 @@ internal fun ScreenHost.showLibrarySelection() {
                 }
             }
         }
+        refreshBulkActions = {
+            moveButton.text = "Move ${selectedIds.size} Selected"
+            deleteButton.text = if (selectedIds.isEmpty()) "Delete Selected" else "Delete ${selectedIds.size} Selected"
+        }
+        refreshBulkActions()
     }
 }
 

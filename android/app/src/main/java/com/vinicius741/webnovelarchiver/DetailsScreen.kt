@@ -12,7 +12,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -306,44 +305,50 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     showStyledOptionsDialog("More options", options)
 }
 
-internal fun ScreenHost.showChapterSelection(storyId: String) {
+internal fun ScreenHost.showChapterSelection(storyId: String, initialSelectedIds: Set<String> = emptySet()) {
     val story = storage.getStory(storyId) ?: return showLibrary()
     if (!StoryActionGuards.canQueueDownloads(story)) {
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return showDetails(story.id)
     }
-    val selectedIds = mutableSetOf<String>()
+    val selectedIds = initialSelectedIds.toMutableSet()
+    val downloadable = story.chapters.filter { !it.downloaded }
     screen(title = "Select Chapters", subtitle = story.title, onBack = { showDetails(story.id) }) {
-        val downloadable = story.chapters.filter { !it.downloaded }
+        var refreshBulkActions: () -> Unit = {}
         // X3: select-all / deselect-all affordance for fast bulk selection.
         flow {
             button("Select All", Btn.TEXT, R.drawable.wna_check) {
                 selectedIds.clear()
                 selectedIds.addAll(downloadable.map { it.id })
-                showChapterSelection(story.id)
+                showChapterSelection(story.id, selectedIds)
             }
             button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
                 selectedIds.clear()
-                showChapterSelection(story.id)
+                showChapterSelection(story.id, selectedIds)
             }
         }
         addView(scroll(LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             // X1: reuse the card-style selectable row instead of bare CheckBoxes.
-            downloadable.forEachIndexed { index, chapter ->
-                val displayIndex = story.chapters.indexOfFirst { it.id == chapter.id } + 1
-                addView(makeSelectableCardRow(
-                    context,
-                    title = "$displayIndex. ${sanitizeTitle(chapter.title)}",
-                    subtitle = if (chapter.downloaded) "Available Offline" else null,
-                    selected = selectedIds.contains(chapter.id),
-                ) { checked ->
-                    if (checked) selectedIds.add(chapter.id) else selectedIds.remove(chapter.id)
-                })
+            if (downloadable.isEmpty()) {
+                addView(makeEmptyState(context, "All chapters are already downloaded.", R.drawable.wna_check))
+            } else {
+                downloadable.forEach { chapter ->
+                    val displayIndex = story.chapters.indexOfFirst { it.id == chapter.id } + 1
+                    addView(makeSelectableCardRow(
+                        context,
+                        title = "$displayIndex. ${sanitizeTitle(chapter.title)}",
+                        subtitle = if (chapter.downloaded) "Available Offline" else null,
+                        selected = selectedIds.contains(chapter.id),
+                    ) { checked ->
+                        if (checked) selectedIds.add(chapter.id) else selectedIds.remove(chapter.id)
+                        refreshBulkActions()
+                    })
+                }
             }
         }), verticalFill())
         // X2: the primary bulk action is a full-width CTA docked at the bottom, next to the items.
-        fullButton("Download ${selectedIds.size} Selected", Btn.FILLED, R.drawable.wna_download, bottomMarginDp = 0) {
+        val downloadButton = fullButton("Download ${selectedIds.size} Selected", Btn.FILLED, R.drawable.wna_download, enabled = downloadable.isNotEmpty(), bottomMarginDp = 0) {
             val selectedIndexes = story.chapters.mapIndexedNotNull { index, chapter ->
                 if (selectedIds.contains(chapter.id) && !chapter.downloaded) index else null
             }
@@ -354,6 +359,10 @@ internal fun ScreenHost.showChapterSelection(storyId: String) {
                 showDetails(story.id)
             }
         }
+        refreshBulkActions = {
+            downloadButton.text = "Download ${selectedIds.size} Selected"
+        }
+        refreshBulkActions()
     }
 }
 
