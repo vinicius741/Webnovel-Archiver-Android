@@ -16,23 +16,27 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.MainActivity
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.core.AppStorage
+import com.vinicius741.webnovelarchiver.appContainer
 import com.vinicius741.webnovelarchiver.core.DownloadEngine
 import com.vinicius741.webnovelarchiver.core.DownloadProgress
-import com.vinicius741.webnovelarchiver.core.NetworkClient
 
 class DownloadForegroundService : Service() {
-    private lateinit var storage: AppStorage
     private lateinit var engine: DownloadEngine
     private var foregroundStarted = false
 
     override fun onCreate() {
         super.onCreate()
-        storage = AppStorage(this)
-        storage.recoverInterruptedDownloads()
-        engine = DownloadEngine(storage, NetworkClient())
+        // Use the process-wide container (M2) so this service shares one AppStorage + network with
+        // the activity; queue read-modify-writes serialize on the AppStorage monitor (R3 single-owner).
+        val container = appContainer
+        engine = DownloadEngine(container.storage, container.network)
         engine.onProgress = ::updateNotification
         createNotificationChannel()
+    }
+
+    override fun onDestroy() {
+        engine.close()
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -112,7 +116,9 @@ class DownloadForegroundService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val title = if (progress.unfinished > 0) "Downloading chapters" else "Downloads finished"
+        val title = getString(
+            if (progress.unfinished > 0) R.string.download_notif_active else R.string.download_notif_done,
+        )
         val body = progress.activeTitle
             ?: "Pending ${progress.pending}, active ${progress.active}, completed ${progress.completed}, failed ${progress.failed}"
         val max = progress.total.coerceAtLeast(1)
@@ -127,9 +133,9 @@ class DownloadForegroundService : Service() {
             .setOngoing(progress.unfinished > 0)
             .setOnlyAlertOnce(true)
             .setProgress(max, done, progress.total == 0)
-            .addAction(0, "Pause", pauseIntent)
-            .addAction(0, "Resume", resumeIntent)
-            .addAction(0, "Stop", stopIntent)
+            .addAction(0, getString(R.string.download_action_pause), pauseIntent)
+            .addAction(0, getString(R.string.download_action_resume), resumeIntent)
+            .addAction(0, getString(R.string.download_action_stop), stopIntent)
             .build()
     }
 
@@ -137,10 +143,10 @@ class DownloadForegroundService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Downloads",
+            getString(R.string.download_channel_name),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Chapter download progress"
+            description = getString(R.string.download_channel_desc)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }

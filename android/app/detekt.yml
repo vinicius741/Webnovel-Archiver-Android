@@ -1,0 +1,61 @@
+# Detekt configuration (Tooling recommendations). Starts permissive — reports issues without
+# failing the build — so the existing codebase can adopt the tooling incrementally. Tighten the
+# thresholds over time as the codebase converges on the rules.
+build:
+  maxIssues: 1000  # permissive during adoption; tighten toward 0 as the codebase converges
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    threshold: 200
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 8
+  ComplexCondition:
+    active: true
+    threshold: 6
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 25
+
+style:
+  active: true
+  MaxLineLength:
+    active: false  # programmatic UI + long URL patterns make this noisy; deferred
+  WildcardImport:
+    active: false  # the ui package uses wildcard imports intentionally
+  ReturnCount:
+    active: false
+  MagicNumber:
+    active: false  # heavy in programmatic UI layout code
+  LoopWithTooManyJumpStatements:
+    active: false
+
+potential-bugs:
+  active: true
+  UnsafeCallOnNullableType:
+    active: true
+  IteratorNotThrowingNoSuchElementException:
+    active: true
+
+empty-blocks:
+  active: true
+  EmptyFunctionBlock:
+    active: false  # many intentional no-op overrides (WebViewClient, listeners)
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: false  # download/TTS error classification intentionally catches Throwable
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    functionPattern: '([a-z][a-zA-Z0-9]*)|(`.*`)'

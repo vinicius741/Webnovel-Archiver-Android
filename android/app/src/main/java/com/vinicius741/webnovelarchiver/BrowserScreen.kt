@@ -10,6 +10,7 @@ import android.webkit.WebViewClient
 import android.widget.ArrayAdapter
 import android.widget.LinearLayout
 import android.widget.Spinner
+import com.vinicius741.webnovelarchiver.ui.WebViewSafety
 import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showBrowser(startUrl: String) {
@@ -59,8 +60,9 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
             button("Forward", Btn.TEXT, R.drawable.wna_arrow_forward) { if (web.canGoForward()) web.goForward() }
             button("Refresh", Btn.TEXT, R.drawable.wna_refresh) { web.reload() }
         }
-        web.settings.javaScriptEnabled = true
-        web.settings.domStorageEnabled = true
+        // R9: JS + DOM storage enabled (Scribble Hub TOC pagination needs AJAX) but file/content
+        // access locked down and Safe Browsing on. Centralized in WebViewSafety.
+        WebViewSafety.applyBrowserSettings(web)
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val requested = request?.url?.toString() ?: return false

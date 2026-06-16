@@ -9,6 +9,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.core.DownloadJob
+import com.vinicius741.webnovelarchiver.core.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.core.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.core.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.core.QueueAction
@@ -156,15 +157,15 @@ private fun ScreenHost.storyActionGroup(storyId: String, jobs: List<DownloadJob>
 
 private fun ScreenHost.storyActionButton(action: QueueAction, storyId: String, jobs: List<DownloadJob>): View = when (action) {
     QueueAction.PAUSE -> iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause story", 44) {
-        jobs.filter { it.status == "pending" || it.status == "downloading" }.forEach { downloadEngine.pauseJob(it.id) }
+        jobs.filter { it.status in DownloadJobStatus.activeWires }.forEach { downloadEngine.pauseJob(it.id) }
         showQueue()
     }
     QueueAction.RESUME -> iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume story", 44) {
-        jobs.filter { it.status == "paused" }.forEach { downloadEngine.resumeJob(it.id) }
+        jobs.filter { it.status == DownloadJobStatus.Paused.wire }.forEach { downloadEngine.resumeJob(it.id) }
         DownloadForegroundService.start(app); showQueue()
     }
     QueueAction.CANCEL -> iconAction(R.drawable.wna_stop, ThemeManager.colors.error, "Cancel story", 44) {
-        jobs.filter { it.status == "pending" || it.status == "downloading" || it.status == "paused" }.forEach { downloadEngine.cancelJob(it.id) }
+        jobs.filter { it.status in DownloadJobStatus.cancellableWires }.forEach { downloadEngine.cancelJob(it.id) }
         showQueue()
     }
     QueueAction.RETRY -> iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry story", 44) {

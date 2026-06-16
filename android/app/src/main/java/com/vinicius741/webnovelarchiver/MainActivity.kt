@@ -14,10 +14,11 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.vinicius741.webnovelarchiver.appContainer
+import com.vinicius741.webnovelarchiver.core.AppRepository
 import com.vinicius741.webnovelarchiver.core.AppStorage
 import com.vinicius741.webnovelarchiver.core.DownloadEngine
 import com.vinicius741.webnovelarchiver.core.EpubEngine
-import com.vinicius741.webnovelarchiver.core.NetworkClient
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StorySyncEngine
 import com.vinicius741.webnovelarchiver.core.TtsEngine
@@ -25,9 +26,11 @@ import com.vinicius741.webnovelarchiver.core.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,9 +42,14 @@ import kotlinx.coroutines.withContext
  */
 class MainActivity : AppCompatActivity(), ScreenHost {
     override val app: AppCompatActivity get() = this
-    override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private lateinit var network: NetworkClient
+    /**
+     * UI coroutine scope (Maintainability M3). A single [CoroutineScope] wrapping the activity's
+     * [lifecycleScope] job/context, so all screen-launched coroutines (fold observation, backup
+     * import, sync) are cancelled automatically when the activity is destroyed — no leaked work.
+     */
+    override val scope: CoroutineScope by lazy { CoroutineScope(lifecycleScope.coroutineContext) }
     override lateinit var storage: AppStorage
+    override lateinit var repository: AppRepository
     override lateinit var syncEngine: StorySyncEngine
     override lateinit var downloadEngine: DownloadEngine
     override lateinit var epubEngine: EpubEngine
@@ -84,15 +92,20 @@ class MainActivity : AppCompatActivity(), ScreenHost {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        storage = AppStorage(this)
+        // Pull process-wide dependencies from the AppContainer (M2): one AppStorage, one network
+        // client, one set of engines shared with the foreground services (R3 single-owner).
+        val container = appContainer
+        storage = container.storage
+        repository = container.repository
+        syncEngine = container.syncEngine
+        epubEngine = container.epubEngine
+        // The activity's download engine only enqueues/controls the queue (startNow=false); the
+        // foreground service owns the actual process loop. They share one AppStorage, so queue
+        // read-modify-writes serialize on its monitor (R3 single-owner).
+        downloadEngine = DownloadEngine(storage, container.network)
+        ttsEngine = TtsEngine(this, storage)
         ThemeManager.apply(storage.getDisplayPreferences().activeThemeId)
         applyWindowTheme()
-        storage.recoverInterruptedDownloads()
-        network = NetworkClient()
-        syncEngine = StorySyncEngine(storage, network)
-        downloadEngine = DownloadEngine(storage, network)
-        epubEngine = EpubEngine(storage, network)
-        ttsEngine = TtsEngine(this, storage)
         downloadEngine.onChanged = { runOnUiThread { if (activeStory == null) showLibrary() else activeStory?.let { showDetails(it.id) } } }
         frame = FrameLayout(this)
         setContentView(frame)
@@ -116,6 +129,9 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     }
 
     override fun onDestroy() {
+        // R9: destroy any lingering WebView in the frame (e.g. if the activity is destroyed while a
+        // Reader/Browser screen is showing) so it can't leak the activity reference.
+        com.vinicius741.webnovelarchiver.ui.WebViewSafety.disposeAll(frame)
         ttsEngine.shutdown()
         super.onDestroy()
     }

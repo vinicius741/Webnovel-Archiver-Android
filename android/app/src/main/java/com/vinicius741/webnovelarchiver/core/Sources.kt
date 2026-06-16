@@ -1,39 +1,77 @@
 package com.vinicius741.webnovelarchiver.core
 
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NetworkClient {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .build()
-    private val nextAllowedByHost = mutableMapOf<String, Long>()
+class NetworkClient(
+    /** Shared OkHttp client (R6). Cover/image fetches go through the same client as page fetches. */
+    val client: OkHttpClient = defaultClient,
+) {
+    /**
+     * Per-host rate-limit gates (R6). Each host has its own [Mutex]; the Scribble Hub gap is enforced
+     * inside the lock so concurrent downloads from the activity + foreground service cannot bypass it.
+     * The "next allowed at" timestamp is stored alongside the mutex so the lock is held only briefly.
+     */
+    private data class HostGate(val mutex: Mutex, var nextAllowedAt: Long = 0L)
+    private val hostGates = ConcurrentHashMap<String, HostGate>()
+    private val hostGatesLock = Mutex()
+
+    private suspend fun gateFor(host: String): HostGate = hostGatesLock.withLock {
+        hostGates.getOrPut(host) { HostGate(Mutex()) }
+    }
 
     suspend fun fetch(url: String): String {
         waitForRateLimit(url)
         val request = NetworkRequests.pageRequest(url)
-        return executeWithRetries(url, request)
+        return executeWithRetries(url, request) { it.body?.string().orEmpty() }
     }
 
     suspend fun postForm(url: String, fields: Map<String, Any>): String {
         waitForRateLimit(url)
         val request = NetworkRequests.formRequest(url, fields)
-        return executeWithRetries(url, request)
+        return executeWithRetries(url, request) { it.body?.string().orEmpty() }
     }
 
-    private suspend fun executeWithRetries(url: String, request: Request): String {
+    /**
+     * Fetches a binary response (cover images, R6) through the shared OkHttp client with an
+     * optional [maxBytes] cap. Returns null on non-2xx, non-image responses, or oversize bodies.
+     * Respects the same per-host rate limit as [fetch] (R6) so cover fetches on Scribble Hub can't
+     * stack 403s alongside page fetches.
+     */
+    suspend fun fetchBytes(url: String, maxBytes: Long = MAX_IMAGE_BYTES): ByteArray? {
+        waitForRateLimit(url)
+        val request = NetworkRequests.binaryRequest(url)
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val contentType = response.header("Content-Type").orEmpty()
+                if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@use null
+                val body = response.body ?: return@use null
+                val length = body.contentLength()
+                if (length > maxBytes) return@use null
+                val bytes = body.bytes()
+                if (bytes.size.toLong() > maxBytes) return@use null
+                bytes
+            }
+        }.getOrNull()
+    }
+
+    private suspend fun <T> executeWithRetries(url: String, request: Request, read: (Response) -> T): T {
         var attempt = 1
         while (attempt <= 3) {
             val response = client.newCall(request).execute()
             response.use {
-                if (it.isSuccessful) return it.body?.string().orEmpty()
+                if (it.isSuccessful) return read(it)
                 val host = runCatching { URL(url).host }.getOrNull()
                 val shouldRetry = host == "www.scribblehub.com" && (it.code == 403 || it.code == 429) && attempt < 3
                 if (!shouldRetry) throw IllegalStateException("HTTP ${it.code} for $url")
@@ -48,12 +86,24 @@ class NetworkClient {
         val host = runCatching { URL(url).host }.getOrNull() ?: return
         val gap = if (host == "www.scribblehub.com") 1500L else 0L
         if (gap <= 0) return
-        val now = System.currentTimeMillis()
-        val next = nextAllowedByHost[host] ?: 0L
-        if (next > now) delay(next - now)
-        nextAllowedByHost[host] = System.currentTimeMillis() + gap
+        val gate = gateFor(host)
+        gate.mutex.withLock {
+            val now = System.currentTimeMillis()
+            val next = gate.nextAllowedAt
+            if (next > now) delay(next - now)
+            gate.nextAllowedAt = System.currentTimeMillis() + gap
+        }
     }
 
+    companion object {
+        /** Maximum bytes accepted for a cover/image download (R6 size cap). */
+        const val MAX_IMAGE_BYTES = 8_000_000L
+
+        val defaultClient: OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
+            .build()
+    }
 }
 
 object NetworkRequests {
@@ -82,6 +132,14 @@ object NetworkRequests {
             .header("X-Requested-With", "XMLHttpRequest")
             .build()
     }
+
+    /** Request builder for binary downloads (cover images) — reuses the shared client (R6). */
+    fun binaryRequest(url: String): Request = Request.Builder()
+        .url(url)
+        .header("User-Agent", USER_AGENT)
+        .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .build()
 }
 
 interface SourceProvider {

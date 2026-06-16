@@ -92,7 +92,10 @@ internal fun ScreenHost.showCleanupRules() {
                 }
                 flow {
                     button("Edit", Btn.TEXT, R.drawable.wna_edit) { showRegexRuleDialog(rule) }
-                    button(if (rule.enabled) "Disable" else "Enable", Btn.TEXT) { rule.enabled = !rule.enabled; storage.saveRegexRules(storage.getRegexRules()); showCleanupRules() }
+                    button(if (rule.enabled) "Disable" else "Enable", Btn.TEXT) {
+                        val toggled = storage.getRegexRules().map { if (it.id == rule.id) it.copy(enabled = !it.enabled) else it }
+                        storage.saveRegexRules(toggled); showCleanupRules()
+                    }
                     button("Delete", Btn.TEXT, R.drawable.wna_delete) { storage.saveRegexRules(storage.getRegexRules().filterNot { it.id == rule.id }); showCleanupRules() }
                 }
             })

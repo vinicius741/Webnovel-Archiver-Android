@@ -7,8 +7,8 @@ data class QueueChapterPlan(
 )
 
 object DownloadQueuePlanning {
-    private val terminalStatuses = setOf("failed", "completed", "cancelled")
-    private val runnableStatuses = setOf("pending", "downloading")
+    private val terminalStatuses = DownloadJobStatus.terminalWires
+    private val runnableStatuses = DownloadJobStatus.activeWires
 
     fun queueChapters(existingJobs: List<DownloadJob>, story: Story, indexes: List<Int>): QueueChapterPlan {
         val jobs = existingJobs.map { it.copy(chapter = it.chapter.copy()) }.toMutableList()
@@ -48,7 +48,7 @@ object DownloadQueuePlanning {
             storyTitle = story.title,
             chapterIndex = index,
             chapter = chapter.copy(),
-            status = "pending",
+            status = DownloadJobStatus.Pending.wire,
             retryCount = retryCount,
             error = null,
             errorCategory = null,

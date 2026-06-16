@@ -16,19 +16,18 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.MainActivity
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.core.AppStorage
+import com.vinicius741.webnovelarchiver.appContainer
 import com.vinicius741.webnovelarchiver.core.TtsEngine
 import com.vinicius741.webnovelarchiver.core.TtsNotificationActions
 
 class TtsForegroundService : Service() {
-    private lateinit var storage: AppStorage
     private lateinit var engine: TtsEngine
     private var foregroundStarted = false
 
     override fun onCreate() {
         super.onCreate()
-        storage = AppStorage(this)
-        engine = TtsEngine(this, storage)
+        // Share the process-wide AppStorage via the container (M2); R8 thread-safe TtsEngine.
+        engine = TtsEngine(this, appContainer.storage)
         createNotificationChannel()
     }
 
@@ -68,7 +67,7 @@ class TtsForegroundService : Service() {
         startForegroundIfNeeded(buildNotification("Starting TTS"))
         val storyId = intent?.getStringExtra(EXTRA_STORY_ID)
         val chapterId = intent?.getStringExtra(EXTRA_CHAPTER_ID)
-        val story = storyId?.let { storage.getStory(it) }
+        val story = storyId?.let { appContainer.storage.getStory(it) }
         val chapter = chapterId?.let { id -> story?.chapters?.firstOrNull { it.id == id } }
         if (story != null && chapter != null) {
             engine.play(story, chapter)

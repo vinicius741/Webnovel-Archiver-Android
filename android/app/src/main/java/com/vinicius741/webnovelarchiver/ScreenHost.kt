@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver
 import android.widget.FrameLayout
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
+import com.vinicius741.webnovelarchiver.core.AppRepository
 import com.vinicius741.webnovelarchiver.core.AppStorage
 import com.vinicius741.webnovelarchiver.core.DownloadEngine
 import com.vinicius741.webnovelarchiver.core.EpubEngine
@@ -39,6 +40,12 @@ interface ScreenHost {
     val app: AppCompatActivity
     val scope: CoroutineScope
     val storage: AppStorage
+    /**
+     * Single-owner repository (R2). Screens read observable/cached state (library, queue, settings)
+     * through this rather than re-reading JSON from [storage] on every render (Speed S3 — disk reads
+     * off the render path).
+     */
+    val repository: AppRepository
     val syncEngine: StorySyncEngine
     val downloadEngine: DownloadEngine
     val epubEngine: EpubEngine

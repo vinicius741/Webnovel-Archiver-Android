@@ -12,7 +12,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -174,8 +173,13 @@ internal fun ScreenHost.showDetails(storyId: String) {
         }
         chapterSection.addView(chipsContainer)
 
-        // ---- Chapter List ----
-        val chaptersContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        // ---- Chapter List (S1: RecyclerView so novels with hundreds/thousands of chapters recycle
+        // views instead of inflating one row each on every render/filter tick) ----
+        val chaptersContainer = androidx.recyclerview.widget.RecyclerView(context).apply {
+            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
+            setHasFixedSize(false)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
         chapterSection.addView(chaptersContainer)
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
@@ -301,44 +305,50 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     showStyledOptionsDialog("More options", options)
 }
 
-internal fun ScreenHost.showChapterSelection(storyId: String) {
+internal fun ScreenHost.showChapterSelection(storyId: String, initialSelectedIds: Set<String> = emptySet()) {
     val story = storage.getStory(storyId) ?: return showLibrary()
     if (!StoryActionGuards.canQueueDownloads(story)) {
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return showDetails(story.id)
     }
-    val selectedIds = mutableSetOf<String>()
+    val selectedIds = initialSelectedIds.toMutableSet()
+    val downloadable = story.chapters.filter { !it.downloaded }
     screen(title = "Select Chapters", subtitle = story.title, onBack = { showDetails(story.id) }) {
-        val downloadable = story.chapters.filter { !it.downloaded }
+        var refreshBulkActions: () -> Unit = {}
         // X3: select-all / deselect-all affordance for fast bulk selection.
         flow {
             button("Select All", Btn.TEXT, R.drawable.wna_check) {
                 selectedIds.clear()
                 selectedIds.addAll(downloadable.map { it.id })
-                showChapterSelection(story.id)
+                showChapterSelection(story.id, selectedIds)
             }
             button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
                 selectedIds.clear()
-                showChapterSelection(story.id)
+                showChapterSelection(story.id, selectedIds)
             }
         }
         addView(scroll(LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             // X1: reuse the card-style selectable row instead of bare CheckBoxes.
-            downloadable.forEachIndexed { index, chapter ->
-                val displayIndex = story.chapters.indexOfFirst { it.id == chapter.id } + 1
-                addView(makeSelectableCardRow(
-                    context,
-                    title = "$displayIndex. ${sanitizeTitle(chapter.title)}",
-                    subtitle = if (chapter.downloaded) "Available Offline" else null,
-                    selected = selectedIds.contains(chapter.id),
-                ) { checked ->
-                    if (checked) selectedIds.add(chapter.id) else selectedIds.remove(chapter.id)
-                })
+            if (downloadable.isEmpty()) {
+                addView(makeEmptyState(context, "All chapters are already downloaded.", R.drawable.wna_check))
+            } else {
+                downloadable.forEach { chapter ->
+                    val displayIndex = story.chapters.indexOfFirst { it.id == chapter.id } + 1
+                    addView(makeSelectableCardRow(
+                        context,
+                        title = "$displayIndex. ${sanitizeTitle(chapter.title)}",
+                        subtitle = if (chapter.downloaded) "Available Offline" else null,
+                        selected = selectedIds.contains(chapter.id),
+                    ) { checked ->
+                        if (checked) selectedIds.add(chapter.id) else selectedIds.remove(chapter.id)
+                        refreshBulkActions()
+                    })
+                }
             }
         }), verticalFill())
         // X2: the primary bulk action is a full-width CTA docked at the bottom, next to the items.
-        fullButton("Download ${selectedIds.size} Selected", Btn.FILLED, R.drawable.wna_download, bottomMarginDp = 0) {
+        val downloadButton = fullButton("Download ${selectedIds.size} Selected", Btn.FILLED, R.drawable.wna_download, enabled = downloadable.isNotEmpty(), bottomMarginDp = 0) {
             val selectedIndexes = story.chapters.mapIndexedNotNull { index, chapter ->
                 if (selectedIds.contains(chapter.id) && !chapter.downloaded) index else null
             }
@@ -349,11 +359,14 @@ internal fun ScreenHost.showChapterSelection(storyId: String) {
                 showDetails(story.id)
             }
         }
+        refreshBulkActions = {
+            downloadButton.text = "Download ${selectedIds.size} Selected"
+        }
+        refreshBulkActions()
     }
 }
 
-internal fun ScreenHost.renderChapterList(story: Story, list: LinearLayout, query: String, filter: String) {
-    list.removeAllViews()
+internal fun ScreenHost.renderChapterList(story: Story, list: androidx.recyclerview.widget.RecyclerView, query: String, filter: String) {
     val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
     val filtered = story.chapters
         .mapIndexed { index, chapter -> index to chapter }
@@ -366,78 +379,25 @@ internal fun ScreenHost.renderChapterList(story: Story, list: LinearLayout, quer
             }
         }
     if (filtered.isEmpty()) {
-        list.addView(makeEmptyState(app, "No chapters match this view.", R.drawable.wna_menu_book))
+        list.adapter = ChapterListAdapter(
+            host = this,
+            chapters = listOf(-1 to Chapter(title = "No chapters match this view.")),
+            story = story,
+            isEmptyState = true,
+            list = list,
+        )
         return
     }
-    filtered.forEach { (index, chapter) ->
-        list.addView(chapterRow(story, chapter, index, list, query, filter))
-    }
+    list.adapter = ChapterListAdapter(this, filtered, story, list = list, query = query, filter = filter)
 }
 
-/**
- * Compact, RN-style chapter row: status indicator + sanitized title (+ "Available Offline") with a
- * per-row overflow (⋮) for Download / Mark Read / TTS. Tapping the row opens the reader; the
- * last-read row is tinted + bold. Replaces the previous per-chapter card with a 2×2 button grid.
- */
-private fun ScreenHost.chapterRow(
-    story: Story,
-    chapter: Chapter,
-    index: Int,
-    list: LinearLayout,
-    query: String,
-    filter: String,
-): LinearLayout {
-    val isLastRead = story.lastReadChapterId == chapter.id
-    val radiusPx = dp(Space.SM).toFloat()
-    val fill = if (isLastRead) ThemeManager.colors.primaryContainer else ThemeManager.colors.elevation1
-    val row = LinearLayout(app).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(Space.MD), dp(Space.SM + 2), dp(Space.XS + 2), dp(Space.SM + 2))
-        background = ripple(roundedBg(fill, radiusPx), radiusPx, ThemeManager.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { showReader(story.id, chapter.id) }
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(Space.XS + 2)
-        }
-    }
-    row.addView(chapterStatusDot(chapter.downloaded).apply {
-        (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, dp(Space.SM + 2), 0)
-    })
-    row.addView(LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        addView(makeText(app, "${index + 1}. ${sanitizeTitle(chapter.title)}", Type.TITLE_SMALL, if (isLastRead) ThemeManager.colors.primary else ThemeManager.colors.onSurface).apply {
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            if (isLastRead) setTypeface(typeface, Typeface.BOLD)
-        })
-        if (chapter.downloaded) {
-            addView(makeText(app, "Available Offline", Type.LABEL_SMALL, ThemeManager.colors.secondary).apply {
-                setPadding(0, dp(2), 0, 0)
-            })
-        }
-    })
-    row.addView(ImageView(app).apply {
-        setImageDrawable(app.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.onSurfaceVariant))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(Space.SM + 2), dp(Space.SM + 2), dp(Space.SM + 2), dp(Space.SM + 2))
-        background = selectableRipple(ThemeManager.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { showChapterActions(story, chapter, index, list, query, filter) }
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
-    })
-    return row
-}
 
 /** Per-row overflow: Read, conditional Download, Mark as Read ⇄ Clear, Read Aloud (TTS). */
-private fun ScreenHost.showChapterActions(
+internal fun ScreenHost.showChapterActions(
     story: Story,
     chapter: Chapter,
     index: Int,
-    list: LinearLayout,
+    list: androidx.recyclerview.widget.RecyclerView,
     query: String,
     filter: String,
 ) {

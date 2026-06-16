@@ -169,8 +169,7 @@ internal fun isGoogleAuthUrl(url: String): Boolean = BrowserUrlPlanning.isGoogle
 
 internal fun ScreenHost.openFile(path: String?) {
     if (path == null) return toast("No EPUB generated")
-    val file = File(path)
-    if (!file.exists()) return toast("EPUB file is missing")
+    val file = storage.resolveAbsolutePath(path) ?: return toast("EPUB file is missing")
     val uri = fileUri(file)
     val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/epub+zip").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     runCatching { app.startActivity(intent) }.onFailure { toast("No app available to open EPUB") }
@@ -181,7 +180,9 @@ internal fun ScreenHost.openEpubForStory(story: Story) {
     val candidates = paths ?: story.epubPath?.let { listOf(it) }.orEmpty()
     if (candidates.isEmpty()) return toast("No EPUB generated")
 
-    val existing = candidates.filter { File(it).exists() }
+    val existing = candidates.mapNotNull { candidate ->
+        storage.resolveAbsolutePath(candidate)?.let { candidate to it }
+    }
     if (existing.isEmpty()) {
         story.epubPath = null
         story.epubPaths = null
@@ -193,19 +194,20 @@ internal fun ScreenHost.openEpubForStory(story: Story) {
     }
 
     if (existing.size != candidates.size) {
-        story.epubPaths = existing.toMutableList()
-        story.epubPath = existing.firstOrNull()
+        val remainingPaths = existing.map { it.first }
+        story.epubPaths = remainingPaths.toMutableList()
+        story.epubPath = remainingPaths.firstOrNull()
         storage.addOrUpdateStory(story)
         toast("Some EPUB files were missing. ${existing.size} file(s) remain.")
     }
 
     if (existing.size == 1) {
-        openFile(existing.first())
+        openFile(existing.first().first)
         return
     }
 
-    val options = existing.map { file ->
-        EpubSelection.displayNameForPath(file) to { openFile(file) }
+    val options = existing.map { (path, file) ->
+        EpubSelection.displayNameForPath(file.absolutePath) to { openFile(path) }
     }
     showStyledOptionsDialog("Select EPUB to Read", options)
 }

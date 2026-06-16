@@ -28,8 +28,8 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
     val formattedText = TextCleanup.htmlToFormattedText(content)
     val display = storage.getDisplayPreferences()
     val reader = WebView(app).apply {
-        settings.javaScriptEnabled = false
-        settings.domStorageEnabled = false
+        // R9: reader renders trusted sanitized HTML only — JS off, file/content access locked down.
+        WebViewSafety.applyReaderSettings(this)
     }
     fun renderReader() {
         val readerColors = readerDocumentColors(display.readerDark)

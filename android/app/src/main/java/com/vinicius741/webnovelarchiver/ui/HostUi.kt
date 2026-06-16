@@ -4,7 +4,6 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.BitmapFactory
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -18,15 +17,14 @@ import androidx.window.layout.WindowMetricsCalculator
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ScreenHost
 import com.vinicius741.webnovelarchiver.core.DisplayPreferences
+import com.vinicius741.webnovelarchiver.core.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.core.DownloadStatus
 import com.vinicius741.webnovelarchiver.core.ScreenLayout
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutMode
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.core.resolveScreenLayout
-import kotlinx.coroutines.Dispatchers
+import coil.load
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.URL
 
 /** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)
@@ -100,13 +98,11 @@ internal fun ScreenHost.clipboardText(): String? {
 }
 
 internal fun ScreenHost.loadImage(url: String, image: ImageView) {
-    scope.launch {
-        val bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                URL(url).openStream().use { BitmapFactory.decodeStream(it) }
-            }.getOrNull()
-        }
-        if (bitmap != null) image.setImageBitmap(bitmap)
+    // S4: route cover loads through Coil instead of hand-rolled URL.openStream +
+    // BitmapFactory.decodeStream. Coil adds a memory + disk cache, downsampling to the target size,
+    // request cancellation when the view is detached, and a placeholder/error drawable.
+    image.load(url) {
+        crossfade(true)
     }
 }
 
@@ -140,12 +136,15 @@ internal fun ScreenHost.jobStatusDot(status: String): View = dot(statusColor(sta
 internal fun ScreenHost.chapterStatusDot(downloaded: Boolean): View =
     dot(if (downloaded) ThemeManager.colors.tertiary else ThemeManager.colors.outlineVariant)
 
-internal fun statusColor(status: String): Int = when (status) {
-    "completed" -> ThemeManager.colors.tertiary
-    "failed", "cancelled" -> ThemeManager.colors.error
-    "downloading" -> ThemeManager.colors.primary
-    "paused" -> ThemeManager.colors.secondary
-    else -> ThemeManager.colors.onSurfaceVariant
+internal fun statusColor(status: String): Int {
+    if (status !in DownloadJobStatus.wires) return ThemeManager.colors.onSurfaceVariant
+    return when (DownloadJobStatus.parse(status)) {
+        DownloadJobStatus.Completed -> ThemeManager.colors.tertiary
+        DownloadJobStatus.Failed, DownloadJobStatus.Cancelled -> ThemeManager.colors.error
+        DownloadJobStatus.Downloading -> ThemeManager.colors.primary
+        DownloadJobStatus.Paused -> ThemeManager.colors.secondary
+        DownloadJobStatus.Pending -> ThemeManager.colors.onSurfaceVariant
+    }
 }
 
 internal fun formatRelativeTime(timestamp: Long): String {

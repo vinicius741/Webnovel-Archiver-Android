@@ -1,6 +1,8 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jmailen.kotlinter' version '5.0.1'
+    id 'io.gitlab.arturbosch.detekt' version '1.23.7'
 }
 
 def localProperties = new Properties()
@@ -66,10 +68,28 @@ android {
     }
 }
 
+// Tooling recommendations: detekt (maintainability/complexity checks) + kotlinter (format).
+// Both start permissive so the existing codebase adopts them without a hard fail.
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config = files("$projectDir/detekt.yml")
+    parallel = true
+}
+
+// CI quality gate (Tooling recommendation #3): tests + lint + assemble together.
+tasks.register('ci') {
+    dependsOn 'testDebugUnitTest', 'detekt', 'lintDebug', 'assembleDebug'
+}
+
 dependencies {
     implementation 'androidx.core:core-ktx:1.17.0'
     implementation 'androidx.activity:activity-ktx:1.12.0'
+    // lifecycle-runtime-ktx provides lifecycleScope used by MainActivity (M3 lifecycle-aware scopes)
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.1'
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    // RecyclerView — recycles views for the Details chapter list and other long lists (Speed S1).
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
     // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
     implementation 'androidx.window:window:1.4.0'
@@ -77,7 +97,11 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jsoup:jsoup:1.21.2'
     implementation 'com.google.code.gson:gson:2.13.2'
+    // Coil — image loading with memory/disk cache, downsampling, cancellation (Speed S4).
+    implementation 'io.coil-kt:coil:2.7.0'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
 }
 
 tasks.register('copyDebugApkToProjectRoot', Copy) {

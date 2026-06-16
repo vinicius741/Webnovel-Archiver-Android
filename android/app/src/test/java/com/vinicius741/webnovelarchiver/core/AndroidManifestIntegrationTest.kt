@@ -31,14 +31,24 @@ class AndroidManifestIntegrationTest {
     }
 
     @Test
-    fun fileProviderCoversPrivateFilesAndCacheExports() {
+    fun fileProviderScopeNarrowedToExportDirectoriesOnly() {
+        // R10: FileProvider must only expose the dedicated export/share directories (EPUBs, backups,
+        // restore-exports), never the whole files/ or cache/ root which would expose private story
+        // JSON and chapter HTML.
         val paths = xml("src/main/res/xml/file_paths.xml")
-        val entries = listOf("files-path", "cache-path").mapNotNull { tag ->
-            paths.getElementsByTagName(tag).item(0) as? Element
-        }.map { element -> element.tagName to element.getAttribute("path") }.toSet()
+        val entries = (0 until paths.documentElement.childNodes.length)
+            .mapNotNull { paths.documentElement.childNodes.item(it) as? Element }
+            .map { element -> element.tagName to element.getAttribute("path") }
 
-        assertTrue(entries.contains("files-path" to "."))
-        assertTrue(entries.contains("cache-path" to "."))
+        val scopedPaths = setOf(
+            "files-path" to "webnovel_archiver/epubs/",
+            "files-path" to "webnovel_archiver/backups/",
+            "cache-path" to "webnovel_restore/",
+        )
+        entries.forEach { (_, path) ->
+            assertTrue("FileProvider exposes an overly-broad root path: $path", path != ".")
+        }
+        assertTrue("Expected scoped EPUB/backups/restore-exports entries", entries.toSet() == scopedPaths)
     }
 
     private fun xml(path: String) = DocumentBuilderFactory
