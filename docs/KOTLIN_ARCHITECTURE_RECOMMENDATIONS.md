@@ -278,7 +278,7 @@ Broad backup and broad sharing roots make privacy and accidental exposure harder
 
 ## Speed and Responsiveness
 
-### 1. Use RecyclerView for Large Lists
+### 1. Use RecyclerView for Large Lists — `[DONE]`
 
 Current state:
 
@@ -322,7 +322,7 @@ Why:
 
 Full rebuilds are simple but expensive. They also lose transient UI state unless every piece is manually preserved.
 
-### 3. Move Disk Reads Off Render Paths
+### 3. Move Disk Reads Off Render Paths — `[DONE]`
 
 Current state:
 
