@@ -280,7 +280,9 @@ class DownloadEngine(
             val story = storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
             val html = network.fetch(job.chapter.url)
-            val clean = TextCleanup.applyDownloadCleanup(provider.parseChapterContent(html), storage.getSentenceRemovalList(), storage.getRegexRules())
+            // S6: use the shared cached cleanup so regexes compile once per settings change, not once
+            // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
+            val clean = CleanupEngine.shared.applyDownload(provider.parseChapterContent(html), storage.getSentenceRemovalList(), storage.getRegexRules())
             val path = storage.saveChapter(story.id, job.chapterIndex, job.chapter, clean)
             val chapter = story.chapters[job.chapterIndex]
             chapter.filePath = path
@@ -782,7 +784,7 @@ object TextCleanup {
         return regexFlagOrder.filter { it in unique }.joinToString("")
     }
 
-    private fun regexOptions(flags: String): Set<RegexOption> {
+    internal fun regexOptions(flags: String): Set<RegexOption> {
         val opts = mutableSetOf<RegexOption>()
         if ('i' in flags) opts.add(RegexOption.IGNORE_CASE)
         if ('m' in flags) opts.add(RegexOption.MULTILINE)

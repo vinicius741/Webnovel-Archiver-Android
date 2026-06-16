@@ -377,7 +377,7 @@ Why:
 
 Large books can be memory-heavy. Streaming generation is more stable and easier to cancel.
 
-### 6. Cache Compiled Cleanup Rules
+### 6. Cache Compiled Cleanup Rules — `[DONE]`
 
 Current state:
 
