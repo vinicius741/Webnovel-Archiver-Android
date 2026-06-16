@@ -489,6 +489,7 @@ private fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
         setPadding(0, dp(Space.XS), 0, dp(Space.SM))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
     val cover = coverImage(story, widthDp = 150, heightDp = 225, tapToOpen = true)
     (cover.layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, 0, dp(Space.LG))
@@ -526,7 +527,7 @@ private fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
     }
     if (story.totalChapters > 0) {
         col.addView(makeProgressSummary(app, story.downloadedChapters, story.totalChapters).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(Space.XS)
                 bottomMargin = dp(Space.XS)
             }
