@@ -165,6 +165,18 @@ class AppStorage(
         return file
     }
 
+    /**
+     * Streams an EPUB to its final file (S5): [block] writes into an [OutputStream] backed by a temp
+     * file, which is fsync'd and renamed into place on success. Lets EpubEngine stream the ZIP
+     * chapter-by-chapter instead of building one big [ByteArrayOutputStream] in memory.
+     */
+    fun saveEpubStreamed(storyId: String, filename: String, block: (java.io.OutputStream) -> Unit): File {
+        val dir = File(epubRoot, safeName(storyId)).apply { mkdirs() }
+        val file = File(dir, filename)
+        AtomicFileWrites.stream(file) { out -> block(out) }
+        return file
+    }
+
     /** Resolve a possibly-relative chapter/epub path to an absolute filesystem path. */
     fun resolveAbsolutePath(path: String?): File? {
         if (path.isNullOrBlank()) return null

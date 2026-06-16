@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.core
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URL
 import java.util.zip.ZipEntry
@@ -38,8 +37,13 @@ class EpubEngine(private val storage: AppStorage, private val network: NetworkCl
             val start = chapterNumberById[chunk.first().id] ?: (chapters.indexOf(chunk.first()) + 1)
             val end = chapterNumberById[chunk.last().id] ?: (chapters.indexOf(chunk.last()) + 1)
             val filename = EpubFilename.forRange(story.title, start, end)
-            val bytes = buildEpub(story, chunk)
-            val file = storage.saveEpub(story.id, filename, bytes)
+            // S5: fetch the cover (suspend) first, then stream the EPUB straight to its final file
+            // via a temp+rename (no full ByteArrayOutputStream held in memory), keeping one
+            // chapter's XHTML resident at a time.
+            val coverAsset = story.coverUrl?.let { fetchCover(it) }
+            val file = storage.saveEpubStreamed(story.id, filename) { out ->
+                writeEpub(ZipOutputStream(out), story, chunk, coverAsset)
+            }
             results.add(EpubResult(file.absolutePath, filename, start, end))
         }
         story.epubPaths = results.map { it.uri }.toMutableList()
@@ -49,28 +53,28 @@ class EpubEngine(private val storage: AppStorage, private val network: NetworkCl
         results
     }
 
-    private suspend fun buildEpub(story: Story, chapters: List<Chapter>): ByteArray {
-        val out = ByteArrayOutputStream()
-        ZipOutputStream(out).use { zip ->
-            ArchiveUtils.putStoredEntry(zip, "mimetype", "application/epub+zip".toByteArray())
-            entry(zip, "META-INF/container.xml", """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""")
-            entry(zip, "OEBPS/style.css", EpubContent.css())
-            val coverAsset = story.coverUrl?.let { fetchCover(it) }
-            coverAsset?.let { cover ->
-                zip.putNextEntry(ZipEntry("OEBPS/${cover.href}"))
-                zip.write(cover.data)
-                zip.closeEntry()
-            }
-            entry(zip, "OEBPS/cover.xhtml", EpubContent.cover(story, coverAsset?.href))
-            entry(zip, "OEBPS/details.xhtml", EpubContent.details(story))
-            entry(zip, "OEBPS/toc.xhtml", EpubContent.tableOfContents(chapters))
-            chapters.forEachIndexed { i, chapter ->
-                entry(zip, "OEBPS/chapter_${i + 1}.xhtml", EpubContent.chapter(chapter, storage.readChapter(chapter) ?: ""))
-            }
-            entry(zip, "OEBPS/content.opf", EpubMetadata.opf(story, chapters, coverAsset?.let { EpubCoverMetadata(it.href, it.mediaType) }))
-            entry(zip, "OEBPS/toc.ncx", EpubMetadata.ncx(story, chapters))
+    /**
+     * Writes the full EPUB 2.0 structure into [zip]. Streamed entry-by-entry so only one chapter's
+     * XHTML is resident at a time (S5). Non-suspend — the cover is fetched before streaming.
+     */
+    private fun writeEpub(zip: ZipOutputStream, story: Story, chapters: List<Chapter>, coverAsset: CoverAsset?) {
+        ArchiveUtils.putStoredEntry(zip, "mimetype", "application/epub+zip".toByteArray())
+        entry(zip, "META-INF/container.xml", """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""")
+        entry(zip, "OEBPS/style.css", EpubContent.css())
+        coverAsset?.let { cover ->
+            zip.putNextEntry(ZipEntry("OEBPS/${cover.href}"))
+            zip.write(cover.data)
+            zip.closeEntry()
         }
-        return out.toByteArray()
+        entry(zip, "OEBPS/cover.xhtml", EpubContent.cover(story, coverAsset?.href))
+        entry(zip, "OEBPS/details.xhtml", EpubContent.details(story))
+        entry(zip, "OEBPS/toc.xhtml", EpubContent.tableOfContents(chapters))
+        chapters.forEachIndexed { i, chapter ->
+            entry(zip, "OEBPS/chapter_${i + 1}.xhtml", EpubContent.chapter(chapter, storage.readChapter(chapter) ?: ""))
+        }
+        entry(zip, "OEBPS/content.opf", EpubMetadata.opf(story, chapters, coverAsset?.let { EpubCoverMetadata(it.href, it.mediaType) }))
+        entry(zip, "OEBPS/toc.ncx", EpubMetadata.ncx(story, chapters))
+        zip.close()
     }
 
     private suspend fun fetchCover(url: String): CoverAsset? = runCatching {

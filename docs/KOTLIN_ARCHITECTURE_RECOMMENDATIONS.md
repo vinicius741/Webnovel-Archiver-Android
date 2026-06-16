@@ -379,7 +379,7 @@ Why:
 
 Image loading is solved infrastructure. Hand-rolled image loading is almost always slower and more fragile.
 
-### 5. Stream EPUB Generation
+### 5. Stream EPUB Generation — `[DONE]`
 
 Current state:
 
