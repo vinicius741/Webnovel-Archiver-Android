@@ -23,7 +23,7 @@ fun makeCover(context: Context, widthDp: Int, heightDp: Int): ImageView {
         scaleType = ImageView.ScaleType.CENTER_CROP
         setBackgroundColor(t.colors.surfaceVariant)
         layoutParams = LinearLayout.LayoutParams(context.dp(widthDp), context.dp(heightDp)).apply {
-            setMargins(0, 0, context.dp(Space.MD + 2), 0)
+            setMargins(0, 0, context.dp(Space.LG), 0)
         }
         roundCorners(t.shapes.cardRadius.toFloat() * 0.7f)
     }
@@ -36,7 +36,7 @@ fun makeCoverPlaceholder(context: Context, widthDp: Int, heightDp: Int): View {
         gravity = Gravity.CENTER
         setBackgroundColor(t.colors.surfaceVariant)
         layoutParams = LinearLayout.LayoutParams(context.dp(widthDp), context.dp(heightDp)).apply {
-            setMargins(0, 0, context.dp(Space.MD + 2), 0)
+            setMargins(0, 0, context.dp(Space.LG), 0)
         }
         roundCorners(t.shapes.cardRadius.toFloat() * 0.7f)
         addView(ImageView(context).apply {

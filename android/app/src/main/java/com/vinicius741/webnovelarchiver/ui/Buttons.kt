@@ -36,7 +36,7 @@ fun makeButton(
     val radiusPx = context.dp(t.shapes.buttonRadius).toFloat()
     val v = resolvedVariant(variant)
     val padH = context.dp(Space.LG)
-    val padV = context.dp(Space.SM + 1)
+    val padV = context.dp(Space.SM + 2)
 
     fun bgWithRipple(content: Drawable, rippleColor: Int): Drawable = ripple(content, radiusPx, rippleColor)
 
@@ -83,9 +83,9 @@ fun makeButton(
         transformationMethod = null
         includeFontPadding = false
         setPadding(padH, padV, padH, padV)
-        minHeight = 0
+        minHeight = context.dp(44)
         minWidth = 0
-        minimumHeight = 0
+        minimumHeight = context.dp(44)
         stateListAnimator = null
         background = bgWithRipple(bgDrawable, 0x33000000)
         if (v == Btn.ELEVATED) elevate(2f)

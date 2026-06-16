@@ -120,7 +120,7 @@ private fun ScreenHost.compactRuleRow(
         isFocusable = true
         setOnClickListener { onEdit() }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(6)
+            bottomMargin = dp(Space.SM + 2)
         }
     }
     row.addView(makeText(app, text, Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
@@ -154,13 +154,19 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
     view.addView(pattern)
     view.addView(flags)
     view.addView(appliesTo)
-    val quickRow = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL; addView(makeButton(app, "Quick Separator", Btn.TONAL, R.drawable.wna_brush) {
-        showQuickRegexBuilder { generated ->
-            name.setText(generated.name)
-            pattern.setText(generated.pattern)
-            flags.setText(generated.flags)
+    val quickRow = LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.XS)
         }
-    }) }
+        addView(makeButton(app, "Quick Separator", Btn.TONAL, R.drawable.wna_brush) {
+            showQuickRegexBuilder { generated ->
+                name.setText(generated.name)
+                pattern.setText(generated.pattern)
+                flags.setText(generated.flags)
+            }
+        })
+    }
     view.addView(quickRow)
 
     val dialog = AlertDialog.Builder(app)

@@ -140,7 +140,7 @@ private fun ScreenHost.addStoryGroup(jobs: List<DownloadJob>): LinearLayout {
         }
     }
     card.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-        bottomMargin = app.dp(Space.SM + 2)
+        bottomMargin = app.dp(Space.LG)
     }
     return card
 }
@@ -243,5 +243,7 @@ internal fun ScreenHost.iconAction(icon: Int, tint: Int, desc: String, sizeDp: I
         isClickable = true
         isFocusable = true
         setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)).apply {
+            marginStart = dp(Space.XS)
+        }
     }

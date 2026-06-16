@@ -59,8 +59,8 @@ internal fun ScreenHost.showLibrary() {
         // every render so unfolding the device reflows the grid in place.
         val list = GridLayout(context).apply {
             columnCount = layoutResult.numColumns.coerceAtLeast(1)
-            horizontalSpacingDp = Space.MD
-            verticalSpacingDp = Space.SM + 2
+            horizontalSpacingDp = Space.LG
+            verticalSpacingDp = Space.LG
         }
 
         // Restore the last-selected tab from persisted prefs (survives navigating away AND app restarts).
@@ -242,7 +242,7 @@ private fun ScreenHost.makeLibraryFilters(
         })
         addView(makeText(context, sortLabel, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
     }
-    searchRow.addView(sortButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(Space.SM) })
+    searchRow.addView(sortButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(Space.MD) })
     filtersContainer.addView(searchRow)
 
     // Tag chips — L4: render source filters (globe icon, filled) separately from genre tags so the
@@ -477,10 +477,13 @@ internal fun ScreenHost.renderLibraryList(
         list.addView(makeEmptyState(app, "No novels match this view.", R.drawable.wna_search))
         return
     }
-    val compact = layout.numColumns >= 2
+    // The library always uses the horizontal story card (80×120 cover on the left, text on the right)
+    // regardless of column count — the same layout as phone mode, just reflowed into N columns on
+    // wider windows. The previous vertical "compact" card cropped portrait covers badly and looked
+    // inconsistent with the single-column view.
     visible.forEach { story ->
         list.addView(list.card {
-            val content = if (compact) buildCompactStoryCard(story) else buildStoryCard(story)
+            val content = buildStoryCard(story)
             content.background = selectableRipple(ThemeManager.colors.onSurface)
             content.isClickable = true
             content.setOnClickListener { showDetails(story.id) }
@@ -533,46 +536,12 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
     if (story.isArchived == true) {
         row.addView(ImageView(app).apply {
             setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
-            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22))
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                marginStart = dp(Space.SM)
+            }
         })
     }
     return row
-}
-
-/**
- * Vertical "compact" card content for the multi-column library grid: smaller 64×96 cover stacked
- * above the text, so a narrow grid cell still shows cover + title + author. Mirrors the RN StoryCard
- * compact mode (64×96 cover, tighter layout).
- */
-private fun ScreenHost.buildCompactStoryCard(story: Story): LinearLayout = LinearLayout(app).apply {
-    orientation = LinearLayout.VERTICAL
-    addView(coverImage(story, widthDp = 64, heightDp = 96, tapToOpen = false).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-    })
-    addView(makeText(app, story.title, Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
-        maxLines = 2
-        ellipsize = android.text.TextUtils.TruncateAt.END
-        setPadding(0, dp(Space.SM), 0, 0)
-    })
-    addView(makeText(app, "by ${story.author}", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-        maxLines = 1
-        ellipsize = android.text.TextUtils.TruncateAt.END
-        setPadding(0, dp(Space.XS), 0, 0)
-    })
-    SourceRegistry.getProvider(story.sourceUrl)?.let {
-        addView(makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
-            setPadding(0, dp(Space.XS), 0, 0)
-        })
-    }
-    story.score?.takeIf { it.isNotBlank() }?.let { score ->
-        addView(scoreRow(score).apply { setPadding(0, dp(Space.XS), 0, 0) })
-    }
-    if (story.isArchived == true) {
-        addView(ImageView(app).apply {
-            setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
-            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { topMargin = dp(Space.XS) }
-        })
-    }
 }
 
 private fun ScreenHost.showStoryActionsDialog(story: Story) {

@@ -99,7 +99,7 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(ThemeManager.colors.elevation2)
-            setPadding(dp(Spacing.MD), dp(Spacing.SM), dp(Spacing.MD), dp(Spacing.SM))
+            setPadding(dp(Spacing.LG), dp(Spacing.MD), dp(Spacing.LG), dp(Spacing.MD))
         }
         val hasPrev = currentIndex > 0
         val hasNext = currentIndex < story.chapters.lastIndex
@@ -111,8 +111,8 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
                     marginEnd = dp(marginEndDp)
                 }
             }
-        navBar.addView(navButton("Prev", R.drawable.wna_skip_prev, hasPrev, marginStartDp = 0, marginEndDp = Spacing.XS) { navigateChapter(story, chapter, -1) })
-        navBar.addView(navButton("Next", R.drawable.wna_skip_next, hasNext, marginStartDp = Spacing.XS, marginEndDp = 0) { navigateChapter(story, chapter, 1) })
+        navBar.addView(navButton("Prev", R.drawable.wna_skip_prev, hasPrev, marginStartDp = 0, marginEndDp = Spacing.SM) { navigateChapter(story, chapter, -1) })
+        navBar.addView(navButton("Next", R.drawable.wna_skip_next, hasNext, marginStartDp = Spacing.SM, marginEndDp = 0) { navigateChapter(story, chapter, 1) })
         addView(navBar)
     }
 }

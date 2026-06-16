@@ -111,7 +111,11 @@ internal fun ScreenHost.loadImage(url: String, image: ImageView) {
 }
 
 internal fun ScreenHost.styledDialogField(value: String, hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT): EditText =
-    makeField(app, value, hint, inputType)
+    makeField(app, value, hint, inputType).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = dp(Space.SM)
+        }
+    }
 
 internal fun ScreenHost.scoreRow(score: String): View = LinearLayout(app).apply {
     orientation = LinearLayout.HORIZONTAL

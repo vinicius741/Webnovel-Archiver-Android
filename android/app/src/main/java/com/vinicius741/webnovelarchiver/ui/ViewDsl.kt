@@ -23,11 +23,13 @@ internal fun ViewGroup.row(gravity: Int = Gravity.CENTER_VERTICAL, block: Linear
         this.gravity = gravity
         block()
     }
-    addView(h, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    addView(h, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+        bottomMargin = context.dp(Space.SM)
+    })
     return h
 }
 
-internal fun ViewGroup.flow(spacing: Int = 8, block: WrapLayout.() -> Unit): WrapLayout {
+internal fun ViewGroup.flow(spacing: Int = Space.MD, block: WrapLayout.() -> Unit): WrapLayout {
     val f = WrapLayout(context).apply {
         horizontalSpacingDp = spacing
         verticalSpacingDp = spacing
@@ -37,7 +39,7 @@ internal fun ViewGroup.flow(spacing: Int = 8, block: WrapLayout.() -> Unit): Wra
     return f
 }
 
-internal fun ViewGroup.grid(columns: Int = 2, spacing: Int = 8, block: GridLayout.() -> Unit): GridLayout {
+internal fun ViewGroup.grid(columns: Int = 2, spacing: Int = Space.MD, block: GridLayout.() -> Unit): GridLayout {
     val g = GridLayout(context).apply {
         columnCount = columns
         horizontalSpacingDp = spacing
@@ -52,7 +54,7 @@ internal fun ViewGroup.card(elevation: Int = 1, block: LinearLayout.() -> Unit):
     val c = makeCard(context, elevation)
     c.block()
     c.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-        bottomMargin = context.dp(Space.SM + 2)
+        bottomMargin = context.dp(Space.MD)
     }
     return c
 }
@@ -82,7 +84,14 @@ internal fun ViewGroup.button(
 ): Button {
     val b = makeButton(context, label, variant, icon, action)
     if (!enabled) disableButton(b)
-    addView(b)
+    val parent = this
+    if (parent is LinearLayout && parent.orientation == LinearLayout.HORIZONTAL) {
+        addView(b, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            if (parent.childCount > 0) marginStart = context.dp(Space.SM)
+        })
+    } else {
+        addView(b)
+    }
     return b
 }
 
@@ -94,7 +103,7 @@ internal fun ViewGroup.fullButton(
     icon: Int = 0,
     enabled: Boolean = true,
     topMarginDp: Int = 0,
-    bottomMarginDp: Int = 10,
+    bottomMarginDp: Int = Space.MD,
     action: () -> Unit,
 ): Button {
     val b = makeButton(context, label, variant, icon, action)

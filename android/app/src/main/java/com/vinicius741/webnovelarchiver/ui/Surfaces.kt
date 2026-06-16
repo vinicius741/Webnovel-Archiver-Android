@@ -82,7 +82,9 @@ fun makeSettingRow(
         isFocusable = true
         setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
         background = selectableRipple(t.colors.surface)
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = context.dp(Space.XS)
+        }
         // Leading icon, sized to match the Material list-item leading icon (~24dp).
         addView(ImageView(context).apply {
             setImageDrawable(context.tintedIcon(iconRes, t.colors.onSurfaceVariant))
@@ -165,7 +167,7 @@ fun makeSelectableCardRow(
         setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
         background = roundedBg(t.colors.elevation1, radiusPx)
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = context.dp(Space.SM)
+            bottomMargin = context.dp(Space.MD)
         }
         addView(cb)
         addView(textCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {

@@ -55,7 +55,7 @@ internal fun ScreenHost.screen(
     column.addView(appBar(title, subtitle, onBack, actions))
     val content = LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(Spacing.LG), dp(Spacing.SM), dp(Spacing.LG), dp(Spacing.XL))
+        setPadding(dp(Spacing.XL), dp(Spacing.MD), dp(Spacing.XL), dp(Spacing.XL))
         block()
     }
     val body: View = if (scrollable) {
