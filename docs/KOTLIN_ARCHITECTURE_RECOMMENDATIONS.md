@@ -439,7 +439,7 @@ Why:
 
 This is not full dependency injection. It is a simple native Android pattern that prevents accidental duplicate engines.
 
-### 3. Use Lifecycle-Aware Scopes
+### 3. Use Lifecycle-Aware Scopes — `[DONE]`
 
 Current state:
 
@@ -486,7 +486,7 @@ Why:
 
 You do not need to rewrite the UI to get native best practices. Separating screen state from view construction gives most of the benefit.
 
-### 5. Reduce `configChanges` Overreach
+### 5. Reduce `configChanges` Overreach — `[DONE]`
 
 Current state:
 

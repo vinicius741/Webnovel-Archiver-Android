@@ -25,9 +25,11 @@ import com.vinicius741.webnovelarchiver.core.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,7 +41,12 @@ import kotlinx.coroutines.withContext
  */
 class MainActivity : AppCompatActivity(), ScreenHost {
     override val app: AppCompatActivity get() = this
-    override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    /**
+     * UI coroutine scope (Maintainability M3). A single [CoroutineScope] wrapping the activity's
+     * [lifecycleScope] job/context, so all screen-launched coroutines (fold observation, backup
+     * import, sync) are cancelled automatically when the activity is destroyed — no leaked work.
+     */
+    override val scope: CoroutineScope by lazy { CoroutineScope(lifecycleScope.coroutineContext) }
     override lateinit var storage: AppStorage
     override lateinit var syncEngine: StorySyncEngine
     override lateinit var downloadEngine: DownloadEngine

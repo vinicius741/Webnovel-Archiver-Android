@@ -69,6 +69,8 @@ android {
 dependencies {
     implementation 'androidx.core:core-ktx:1.17.0'
     implementation 'androidx.activity:activity-ktx:1.12.0'
+    // lifecycle-runtime-ktx provides lifecycleScope used by MainActivity (M3 lifecycle-aware scopes)
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.1'
     implementation 'androidx.appcompat:appcompat:1.7.1'
     // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
