@@ -79,6 +79,8 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jsoup:jsoup:1.21.2'
     implementation 'com.google.code.gson:gson:2.13.2'
+    // Coil — image loading with memory/disk cache, downsampling, cancellation (Speed S4).
+    implementation 'io.coil-kt:coil:2.7.0'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'

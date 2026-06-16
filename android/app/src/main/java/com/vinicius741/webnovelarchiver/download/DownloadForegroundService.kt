@@ -116,7 +116,9 @@ class DownloadForegroundService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val title = if (progress.unfinished > 0) "Downloading chapters" else "Downloads finished"
+        val title = getString(
+            if (progress.unfinished > 0) R.string.download_notif_active else R.string.download_notif_done,
+        )
         val body = progress.activeTitle
             ?: "Pending ${progress.pending}, active ${progress.active}, completed ${progress.completed}, failed ${progress.failed}"
         val max = progress.total.coerceAtLeast(1)
@@ -131,9 +133,9 @@ class DownloadForegroundService : Service() {
             .setOngoing(progress.unfinished > 0)
             .setOnlyAlertOnce(true)
             .setProgress(max, done, progress.total == 0)
-            .addAction(0, "Pause", pauseIntent)
-            .addAction(0, "Resume", resumeIntent)
-            .addAction(0, "Stop", stopIntent)
+            .addAction(0, getString(R.string.download_action_pause), pauseIntent)
+            .addAction(0, getString(R.string.download_action_resume), resumeIntent)
+            .addAction(0, getString(R.string.download_action_stop), stopIntent)
             .build()
     }
 
@@ -141,10 +143,10 @@ class DownloadForegroundService : Service() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Downloads",
+            getString(R.string.download_channel_name),
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Chapter download progress"
+            description = getString(R.string.download_channel_desc)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }

@@ -341,7 +341,7 @@ Why:
 
 Rendering should be cheap. Disk I/O during render causes jank and makes UI performance depend on library size.
 
-### 4. Improve Image Loading
+### 4. Improve Image Loading — `[DONE]`
 
 Current state:
 
@@ -458,7 +458,7 @@ Why:
 
 Native Android best practice is to let lifecycle-aware scopes stop work when the owner is destroyed.
 
-### 4. Add ViewModels or Presenters Before a UI Rewrite
+### 4. Add ViewModels or Presenters Before a UI Rewrite — `[DONE]`
 
 Current state:
 
@@ -503,7 +503,7 @@ Why:
 
 Opting out of recreation shifts responsibility for theme, locale, font scale, orientation, and resource changes onto app code. That is easy to get wrong.
 
-### 6. Move User-Facing Strings to Resources
+### 6. Move User-Facing Strings to Resources — `[DONE]`
 
 Current state:
 
