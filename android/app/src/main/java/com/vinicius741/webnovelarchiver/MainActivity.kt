@@ -14,10 +14,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.vinicius741.webnovelarchiver.appContainer
 import com.vinicius741.webnovelarchiver.core.AppStorage
 import com.vinicius741.webnovelarchiver.core.DownloadEngine
 import com.vinicius741.webnovelarchiver.core.EpubEngine
-import com.vinicius741.webnovelarchiver.core.NetworkClient
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StorySyncEngine
 import com.vinicius741.webnovelarchiver.core.TtsEngine
@@ -40,7 +40,6 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity(), ScreenHost {
     override val app: AppCompatActivity get() = this
     override val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private lateinit var network: NetworkClient
     override lateinit var storage: AppStorage
     override lateinit var syncEngine: StorySyncEngine
     override lateinit var downloadEngine: DownloadEngine
@@ -84,15 +83,18 @@ class MainActivity : AppCompatActivity(), ScreenHost {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        storage = AppStorage(this)
+        // Pull process-wide dependencies from the AppContainer (M2): one AppStorage, one network
+        // client, one set of engines shared with the foreground services (R3 single-owner).
+        val container = appContainer
+        storage = container.storage
+        syncEngine = container.syncEngine
+        epubEngine = container.epubEngine
+        // The activity's download engine only enqueues/controls the queue (startNow=false); the
+        // foreground service owns the actual process loop. They share the repository's txMutex.
+        downloadEngine = DownloadEngine(storage, container.network, container.repository)
+        ttsEngine = TtsEngine(this, storage)
         ThemeManager.apply(storage.getDisplayPreferences().activeThemeId)
         applyWindowTheme()
-        storage.recoverInterruptedDownloads()
-        network = NetworkClient()
-        syncEngine = StorySyncEngine(storage, network)
-        downloadEngine = DownloadEngine(storage, network)
-        epubEngine = EpubEngine(storage, network)
-        ttsEngine = TtsEngine(this, storage)
         downloadEngine.onChanged = { runOnUiThread { if (activeStory == null) showLibrary() else activeStory?.let { showDetails(it.id) } } }
         frame = FrameLayout(this)
         setContentView(frame)

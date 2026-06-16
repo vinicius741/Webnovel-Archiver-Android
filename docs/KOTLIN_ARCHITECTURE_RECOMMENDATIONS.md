@@ -56,7 +56,7 @@ Why:
 
 The app is local-first. Losing or corrupting local archive data is the worst possible failure mode. Direct JSON writes are vulnerable to partial files if the process dies mid-write. Clearing all data before restore completion creates a one-way failure point.
 
-### 2. Put Storage Behind a Single Repository
+### 2. Put Storage Behind a Single Repository — `[DONE]`
 
 Current state:
 
@@ -79,7 +79,7 @@ Why:
 
 The current code has many small operations that are individually simple but collectively race-prone. A repository gives Android screens and services one consistent state surface.
 
-### 3. Make DownloadEngine Single-Owner
+### 3. Make DownloadEngine Single-Owner — `[DONE]`
 
 Current state:
 
@@ -209,7 +209,7 @@ Why:
 
 Backups are safety equipment. They should be stricter than normal app input.
 
-### 8. Make TTS Thread-Safe
+### 8. Make TTS Thread-Safe — `[DONE]`
 
 Current state:
 
@@ -418,7 +418,7 @@ Why:
 
 The current file is over 1,000 lines and mixes unrelated responsibilities. Smaller files make ownership and review easier.
 
-### 2. Introduce an App Container
+### 2. Introduce an App Container — `[DONE]`
 
 Current state:
 

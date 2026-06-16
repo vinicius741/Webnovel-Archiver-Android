@@ -8,8 +8,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Node
@@ -75,7 +78,18 @@ class StorySyncEngine(private val storage: AppStorage, private val network: Netw
 
 }
 
-class DownloadEngine(private val storage: AppStorage, private val network: NetworkClient) {
+class DownloadEngine(
+    private val storage: AppStorage,
+    private val network: NetworkClient,
+    /**
+     * Optional shared [AppRepository] (Reliability R3). When provided, every queue mutation is
+     * serialized through [AppRepository.updateQueue] / [AppRepository.txMutex], so the activity and
+     * the foreground service — which both hold a [DownloadEngine] — cannot interleave read-modify-
+     * writes on `download_queue.json`. The process loop itself ([start]) still runs only in whichever
+     * component calls it (the foreground service).
+     */
+    private val repository: AppRepository? = null,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private val nextAllowedJobAtBySource = mutableMapOf<String, Long>()
@@ -83,79 +97,92 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
     var onChanged: (() -> Unit)? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
 
+    /**
+     * Enqueues chapters for download. When [repository] is set the queue + story mutation runs under
+     * the repository transaction lock (R3); otherwise it falls back to direct storage writes.
+     * [startNow] launches the local process loop — the activity passes `false` and hands the runner
+     * to the foreground service instead.
+     */
     fun queue(story: Story, indexes: List<Int>, startNow: Boolean = true) {
         val plan = DownloadQueuePlanning.queueChapters(storage.getQueue(), story, indexes)
         if (plan.changed) {
             story.status = DownloadStatus.downloading
             story.lastUpdated = System.currentTimeMillis()
-            storage.addOrUpdateStory(story)
-            storage.saveQueue(plan.jobs)
+            if (repository != null) {
+                kotlinx.coroutines.runBlocking { repository.upsertStory(story); repository.saveQueue(plan.jobs) }
+            } else {
+                storage.addOrUpdateStory(story)
+                storage.saveQueue(plan.jobs)
+            }
         }
         if (startNow && plan.hasRunnableWork) start()
         onChanged?.invoke()
     }
 
-    fun pauseAll() {
-        storage.saveQueue(DownloadQueueControlPlanning.pauseAll(storage.getQueue()))
-        onChanged?.invoke()
-    }
+    fun pauseAll() = mutateQueue { DownloadQueueControlPlanning.pauseAll(it) }
 
-    fun pauseJob(jobId: String) {
-        storage.saveQueue(DownloadQueueControlPlanning.pauseJob(storage.getQueue(), jobId))
-        onChanged?.invoke()
-    }
+    fun pauseJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.pauseJob(it, jobId) }
 
     fun resumeJob(jobId: String) {
-        storage.saveQueue(DownloadQueueControlPlanning.resumeJob(storage.getQueue(), jobId))
+        mutateQueue { DownloadQueueControlPlanning.resumeJob(it, jobId) }
         start()
         onChanged?.invoke()
     }
 
-    fun cancelAll() {
-        storage.saveQueue(DownloadQueueControlPlanning.cancelAll(storage.getQueue()))
-        onChanged?.invoke()
-    }
+    fun cancelAll() = mutateQueue { DownloadQueueControlPlanning.cancelAll(it) }
 
-    fun cancelJob(jobId: String) {
-        storage.saveQueue(DownloadQueueControlPlanning.cancelJob(storage.getQueue(), jobId))
-        onChanged?.invoke()
-    }
+    fun cancelJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.cancelJob(it, jobId) }
 
     fun resumeAll() {
-        storage.saveQueue(DownloadQueueControlPlanning.resumeAll(storage.getQueue()))
+        mutateQueue { DownloadQueueControlPlanning.resumeAll(it) }
         start()
         onChanged?.invoke()
     }
 
     fun clearFinished() {
         val terminal = setOf(DownloadJobStatus.Completed.wire, DownloadJobStatus.Failed.wire, DownloadJobStatus.Cancelled.wire)
-        storage.saveQueue(storage.getQueue().filterNot { it.status in terminal })
-        onChanged?.invoke()
+        mutateQueue { jobs -> jobs.filterNot { it.status in terminal } }
     }
 
-    fun removeJob(jobId: String) {
-        storage.saveQueue(storage.getQueue().filterNot { it.id == jobId })
-        onChanged?.invoke()
-    }
+    fun removeJob(jobId: String) = mutateQueue { jobs -> jobs.filterNot { it.id == jobId } }
 
     fun retryFailed() {
-        storage.saveQueue(DownloadQueueControlPlanning.retryFailed(storage.getQueue()))
+        mutateQueue { DownloadQueueControlPlanning.retryFailed(it) }
         start()
         onChanged?.invoke()
     }
 
     fun retryJob(jobId: String) {
-        storage.saveQueue(DownloadQueueControlPlanning.retryFailedJob(storage.getQueue(), jobId))
+        mutateQueue { DownloadQueueControlPlanning.retryFailedJob(it, jobId) }
         start()
         onChanged?.invoke()
     }
 
     fun retryFailedForStory(storyId: String) {
-        storage.saveQueue(DownloadQueueControlPlanning.retryFailed(storage.getQueue(), storyId))
+        mutateQueue { DownloadQueueControlPlanning.retryFailed(it, storyId) }
         start()
         onChanged?.invoke()
     }
 
+    /**
+     * Centralized read-modify-write for the queue. When [repository] is set the mutation runs under
+     * the repository transaction lock (R3), so concurrent engines can't lose updates. The fallback
+     * path is the legacy direct-storage write, preserved for tests that construct the engine without
+     * a repository.
+     */
+    private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
+        if (repository != null) {
+            kotlinx.coroutines.runBlocking { repository.updateQueue(transform) }
+        } else {
+            storage.saveQueue(transform(storage.getQueue()))
+        }
+        onChanged?.invoke()
+    }
+
+    /**
+     * Explicit lifecycle (Reliability R3). [start] launches the download process loop; [pause] and
+     * [stopAndCancel] halt it without losing queued work; [close] tears down the engine scope.
+     */
     fun start() {
         if (!running.compareAndSet(false, true)) return
         worker = scope.launch {
@@ -166,6 +193,24 @@ class DownloadEngine(private val storage: AppStorage, private val network: Netwo
                 onChanged?.invoke()
             }
         }
+    }
+
+    /** Pauses the process loop without mutating queue state (the service's ACTION_STOP pauses jobs). */
+    fun pause() {
+        worker?.cancel()
+        worker = null
+        running.set(false)
+    }
+
+    /** Cancels the process loop and the engine scope, abandoning in-flight jobs (recover on restart). */
+    fun stopAndCancel() {
+        pause()
+        scope.coroutineContext[Job]?.cancelChildren()
+    }
+
+    /** Releases the engine's coroutine scope. Call from the owning service's onDestroy. */
+    fun close() {
+        stopAndCancel()
     }
 
     private suspend fun processLoop() {
@@ -880,24 +925,41 @@ class EpubEngine(private val storage: AppStorage, private val network: NetworkCl
     )
 }
 
-class TtsEngine(private val context: Context, private val storage: AppStorage) : TextToSpeech.OnInitListener {
+class TtsEngine(
+    private val context: Context,
+    private val storage: AppStorage,
+    /**
+     * Coroutine scope that owns all TTS state mutations (R8). UtteranceProgressListener callbacks
+     * and the public control methods (play/pause/next/...) are routed through [stateMutex] on this
+     * scope's dispatcher, so storage reads/writes and playback continuation never race regardless of
+     * which thread the Android TTS engine invokes the listener from.
+     */
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = TextToSpeech(context, this)
     private var chunks: List<String> = emptyList()
     private var index = 0
     private var session: TtsSession? = null
     private var playbackActive = false
+    private val stateMutex = kotlinx.coroutines.sync.Mutex()
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val settings = storage.getTtsSettings()
-            applySettings(settings)
-            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
-                override fun onError(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) {
-                    handleChunkDone()
+            scope.launch {
+                stateMutex.withLock {
+                    val settings = storage.getTtsSettings()
+                    applySettings(settings)
                 }
-            })
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+                    override fun onError(utteranceId: String?) = Unit
+                    override fun onDone(utteranceId: String?) {
+                        // R8: callbacks are not guaranteed to run on the main thread. Route the
+                        // continuation onto the engine scope so all state mutation serializes.
+                        scope.launch { stateMutex.withLock { handleChunkDone() } }
+                    }
+                })
+            }
         }
     }
 
@@ -1064,9 +1126,17 @@ class TtsEngine(private val context: Context, private val storage: AppStorage) :
     }
 
     fun shutdown() {
+        // R8: stop playback, release the TTS engine, and cancel the engine scope so no lingering
+        // callback continuation can mutate storage after the service is torn down.
+        scope.cancel()
+        tts?.stop()
         tts?.shutdown()
         tts = null
+        playbackActive = false
     }
+
+    /** Alias for [shutdown]; provided so the engine exposes the conventional close() lifecycle. */
+    fun close() = shutdown()
 }
 
 data class VoiceInfo(

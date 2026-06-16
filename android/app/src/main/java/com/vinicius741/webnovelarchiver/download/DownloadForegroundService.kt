@@ -16,23 +16,27 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.MainActivity
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.core.AppStorage
+import com.vinicius741.webnovelarchiver.appContainer
 import com.vinicius741.webnovelarchiver.core.DownloadEngine
 import com.vinicius741.webnovelarchiver.core.DownloadProgress
-import com.vinicius741.webnovelarchiver.core.NetworkClient
 
 class DownloadForegroundService : Service() {
-    private lateinit var storage: AppStorage
     private lateinit var engine: DownloadEngine
     private var foregroundStarted = false
 
     override fun onCreate() {
         super.onCreate()
-        storage = AppStorage(this)
-        storage.recoverInterruptedDownloads()
-        engine = DownloadEngine(storage, NetworkClient())
+        // Use the process-wide container (M2) so this service shares one AppStorage + repository
+        // with the activity, and queue mutations serialize through the repository lock (R3).
+        val container = appContainer
+        engine = DownloadEngine(container.storage, container.network, container.repository)
         engine.onProgress = ::updateNotification
         createNotificationChannel()
+    }
+
+    override fun onDestroy() {
+        engine.close()
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
