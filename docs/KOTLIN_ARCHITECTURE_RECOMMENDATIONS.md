@@ -4,7 +4,10 @@ This audit covers the active native Kotlin app under `android/app/src/main/java/
 
 The current implementation has several good foundations: source-specific parsing is isolated behind `SourceProvider`, a lot of business logic has already been extracted into pure planning modules, and there are many JVM tests around queue planning, EPUB content, backup planning, URL handling, and text cleanup. The biggest remaining risks are not "Kotlin syntax" problems. They are Android lifecycle, storage durability, concurrent state mutation, long-list performance, and maintainability of large programmatic View screens.
 
-## Highest Priority Fixes
+> **Implementation status:** Recommendations are being implemented on branch
+> `refactor/architecture-recommendations`. Each item below is prefixed with a status tag:
+> `[DONE]`, `[IN PROGRESS]`, or `[TODO]`. Status is updated as work lands.
+
 
 | Priority | Area | Recommendation | Why it matters |
 | --- | --- | --- | --- |
@@ -27,7 +30,7 @@ The current implementation has several good foundations: source-specific parsing
 
 ## Reliability
 
-### 1. Make Storage Crash-Safe
+### 1. Make Storage Crash-Safe — `[DONE]`
 
 Current state:
 
@@ -101,7 +104,7 @@ Why:
 
 Two engines writing the same queue file can lose updates. Example: one engine marks a job completed while another engine saves an older queue with that job paused or pending.
 
-### 4. Replace String Queue States With Typed States
+### 4. Replace String Queue States With Typed States — `[DONE]`
 
 Current state:
 
@@ -179,7 +182,7 @@ Why:
 
 Concurrent downloads can bypass rate limits. Raw URL fetching has weaker defaults and less observability than the app's OkHttp path.
 
-### 7. Harden Backup Import and Export
+### 7. Harden Backup Import and Export — `[DONE]`
 
 Current state:
 

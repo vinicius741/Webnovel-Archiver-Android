@@ -4,6 +4,28 @@ enum class DownloadStatus {
     idle, downloading, completed, failed, paused, partial
 }
 
+/**
+ * Typed lifecycle state for a [DownloadJob] (Reliability R4). The [wire] string preserves the
+ * lowercase on-disk/JSON form used historically, so existing `download_queue.json` files and JSON
+ * backups keep deserializing. [parse] tolerates any legacy value by mapping unknowns to [Failed].
+ */
+enum class DownloadJobStatus(val wire: String) {
+    Pending("pending"),
+    Downloading("downloading"),
+    Paused("paused"),
+    Completed("completed"),
+    Failed("failed"),
+    Cancelled("cancelled");
+
+    companion object {
+        fun parse(value: String?): DownloadJobStatus =
+            values().firstOrNull { it.wire == value } ?: Failed
+
+        /** All wire strings — used by Gson to serialize/parse the legacy string field. */
+        val wires: Set<String> = values().map { it.wire }.toSet()
+    }
+}
+
 data class Chapter(
     var id: String = "",
     var title: String = "",
