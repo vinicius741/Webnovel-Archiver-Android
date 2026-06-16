@@ -45,8 +45,11 @@ class NetworkClient(
     /**
      * Fetches a binary response (cover images, R6) through the shared OkHttp client with an
      * optional [maxBytes] cap. Returns null on non-2xx, non-image responses, or oversize bodies.
+     * Respects the same per-host rate limit as [fetch] (R6) so cover fetches on Scribble Hub can't
+     * stack 403s alongside page fetches.
      */
     suspend fun fetchBytes(url: String, maxBytes: Long = MAX_IMAGE_BYTES): ByteArray? {
+        waitForRateLimit(url)
         val request = NetworkRequests.binaryRequest(url)
         return runCatching {
             client.newCall(request).execute().use { response ->

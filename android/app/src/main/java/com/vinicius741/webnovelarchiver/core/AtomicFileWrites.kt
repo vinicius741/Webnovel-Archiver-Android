@@ -67,8 +67,8 @@ object AtomicFileWrites {
     }
 
     private fun fsync(file: File) {
-        // Open in append mode so we don't truncate the just-written file, then force the file
-        // descriptor's data+metadata to disk before the rename.
+        // Open read-only (no truncation of the just-written file), then force the file descriptor's
+        // data+metadata to disk before the rename so a crash after the rename can't lose it.
         runCatching {
             java.io.RandomAccessFile(file, "r").use { raf -> raf.fd.sync() }
         }

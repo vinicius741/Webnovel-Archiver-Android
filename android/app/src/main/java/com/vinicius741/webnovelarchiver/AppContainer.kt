@@ -30,6 +30,7 @@ class AppContainer(context: Context) {
 
     /** Refreshes the repository's cached state flows; call from [Application.onCreate]. */
     fun init() {
+        storage.migrateChapterPathsToRelative()
         storage.recoverInterruptedDownloads()
         repository.refresh()
     }

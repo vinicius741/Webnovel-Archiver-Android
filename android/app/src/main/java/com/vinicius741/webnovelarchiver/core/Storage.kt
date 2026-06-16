@@ -126,8 +126,15 @@ class AppStorage(
     @Synchronized
     fun getQueue(): MutableList<DownloadJob> = read(queueFile) ?: mutableListOf()
 
+    /**
+     * Recovers jobs left "downloading" by a killed process back to "pending". The whole
+     * read-modify-write is one atomic, [Synchronized] operation: it reads and writes [queueFile]
+     * directly instead of calling [getQueue]/[saveQueue], so a concurrent queue writer cannot
+     * interleave between the read and the write and lose the recovery.
+     */
+    @Synchronized
     fun recoverInterruptedDownloads() {
-        val jobs = getQueue()
+        val jobs: MutableList<DownloadJob> = read(queueFile) ?: return
         var changed = false
         jobs.forEach { job ->
             if (job.status == DownloadJobStatus.Downloading.wire) {
@@ -135,10 +142,57 @@ class AppStorage(
                 changed = true
             }
         }
-        if (changed) saveQueue(jobs)
+        if (changed) write(queueFile, jobs)
+    }
+
+    /**
+     * One-time on-disk migration of legacy absolute chapter/epub paths to paths relative to [root]
+     * (R1.3). [migrateChapterPaths] converts paths on read but only persists them when something
+     * else re-saves the story — so without this pass, every cold start would re-run the migration for
+     * untouched stories forever. This walks the library once and re-saves any story that changed, so
+     * the per-read migration converges to a no-op. Safe to call repeatedly: it writes only when a
+     * story's paths actually changed.
+     */
+    @Synchronized
+    fun migrateChapterPathsToRelative() {
+        val ids: List<String> = read(libraryIndex) ?: return
+        ids.forEach { id ->
+            val raw = read<Story>(storyFile(id)) ?: return@forEach
+            val migrated = migrateChapterPaths(raw)
+            if (migrated !== raw) saveStoryOnly(migrated)
+        }
     }
     @Synchronized
     fun saveQueue(jobs: List<DownloadJob>) = write(queueFile, jobs)
+
+    /**
+     * Atomic read-modify-write of the queue: [transform] runs under the storage monitor so the read
+     * and the write cannot be interleaved by another queue writer (e.g. the download process loop).
+     * Non-suspending and fast (one small JSON file), so callers on the main thread don't block on a
+     * coroutine mutex the way the repository's [txMutex] path would. The repository's transactional
+     * [txMutex] is still the owner for *multi-document* RMW (story + queue together); for the
+     * single-document queue transforms the download engine needs, this monitor-atomic path is enough.
+     */
+    @Synchronized
+    fun mutateQueueInPlace(transform: (MutableList<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> {
+        val current = read<MutableList<DownloadJob>>(queueFile) ?: mutableListOf()
+        val updated = transform(current)
+        write(queueFile, updated)
+        return updated
+    }
+
+    /**
+     * Atomically persists an enqueued [story] (with its status/lastUpdated already mutated by the
+     * caller) together with the new [jobs] queue, under one storage monitor acquisition. This is the
+     * enqueue equivalent of [mutateQueueInPlace]: the story save + queue save can't be interleaved by
+     * a concurrent writer, and no coroutine mutex blocking is involved (Reliability R3 — single-owner
+     * without ANR risk from [runBlocking] on the main thread).
+     */
+    @Synchronized
+    fun saveEnqueue(story: Story, jobs: List<DownloadJob>) {
+        addOrUpdateStory(story)
+        write(queueFile, jobs)
+    }
 
     fun saveChapter(storyId: String, index: Int, chapter: Chapter, html: String): String {
         val file = chapterFile(storyId, index, chapter)
@@ -331,10 +385,15 @@ class AppStorage(
     fun importFullBackupUri(uri: Uri): String {
         val temp = File.createTempFile("webnovel_restore", ".zip", context.cacheDir)
         try {
-            context.contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { input.copyTo(it) }
-                val restoreDir = File(restoreRoot, "${System.currentTimeMillis()}").apply { mkdirs() }
-                return restoreFromZip(temp, restoreDir)
-            } ?: return "No file selected"
+            // Step 1: copy the backup stream fully into [temp] and close both streams before we
+            // touch [temp] again. (The previous version ran restoreFromZip *inside* the output
+            // stream's `.use {}`, so restore read [temp] while it was still being written.)
+            val input = context.contentResolver.openInputStream(uri)
+                ?: return "No file selected"
+            input.use { source -> temp.outputStream().use { sink -> source.copyTo(sink) } }
+            // Step 2: extract + validate + stage + swap, reading [temp] only after the copy closed.
+            val restoreDir = File(restoreRoot, "${System.currentTimeMillis()}").apply { mkdirs() }
+            return restoreFromZip(temp, restoreDir)
         } finally {
             temp.delete()
         }
