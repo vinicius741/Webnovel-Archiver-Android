@@ -3,8 +3,10 @@ package com.vinicius741.webnovelarchiver
 import android.view.Gravity
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.core.ReaderContentRenderer
+import com.vinicius741.webnovelarchiver.core.ReaderContentRenderer.ReaderDocumentColors
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutPlanning
 import com.vinicius741.webnovelarchiver.core.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.core.TextCleanup
@@ -30,9 +32,11 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
         settings.domStorageEnabled = false
     }
     fun renderReader() {
+        val readerColors = readerDocumentColors(display.readerDark)
+        reader.setBackgroundColor(cssColorToInt(readerColors.background))
         reader.loadDataWithBaseURL(
             null,
-            ReaderContentRenderer.document(chapter.title, content, display.readerFontScale, display.readerDark),
+            ReaderContentRenderer.document(chapter.title, content, display.readerFontScale, readerColors),
             "text/html",
             "utf-8",
             null,
@@ -90,29 +94,60 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
             addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL))
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        // Docked chapter navigation: thumb-reachable Prev / Next pinned at the bottom of the screen.
-        // Disabled at the story boundaries so the controls always communicate their availability.
-        // The buttons are built with the standalone factory (not the `button {}` DSL) so they don't
-        // auto-attach to the screen body — they're added straight into the nav bar with weighted
-        // params so the pair reads symmetric and full-width.
+        // Slim docked chapter navigation: keep the controls thumb-reachable without taking a large
+        // bite out of the reading viewport.
         val navBar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(ThemeManager.colors.elevation2)
-            setPadding(dp(Spacing.LG), dp(Spacing.MD), dp(Spacing.LG), dp(Spacing.MD))
+            setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
         }
         val hasPrev = currentIndex > 0
         val hasNext = currentIndex < story.chapters.lastIndex
-        fun navButton(label: String, icon: Int, enabled: Boolean, marginStartDp: Int, marginEndDp: Int, action: () -> Unit) =
-            makeButton(context, label, Btn.TONAL, icon, action).apply {
-                if (!enabled) disableButton(this)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = dp(marginStartDp)
-                    marginEnd = dp(marginEndDp)
+        val progress = makeText(context, "${currentIndex + 1} / ${story.chapters.size}", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        fun navButton(desc: String, icon: Int, enabled: Boolean, action: () -> Unit) =
+            ImageView(context).apply {
+                contentDescription = desc
+                val tint = if (enabled) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant
+                setImageDrawable(context.tintedIcon(icon, tint))
+                alpha = if (enabled) 1f else 0.38f
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                val pad = dp(Spacing.SM)
+                setPadding(pad, pad, pad, pad)
+                background = selectableRipple(ThemeManager.colors.onSurface)
+                isEnabled = enabled
+                isClickable = enabled
+                isFocusable = enabled
+                if (enabled) setOnClickListener { action() }
+                layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                    marginStart = dp(Spacing.XS)
+                    marginEnd = dp(Spacing.XS)
                 }
             }
-        navBar.addView(navButton("Prev", R.drawable.wna_skip_prev, hasPrev, marginStartDp = 0, marginEndDp = Spacing.SM) { navigateChapter(story, chapter, -1) })
-        navBar.addView(navButton("Next", R.drawable.wna_skip_next, hasNext, marginStartDp = Spacing.SM, marginEndDp = 0) { navigateChapter(story, chapter, 1) })
+        navBar.addView(navButton("Previous chapter", R.drawable.wna_skip_prev, hasPrev) { navigateChapter(story, chapter, -1) })
+        navBar.addView(progress)
+        navBar.addView(navButton("Next chapter", R.drawable.wna_skip_next, hasNext) { navigateChapter(story, chapter, 1) })
         addView(navBar)
     }
 }
+
+private fun readerDocumentColors(forceDark: Boolean): ReaderDocumentColors {
+    val theme = ThemeManager.current
+    return if (forceDark && !theme.isDark) {
+        ReaderDocumentColors(background = "#121212", foreground = "#e6e6e6")
+    } else {
+        ReaderDocumentColors(
+            background = theme.colors.background.toCssHex(),
+            foreground = theme.colors.onBackground.toCssHex(),
+        )
+    }
+}
+
+private fun Int.toCssHex(): String = "#%06X".format(this and 0xFFFFFF)
+
+private fun cssColorToInt(cssColor: String): Int =
+    android.graphics.Color.parseColor(cssColor)

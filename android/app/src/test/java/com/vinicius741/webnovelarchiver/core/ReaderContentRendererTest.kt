@@ -19,6 +19,8 @@ class ReaderContentRendererTest {
         assertTrue(html.contains("<p>Hello <strong>world</strong></p>"))
         assertTrue(html.contains("font-size: 18px"))
         assertTrue(html.contains("max-width: 100%"))
+        assertTrue(html.contains("color: inherit !important"))
+        assertTrue(html.contains("background-color: transparent !important"))
         assertTrue(html.contains("<meta name=\"viewport\""))
     }
 
@@ -34,5 +36,21 @@ class ReaderContentRendererTest {
         val html = ReaderContentRenderer.document("T", "<p>x</p>", fontScale = 1.0f, dark = true)
         assertTrue(html.contains("background-color: #121212"))
         assertTrue(html.contains("color: #e6e6e6"))
+    }
+
+    @Test
+    fun themedColorsApplyToReaderDocument() {
+        val html = ReaderContentRenderer.document(
+            "T",
+            "<p>x</p>",
+            fontScale = 1.0f,
+            colors = ReaderContentRenderer.ReaderDocumentColors(
+                background = "#0D1117",
+                foreground = "#C9D1D9",
+            ),
+        )
+
+        assertTrue(html.contains("background-color: #0D1117"))
+        assertTrue(html.contains("color: #C9D1D9"))
     }
 }
