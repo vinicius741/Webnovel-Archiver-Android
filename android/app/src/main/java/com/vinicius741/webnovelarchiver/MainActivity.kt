@@ -118,6 +118,9 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     }
 
     override fun onDestroy() {
+        // R9: destroy any lingering WebView in the frame (e.g. if the activity is destroyed while a
+        // Reader/Browser screen is showing) so it can't leak the activity reference.
+        com.vinicius741.webnovelarchiver.ui.WebViewSafety.disposeAll(frame)
         ttsEngine.shutdown()
         super.onDestroy()
     }

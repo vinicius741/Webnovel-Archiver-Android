@@ -235,7 +235,7 @@ Why:
 
 TTS bugs are hard to reproduce because callbacks depend on the Android TTS engine. A single serialized state path is much safer.
 
-### 9. Clean Up WebView Lifecycle and Security Settings
+### 9. Clean Up WebView Lifecycle and Security Settings — `[DONE]`
 
 Current state:
 
@@ -259,7 +259,7 @@ Why:
 
 WebView is a heavy component. Leaked WebViews can retain activity references, network work, JavaScript state, and memory.
 
-### 10. Revisit Manifest Backup and FileProvider Scope
+### 10. Revisit Manifest Backup and FileProvider Scope — `[DONE]`
 
 Current state:
 

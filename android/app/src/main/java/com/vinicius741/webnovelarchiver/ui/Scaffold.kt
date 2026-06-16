@@ -41,6 +41,9 @@ internal fun ScreenHost.screen(
     // same screen (e.g. download-progress ticks, which re-run showDetails → screen(...)) doesn't snap
     // back to the top. scrollTo clamps to the valid range, so this is safe if the new content differs.
     val savedScrollY = if (scrollable) findScrollView(frame)?.scrollY ?: 0 else 0
+    // R9: destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
+    // activity references; without explicit destroy() they leak across navigation.
+    disposeWebViews(frame)
     frame.removeAllViews()
     // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
     // hardware/gesture back navigation so the OS default (exit) applies.
@@ -91,6 +94,22 @@ private fun findScrollView(root: View): ScrollView? {
         }
     }
     return null
+}
+
+/**
+ * Recursively stops loading, clears history/state, detaches, and destroys every [android.webkit.WebView]
+ * in the [root] tree (R9). Called before `removeAllViews()` on navigation so Reader/Browser WebViews
+ * don't outlive their screen and leak activity references, network work, or JS state.
+ */
+private fun disposeWebViews(root: View) {
+    if (root is android.webkit.WebView) {
+        WebViewSafety.destroy(root)
+        return
+    }
+    if (root is ViewGroup) {
+        // Iterate over a copy: destroy() mutates the child list.
+        (0 until root.childCount).map { root.getChildAt(it) }.forEach { child -> disposeWebViews(child) }
+    }
 }
 
 private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> Unit)?, actions: List<AppBarAction>): View {
