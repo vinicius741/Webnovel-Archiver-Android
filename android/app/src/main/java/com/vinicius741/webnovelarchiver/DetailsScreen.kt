@@ -17,6 +17,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.core.Chapter
 import com.vinicius741.webnovelarchiver.core.ChapterFilterSettings
+import com.vinicius741.webnovelarchiver.core.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.core.EpubConfig
 import com.vinicius741.webnovelarchiver.core.SourceRegistry
 import com.vinicius741.webnovelarchiver.core.Story
@@ -33,6 +34,17 @@ internal fun ScreenHost.showDetails(storyId: String) {
     val layout = currentScreenLayout()
     val operation = storyOperation?.takeIf { it.storyId == story.id }
     val isBusy = operation != null
+    // Live download feedback: reduce this story's queue jobs once per render. The banner + the
+    // per-chapter spinners are driven from this, and the auto-refresh loop below re-runs
+    // showDetails while [downloadSummary.isActive] so the counts/climb in real time.
+    val jobsForStory = storage.getQueue().filter { it.storyId == story.id }
+    val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
+    val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
+    // Show the banner while work is in flight/paused, or if the last batch ended with failures so
+    // the user sees the error summary. An all-completed batch is dismissed (the static header
+    // progress + per-row "Available Offline" already reflect the result).
+    val showDownloadBanner = downloadSummary.total > 0 &&
+        (downloadSummary.isActive || downloadSummary.isPaused || (downloadSummary.isFinished && (downloadSummary.failed > 0 || downloadSummary.cancelled > 0)))
     screen(
         title = story.title,
         subtitle = "by ${story.author}",
@@ -60,11 +72,16 @@ internal fun ScreenHost.showDetails(storyId: String) {
             val remainingChapters = story.chapters.count { !it.downloaded }
             if (remainingChapters > 0) {
                 val downloadLabel = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
-                infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2), enabled = !isBusy) {
+                // Disable while a download is already running for this story (and during any blocking
+                // operation) so the user can't enqueue a duplicate batch — mirrors RN's disabled={downloading}.
+                infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2), enabled = !isBusy && !downloadSummary.isActive) {
                     queueDownload(story, story.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null })
                     showDetails(story.id)
                 })
             }
+        }
+        if (showDownloadBanner) {
+            infoPanel.addView(makeDownloadProgressBanner(context, downloadSummary) { showQueue() })
         }
         if (operation?.kind == StoryOperationKind.CLEANUP) {
             infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = true))
@@ -193,18 +210,18 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chapterFilter = mode
             storage.saveChapterFilterSettings(ChapterFilterSettings(mode))
             renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
-            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter)
+            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses)
         }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 chapterQuery = s?.toString().orEmpty()
-                renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter)
+                renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses)
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
         renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
-        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter)
+        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses)
 
         if (layout.isTwoPane) {
             // Two-pane: info scrolls on the left, chapter filter + list scroll on the right. The info
@@ -226,7 +243,29 @@ internal fun ScreenHost.showDetails(storyId: String) {
             addView(chapterSection)
         }
     }
+    // Real-time refresh: while this story has active downloads, re-render the Details screen on a
+    // short cadence so the progress bar climbs and chapter rows flip to spinners / "Available
+    // Offline" as the foreground service completes them. Storage is the single source of truth
+    // (R3 single-owner already serializes queue writes), so a fresh re-read each tick is correct
+    // and needs no service↔activity callback. Tag-guarded like QueueScreen's refresher so the loop
+    // stops itself if the user navigates away or the batch finishes.
+    if (downloadSummary.isActive && frame.childCount > 0) {
+        val root = frame.getChildAt(0)
+        root.tag = DETAILS_DOWNLOAD_TAG
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        handler.postDelayed({
+            if ((root.tag as? String) == DETAILS_DOWNLOAD_TAG && root.parent === frame) {
+                showDetails(storyId)
+            }
+        }, DETAILS_REFRESH_MS)
+    }
 }
+
+/** Auto-refresh cadence (ms) for the Details screen while a download is active. Short enough that
+ *  the progress bar + spinners feel live, long enough to avoid thrashing the view tree. */
+private const val DETAILS_REFRESH_MS = 1200L
+/** Tag stamped on the Details root view so the download refresher can detect navigation away. */
+private const val DETAILS_DOWNLOAD_TAG = "details-download"
 
 private fun makeStoryOperationProgress(context: Context, operation: StoryOperationState, indeterminate: Boolean): LinearLayout {
     return LinearLayout(context).apply {
@@ -254,6 +293,53 @@ private fun makeStoryOperationProgress(context: Context, operation: StoryOperati
             gravity = Gravity.CENTER
             maxLines = 2
             ellipsize = TextUtils.TruncateAt.END
+        })
+    }
+}
+
+/**
+ * Live download progress banner for the Details info panel — the native counterpart of the RN
+ * `StoryActions` progress block. Shows a determinate bar (fraction of jobs completed) plus a status
+ * headline ("Downloading: <chapter> (7/20)", "Queued (…)", "Paused (…)", or the finished summary)
+ * and a "Go to Downloads" link. The bar is indeterminate only while the batch is queued with zero
+ * progress; once anything completes it goes determinate so the user sees real movement.
+ */
+private fun makeDownloadProgressBanner(
+    context: Context,
+    summary: DownloadDetailsPlanning.StoryDownloadSummary,
+    onViewDownloads: () -> Unit,
+): LinearLayout {
+    val headline = DownloadDetailsPlanning.headline(summary)
+    return LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, context.dp(Space.XS), 0, context.dp(Space.MD))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        // Indeterminate while purely queued (no completions yet); determinate once work finishes so
+        // the bar visibly advances as chapters complete.
+        if (summary.completed == 0 && summary.isActive) {
+            addView(ProgressBar(context).apply {
+                indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+                layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply {
+                    bottomMargin = context.dp(Space.XS)
+                }
+            })
+        } else {
+            addView(makeProgress(context, summary.progress).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(6)).apply {
+                    bottomMargin = context.dp(Space.XS)
+                }
+            })
+        }
+        addView(makeText(context, headline, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            gravity = Gravity.CENTER
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        addView(makeButton(context, "Go to Downloads", Btn.TEXT, R.drawable.wna_list) { onViewDownloads() }.apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = context.dp(2)
+            }
         })
     }
 }
@@ -366,7 +452,13 @@ internal fun ScreenHost.showChapterSelection(storyId: String, initialSelectedIds
     }
 }
 
-internal fun ScreenHost.renderChapterList(story: Story, list: androidx.recyclerview.widget.RecyclerView, query: String, filter: String) {
+internal fun ScreenHost.renderChapterList(
+    story: Story,
+    list: androidx.recyclerview.widget.RecyclerView,
+    query: String,
+    filter: String,
+    chapterStatuses: Map<String, com.vinicius741.webnovelarchiver.core.DownloadJobStatus> = emptyMap(),
+) {
     val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
     val filtered = story.chapters
         .mapIndexed { index, chapter -> index to chapter }
@@ -388,7 +480,7 @@ internal fun ScreenHost.renderChapterList(story: Story, list: androidx.recyclerv
         )
         return
     }
-    list.adapter = ChapterListAdapter(this, filtered, story, list = list, query = query, filter = filter)
+    list.adapter = ChapterListAdapter(this, filtered, story, list = list, query = query, filter = filter, chapterStatuses = chapterStatuses)
 }
 
 
