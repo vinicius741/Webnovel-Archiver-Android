@@ -35,6 +35,34 @@ class TtsEngine(
     private var playbackActive = false
     private val stateMutex = Mutex()
 
+    /**
+     * Multicast state-change hook. The foreground service (MediaSession + notification, parity gaps 1
+     * & 2) and the reader transport + highlight (parity gaps 3 & 4) each [addStateListener] /
+     * [removeStateListener] independently. After every playback state change each registered listener
+     * is invoked with a fresh [TtsPlaybackSnapshot] (or `null` when playback stops), so observers
+     * never have to poll storage. Listeners are always invoked on the engine's main dispatcher.
+     *
+     * Multicast (rather than a single callback) because the engine is a process-wide singleton shared
+     * by the activity and the service, and both may need to observe the same playback simultaneously.
+     */
+    private val stateListeners = mutableListOf<(TtsPlaybackSnapshot?) -> Unit>()
+
+    /** Registers an observer invoked on every TTS state change. Idempotent: re-adding the same
+     *  listener instance is a no-op, so a component may call it defensively on each lifecycle entry. */
+    fun addStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) {
+        if (stateListeners.none { it === listener }) stateListeners.add(listener)
+    }
+
+    /** Detaches a previously-registered observer; safe to call with an unregistered listener. */
+    fun removeStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) {
+        stateListeners.removeAll { it === listener }
+    }
+
+    /** Notifies every registered listener. Defensive copy so listeners may [removeStateListener] mid-dispatch. */
+    private fun notifyStateListeners(snapshot: TtsPlaybackSnapshot?) {
+        stateListeners.toList().forEach { runCatching { it(snapshot) } }
+    }
+
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             scope.launch {
@@ -62,6 +90,24 @@ class TtsEngine(
         chunks = TextCleanup.prepareTtsChunks(html, storage.getRegexRules(), settings.chunkSize)
         if (chunks.isEmpty()) return
         startSession(story, chapter, settings, 0)
+        playbackActive = true
+        speakCurrent()
+    }
+
+    /**
+     * Begin narration at a specific chunk index — used by the reader's tap-to-start-from-paragraph
+     * (parity gap 3). [chunkIndex] maps 1:1 to a `data-tts-group` in the annotated reader HTML, and
+     * the chunk list produced here is byte-for-byte aligned with [TextCleanup.prepareTtsAnnotatedHtml]
+     * (both reuse the same grouping logic). Out-of-range indices are clamped.
+     */
+    fun playFromChunk(story: Story, chapter: Chapter, chunkIndex: Int) {
+        val settings = storage.getTtsSettings()
+        applySettings(settings)
+        val html = storage.readChapter(chapter) ?: chapter.content ?: ""
+        chunks = TextCleanup.prepareTtsChunks(html, storage.getRegexRules(), settings.chunkSize)
+        if (chunks.isEmpty()) return
+        val clamped = chunkIndex.coerceIn(0, chunks.lastIndex)
+        startSession(story, chapter, settings, clamped)
         playbackActive = true
         speakCurrent()
     }
@@ -110,13 +156,19 @@ class TtsEngine(
             it.currentChunkIndex = (index - 1).coerceAtLeast(0)
             storage.saveTtsSession(it)
         }
+        emitState(isPlaying = false)
     }
 
     fun stop() {
         playbackActive = false
         tts?.stop()
         storage.clearTtsSession()
+        // Playback has ended — signal observers to clear MediaSession state + hide the transport.
+        notifyStateListeners(null)
     }
+
+    /** Live chunk count of the currently loaded chapter (0 when nothing is loaded). */
+    fun currentChunkCount(): Int = chunks.size
 
     private fun startSession(story: Story, chapter: Chapter, settings: TtsSettings, startIndex: Int) {
         index = startIndex
@@ -166,11 +218,37 @@ class TtsEngine(
         val current = chunks.getOrNull(index) ?: run {
             playbackActive = false
             storage.clearTtsSession()
+            notifyStateListeners(null)
             return
         }
-        session?.let { storage.saveTtsSession(it.copy(currentChunkIndex = index, isPaused = false, wasPlaying = true, updatedAt = System.currentTimeMillis())) }
+        session?.let {
+            val updated = it.copy(
+                currentChunkIndex = index,
+                isPaused = false,
+                wasPlaying = true,
+                updatedAt = System.currentTimeMillis(),
+            )
+            session = updated
+            storage.saveTtsSession(updated)
+        }
         tts?.speak(current, TextToSpeech.QUEUE_FLUSH, null, "chapter_chunk_$index")
+        // Snapshot reflects the chunk now being spoken (`index`), before the post-increment.
+        emitState(isPlaying = true)
         index += 1
+    }
+
+    /**
+     * Builds a [TtsPlaybackSnapshot] from the live in-memory session + chunk list and fans it out to
+     * every registered state listener (see [addStateListener]). `isPlaying` distinguishes "actively
+     * speaking" from "paused mid-chapter".
+     */
+    private fun emitState(isPlaying: Boolean) {
+        val snapshot = TtsPlaybackState.snapshotForSession(
+            session = session,
+            totalChunks = chunks.size,
+            isPlaying = isPlaying,
+        )
+        notifyStateListeners(snapshot)
     }
 
     private fun handleChunkDone() {
@@ -183,38 +261,32 @@ class TtsEngine(
     }
 
     private fun handleChapterFinished() {
-        val currentSession = session ?: run {
-            playbackActive = false
-            storage.clearTtsSession()
-            return
-        }
-        val story = storage.getStory(currentSession.storyId) ?: run {
-            playbackActive = false
-            storage.clearTtsSession()
-            return
-        }
+        val currentSession = session ?: run { finishPlayback(); return }
+        val story = storage.getStory(currentSession.storyId) ?: run { finishPlayback(); return }
         story.lastReadChapterId = currentSession.chapterId
         storage.addOrUpdateStory(story)
 
-        val nextIndex = TtsSessionPlanning.nextChapterIndex(story, currentSession.chapterId) ?: run {
-            playbackActive = false
-            storage.clearTtsSession()
-            return
-        }
+        val nextIndex = TtsSessionPlanning.nextChapterIndex(story, currentSession.chapterId) ?: run { finishPlayback(); return }
         val nextChapter = story.chapters[nextIndex]
         val settings = storage.getTtsSettings()
         applySettings(settings)
         val html = storage.readChapter(nextChapter) ?: nextChapter.content
         val nextChunks = html?.let { TextCleanup.prepareTtsChunks(it, storage.getRegexRules(), settings.chunkSize) }.orEmpty()
         if (nextChunks.isEmpty()) {
-            playbackActive = false
-            storage.clearTtsSession()
+            finishPlayback()
             return
         }
         chunks = nextChunks
         startSession(story, nextChapter, settings, 0)
         playbackActive = true
         speakCurrent()
+    }
+
+    /** Clears the persisted session and signals observers that playback has ended. */
+    private fun finishPlayback() {
+        playbackActive = false
+        storage.clearTtsSession()
+        notifyStateListeners(null)
     }
 
     fun shutdown() {
