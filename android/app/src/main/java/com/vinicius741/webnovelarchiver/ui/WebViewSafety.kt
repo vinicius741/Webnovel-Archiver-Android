@@ -8,18 +8,32 @@ import android.webkit.WebView
  * here so the security/lifecycle posture is consistent and cannot drift between screens.
  *
  * Two policies:
- *  - [Reader]: JS/DOM storage OFF; the reader only renders sanitized chapter HTML we control.
- *  - [Browser]: JS/DOM storage ON (required for novel sites' TOC pagination) but with file/content
+ *  - [Reader]: JS off by default; opt-in via `enableTtsHighlight` so the reader can run the TTS
+ *    highlight + tap-to-start script (parity gap 3). When JS is on, callers MUST sanitize the
+ *    chapter HTML first ([com.vinicius741.webnovelarchiver.core.ChapterHtmlSanitizer]); file/content
+ *    access stays locked down either way, so the only script that can run is this app's own.
+ *  - [Browser]: JS + DOM storage ON (required for novel sites' TOC pagination) but with file/content
  *    access locked down and Safe Browsing enabled where the platform supports it.
  *
  * WebViews themselves are torn down via [disposeWebViews] in Scaffold.kt on screen navigation, and
  * the activity's final WebView is cleaned up in MainActivity.onDestroy.
  */
 object WebViewSafety {
-    /** Configure a WebView used to render trusted, sanitized chapter HTML (no JS, no file access). */
-    fun applyReaderSettings(web: WebView) {
+    /**
+     * Configure a WebView used to render trusted, sanitized chapter HTML.
+     *
+     * @param enableTtsHighlight when true, enables JavaScript so the reader can run the TTS
+     *   paragraph-highlight + tap-to-start script (parity gap 3). Callers MUST first sanitize the
+     *   chapter HTML through [com.vinicius741.webnovelarchiver.core.ChapterHtmlSanitizer]; file and
+     *   content access stay disabled regardless, so the only script that can run is the one this app
+     *   injects. Defaults to `false` to preserve the historical posture for any non-reader caller.
+     */
+    fun applyReaderSettings(web: WebView, enableTtsHighlight: Boolean = false) {
         val s = web.settings
-        s.javaScriptEnabled = false
+        s.javaScriptEnabled = enableTtsHighlight
+        // DOM storage stays off for the reader even with JS on: the TTS highlight script is stateless
+        // and needs no localStorage/sessionStorage, so there's nothing to gain and an attack surface
+        // to lose.
         s.domStorageEnabled = false
         lockDownAccess(s)
     }

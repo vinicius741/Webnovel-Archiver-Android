@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.core
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -193,4 +194,68 @@ class TextCleanupTest {
         assertFalse(cleaned.contains("start middle end"))
         assertTrue(cleaned.contains("Before"))
     }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlTagsgesElementsWithDataTtsGroupIndices() {
+        val html = "<p>One</p><p>Two</p><p>Three</p>"
+
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 500)
+
+        // All three paragraphs fit in one chunk (well under 500 chars), so all share group 0 and the
+        // chunk list collapses to a single entry.
+        assertEquals(1, annotated.chunks.size)
+        assertEquals("One Two Three", annotated.chunks[0])
+        assertTrue(annotated.annotatedHtml.contains("data-tts-group=\"0\""))
+        assertTrue(annotated.annotatedHtml.contains("tts-chunk"))
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlChunksAlignByteForByteWithPrepareTtsChunks() {
+        // The annotated HTML's group indices must map 1:1 to the chunk list, AND that chunk list
+        // must equal what prepareTtsChunks returns for the same input — this is the invariant the
+        // reader highlight + the engine's chunk index rely on.
+        val html = """
+            <p>${"Alpha ".repeat(25).trim()}</p>
+            <p>${"Delta ".repeat(25).trim()}</p>
+        """.trimIndent()
+
+        val plain = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 100)
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 100)
+
+        assertEquals(plain, annotated.chunks)
+        // Each chunk index present as a data-tts-group attribute, contiguous from 0.
+        plain.indices.forEach { i ->
+            assertTrue("missing group $i", annotated.annotatedHtml.contains("data-tts-group=\"$i\""))
+        }
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlFallbackReturnsTaggedElementsForEveryChunk() {
+        val html = "Alpha ".repeat(45).trim()
+
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 10)
+
+        assertEquals(TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 10), annotated.chunks)
+        assertTrue(annotated.chunks.size > 1)
+        annotated.chunks.indices.forEach { i ->
+            assertTrue("missing fallback group $i", annotated.annotatedHtml.contains("data-tts-group=\"$i\""))
+        }
+        assertTrue(annotated.annotatedHtml.contains("tts-chunk"))
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlAppliesTtsSpecificCleanupRules() {
+        val html = "<body><p>Keep this display-only phrase.</p><p>Remove this spoken note.</p></body>"
+        val rules = listOf(
+            RegexCleanupRule(id = "display", name = "display", pattern = "display-only", flags = "g", enabled = true, appliesTo = "download"),
+            RegexCleanupRule(id = "tts", name = "tts", pattern = "spoken note", flags = "g", enabled = true, appliesTo = "tts"),
+        )
+
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, rules, chunkSize = 500)
+
+        // Matches prepareTtsChunks behavior: display rule runs on display text, tts rule on the
+        // spoken text, so "spoken note" disappears from the chunks.
+        assertEquals(listOf("Keep this phrase. Remove this ."), annotated.chunks)
+    }
+
 }

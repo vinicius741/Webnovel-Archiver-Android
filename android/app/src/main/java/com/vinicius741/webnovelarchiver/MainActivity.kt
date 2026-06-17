@@ -103,7 +103,9 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         // foreground service owns the actual process loop. They share one AppStorage, so queue
         // read-modify-writes serialize on its monitor (R3 single-owner).
         downloadEngine = DownloadEngine(storage, container.network)
-        ttsEngine = TtsEngine(this, storage)
+        // Shared process-wide TTS engine (M2): the same instance the TtsForegroundService plays
+        // through, so the reader's multicast state listener fires for service-driven playback.
+        ttsEngine = container.ttsEngine
         ThemeManager.apply(storage.getDisplayPreferences().activeThemeId)
         applyWindowTheme()
         downloadEngine.onChanged = { runOnUiThread { if (activeStory == null) showLibrary() else activeStory?.let { showDetails(it.id) } } }
@@ -132,7 +134,9 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         // R9: destroy any lingering WebView in the frame (e.g. if the activity is destroyed while a
         // Reader/Browser screen is showing) so it can't leak the activity reference.
         com.vinicius741.webnovelarchiver.ui.WebViewSafety.disposeAll(frame)
-        ttsEngine.shutdown()
+        // Detach the reader's TTS observer (if a reader screen is active) so it can't fire into a
+        // destroyed activity. The shared TTS engine is process-wide; only the listener is dropped.
+        detachReaderTtsListener()
         super.onDestroy()
     }
 
