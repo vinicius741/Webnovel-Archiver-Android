@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 enum class StoryOperationKind {
     EPUB,
     CLEANUP,
+    SYNC,
 }
 
 data class StoryOperationState(

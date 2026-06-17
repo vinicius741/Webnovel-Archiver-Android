@@ -57,12 +57,58 @@ internal fun ScreenHost.syncStory(url: String, tabId: String?) {
     }
 }
 
+/**
+ * Sync an *existing* story in place — mirrors the RN `StoryActions` pattern: instead of navigating
+ * away to a full-screen "Working" page, it drives the Details screen's inline operation UI (the same
+ * `StoryOperationState` mechanism EPUB/CLEANUP use) so the button flips to "Syncing..." and a spinner
+ * + status line appears right where the user tapped. Status callbacks from [StorySyncEngine.fetchOrSync]
+ * ("Fetching from…", "Parsing chapters…") update that line live without leaving the screen.
+ *
+ * This intentionally does **not** reuse [syncStory]`s `(url, tabId)` overload, whose first line
+ * navigates to a `screen(title = "Working")` — that full-screen flow is reserved for brand-new
+ * fetches (Library "Fetch Story", Browser "Add") where no Details screen exists yet.
+ */
 internal fun ScreenHost.syncStory(story: Story) {
     if (!StoryActionGuards.canSync(story)) {
         toast(StoryActionGuards.archivedActionMessage("Sync"))
         return
     }
-    syncStory(story.sourceUrl, story.tabId)
+    // Make sure we're on the Details screen so the inline spinner is visible — Sync can also be
+    // triggered from the Library's story-action dialog, where activeStory may differ or be null.
+    if (activeStory?.id != story.id) showDetails(story.id)
+    setStoryOperation(story.id, StoryOperationKind.SYNC, "Starting...")
+    scope.launch {
+        try {
+            // Re-read the pre-sync state so the new-chapter auto-download logic below matches the
+            // url-overload path exactly (it keys off pendingNewChapterIds set during the merge).
+            val existingBeforeSync = withContext(Dispatchers.IO) {
+                SourceRegistry.getProvider(story.sourceUrl)?.let { provider ->
+                    runCatching { storage.getStory(provider.getStoryId(story.sourceUrl)) }.getOrNull()
+                }
+            }
+            val synced = withContext(Dispatchers.IO) {
+                syncEngine.fetchOrSync(story.sourceUrl, story.tabId) { msg ->
+                    app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
+                }
+            }
+            if (existingBeforeSync != null && !synced.pendingNewChapterIds.isNullOrEmpty()) {
+                val pending = synced.pendingNewChapterIds.orEmpty().toSet()
+                val indexes = synced.chapters.mapIndexedNotNull { index, chapter ->
+                    if (chapter.id in pending && !chapter.downloaded) index else null
+                }
+                if (indexes.isNotEmpty()) {
+                    queueDownload(synced, indexes)
+                }
+            }
+            clearStoryOperation(synced.id, StoryOperationKind.SYNC, rerender = false)
+            showDetails(synced.id)
+        } catch (error: Throwable) {
+            clearStoryOperation(story.id, StoryOperationKind.SYNC, rerender = false)
+            toast(error.message ?: "Sync failed")
+            // Stay on Details (not the Library) so the user sees the result in context.
+            showDetails(story.id)
+        }
+    }
 }
 
 internal fun ScreenHost.applyCleanup(story: Story) {

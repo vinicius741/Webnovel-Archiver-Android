@@ -66,7 +66,13 @@ internal fun ScreenHost.showDetails(storyId: String) {
             })
         }
         if (StoryActionGuards.canSync(story)) {
-            infoPanel.addView(makeFullWidthButton(context, "Sync Chapters", Btn.FILLED, R.drawable.wna_refresh, dp(Space.SM + 2), enabled = !isBusy) { syncStory(story) })
+            // "Syncing..." label while a SYNC operation is in flight mirrors RN's
+            // `{syncing ? "Syncing..." : "Sync Chapters"}`. The inline progress block is added below.
+            val syncLabel = if (operation?.kind == StoryOperationKind.SYNC) "Syncing..." else "Sync Chapters"
+            infoPanel.addView(makeFullWidthButton(context, syncLabel, Btn.FILLED, R.drawable.wna_refresh, dp(Space.SM + 2), enabled = !isBusy) { syncStory(story) })
+        }
+        if (operation?.kind == StoryOperationKind.SYNC) {
+            infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = true))
         }
         if (StoryActionGuards.canQueueDownloads(story)) {
             val remainingChapters = story.chapters.count { !it.downloaded }
