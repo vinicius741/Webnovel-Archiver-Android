@@ -88,6 +88,10 @@ dependencies {
     // lifecycle-runtime-ktx provides lifecycleScope used by MainActivity (M3 lifecycle-aware scopes)
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.1'
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    // androidx.media — MediaSessionCompat + MediaStyle + MediaButtonReceiver for the TTS foreground
+    // service's lock-screen / system media UI and headset/Bluetooth media-button handling
+    // (parity gaps 1 & 2; same artifact/version the legacy tts-media-session module used).
+    implementation 'androidx.media:media:1.7.0'
     // RecyclerView — recycles views for the Details chapter list and other long lists (Speed S1).
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     // ViewPager2 — swipe-between-tabs pager in the Library (closes the legacy RN PagerView parity gap).
