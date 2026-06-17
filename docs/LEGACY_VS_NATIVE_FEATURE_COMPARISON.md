@@ -35,15 +35,16 @@ TTS experience** — plus two smaller UX touches. They are summarized here and d
 
 | # | Gap (RN-only) | Severity | Where it lived |
 |---|---------------|----------|----------------|
-| 1 | **Android `MediaSession` + media-style notification** (lock-screen controls, system media UI) | High | `modules/tts-media-session/` (native module) |
-| 2 | **Headset / Bluetooth media-button play-pause** | High | `modules/tts-media-session/` (`addMediaButtonListener`) |
-| 3 | **In-reader TTS highlighting + tap-to-start-from-paragraph** | Medium | `src/utils/htmlUtils.ts`, `src/components/reader/` |
-| 4 | **Floating in-reader TTS transport** (chunk X/Y counter, inline controls) | Medium | `src/components/tts/TTSController.tsx` |
-| 5 | **Regex rule live sample-text preview** (test a rule against pasted text) | Low | `src/components/sentence-removal/RuleDialog.tsx` |
+| ~~1~~ | ~~**Android `MediaSession` + media-style notification** (lock-screen controls, system media UI)~~ ✅ **Closed** — `TtsForegroundService` now owns a `MediaSessionCompat` and publishes a `MediaStyle` notification with chunk-position metadata, so the standard lock-screen + quick-settings media card appears | ~~High~~ | `modules/tts-media-session/` (native module) |
+| ~~2~~ | ~~**Headset / Bluetooth media-button play-pause**~~ ✅ **Closed** — the `MediaSession` callback + the registered `MediaButtonReceiver` route headset-hook / Bluetooth play-pause / media-key events to the TTS engine | ~~High~~ | `modules/tts-media-session/` (`addMediaButtonListener`) |
+| ~~3~~ | ~~**In-reader TTS highlighting + tap-to-start-from-paragraph**~~ ✅ **Closed** — the reader now sanitizes chapter HTML (`ChapterHtmlSanitizer`), enables JS, and runs an injected `WnaTts` script: the speaking chunk gets a `.tts-active` highlight driven by the live `TtsSession`, and a double-tap on a paragraph starts narration there via `engine.playFromChunk(...)` | ~~Medium~~ | `src/utils/htmlUtils.ts`, `src/components/reader/` |
+| ~~4~~ | ~~**Floating in-reader TTS transport** (chunk X/Y counter, inline controls)~~ ✅ **Closed** — the reader shows a docked transport bar with a "Chunk X / Y" label + Prev / Play-Pause / Next / Stop, refreshed live from `ttsEngine.onStateChanged` | ~~Medium~~ | `src/components/tts/TTSController.tsx` |
+| ~~5~~ | ~~**Regex rule live sample-text preview** (test a rule against pasted text)~~ ✅ **Closed** — `showRegexRuleDialog` now has a "Test Preview" pane that runs `TextCleanup.previewRegexRule` over pasted sample text in real time | ~~Low~~ | `src/components/sentence-removal/RuleDialog.tsx` |
 | ~~6~~ | ~~**Swipe-between-tabs PagerView** in the library~~ ✅ **Closed** — native `LibraryScreen.kt` now uses a `ViewPager2` (`LibraryPagesAdapter`) with two-way tab-bar sync when ≥2 tabs exist | ~~Low~~ | `app/index.tsx` (`react-native-pager-view`) |
 
 No data, source-provider, download, EPUB, backup, or cleanup *capability* is missing — only
-presentation and OS-integration details around TTS.
+presentation and OS-integration details around TTS. **All five identified gaps are now closed; the
+two apps are at parity.**
 
 ---
 
@@ -142,7 +143,7 @@ Both use custom `java.util.zip`/ZIP+XML generation producing EPUB 2.0:
 
 ---
 
-## 6. Text cleanup / sentence removal — ✅ Parity (one UX gap)
+## 6. Text cleanup / sentence removal — ✅ Parity
 
 Both apps implement the full cleanup system with identical models (`RegexCleanupRule` with
 `appliesTo` of `download` / `tts` / `both`, `flags`, `enabled`):
@@ -154,13 +155,15 @@ Both apps implement the full cleanup system with identical models (`RegexCleanup
   `QuickBuilderForm` lacks.
 - Export rules to JSON (both); neither imports rules.
 
-⚠️ **Gap — regex rule live sample-text preview.** The RN `RuleDialog`
-(`src/components/sentence-removal/RuleDialog.tsx`) includes a **"test your rule" pane**: the user
+⚠️ ~~**Gap — regex rule live sample-text preview.**~~ ✅ **Closed.** The RN `RuleDialog`
+(`src/components/sentence-removal/RuleDialog.tsx`) included a **"test your rule" pane**: the user
 pastes sample text into `previewInput` and the dialog runs the in-progress rule against it via
 `applyTtsCleanupLines`, showing the cleaned output (`previewOutput`) in real time
-(`RuleDialog.tsx:91-104`). The native `showRegexRuleDialog` (`CleanupScreen.kt`) has no equivalent —
-you can only see the generated *pattern string*, not its effect on sample text. This is the one
-place the RN regex editor is more capable.
+(`RuleDialog.tsx:91-104`). The native `showRegexRuleDialog` (`CleanupScreen.kt`) now has the
+equivalent — a **"Test Preview" pane** that runs `TextCleanup.previewRegexRule(pattern, flags,
+sampleInput)` over pasted sample text, live-updating the output box on every keystroke in the
+pattern/flags/sample fields. The native builder therefore matches the RN regex editor's preview
+capability, on top of the live pattern preview it already had.
 
 ---
 
@@ -179,68 +182,73 @@ the two apps. Neither version has scheduled/automatic backups — all manual.
 
 ---
 
-## 8. Text-to-Speech (TTS) — ⚠️ Two real gaps + two UX gaps
+## 8. Text-to-Speech (TTS) — ✅ Parity (all gaps closed)
 
 The core TTS engine matches: paragraph-oriented chunking by `chunkSize`, configurable pitch /
 rate / voice, pause/resume/skip, session persistence, auto-resume on restart, and a foreground
 service with notification action buttons (Prev / Play-Pause / Next / Stop). `TtsSettings` and
 `TtsSession` are wire-compatible.
 
-However the **OS-integration layer and in-reader experience diverge**, and this is where the only
-material gaps live.
+The **OS-integration layer and in-reader experience previously diverged**, but all four gaps are now
+closed. The TTS engine is a process-wide singleton (`AppContainer.ttsEngine`) shared by the activity
+reader and the foreground service, with a multicast `onStateChanged` snapshot
+(`TtsPlaybackSnapshot`) so the MediaSession/notification (service) and the highlight/transport
+(reader) stay in lockstep.
 
-### ⚠️ Gap 1 — No `MediaSession` / media-style notification (High)
+### ✅ Gap 1 — `MediaSession` / media-style notification (was High — closed)
 
 The legacy app shipped a dedicated **Expo native module**, `modules/tts-media-session/`, whose
 Kotlin side (`TtsMediaSessionService.kt`) owns a real Android **`MediaSession`** and publishes a
-**`MediaStyle` notification**. Its TS surface (`modules/tts-media-session/src/index.ts`) exposes:
-`startPlayback`, `pausePlayback`, `resumePlayback`, `playPause`, `next`, `previous`,
-`seekToUnit`, `stopPlayback`, `getVoices`, plus `onPlaybackState` and `onMediaButton` event
-listeners, and a full `NativeTtsPlaybackState` (status / title / currentIndex / total / storyId /
-chapterId).
+**`MediaStyle` notification**.
 
-The native Kotlin `TtsForegroundService.kt` does **not** create a `MediaSession`. Its notification
-is built with `NotificationCompat.BigTextStyle` + manual `addAction` buttons
-(`TtsForegroundService.kt:106-133`); there is no `MediaSession`, no `setStyle(MediaStyle(...))`,
-and no `AudioManager`/media-button handling. Consequences:
+The native Kotlin `TtsForegroundService.kt` now does the same: it creates a `MediaSessionCompat`
+whose callback maps transport controls onto the engine, and `buildNotification` swaps the old
+`BigTextStyle` for `MediaStyle(...).setShowActionsInCompactView(0,1,2)`. On every state change the
+service refreshes the session's `PlaybackStateCompat` (PLAYING/PAUSED/STOPPED) and
+`MediaMetadataCompat` (title / "Webnovel Archiver" / track number = chunk index / total chunks).
+Consequences now delivered:
 
-- **No lock-screen / system-UI media controls.** The standard Android media playback card on the
-  lock screen and in the quick-settings shade does not appear; only the plain foreground
-  notification with custom action buttons shows.
-- **No metadata in the system media UI** (title, chapter position, artwork).
+- **Lock-screen / system-UI media controls** appear (the standard Android media playback card on the
+  lock screen and in the quick-settings shade).
+- **Metadata in the system media UI** (title, chunk position).
 
-This is the single most user-visible gap for anyone who listens via TTS.
+### ✅ Gap 2 — Headset / Bluetooth media-button support (was High — closed)
 
-### ⚠️ Gap 2 — No headset / Bluetooth media-button support (High)
+The service's `MediaSession` carries a `MediaButtonReceiver.buildMediaButtonPendingIntent(...)` media-
+button receiver, the manifest registers `androidx.media.session.MediaButtonReceiver` for
+`ACTION_MEDIA_BUTTON`, and the session callback's `onMediaButtonEvent` maps the headset hook /
+Bluetooth play-pause / media keys onto the engine. A **single headset/Bluetooth play-pause click now
+starts/pauses TTS**.
 
-Tied to Gap 1: the legacy native module exposes `addMediaButtonListener`
-(`modules/tts-media-session/src/index.ts:131-136`) so a **single headset/Bluetooth play-pause click
-starts/pauses TTS**. Because the native app has no `MediaSession` and no `MediaButtonReceiver`, it
-cannot respond to headset or Bluetooth media buttons at all.
+### ✅ Gap 3 — In-reader TTS highlighting + tap-to-start (was Medium — closed)
 
-### ⚠️ Gap 3 — No in-reader TTS highlighting or tap-to-start (Medium)
+The reader now produces **TTS-aware HTML** via `TextCleanup.prepareTtsAnnotatedHtml` — a port of the
+legacy `prepareTTSContent` (`src/utils/htmlUtils.ts:33-123`) that walks the chapter's block elements,
+groups them into `chunkSize`-sized groups, and tags each with `data-tts-group="<index>"` + a
+`tts-chunk` class. The chunk list it returns is **byte-for-byte aligned** with
+`TextCleanup.prepareTtsChunks` (the engine's chunk list), so a chunk index the engine reports maps
+1:1 to the highlighted group.
 
-The legacy reader produces **TTS-aware HTML**. `prepareTTSContent`
-(`src/utils/htmlUtils.ts:33-123`) walks the chapter's block elements, groups them into
-`chunkSize`-sized groups, tags each with `data-tts-group="<index>"` and a `.tts-chunk` class, and
-returns both the processed HTML and the chunk list. The reader CSS then styles the **currently
-speaking chunk** with a `.tts-active` highlight (`ReaderContent.tsx:45-49`), and an injected script
-lets the user **double-tap (or double-tap) a paragraph to start TTS from that paragraph**
-(`ReaderContent.tsx:62-96` posts a `tts-start` message consumed by `onTTSUnitPress`).
+The reader CSS now ships the `.tts-active` highlight (translucent accent background + solid accent
+left border), and an injected `WnaTts` script (a) exposes `WnaTts.setActive(i)` which the host calls
+via `evaluateJavascript` as the live `TtsSession.currentChunkIndex` advances (no page re-render, no
+flash), and (b) lets the reader **double-tap (or double-tap) a paragraph to start TTS from that
+paragraph** via a single-method `@JavascriptInterface onTtsStart(index)` → `engine.playFromChunk(...)`.
 
-The native `ReaderContentRenderer.document(...)` produces plain sanitized HTML with no
-`data-tts-group` attributes, no `.tts-active` styling, and no tap-to-start script. The native
-reader's TTS surface is limited to the `showReaderTtsPanel` sheet (`ui/ReaderPanels.kt`) which only
-exposes transport actions (play/pause/stop/prev/next-chunk) — it does **not** highlight the spoken
-text in the WebView and does **not** let the reader tap a paragraph to begin narration there.
+**Security note:** because this requires JavaScript in the reader WebView, chapter HTML is now first
+sanitized through `ChapterHtmlSanitizer` (a strict Jsoup `Safelist` that strips scripts, `on*`
+handlers, `<iframe>`/`<object>`, and `javascript:` links) before rendering. File/content access stays
+off and Safe Browsing stays on, so the only script that runs is the one this app injects — a net
+hardening over the prior JS-off-but-unsanitized render.
 
-### ⚠️ Gap 4 — No floating in-reader TTS transport (Medium)
+### ✅ Gap 4 — Floating in-reader TTS transport (was Medium — closed)
 
-The legacy reader shows a **persistent floating TTS controller** (`TTSController.tsx`) docked above
-the bottom nav while speaking: it displays `"Chunk X / Y"` progress, fades in/out, and offers
-skip-previous / play-pause / skip-next / stop. The native reader replaces this with a modal
-**panel** (`showReaderTtsPanel`) that must be re-opened to see transport state, and it does not
-display chunk progress inline while reading.
+The reader now shows a **persistent floating TTS transport** docked above the chapter nav
+(`readerTtsTransport` in `ReaderScreen.kt`), mirroring the legacy `TTSController.tsx`: it displays
+`"Chunk X / Y"` progress (or "Buffering"), offers skip-previous / play-pause / skip-next / stop, and
+is refreshed live from `ttsEngine.onStateChanged`. It appears only while a TTS session exists for the
+chapter currently open. The existing modal `showReaderTtsPanel` (the "Read aloud" app-bar action)
+remains as the discoverable entry point.
 
 ### ➕ TTS voice picker — Kotlin richer
 
@@ -252,9 +260,9 @@ voices are selectable; only the presentation differs.
 
 ---
 
-## 9. Reader — ✅ Parity (except the TTS-related gaps above)
+## 9. Reader — ✅ Parity
 
-Setting the TTS gaps aside, the reader matches:
+The reader matches:
 
 - WebView-based chapter rendering with sanitized HTML, responsive CSS, `max-width:100%` images.
 - Prev/Next chapter navigation with a **"X / total" position indicator** (both the subtitle and the
@@ -301,19 +309,20 @@ than per-theme font metadata — same end result, different mechanism).
 
 Ordered by user impact and effort:
 
-1. **Add a `MediaSession` + `MediaStyle` notification to `TtsForegroundService`** (closes Gaps 1
-   *and* 2). This is the highest-impact change: it restores lock-screen controls, system media UI,
-   and headset/Bluetooth play-pause in one move. The legacy `TtsMediaSessionService.kt` is a
-   working reference implementation already in the repo.
-2. **Port the in-reader TTS highlight + tap-to-start** (Gap 3). Reuse the legacy
-   `prepareTTSContent` grouping logic in `ReaderContentRenderer` to emit `data-tts-group` markup
-   and a `.tts-active` style, then drive the active index from the live `TtsSession.currentChunkIndex`.
-3. **Add a floating reader TTS transport with chunk progress** (Gap 4) — a small persistent bar
-   mirroring `TTSController.tsx`.
-4. **Add a regex-rule sample-text preview** (Gap 5) to `showRegexRuleDialog`.
+1. ~~**Add a `MediaSession` + `MediaStyle` notification to `TtsForegroundService`** (closes Gaps 1
+   *and* 2).~~ ✅ Done — `MediaSessionCompat` + `MediaStyle` + chunk-position metadata; the legacy
+   `TtsMediaSessionService.kt` served as the working reference.
+2. ~~**Port the in-reader TTS highlight + tap-to-start** (Gap 3).~~ ✅ Done —
+   `TextCleanup.prepareTtsAnnotatedHtml` emits `data-tts-group` markup (aligned with the engine's
+   chunks), the renderer ships a `.tts-active` rule + injected `WnaTts` script, and the active index
+   is driven from the live `TtsSession`; chapter HTML is sanitized first via `ChapterHtmlSanitizer`.
+3. ~~**Add a floating reader TTS transport with chunk progress** (Gap 4).~~ ✅ Done —
+   `readerTtsTransport` in `ReaderScreen.kt`, refreshed from `ttsEngine.onStateChanged`.
+4. ~~**Add a regex-rule sample-text preview** (Gap 5) to `showRegexRuleDialog`.~~ ✅ Done —
+   "Test Preview" pane backed by `TextCleanup.previewRegexRule`.
 5. ~~**Add swipe-between-tabs** (Gap 6) via a `ViewPager2` in `LibraryScreen.kt`~~ ✅ Done —
-   `LibraryPagesAdapter` + `ViewPager2` with two-way tab-bar sync; the recommended next step for
-   the remaining gaps (TTS media session, in-reader TTS highlight/transport) is unchanged.
+   `LibraryPagesAdapter` + `ViewPager2` with two-way tab-bar sync.
 
-All five are additive and touch no data models, so they can be shipped independently without
-migration.
+**All five identified gaps are closed.** The changes are additive (no data-model / on-disk-format
+changes), so they shipped without migration. Verification: `./gradlew :app:testDebugUnitTest
+:app:assembleDebug :app:lintDebug` is green (+22 unit tests covering the new pure logic).
