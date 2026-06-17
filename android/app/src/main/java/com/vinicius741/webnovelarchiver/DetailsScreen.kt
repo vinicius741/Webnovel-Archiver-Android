@@ -116,7 +116,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         if (story.epubStale == true && hasEpub) {
             infoPanel.addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
+                gravity = Gravity.CENTER
                 addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant))
                 val regenerateButton = makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
                     val config = story.epubConfig ?: EpubConfig(
