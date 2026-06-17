@@ -172,6 +172,52 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
     }
     view.addView(quickRow)
 
+    // Gap 5: live "test your rule" pane — mirrors the legacy RN RuleDialog. The user pastes sample
+    // text and the in-progress rule (pattern + flags) is applied to it in real time via
+    // [TextCleanup.previewRegexRule], so they see what the rule removes before saving. Reuses the
+    // same monospace preview styling as [showQuickRegexBuilder]'s pattern preview.
+    view.addView(makeText(app, "Test Preview", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+        setPadding(0, dp(Space.MD), 0, dp(Space.XS))
+    })
+    val previewInput = EditText(app).apply {
+        hint = "Try text like ----- or ===== to test your rule"
+        setHintTextColor(ThemeManager.colors.onSurfaceVariant)
+        setTextColor(ThemeManager.colors.onSurface)
+        setBackgroundColor(Color.TRANSPARENT)
+        minLines = 2
+        maxLines = 4
+        gravity = Gravity.TOP
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+    }
+    view.addView(previewInput)
+    val previewOutput = makeText(app, "(No output)", Type.BODY_SMALL, ThemeManager.colors.onSurface).apply {
+        setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
+        typeface = Typeface.MONOSPACE
+        background = ripple(
+            roundedBg(ThemeManager.colors.elevation1, dp(6).toFloat()),
+            dp(6).toFloat(),
+            ThemeManager.colors.onSurface,
+        )
+        // Keep the box tall enough that a single-line output doesn't collapse it.
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.XS)
+            bottomMargin = dp(Space.SM)
+        }
+        minHeight = dp(52)
+    }
+    view.addView(previewOutput)
+    fun updatePreview() {
+        val cleaned = TextCleanup.previewRegexRule(
+            pattern.text.toString(),
+            flags.text.toString(),
+            previewInput.text.toString(),
+        )
+        previewOutput.text = cleaned ?: "(No output)"
+    }
+    pattern.addTextChangedListener(simpleTextWatcher { updatePreview() })
+    flags.addTextChangedListener(simpleTextWatcher { updatePreview() })
+    previewInput.addTextChangedListener(simpleTextWatcher { updatePreview() })
+
     val dialog = AlertDialog.Builder(app)
         .setTitle(if (existing == null) "Add Regex Rule" else "Edit Regex Rule")
         .setView(scroll(view))
@@ -180,6 +226,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         .create()
 
     dialog.setOnShowListener {
+        updatePreview()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val validation = TextCleanup.validateRegexRule(
                 name.text.toString(),

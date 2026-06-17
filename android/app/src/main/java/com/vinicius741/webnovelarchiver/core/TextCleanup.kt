@@ -381,6 +381,24 @@ object TextCleanup {
         return { input -> compiled.fold(input) { text, regex -> regex.replace(text, "") } }
     }
 
+    /**
+     * Preview helper for the regex rule editor (parity gap 5): validates the in-progress rule, then
+     * applies it to [sampleInput] and returns the cleaned text — `null` when the rule is invalid or
+     * the input is blank. Mirrors the legacy RN `RuleDialog` "Test Preview" pane (the draft is
+     * treated as `appliesTo = both`, exactly as the RN version did).
+     */
+    fun previewRegexRule(pattern: String, flags: String, sampleInput: String): String? {
+        if (sampleInput.isBlank()) return null
+        val validation = validateRegexRule("preview", pattern, flags)
+        if (!validation.valid) return null
+        val normalizedPattern = validation.normalizedPattern ?: return null
+        val normalizedFlags = validation.normalizedFlags ?: ""
+        val compiled = runCatching {
+            Regex(normalizedPattern, regexOptions(normalizedFlags))
+        }.getOrNull() ?: return null
+        return compiled.replace(sampleInput, "")
+    }
+
     private data class NormalizedRegexInput(val pattern: String, val flags: String, val error: String? = null)
 
     private fun normalizeRegexInput(patternInput: String, flagsInput: String): NormalizedRegexInput {

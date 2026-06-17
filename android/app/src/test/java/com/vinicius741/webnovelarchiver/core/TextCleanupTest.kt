@@ -258,4 +258,26 @@ class TextCleanupTest {
         assertEquals(listOf("Keep this phrase. Remove this ."), annotated.chunks)
     }
 
+    @Test
+    fun previewRegexRuleReturnsCleanedTextForMatchingInput() {
+        val cleaned = TextCleanup.previewRegexRule("=+", "g", "Intro ===== done")
+        assertEquals("Intro  done", cleaned)
+    }
+
+    @Test
+    fun previewRegexRuleReturnsNullForBlankInput() {
+        assertNull(TextCleanup.previewRegexRule("=+", "g", "   "))
+    }
+
+    @Test
+    fun previewRegexRuleReturnsNullForInvalidPattern() {
+        assertNull(TextCleanup.previewRegexRule("(unclosed", "g", "some text"))
+    }
+
+    @Test
+    fun previewRegexRuleAcceptsRegexLiteralForm() {
+        // A /pattern/flags literal should be honored the same as separate fields.
+        val cleaned = TextCleanup.previewRegexRule("/-{3,}/g", "g", "Keep---this")
+        assertEquals("Keepthis", cleaned)
+    }
 }
