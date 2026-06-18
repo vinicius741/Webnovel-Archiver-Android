@@ -34,6 +34,10 @@ internal fun ScreenHost.showDetails(storyId: String) {
     } else {
         null
     }
+    // Stable reference to the download banner slot. Captured into the refresh closure so the loop
+    // patches it in place even when the header is scrolled off-screen (the slot detaches from the
+    // window but the reference stays valid). Allocated lazily by the banner block below.
+    var bannerSlot: ViewGroup? = null
     activeStory = story
     // Re-render on fold/unfold/rotation so the two-pane ↔ single-scroll layout can switch live.
     rerender = { showDetails(storyId) }
@@ -49,8 +53,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // Show the banner while work is in flight/paused, or if the last batch ended with failures so
     // the user sees the error summary. An all-completed batch is dismissed (the static header
     // progress + per-row "Available Offline" already reflect the result).
-    val showDownloadBanner = downloadSummary.total > 0 &&
-        (downloadSummary.isActive || downloadSummary.isPaused || (downloadSummary.isFinished && (downloadSummary.failed > 0 || downloadSummary.cancelled > 0)))
+    val showDownloadBanner = shouldShowDetailsBanner(downloadSummary)
     screen(
         title = story.title,
         subtitle = "by ${story.author}",
@@ -91,7 +94,16 @@ internal fun ScreenHost.showDetails(storyId: String) {
             }
         }
         if (showDownloadBanner) {
-            infoPanel.addView(makeDownloadProgressBanner(context, downloadSummary) { showQueue() })
+            // The live download banner lives in a stable slot view held by [bannerSlot] (a local
+            // captured into the refresh closure below). refreshDetailsDownload() swaps its child in
+            // place rather than rebuilding the screen. The slot is always allocated when shown so we
+            // have a direct reference even while the header is scrolled off-screen and the slot is
+            // detached from the window — patching a detached view is safe and shows on reattach.
+            bannerSlot = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(makeDownloadProgressBanner(context, downloadSummary) { showQueue() })
+            }
+            infoPanel.addView(bannerSlot!!)
         }
         if (operation?.kind == StoryOperationKind.CLEANUP) {
             infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = true))
@@ -266,12 +278,14 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }
     }
-    // Real-time refresh: while this story has active downloads, re-render the Details screen on a
-    // short cadence so the progress bar climbs and chapter rows flip to spinners / "Available
-    // Offline" as the foreground service completes them. Storage is the single source of truth
-    // (R3 single-owner already serializes queue writes), so a fresh re-read each tick is correct
-    // and needs no service↔activity callback. Tag-guarded like QueueScreen's refresher so the loop
-    // stops itself if the user navigates away or the batch finishes.
+    // Real-time refresh: while this story has active downloads, patch the chapter rows + banner in
+    // place on a short cadence so the progress bar climbs and chapter rows flip to spinners /
+    // "Available Offline" as the foreground service completes them. This uses
+    // [refreshDetailsDownload] instead of showDetails() so the whole view tree is NOT torn down on
+    // every tick — that earlier path caused a visible flicker (blank frame → scroll snap-back) on
+    // each refresh. Storage is the single source of truth (R3 single-owner already serializes queue
+    // writes), so a fresh re-read each tick is correct and needs no service↔activity callback. Tag-
+    // guarded so the loop stops itself if the user navigates away or the batch finishes.
     if (downloadSummary.isActive && frame.childCount > 0) {
         val root = frame.getChildAt(0)
         root.tag = DETAILS_DOWNLOAD_TAG
@@ -280,10 +294,14 @@ internal fun ScreenHost.showDetails(storyId: String) {
             override fun run() {
                 if ((root.tag as? String) != DETAILS_DOWNLOAD_TAG || root.parent !== frame) return
                 val chapterList = findDetailsChapterList(root)
-                if (chapterList?.scrollState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
-                    showDetails(storyId)
-                } else {
+                // Defer the patch if a touch/fling gesture is mid-flight so the row rebind doesn't
+                // interrupt the user's scroll. Once idle, patch in place.
+                if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
                     handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
+                    return
+                }
+                if (refreshDetailsDownload(storyId, bannerSlot)) {
+                    handler.postDelayed(this, DETAILS_REFRESH_MS)
                 }
             }
         }
@@ -298,6 +316,67 @@ private const val DETAILS_REFRESH_MS = 1200L
 private const val DETAILS_SCROLL_RETRY_MS = 250L
 /** Tag stamped on the Details root view so the download refresher can detect navigation away. */
 private const val DETAILS_DOWNLOAD_TAG = "details-download"
+
+/**
+ * Decides whether the live download banner should be shown for a story's current queue summary.
+ * Shared by [showDetails] (initial render) and [refreshDetailsDownload] (in-place refresh) so the
+ * banner appears/disappears by the same rule on the periodic refresh tick.
+ */
+private fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownloadSummary): Boolean =
+    summary.total > 0 &&
+        (summary.isActive || summary.isPaused || (summary.isFinished && (summary.failed > 0 || summary.cancelled > 0)))
+
+/**
+ * Handles the periodic Details download refresh *without* rebuilding the screen: reads the latest
+ * queue + story, then patches the chapter adapter (per-row status flip to spinner/dot/"Available
+ * Offline") and swaps the banner slot's contents in place. This replaces the old
+ * `showDetails(storyId)` full-screen re-render — tearing down the whole view tree every ~1.2s while
+ * downloading caused a visible flicker (blank frame while the new tree inflated, then scroll
+ * snapped back and was restored).
+ *
+ * [bannerSlot] is a direct reference to the slot view captured at [showDetails] render time, NOT a
+ * tree lookup. In compact layout the slot lives inside the RecyclerView's header item, which the
+ * LayoutManager recycles (detaches from the window) once the user scrolls past it. A tree walk
+ * (`findViewByTag`) would miss the recycled/detached slot and trigger a full rebuild on every tick
+ * — the exact flicker this fixes. The direct reference stays valid while detached: patching it is
+ * safe and the change shows when the header scrolls back into view.
+ *
+ * Returns true while the story still has live download work (so the loop should keep refreshing);
+ * false once the batch is fully terminal, so the loop can stop (the next navigation will rebuild).
+ */
+private fun ScreenHost.refreshDetailsDownload(storyId: String, bannerSlot: ViewGroup?): Boolean {
+    val story = storage.getStory(storyId) ?: return false
+    val jobsForStory = storage.getQueue().filter { it.storyId == storyId }
+    val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
+    val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
+
+    // Patch the chapter rows in place via the adapter's update(), which reuses view holders
+    // (notifyDataSetChanged) instead of inflating a new tree.
+    val chapterList = findDetailsChapterList(frame)
+    val adapter = chapterList?.adapter?.let { it as? ChapterListAdapter ?: (it as? androidx.recyclerview.widget.ConcatAdapter)?.adapters?.filterIsInstance<ChapterListAdapter>()?.singleOrNull() }
+    if (adapter != null) {
+        val query = adapter.currentQuery()
+        val filter = adapter.currentFilter()
+        val filtered = filterDetailsChapters(story, query, filter)
+        val isEmptyState = filtered.isEmpty()
+        val displayed = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else filtered
+        adapter.update(displayed, story, isEmptyState, query, filter, chapterStatuses)
+    }
+
+    // Patch the banner slot in place. The slot reference is stable across header recycling; if the
+    // batch is no longer eligible for a banner, just empty the slot (its parent — or the recycled
+    // header — keeps it). No showDetails() fallback: the next navigation/render rebuilds naturally.
+    if (bannerSlot != null) {
+        if (shouldShowDetailsBanner(summary)) {
+            bannerSlot.removeAllViews()
+            bannerSlot.addView(makeDownloadProgressBanner(app, summary) { showQueue() })
+        } else {
+            bannerSlot.removeAllViews()
+        }
+    }
+
+    return summary.isActive || summary.isPaused
+}
 
 private fun findDetailsChapterList(root: View): androidx.recyclerview.widget.RecyclerView? {
     if (root is androidx.recyclerview.widget.RecyclerView) return root
@@ -501,8 +580,42 @@ internal fun ScreenHost.renderChapterList(
     chapterStatuses: Map<String, com.vinicius741.webnovelarchiver.core.DownloadJobStatus> = emptyMap(),
     header: View? = null,
 ) {
+    val displayedChapters = filterDetailsChapters(story, query, filter)
+    val isEmptyState = displayedChapters.isEmpty()
+    val existingChapterAdapter = when (val adapter = list.adapter) {
+        is ChapterListAdapter -> adapter
+        is androidx.recyclerview.widget.ConcatAdapter -> adapter.adapters.filterIsInstance<ChapterListAdapter>().singleOrNull()
+        else -> null
+    }
+    if (existingChapterAdapter != null) {
+        existingChapterAdapter.update(
+            if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else displayedChapters,
+            story,
+            isEmptyState,
+            query,
+            filter,
+            chapterStatuses,
+        )
+        return
+    }
+    val initialChapters = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else displayedChapters
+    val chapterAdapter = ChapterListAdapter(this, initialChapters, story, isEmptyState, list, query, filter, chapterStatuses)
+    list.adapter = if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
+}
+
+/**
+ * Pure chapter filter for the Details list — shared by [renderChapterList] (initial + filter/search)
+ * and the in-place download refresh so both apply the identical view. Returns the matching
+ * `(chapterIndex, chapter)` pairs, or an empty list when nothing matches (the caller decides
+ * whether to substitute the "No chapters match" empty state).
+ */
+private fun filterDetailsChapters(
+    story: Story,
+    query: String,
+    filter: String,
+): List<Pair<Int, Chapter>> {
     val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
-    val filtered = story.chapters
+    return story.chapters
         .mapIndexed { index, chapter -> index to chapter }
         .filter { (_, chapter) -> chapter.title.contains(query, ignoreCase = true) }
         .filter { (index, chapter) ->
@@ -512,23 +625,6 @@ internal fun ScreenHost.renderChapterList(
                 else -> true
             }
         }
-    val isEmptyState = filtered.isEmpty()
-    val displayedChapters = if (isEmptyState) {
-        listOf(-1 to Chapter(title = "No chapters match this view."))
-    } else {
-        filtered
-    }
-    val existingChapterAdapter = when (val adapter = list.adapter) {
-        is ChapterListAdapter -> adapter
-        is androidx.recyclerview.widget.ConcatAdapter -> adapter.adapters.filterIsInstance<ChapterListAdapter>().singleOrNull()
-        else -> null
-    }
-    if (existingChapterAdapter != null) {
-        existingChapterAdapter.update(displayedChapters, story, isEmptyState, query, filter, chapterStatuses)
-        return
-    }
-    val chapterAdapter = ChapterListAdapter(this, displayedChapters, story, isEmptyState, list, query, filter, chapterStatuses)
-    list.adapter = if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
 }
 
 

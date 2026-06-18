@@ -90,6 +90,11 @@ class ChapterListAdapter(
         notifyDataSetChanged()
     }
 
+    /** The query/filter currently applied so the in-place download refresh can re-filter against the
+     *  user's live view without forcing a full screen rebuild. */
+    fun currentQuery(): String = query
+    fun currentFilter(): String = filter
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RowHolder {
         val context = parent.context
         val row = LinearLayout(context).apply {
