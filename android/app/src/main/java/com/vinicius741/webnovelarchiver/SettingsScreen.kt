@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver
 
-import android.graphics.Color
 import android.text.InputType
 import android.view.ViewGroup
 import android.widget.CheckBox
@@ -247,13 +246,7 @@ internal fun ScreenHost.showTabs() {
         // T1: explain what tabs are so the empty/first-run state isn't a bare input.
         text("Tabs group novels on the Library screen. Create one (e.g. \"Reading\", \"Finished\") and assign novels to it.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         row {
-            val name = EditText(context).apply {
-                hint = "New tab name"
-                setBackgroundColor(Color.TRANSPARENT)
-                setHintTextColor(ThemeManager.colors.onSurfaceVariant)
-                setTextColor(ThemeManager.colors.onSurface)
-                setSingleLine()
-            }
+            val name = makeField(context, "", "New tab name", InputType.TYPE_CLASS_TEXT)
             addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             button("Add", Btn.TONAL, R.drawable.wna_add) {
                 val next = TabPlanning.create(

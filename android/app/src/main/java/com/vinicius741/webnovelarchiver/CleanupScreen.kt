@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver
 
 import android.app.AlertDialog
-import android.graphics.Color
 import android.graphics.Typeface
 import android.text.InputType
 import android.text.TextUtils
@@ -27,13 +26,7 @@ internal fun ScreenHost.showCleanupRules() {
         section("Sentences")
         // C2: the Add button fills the row so it matches the field height instead of floating right.
         row {
-            val sentence = EditText(context).apply {
-                hint = "Sentence to remove"
-                setBackgroundColor(Color.TRANSPARENT)
-                setHintTextColor(ThemeManager.colors.onSurfaceVariant)
-                setTextColor(ThemeManager.colors.onSurface)
-                setSingleLine()
-            }
+            val sentence = makeField(context, "", "Sentence to remove", InputType.TYPE_CLASS_TEXT)
             addView(sentence, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { gravity = Gravity.CENTER_VERTICAL })
             button("Add", Btn.TONAL, R.drawable.wna_add) {
                 val list = storage.getSentenceRemovalList()
@@ -180,14 +173,13 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         setPadding(0, dp(Space.MD), 0, dp(Space.XS))
     })
     val previewInput = EditText(app).apply {
-        hint = "Try text like ----- or ===== to test your rule"
-        setHintTextColor(ThemeManager.colors.onSurfaceVariant)
-        setTextColor(ThemeManager.colors.onSurface)
-        setBackgroundColor(Color.TRANSPARENT)
+        applyInputStyle(
+            "Try text like ----- or ===== to test your rule",
+            InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
+            singleLine = false,
+        )
         minLines = 2
         maxLines = 4
-        gravity = Gravity.TOP
-        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
     }
     view.addView(previewInput)
     val previewOutput = makeText(app, "(No output)", Type.BODY_SMALL, ThemeManager.colors.onSurface).apply {

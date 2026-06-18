@@ -74,13 +74,13 @@ internal fun ScreenHost.confirm(
     .setNegativeButton(cancelLabel, null).show()
 
 internal fun ScreenHost.prompt(title: String, value: String, onSave: (String) -> Unit) {
-    val input = EditText(app).apply {
-        setText(value)
-        setHintTextColor(ThemeManager.colors.onSurfaceVariant)
-        setTextColor(ThemeManager.colors.onSurface)
-        setSingleLine()
-    }
-    AlertDialog.Builder(app).setTitle(title).setView(input).setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }.setNegativeButton("Cancel", null).show()
+    val input = makeField(app, value, title, InputType.TYPE_CLASS_TEXT)
+    AlertDialog.Builder(app)
+        .setTitle(title)
+        .setView(input)
+        .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
+        .setNegativeButton("Cancel", null)
+        .show()
 }
 
 internal fun ScreenHost.copyToClipboard(label: String, value: String) {
