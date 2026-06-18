@@ -11,9 +11,28 @@ APK="android/app/build/outputs/apk/debug/app-debug.apk"
 ADB="${ADB:-$(command -v adb || echo adb)}"
 APK_TIME="${APK}.mtime"
 
-# Require a connected device; if none, the emulator probably isn't running.
-if ! "$ADB" get-state >/dev/null 2>&1; then
-  echo "✗ No device/emulator found. Start one (adb devices) and re-run." >&2
+# Resolve an emulator explicitly. Never let adb fall back to a connected physical device.
+emulator_serials=()
+while read -r serial state _rest; do
+  if [[ "$serial" == emulator-* && "$state" == "device" ]]; then
+    emulator_serials+=("$serial")
+  fi
+done < <("$ADB" devices -l)
+
+if [ -n "${EMULATOR_SERIAL:-}" ]; then
+  selected_state=$("$ADB" -s "$EMULATOR_SERIAL" get-state 2>/dev/null || true)
+  if [[ "$EMULATOR_SERIAL" != emulator-* ]] || [ "$selected_state" != "device" ]; then
+    echo "✗ EMULATOR_SERIAL must name a healthy emulator-* target." >&2
+    exit 1
+  fi
+elif [ "${#emulator_serials[@]}" -eq 1 ]; then
+  EMULATOR_SERIAL="${emulator_serials[0]}"
+elif [ "${#emulator_serials[@]}" -eq 0 ]; then
+  echo "✗ No running emulator found. Start webnovel_api36 and re-run." >&2
+  exit 1
+else
+  echo "✗ Multiple emulators are running. Set EMULATOR_SERIAL to the intended emulator-* serial." >&2
+  printf '  %s\n' "${emulator_serials[@]}" >&2
   exit 1
 fi
 
@@ -36,13 +55,13 @@ if [ "$stamp_before" != "0" ] && [ "$stamp_before" = "$stamp_after" ] && [ -f "$
   echo "• APK unchanged since last successful deploy; relaunching only."
 else
   echo "▸ Installing APK…"
-  "$ADB" install -r -d "$APK" >/dev/null
+  "$ADB" -s "$EMULATOR_SERIAL" install -r -d "$APK" >/dev/null
   echo "$stamp_after" > "$APK_TIME"
 fi
 
-echo "▸ Launching $PKG"
+echo "▸ Launching $PKG on $EMULATOR_SERIAL"
 # force-stop first so the app cold-starts with the new code (no stale process)
-"$ADB" shell am force-stop "$PKG"
-"$ADB" shell am start -n "$PKG/$ACTIVITY" >/dev/null
+"$ADB" -s "$EMULATOR_SERIAL" shell am force-stop "$PKG"
+"$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PKG/$ACTIVITY" >/dev/null
 
 echo "✓ Deployed at $(date +%H:%M:%S)"

@@ -21,39 +21,51 @@ Use `$ANDROID_HOME` when it is set. If emulator tools are missing from `PATH`, c
 
 ## Quick Reuse Path
 
-Start by checking whether an emulator already exists and is running:
+Start by checking whether an emulator already exists and is running. Use unqualified
+`adb devices -l` only for discovery; resolve exactly one healthy emulator and pass its serial to
+every device-targeting call.
 
 ```bash
 adb devices -l
 $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager list avd
+
+emulator_serials=()
+while read -r serial state _rest; do
+  [[ "$serial" == emulator-* && "$state" == device ]] && emulator_serials+=("$serial")
+done < <(adb devices -l)
+((${#emulator_serials[@]} == 1)) || { printf 'Expected exactly one running emulator, found %s\n' "${#emulator_serials[@]}" >&2; return 1 2>/dev/null || exit 1; }
+EMULATOR_SERIAL="${emulator_serials[0]}"
 ```
 
-If `emulator-5554` or another device is already listed as `device`, reuse it.
+If an `emulator-*` target is already listed as `device`, reuse it. Ignore physical-device serials.
+When multiple emulators are running, explicitly select the intended `emulator-*` serial instead of
+silently choosing one.
 
-Build and install the native debug app:
+Build and install the native debug app. Do not use Gradle's `installDebug` task because it does not
+carry the explicitly selected emulator serial.
 
 ```bash
-cd android
-./gradlew :app:installDebug --console=plain
+android/gradlew -p android :app:assembleDebug --console=plain
+adb -s "$EMULATOR_SERIAL" install -r -d android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Launch the app:
 
 ```bash
-adb shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity
+adb -s "$EMULATOR_SERIAL" shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity
 ```
 
 Verify it is foregrounded:
 
 ```bash
-adb shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|webnovel'
-adb exec-out uiautomator dump /dev/tty
+adb -s "$EMULATOR_SERIAL" shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|webnovel'
+adb -s "$EMULATOR_SERIAL" exec-out uiautomator dump /dev/tty
 ```
 
 Capture a screenshot when visual confirmation matters:
 
 ```bash
-adb exec-out screencap -p > /tmp/webnovel-emulator.png
+adb -s "$EMULATOR_SERIAL" exec-out screencap -p > /tmp/webnovel-emulator.png
 ```
 
 ## First-Time Setup
@@ -96,8 +108,11 @@ tmux new-session -d -s webnovel-emulator \
 
 Wait for Android boot completion:
 
+First use `adb devices -l` to discover the newly created `emulator-*` serial and assign it to
+`EMULATOR_SERIAL`; do not select a physical-device serial.
+
 ```bash
-adb wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done; input keyevent 82; getprop sys.boot_completed'
+adb -s "$EMULATOR_SERIAL" wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done; input keyevent 82; getprop sys.boot_completed'
 ```
 
 Attach to the emulator session only when interactive logs are needed:
@@ -113,19 +128,19 @@ Do not leave foreground emulator `exec_command` sessions running in the conversa
 Resolve the launch activity instead of guessing if package details may have changed:
 
 ```bash
-adb shell cmd package resolve-activity --brief com.vinicius741.webnovelarchiver.nativeapp.debug
+adb -s "$EMULATOR_SERIAL" shell cmd package resolve-activity --brief com.vinicius741.webnovelarchiver.nativeapp.debug
 ```
 
 List matching installed packages:
 
 ```bash
-adb shell pm list packages | rg webnovel
+adb -s "$EMULATOR_SERIAL" shell pm list packages | rg webnovel
 ```
 
 Check whether the app process is running:
 
 ```bash
-adb shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug
+adb -s "$EMULATOR_SERIAL" shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug
 ```
 
 ## Useful QA Commands
@@ -133,24 +148,24 @@ adb shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug
 Use UI-tree-derived coordinates for taps:
 
 ```bash
-adb exec-out uiautomator dump /dev/tty > /tmp/webnovel-ui.xml
+adb -s "$EMULATOR_SERIAL" exec-out uiautomator dump /dev/tty > /tmp/webnovel-ui.xml
 ```
 
 Clear and inspect logs:
 
 ```bash
-adb logcat -c
-adb shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug
-adb logcat --pid "$(adb shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug)"
-adb logcat -b crash -d
+adb -s "$EMULATOR_SERIAL" logcat -c
+adb -s "$EMULATOR_SERIAL" shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug
+adb -s "$EMULATOR_SERIAL" logcat --pid "$(adb -s "$EMULATOR_SERIAL" shell pidof -s com.vinicius741.webnovelarchiver.nativeapp.debug)"
+adb -s "$EMULATOR_SERIAL" logcat -b crash -d
 ```
 
 Reinstall after code changes:
 
 ```bash
-cd android
-./gradlew :app:installDebug --console=plain
-adb shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity
+android/gradlew -p android :app:assembleDebug --console=plain
+adb -s "$EMULATOR_SERIAL" install -r -d android/app/build/outputs/apk/debug/app-debug.apk
+adb -s "$EMULATOR_SERIAL" shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity
 ```
 
 ## Recovery
