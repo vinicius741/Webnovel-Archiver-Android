@@ -187,7 +187,10 @@ internal fun ScreenHost.showLibrary() {
                 GridLayout(context).apply {
                     columnCount = layoutResult.numColumns.coerceAtLeast(1)
                     horizontalSpacingDp = Space.LG
-                    verticalSpacingDp = Space.LG
+                    // Story cards carry their own bottom margin (Space.MD from the `card` helper), so the
+                    // grid adds only a small gap on top — otherwise the vertical spacing (margin + grid)
+                    // balloons past the horizontal gap and rows look stretched apart.
+                    verticalSpacingDp = Space.XS
                 }
             applyFilters = {
                 renderTabGrid(stories, list, layoutResult, currentFilter(), selectedTabId, selectedTags, sortOption, sortAscending)
@@ -748,7 +751,9 @@ private class LibraryPagesAdapter(
             GridLayout(context).apply {
                 columnCount = layout.numColumns.coerceAtLeast(1)
                 horizontalSpacingDp = Space.LG
-                verticalSpacingDp = Space.LG
+                // See the single-grid path: cards already have a bottom margin, so keep the grid's
+                // vertical gap small to avoid stretched vertical spacing.
+                verticalSpacingDp = Space.XS
             }
         // Same shell as the single-grid path: cap width at the size-class content max and center it,
         // inside a scroller so a long list scrolls vertically within its page.
