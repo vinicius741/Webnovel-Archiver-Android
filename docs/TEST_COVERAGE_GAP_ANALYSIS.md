@@ -29,7 +29,7 @@ Every planning module has a dedicated test file:
 | `DownloadQueueControlPlanningTest` | Pause/resume/cancel/retry status transitions | ✅ |
 | `DownloadQueueMaintenanceTest` | Unsupported-source cleanup, stuck story status recovery | ✅ |
 | `DownloadErrorClassifierTest` | Error classification, retry-delay policy | ✅ |
-| `DownloadRangeSelectionTest` | Range, bookmark-forward, count-based range handling | ✅ |
+| `ChapterSelectionPlanningTest` | Inclusive forward/reverse range selection and drag-to-clear behavior | ✅ |
 | `StorySyncPlanningTest` | Chapter merge, slug changes, bookmark remapping, pending-new tracking, EPUB stale detection | ✅ |
 | `StoryActionGuardsTest` | Archived snapshot action guards | ✅ |
 | `BackupMergePlanningTest` | JSON backup import merge, local download preservation, stale state scrubbing | ✅ |

@@ -329,6 +329,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         }
     }
     dialog.show()
+    dialog.applyAppTheme()
 }
 
 internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPattern) -> Unit) {
@@ -402,6 +403,7 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPat
         }
     }
     dialog.show()
+    dialog.applyAppTheme()
 }
 
 /** Minimal TextWatcher that only forwards onTextChanged, for concise inline listeners. */

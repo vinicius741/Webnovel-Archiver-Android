@@ -22,6 +22,7 @@ class ReaderContentRendererTest {
         assertTrue(html.contains("max-width: 100%"))
         assertTrue(html.contains("color: inherit !important"))
         assertTrue(html.contains("background-color: transparent !important"))
+        assertTrue(html.contains("padding: 12px"))
         assertTrue(html.contains("<meta name=\"viewport\""))
     }
 

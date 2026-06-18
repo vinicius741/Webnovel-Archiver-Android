@@ -173,7 +173,7 @@ This map documents the feature set of the native Kotlin implementation. Compatib
   - `DownloadQueueControlPlanningTest` verifies pause/resume/cancel/manual retry status transitions and failed-only manual retry behavior.
   - `DownloadQueueMaintenanceTest` verifies unsupported-source queue cleanup and stuck story status recovery.
   - `DownloadErrorClassifierTest` verifies download error classification and retry-delay policy.
-  - `DownloadRangeSelectionTest` verifies explicit range, bookmark-forward range, count-based range, and invalid range handling with validation messages.
+  - `ChapterSelectionPlanningTest` verifies inclusive forward/reverse drag selection and drag-to-clear behavior.
   - `StorySyncPlanningTest` verifies stable-ID chapter merge behavior, downloaded chapter preservation across slug changes, bookmark remapping/removal, pending-new chapter tracking, EPUB config range extension, and EPUB stale detection during sync.
   - `StoryActionGuardsTest` verifies archived snapshots cannot sync or queue downloads with appropriate guard messages.
   - `BackupMergePlanningTest` verifies JSON backup imports preserve local downloaded chapter files, reader progress, EPUB state, and pending-new chapter metadata.

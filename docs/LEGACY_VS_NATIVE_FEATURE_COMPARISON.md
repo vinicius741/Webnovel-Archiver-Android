@@ -94,8 +94,9 @@ The details screen matches field-for-field and action-for-action:
 - Info panel: cover, title, author, status, score, tags, expandable description (+ copy), source URL.
 - Action buttons: **Sync Chapters**, **Download All / Download Remaining (N)** (label adapts to
   remaining count), **Generate EPUB**, **Read EPUB**, **Regenerate** when stale.
-- Overflow menu: Open Source, Select Chapters, Download Range, EPUB Settings, Apply Text Cleanup,
-  Delete Novel.
+- Overflow menu: Open Source, Select Chapters, EPUB Settings, Apply Text Cleanup, Delete Novel.
+- Select Chapters supports individual toggles, tap-first/tap-last ranges, and long-press drag
+  selection with edge auto-scroll.
 - Chapter list: searchable; filter chips All / Downloaded / From Bookmark; per-chapter
   Read / Download / Mark-as-Read.
 - Progress feedback: both render a progress bar during EPUB generation and download, with a status

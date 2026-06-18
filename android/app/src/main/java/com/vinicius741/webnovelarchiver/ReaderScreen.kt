@@ -128,7 +128,7 @@ internal fun ScreenHost.showReader(
                 rebuild()
             },
             AppBarAction(R.drawable.wna_speaker, "Read aloud") {
-                showReaderTtsPanel(story, chapter)
+                TtsForegroundService.start(app, story.id, chapter.id)
             },
             AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
                 // The panel mutates the shared `display` and calls back into `renderReader`, so
@@ -163,7 +163,7 @@ internal fun ScreenHost.showReader(
             val relevant = snapshot?.takeIf { it.storyId == story.id && it.chapterId == chapter.id }
             transportSnapshot = relevant
             // Gap 4 transport refresh. The bar is always present in the tree; we toggle its
-            // visibility rather than adding/removing it, so a TTS session that starts AFTER the
+            // visibility rather than adding/removing it, so a TTS session that starts after the
             // reader was built (the common case: open chapter → tap "Read aloud") reveals the bar
             // without needing a full screen rebuild.
             transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
@@ -280,7 +280,7 @@ internal fun ScreenHost.showReader(
         // Gap 4: floating TTS transport, docked just above the chapter nav. The bar is ALWAYS added
         // to the tree and its visibility is toggled (VISIBLE while a session for THIS chapter exists,
         // GONE otherwise). Toggling — rather than add/remove — is what lets a TTS session that starts
-        // AFTER the reader was built (open chapter → tap "Read aloud" → "Play this chapter") reveal
+        // AFTER the reader was built (open chapter → tap "Read aloud") reveal
         // the transport live via the state listener, without rebuilding the whole screen.
         val transport =
             readerTtsTransport(

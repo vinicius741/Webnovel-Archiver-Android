@@ -218,8 +218,10 @@ For selecting many chapters, there's no select-all toggle — you must tap each 
 
 ## 11. Dialogs
 
-### DL1. 🟡 Download Range dialog shows all mode fields at once
-The dialog renders `info`, `modeSpinner`, `start`, `end`, `countStart`, `count` all simultaneously, regardless of the selected mode. Range fields and Count fields are both visible even though only one mode applies — confusing.
+### DL1. ✅ Download Range dialog replaced by on-list range selection
+The separate mode-and-number dialog was removed. Select Chapters now supports tap-first/tap-last
+ranges and long-press drag selection with edge auto-scroll, keeping the interaction next to the
+chapters it affects.
 
 ### DL2. 🟡 EPUB Settings "Start after bookmark" checkbox can be visible-but-disabled
 When there's no bookmark, the checkbox renders disabled with no explanation of why.

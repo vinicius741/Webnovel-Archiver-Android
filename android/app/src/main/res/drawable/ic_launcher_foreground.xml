@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+    <!-- The archive tray anchors the mark and stays inside every adaptive-icon mask. -->
+    <path
+        android:fillColor="#C9A84C"
+        android:pathData="M96,252 L122,252 L136,284 L296,284 L310,252 L336,252 L336,322 Q336,340 318,340 L114,340 Q96,340 96,322 Z" />
+    <path
+        android:fillColor="#8B6914"
+        android:pathData="M136,284 L296,284 L286,304 L146,304 Z" />
+    <!-- A warm page shadow gives the book depth without adding launcher-scale noise. -->
+    <path
+        android:fillColor="#D4A88C"
+        android:pathData="M112,120 Q174,112 216,150 L216,286 Q174,258 112,270 Z" />
+    <path
+        android:fillColor="#A65D3C"
+        android:pathData="M320,120 Q258,112 216,150 L216,286 Q258,258 320,270 Z" />
+    <!-- The two page faces form a crisp open-book silhouette. -->
+    <path
+        android:fillColor="#F2E4C4"
+        android:pathData="M122,104 Q178,100 210,132 L210,270 Q176,246 122,254 Z" />
+    <path
+        android:fillColor="#FFFDF9"
+        android:pathData="M310,104 Q254,100 222,132 L222,270 Q256,246 310,254 Z" />
+    <!-- Bookmark and archive handle make the save action readable at small sizes. -->
+    <path
+        android:fillColor="#C9A84C"
+        android:pathData="M204,128 L228,128 L228,230 L216,218 L204,230 Z" />
+    <path
+        android:fillColor="#1B3A5F"
+        android:pathData="M188,312 L244,312 Q250,312 250,318 Q250,324 244,324 L188,324 Q182,324 182,318 Q182,312 188,312 Z" />
+</vector>

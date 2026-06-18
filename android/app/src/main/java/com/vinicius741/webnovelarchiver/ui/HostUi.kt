@@ -74,6 +74,7 @@ internal fun ScreenHost.confirm(
     .setPositiveButton(confirmLabel) { _, _ -> onYes() }
     .setNegativeButton(cancelLabel, null)
     .show()
+    .also { it.applyAppTheme() }
 
 internal fun ScreenHost.prompt(
     title: String,
@@ -81,13 +82,16 @@ internal fun ScreenHost.prompt(
     onSave: (String) -> Unit,
 ) {
     val input = makeField(app, value, title, InputType.TYPE_CLASS_TEXT)
-    AlertDialog
-        .Builder(app)
-        .setTitle(title)
-        .setView(input)
-        .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
-        .setNegativeButton("Cancel", null)
-        .show()
+    val dialog =
+        AlertDialog
+            .Builder(app)
+            .setTitle(title)
+            .setView(input)
+            .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
+            .setNegativeButton("Cancel", null)
+            .create()
+    dialog.show()
+    dialog.applyAppTheme()
 }
 
 internal fun ScreenHost.copyToClipboard(

@@ -8,18 +8,14 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.ScreenHost
-import com.vinicius741.webnovelarchiver.core.Chapter
 import com.vinicius741.webnovelarchiver.core.DisplayPreferences
 import com.vinicius741.webnovelarchiver.core.PreferenceNormalization
-import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.showTtsSettings
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import kotlin.math.roundToInt
 
 /**
  * Styled panel surface matching [showStyledOptionsDialog]: rounded surface, transparent window
- * background, title, and a Cancel button. Shared by the reader's TTS and settings panels so they
- * read as the same component as the rest of the app's option sheets.
+ * background, title, and a Cancel button.
  */
 private fun ScreenHost.styledPanelSurface(
     title: String,
@@ -90,51 +86,9 @@ private fun LinearLayout.panelRow(
 }
 
 /**
- * TTS transport panel for the reader. When no session exists it offers a single "Play this
- * chapter" action; once a session is active it exposes Resume/Pause · Stop · Prev/Next chunk, plus
- * a link into the global TTS voice settings. All commands route through [TtsForegroundService] —
- * identical to the inline transport buttons that used to live on the reader body.
- */
-internal fun ScreenHost.showReaderTtsPanel(
-    story: Story,
-    chapter: Chapter,
-) {
-    val session = storage.getTtsSession()
-    styledPanelSurface(if (session != null) "Text to Speech" else "Read Aloud") {
-        if (session == null) {
-            panelRow("Play this chapter", this@showReaderTtsPanel) {
-                TtsForegroundService.start(app, story.id, chapter.id)
-            }
-        } else {
-            val resumeOrPause = if (session.isPaused) "Resume" else "Pause"
-            val resumeOrPauseAction =
-                if (session.isPaused) TtsForegroundService.ACTION_RESUME_SESSION else TtsForegroundService.ACTION_PAUSE
-            panelRow(resumeOrPause, this@showReaderTtsPanel) {
-                TtsForegroundService.command(app, resumeOrPauseAction)
-            }
-            panelRow("Stop", this@showReaderTtsPanel) {
-                TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP)
-            }
-            addView(
-                View(app).apply {
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(8))
-                },
-            )
-            panelRow("Previous chunk", this@showReaderTtsPanel) {
-                TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS)
-            }
-            panelRow("Next chunk", this@showReaderTtsPanel) {
-                TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT)
-            }
-        }
-        panelRow("Voice settings", this@showReaderTtsPanel) { showTtsSettings() }
-    }
-}
-
-/**
- * Reader display settings panel: font-size stepper, dark-reader toggle, and Copy chapter. Each
- * control mutates [display], persists it, and re-renders the WebView via [onRerender] so changes
- * preview live behind the dialog.
+ * Reader settings panel: font-size stepper, dark-reader toggle, voice settings, and Copy chapter.
+ * Display controls mutate [display], persist it, and re-render the WebView via [onRerender] so
+ * changes preview live behind the dialog.
  */
 internal fun ScreenHost.showReaderSettingsPanel(
     display: DisplayPreferences,
@@ -163,7 +117,10 @@ internal fun ScreenHost.showReaderSettingsPanel(
             onRerender()
             sizeLabel.text = "${(display.readerFontScale * 100).roundToInt()}%"
         }
-        fontRow.addView(makeButton(app, "A−", Btn.TEXT) { applyFont(-0.1f) })
+        fontRow.addView(
+            makeButton(app, "A−", Btn.TEXT) { applyFont(-0.1f) },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
         fontRow.addView(
             sizeLabel,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -171,7 +128,10 @@ internal fun ScreenHost.showReaderSettingsPanel(
                 textAlignment = View.TEXT_ALIGNMENT_CENTER
             },
         )
-        fontRow.addView(makeButton(app, "A+", Btn.TEXT) { applyFont(0.1f) })
+        fontRow.addView(
+            makeButton(app, "A+", Btn.TEXT) { applyFont(0.1f) },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
         addView(fontRow)
 
         // Dark reader toggle row with a trailing state label.
@@ -188,6 +148,7 @@ internal fun ScreenHost.showReaderSettingsPanel(
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(8))
             },
         )
+        panelRow("Voice settings", this@showReaderSettingsPanel) { showTtsSettings() }
         panelRow("Copy chapter text", this@showReaderSettingsPanel) { onCopy() }
     }
 }

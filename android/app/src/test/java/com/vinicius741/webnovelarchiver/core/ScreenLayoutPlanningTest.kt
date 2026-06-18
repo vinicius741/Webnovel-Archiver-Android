@@ -186,4 +186,11 @@ class ScreenLayoutPlanningTest {
         assertEquals(1040, libraryMaxContentWidth(2))
         assertEquals(1320, libraryMaxContentWidth(3))
     }
+
+    @Test
+    fun readerSidePaddingKeepsCompactTextCloseToTheScreenEdges() {
+        assertEquals(8, readerSidePadding(WidthClass.COMPACT))
+        assertEquals(20, readerSidePadding(WidthClass.MEDIUM))
+        assertEquals(32, readerSidePadding(WidthClass.EXPANDED))
+    }
 }

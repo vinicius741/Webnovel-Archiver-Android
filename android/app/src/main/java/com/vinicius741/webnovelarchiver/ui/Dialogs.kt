@@ -7,7 +7,23 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.ScreenHost
+
+/** Applies the active app theme to framework AlertDialogs after they have been shown. */
+internal fun AlertDialog.applyAppTheme() {
+    val colors = ThemeManager.colors
+    val radius = context.dp(ThemeManager.shapes.dialogRadius).toFloat()
+
+    window?.setBackgroundDrawable(roundedBg(colors.surface, radius))
+    getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(colors.primary)
+    getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(colors.primary)
+    getButton(AlertDialog.BUTTON_NEUTRAL)?.setTextColor(colors.primary)
+    findViewById<TextView>(android.R.id.message)?.setTextColor(colors.onSurface)
+
+    val titleId = context.resources.getIdentifier("alertTitle", "id", "android")
+    if (titleId != 0) findViewById<TextView>(titleId)?.setTextColor(colors.onSurface)
+}
 
 /**
  * Custom options sheet matching the Library sort-by dialog styling:

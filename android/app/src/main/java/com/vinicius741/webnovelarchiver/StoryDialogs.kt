@@ -12,139 +12,14 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
-import android.widget.ArrayAdapter
 import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Spinner
 import android.widget.TextView
-import com.vinicius741.webnovelarchiver.core.DownloadRangeSelection
 import com.vinicius741.webnovelarchiver.core.EpubConfig
 import com.vinicius741.webnovelarchiver.core.Story
-import com.vinicius741.webnovelarchiver.core.StoryActionGuards
 import com.vinicius741.webnovelarchiver.ui.*
-
-internal fun ScreenHost.showDownloadRangeDialog(story: Story) {
-    if (!StoryActionGuards.canQueueDownloads(story)) {
-        toast(StoryActionGuards.archivedActionMessage("Downloading"))
-        return
-    }
-    val view =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), dp(12))
-        }
-    val bookmarkChapterNumber =
-        story.lastReadChapterId
-            ?.let { id -> story.chapters.indexOfFirst { it.id == id } }
-            ?.takeIf { it >= 0 }
-            ?.plus(1)
-    val modeSpinner =
-        Spinner(app).apply {
-            adapter =
-                ArrayAdapter(
-                    app,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    listOf("Range", "Bookmark", "Count"),
-                )
-        }
-    val start = styledDialogField("1", "Start chapter", InputType.TYPE_CLASS_NUMBER)
-    val end = styledDialogField(story.chapters.size.toString(), "End chapter", InputType.TYPE_CLASS_NUMBER)
-    val countStart = styledDialogField("1", "Count start chapter", InputType.TYPE_CLASS_NUMBER)
-    val count = styledDialogField(DownloadRangeSelection.DEFAULT_COUNT.toString(), "Chapters to download", InputType.TYPE_CLASS_NUMBER)
-    val info =
-        makeText(
-            app,
-            "Total chapters: ${story.chapters.size}" + (
-                bookmarkChapterNumber?.let {
-                    " • Bookmark at chapter $it"
-                } ?: ""
-            ),
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        ).apply {
-            setPadding(0, 0, 0, dp(8))
-        }
-    // DL1: wrap each mode's fields so only the relevant ones are visible for the selected mode.
-    val rangeFields =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(start)
-            addView(end)
-        }
-    val countFields =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(countStart)
-            addView(count)
-        }
-    val bookmarkHint =
-        makeText(app, "Downloads from your bookmarked chapter to the end.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-            if (bookmarkChapterNumber == null) {
-                text = "No bookmark set. Read a chapter to set one."
-                setTextColor(ThemeManager.colors.error)
-            }
-        }
-    val updateMode = {
-        val pos = modeSpinner.selectedItemPosition
-        rangeFields.visibility = if (pos == 0) android.view.View.VISIBLE else android.view.View.GONE
-        bookmarkHint.visibility = if (pos == 1) android.view.View.VISIBLE else android.view.View.GONE
-        countFields.visibility = if (pos == 2) android.view.View.VISIBLE else android.view.View.GONE
-    }
-    modeSpinner.onItemSelectedListener =
-        object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(
-                parent: android.widget.AdapterView<*>?,
-                v: android.view.View?,
-                p: Int,
-                id: Long,
-            ) = updateMode()
-
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
-        }
-    view.addView(info)
-    view.addView(modeSpinner)
-    view.addView(rangeFields)
-    view.addView(bookmarkHint)
-    view.addView(countFields)
-    val dialog =
-        AlertDialog
-            .Builder(app)
-            .setTitle("Download Range")
-            .setView(scroll(view))
-            .setPositiveButton("Download", null)
-            .setNegativeButton("Cancel", null)
-            .create()
-    dialog.setOnShowListener {
-        updateMode()
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val mode =
-                when (modeSpinner.selectedItemPosition) {
-                    1 -> DownloadRangeSelection.Mode.BOOKMARK
-                    2 -> DownloadRangeSelection.Mode.COUNT
-                    else -> DownloadRangeSelection.Mode.RANGE
-                }
-            val selection =
-                DownloadRangeSelection.select(
-                    mode = mode,
-                    totalChapters = story.chapters.size,
-                    rangeStart = start.text.toString().toIntOrNull(),
-                    rangeEnd = end.text.toString().toIntOrNull(),
-                    countStart = countStart.text.toString().toIntOrNull(),
-                    count = count.text.toString().toIntOrNull(),
-                    bookmarkChapterNumber = bookmarkChapterNumber,
-                )
-            if (!selection.valid) {
-                toast(selection.error ?: "Please enter a valid range of chapters.")
-                return@setOnClickListener
-            }
-            queueDownload(story, selection.indexes)
-            dialog.dismiss()
-        }
-    }
-    dialog.show()
-}
 
 internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     if (story.chapters.isEmpty()) return toast("No chapters available")
@@ -206,39 +81,42 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
         },
     )
 
-    AlertDialog
-        .Builder(app)
-        .setTitle("EPUB Settings")
-        .setView(scroll(view))
-        .setPositiveButton("Save") { _, _ ->
-            val max =
-                maxChapters.text
-                    .toString()
-                    .toIntOrNull()
-                    ?.coerceIn(10, 1000) ?: 150
-            val start =
-                rangeStart.text
-                    .toString()
-                    .toIntOrNull()
-                    ?.coerceIn(1, story.chapters.size) ?: 1
-            val end =
-                rangeEnd.text
-                    .toString()
-                    .toIntOrNull()
-                    ?.coerceIn(start, story.chapters.size) ?: story.chapters.size
-            val config =
-                EpubConfig(
-                    maxChaptersPerEpub = max,
-                    rangeStart = start,
-                    rangeEnd = end,
-                    startAfterBookmark = startAfterBookmark.isChecked && story.lastReadChapterId != null,
-                )
-            story.epubConfig = config
-            storage.addOrUpdateStory(story)
-            toast("EPUB settings saved")
-            showDetails(story.id)
-        }.setNegativeButton("Cancel", null)
-        .show()
+    val dialog =
+        AlertDialog
+            .Builder(app)
+            .setTitle("EPUB Settings")
+            .setView(scroll(view))
+            .setPositiveButton("Save") { _, _ ->
+                val max =
+                    maxChapters.text
+                        .toString()
+                        .toIntOrNull()
+                        ?.coerceIn(10, 1000) ?: 150
+                val start =
+                    rangeStart.text
+                        .toString()
+                        .toIntOrNull()
+                        ?.coerceIn(1, story.chapters.size) ?: 1
+                val end =
+                    rangeEnd.text
+                        .toString()
+                        .toIntOrNull()
+                        ?.coerceIn(start, story.chapters.size) ?: story.chapters.size
+                val config =
+                    EpubConfig(
+                        maxChaptersPerEpub = max,
+                        rangeStart = start,
+                        rangeEnd = end,
+                        startAfterBookmark = startAfterBookmark.isChecked && story.lastReadChapterId != null,
+                    )
+                story.epubConfig = config
+                storage.addOrUpdateStory(story)
+                toast("EPUB settings saved")
+                showDetails(story.id)
+            }.setNegativeButton("Cancel", null)
+            .create()
+    dialog.show()
+    dialog.applyAppTheme()
 }
 
 internal fun ScreenHost.showDescriptionDialog(
@@ -249,15 +127,18 @@ internal fun ScreenHost.showDescriptionDialog(
         makeText(app, description, Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
             setPadding(dp(24), dp(16), dp(24), dp(16))
         }
-    AlertDialog
-        .Builder(app)
-        .setTitle(title)
-        .setView(scroll(view))
-        .setPositiveButton("Copy") { _, _ ->
-            copyToClipboard("Story description", description)
-            toast("Description copied")
-        }.setNegativeButton("Close", null)
-        .show()
+    val dialog =
+        AlertDialog
+            .Builder(app)
+            .setTitle(title)
+            .setView(scroll(view))
+            .setPositiveButton("Copy") { _, _ ->
+                copyToClipboard("Story description", description)
+                toast("Description copied")
+            }.setNegativeButton("Close", null)
+            .create()
+    dialog.show()
+    dialog.applyAppTheme()
 }
 
 internal fun ScreenHost.showCoverDialog(story: Story) {

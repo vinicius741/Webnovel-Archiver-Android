@@ -72,7 +72,7 @@ object ReaderContentRenderer {
                         background-color: ${colors.background};
                         color: ${colors.foreground};
                         font-family: sans-serif;
-                        padding: 20px;
+                        padding: 12px;
                         line-height: 1.6;
                         font-size: ${fontSize}px;
                         box-sizing: border-box;

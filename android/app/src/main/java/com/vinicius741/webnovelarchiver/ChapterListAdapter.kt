@@ -149,11 +149,9 @@ class ChapterListAdapter(
             return
         }
 
-        val isLastRead = story.lastReadChapterId == chapter.id
         val radiusPx = context.dp(Space.SM).toFloat()
-        val fill = if (isLastRead) ThemeManager.colors.primaryContainer else ThemeManager.colors.elevation1
         row.apply {
-            background = ripple(roundedBg(fill, radiusPx), radiusPx, ThemeManager.colors.onSurface)
+            background = ripple(roundedBg(ThemeManager.colors.elevation1, radiusPx), radiusPx, ThemeManager.colors.onSurface)
             isClickable = true
             isFocusable = true
             setOnClickListener { host.showReader(story.id, chapter.id) }
@@ -182,11 +180,10 @@ class ChapterListAdapter(
                         context,
                         "${index + 1}. ${sanitizeTitle(chapter.title)}",
                         Type.TITLE_SMALL,
-                        if (isLastRead) ThemeManager.colors.primary else ThemeManager.colors.onSurface,
+                        ThemeManager.colors.onSurface,
                     ).apply {
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END
-                        if (isLastRead) setTypeface(typeface, android.graphics.Typeface.BOLD)
                     },
                 )
                 // Subtitle: live queue state first (it's more immediate), then the static offline badge.

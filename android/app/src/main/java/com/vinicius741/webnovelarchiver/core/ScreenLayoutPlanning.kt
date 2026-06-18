@@ -60,13 +60,11 @@ enum class HeightClass { COMPACT, MEDIUM, EXPANDED }
 enum class ScreenLayoutMode {
     AUTO,
     COVER,
-    INNER
-
-    /** Normalizes an arbitrary stored string to a valid mode, defaulting to AUTO. */
-    ,
+    INNER,
     ;
 
     companion object {
+        /** Normalizes an arbitrary stored string to a valid mode, defaulting to AUTO. */
         fun fromStored(value: String?): ScreenLayoutMode =
             when (value) {
                 ScreenLayoutPlanning.SCREEN_LAYOUT_MODE_COVER -> COVER
@@ -187,9 +185,9 @@ fun libraryMaxContentWidth(numColumns: Int): Int =
 /** Reader horizontal padding (dp) by width class, mirroring the RN reader `shellPadding`. */
 fun readerSidePadding(widthClass: WidthClass): Int =
     when (widthClass) {
-        WidthClass.EXPANDED -> 40
-        WidthClass.MEDIUM -> 28
-        WidthClass.COMPACT -> 16
+        WidthClass.EXPANDED -> 32
+        WidthClass.MEDIUM -> 20
+        WidthClass.COMPACT -> 8
     }
 
 /** Queue content cap (dp) by width class. */

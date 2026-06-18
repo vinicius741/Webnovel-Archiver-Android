@@ -452,9 +452,8 @@ private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
 
 /**
  * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that
- * don't warrant a primary button: opening the source site, the two advanced download-selection
- * flows, and text cleanup. Mirrors the React Native StoryMenu (Download Range / EPUB Settings /
- * Apply Text Cleanup) plus Open Source.
+ * don't warrant a primary button: opening the source site, chapter selection, EPUB settings, and
+ * text cleanup.
  */
 internal fun ScreenHost.showDetailsOverflow(story: Story) {
     val isBusy = storyOperation?.storyId == story.id
@@ -466,9 +465,6 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     if (StoryActionGuards.canQueueDownloads(story)) {
         options += "Select Chapters" to {
             if (isBusy) toast("Please wait for the current operation to finish") else showChapterSelection(story.id)
-        }
-        options += "Download Range" to {
-            if (isBusy) toast("Please wait for the current operation to finish") else showDownloadRangeDialog(story)
         }
     }
     options += "EPUB Settings" to {

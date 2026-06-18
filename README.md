@@ -84,7 +84,7 @@ keytool -genkeypair -v \
 Then add these values to `android/local.properties`, or export them before running Gradle:
 
 ```bash
-WEBNOVEL_RELEASE_STORE_FILE=/Users/ilia/.android/webnovel-archiver-release.jks
+WEBNOVEL_RELEASE_STORE_FILE=$HOME/.android/webnovel-archiver-release.jks
 WEBNOVEL_RELEASE_STORE_PASSWORD=your-keystore-password
 WEBNOVEL_RELEASE_KEY_ALIAS=webnovel-archiver
 WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
