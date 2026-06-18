@@ -42,6 +42,7 @@ internal fun ScreenHost.showLibrary() {
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
     val stories = storage.getLibrary()
+    val tabs = storage.getTabs().sortedBy { it.order }
     screen(
         title = "Library",
         subtitle = if (stories.isEmpty()) null else "${stories.size} novel${if (stories.size == 1) "" else "s"}",
@@ -53,23 +54,37 @@ internal fun ScreenHost.showLibrary() {
         ),
         fab = { showAddStory() },
     ) {
-        if (stories.isEmpty()) {
-            addView(makeEmptyState(context, "No novels yet. Tap + to add a Royal Road or Scribble Hub story.", R.drawable.wna_menu_book))
-            return@screen
-        }
-
-        val tabs = storage.getTabs().sortedBy { it.order }
-        val search = makeSearchField(context, "Search stories")
-
-        // Restore the last-selected tab from persisted prefs (survives navigating away AND app restarts).
-        // Resolve against the live tabs so a deleted tab's stale id falls back to All instead of an
-        // empty, un-selectable view.
+        // Resolve and persist tab selection even when the library is empty. Configured tabs are
+        // still useful before the first import, and hiding them makes tab creation look ineffective.
         val hasUnassigned = stories.any { it.tabId == null }
         var selectedTabId: String? = LibraryTabSelection.resolve(
             storage.getDisplayPreferences().libraryTabId,
             tabs,
             hasUnassigned,
         )
+
+        fun persistTab(id: String?) {
+            val encoded = LibraryTabSelection.encode(id)
+            val display = storage.getDisplayPreferences()
+            if (display.libraryTabId != encoded) {
+                storage.saveDisplayPreferences(display.copy(libraryTabId = encoded))
+            }
+        }
+
+        if (stories.isEmpty()) {
+            addView(makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+                selectedTabId = newTabId
+                persistTab(newTabId)
+            }.view)
+            addView(makeEmptyState(context, "No novels yet. Tap + to add a Royal Road or Scribble Hub story.", R.drawable.wna_menu_book))
+            return@screen
+        }
+
+        val search = makeSearchField(context, "Search stories")
+
+        // Restore the last-selected tab from persisted prefs (survives navigating away AND app restarts).
+        // Resolve against the live tabs so a deleted tab's stale id falls back to All instead of an
+        // empty, un-selectable view.
         // The single source of truth for "what is a swipeable tab", shared by the tab bar and the
         // pager so their ordering can never drift. Matches the legacy RN `useLibraryPager.pageTabIds`:
         // All first, then the synthetic Unassigned tab (only when stories are unassigned), then real
@@ -83,15 +98,6 @@ internal fun ScreenHost.showLibrary() {
         val selectedTags = mutableSetOf<String>()
         var sortOption = "updated"
         var sortAscending = false
-
-        fun persistTab(id: String?) {
-            val encoded = LibraryTabSelection.encode(id)
-            val display = storage.getDisplayPreferences()
-            // Avoid a disk write when the selection hasn't actually changed.
-            if (display.libraryTabId != encoded) {
-                storage.saveDisplayPreferences(display.copy(libraryTabId = encoded))
-            }
-        }
 
         // Apply the current filter snapshot to whichever grid surface is showing: the single shared
         // [GridLayout] in single-tab mode, or every page's grid via the adapter in pager mode. Kept as
@@ -794,7 +800,8 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
             showLibrary()
         }
     }
-    showStyledOptionsDialog("Move ${storyIds.size} Novels", options)
+    val novelLabel = if (storyIds.size == 1) "Novel" else "Novels"
+    showStyledOptionsDialog("Move ${storyIds.size} $novelLabel", options)
 }
 
 internal fun ScreenHost.showAddStory() {

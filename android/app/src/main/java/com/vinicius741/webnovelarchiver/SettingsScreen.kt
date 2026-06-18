@@ -269,6 +269,7 @@ internal fun ScreenHost.showTabs() {
             }
         }
         tabs.forEachIndexed { index, tab ->
+            val novelCount = storage.getLibrary().count { it.tabId == tab.id }
             addView(card {
                 row {
                     addView(ImageView(context).apply {
@@ -276,8 +277,9 @@ internal fun ScreenHost.showTabs() {
                         layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
                     })
                     addView(makeText(context, tab.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(10), 0, 0, 0) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    // T3: add a "novels" suffix so the bare count reads as a count, not a stray number.
-                    addView(makeText(context, "${storage.getLibrary().count { it.tabId == tab.id }} novels", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
+                    // T3: add a noun so the bare count reads as a count, not a stray number.
+                    val novelLabel = if (novelCount == 1) "novel" else "novels"
+                    addView(makeText(context, "$novelCount $novelLabel", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
                 }
                 flow {
                     button("Up", Btn.TEXT, R.drawable.wna_up) {

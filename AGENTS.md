@@ -2,6 +2,12 @@
 
 This file provides guidelines for agentic coding assistants working on this codebase.
 
+## Git Workflow
+
+- Work and commit directly on `main` by default.
+- Do not create a feature branch unless the user explicitly requests one in their current message.
+- When asked to commit or push, stage all task-related changes, but do not silently include unrelated worktree changes.
+
 ## Project Overview
 
 Webnovel Archiver Android is a **native Kotlin Android app** that downloads, archives, and exports webnovels as EPUB files. It is **local-first** — all scraping, parsing, and EPUB generation happens on-device with no external backend servers.

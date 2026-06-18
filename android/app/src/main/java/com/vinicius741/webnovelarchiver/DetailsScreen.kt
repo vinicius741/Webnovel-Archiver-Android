@@ -409,12 +409,12 @@ internal fun ScreenHost.showChapterSelection(storyId: String, initialSelectedIds
         var refreshBulkActions: () -> Unit = {}
         // X3: select-all / deselect-all affordance for fast bulk selection.
         flow {
-            button("Select All", Btn.TEXT, R.drawable.wna_check) {
+            button("Select All", Btn.TEXT, R.drawable.wna_check, enabled = downloadable.isNotEmpty()) {
                 selectedIds.clear()
                 selectedIds.addAll(downloadable.map { it.id })
                 showChapterSelection(story.id, selectedIds)
             }
-            button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
+            button("Deselect All", Btn.TEXT, R.drawable.wna_close, enabled = downloadable.isNotEmpty()) {
                 selectedIds.clear()
                 showChapterSelection(story.id, selectedIds)
             }
