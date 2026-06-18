@@ -96,7 +96,7 @@ internal fun ScreenHost.screen(
 
 /** Locates the first [ScrollView] anywhere under [root], so a re-render can capture the outgoing
  *  scroll position before the view tree is torn down. */
-private fun findScrollView(root: View): ScrollView? {
+internal fun findScrollView(root: View): ScrollView? {
     if (root is ScrollView) return root
     if (root is ViewGroup) {
         for (i in 0 until root.childCount) {
