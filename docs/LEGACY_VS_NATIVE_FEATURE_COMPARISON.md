@@ -279,9 +279,9 @@ The reader matches:
 
 Both ship an in-app WebView importer with the same controls: address bar with https lock icon,
 Go / Forward / Refresh, progress bar, "Save imported novel to" tab selector, Import, and Open in
-external browser. Both resolve non-URL input to a **Google search** and both block Google OAuth
-URLs from in-app navigation. `BrowserUrlPlanning.kt` mirrors RN's `resolveUrl`/`isGoogleAuthUrl`
-exactly.
+external browser. Both resolve non-URL input to a **Google search**. The native build no longer
+intercepts Google OAuth URLs — in a native WebView the standard OAuth/login flow works without the
+legacy external-browser handoff. `BrowserUrlPlanning.kt` mirrors RN's `resolveUrl`.
 
 ---
 

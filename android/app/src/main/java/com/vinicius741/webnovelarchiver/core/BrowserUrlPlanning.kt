@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.core
 
-import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -24,15 +23,4 @@ object BrowserUrlPlanning {
         }
         return "https://www.google.com/search?q=${URLEncoder.encode(trimmed, StandardCharsets.UTF_8.name()).replace("+", "%20")}"
     }
-
-    fun isGoogleAuthUrl(url: String): Boolean =
-        runCatching {
-            if (url.isBlank()) return false
-            val parsed = URI(url)
-            val host = parsed.host?.lowercase().orEmpty()
-            val path = parsed.path.orEmpty()
-            host == "accounts.google.com" ||
-                host.endsWith(".accounts.google.com") ||
-                ((host == "google.com" || host.endsWith(".google.com")) && path.startsWith("/o/oauth2"))
-        }.getOrDefault(false)
 }

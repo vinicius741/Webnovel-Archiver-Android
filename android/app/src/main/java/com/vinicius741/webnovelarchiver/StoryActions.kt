@@ -266,8 +266,6 @@ internal fun resolveUrl(input: String): String = BrowserUrlPlanning.resolveUrl(i
 
 internal fun isNovelUrl(url: String): Boolean = SourceUrlValidation.isImportableStoryUrl(url)
 
-internal fun isGoogleAuthUrl(url: String): Boolean = BrowserUrlPlanning.isGoogleAuthUrl(url)
-
 // ---- File / share helpers ----
 
 internal fun ScreenHost.openFile(path: String?) {

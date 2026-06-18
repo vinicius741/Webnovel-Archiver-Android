@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.Uri
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ArrayAdapter
@@ -75,16 +74,6 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
         WebViewSafety.applyBrowserSettings(web)
         web.webViewClient =
             object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(
-                    view: WebView?,
-                    request: WebResourceRequest?,
-                ): Boolean {
-                    val requested = request?.url?.toString() ?: return false
-                    if (!isGoogleAuthUrl(requested)) return false
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(requested)))
-                    return true
-                }
-
                 override fun onPageStarted(
                     view: WebView?,
                     url: String?,
