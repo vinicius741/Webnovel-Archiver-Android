@@ -220,15 +220,24 @@ class ChapterListAdapter(
                 }
             },
         )
+        // One-tap bookmark (replaces the per-chapter three-dot overflow): empty outline by default,
+        // filled + primary-tinted when this chapter is the novel's bookmark. Tapping toggles it.
+        val isBookmarked = story.lastReadChapterId == chapter.id
         row.addView(
             ImageView(context).apply {
-                setImageDrawable(context.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.onSurfaceVariant))
+                setImageDrawable(
+                    context.tintedIcon(
+                        if (isBookmarked) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
+                        if (isBookmarked) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant,
+                    ),
+                )
+                contentDescription = if (isBookmarked) "Clear bookmark" else "Bookmark chapter"
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
                 setPadding(context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2))
                 background = selectableRipple(ThemeManager.colors.onSurface)
                 isClickable = true
                 isFocusable = true
-                setOnClickListener { host.showChapterActions(story, chapter, index, list, query, filter) }
+                setOnClickListener { host.toggleChapterBookmark(story, chapter, list, query, filter) }
                 layoutParams = LinearLayout.LayoutParams(context.dp(44), context.dp(44))
             },
         )

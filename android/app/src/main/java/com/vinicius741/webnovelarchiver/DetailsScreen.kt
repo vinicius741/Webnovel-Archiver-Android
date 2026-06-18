@@ -16,7 +16,6 @@ import com.vinicius741.webnovelarchiver.core.EpubConfig
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StoryActionGuards
 import com.vinicius741.webnovelarchiver.core.StoryBookmarkPlanning
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.DESCRIPTION_PREVIEW_LENGTH
@@ -35,7 +34,6 @@ import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
@@ -549,30 +547,21 @@ internal fun filterDetailsChapters(
         }
 }
 
-/** Per-row overflow: Read, conditional Download, Mark as Read ⇄ Clear, Read Aloud (TTS). */
-internal fun ScreenHost.showChapterActions(
+/**
+ * Toggles the bookmark on [chapter] for [story] from the per-row bookmark button (which replaced the
+ * old three-dot chapter overflow). Persists the new [Story.lastReadChapterId] and re-renders the list
+ * so the tapped row's icon flips between the empty outline and the filled, primary-tinted bookmark.
+ */
+internal fun ScreenHost.toggleChapterBookmark(
     story: Story,
     chapter: Chapter,
-    index: Int,
     list: androidx.recyclerview.widget.RecyclerView,
     query: String,
     filter: String,
 ) {
-    val options = mutableListOf<Pair<String, () -> Unit>>()
-    options += "Read" to { showReader(story.id, chapter.id) }
-    if (!chapter.downloaded && StoryActionGuards.canQueueDownloads(story)) {
-        options += "Download" to {
-            queueDownload(story, listOf(index))
-        }
-    }
-    val isBookmarked = story.lastReadChapterId == chapter.id
-    options += (if (isBookmarked) "Clear Bookmark" else "Mark as Read") to {
-        val updated = StoryBookmarkPlanning.withBookmark(story, chapter.id, toggleExisting = true)
-        storage.addOrUpdateStory(updated)
-        renderChapterList(updated, list, query, filter)
-    }
-    options += "Read Aloud (TTS)" to { TtsForegroundService.start(app, story.id, chapter.id) }
-    showStyledOptionsDialog(sanitizeTitle(chapter.title), options)
+    val updated = StoryBookmarkPlanning.withBookmark(story, chapter.id, toggleExisting = true)
+    storage.addOrUpdateStory(updated)
+    renderChapterList(updated, list, query, filter)
 }
 
 /**
