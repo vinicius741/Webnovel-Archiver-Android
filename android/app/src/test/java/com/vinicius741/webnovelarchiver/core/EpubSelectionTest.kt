@@ -6,14 +6,16 @@ import org.junit.Test
 class EpubSelectionTest {
     @Test
     fun selectsDownloadedChaptersInConfiguredRangeWithOriginalNumbers() {
-        val story = storyWithChapters(
-            downloaded = listOf(true, false, true, true),
-        )
+        val story =
+            storyWithChapters(
+                downloaded = listOf(true, false, true, true),
+            )
 
-        val selected = EpubSelection.selectDownloadedChapters(
-            story,
-            EpubConfig(maxChaptersPerEpub = 150, rangeStart = 2, rangeEnd = 4, startAfterBookmark = false),
-        )
+        val selected =
+            EpubSelection.selectDownloadedChapters(
+                story,
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 2, rangeEnd = 4, startAfterBookmark = false),
+            )
 
         assertEquals(listOf("c3", "c4"), selected.map { it.chapter.id })
         assertEquals(listOf(3, 4), selected.map { it.originalChapterNumber })
@@ -21,16 +23,18 @@ class EpubSelectionTest {
 
     @Test
     fun startAfterBookmarkBeginsAfterLastReadChapter() {
-        val story = storyWithChapters(
-            downloaded = listOf(true, true, true, true),
-        ).apply {
-            lastReadChapterId = "c2"
-        }
+        val story =
+            storyWithChapters(
+                downloaded = listOf(true, true, true, true),
+            ).apply {
+                lastReadChapterId = "c2"
+            }
 
-        val selected = EpubSelection.selectDownloadedChapters(
-            story,
-            EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAfterBookmark = true),
-        )
+        val selected =
+            EpubSelection.selectDownloadedChapters(
+                story,
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAfterBookmark = true),
+            )
 
         assertEquals(listOf("c3", "c4"), selected.map { it.chapter.id })
         assertEquals(listOf(3, 4), selected.map { it.originalChapterNumber })
@@ -48,20 +52,21 @@ class EpubSelectionTest {
         )
     }
 
-    private fun storyWithChapters(downloaded: List<Boolean>): Story {
-        return Story(
+    private fun storyWithChapters(downloaded: List<Boolean>): Story =
+        Story(
             id = "story",
             title = "Story",
             author = "Author",
-            chapters = downloaded.mapIndexed { index, isDownloaded ->
-                Chapter(
-                    id = "c${index + 1}",
-                    title = "Chapter ${index + 1}",
-                    url = "https://example.com/${index + 1}",
-                    downloaded = isDownloaded,
-                    content = if (isDownloaded) "<p>Body</p>" else null,
-                )
-            }.toMutableList(),
+            chapters =
+                downloaded
+                    .mapIndexed { index, isDownloaded ->
+                        Chapter(
+                            id = "c${index + 1}",
+                            title = "Chapter ${index + 1}",
+                            url = "https://example.com/${index + 1}",
+                            downloaded = isDownloaded,
+                            content = if (isDownloaded) "<p>Body</p>" else null,
+                        )
+                    }.toMutableList(),
         )
-    }
 }

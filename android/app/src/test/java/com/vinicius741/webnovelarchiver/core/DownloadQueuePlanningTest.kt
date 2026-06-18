@@ -9,11 +9,12 @@ import org.junit.Test
 class DownloadQueuePlanningTest {
     @Test
     fun queueChaptersAddsOnlyValidUndownloadedChapters() {
-        val story = story(
-            Chapter(id = "c1", title = "One", url = "https://example.com/1"),
-            Chapter(id = "c2", title = "Two", url = "https://example.com/2", downloaded = true),
-            Chapter(id = "c3", title = "Three", url = "https://example.com/3"),
-        )
+        val story =
+            story(
+                Chapter(id = "c1", title = "One", url = "https://example.com/1"),
+                Chapter(id = "c2", title = "Two", url = "https://example.com/2", downloaded = true),
+                Chapter(id = "c3", title = "Three", url = "https://example.com/3"),
+            )
 
         val plan = DownloadQueuePlanning.queueChapters(emptyList(), story, listOf(0, 1, 2, 9))
 
@@ -26,19 +27,20 @@ class DownloadQueuePlanningTest {
     @Test
     fun queueChaptersReplacesTerminalDuplicateWithPendingJob() {
         val story = story(Chapter(id = "c1", title = "Fresh Title", url = "https://example.com/fresh"))
-        val existing = DownloadJob(
-            id = "story-1_0",
-            storyId = "story-1",
-            storyTitle = "Old Story",
-            chapterIndex = 0,
-            chapter = Chapter(id = "old", title = "Old Title", url = "https://example.com/old"),
-            status = "failed",
-            retryCount = 2,
-            error = "Timeout",
-            errorCategory = "network",
-            errorCode = "TIMEOUT",
-            nextRetryAt = 123L,
-        )
+        val existing =
+            DownloadJob(
+                id = "story-1_0",
+                storyId = "story-1",
+                storyTitle = "Old Story",
+                chapterIndex = 0,
+                chapter = Chapter(id = "old", title = "Old Title", url = "https://example.com/old"),
+                status = "failed",
+                retryCount = 2,
+                error = "Timeout",
+                errorCategory = "network",
+                errorCode = "TIMEOUT",
+                nextRetryAt = 123L,
+            )
 
         val plan = DownloadQueuePlanning.queueChapters(listOf(existing), story, listOf(0))
         val replacement = plan.jobs.single()
@@ -58,14 +60,15 @@ class DownloadQueuePlanningTest {
     @Test
     fun queueChaptersKeepsActiveDuplicateWithoutAddingAnotherJob() {
         val story = story(Chapter(id = "c1", title = "One", url = "https://example.com/1"))
-        val existing = DownloadJob(
-            id = "story-1_0",
-            storyId = "story-1",
-            storyTitle = "Native Story",
-            chapterIndex = 0,
-            chapter = story.chapters[0],
-            status = "pending",
-        )
+        val existing =
+            DownloadJob(
+                id = "story-1_0",
+                storyId = "story-1",
+                storyTitle = "Native Story",
+                chapterIndex = 0,
+                chapter = story.chapters[0],
+                status = "pending",
+            )
 
         val plan = DownloadQueuePlanning.queueChapters(listOf(existing), story, listOf(0))
 

@@ -84,7 +84,12 @@ object DownloadErrorClassifier {
     fun classify(error: Throwable): ClassifiedDownloadError {
         val message = error.message ?: "Download failed"
         val lower = message.lowercase()
-        val httpCode = Regex("HTTP\\s+(\\d+)").find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val httpCode =
+            Regex("HTTP\\s+(\\d+)")
+                .find(message)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
         if (httpCode != null) {
             val rateLimit = httpCode == 403 || httpCode == 429
             val retryableHttp = rateLimit || httpCode in setOf(408, 500, 502, 503, 504)
@@ -99,7 +104,10 @@ object DownloadErrorClassifier {
                 ClassifiedDownloadError(message, "missing_provider", "NO_PROVIDER", false)
             lower.contains("no url") ->
                 ClassifiedDownloadError(message, "invalid_chapter", "NO_CHAPTER_URL", false)
-            lower.contains("empty") || lower.contains("too short") || lower.contains("no downloaded chapters") || lower.contains("content not found") ->
+            lower.contains("empty") ||
+                lower.contains("too short") ||
+                lower.contains("no downloaded chapters") ||
+                lower.contains("content not found") ->
                 ClassifiedDownloadError(message, "parse", "CONTENT_TOO_SHORT", true)
             lower.contains("network") || lower.contains("timeout") || lower.contains("failed to fetch") || lower.contains("connection") ->
                 ClassifiedDownloadError(message, "network", "NETWORK_ERROR", true)
@@ -108,8 +116,10 @@ object DownloadErrorClassifier {
         }
     }
 
-    fun shouldAutoRetry(job: DownloadJob, error: ClassifiedDownloadError): Boolean =
-        error.retryable && job.retryCount <= job.maxRetries.coerceAtLeast(0)
+    fun shouldAutoRetry(
+        job: DownloadJob,
+        error: ClassifiedDownloadError,
+    ): Boolean = error.retryable && job.retryCount <= job.maxRetries.coerceAtLeast(0)
 
     fun retryDelayMs(job: DownloadJob): Long {
         val retryAttempt = job.retryCount.coerceAtLeast(1)

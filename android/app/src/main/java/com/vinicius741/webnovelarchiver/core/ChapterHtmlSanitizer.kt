@@ -19,17 +19,18 @@ import org.jsoup.safety.Safelist
  * is the one we inject ourselves.
  */
 object ChapterHtmlSanitizer {
-
-    private val safelist: Safelist = Safelist.relaxed()
-        // Preserve the structural classes the reader CSS + TTS annotation rely on.
-        .addAttributes(":all", "class")
-        // TTS chunk grouping attribute set by [TextCleanup.prepareTtsAnnotatedHtml].
-        .addAttributes(":all", "data-tts-group")
-        // `dir`/`lang` keep RTL/translated prose readable; both are inert attributes.
-        .addAttributes(":all", "dir")
-        .addAttributes(":all", "lang")
-        .addProtocols("a", "href", "http", "https", "mailto")
-        .addEnforcedAttribute("a", "rel", "nofollow noopener")
+    private val safelist: Safelist =
+        Safelist
+            .relaxed()
+            // Preserve the structural classes the reader CSS + TTS annotation rely on.
+            .addAttributes(":all", "class")
+            // TTS chunk grouping attribute set by [TextCleanup.prepareTtsAnnotatedHtml].
+            .addAttributes(":all", "data-tts-group")
+            // `dir`/`lang` keep RTL/translated prose readable; both are inert attributes.
+            .addAttributes(":all", "dir")
+            .addAttributes(":all", "lang")
+            .addProtocols("a", "href", "http", "https", "mailto")
+            .addEnforcedAttribute("a", "rel", "nofollow noopener")
 
     /** Cleans [html] of all active content, returning safe body HTML for the reader WebView. */
     fun sanitize(html: String): String {

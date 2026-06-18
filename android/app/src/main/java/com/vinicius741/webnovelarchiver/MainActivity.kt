@@ -14,6 +14,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.vinicius741.webnovelarchiver.appContainer
 import com.vinicius741.webnovelarchiver.core.AppRepository
 import com.vinicius741.webnovelarchiver.core.AppStorage
@@ -26,11 +27,8 @@ import com.vinicius741.webnovelarchiver.core.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -40,8 +38,11 @@ import kotlinx.coroutines.withContext
  * extensions split across the `screens/`, `actions/`, and `ui/` files. All screen rendering,
  * navigation, and business actions live there — this class just implements [ScreenHost].
  */
-class MainActivity : AppCompatActivity(), ScreenHost {
+class MainActivity :
+    AppCompatActivity(),
+    ScreenHost {
     override val app: AppCompatActivity get() = this
+
     /**
      * UI coroutine scope (Maintainability M3). A single [CoroutineScope] wrapping the activity's
      * [lifecycleScope] job/context, so all screen-launched coroutines (fold observation, backup
@@ -58,8 +59,10 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
+
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
+
     /** Foldable detector. Created in [onCreate] once engines/storage are up. */
     override lateinit var foldTracker: FoldTracker
 
@@ -68,11 +71,12 @@ class MainActivity : AppCompatActivity(), ScreenHost {
      * provided in-app back navigation (see [backHandler]'s setter). Disabled on the root screen so
      * the OS default — exit to home, with the predictive-back home preview — applies unchanged.
      */
-    private val backCallback = object : OnBackPressedCallback(false) {
-        override fun handleOnBackPressed() {
-            backHandler?.invoke()
+    private val backCallback =
+        object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                backHandler?.invoke()
+            }
         }
-    }
 
     override var backHandler: (() -> Unit)? = null
         set(value) {
@@ -80,15 +84,23 @@ class MainActivity : AppCompatActivity(), ScreenHost {
             backCallback.isEnabled = value != null
         }
 
-    override val importBackupLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@registerForActivityResult
-        scope.launch { toast(withContext(Dispatchers.IO) { storage.importBackupUri(uri) }); showSettings() }
-    }
+    override val importBackupLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri ?: return@registerForActivityResult
+            scope.launch {
+                toast(withContext(Dispatchers.IO) { storage.importBackupUri(uri) })
+                showSettings()
+            }
+        }
 
-    override val importFullBackupLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri ?: return@registerForActivityResult
-        scope.launch { toast(withContext(Dispatchers.IO) { storage.importFullBackupUri(uri) }); showLibrary() }
-    }
+    override val importFullBackupLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri ?: return@registerForActivityResult
+            scope.launch {
+                toast(withContext(Dispatchers.IO) { storage.importFullBackupUri(uri) })
+                showLibrary()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,9 +131,10 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         scope.launch {
             foldTracker.isFoldingFeature.collect { runOnUiThread { rerender?.invoke() } }
         }
-        val resumeTarget = TtsSessionPlanning.readerResumeTarget(storage.getTtsSession()) { storyId ->
-            storage.getStory(storyId)
-        }
+        val resumeTarget =
+            TtsSessionPlanning.readerResumeTarget(storage.getTtsSession()) { storyId ->
+                storage.getStory(storyId)
+            }
         if (resumeTarget != null) {
             showReader(resumeTarget.storyId, resumeTarget.chapterId)
         } else {
@@ -132,7 +145,8 @@ class MainActivity : AppCompatActivity(), ScreenHost {
     override fun onDestroy() {
         // R9: destroy any lingering WebView in the frame (e.g. if the activity is destroyed while a
         // Reader/Browser screen is showing) so it can't leak the activity reference.
-        com.vinicius741.webnovelarchiver.ui.WebViewSafety.disposeAll(frame)
+        com.vinicius741.webnovelarchiver.ui.WebViewSafety
+            .disposeAll(frame)
         // Detach the reader's TTS observer (if a reader screen is active) so it can't fire into a
         // destroyed activity. The shared TTS engine is process-wide; only the listener is dropped.
         detachReaderTtsListener()

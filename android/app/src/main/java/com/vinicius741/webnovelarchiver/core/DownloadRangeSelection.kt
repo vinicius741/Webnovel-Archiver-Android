@@ -60,7 +60,10 @@ object DownloadRangeSelection {
         }
     }
 
-    private fun resultForRange(startChapter: Int, endChapter: Int): Result =
+    private fun resultForRange(
+        startChapter: Int,
+        endChapter: Int,
+    ): Result =
         Result(
             indexes = (startChapter - 1 until endChapter).toList(),
             startChapter = startChapter,

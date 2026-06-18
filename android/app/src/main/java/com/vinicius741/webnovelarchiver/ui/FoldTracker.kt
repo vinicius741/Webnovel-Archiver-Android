@@ -33,7 +33,8 @@ class FoldTracker(
     init {
         scope.launch {
             runCatching {
-                WindowInfoTracker.getOrCreate(activity)
+                WindowInfoTracker
+                    .getOrCreate(activity)
                     .windowLayoutInfo(activity)
                     .collectLatest(::onLayoutInfo)
             }

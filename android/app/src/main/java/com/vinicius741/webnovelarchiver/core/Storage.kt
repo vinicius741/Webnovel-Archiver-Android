@@ -2,10 +2,10 @@ package com.vinicius741.webnovelarchiver.core
 
 import android.content.Context
 import android.net.Uri
-import com.vinicius741.webnovelarchiver.R
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import com.vinicius741.webnovelarchiver.R
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -99,31 +99,49 @@ class AppStorage(
     }
 
     fun getSettings(): AppSettings = PreferenceNormalization.appSettings(read(settingsFile) ?: AppSettings())
+
     fun saveSettings(settings: AppSettings) = write(settingsFile, PreferenceNormalization.appSettings(settings))
+
     fun getSourceDownloadSettings(): MutableMap<String, SourceDownloadSettings> =
         PreferenceNormalization.sourceDownloadSettings(read(sourceSettingsFile) ?: mutableMapOf())
+
     fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
         write(sourceSettingsFile, PreferenceNormalization.sourceDownloadSettings(settings))
+
     fun getChapterFilterSettings(): ChapterFilterSettings =
         PreferenceNormalization.chapterFilterSettings(read(chapterFilterFile) ?: ChapterFilterSettings())
+
     fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
         write(chapterFilterFile, PreferenceNormalization.chapterFilterSettings(settings))
+
     fun getDisplayPreferences(): DisplayPreferences =
         PreferenceNormalization.displayPreferences(read(displayPreferencesFile) ?: DisplayPreferences())
+
     fun saveDisplayPreferences(preferences: DisplayPreferences) =
         write(displayPreferencesFile, PreferenceNormalization.displayPreferences(preferences))
+
     fun getTabs(): MutableList<Tab> = read(tabsFile) ?: mutableListOf()
+
     fun saveTabs(tabs: List<Tab>) = write(tabsFile, tabs.sortedBy { it.order })
+
     fun getSentenceRemovalList(): MutableList<String> = read(sentencesFile) ?: DefaultCleanup.sentences.toMutableList()
+
     fun saveSentenceRemovalList(items: List<String>) = write(sentencesFile, items)
-    fun getRegexRules(): MutableList<RegexCleanupRule> =
-        TextCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
+
+    fun getRegexRules(): MutableList<RegexCleanupRule> = TextCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
+
     fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, TextCleanup.sanitizeRegexRules(rules))
+
     fun getTtsSettings(): TtsSettings = PreferenceNormalization.ttsSettings(read(ttsFile) ?: TtsSettings())
+
     fun saveTtsSettings(settings: TtsSettings) = write(ttsFile, PreferenceNormalization.ttsSettings(settings))
+
     fun getTtsSession(): TtsSession? = read(sessionFile)
+
     fun saveTtsSession(session: TtsSession) = write(sessionFile, session)
+
     fun clearTtsSession() = sessionFile.delete()
+
     @Synchronized
     fun getQueue(): MutableList<DownloadJob> = read(queueFile) ?: mutableListOf()
 
@@ -163,6 +181,7 @@ class AppStorage(
             if (migrated !== raw) saveStoryOnly(migrated)
         }
     }
+
     @Synchronized
     fun saveQueue(jobs: List<DownloadJob>) = write(queueFile, jobs)
 
@@ -190,18 +209,30 @@ class AppStorage(
      * without ANR risk from [runBlocking] on the main thread).
      */
     @Synchronized
-    fun saveEnqueue(story: Story, jobs: List<DownloadJob>) {
+    fun saveEnqueue(
+        story: Story,
+        jobs: List<DownloadJob>,
+    ) {
         addOrUpdateStory(story)
         write(queueFile, jobs)
     }
 
-    fun saveChapter(storyId: String, index: Int, chapter: Chapter, html: String): String {
+    fun saveChapter(
+        storyId: String,
+        index: Int,
+        chapter: Chapter,
+        html: String,
+    ): String {
         val file = chapterFile(storyId, index, chapter)
         AtomicFileWrites.writeText(file, html)
         return relativize(file)
     }
 
-    fun copyChapterToStory(storyId: String, index: Int, chapter: Chapter): String? {
+    fun copyChapterToStory(
+        storyId: String,
+        index: Int,
+        chapter: Chapter,
+    ): String? {
         val source = resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return null
         val destination = chapterFile(storyId, index, chapter)
         source.copyTo(destination, overwrite = true)
@@ -213,7 +244,11 @@ class AppStorage(
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
 
-    fun saveEpub(storyId: String, filename: String, bytes: ByteArray): File {
+    fun saveEpub(
+        storyId: String,
+        filename: String,
+        bytes: ByteArray,
+    ): File {
         val dir = File(epubRoot, safeName(storyId)).apply { mkdirs() }
         val file = File(dir, filename)
         AtomicFileWrites.writeBytes(file, bytes)
@@ -225,7 +260,11 @@ class AppStorage(
      * file, which is fsync'd and renamed into place on success. Lets EpubEngine stream the ZIP
      * chapter-by-chapter instead of building one big [ByteArrayOutputStream] in memory.
      */
-    fun saveEpubStreamed(storyId: String, filename: String, block: (java.io.OutputStream) -> Unit): File {
+    fun saveEpubStreamed(
+        storyId: String,
+        filename: String,
+        block: (java.io.OutputStream) -> Unit,
+    ): File {
         val dir = File(epubRoot, safeName(storyId)).apply { mkdirs() }
         val file = File(dir, filename)
         AtomicFileWrites.stream(file) { out -> block(out) }
@@ -242,25 +281,32 @@ class AppStorage(
 
     fun exportBackup(): File {
         val sourceLibrary = getLibrary()
-        val library = sourceLibrary.map { story ->
-            story.copy(
-                epubPath = null,
-                epubPaths = null,
-                chapters = story.chapters.map { chapter ->
-                    chapter.copy(
-                        content = null,
-                        filePath = null,
-                        downloaded = false,
-                    )
-                }.toMutableList(),
+        val library =
+            sourceLibrary.map { story ->
+                story.copy(
+                    epubPath = null,
+                    epubPaths = null,
+                    chapters =
+                        story.chapters
+                            .map { chapter ->
+                                chapter.copy(
+                                    content = null,
+                                    filePath = null,
+                                    downloaded = false,
+                                )
+                            }.toMutableList(),
+                )
+            }
+        val payload =
+            mapOf(
+                "version" to 2,
+                "exportDate" to
+                    java.time.Instant
+                        .now()
+                        .toString(),
+                "library" to library,
+                "tabs" to getTabs(),
             )
-        }
-        val payload = mapOf(
-            "version" to 2,
-            "exportDate" to java.time.Instant.now().toString(),
-            "library" to library,
-            "tabs" to getTabs(),
-        )
         val json = gson.toJson(payload)
         BackupExportPlanning.validateJsonBackup(sourceLibrary.size, json.toByteArray().size.toLong())?.let { error(it) }
         val file = File(backupRoot, "webnovel_backup_${System.currentTimeMillis()}.json")
@@ -269,12 +315,16 @@ class AppStorage(
     }
 
     fun exportCleanupRules(): File {
-        val payload = mapOf(
-            "version" to 1,
-            "exportDate" to java.time.Instant.now().toString(),
-            "sentenceRemovalList" to getSentenceRemovalList(),
-            "regexCleanupRules" to getRegexRules(),
-        )
+        val payload =
+            mapOf(
+                "version" to 1,
+                "exportDate" to
+                    java.time.Instant
+                        .now()
+                        .toString(),
+                "sentenceRemovalList" to getSentenceRemovalList(),
+                "regexCleanupRules" to getRegexRules(),
+            )
         val file = File(backupRoot, "webnovel_cleanup_rules_${System.currentTimeMillis()}.json")
         AtomicFileWrites.writeText(file, gson.toJson(payload))
         return file
@@ -285,46 +335,57 @@ class AppStorage(
         val library = getLibrary()
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
         val chapterFiles = collectFullBackupChapterFiles(library)
-        val manifestLibrary = library.map { story ->
-            story.copy(
-                chapters = story.chapters.map { chapter -> chapter.copy(filePath = null, content = null) }.toMutableList(),
-                epubPath = null,
-                epubPaths = null,
+        val manifestLibrary =
+            library.map { story ->
+                story.copy(
+                    chapters = story.chapters.map { chapter -> chapter.copy(filePath = null, content = null) }.toMutableList(),
+                    epubPath = null,
+                    epubPaths = null,
+                )
+            }
+        val config =
+            mapOf(
+                "settings" to getSettings(),
+                "sourceDownloadSettings" to getSourceDownloadSettings(),
+                "chapterFilterSettings" to getChapterFilterSettings(),
+                "displayPreferences" to getDisplayPreferences(),
+                "tabs" to getTabs(),
+                "sentenceRemovalList" to getSentenceRemovalList(),
+                "regexCleanupRules" to getRegexRules(),
+                "ttsSettings" to getTtsSettings(),
+                "ttsSession" to getTtsSession(),
+                "foldLayoutMode" to getDisplayPreferences().foldLayoutMode,
+                "themeStorage" to mapOf("wa_theme_active_v1" to getDisplayPreferences().activeThemeId),
             )
-        }
-        val config = mapOf(
-            "settings" to getSettings(),
-            "sourceDownloadSettings" to getSourceDownloadSettings(),
-            "chapterFilterSettings" to getChapterFilterSettings(),
-            "displayPreferences" to getDisplayPreferences(),
-            "tabs" to getTabs(),
-            "sentenceRemovalList" to getSentenceRemovalList(),
-            "regexCleanupRules" to getRegexRules(),
-            "ttsSettings" to getTtsSettings(),
-            "ttsSession" to getTtsSession(),
-            "foldLayoutMode" to getDisplayPreferences().foldLayoutMode,
-            "themeStorage" to mapOf("wa_theme_active_v1" to getDisplayPreferences().activeThemeId),
-        )
         // Stream the ZIP straight to a temp file, then rename into place (S5 + R1 durability).
         AtomicFileWrites.stream(file) { out ->
             ZipOutputStream(out).use { zip ->
                 zip.putNextEntry(ZipEntry("manifest.json"))
-                zip.write(gson.toJson(mapOf(
-                    "format" to "webnovel-archiver-full-backup",
-                    "version" to 1,
-                    "exportDate" to java.time.Instant.now().toString(),
-                    "library" to manifestLibrary,
-                    "config" to config,
-                    "chapterFiles" to chapterFiles.map {
-                        mapOf(
-                            "storyId" to it.storyId,
-                            "chapterId" to it.chapterId,
-                            "chapterIndex" to it.chapterIndex,
-                            "title" to it.title,
-                            "path" to it.path,
-                        )
-                    },
-                )).toByteArray())
+                zip.write(
+                    gson
+                        .toJson(
+                            mapOf(
+                                "format" to "webnovel-archiver-full-backup",
+                                "version" to 1,
+                                "exportDate" to
+                                    java.time.Instant
+                                        .now()
+                                        .toString(),
+                                "library" to manifestLibrary,
+                                "config" to config,
+                                "chapterFiles" to
+                                    chapterFiles.map {
+                                        mapOf(
+                                            "storyId" to it.storyId,
+                                            "chapterId" to it.chapterId,
+                                            "chapterIndex" to it.chapterIndex,
+                                            "title" to it.title,
+                                            "path" to it.path,
+                                        )
+                                    },
+                            ),
+                        ).toByteArray(),
+                )
                 zip.closeEntry()
                 chapterFiles.forEach { chapterFile ->
                     zip.putNextEntry(ZipEntry(chapterFile.path))
@@ -337,16 +398,22 @@ class AppStorage(
     }
 
     fun importBackupUri(uri: Uri): String {
-        val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            ?: return context.getString(R.string.error_no_file_selected)
+        val text =
+            context.contentResolver
+                .openInputStream(uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                ?: return context.getString(R.string.error_no_file_selected)
         val type = object : TypeToken<Map<String, Any?>>() {}.type
-        val payload = runCatching { gson.fromJson<Map<String, Any?>>(text, type) }.getOrNull()
-            ?: return "Invalid backup file: not valid JSON"
+        val payload =
+            runCatching { gson.fromJson<Map<String, Any?>>(text, type) }.getOrNull()
+                ?: return "Invalid backup file: not valid JSON"
         JsonBackupValidation.validate(payload)?.let { return it }
         val storiesJson = gson.toJson(payload["library"])
-        val stories: MutableList<Story> = runCatching {
-            gson.fromJson<MutableList<Story>>(storiesJson, object : TypeToken<MutableList<Story>>() {}.type)
-        }.getOrNull() ?: return "Invalid backup file: malformed story data"
+        val stories: MutableList<Story> =
+            runCatching {
+                gson.fromJson<MutableList<Story>>(storiesJson, object : TypeToken<MutableList<Story>>() {}.type)
+            }.getOrNull() ?: return "Invalid backup file: malformed story data"
         val existing = getLibrary()
         var added = 0
         var updated = 0
@@ -389,8 +456,9 @@ class AppStorage(
             // Step 1: copy the backup stream fully into [temp] and close both streams before we
             // touch [temp] again. (The previous version ran restoreFromZip *inside* the output
             // stream's `.use {}`, so restore read [temp] while it was still being written.)
-            val input = context.contentResolver.openInputStream(uri)
-                ?: return context.getString(R.string.error_no_file_selected)
+            val input =
+                context.contentResolver.openInputStream(uri)
+                    ?: return context.getString(R.string.error_no_file_selected)
             input.use { source -> temp.outputStream().use { sink -> source.copyTo(sink) } }
             // Step 2: extract + validate + stage + swap, reading [temp] only after the copy closed.
             val restoreDir = File(restoreRoot, "${System.currentTimeMillis()}").apply { mkdirs() }
@@ -400,8 +468,15 @@ class AppStorage(
         }
     }
 
-    private fun restoreFromZip(zipFile: File, restoreDir: File): String {
-        val staged = File(restoreDir, "staged_root").apply { deleteRecursively(); mkdirs() }
+    private fun restoreFromZip(
+        zipFile: File,
+        restoreDir: File,
+    ): String {
+        val staged =
+            File(restoreDir, "staged_root").apply {
+                deleteRecursively()
+                mkdirs()
+            }
         try {
             val stageChapterRoot = File(staged, "novels").apply { mkdirs() }
             val stageStoryDir = File(staged, "stories").apply { mkdirs() }
@@ -413,11 +488,16 @@ class AppStorage(
             val payload = gson.fromJson(manifestFile.readText(), object : TypeToken<Map<String, Any>>() {}.type) as Map<String, Any>
             FullBackupManifestValidation.validate(payload)?.let { return it }
 
-            val stories: MutableList<Story> = gson.fromJson(gson.toJson(payload["library"]), object : TypeToken<MutableList<Story>>() {}.type)
+            val stories: MutableList<Story> =
+                gson.fromJson(
+                    gson.toJson(payload["library"]),
+                    object : TypeToken<MutableList<Story>>() {}.type,
+                )
             FullBackupRestorePlanning.scrubTransientState(stories)
-            val configPayload: Map<String, Any> = payload["config"]?.let {
-                gson.fromJson(gson.toJson(it), object : TypeToken<Map<String, Any>>() {}.type)
-            } ?: payload
+            val configPayload: Map<String, Any> =
+                payload["config"]?.let {
+                    gson.fromJson(gson.toJson(it), object : TypeToken<Map<String, Any>>() {}.type)
+                } ?: payload
 
             // 2. Build a complete replacement tree under [staged]: chapter files, then config, then stories.
             File(restoreDir, "novels").takeIf(File::exists)?.copyRecursively(stageChapterRoot, overwrite = true)
@@ -444,7 +524,10 @@ class AppStorage(
         }
     }
 
-    private fun extractZipWithLimits(zipFile: File, restoreDir: File): Int {
+    private fun extractZipWithLimits(
+        zipFile: File,
+        restoreDir: File,
+    ): Int {
         var entries = 0
         var totalUncompressed = 0L
         val maxEntries = 200_000
@@ -455,8 +538,9 @@ class AppStorage(
                 val entry = zip.nextEntry ?: break
                 entries += 1
                 if (entries > maxEntries) error("Backup has too many entries (>$maxEntries)")
-                val out = ArchiveUtils.safeExtractionTarget(restoreDir, entry.name)
-                    ?: error("Invalid full backup: unsafe ZIP entry ${entry.name}")
+                val out =
+                    ArchiveUtils.safeExtractionTarget(restoreDir, entry.name)
+                        ?: error("Invalid full backup: unsafe ZIP entry ${entry.name}")
                 if (entry.isDirectory) {
                     out.mkdirs()
                 } else {
@@ -482,9 +566,10 @@ class AppStorage(
 
     private fun chapterFileIndex(payload: Map<String, Any>): List<RestoredChapterFileIndex> {
         val type = object : TypeToken<List<Map<String, Any?>>>() {}.type
-        val chapterFiles: List<Map<String, Any?>> = runCatching {
-            gson.fromJson<List<Map<String, Any?>>>(gson.toJson(payload["chapterFiles"]), type)
-        }.getOrNull() ?: emptyList()
+        val chapterFiles: List<Map<String, Any?>> =
+            runCatching {
+                gson.fromJson<List<Map<String, Any?>>>(gson.toJson(payload["chapterFiles"]), type)
+            }.getOrNull() ?: emptyList()
         return chapterFiles.map {
             RestoredChapterFileIndex(
                 storyId = it["storyId"]?.toString().orEmpty(),
@@ -494,13 +579,17 @@ class AppStorage(
         }
     }
 
-    private fun verifyStagedTree(staged: File, stories: List<Story>): String? {
+    private fun verifyStagedTree(
+        staged: File,
+        stories: List<Story>,
+    ): String? {
         val stageStoryDir = File(staged, "stories")
         stories.forEach { story ->
             val storyFile = File(stageStoryDir, "${safeName(story.id)}.json")
             if (!storyFile.exists()) return "Restore verify failed: missing story file for ${story.id}"
-            val reparsed = runCatching { gson.fromJson<Story>(storyFile.readText(), Story::class.java) }.getOrNull()
-                ?: return "Restore verify failed: story ${story.id} did not parse"
+            val reparsed =
+                runCatching { gson.fromJson<Story>(storyFile.readText(), Story::class.java) }.getOrNull()
+                    ?: return "Restore verify failed: story ${story.id} did not parse"
             reparsed.chapters.filter { it.downloaded }.forEach { chapter ->
                 val relative = chapter.filePath
                 if (relative.isNullOrBlank() || !File(staged, relative).exists()) {
@@ -521,7 +610,10 @@ class AppStorage(
             staged.deleteRecursively()
         }
         root.mkdirs()
-        storyDir.mkdirs(); chapterRoot.mkdirs(); epubRoot.mkdirs(); backupRoot.mkdirs()
+        storyDir.mkdirs()
+        chapterRoot.mkdirs()
+        epubRoot.mkdirs()
+        backupRoot.mkdirs()
         // Restore succeeded; the snapshot can be discarded.
         preRestoreSnapshotDir.deleteRecursively()
     }
@@ -530,7 +622,11 @@ class AppStorage(
         restoreDir.deleteRecursively()
     }
 
-    private fun writeLibraryTo(stagedRoot: File, stagedStoryDir: File, stories: List<Story>) {
+    private fun writeLibraryTo(
+        stagedRoot: File,
+        stagedStoryDir: File,
+        stories: List<Story>,
+    ) {
         stagedStoryDir.mkdirs()
         writeStagedEnvelope(File(stagedRoot, "library_index.json"), stories.map { it.id })
         stories.forEach { story ->
@@ -542,19 +638,38 @@ class AppStorage(
     }
 
     /** Writes each restored config document directly into [stagedRoot] via the same envelope shape. */
-    private fun writeConfigTo(stagedRoot: File, payload: Map<String, Any>) {
+    private fun writeConfigTo(
+        stagedRoot: File,
+        payload: Map<String, Any>,
+    ) {
         payload["settings"]?.let {
-            writeStagedEnvelope(File(stagedRoot, "settings.json"), PreferenceNormalization.appSettings(normalizeConfig(it, AppSettings::class.java)))
+            writeStagedEnvelope(
+                File(stagedRoot, "settings.json"),
+                PreferenceNormalization.appSettings(normalizeConfig(it, AppSettings::class.java)),
+            )
         }
         payload["sourceDownloadSettings"]?.let {
-            val sourceSettings = normalizeConfig<Map<String, SourceDownloadSettings>>(it, object : TypeToken<MutableMap<String, SourceDownloadSettings>>() {}.type)
-            writeStagedEnvelope(File(stagedRoot, "source_download_settings.json"), PreferenceNormalization.sourceDownloadSettings(sourceSettings))
+            val sourceSettings =
+                normalizeConfig<Map<String, SourceDownloadSettings>>(
+                    it,
+                    object : TypeToken<MutableMap<String, SourceDownloadSettings>>() {}.type,
+                )
+            writeStagedEnvelope(
+                File(stagedRoot, "source_download_settings.json"),
+                PreferenceNormalization.sourceDownloadSettings(sourceSettings),
+            )
         }
         payload["chapterFilterSettings"]?.let {
-            writeStagedEnvelope(File(stagedRoot, "chapter_filter_settings.json"), PreferenceNormalization.chapterFilterSettings(normalizeConfig(it, ChapterFilterSettings::class.java)))
+            writeStagedEnvelope(
+                File(stagedRoot, "chapter_filter_settings.json"),
+                PreferenceNormalization.chapterFilterSettings(normalizeConfig(it, ChapterFilterSettings::class.java)),
+            )
         }
         payload["displayPreferences"]?.let {
-            writeStagedEnvelope(File(stagedRoot, "display_preferences.json"), PreferenceNormalization.displayPreferences(normalizeConfig(it, DisplayPreferences::class.java)))
+            writeStagedEnvelope(
+                File(stagedRoot, "display_preferences.json"),
+                PreferenceNormalization.displayPreferences(normalizeConfig(it, DisplayPreferences::class.java)),
+            )
         }
         payload["tabs"]?.let {
             val tabs = normalizeConfig<List<Tab>>(it, object : TypeToken<MutableList<Tab>>() {}.type)
@@ -569,19 +684,27 @@ class AppStorage(
             writeStagedEnvelope(File(stagedRoot, "regex_cleanup_rules.json"), TextCleanup.sanitizeRegexRules(rules))
         }
         payload["ttsSettings"]?.let {
-            writeStagedEnvelope(File(stagedRoot, "tts_settings.json"), PreferenceNormalization.ttsSettings(normalizeConfig(it, TtsSettings::class.java)))
+            writeStagedEnvelope(
+                File(stagedRoot, "tts_settings.json"),
+                PreferenceNormalization.ttsSettings(normalizeConfig(it, TtsSettings::class.java)),
+            )
         }
         payload["ttsSession"]?.let {
             writeStagedEnvelope(File(stagedRoot, "tts_session.json"), normalizeConfig(it, TtsSession::class.java))
         }
     }
 
-    private fun writeStagedEnvelope(file: File, value: Any) {
+    private fun writeStagedEnvelope(
+        file: File,
+        value: Any,
+    ) {
         AtomicFileWrites.writeText(file, gson.toJson(DurableJson.envelope(value, appVersion)))
     }
 
-    private fun <T> normalizeConfig(payload: Any, type: java.lang.reflect.Type): T =
-        gson.fromJson(gson.toJson(payload), type)
+    private fun <T> normalizeConfig(
+        payload: Any,
+        type: java.lang.reflect.Type,
+    ): T = gson.fromJson(gson.toJson(payload), type)
 
     private fun saveStoryOnly(story: Story) {
         story.totalChapters = story.chapters.size
@@ -591,7 +714,11 @@ class AppStorage(
 
     private fun storyFile(id: String) = File(storyDir, "${safeName(id)}.json")
 
-    private fun chapterFile(storyId: String, index: Int, chapter: Chapter): File {
+    private fun chapterFile(
+        storyId: String,
+        index: Int,
+        chapter: Chapter,
+    ): File {
         val dir = File(chapterRoot, safeName(storyId)).apply { mkdirs() }
         val filename = "${index.toString().padStart(4, '0')}_${safeName(chapter.title).ifBlank { chapter.id }}.html"
         return File(dir, filename)
@@ -633,30 +760,39 @@ class AppStorage(
      */
     private fun migrateChapterPaths(story: Story): Story {
         var changed = false
-        val chapters = story.chapters.map { chapter ->
-            val absolute = chapter.filePath ?: return@map chapter
-            val file = File(absolute)
-            if (file.isAbsolute && file.startsWith(root)) {
-                changed = true
-                chapter.copy(filePath = relativize(file))
-            } else {
-                chapter
+        val chapters =
+            story.chapters
+                .map { chapter ->
+                    val absolute = chapter.filePath ?: return@map chapter
+                    val file = File(absolute)
+                    if (file.isAbsolute && file.startsWith(root)) {
+                        changed = true
+                        chapter.copy(filePath = relativize(file))
+                    } else {
+                        chapter
+                    }
+                }.toMutableList()
+        val epubPaths =
+            story.epubPaths
+                ?.mapNotNull { path ->
+                    val file = File(path)
+                    if (file.isAbsolute && file.startsWith(root)) {
+                        changed = true
+                        relativize(file)
+                    } else {
+                        path
+                    }
+                }?.toMutableList()
+        val epubPath =
+            story.epubPath?.let { path ->
+                val file = File(path)
+                if (file.isAbsolute && file.startsWith(root)) {
+                    changed = true
+                    relativize(file)
+                } else {
+                    path
+                }
             }
-        }.toMutableList()
-        val epubPaths = story.epubPaths?.mapNotNull { path ->
-            val file = File(path)
-            if (file.isAbsolute && file.startsWith(root)) {
-                changed = true
-                relativize(file)
-            } else path
-        }?.toMutableList()
-        val epubPath = story.epubPath?.let { path ->
-            val file = File(path)
-            if (file.isAbsolute && file.startsWith(root)) {
-                changed = true
-                relativize(file)
-            } else path
-        }
         return if (!changed) story else story.copy(chapters = chapters, epubPaths = epubPaths, epubPath = epubPath)
     }
 
@@ -664,7 +800,10 @@ class AppStorage(
 
     private inline fun <reified T> read(file: File): T? = DurableJson.readAtomic<T>(file, gson)
 
-    private fun write(file: File, value: Any) {
+    private fun write(
+        file: File,
+        value: Any,
+    ) {
         DurableJson.writeAtomic(file, gson, DurableJson.envelope(value, appVersion))
     }
 
@@ -679,9 +818,10 @@ class AppStorage(
     }
 
     companion object {
-        fun appVersionOf(context: Context): String = runCatching {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName
-        }.getOrNull() ?: "unknown"
+        fun appVersionOf(context: Context): String =
+            runCatching {
+                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+            }.getOrNull() ?: "unknown"
     }
 }
 

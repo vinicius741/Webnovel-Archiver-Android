@@ -1,7 +1,7 @@
 package com.vinicius741.webnovelarchiver.core
 
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,28 +9,30 @@ import org.junit.Test
 class TextCleanupTest {
     @Test
     fun cleanupAppliesToNestedTextNodesAndSkipsScripts() {
-        val html = """
+        val html =
+            """
             <div>
               <p>Hello <strong>Support me on Patreon</strong> world</p>
               <p>Keep --- this marker</p>
               <script>Support me on Patreon</script>
             </div>
-        """.trimIndent()
+            """.trimIndent()
 
-        val cleaned = TextCleanup.applyDownloadCleanup(
-            html,
-            listOf("Support me on Patreon"),
-            listOf(
-                RegexCleanupRule(
-                    id = "rule_1",
-                    name = "marker",
-                    pattern = "---",
-                    flags = "g",
-                    enabled = true,
-                    appliesTo = "download",
+        val cleaned =
+            TextCleanup.applyDownloadCleanup(
+                html,
+                listOf("Support me on Patreon"),
+                listOf(
+                    RegexCleanupRule(
+                        id = "rule_1",
+                        name = "marker",
+                        pattern = "---",
+                        flags = "g",
+                        enabled = true,
+                        appliesTo = "download",
+                    ),
                 ),
-            ),
-        )
+            )
 
         assertFalse(cleaned.contains("Support me on Patreon"))
         assertFalse(cleaned.contains("---"))
@@ -40,35 +42,37 @@ class TextCleanupTest {
 
     @Test
     fun prepareTtsChunksAppliesTtsSpecificCleanupRules() {
-        val html = """
+        val html =
+            """
             <body>
               <p>Keep this display-only phrase.</p>
               <p>Remove this spoken note.</p>
             </body>
-        """.trimIndent()
+            """.trimIndent()
 
-        val chunks = TextCleanup.prepareTtsChunks(
-            html,
-            listOf(
-                RegexCleanupRule(
-                    id = "display",
-                    name = "display",
-                    pattern = "display-only",
-                    flags = "g",
-                    enabled = true,
-                    appliesTo = "download",
+        val chunks =
+            TextCleanup.prepareTtsChunks(
+                html,
+                listOf(
+                    RegexCleanupRule(
+                        id = "display",
+                        name = "display",
+                        pattern = "display-only",
+                        flags = "g",
+                        enabled = true,
+                        appliesTo = "download",
+                    ),
+                    RegexCleanupRule(
+                        id = "tts",
+                        name = "tts",
+                        pattern = "spoken note",
+                        flags = "g",
+                        enabled = true,
+                        appliesTo = "tts",
+                    ),
                 ),
-                RegexCleanupRule(
-                    id = "tts",
-                    name = "tts",
-                    pattern = "spoken note",
-                    flags = "g",
-                    enabled = true,
-                    appliesTo = "tts",
-                ),
-            ),
-            chunkSize = 500,
-        )
+                chunkSize = 500,
+            )
 
         assertEquals(listOf("Keep this phrase. Remove this ."), chunks)
     }
@@ -107,11 +111,12 @@ class TextCleanupTest {
 
     @Test
     fun validateRegexRuleNormalizesLiteralInputAndFlags() {
-        val result = TextCleanup.validateRegexRule(
-            "Remove notes",
-            "/author note/im",
-            "g",
-        )
+        val result =
+            TextCleanup.validateRegexRule(
+                "Remove notes",
+                "/author note/im",
+                "g",
+            )
 
         assertTrue(result.valid)
         assertEquals("author note", result.normalizedPattern)
@@ -120,11 +125,12 @@ class TextCleanupTest {
 
     @Test
     fun validateRegexRuleRejectsUnsafeNestedQuantifiers() {
-        val result = TextCleanup.validateRegexRule(
-            "Unsafe",
-            "(a+)+",
-            "g",
-        )
+        val result =
+            TextCleanup.validateRegexRule(
+                "Unsafe",
+                "(a+)+",
+                "g",
+            )
 
         assertFalse(result.valid)
         assertTrue(result.error.orEmpty().contains("Unsafe regex pattern"))
@@ -132,15 +138,23 @@ class TextCleanupTest {
 
     @Test
     fun sanitizeRegexRulesDropsInvalidRulesNormalizesFieldsAndKeepsLastDuplicateId() {
-        val sanitized = TextCleanup.sanitizeRegexRules(
-            listOf(
-                RegexCleanupRule(id = "", name = "Missing id", pattern = "note", flags = "g"),
-                RegexCleanupRule(id = "bad", name = "Bad", pattern = "(a+)+", flags = "g"),
-                RegexCleanupRule(id = "dup", name = " First ", pattern = "first", flags = "g", appliesTo = "download"),
-                RegexCleanupRule(id = "dup", name = " Second ", pattern = "/second/im", flags = "g", enabled = false, appliesTo = "legacy"),
-                RegexCleanupRule(id = "literal", name = "Literal", pattern = "/note/s", flags = "ii"),
-            ),
-        )
+        val sanitized =
+            TextCleanup.sanitizeRegexRules(
+                listOf(
+                    RegexCleanupRule(id = "", name = "Missing id", pattern = "note", flags = "g"),
+                    RegexCleanupRule(id = "bad", name = "Bad", pattern = "(a+)+", flags = "g"),
+                    RegexCleanupRule(id = "dup", name = " First ", pattern = "first", flags = "g", appliesTo = "download"),
+                    RegexCleanupRule(
+                        id = "dup",
+                        name = " Second ",
+                        pattern = "/second/im",
+                        flags = "g",
+                        enabled = false,
+                        appliesTo = "legacy",
+                    ),
+                    RegexCleanupRule(id = "literal", name = "Literal", pattern = "/note/s", flags = "ii"),
+                ),
+            )
 
         assertEquals(listOf("dup", "literal"), sanitized.map { it.id })
         assertEquals("Second", sanitized[0].name)
@@ -154,10 +168,11 @@ class TextCleanupTest {
 
     @Test
     fun hasSimilarRegexRuleMatchesReactNativeDuplicateRuleGuard() {
-        val rules = listOf(
-            RegexCleanupRule(id = "one", name = "One", pattern = "note", flags = "gim", appliesTo = "download"),
-            RegexCleanupRule(id = "two", name = "Two", pattern = "note", flags = "gim", appliesTo = "tts"),
-        )
+        val rules =
+            listOf(
+                RegexCleanupRule(id = "one", name = "One", pattern = "note", flags = "gim", appliesTo = "download"),
+                RegexCleanupRule(id = "two", name = "Two", pattern = "note", flags = "gim", appliesTo = "tts"),
+            )
 
         assertTrue(TextCleanup.hasSimilarRegexRule(rules, currentId = null, "note", "gim", "download"))
         assertFalse(TextCleanup.hasSimilarRegexRule(rules, currentId = "one", "note", "gim", "download"))
@@ -176,20 +191,21 @@ class TextCleanupTest {
     @Test
     fun cleanupSupportsDotMatchesAllRegexFlag() {
         val html = "<p>Before start middle end after</p>"
-        val cleaned = TextCleanup.applyDownloadCleanup(
-            html,
-            emptyList(),
-            listOf(
-                RegexCleanupRule(
-                    id = "dot",
-                    name = "dot",
-                    pattern = "start.*end",
-                    flags = "gs",
-                    enabled = true,
-                    appliesTo = "download",
+        val cleaned =
+            TextCleanup.applyDownloadCleanup(
+                html,
+                emptyList(),
+                listOf(
+                    RegexCleanupRule(
+                        id = "dot",
+                        name = "dot",
+                        pattern = "start.*end",
+                        flags = "gs",
+                        enabled = true,
+                        appliesTo = "download",
+                    ),
                 ),
-            ),
-        )
+            )
 
         assertFalse(cleaned.contains("start middle end"))
         assertTrue(cleaned.contains("Before"))
@@ -214,10 +230,11 @@ class TextCleanupTest {
         // The annotated HTML's group indices must map 1:1 to the chunk list, AND that chunk list
         // must equal what prepareTtsChunks returns for the same input — this is the invariant the
         // reader highlight + the engine's chunk index rely on.
-        val html = """
+        val html =
+            """
             <p>${"Alpha ".repeat(25).trim()}</p>
             <p>${"Delta ".repeat(25).trim()}</p>
-        """.trimIndent()
+            """.trimIndent()
 
         val plain = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 100)
         val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 100)
@@ -246,10 +263,18 @@ class TextCleanupTest {
     @Test
     fun prepareTtsAnnotatedHtmlAppliesTtsSpecificCleanupRules() {
         val html = "<body><p>Keep this display-only phrase.</p><p>Remove this spoken note.</p></body>"
-        val rules = listOf(
-            RegexCleanupRule(id = "display", name = "display", pattern = "display-only", flags = "g", enabled = true, appliesTo = "download"),
-            RegexCleanupRule(id = "tts", name = "tts", pattern = "spoken note", flags = "g", enabled = true, appliesTo = "tts"),
-        )
+        val rules =
+            listOf(
+                RegexCleanupRule(
+                    id = "display",
+                    name = "display",
+                    pattern = "display-only",
+                    flags = "g",
+                    enabled = true,
+                    appliesTo = "download",
+                ),
+                RegexCleanupRule(id = "tts", name = "tts", pattern = "spoken note", flags = "g", enabled = true, appliesTo = "tts"),
+            )
 
         val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, rules, chunkSize = 500)
 

@@ -13,16 +13,26 @@ import android.view.ViewOutlineProvider
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
 
-/* ------------------------------------------------------------------ */
-/* Drawable builders                                                  */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Drawable builders
+// ------------------------------------------------------------------
 
 /** Rounded solid background. `radii` is [lt, rt, rb, lb] in px. */
-fun roundedBg(color: Int, radiiPx: FloatArray): GradientDrawable {
-    val outer = floatArrayOf(
-        radiiPx[0], radiiPx[0], radiiPx[1], radiiPx[1],
-        radiiPx[2], radiiPx[2], radiiPx[3], radiiPx[3],
-    )
+fun roundedBg(
+    color: Int,
+    radiiPx: FloatArray,
+): GradientDrawable {
+    val outer =
+        floatArrayOf(
+            radiiPx[0],
+            radiiPx[0],
+            radiiPx[1],
+            radiiPx[1],
+            radiiPx[2],
+            radiiPx[2],
+            radiiPx[3],
+            radiiPx[3],
+        )
     return GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadii = outer
@@ -30,16 +40,27 @@ fun roundedBg(color: Int, radiiPx: FloatArray): GradientDrawable {
     }
 }
 
-fun roundedBg(color: Int, radiusPx: Float): GradientDrawable =
-    roundedBg(color, floatArrayOf(radiusPx, radiusPx, radiusPx, radiusPx))
+fun roundedBg(
+    color: Int,
+    radiusPx: Float,
+): GradientDrawable = roundedBg(color, floatArrayOf(radiusPx, radiusPx, radiusPx, radiusPx))
 
-fun strokeBg(fillColor: Int, radiusPx: Float, strokeColor: Int, strokePx: Int): GradientDrawable =
+fun strokeBg(
+    fillColor: Int,
+    radiusPx: Float,
+    strokeColor: Int,
+    strokePx: Int,
+): GradientDrawable =
     (roundedBg(fillColor, radiusPx)).apply {
         setStroke(strokePx, strokeColor)
     }
 
 /** Ripple clipped to a rounded-rect mask matching `radiusPx`. */
-fun ripple(content: Drawable, radiusPx: Float, rippleColor: Int): RippleDrawable {
+fun ripple(
+    content: Drawable,
+    radiusPx: Float,
+    rippleColor: Int,
+): RippleDrawable {
     val mask = roundedBg(Color.WHITE, radiusPx)
     return RippleDrawable(ColorStateList.valueOf(rippleColor), content, mask)
 }
@@ -50,18 +71,22 @@ fun selectableRipple(rippleColor: Int): Drawable {
     return RippleDrawable(ColorStateList.valueOf(rippleColor), null, mask)
 }
 
-/* ------------------------------------------------------------------ */
-/* View styling extensions                                            */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// View styling extensions
+// ------------------------------------------------------------------
 
 /** Clips a view (and its contents) to a rounded rectangle. API 21+. */
 fun View.roundCorners(radiusDp: Float) {
     val density = resources.displayMetrics.density
-    outlineProvider = object : ViewOutlineProvider() {
-        override fun getOutline(view: View, outline: Outline) {
-            outline.setRoundRect(0, 0, view.width, view.height, radiusDp * density)
+    outlineProvider =
+        object : ViewOutlineProvider() {
+            override fun getOutline(
+                view: View,
+                outline: Outline,
+            ) {
+                outline.setRoundRect(0, 0, view.width, view.height, radiusDp * density)
+            }
         }
-    }
     clipToOutline = true
 }
 
@@ -74,7 +99,10 @@ fun View.elevate(dp: Float) {
 }
 
 /** Load + tint a vector drawable, or null if `res` is 0. */
-fun Context.tintedIcon(res: Int, color: Int): Drawable? {
+fun Context.tintedIcon(
+    res: Int,
+    color: Int,
+): Drawable? {
     if (res == 0) return null
     val d = ContextCompat.getDrawable(this, res) ?: return null
     val m = DrawableCompat.wrap(d).mutate()

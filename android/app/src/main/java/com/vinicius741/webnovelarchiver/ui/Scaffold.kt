@@ -11,7 +11,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
-import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ScreenHost
 import com.vinicius741.webnovelarchiver.core.Story
@@ -50,38 +49,46 @@ internal fun ScreenHost.screen(
     // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
     // hardware/gesture back navigation so the OS default (exit) applies.
     backHandler = onBack
-    val column = LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        setBackgroundColor(ThemeManager.colors.background)
-        // Edge-to-edge window: reserve the gesture/navigation bar on the non-scrolling root so
-        // content stays clear of it whether the body scrolls or not.
-        setPadding(0, 0, 0, systemBarBottom())
-    }
-    column.addView(appBar(title, subtitle, onBack, actions))
-    val content = LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(Spacing.XL), dp(Spacing.MD), dp(Spacing.XL), dp(Spacing.XL))
-        block()
-    }
-    val body: View = if (scrollable) {
-        // Wrap the whole body in a single scroller so tall forms (Settings, Cleanup, Tabs) can
-        // always be reached instead of being clipped by the fixed-weight content area.
-        ScrollView(app).apply {
-            isFillViewport = true
-            addView(content)
-            // Restore the scroll position captured before the re-render. `post` runs after this
-            // ScrollView is attached and measured, so scrollTo sees the real scrollable range.
-            if (savedScrollY > 0) post { scrollTo(0, savedScrollY) }
+    val column =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ThemeManager.colors.background)
+            // Edge-to-edge window: reserve the gesture/navigation bar on the non-scrolling root so
+            // content stays clear of it whether the body scrolls or not.
+            setPadding(0, 0, 0, systemBarBottom())
         }
-    } else {
-        content
-    }
+    column.addView(appBar(title, subtitle, onBack, actions))
+    val content =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(Spacing.XL), dp(Spacing.MD), dp(Spacing.XL), dp(Spacing.XL))
+            block()
+        }
+    val body: View =
+        if (scrollable) {
+            // Wrap the whole body in a single scroller so tall forms (Settings, Cleanup, Tabs) can
+            // always be reached instead of being clipped by the fixed-weight content area.
+            ScrollView(app).apply {
+                isFillViewport = true
+                addView(content)
+                // Restore the scroll position captured before the re-render. `post` runs after this
+                // ScrollView is attached and measured, so scrollTo sees the real scrollable range.
+                if (savedScrollY > 0) post { scrollTo(0, savedScrollY) }
+            }
+        } else {
+            content
+        }
     column.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
     frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     frame.tag = screenKey
     fab?.let { onClick ->
         val fabView = makeFab(app) { onClick() }
-        val lp = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END)
+        val lp =
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.END,
+            )
         lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG) + systemBarBottom())
         frame.addView(fabView, lp)
     }
@@ -115,7 +122,12 @@ private fun disposeWebViews(root: View) {
     }
 }
 
-private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> Unit)?, actions: List<AppBarAction>): View {
+private fun ScreenHost.appBar(
+    title: String,
+    subtitle: String?,
+    onBack: (() -> Unit)?,
+    actions: List<AppBarAction>,
+): View {
     val t = ThemeManager.current
     return LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -128,16 +140,19 @@ private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> U
         } else {
             addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(Spacing.MD), dp(1)) })
         }
-        val titleCol = LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(Spacing.XS + 2), 0, dp(Spacing.SM), 0)
-        }
+        val titleCol =
+            LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(Spacing.XS + 2), 0, dp(Spacing.SM), 0)
+            }
         titleCol.addView(makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply { includeFontPadding = false })
         subtitle?.let {
-            titleCol.addView(makeText(app, it, Type.BODY_SMALL, t.colors.onSurfaceVariant).apply {
-                includeFontPadding = false
-                setPadding(0, dp(2), 0, 0)
-            })
+            titleCol.addView(
+                makeText(app, it, Type.BODY_SMALL, t.colors.onSurfaceVariant).apply {
+                    includeFontPadding = false
+                    setPadding(0, dp(2), 0, 0)
+                },
+            )
         }
         addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach { a ->
@@ -146,7 +161,12 @@ private fun ScreenHost.appBar(title: String, subtitle: String?, onBack: (() -> U
     }
 }
 
-private fun ScreenHost.iconButton(iconRes: Int, desc: String, tint: Int? = null, onClick: () -> Unit): View {
+private fun ScreenHost.iconButton(
+    iconRes: Int,
+    desc: String,
+    tint: Int? = null,
+    onClick: () -> Unit,
+): View {
     val t = ThemeManager.current
     val iconColor = tint ?: t.colors.onSurface
     val size = dp(44)
@@ -165,7 +185,10 @@ private fun ScreenHost.iconButton(iconRes: Int, desc: String, tint: Int? = null,
     }
 }
 
-private fun makeFab(context: Context, onClick: () -> Unit): View {
+private fun makeFab(
+    context: Context,
+    onClick: () -> Unit,
+): View {
     val t = ThemeManager.current
     val size = context.dp(56)
     return ImageView(context).apply {
@@ -173,7 +196,8 @@ private fun makeFab(context: Context, onClick: () -> Unit): View {
         setImageDrawable(context.tintedIcon(R.drawable.wna_add, t.colors.onPrimary))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         setPadding(context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8))
-        background = ripple(roundedBg(t.colors.primary, context.dp(Spacing.LG).toFloat()), context.dp(Spacing.LG).toFloat(), t.colors.onPrimary)
+        background =
+            ripple(roundedBg(t.colors.primary, context.dp(Spacing.LG).toFloat()), context.dp(Spacing.LG).toFloat(), t.colors.onPrimary)
         elevate(6f)
         setOnClickListener { onClick() }
         layoutParams = FrameLayout.LayoutParams(size, size)
@@ -181,17 +205,20 @@ private fun makeFab(context: Context, onClick: () -> Unit): View {
 }
 
 internal fun LinearLayout.centerLoading(message: String) {
-    val col = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        setPadding(0, context.dp(Spacing.XL + Spacing.XL - 8), 0, context.dp(Spacing.XL + Spacing.XL - 8))
-    }
-    col.addView(ProgressBar(context).apply {
-        val lp = LinearLayout.LayoutParams(context.dp(40), context.dp(40))
-        lp.bottomMargin = context.dp(Spacing.LG)
-        layoutParams = lp
-        indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
-    })
+    val col =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(0, context.dp(Spacing.XL + Spacing.XL - 8), 0, context.dp(Spacing.XL + Spacing.XL - 8))
+        }
+    col.addView(
+        ProgressBar(context).apply {
+            val lp = LinearLayout.LayoutParams(context.dp(40), context.dp(40))
+            lp.bottomMargin = context.dp(Spacing.LG)
+            layoutParams = lp
+            indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+        },
+    )
     col.addView(makeText(context, message, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface))
     addView(col)
 }
@@ -210,10 +237,19 @@ internal fun ScreenHost.systemBarBottom(): Int {
  * Builds a cover image (or placeholder). Returns the view without attaching it — callers
  * `addView` it into the current container, matching how `card {}` etc. behave.
  */
-internal fun ScreenHost.coverImage(story: Story, widthDp: Int, heightDp: Int, tapToOpen: Boolean): View {
+internal fun ScreenHost.coverImage(
+    story: Story,
+    widthDp: Int,
+    heightDp: Int,
+    tapToOpen: Boolean,
+): View {
     val url = story.coverUrl?.takeIf { it.isNotBlank() }
-    val coverView: View = if (url == null) makeCoverPlaceholder(app, widthDp, heightDp)
-    else makeCover(app, widthDp, heightDp)
+    val coverView: View =
+        if (url == null) {
+            makeCoverPlaceholder(app, widthDp, heightDp)
+        } else {
+            makeCover(app, widthDp, heightDp)
+        }
     if (url != null) {
         if (tapToOpen) coverView.setOnClickListener { showCoverDialog(story) }
         loadImage(url, coverView as ImageView)

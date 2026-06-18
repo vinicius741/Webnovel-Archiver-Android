@@ -31,12 +31,16 @@ object DownloadQueueMaintenance {
         return OrphanJobCleanupResult(cleaned, affectedStoryIds.toList())
     }
 
-    fun recoverStuckDownloadingStory(story: Story, jobsForStory: List<DownloadJob>): Boolean {
+    fun recoverStuckDownloadingStory(
+        story: Story,
+        jobsForStory: List<DownloadJob>,
+    ): Boolean {
         if (story.status != DownloadStatus.downloading) return false
-        val hasActiveJobs = jobsForStory.any {
-            val s = DownloadJobStatus.parse(it.status)
-            s == DownloadJobStatus.Pending || s == DownloadJobStatus.Downloading
-        }
+        val hasActiveJobs =
+            jobsForStory.any {
+                val s = DownloadJobStatus.parse(it.status)
+                s == DownloadJobStatus.Pending || s == DownloadJobStatus.Downloading
+            }
         if (hasActiveJobs) return false
         story.downloadedChapters = story.chapters.count { it.downloaded }
         story.status = if (story.downloadedChapters > 0) DownloadStatus.partial else DownloadStatus.idle

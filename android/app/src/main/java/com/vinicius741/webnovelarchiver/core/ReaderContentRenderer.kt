@@ -12,23 +12,33 @@ object ReaderContentRenderer {
         val ttsHighlight: String = "#7C4DFF",
     )
 
-    fun contentOrUndownloadedMessage(content: String?): String =
-        content ?: UNDOWNLOADED_CHAPTER_MESSAGE
+    fun contentOrUndownloadedMessage(content: String?): String = content ?: UNDOWNLOADED_CHAPTER_MESSAGE
 
-    fun document(title: String, bodyHtml: String): String =
-        document(title, bodyHtml, fontScale = 1.0f, dark = false)
+    fun document(
+        title: String,
+        bodyHtml: String,
+    ): String = document(title, bodyHtml, fontScale = 1.0f, dark = false)
 
     /**
      * Renders the chapter HTML for the reader WebView. `fontScale` multiplies the base 18px body
      * font-size; `dark` swaps to a dark background + light text (R4 reader chrome).
      */
-    fun document(title: String, bodyHtml: String, fontScale: Float, dark: Boolean): String {
+    fun document(
+        title: String,
+        bodyHtml: String,
+        fontScale: Float,
+        dark: Boolean,
+    ): String {
         val (bg, fg) = if (dark) "#121212" to "#e6e6e6" else "#ffffff" to "#202124"
         return document(title, bodyHtml, fontScale, ReaderDocumentColors(bg, fg))
     }
 
-    fun document(title: String, bodyHtml: String, fontScale: Float, colors: ReaderDocumentColors): String =
-        document(title, bodyHtml, fontScale, colors, includeTtsScript = false)
+    fun document(
+        title: String,
+        bodyHtml: String,
+        fontScale: Float,
+        colors: ReaderDocumentColors,
+    ): String = document(title, bodyHtml, fontScale, colors, includeTtsScript = false)
 
     /**
      * Full reader document (parity gap 3). When [includeTtsScript] is true, the body HTML is assumed
@@ -81,7 +91,7 @@ object ReaderContentRenderer {
                     }
                     .tts-active {
                         background-color: ${highlight}33 !important;
-                        border-left: 3px solid ${highlight};
+                        border-left: 3px solid $highlight;
                         padding-left: 4px;
                     }
                 </style>
@@ -91,7 +101,7 @@ object ReaderContentRenderer {
                 ${if (includeTtsScript) ttsHighlightScript() else ""}
             </body>
             </html>
-        """.trimIndent()
+            """.trimIndent()
     }
 
     /**
@@ -101,7 +111,8 @@ object ReaderContentRenderer {
      * host's `AndroidBridge.onTtsStart(i)`. The bridge is a single method attached only while the
      * reader screen is alive, and the script trusts no other page input.
      */
-    private fun ttsHighlightScript(): String = """
+    private fun ttsHighlightScript(): String =
+        """
         <script>
             (function() {
                 var WnaTts = window.WnaTts = window.WnaTts || {};
@@ -153,5 +164,5 @@ object ReaderContentRenderer {
                 }, { passive: false });
             })();
         </script>
-    """.trimIndent()
+        """.trimIndent()
 }

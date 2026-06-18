@@ -6,7 +6,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 object ArchiveUtils {
-    fun safeExtractionTarget(root: File, entryName: String): File? {
+    fun safeExtractionTarget(
+        root: File,
+        entryName: String,
+    ): File? {
         val normalizedEntry = entryName.replace('\\', '/')
         if (normalizedEntry.startsWith("/") || normalizedEntry.contains('\u0000')) return null
 
@@ -16,14 +19,19 @@ object ArchiveUtils {
         return if (targetPath.startsWith(rootPath)) target else null
     }
 
-    fun putStoredEntry(zip: ZipOutputStream, name: String, bytes: ByteArray) {
+    fun putStoredEntry(
+        zip: ZipOutputStream,
+        name: String,
+        bytes: ByteArray,
+    ) {
         val crc = CRC32().apply { update(bytes) }.value
-        val entry = ZipEntry(name).apply {
-            method = ZipEntry.STORED
-            size = bytes.size.toLong()
-            compressedSize = bytes.size.toLong()
-            this.crc = crc
-        }
+        val entry =
+            ZipEntry(name).apply {
+                method = ZipEntry.STORED
+                size = bytes.size.toLong()
+                compressedSize = bytes.size.toLong()
+                this.crc = crc
+            }
         zip.putNextEntry(entry)
         zip.write(bytes)
         zip.closeEntry()

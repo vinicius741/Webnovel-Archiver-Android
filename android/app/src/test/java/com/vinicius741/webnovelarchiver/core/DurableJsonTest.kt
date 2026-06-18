@@ -4,7 +4,6 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -54,10 +53,11 @@ class DurableJsonTest {
 
     @Test
     fun envelopeSerializesAndDeserializesViaGson() {
-        val jobs = listOf(
-            mapOf("id" to "a", "status" to DownloadJobStatus.Pending.wire),
-            mapOf("id" to "b", "status" to DownloadJobStatus.Completed.wire),
-        )
+        val jobs =
+            listOf(
+                mapOf("id" to "a", "status" to DownloadJobStatus.Pending.wire),
+                mapOf("id" to "b", "status" to DownloadJobStatus.Completed.wire),
+            )
         val envelope = DurableJson.envelope(jobs, "1.0.1-native")
         val json = gson.toJson(envelope)
         assertTrue(json.contains("\"payload\""))

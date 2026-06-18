@@ -13,7 +13,6 @@ import org.junit.Test
  * Defaults mirror the hook's test setup: AUTO mode, no detected folding feature.
  */
 class ScreenLayoutPlanningTest {
-
     private fun layout(
         width: Int,
         height: Int,

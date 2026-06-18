@@ -41,15 +41,17 @@ class ReaderContentRendererTest {
 
     @Test
     fun themedColorsApplyToReaderDocument() {
-        val html = ReaderContentRenderer.document(
-            "T",
-            "<p>x</p>",
-            fontScale = 1.0f,
-            colors = ReaderContentRenderer.ReaderDocumentColors(
-                background = "#0D1117",
-                foreground = "#C9D1D9",
-            ),
-        )
+        val html =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                fontScale = 1.0f,
+                colors =
+                    ReaderContentRenderer.ReaderDocumentColors(
+                        background = "#0D1117",
+                        foreground = "#C9D1D9",
+                    ),
+            )
 
         assertTrue(html.contains("background-color: #0D1117"))
         assertTrue(html.contains("color: #C9D1D9"))
@@ -59,17 +61,19 @@ class ReaderContentRendererTest {
     fun ttsHighlightCssUsesConfiguredAccent() {
         // Gap 3: when the document is rendered with a highlight accent, the .tts-active rule must
         // carry that accent (background tinted 33 + solid left border).
-        val html = ReaderContentRenderer.document(
-            "T",
-            "<p>x</p>",
-            fontScale = 1.0f,
-            colors = ReaderContentRenderer.ReaderDocumentColors(
-                background = "#000000",
-                foreground = "#FFFFFF",
-                ttsHighlight = "#7C4DFF",
-            ),
-            includeTtsScript = true,
-        )
+        val html =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                fontScale = 1.0f,
+                colors =
+                    ReaderContentRenderer.ReaderDocumentColors(
+                        background = "#000000",
+                        foreground = "#FFFFFF",
+                        ttsHighlight = "#7C4DFF",
+                    ),
+                includeTtsScript = true,
+            )
 
         assertTrue(html.contains("#7C4DFF33"))
         assertTrue(html.contains("border-left: 3px solid #7C4DFF"))
@@ -78,16 +82,22 @@ class ReaderContentRendererTest {
     @Test
     fun includeTtsScriptInjectsTheWnaTtsBridge() {
         // Gap 3: the highlight + tap-to-start script is only injected when requested.
-        val withScript = ReaderContentRenderer.document(
-            "T", "<p>x</p>", 1.0f,
-            ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
-            includeTtsScript = true,
-        )
-        val withoutScript = ReaderContentRenderer.document(
-            "T", "<p>x</p>", 1.0f,
-            ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
-            includeTtsScript = false,
-        )
+        val withScript =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                1.0f,
+                ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
+                includeTtsScript = true,
+            )
+        val withoutScript =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                1.0f,
+                ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
+                includeTtsScript = false,
+            )
 
         assertTrue(withScript.contains("WnaTts"))
         assertTrue(withScript.contains("AndroidBridge"))

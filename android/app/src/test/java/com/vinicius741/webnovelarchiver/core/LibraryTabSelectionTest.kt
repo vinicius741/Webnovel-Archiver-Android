@@ -4,10 +4,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LibraryTabSelectionTest {
-    private val tabs = listOf(
-        Tab(id = "reading", name = "Reading", order = 0),
-        Tab(id = "done", name = "Done", order = 1),
-    )
+    private val tabs =
+        listOf(
+            Tab(id = "reading", name = "Reading", order = 0),
+            Tab(id = "done", name = "Done", order = 1),
+        )
 
     @Test
     fun resolveBlankOrNullFallsBackToAllTab() {

@@ -13,8 +13,7 @@ import org.junit.Test
  * a no-op network stub since the Royal Road fixture already includes the chapter rows inline.
  */
 class SourceProviderFixtureTest {
-    private fun fixture(path: String): String =
-        javaClass.getResourceAsStream(path)!!.bufferedReader().use { it.readText() }
+    private fun fixture(path: String): String = javaClass.getResourceAsStream(path)!!.bufferedReader().use { it.readText() }
 
     private val noopNetwork = NetworkClient()
 
@@ -34,14 +33,15 @@ class SourceProviderFixtureTest {
     }
 
     @Test
-    fun royalRoadChapterListReadsRowsFromFixture() = runBlocking {
-        val html = fixture("/fixtures/royalroad/story.html")
-        val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/12345/x", noopNetwork)
-        assertEquals(2, chapters.size)
-        assertEquals("100001", chapters[0].id)
-        assertTrue(chapters[0].url.contains("/fiction/12345/chapter/100001/"))
-        assertEquals("Chapter 1: Beginnings", chapters[0].title)
-    }
+    fun royalRoadChapterListReadsRowsFromFixture() =
+        runBlocking {
+            val html = fixture("/fixtures/royalroad/story.html")
+            val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/12345/x", noopNetwork)
+            assertEquals(2, chapters.size)
+            assertEquals("100001", chapters[0].id)
+            assertTrue(chapters[0].url.contains("/fiction/12345/chapter/100001/"))
+            assertEquals("Chapter 1: Beginnings", chapters[0].title)
+        }
 
     @Test
     fun royalRoadChapterContentStripsChromeAndScripts() {
@@ -64,16 +64,17 @@ class SourceProviderFixtureTest {
     }
 
     @Test
-    fun scribbleHubChapterListParsesTocWithoutAjaxWhenSmall() = runBlocking {
-        val html = fixture("/fixtures/scribblehub/story.html")
-        val chapters = ScribbleHubProvider.getChapterList(html, "https://www.scribblehub.com/series/98765/x", noopNetwork)
-        // Fixtures have 2 entries; below the 15-chapter ajax threshold so no pagination occurs.
-        assertEquals(2, chapters.size)
-        // ScribbleHub reverses the TOC (newest-first → oldest-first), so the last document entry
-        // ("sh_200002") lands first, and chapter ids are prefixed with "sh_".
-        assertEquals("sh_200002", chapters.first().id)
-        assertEquals("sh_200001", chapters.last().id)
-    }
+    fun scribbleHubChapterListParsesTocWithoutAjaxWhenSmall() =
+        runBlocking {
+            val html = fixture("/fixtures/scribblehub/story.html")
+            val chapters = ScribbleHubProvider.getChapterList(html, "https://www.scribblehub.com/series/98765/x", noopNetwork)
+            // Fixtures have 2 entries; below the 15-chapter ajax threshold so no pagination occurs.
+            assertEquals(2, chapters.size)
+            // ScribbleHub reverses the TOC (newest-first → oldest-first), so the last document entry
+            // ("sh_200002") lands first, and chapter ids are prefixed with "sh_".
+            assertEquals("sh_200002", chapters.first().id)
+            assertEquals("sh_200001", chapters.last().id)
+        }
 
     @Test
     fun scribbleHubChapterContentStripsNotesAndScripts() {

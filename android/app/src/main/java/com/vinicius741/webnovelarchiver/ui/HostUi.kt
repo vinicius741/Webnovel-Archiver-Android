@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
 import androidx.window.layout.WindowMetricsCalculator
+import coil.load
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ScreenHost
 import com.vinicius741.webnovelarchiver.core.DisplayPreferences
@@ -23,8 +24,6 @@ import com.vinicius741.webnovelarchiver.core.ScreenLayout
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutMode
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.core.resolveScreenLayout
-import coil.load
-import kotlinx.coroutines.launch
 
 /** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)
@@ -51,31 +50,39 @@ internal fun ScreenHost.screenMetrics(): ScreenLayout {
 /** Resolves the current [ScreenLayoutResult] for the live window. Screens call this on every render. */
 internal fun ScreenHost.currentScreenLayout(): ScreenLayoutResult = resolveScreenLayout(screenMetrics())
 
-internal fun ScreenHost.scroll(child: View): ScrollView = ScrollView(app).apply {
-    // Fill the allocated area when content is short; scroll when it overflows.
-    isFillViewport = true
-    addView(child)
-}
+internal fun ScreenHost.scroll(child: View): ScrollView =
+    ScrollView(app).apply {
+        // Fill the allocated area when content is short; scroll when it overflows.
+        isFillViewport = true
+        addView(child)
+    }
 
 /** MATCH_PARENT width with height 0 + weight 1, so a child fills all remaining vertical space.
  *  Use for scrolling lists placed below pinned controls so the list area never collapses to 0. */
 internal fun verticalFill() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
-internal fun ScreenHost.toast(message: String) =
-    Toast.makeText(app, message, Toast.LENGTH_LONG).show()
+internal fun ScreenHost.toast(message: String) = Toast.makeText(app, message, Toast.LENGTH_LONG).show()
 
 internal fun ScreenHost.confirm(
     message: String,
     confirmLabel: String = "Confirm",
     cancelLabel: String = "Cancel",
     onYes: () -> Unit,
-) = AlertDialog.Builder(app).setMessage(message)
+) = AlertDialog
+    .Builder(app)
+    .setMessage(message)
     .setPositiveButton(confirmLabel) { _, _ -> onYes() }
-    .setNegativeButton(cancelLabel, null).show()
+    .setNegativeButton(cancelLabel, null)
+    .show()
 
-internal fun ScreenHost.prompt(title: String, value: String, onSave: (String) -> Unit) {
+internal fun ScreenHost.prompt(
+    title: String,
+    value: String,
+    onSave: (String) -> Unit,
+) {
     val input = makeField(app, value, title, InputType.TYPE_CLASS_TEXT)
-    AlertDialog.Builder(app)
+    AlertDialog
+        .Builder(app)
         .setTitle(title)
         .setView(input)
         .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
@@ -83,7 +90,10 @@ internal fun ScreenHost.prompt(title: String, value: String, onSave: (String) ->
         .show()
 }
 
-internal fun ScreenHost.copyToClipboard(label: String, value: String) {
+internal fun ScreenHost.copyToClipboard(
+    label: String,
+    value: String,
+) {
     val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
 }
@@ -97,7 +107,10 @@ internal fun ScreenHost.clipboardText(): String? {
     return clip.getItemAt(0).coerceToText(app)?.toString()
 }
 
-internal fun ScreenHost.loadImage(url: String, image: ImageView) {
+internal fun ScreenHost.loadImage(
+    url: String,
+    image: ImageView,
+) {
     // S4: route cover loads through Coil instead of hand-rolled URL.openStream +
     // BitmapFactory.decodeStream. Coil adds a memory + disk cache, downsampling to the target size,
     // request cancellation when the view is detached, and a placeholder/error drawable.
@@ -106,30 +119,40 @@ internal fun ScreenHost.loadImage(url: String, image: ImageView) {
     }
 }
 
-internal fun ScreenHost.styledDialogField(value: String, hint: String, inputType: Int = InputType.TYPE_CLASS_TEXT): EditText =
+internal fun ScreenHost.styledDialogField(
+    value: String,
+    hint: String,
+    inputType: Int = InputType.TYPE_CLASS_TEXT,
+): EditText =
     makeField(app, value, hint, inputType).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = dp(Space.SM)
-        }
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.SM)
+            }
     }
 
-internal fun ScreenHost.scoreRow(score: String): View = LinearLayout(app).apply {
-    orientation = LinearLayout.HORIZONTAL
-    gravity = Gravity.CENTER_VERTICAL
-    addView(ImageView(app).apply {
-        setImageDrawable(app.tintedIcon(R.drawable.wna_star, ThemeManager.colors.tertiary))
-        layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
-    })
-    addView(makeText(app, score, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
-}
-
-internal fun ScreenHost.dot(color: Int): View = View(app).apply {
-    setBackgroundColor(color)
-    layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply {
-        setMargins(0, dp(6), dp(10), 0)
+internal fun ScreenHost.scoreRow(score: String): View =
+    LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(
+            ImageView(app).apply {
+                setImageDrawable(app.tintedIcon(R.drawable.wna_star, ThemeManager.colors.tertiary))
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
+            },
+        )
+        addView(makeText(app, score, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
     }
-    roundCorners(5f)
-}
+
+internal fun ScreenHost.dot(color: Int): View =
+    View(app).apply {
+        setBackgroundColor(color)
+        layoutParams =
+            LinearLayout.LayoutParams(dp(10), dp(10)).apply {
+                setMargins(0, dp(6), dp(10), 0)
+            }
+        roundCorners(5f)
+    }
 
 internal fun ScreenHost.jobStatusDot(status: String): View = dot(statusColor(status))
 

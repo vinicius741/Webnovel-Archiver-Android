@@ -9,7 +9,10 @@ data class SelectedChapterForEpub(
 )
 
 object EpubSelection {
-    fun selectDownloadedChapters(story: Story, config: EpubConfig): List<SelectedChapterForEpub> {
+    fun selectDownloadedChapters(
+        story: Story,
+        config: EpubConfig,
+    ): List<SelectedChapterForEpub> {
         if (story.chapters.isEmpty()) return emptyList()
 
         var start = config.rangeStart.coerceIn(1, story.chapters.size)
@@ -27,14 +30,16 @@ object EpubSelection {
     }
 
     fun displayNameForPath(path: String): String {
-        val decoded = runCatching {
-            URLDecoder.decode(path, StandardCharsets.UTF_8.name())
-        }.getOrDefault(path)
-        val filename = decoded
-            .split('/', ':')
-            .lastOrNull()
-            ?.ifBlank { null }
-            ?: "Unknown File"
+        val decoded =
+            runCatching {
+                URLDecoder.decode(path, StandardCharsets.UTF_8.name())
+            }.getOrDefault(path)
+        val filename =
+            decoded
+                .split('/', ':')
+                .lastOrNull()
+                ?.ifBlank { null }
+                ?: "Unknown File"
         return filename.replace(Regex("\\.epub$", RegexOption.IGNORE_CASE), "").replace('_', ' ')
     }
 }

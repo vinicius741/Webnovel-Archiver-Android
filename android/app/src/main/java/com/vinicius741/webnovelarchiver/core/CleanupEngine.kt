@@ -29,7 +29,10 @@ class CleanupEngine {
      * input changed since the last call. Call from download/TTS workers before applying cleanup to a
      * batch of chapters so the regexes are compiled at most once per settings change.
      */
-    fun compiled(sentences: List<String>, rules: List<RegexCleanupRule>): CompiledCleanup {
+    fun compiled(
+        sentences: List<String>,
+        rules: List<RegexCleanupRule>,
+    ): CompiledCleanup {
         val key = 31 * sentences.hashCode() + rules.hashCode()
         current.get()?.let { (cachedKey, cached) -> if (cachedKey == key) return cached }
         val snapshot = compile(rules, sentences)
@@ -37,22 +40,32 @@ class CleanupEngine {
         return snapshot
     }
 
-    private fun compile(rules: List<RegexCleanupRule>, sentences: List<String>): CompiledCleanup {
-        val downloadRegexes = rules
-            .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "download") }
-            .mapNotNull { runCatching { Regex(it.pattern, TextCleanup.regexOptions(it.flags)) }.getOrNull() }
-        val ttsRegexes = rules
-            .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "tts") }
-            .mapNotNull { runCatching { Regex(it.pattern, TextCleanup.regexOptions(it.flags)) }.getOrNull() }
-        val sentencePatterns = sentences.mapNotNull { sentence ->
-            val escaped = Regex.escape(sentence.trim()).replace("\\ ", "\\s+")
-            if (escaped.isBlank()) null else runCatching { Regex(escaped, setOf(RegexOption.IGNORE_CASE)) }.getOrNull()
-        }
+    private fun compile(
+        rules: List<RegexCleanupRule>,
+        sentences: List<String>,
+    ): CompiledCleanup {
+        val downloadRegexes =
+            rules
+                .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "download") }
+                .mapNotNull { runCatching { Regex(it.pattern, TextCleanup.regexOptions(it.flags)) }.getOrNull() }
+        val ttsRegexes =
+            rules
+                .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "tts") }
+                .mapNotNull { runCatching { Regex(it.pattern, TextCleanup.regexOptions(it.flags)) }.getOrNull() }
+        val sentencePatterns =
+            sentences.mapNotNull { sentence ->
+                val escaped = Regex.escape(sentence.trim()).replace("\\ ", "\\s+")
+                if (escaped.isBlank()) null else runCatching { Regex(escaped, setOf(RegexOption.IGNORE_CASE)) }.getOrNull()
+            }
         return CompiledCleanup(downloadRegexes, ttsRegexes, sentencePatterns)
     }
 
     /** Convenience: apply the cached download cleanup to chapter HTML (matches TextCleanup output). */
-    fun applyDownload(html: String, sentences: List<String>, rules: List<RegexCleanupRule>): String {
+    fun applyDownload(
+        html: String,
+        sentences: List<String>,
+        rules: List<RegexCleanupRule>,
+    ): String {
         val compiled = compiled(sentences, rules)
         val doc = Jsoup.parseBodyFragment(html)
         doc.select("script,style,noscript,iframe").remove()
@@ -67,6 +80,7 @@ class CleanupEngine {
 
     private fun traverseTextNodes(root: Node): List<TextNode> {
         val result = mutableListOf<TextNode>()
+
         fun visit(node: Node) {
             if (node is TextNode) result.add(node)
             node.childNodes().forEach(::visit)

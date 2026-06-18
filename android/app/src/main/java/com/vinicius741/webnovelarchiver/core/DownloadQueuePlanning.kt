@@ -10,7 +10,11 @@ object DownloadQueuePlanning {
     private val terminalStatuses = DownloadJobStatus.terminalWires
     private val runnableStatuses = DownloadJobStatus.activeWires
 
-    fun queueChapters(existingJobs: List<DownloadJob>, story: Story, indexes: List<Int>): QueueChapterPlan {
+    fun queueChapters(
+        existingJobs: List<DownloadJob>,
+        story: Story,
+        indexes: List<Int>,
+    ): QueueChapterPlan {
         val jobs = existingJobs.map { it.copy(chapter = it.chapter.copy()) }.toMutableList()
         var changed = false
         var hasRunnableWork = false
@@ -41,7 +45,12 @@ object DownloadQueuePlanning {
         return QueueChapterPlan(jobs, changed, hasRunnableWork)
     }
 
-    private fun pendingJob(story: Story, index: Int, chapter: Chapter, retryCount: Int = 0): DownloadJob =
+    private fun pendingJob(
+        story: Story,
+        index: Int,
+        chapter: Chapter,
+        retryCount: Int = 0,
+    ): DownloadJob =
         DownloadJob(
             id = "${story.id}_$index",
             storyId = story.id,

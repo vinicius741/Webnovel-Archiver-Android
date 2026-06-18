@@ -7,14 +7,16 @@ import org.junit.Test
 class StoryBookmarkPlanningTest {
     @Test
     fun withBookmarkAdvancesEpubRangeStartWhenStartAfterBookmarkIsEnabled() {
-        val story = story().apply {
-            epubConfig = EpubConfig(
-                maxChaptersPerEpub = 150,
-                rangeStart = 1,
-                rangeEnd = 4,
-                startAfterBookmark = true,
-            )
-        }
+        val story =
+            story().apply {
+                epubConfig =
+                    EpubConfig(
+                        maxChaptersPerEpub = 150,
+                        rangeStart = 1,
+                        rangeEnd = 4,
+                        startAfterBookmark = true,
+                    )
+            }
 
         val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = false)
 
@@ -25,14 +27,16 @@ class StoryBookmarkPlanningTest {
 
     @Test
     fun withBookmarkKeepsEpubRangeWhenStartAfterBookmarkIsDisabled() {
-        val story = story().apply {
-            epubConfig = EpubConfig(
-                maxChaptersPerEpub = 150,
-                rangeStart = 1,
-                rangeEnd = 4,
-                startAfterBookmark = false,
-            )
-        }
+        val story =
+            story().apply {
+                epubConfig =
+                    EpubConfig(
+                        maxChaptersPerEpub = 150,
+                        rangeStart = 1,
+                        rangeEnd = 4,
+                        startAfterBookmark = false,
+                    )
+            }
 
         val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = false)
 
@@ -42,15 +46,17 @@ class StoryBookmarkPlanningTest {
 
     @Test
     fun withBookmarkTogglesExistingBookmarkOffWithoutMovingEpubRange() {
-        val story = story().apply {
-            lastReadChapterId = "c2"
-            epubConfig = EpubConfig(
-                maxChaptersPerEpub = 150,
-                rangeStart = 3,
-                rangeEnd = 4,
-                startAfterBookmark = true,
-            )
-        }
+        val story =
+            story().apply {
+                lastReadChapterId = "c2"
+                epubConfig =
+                    EpubConfig(
+                        maxChaptersPerEpub = 150,
+                        rangeStart = 3,
+                        rangeEnd = 4,
+                        startAfterBookmark = true,
+                    )
+            }
 
         val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = true)
 
@@ -60,15 +66,17 @@ class StoryBookmarkPlanningTest {
 
     @Test
     fun withBookmarkCanKeepExistingBookmarkWhenToggleIsDisabled() {
-        val story = story().apply {
-            lastReadChapterId = "c2"
-            epubConfig = EpubConfig(
-                maxChaptersPerEpub = 150,
-                rangeStart = 1,
-                rangeEnd = 4,
-                startAfterBookmark = true,
-            )
-        }
+        val story =
+            story().apply {
+                lastReadChapterId = "c2"
+                epubConfig =
+                    EpubConfig(
+                        maxChaptersPerEpub = 150,
+                        rangeStart = 1,
+                        rangeEnd = 4,
+                        startAfterBookmark = true,
+                    )
+            }
 
         val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = false)
 
@@ -80,11 +88,12 @@ class StoryBookmarkPlanningTest {
         Story(
             id = "story",
             title = "Story",
-            chapters = mutableListOf(
-                Chapter(id = "c1", title = "One"),
-                Chapter(id = "c2", title = "Two"),
-                Chapter(id = "c3", title = "Three"),
-                Chapter(id = "c4", title = "Four"),
-            ),
+            chapters =
+                mutableListOf(
+                    Chapter(id = "c1", title = "One"),
+                    Chapter(id = "c2", title = "Two"),
+                    Chapter(id = "c3", title = "Three"),
+                    Chapter(id = "c4", title = "Four"),
+                ),
         )
 }

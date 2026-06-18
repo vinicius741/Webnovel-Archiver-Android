@@ -30,7 +30,9 @@ import kotlinx.coroutines.SupervisorJob
  * that prevents the activity and foreground services from accidentally instantiating duplicate
  * engines racing against the same files.
  */
-class AppContainer(context: Context) {
+class AppContainer(
+    context: Context,
+) {
     /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val network: NetworkClient = NetworkClient()

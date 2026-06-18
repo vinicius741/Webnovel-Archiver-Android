@@ -18,7 +18,9 @@ import kotlinx.coroutines.sync.withLock
  * (Speed S3). The low-level [storage] is still accessible to engines for direct file I/O (chapter
  * HTML, EPUB bytes) — only the stateful read-modify-write mutations are centralized here.
  */
-class AppRepository(val storage: AppStorage) {
+class AppRepository(
+    val storage: AppStorage,
+) {
     private val txMutex = Mutex()
 
     private val _libraryFlow = MutableStateFlow<List<Story>>(emptyList())
@@ -48,14 +50,23 @@ class AppRepository(val storage: AppStorage) {
 
     // ---- Read passthroughs (no caching needed; these are small single-file reads) ----
     fun getSettings(): AppSettings = storage.getSettings()
+
     fun getSourceDownloadSettings() = storage.getSourceDownloadSettings()
+
     fun getChapterFilterSettings() = storage.getChapterFilterSettings()
+
     fun getDisplayPreferences() = storage.getDisplayPreferences()
+
     fun getTabs() = storage.getTabs()
+
     fun getSentenceRemovalList() = storage.getSentenceRemovalList()
+
     fun getRegexRules() = storage.getRegexRules()
+
     fun getTtsSettings() = storage.getTtsSettings()
+
     fun getTtsSession(): TtsSession? = storage.getTtsSession()
+
     fun readChapter(chapter: Chapter): String? = storage.readChapter(chapter)
 
     // ---- Write passthroughs (settings/config are single-document, atomic on their own) ----
@@ -63,17 +74,23 @@ class AppRepository(val storage: AppStorage) {
         storage.saveSettings(settings)
         _settingsFlow.value = settings
     }
-    fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        storage.saveSourceDownloadSettings(settings)
-    fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        storage.saveChapterFilterSettings(settings)
-    fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        storage.saveDisplayPreferences(preferences)
+
+    fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) = storage.saveSourceDownloadSettings(settings)
+
+    fun saveChapterFilterSettings(settings: ChapterFilterSettings) = storage.saveChapterFilterSettings(settings)
+
+    fun saveDisplayPreferences(preferences: DisplayPreferences) = storage.saveDisplayPreferences(preferences)
+
     fun saveTabs(tabs: List<Tab>) = storage.saveTabs(tabs)
+
     fun saveSentenceRemovalList(items: List<String>) = storage.saveSentenceRemovalList(items)
+
     fun saveRegexRules(rules: List<RegexCleanupRule>) = storage.saveRegexRules(rules)
+
     fun saveTtsSettings(settings: TtsSettings) = storage.saveTtsSettings(settings)
+
     fun saveTtsSession(session: TtsSession) = storage.saveTtsSession(session)
+
     fun clearTtsSession() = storage.clearTtsSession()
 
     // ---- Transactional library mutations ----
@@ -82,7 +99,10 @@ class AppRepository(val storage: AppStorage) {
      * Read-modify-write a story under [txMutex]. The block receives the current story (or null) and
      * returns the replacement; the result is persisted and the library flow is refreshed.
      */
-    suspend fun updateStory(storyId: String, block: (Story?) -> Story?) {
+    suspend fun updateStory(
+        storyId: String,
+        block: (Story?) -> Story?,
+    ) {
         txMutex.withLock {
             val current = storage.getStory(storyId)
             val updated = block(current) ?: return@withLock

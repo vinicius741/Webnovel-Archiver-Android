@@ -14,11 +14,12 @@ object TextCleanup {
     private val regexFlagOrder = listOf('g', 'i', 'm', 's', 'u')
     private val allowedRegexFlags = regexFlagOrder.toSet()
     private val regexLiteral = Regex("^/((?:\\\\.|[^\\\\/])*)/([a-z]*)$", RegexOption.IGNORE_CASE)
-    private val riskyRegexChecks = listOf(
-        Regex("\\((?:[^()\\\\]|\\\\.)*[+*](?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
-        Regex("\\((?:[^()\\\\]|\\\\.)*\\.\\*(?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
-        Regex("\\((?:[^()\\\\]|\\\\.)*\\\\\\d+(?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
-    )
+    private val riskyRegexChecks =
+        listOf(
+            Regex("\\((?:[^()\\\\]|\\\\.)*[+*](?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
+            Regex("\\((?:[^()\\\\]|\\\\.)*\\.\\*(?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
+            Regex("\\((?:[^()\\\\]|\\\\.)*\\\\\\d+(?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
+        )
     private const val maxRegexPatternLength = 500
     private const val maxRuleNameLength = 80
 
@@ -43,17 +44,19 @@ object TextCleanup {
             val name = rule.name.trim()
             val validation = validateRegexRule(name, rule.pattern, rule.flags)
             if (!validation.valid) return@forEach
-            val appliesTo = when (rule.appliesTo.trim().lowercase()) {
-                "download", "tts", "both" -> rule.appliesTo.trim().lowercase()
-                else -> "both"
-            }
-            unique[id] = rule.copy(
-                id = id,
-                name = name,
-                pattern = validation.normalizedPattern ?: rule.pattern.trim(),
-                flags = validation.normalizedFlags.orEmpty(),
-                appliesTo = appliesTo,
-            )
+            val appliesTo =
+                when (rule.appliesTo.trim().lowercase()) {
+                    "download", "tts", "both" -> rule.appliesTo.trim().lowercase()
+                    else -> "both"
+                }
+            unique[id] =
+                rule.copy(
+                    id = id,
+                    name = name,
+                    pattern = validation.normalizedPattern ?: rule.pattern.trim(),
+                    flags = validation.normalizedFlags.orEmpty(),
+                    appliesTo = appliesTo,
+                )
         }
         return unique.values.toMutableList()
     }
@@ -65,10 +68,11 @@ object TextCleanup {
         normalizedFlags: String,
         appliesTo: String,
     ): Boolean {
-        val target = when (appliesTo.trim().lowercase()) {
-            "download", "tts", "both" -> appliesTo.trim().lowercase()
-            else -> "both"
-        }
+        val target =
+            when (appliesTo.trim().lowercase()) {
+                "download", "tts", "both" -> appliesTo.trim().lowercase()
+                else -> "both"
+            }
         return rules.any { rule ->
             rule.id != currentId &&
                 rule.pattern == normalizedPattern &&
@@ -77,17 +81,23 @@ object TextCleanup {
         }
     }
 
-    fun applyDownloadCleanup(html: String, sentences: List<String>, rules: List<RegexCleanupRule>): String {
+    fun applyDownloadCleanup(
+        html: String,
+        sentences: List<String>,
+        rules: List<RegexCleanupRule>,
+    ): String {
         val doc = Jsoup.parseBodyFragment(html)
-        val sentencePatterns = sentences.mapNotNull { sentence ->
-            val escaped = Regex.escape(sentence.trim()).replace("\\ ", "\\s+")
-            if (escaped.isBlank()) null else runCatching { Regex(escaped, setOf(RegexOption.IGNORE_CASE)) }.getOrNull()
-        }
-        val regexRules = rules.filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "download") }.mapNotNull {
-            runCatching {
-                Regex(it.pattern, regexOptions(it.flags))
-            }.getOrNull()
-        }
+        val sentencePatterns =
+            sentences.mapNotNull { sentence ->
+                val escaped = Regex.escape(sentence.trim()).replace("\\ ", "\\s+")
+                if (escaped.isBlank()) null else runCatching { Regex(escaped, setOf(RegexOption.IGNORE_CASE)) }.getOrNull()
+            }
+        val regexRules =
+            rules.filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "download") }.mapNotNull {
+                runCatching {
+                    Regex(it.pattern, regexOptions(it.flags))
+                }.getOrNull()
+            }
         doc.select("script,style,noscript,iframe").remove()
         doc.body().traverseTextNodes().forEach { node ->
             var text = node.text()
@@ -102,7 +112,11 @@ object TextCleanup {
         val doc = Jsoup.parseBodyFragment(html)
         doc.select("script,style,noscript,iframe").remove()
         doc.select("p,div,br,h1,h2,h3,h4,h5,h6,li").append(" ")
-        return doc.body().text().replace(Regex("\\s+"), " ").trim()
+        return doc
+            .body()
+            .text()
+            .replace(Regex("\\s+"), " ")
+            .trim()
     }
 
     fun htmlToFormattedText(html: String): String {
@@ -111,7 +125,10 @@ object TextCleanup {
         doc.select("script,style,noscript,iframe").remove()
         val lines = mutableListOf<String>()
 
-        fun emit(text: String, major: Boolean = false) {
+        fun emit(
+            text: String,
+            major: Boolean = false,
+        ) {
             val value = text.replace(Regex("[ \\t]+"), " ").trim()
             if (value.isBlank()) return
             if (major && lines.isNotEmpty() && lines.last().isNotBlank()) lines.add("")
@@ -134,7 +151,8 @@ object TextCleanup {
                     }
                 }
             }
-            return parts.joinToString("")
+            return parts
+                .joinToString("")
                 .replace(Regex("[ \\t]*\\n[ \\t]*"), "\n")
                 .replace(Regex("[ \\t]+"), " ")
                 .trim()
@@ -146,17 +164,20 @@ object TextCleanup {
             when (element.tagName().lowercase()) {
                 "table", "tbody", "thead" -> element.children().forEach(::walk)
                 "tr" -> {
-                    val row = element.children()
-                        .filter { it.tagName().equals("td", true) || it.tagName().equals("th", true) }
-                        .joinToString(" | ") { collectInline(it) }
+                    val row =
+                        element
+                            .children()
+                            .filter { it.tagName().equals("td", true) || it.tagName().equals("th", true) }
+                            .joinToString(" | ") { collectInline(it) }
                     emit(row)
                 }
                 "p", "li" -> emit(collectInline(element))
                 "blockquote", "h1", "h2", "h3", "h4", "h5", "h6" -> emit(collectInline(element), major = true)
                 "div" -> {
-                    val blockChildren = element.children().filter { child ->
-                        child.tagName().lowercase() in blockTags
-                    }
+                    val blockChildren =
+                        element.children().filter { child ->
+                            child.tagName().lowercase() in blockTags
+                        }
                     if (blockChildren.isNotEmpty() && element.ownText().isBlank()) {
                         element.children().forEach(::walk)
                     } else {
@@ -175,7 +196,8 @@ object TextCleanup {
         }
 
         walk(doc.body())
-        return lines.joinToString("\n")
+        return lines
+            .joinToString("\n")
             .replace(Regex("[ \\t]+\\n"), "\n")
             .replace(Regex("\\n[ \\t]+"), "\n")
             .replace(Regex("\\n{3,}"), "\n\n")
@@ -225,9 +247,10 @@ object TextCleanup {
 
         if (chunks.isNotEmpty()) return chunks
 
-        val fallback = cleanupForTts(cleanupForDisplay(doc.body().text()))
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        val fallback =
+            cleanupForTts(cleanupForDisplay(doc.body().text()))
+                .replace(Regex("\\s+"), " ")
+                .trim()
         return if (fallback.isBlank()) emptyList() else fallback.chunked(effectiveChunkSize)
     }
 
@@ -304,16 +327,18 @@ object TextCleanup {
         }
 
         // Fallback (mirrors prepareTtsChunks): no block elements contributed — collapse to body text.
-        val fallback = cleanupForTts(cleanupForDisplay(doc.body().text()))
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        val fallback =
+            cleanupForTts(cleanupForDisplay(doc.body().text()))
+                .replace(Regex("\\s+"), " ")
+                .trim()
         return if (fallback.isBlank()) {
             TtsAnnotatedHtml(doc.body().html(), emptyList())
         } else {
             val fallbackChunks = fallback.chunked(effectiveChunkSize)
             val fallbackDoc = Jsoup.parseBodyFragment("")
             fallbackChunks.forEachIndexed { index, chunk ->
-                fallbackDoc.body()
+                fallbackDoc
+                    .body()
                     .appendElement("span")
                     .attr("data-tts-group", index.toString())
                     .addClass("tts-chunk")
@@ -326,7 +351,11 @@ object TextCleanup {
         }
     }
 
-    fun validateRegexRule(name: String, patternInput: String, flagsInput: String): RegexValidationResult {
+    fun validateRegexRule(
+        name: String,
+        patternInput: String,
+        flagsInput: String,
+    ): RegexValidationResult {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) return RegexValidationResult(false, "Rule name is required.")
         if (trimmedName.length > maxRuleNameLength) {
@@ -358,7 +387,11 @@ object TextCleanup {
         }.getOrElse { RegexValidationResult(false, "Invalid regex: ${it.message}") }
     }
 
-    fun generateQuickPattern(characters: String, minCount: Int, wholeLine: Boolean): QuickPattern? {
+    fun generateQuickPattern(
+        characters: String,
+        minCount: Int,
+        wholeLine: Boolean,
+    ): QuickPattern? {
         val value = characters.trim()
         if (value.isBlank() || minCount < 1) return null
         val escaped = escapeRegexLiteral(value)
@@ -370,14 +403,18 @@ object TextCleanup {
         return QuickPattern(pattern, flags, "Remove $display ($minCount+) $scope")
     }
 
-    private fun regexRunner(rules: List<RegexCleanupRule>, target: String): (String) -> String {
-        val compiled = rules
-            .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == target) }
-            .mapNotNull { rule ->
-                runCatching {
-                    Regex(rule.pattern, regexOptions(rule.flags))
-                }.getOrNull()
-            }
+    private fun regexRunner(
+        rules: List<RegexCleanupRule>,
+        target: String,
+    ): (String) -> String {
+        val compiled =
+            rules
+                .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == target) }
+                .mapNotNull { rule ->
+                    runCatching {
+                        Regex(rule.pattern, regexOptions(rule.flags))
+                    }.getOrNull()
+                }
         return { input -> compiled.fold(input) { text, regex -> regex.replace(text, "") } }
     }
 
@@ -387,28 +424,44 @@ object TextCleanup {
      * the input is blank. Mirrors the legacy RN `RuleDialog` "Test Preview" pane (the draft is
      * treated as `appliesTo = both`, exactly as the RN version did).
      */
-    fun previewRegexRule(pattern: String, flags: String, sampleInput: String): String? {
+    fun previewRegexRule(
+        pattern: String,
+        flags: String,
+        sampleInput: String,
+    ): String? {
         if (sampleInput.isBlank()) return null
         val validation = validateRegexRule("preview", pattern, flags)
         if (!validation.valid) return null
         val normalizedPattern = validation.normalizedPattern ?: return null
         val normalizedFlags = validation.normalizedFlags ?: ""
-        val compiled = runCatching {
-            Regex(normalizedPattern, regexOptions(normalizedFlags))
-        }.getOrNull() ?: return null
+        val compiled =
+            runCatching {
+                Regex(normalizedPattern, regexOptions(normalizedFlags))
+            }.getOrNull() ?: return null
         return compiled.replace(sampleInput, "")
     }
 
-    private data class NormalizedRegexInput(val pattern: String, val flags: String, val error: String? = null)
+    private data class NormalizedRegexInput(
+        val pattern: String,
+        val flags: String,
+        val error: String? = null,
+    )
 
-    private fun normalizeRegexInput(patternInput: String, flagsInput: String): NormalizedRegexInput {
+    private fun normalizeRegexInput(
+        patternInput: String,
+        flagsInput: String,
+    ): NormalizedRegexInput {
         val trimmedPattern = patternInput.trim()
         val trimmedFlags = flagsInput.trim().lowercase()
         val maybeLiteral = trimmedPattern.startsWith("/") && trimmedPattern.lastIndexOf("/") > 0
         val match = regexLiteral.matchEntire(trimmedPattern)
 
         if (match == null && maybeLiteral) {
-            return NormalizedRegexInput(trimmedPattern, trimmedFlags, "Invalid regex literal. Use /pattern/flags or provide pattern and flags separately.")
+            return NormalizedRegexInput(
+                trimmedPattern,
+                trimmedFlags,
+                "Invalid regex literal. Use /pattern/flags or provide pattern and flags separately.",
+            )
         }
         if (match == null) return NormalizedRegexInput(trimmedPattern, trimmedFlags)
 
@@ -440,6 +493,7 @@ object TextCleanup {
 
     private fun Node.traverseTextNodes(): List<TextNode> {
         val result = mutableListOf<TextNode>()
+
         fun visit(node: Node) {
             if (node is TextNode) {
                 result.add(node)

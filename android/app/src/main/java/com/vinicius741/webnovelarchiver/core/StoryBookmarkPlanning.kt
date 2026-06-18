@@ -1,7 +1,11 @@
 package com.vinicius741.webnovelarchiver.core
 
 object StoryBookmarkPlanning {
-    fun withBookmark(story: Story, chapterId: String, toggleExisting: Boolean): Story {
+    fun withBookmark(
+        story: Story,
+        chapterId: String,
+        toggleExisting: Boolean,
+    ): Story {
         val nextLastReadChapterId = if (toggleExisting && story.lastReadChapterId == chapterId) null else chapterId
         return story.copy(
             lastReadChapterId = nextLastReadChapterId,
@@ -9,7 +13,10 @@ object StoryBookmarkPlanning {
         )
     }
 
-    private fun updatedEpubConfig(story: Story, nextLastReadChapterId: String?): EpubConfig? {
+    private fun updatedEpubConfig(
+        story: Story,
+        nextLastReadChapterId: String?,
+    ): EpubConfig? {
         val config = story.epubConfig ?: return story.epubConfig
         if (!config.startAfterBookmark || nextLastReadChapterId == null) return config
 

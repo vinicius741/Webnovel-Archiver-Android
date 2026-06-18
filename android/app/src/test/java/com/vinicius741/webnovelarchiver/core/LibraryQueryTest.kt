@@ -6,31 +6,34 @@ import org.junit.Test
 class LibraryQueryTest {
     @Test
     fun filtersBySourceNameAndContentTagsTogether() {
-        val stories = listOf(
-            story("rr-action", "Royal Action", "https://www.royalroad.com/fiction/1/story", tags = mutableListOf("Action")),
-            story("rr-romance", "Royal Romance", "https://www.royalroad.com/fiction/2/story", tags = mutableListOf("Romance")),
-            story("sh-action", "Hub Action", "https://www.scribblehub.com/series/3/story", tags = mutableListOf("Action")),
-        )
+        val stories =
+            listOf(
+                story("rr-action", "Royal Action", "https://www.royalroad.com/fiction/1/story", tags = mutableListOf("Action")),
+                story("rr-romance", "Royal Romance", "https://www.royalroad.com/fiction/2/story", tags = mutableListOf("Romance")),
+                story("sh-action", "Hub Action", "https://www.scribblehub.com/series/3/story", tags = mutableListOf("Action")),
+            )
 
-        val filtered = LibraryQuery.filterAndSort(
-            stories = stories,
-            searchQuery = "",
-            selectedTabId = "__all__",
-            selectedTags = setOf("RoyalRoad", "Action"),
-            sortOption = "title",
-            sortAscending = true,
-        )
+        val filtered =
+            LibraryQuery.filterAndSort(
+                stories = stories,
+                searchQuery = "",
+                selectedTabId = "__all__",
+                selectedTags = setOf("RoyalRoad", "Action"),
+                sortOption = "title",
+                sortAscending = true,
+            )
 
         assertEquals(listOf("rr-action"), filtered.map { it.id })
     }
 
     @Test
     fun defaultSortUsesMostRecentOfLastUpdatedAndDateAddedDescending() {
-        val stories = listOf(
-            story("old", "Old", lastUpdated = 100, dateAdded = 500),
-            story("new-update", "New Update", lastUpdated = 900, dateAdded = 100),
-            story("new-add", "New Add", lastUpdated = null, dateAdded = 700),
-        )
+        val stories =
+            listOf(
+                story("old", "Old", lastUpdated = 100, dateAdded = 500),
+                story("new-update", "New Update", lastUpdated = 900, dateAdded = 100),
+                story("new-add", "New Add", lastUpdated = null, dateAdded = 700),
+            )
 
         val sorted = LibraryQuery.filterAndSort(stories, "", "__all__", emptySet(), "default", sortAscending = false)
 
@@ -39,11 +42,12 @@ class LibraryQueryTest {
 
     @Test
     fun scoreSortParsesNumericScoresDescending() {
-        val stories = listOf(
-            story("low", "Low", score = "3.50 / 5"),
-            story("none", "None", score = null),
-            story("high", "High", score = "4.75"),
-        )
+        val stories =
+            listOf(
+                story("low", "Low", score = "3.50 / 5"),
+                story("none", "None", score = null),
+                story("high", "High", score = "4.75"),
+            )
 
         val sorted = LibraryQuery.filterAndSort(stories, "", "__all__", emptySet(), "score", sortAscending = false)
 
@@ -52,11 +56,12 @@ class LibraryQueryTest {
 
     @Test
     fun availableFilterLabelsReturnPopularSourcesBeforeTags() {
-        val stories = listOf(
-            story("rr1", "A", "https://www.royalroad.com/fiction/1/story", tags = mutableListOf("Action")),
-            story("rr2", "B", "https://www.royalroad.com/fiction/2/story", tags = mutableListOf("Action", "Fantasy")),
-            story("sh1", "C", "https://www.scribblehub.com/series/3/story", tags = mutableListOf("Fantasy")),
-        )
+        val stories =
+            listOf(
+                story("rr1", "A", "https://www.royalroad.com/fiction/1/story", tags = mutableListOf("Action")),
+                story("rr2", "B", "https://www.royalroad.com/fiction/2/story", tags = mutableListOf("Action", "Fantasy")),
+                story("sh1", "C", "https://www.scribblehub.com/series/3/story", tags = mutableListOf("Fantasy")),
+            )
 
         val labels = LibraryQuery.availableFilterLabels(stories, "__all__")
 
@@ -71,14 +76,15 @@ class LibraryQueryTest {
         score: String? = null,
         lastUpdated: Long? = null,
         dateAdded: Long? = null,
-    ): Story = Story(
-        id = id,
-        title = title,
-        author = "Author",
-        sourceUrl = sourceUrl,
-        tags = tags,
-        score = score,
-        lastUpdated = lastUpdated,
-        dateAdded = dateAdded,
-    )
+    ): Story =
+        Story(
+            id = id,
+            title = title,
+            author = "Author",
+            sourceUrl = sourceUrl,
+            tags = tags,
+            score = score,
+            lastUpdated = lastUpdated,
+            dateAdded = dateAdded,
+        )
 }

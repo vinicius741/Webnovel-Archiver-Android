@@ -22,13 +22,18 @@ class NetworkClient(
      * inside the lock so concurrent downloads from the activity + foreground service cannot bypass it.
      * The "next allowed at" timestamp is stored alongside the mutex so the lock is held only briefly.
      */
-    private data class HostGate(val mutex: Mutex, var nextAllowedAt: Long = 0L)
+    private data class HostGate(
+        val mutex: Mutex,
+        var nextAllowedAt: Long = 0L,
+    )
+
     private val hostGates = ConcurrentHashMap<String, HostGate>()
     private val hostGatesLock = Mutex()
 
-    private suspend fun gateFor(host: String): HostGate = hostGatesLock.withLock {
-        hostGates.getOrPut(host) { HostGate(Mutex()) }
-    }
+    private suspend fun gateFor(host: String): HostGate =
+        hostGatesLock.withLock {
+            hostGates.getOrPut(host) { HostGate(Mutex()) }
+        }
 
     suspend fun fetch(url: String): String {
         waitForRateLimit(url)
@@ -36,7 +41,10 @@ class NetworkClient(
         return executeWithRetries(url, request) { it.body?.string().orEmpty() }
     }
 
-    suspend fun postForm(url: String, fields: Map<String, Any>): String {
+    suspend fun postForm(
+        url: String,
+        fields: Map<String, Any>,
+    ): String {
         waitForRateLimit(url)
         val request = NetworkRequests.formRequest(url, fields)
         return executeWithRetries(url, request) { it.body?.string().orEmpty() }
@@ -48,7 +56,10 @@ class NetworkClient(
      * Respects the same per-host rate limit as [fetch] (R6) so cover fetches on Scribble Hub can't
      * stack 403s alongside page fetches.
      */
-    suspend fun fetchBytes(url: String, maxBytes: Long = MAX_IMAGE_BYTES): ByteArray? {
+    suspend fun fetchBytes(
+        url: String,
+        maxBytes: Long = MAX_IMAGE_BYTES,
+    ): ByteArray? {
         waitForRateLimit(url)
         val request = NetworkRequests.binaryRequest(url)
         return runCatching {
@@ -66,7 +77,11 @@ class NetworkClient(
         }.getOrNull()
     }
 
-    private suspend fun <T> executeWithRetries(url: String, request: Request, read: (Response) -> T): T {
+    private suspend fun <T> executeWithRetries(
+        url: String,
+        request: Request,
+        read: (Response) -> T,
+    ): T {
         var attempt = 1
         while (attempt <= 3) {
             val response = client.newCall(request).execute()
@@ -99,10 +114,12 @@ class NetworkClient(
         /** Maximum bytes accepted for a cover/image download (R6 size cap). */
         const val MAX_IMAGE_BYTES = 8_000_000L
 
-        val defaultClient: OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .build()
+        val defaultClient: OkHttpClient =
+            OkHttpClient
+                .Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
+                .build()
     }
 }
 
@@ -112,17 +129,23 @@ object NetworkRequests {
     const val FORM_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=UTF-8"
 
-    fun pageRequest(url: String): Request = Request.Builder()
-        .url(url)
-        .header("User-Agent", USER_AGENT)
-        .header("Accept", DEFAULT_ACCEPT)
-        .header("Accept-Language", "en-US,en;q=0.9")
-        .build()
+    fun pageRequest(url: String): Request =
+        Request
+            .Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", DEFAULT_ACCEPT)
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
 
-    fun formRequest(url: String, fields: Map<String, Any>): Request {
+    fun formRequest(
+        url: String,
+        fields: Map<String, Any>,
+    ): Request {
         val bodyBuilder = FormBody.Builder()
         fields.forEach { (key, value) -> bodyBuilder.add(key, value.toString()) }
-        return Request.Builder()
+        return Request
+            .Builder()
             .url(url)
             .post(bodyBuilder.build())
             .header("User-Agent", USER_AGENT)
@@ -134,28 +157,43 @@ object NetworkRequests {
     }
 
     /** Request builder for binary downloads (cover images) — reuses the shared client (R6). */
-    fun binaryRequest(url: String): Request = Request.Builder()
-        .url(url)
-        .header("User-Agent", USER_AGENT)
-        .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-        .header("Accept-Language", "en-US,en;q=0.9")
-        .build()
+    fun binaryRequest(url: String): Request =
+        Request
+            .Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
 }
 
 interface SourceProvider {
     val name: String
     val baseUrl: String
+
     fun isSource(url: String): Boolean
+
     fun getStoryId(url: String): String
+
     fun getChapterId(url: String): String?
+
     fun parseMetadata(html: String): NovelMetadata
-    suspend fun getChapterList(html: String, url: String, network: NetworkClient, progress: (String) -> Unit = {}): List<ChapterInfo>
+
+    suspend fun getChapterList(
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit = {},
+    ): List<ChapterInfo>
+
     fun parseChapterContent(html: String): String
 }
 
 object SourceRegistry {
     private val providers = listOf(RoyalRoadProvider, ScribbleHubProvider)
+
     fun getProvider(url: String): SourceProvider? = providers.firstOrNull { it.isSource(url) }
+
     fun all(): List<SourceProvider> = providers
 }
 
@@ -164,31 +202,69 @@ object RoyalRoadProvider : SourceProvider {
     override val baseUrl = "https://www.royalroad.com"
 
     override fun isSource(url: String) = url.contains("royalroad.com", ignoreCase = true)
-    override fun getStoryId(url: String) = Regex("fiction/(\\d+)").find(url)?.groupValues?.get(1)?.let { "rr_$it" } ?: "rr_${System.currentTimeMillis()}"
+
+    override fun getStoryId(url: String) =
+        Regex("fiction/(\\d+)")
+            .find(url)
+            ?.groupValues
+            ?.get(1)
+            ?.let { "rr_$it" } ?: "rr_${System.currentTimeMillis()}"
+
     override fun getChapterId(url: String) = Regex("/chapter/(\\d+)").find(url)?.groupValues?.get(1)
 
     override fun parseMetadata(html: String): NovelMetadata {
         val doc = Jsoup.parse(html)
-        val title = doc.selectFirst("h1")?.text()?.trim().orEmpty().ifBlank { "Unknown Title" }
-        val author = doc.selectFirst("h4 a")?.text()?.trim()
-            ?: doc.selectFirst("h4")?.text()?.replace("Author:", "")?.trim()
-            ?: doc.selectFirst("meta[name=author]")?.attr("content")
-            ?: doc.selectFirst("meta[property=article:author]")?.attr("content")
-            ?: doc.selectFirst("meta[name=twitter:creator]")?.attr("content")
-            ?: "Unknown Author"
-        val cover = (doc.selectFirst(".page-content-inner .col-md-3 img")?.absUrl("src") ?: "")
-            .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
-            .ifBlank { null }
-        val description = doc.selectFirst(".description")?.text()?.trim()
-            ?: doc.selectFirst("meta[name=description]")?.attr("content")
-            ?: doc.selectFirst("meta[property=og:description]")?.attr("content")
-        val tags = doc.select(".tags .label, .tags a, .tag").map { it.text().trim() }.filter { it.isNotBlank() && !it.equals("tags", true) }.distinct().toMutableList()
-        val score = doc.selectFirst(".list-unstyled li.list-item:contains(Overall Score)")?.nextElementSibling()?.selectFirst("span.star")?.attr("data-content")
+        val title =
+            doc
+                .selectFirst("h1")
+                ?.text()
+                ?.trim()
+                .orEmpty()
+                .ifBlank { "Unknown Title" }
+        val author =
+            doc.selectFirst("h4 a")?.text()?.trim()
+                ?: doc
+                    .selectFirst("h4")
+                    ?.text()
+                    ?.replace("Author:", "")
+                    ?.trim()
+                ?: doc.selectFirst("meta[name=author]")?.attr("content")
+                ?: doc.selectFirst("meta[property=article:author]")?.attr("content")
+                ?: doc.selectFirst("meta[name=twitter:creator]")?.attr("content")
+                ?: "Unknown Author"
+        val cover =
+            (doc.selectFirst(".page-content-inner .col-md-3 img")?.absUrl("src") ?: "")
+                .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
+                .ifBlank { null }
+        val description =
+            doc.selectFirst(".description")?.text()?.trim()
+                ?: doc.selectFirst("meta[name=description]")?.attr("content")
+                ?: doc.selectFirst("meta[property=og:description]")?.attr("content")
+        val tags =
+            doc
+                .select(".tags .label, .tags a, .tag")
+                .map {
+                    it.text().trim()
+                }.filter { it.isNotBlank() && !it.equals("tags", true) }
+                .distinct()
+                .toMutableList()
+        val score =
+            doc
+                .selectFirst(
+                    ".list-unstyled li.list-item:contains(Overall Score)",
+                )?.nextElementSibling()
+                ?.selectFirst("span.star")
+                ?.attr("data-content")
         val canonical = doc.selectFirst("link[rel=canonical]")?.absUrl("href") ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
         return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical)
     }
 
-    override suspend fun getChapterList(html: String, url: String, network: NetworkClient, progress: (String) -> Unit): List<ChapterInfo> {
+    override suspend fun getChapterList(
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit,
+    ): List<ChapterInfo> {
         progress("Parsing chapter list...")
         val doc = Jsoup.parse(html, url)
         return doc.select(".chapter-row").mapNotNull { row ->
@@ -215,28 +291,66 @@ object ScribbleHubProvider : SourceProvider {
     override val baseUrl = "https://www.scribblehub.com"
     private const val ajaxUrl = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
 
-    override fun isSource(url: String) = Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
-    override fun getStoryId(url: String) = Regex("/series/(\\d+)", RegexOption.IGNORE_CASE).find(url)?.groupValues?.get(1)?.let { "sh_$it" } ?: "sh_url_${FullBackupPaths.encodeURIComponent(url.lowercase())}"
-    override fun getChapterId(url: String) = Regex("/chapter/(\\d+)", RegexOption.IGNORE_CASE).find(url)?.groupValues?.get(1)?.let { "sh_$it" }
+    override fun isSource(url: String) =
+        Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
+
+    override fun getStoryId(url: String) =
+        Regex("/series/(\\d+)", RegexOption.IGNORE_CASE)
+            .find(url)
+            ?.groupValues
+            ?.get(1)
+            ?.let { "sh_$it" }
+            ?: "sh_url_${FullBackupPaths.encodeURIComponent(url.lowercase())}"
+
+    override fun getChapterId(url: String) =
+        Regex("/chapter/(\\d+)", RegexOption.IGNORE_CASE)
+            .find(url)
+            ?.groupValues
+            ?.get(1)
+            ?.let { "sh_$it" }
 
     override fun parseMetadata(html: String): NovelMetadata {
         val doc = Jsoup.parse(html, baseUrl)
-        val title = firstText(doc, ".fic_title", ".wi_fic_title", "h1").ifBlank { doc.selectFirst("meta[property=og:title]")?.attr("content") ?: "Unknown Title" }
-        val author = firstText(doc, ".auth_name_fic a", "a[href*=/profile/]").ifBlank { doc.selectFirst("meta[name=author]")?.attr("content") ?: "Unknown Author" }
-        val cover = (doc.selectFirst(".fic_image img")?.absUrl("src") ?: "")
-            .ifBlank { doc.selectFirst(".fic_image img")?.absUrl("data-src").orEmpty() }
-            .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
-            .ifBlank { null }
-        val description = firstText(doc, ".wi_fic_desc", ".fic_synopsis", "#synopsis")
-            .ifBlank { doc.selectFirst("meta[property=og:description]")?.attr("content") ?: doc.selectFirst("meta[name=description]")?.attr("content").orEmpty() }
-            .ifBlank { null }
+        val title =
+            firstText(doc, ".fic_title", ".wi_fic_title", "h1").ifBlank {
+                doc.selectFirst("meta[property=og:title]")?.attr("content")
+                    ?: "Unknown Title"
+            }
+        val author =
+            firstText(doc, ".auth_name_fic a", "a[href*=/profile/]").ifBlank {
+                doc.selectFirst("meta[name=author]")?.attr("content")
+                    ?: "Unknown Author"
+            }
+        val cover =
+            (doc.selectFirst(".fic_image img")?.absUrl("src") ?: "")
+                .ifBlank { doc.selectFirst(".fic_image img")?.absUrl("data-src").orEmpty() }
+                .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
+                .ifBlank { null }
+        val description =
+            firstText(doc, ".wi_fic_desc", ".fic_synopsis", "#synopsis")
+                .ifBlank {
+                    doc.selectFirst("meta[property=og:description]")?.attr("content")
+                        ?: doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
+                }.ifBlank { null }
         val canonical = doc.selectFirst("link[rel=canonical]")?.absUrl("href") ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
-        val tags = doc.select(".wi_fic_genre a, .wi_fic_tags a, .fic_genre a, .fic_tags a, a[href*=/genre/], a[href*=/tag/]").map { it.text().trim() }.filter { it.isNotBlank() }.distinct().toMutableList()
+        val tags =
+            doc
+                .select(".wi_fic_genre a, .wi_fic_tags a, .fic_genre a, .fic_tags a, a[href*=/genre/], a[href*=/tag/]")
+                .map {
+                    it.text().trim()
+                }.filter { it.isNotBlank() }
+                .distinct()
+                .toMutableList()
         val score = firstText(doc, ".numscore", "[itemprop=ratingValue]", ".rate_fic_user").ifBlank { null }
         return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical)
     }
 
-    override suspend fun getChapterList(html: String, url: String, network: NetworkClient, progress: (String) -> Unit): List<ChapterInfo> {
+    override suspend fun getChapterList(
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit,
+    ): List<ChapterInfo> {
         progress("Parsing chapter list...")
         val doc = Jsoup.parse(html, url)
         val postId = doc.selectFirst("#mypostid")?.attr("value")
@@ -245,7 +359,17 @@ object ScribbleHubProvider : SourceProvider {
         if (!postId.isNullOrBlank() && chapters.size >= 15) {
             for (page in 2..500) {
                 progress("Fetching chapter page $page...")
-                val pageHtml = network.postForm(ajaxUrl, mapOf("action" to "wi_getreleases_pagination", "pagenum" to page, "mypostid" to postId)).replace(Regex("0\\s*$"), "").trim()
+                val pageHtml =
+                    network
+                        .postForm(
+                            ajaxUrl,
+                            mapOf(
+                                "action" to "wi_getreleases_pagination",
+                                "pagenum" to page,
+                                "mypostid" to postId,
+                            ),
+                        ).replace(Regex("0\\s*$"), "")
+                        .trim()
                 val pageChapters = parseToc(Jsoup.parse(pageHtml, url), url)
                 if (pageChapters.isEmpty()) break
                 val newOnes = pageChapters.filter { seen.add(it.url) }
@@ -266,34 +390,52 @@ object ScribbleHubProvider : SourceProvider {
         return content.html().trim()
     }
 
-    private fun parseToc(doc: Document, base: String): List<ChapterInfo> = doc.select(".toc_ol li").mapNotNull { li ->
-        val link = li.selectFirst("a[href*=/read/][href*=/chapter/]") ?: return@mapNotNull null
-        val href = link.absUrl("href").ifBlank { link.attr("href") }
-        ChapterInfo(getChapterId(href), sanitizeTitle(link.text()).ifBlank { "Untitled Chapter" }, href)
-    }
+    private fun parseToc(
+        doc: Document,
+        base: String,
+    ): List<ChapterInfo> =
+        doc.select(".toc_ol li").mapNotNull { li ->
+            val link = li.selectFirst("a[href*=/read/][href*=/chapter/]") ?: return@mapNotNull null
+            val href = link.absUrl("href").ifBlank { link.attr("href") }
+            ChapterInfo(getChapterId(href), sanitizeTitle(link.text()).ifBlank { "Untitled Chapter" }, href)
+        }
 
-    private fun firstText(doc: Document, vararg selectors: String): String {
-        return selectors.firstNotNullOfOrNull { selector -> doc.selectFirst(selector)?.text()?.trim()?.takeIf { it.isNotBlank() } }.orEmpty()
-    }
+    private fun firstText(
+        doc: Document,
+        vararg selectors: String,
+    ): String =
+        selectors
+            .firstNotNullOfOrNull { selector ->
+                doc.selectFirst(selector)?.text()?.trim()?.takeIf {
+                    it.isNotBlank()
+                }
+            }.orEmpty()
 }
 
 fun sanitizeTitle(value: String): String {
     if (value.isBlank()) return "Untitled"
     val normalized = value.replace(Regex("[\\r\\n\\t]+"), " ").trim()
-    val withoutTrailingOverflow = normalized
-        .replace(Regex("(?:\\.{2,}|[\\u2026\\u22EE\\u22EF])\\s*$"), "")
-        .trim()
-    val withoutTimeAgo = withoutTrailingOverflow
-        .replace(
-            Regex("\\s*(?:[-–|]\\s*)?\\(?\\s*(?:\\d+|an?)\\s+(?:second|minute|hour|day|week|month|year)s?\\s+ago\\s*\\)?\\s*$", RegexOption.IGNORE_CASE),
-            "",
-        )
-        .trim()
-    val withoutDate = withoutTimeAgo
-        .replace(
-            Regex("\\s*(?:[-–|]\\s*)?\\(?\\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{4})\\s*\\)?\\s*$", RegexOption.IGNORE_CASE),
-            "",
-        )
-        .trim()
+    val withoutTrailingOverflow =
+        normalized
+            .replace(Regex("(?:\\.{2,}|[\\u2026\\u22EE\\u22EF])\\s*$"), "")
+            .trim()
+    val withoutTimeAgo =
+        withoutTrailingOverflow
+            .replace(
+                Regex(
+                    "\\s*(?:[-–|]\\s*)?\\(?\\s*(?:\\d+|an?)\\s+(?:second|minute|hour|day|week|month|year)s?\\s+ago\\s*\\)?\\s*$",
+                    RegexOption.IGNORE_CASE,
+                ),
+                "",
+            ).trim()
+    val withoutDate =
+        withoutTimeAgo
+            .replace(
+                Regex(
+                    "\\s*(?:[-–|]\\s*)?\\(?\\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?\\s+\\d{4})\\s*\\)?\\s*$",
+                    RegexOption.IGNORE_CASE,
+                ),
+                "",
+            ).trim()
     return withoutDate.ifBlank { "Untitled" }
 }

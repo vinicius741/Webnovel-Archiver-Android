@@ -6,12 +6,13 @@ import org.junit.Test
 class TabPlanningTest {
     @Test
     fun createTrimsNameAndAppendsWithNormalizedOrder() {
-        val result = TabPlanning.create(
-            listOf(Tab(id = "b", name = "Second", order = 5), Tab(id = "a", name = "First", order = 1)),
-            "  Reading  ",
-            "c",
-            123L,
-        )
+        val result =
+            TabPlanning.create(
+                listOf(Tab(id = "b", name = "Second", order = 5), Tab(id = "a", name = "First", order = 1)),
+                "  Reading  ",
+                "c",
+                123L,
+            )
 
         assertEquals(listOf("a", "b", "c"), result.map { it.id })
         assertEquals(listOf(0, 1, 2), result.map { it.order })
@@ -39,10 +40,15 @@ class TabPlanningTest {
 
     @Test
     fun deleteRemovesTabAndReordersRemainingTabs() {
-        val result = TabPlanning.delete(
-            listOf(Tab(id = "a", name = "First", order = 0), Tab(id = "b", name = "Second", order = 1), Tab(id = "c", name = "Third", order = 2)),
-            "b",
-        )
+        val result =
+            TabPlanning.delete(
+                listOf(
+                    Tab(id = "a", name = "First", order = 0),
+                    Tab(id = "b", name = "Second", order = 1),
+                    Tab(id = "c", name = "Third", order = 2),
+                ),
+                "b",
+            )
 
         assertEquals(listOf("a", "c"), result.map { it.id })
         assertEquals(listOf(0, 1), result.map { it.order })
@@ -50,11 +56,16 @@ class TabPlanningTest {
 
     @Test
     fun moveRepositionsTabAndNormalizesOrder() {
-        val result = TabPlanning.move(
-            listOf(Tab(id = "a", name = "First", order = 0), Tab(id = "b", name = "Second", order = 1), Tab(id = "c", name = "Third", order = 2)),
-            2,
-            0,
-        )
+        val result =
+            TabPlanning.move(
+                listOf(
+                    Tab(id = "a", name = "First", order = 0),
+                    Tab(id = "b", name = "Second", order = 1),
+                    Tab(id = "c", name = "Third", order = 2),
+                ),
+                2,
+                0,
+            )
 
         assertEquals(listOf("c", "a", "b"), result.map { it.id })
         assertEquals(listOf(0, 1, 2), result.map { it.order })

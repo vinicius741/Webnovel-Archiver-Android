@@ -26,17 +26,25 @@ object DurableJson {
     )
 
     /** Wraps a value in an [Envelope] so the on-disk shape is uniform across documents. */
-    fun envelope(value: Any?, appVersion: String?): Envelope = Envelope(
-        schemaVersion = CURRENT_SCHEMA_VERSION,
-        appVersion = appVersion,
-        payload = value,
-    )
+    fun envelope(
+        value: Any?,
+        appVersion: String?,
+    ): Envelope =
+        Envelope(
+            schemaVersion = CURRENT_SCHEMA_VERSION,
+            appVersion = appVersion,
+            payload = value,
+        )
 
     /**
      * Atomic write of [envelope] to [file] (JSON via [gson]). Overwrites the previous document only
      * after the new bytes are fully written and flushed, via [AtomicFile.finishWrite].
      */
-    fun writeAtomic(file: File, gson: Gson, envelope: Envelope) {
+    fun writeAtomic(
+        file: File,
+        gson: Gson,
+        envelope: Envelope,
+    ) {
         file.parentFile?.mkdirs()
         val atomic = AtomicFile(file)
         val out = atomic.startWrite()
@@ -47,7 +55,10 @@ object DurableJson {
     }
 
     /** Reads [file] and returns the unwrapped payload of type [T], or null if missing/corrupt. */
-    inline fun <reified T> readAtomic(file: File, gson: Gson): T? {
+    inline fun <reified T> readAtomic(
+        file: File,
+        gson: Gson,
+    ): T? {
         if (!file.exists()) return null
         val atomic = AtomicFile(file)
         val bytes = runCatching { atomic.readFully() }.getOrNull() ?: return null

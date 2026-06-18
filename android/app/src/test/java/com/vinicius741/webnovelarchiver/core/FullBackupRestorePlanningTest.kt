@@ -9,25 +9,27 @@ import org.junit.Test
 class FullBackupRestorePlanningTest {
     @Test
     fun scrubTransientStateClearsDownloadContentAndEpubPointers() {
-        val stories = mutableListOf(
-            Story(
-                id = "s1",
-                epubPath = "/old/book.epub",
-                epubPaths = mutableListOf("/old/book-1.epub"),
-                epubStale = true,
-                downloadedChapters = 1,
-                chapters = mutableListOf(
-                    Chapter(
-                        id = "c1",
-                        title = "One",
-                        content = "<p>cached</p>",
-                        filePath = "/old/chapter.html",
-                        downloaded = true,
-                    ),
-                    Chapter(id = "c2", title = "Two"),
+        val stories =
+            mutableListOf(
+                Story(
+                    id = "s1",
+                    epubPath = "/old/book.epub",
+                    epubPaths = mutableListOf("/old/book-1.epub"),
+                    epubStale = true,
+                    downloadedChapters = 1,
+                    chapters =
+                        mutableListOf(
+                            Chapter(
+                                id = "c1",
+                                title = "One",
+                                content = "<p>cached</p>",
+                                filePath = "/old/chapter.html",
+                                downloaded = true,
+                            ),
+                            Chapter(id = "c2", title = "Two"),
+                        ),
                 ),
-            ),
-        )
+            )
 
         FullBackupRestorePlanning.scrubTransientState(stories)
 
@@ -44,21 +46,24 @@ class FullBackupRestorePlanningTest {
 
     @Test
     fun applyRestoredChapterFilesMarksOnlyExistingBackupFilesAndRefreshesCounts() {
-        val stories = mutableListOf(
-            Story(
-                id = "s1",
-                downloadedChapters = 0,
-                chapters = mutableListOf(
-                    Chapter(id = "c1", title = "One"),
-                    Chapter(id = "c2", title = "Two"),
+        val stories =
+            mutableListOf(
+                Story(
+                    id = "s1",
+                    downloadedChapters = 0,
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "c1", title = "One"),
+                            Chapter(id = "c2", title = "Two"),
+                        ),
                 ),
-            ),
-        )
-        val chapterFiles = listOf(
-            RestoredChapterFileIndex("s1", "c1", "novels/s1/0000_c1.html"),
-            RestoredChapterFileIndex("s1", "c2", "novels/s1/missing.html"),
-            RestoredChapterFileIndex("s1", "missing", "novels/s1/other.html"),
-        )
+            )
+        val chapterFiles =
+            listOf(
+                RestoredChapterFileIndex("s1", "c1", "novels/s1/0000_c1.html"),
+                RestoredChapterFileIndex("s1", "c2", "novels/s1/missing.html"),
+                RestoredChapterFileIndex("s1", "missing", "novels/s1/other.html"),
+            )
 
         FullBackupRestorePlanning.applyRestoredChapterFiles(stories, chapterFiles) { path ->
             if (path.endsWith("0000_c1.html")) "/restored/$path" else null
@@ -75,19 +80,21 @@ class FullBackupRestorePlanningTest {
 
     @Test
     fun restoreSummaryReportsNovelsAndDownloadedChapters() {
-        val stories = listOf(
-            Story(
-                id = "s1",
-                chapters = mutableListOf(
-                    Chapter(id = "c1", downloaded = true),
-                    Chapter(id = "c2", downloaded = false),
+        val stories =
+            listOf(
+                Story(
+                    id = "s1",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "c1", downloaded = true),
+                            Chapter(id = "c2", downloaded = false),
+                        ),
                 ),
-            ),
-            Story(
-                id = "s2",
-                chapters = mutableListOf(Chapter(id = "c3", downloaded = true)),
-            ),
-        )
+                Story(
+                    id = "s2",
+                    chapters = mutableListOf(Chapter(id = "c3", downloaded = true)),
+                ),
+            )
 
         assertEquals(
             "Restored 2 novels and 2 downloaded chapters",

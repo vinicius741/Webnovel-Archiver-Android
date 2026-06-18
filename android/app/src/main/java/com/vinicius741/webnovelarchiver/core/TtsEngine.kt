@@ -70,20 +70,27 @@ class TtsEngine(
                     val settings = storage.getTtsSettings()
                     applySettings(settings)
                 }
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) = Unit
-                    override fun onError(utteranceId: String?) = Unit
-                    override fun onDone(utteranceId: String?) {
-                        // R8: callbacks are not guaranteed to run on the main thread. Route the
-                        // continuation onto the engine scope so all state mutation serializes.
-                        scope.launch { stateMutex.withLock { handleChunkDone() } }
-                    }
-                })
+                tts?.setOnUtteranceProgressListener(
+                    object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) = Unit
+
+                        override fun onError(utteranceId: String?) = Unit
+
+                        override fun onDone(utteranceId: String?) {
+                            // R8: callbacks are not guaranteed to run on the main thread. Route the
+                            // continuation onto the engine scope so all state mutation serializes.
+                            scope.launch { stateMutex.withLock { handleChunkDone() } }
+                        }
+                    },
+                )
             }
         }
     }
 
-    fun play(story: Story, chapter: Chapter) {
+    fun play(
+        story: Story,
+        chapter: Chapter,
+    ) {
         val settings = storage.getTtsSettings()
         applySettings(settings)
         val html = storage.readChapter(chapter) ?: chapter.content ?: ""
@@ -100,7 +107,11 @@ class TtsEngine(
      * the chunk list produced here is byte-for-byte aligned with [TextCleanup.prepareTtsAnnotatedHtml]
      * (both reuse the same grouping logic). Out-of-range indices are clamped.
      */
-    fun playFromChunk(story: Story, chapter: Chapter, chunkIndex: Int) {
+    fun playFromChunk(
+        story: Story,
+        chapter: Chapter,
+        chunkIndex: Int,
+    ) {
         val settings = storage.getTtsSettings()
         applySettings(settings)
         val html = storage.readChapter(chapter) ?: chapter.content ?: ""
@@ -170,24 +181,31 @@ class TtsEngine(
     /** Live chunk count of the currently loaded chapter (0 when nothing is loaded). */
     fun currentChunkCount(): Int = chunks.size
 
-    private fun startSession(story: Story, chapter: Chapter, settings: TtsSettings, startIndex: Int) {
+    private fun startSession(
+        story: Story,
+        chapter: Chapter,
+        settings: TtsSettings,
+        startIndex: Int,
+    ) {
         index = startIndex
-        session = TtsSession(
-            storyId = story.id,
-            chapterId = chapter.id,
-            chapterTitle = chapter.title,
-            currentChunkIndex = startIndex,
-            isPaused = false,
-            wasPlaying = true,
-            chunkSize = settings.chunkSize,
-            voiceIdentifier = settings.voiceIdentifier,
-            rate = settings.rate,
-            pitch = settings.pitch,
-        )
+        session =
+            TtsSession(
+                storyId = story.id,
+                chapterId = chapter.id,
+                chapterTitle = chapter.title,
+                currentChunkIndex = startIndex,
+                isPaused = false,
+                wasPlaying = true,
+                chunkSize = settings.chunkSize,
+                voiceIdentifier = settings.voiceIdentifier,
+                rate = settings.rate,
+                pitch = settings.pitch,
+            )
     }
 
-    fun availableVoices(): List<VoiceInfo> {
-        return tts?.voices
+    fun availableVoices(): List<VoiceInfo> =
+        tts
+            ?.voices
             ?.filter { !it.isNetworkConnectionRequired }
             ?.sortedWith(compareBy<Voice> { it.locale.toLanguageTag() }.thenBy { it.name })
             ?.map {
@@ -200,7 +218,6 @@ class TtsEngine(
                 )
             }
             ?: emptyList()
-    }
 
     private fun applySettings(settings: TtsSettings) {
         val engine = tts ?: return
@@ -215,19 +232,21 @@ class TtsEngine(
     }
 
     private fun speakCurrent() {
-        val current = chunks.getOrNull(index) ?: run {
-            playbackActive = false
-            storage.clearTtsSession()
-            notifyStateListeners(null)
-            return
-        }
+        val current =
+            chunks.getOrNull(index) ?: run {
+                playbackActive = false
+                storage.clearTtsSession()
+                notifyStateListeners(null)
+                return
+            }
         session?.let {
-            val updated = it.copy(
-                currentChunkIndex = index,
-                isPaused = false,
-                wasPlaying = true,
-                updatedAt = System.currentTimeMillis(),
-            )
+            val updated =
+                it.copy(
+                    currentChunkIndex = index,
+                    isPaused = false,
+                    wasPlaying = true,
+                    updatedAt = System.currentTimeMillis(),
+                )
             session = updated
             storage.saveTtsSession(updated)
         }
@@ -243,11 +262,12 @@ class TtsEngine(
      * speaking" from "paused mid-chapter".
      */
     private fun emitState(isPlaying: Boolean) {
-        val snapshot = TtsPlaybackState.snapshotForSession(
-            session = session,
-            totalChunks = chunks.size,
-            isPlaying = isPlaying,
-        )
+        val snapshot =
+            TtsPlaybackState.snapshotForSession(
+                session = session,
+                totalChunks = chunks.size,
+                isPlaying = isPlaying,
+            )
         notifyStateListeners(snapshot)
     }
 
@@ -261,12 +281,24 @@ class TtsEngine(
     }
 
     private fun handleChapterFinished() {
-        val currentSession = session ?: run { finishPlayback(); return }
-        val story = storage.getStory(currentSession.storyId) ?: run { finishPlayback(); return }
+        val currentSession =
+            session ?: run {
+                finishPlayback()
+                return
+            }
+        val story =
+            storage.getStory(currentSession.storyId) ?: run {
+                finishPlayback()
+                return
+            }
         story.lastReadChapterId = currentSession.chapterId
         storage.addOrUpdateStory(story)
 
-        val nextIndex = TtsSessionPlanning.nextChapterIndex(story, currentSession.chapterId) ?: run { finishPlayback(); return }
+        val nextIndex =
+            TtsSessionPlanning.nextChapterIndex(story, currentSession.chapterId) ?: run {
+                finishPlayback()
+                return
+            }
         val nextChapter = story.chapters[nextIndex]
         val settings = storage.getTtsSettings()
         applySettings(settings)

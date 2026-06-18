@@ -17,7 +17,10 @@ object AtomicFileWrites {
     private val tempCounter = AtomicInteger()
 
     /** Writes [bytes] atomically to [destination], returning [destination]. */
-    fun writeBytes(destination: File, bytes: ByteArray): File {
+    fun writeBytes(
+        destination: File,
+        bytes: ByteArray,
+    ): File {
         destination.parentFile?.mkdirs()
         val temp = tempSibling(destination)
         temp.writeBytes(bytes)
@@ -27,25 +30,39 @@ object AtomicFileWrites {
     }
 
     /** Writes [text] atomically to [destination]. */
-    fun writeText(destination: File, text: String): File =
-        writeBytes(destination, text.toByteArray(Charsets.UTF_8))
+    fun writeText(
+        destination: File,
+        text: String,
+    ): File = writeBytes(destination, text.toByteArray(Charsets.UTF_8))
 
     /**
      * Opens [block] with an [OutputStream] backed by a temp file, then renames it onto
      * [destination] when [block] returns normally. Used for streamed EPUB generation.
      */
-    fun <R> stream(destination: File, block: (OutputStream) -> R): R {
+    fun <R> stream(
+        destination: File,
+        block: (OutputStream) -> R,
+    ): R {
         destination.parentFile?.mkdirs()
         val temp = tempSibling(destination)
-        val result = FileOutputStream(temp).use { out ->
-            val wrapped = object : OutputStream() {
-                override fun write(b: Int) = out.write(b)
-                override fun write(b: ByteArray, off: Int, len: Int) = out.write(b, off, len)
-                override fun flush() = out.flush()
-                override fun close() = out.close()
+        val result =
+            FileOutputStream(temp).use { out ->
+                val wrapped =
+                    object : OutputStream() {
+                        override fun write(b: Int) = out.write(b)
+
+                        override fun write(
+                            b: ByteArray,
+                            off: Int,
+                            len: Int,
+                        ) = out.write(b, off, len)
+
+                        override fun flush() = out.flush()
+
+                        override fun close() = out.close()
+                    }
+                block(wrapped)
             }
-            block(wrapped)
-        }
         fsync(temp)
         renameOnto(temp, destination)
         return result
@@ -57,7 +74,10 @@ object AtomicFileWrites {
         return File(parent, "${destination.name}.tmp.$n")
     }
 
-    private fun renameOnto(temp: File, destination: File) {
+    private fun renameOnto(
+        temp: File,
+        destination: File,
+    ) {
         if (destination.exists()) destination.delete()
         if (!temp.renameTo(destination)) {
             // Rename can fail across filesystem boundaries; fall back to copy.

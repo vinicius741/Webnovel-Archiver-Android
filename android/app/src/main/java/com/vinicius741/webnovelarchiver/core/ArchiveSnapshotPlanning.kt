@@ -13,16 +13,19 @@ object ArchiveSnapshotPlanning {
         copyChapter: (archiveId: String, index: Int, chapter: Chapter) -> String?,
     ): Story {
         val archiveId = "${source.id}__archive_${archivedAt}_$randomSuffix"
-        val archivedChapters = source.chapters.mapIndexed { index, chapter ->
-            val archivedFilePath = if (chapter.downloaded && !chapter.filePath.isNullOrBlank()) {
-                copyChapter(archiveId, index, chapter) ?: chapter.filePath
-            } else if (chapter.downloaded) {
-                chapter.filePath
-            } else {
-                null
-            }
-            chapter.copy(filePath = archivedFilePath)
-        }.toMutableList()
+        val archivedChapters =
+            source.chapters
+                .mapIndexed { index, chapter ->
+                    val archivedFilePath =
+                        if (chapter.downloaded && !chapter.filePath.isNullOrBlank()) {
+                            copyChapter(archiveId, index, chapter) ?: chapter.filePath
+                        } else if (chapter.downloaded) {
+                            chapter.filePath
+                        } else {
+                            null
+                        }
+                    chapter.copy(filePath = archivedFilePath)
+                }.toMutableList()
 
         return source.copy(
             id = archiveId,

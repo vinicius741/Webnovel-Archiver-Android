@@ -10,7 +10,6 @@ package com.vinicius741.webnovelarchiver.core
  * [chapterJobStatuses] to drive the per-chapter spinner/dot. This module owns no state.
  */
 object DownloadDetailsPlanning {
-
     /**
      * Live, story-scoped download summary derived from that story's queue jobs. [progress] is the
      * fraction of jobs that have reached a terminal success state (0f–1f). [headline] is built by
@@ -102,10 +101,11 @@ object DownloadDetailsPlanning {
      * so the adapter only needs to render feedback for in-flight work.
      */
     fun chapterJobStatuses(jobs: List<DownloadJob>): Map<String, DownloadJobStatus> =
-        jobs.mapNotNull { job ->
-            val status = DownloadJobStatus.parse(job.status)
-            if (status == DownloadJobStatus.Completed) null else job.chapter.id to status
-        }.toMap()
+        jobs
+            .mapNotNull { job ->
+                val status = DownloadJobStatus.parse(job.status)
+                if (status == DownloadJobStatus.Completed) null else job.chapter.id to status
+            }.toMap()
 
     /** Trims/compacts a chapter title for the headline so very long titles don't overflow the bar. */
     private fun sanitize(title: String): String {

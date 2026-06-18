@@ -7,14 +7,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadDetailsPlanningTest {
-
     @Test
     fun summarizeActiveWhenDownloadingOrPending() {
-        val jobs = listOf(
-            job("c1", "downloading", title = "Chapter 1"),
-            job("c2", "pending"),
-            job("c3", "completed"),
-        )
+        val jobs =
+            listOf(
+                job("c1", "downloading", title = "Chapter 1"),
+                job("c2", "pending"),
+                job("c3", "completed"),
+            )
         val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobs)
         assertTrue(summary.isActive)
         assertFalse(summary.isPaused)
@@ -30,9 +30,10 @@ class DownloadDetailsPlanningTest {
 
     @Test
     fun summarizeActiveUsesQueuedHeadlineWhenNoneDownloadingYet() {
-        val summary = DownloadDetailsPlanning.summarizeStoryDownload(
-            listOf(job("c1", "pending"), job("c2", "completed")),
-        )
+        val summary =
+            DownloadDetailsPlanning.summarizeStoryDownload(
+                listOf(job("c1", "pending"), job("c2", "completed")),
+            )
         assertTrue(summary.isActive)
         assertNull(summary.activeTitle)
         assertEquals("Queued (1/2)", DownloadDetailsPlanning.headline(summary))
@@ -40,21 +41,23 @@ class DownloadDetailsPlanningTest {
 
     @Test
     fun headlineDownloadingIncludesActiveTitle() {
-        val jobs = listOf(
-            job("c1", "downloading", title = "Chapter 1"),
-            job("c2", "pending"),
-            job("c3", "completed"),
-        )
+        val jobs =
+            listOf(
+                job("c1", "downloading", title = "Chapter 1"),
+                job("c2", "pending"),
+                job("c3", "completed"),
+            )
         val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobs)
         assertEquals("Downloading: Chapter 1 (1/3)", DownloadDetailsPlanning.headline(summary))
     }
 
     @Test
     fun summarizePausedWhenNoActiveButPausedPresent() {
-        val jobs = listOf(
-            job("c1", "paused"),
-            job("c2", "completed"),
-        )
+        val jobs =
+            listOf(
+                job("c1", "paused"),
+                job("c2", "completed"),
+            )
         val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobs)
         assertFalse(summary.isActive)
         assertTrue(summary.isPaused)
@@ -64,10 +67,11 @@ class DownloadDetailsPlanningTest {
 
     @Test
     fun headlineCompleteWhenAllCompleted() {
-        val jobs = listOf(
-            job("c1", "completed"),
-            job("c2", "completed"),
-        )
+        val jobs =
+            listOf(
+                job("c1", "completed"),
+                job("c2", "completed"),
+            )
         val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobs)
         assertTrue(summary.isFinished)
         assertEquals("Download Complete", DownloadDetailsPlanning.headline(summary))
@@ -76,11 +80,12 @@ class DownloadDetailsPlanningTest {
 
     @Test
     fun headlineFinishedWithFailuresAndCancelled() {
-        val jobs = listOf(
-            job("c1", "completed"),
-            job("c2", "failed"),
-            job("c3", "cancelled"),
-        )
+        val jobs =
+            listOf(
+                job("c1", "completed"),
+                job("c2", "failed"),
+                job("c3", "cancelled"),
+            )
         val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobs)
         assertTrue(summary.isFinished)
         assertEquals(
@@ -102,9 +107,10 @@ class DownloadDetailsPlanningTest {
     @Test
     fun headlineTrimsLongChapterTitle() {
         val longTitle = "A".repeat(120)
-        val summary = DownloadDetailsPlanning.summarizeStoryDownload(
-            listOf(job("c1", "downloading", title = longTitle), job("c2", "completed")),
-        )
+        val summary =
+            DownloadDetailsPlanning.summarizeStoryDownload(
+                listOf(job("c1", "downloading", title = longTitle), job("c2", "completed")),
+            )
         val headline = DownloadDetailsPlanning.headline(summary)
         // truncated to 45 chars + ellipsis, ratio appended
         assertTrue(headline.startsWith("Downloading: " + "A".repeat(45) + "…"))
@@ -113,12 +119,13 @@ class DownloadDetailsPlanningTest {
 
     @Test
     fun chapterJobStatusesExcludesCompleted() {
-        val jobs = listOf(
-            job("c1", "downloading"),
-            job("c2", "pending"),
-            job("c3", "completed"),
-            job("c4", "failed"),
-        )
+        val jobs =
+            listOf(
+                job("c1", "downloading"),
+                job("c2", "pending"),
+                job("c3", "completed"),
+                job("c4", "failed"),
+            )
         val statuses = DownloadDetailsPlanning.chapterJobStatuses(jobs)
         // completed is filtered out (story downloaded flag already marks it)
         assertEquals(3, statuses.size)
@@ -133,12 +140,17 @@ class DownloadDetailsPlanningTest {
         assertTrue(DownloadDetailsPlanning.chapterJobStatuses(emptyList()).isEmpty())
     }
 
-    private fun job(chapterId: String, status: String, title: String = "Chapter"): DownloadJob = DownloadJob(
-        id = "$chapterId-job",
-        storyId = "story-1",
-        storyTitle = "Story",
-        chapterIndex = 0,
-        chapter = Chapter(id = chapterId, title = title, url = "https://example.com/$chapterId"),
-        status = status,
-    )
+    private fun job(
+        chapterId: String,
+        status: String,
+        title: String = "Chapter",
+    ): DownloadJob =
+        DownloadJob(
+            id = "$chapterId-job",
+            storyId = "story-1",
+            storyTitle = "Story",
+            chapterIndex = 0,
+            chapter = Chapter(id = chapterId, title = title, url = "https://example.com/$chapterId"),
+            status = status,
+        )
 }

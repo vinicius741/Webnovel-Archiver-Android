@@ -7,11 +7,12 @@ import org.junit.Test
 class DownloadQueueControlPlanningTest {
     @Test
     fun pauseAllPausesActiveJobsAndClearsRetryTimers() {
-        val jobs = listOf(
-            job("pending", "pending", nextRetryAt = 100L),
-            job("downloading", "downloading", nextRetryAt = 200L),
-            job("failed", "failed", nextRetryAt = 300L),
-        )
+        val jobs =
+            listOf(
+                job("pending", "pending", nextRetryAt = 100L),
+                job("downloading", "downloading", nextRetryAt = 200L),
+                job("failed", "failed", nextRetryAt = 300L),
+            )
 
         val updated = DownloadQueueControlPlanning.pauseAll(jobs)
 
@@ -23,16 +24,17 @@ class DownloadQueueControlPlanningTest {
 
     @Test
     fun resumeKeepsErrorMetadataAndClearsRetryTimer() {
-        val jobs = listOf(
-            job(
-                id = "paused",
-                status = "paused",
-                error = "Paused after repeated failures",
-                errorCategory = "rate_limit",
-                errorCode = "HTTP_429",
-                nextRetryAt = 100L,
-            ),
-        )
+        val jobs =
+            listOf(
+                job(
+                    id = "paused",
+                    status = "paused",
+                    error = "Paused after repeated failures",
+                    errorCategory = "rate_limit",
+                    errorCode = "HTTP_429",
+                    nextRetryAt = 100L,
+                ),
+            )
 
         val updated = DownloadQueueControlPlanning.resumeJob(jobs, "paused").single()
 
@@ -45,15 +47,16 @@ class DownloadQueueControlPlanningTest {
 
     @Test
     fun cancelMarksOnlyCancellableJobsCancelled() {
-        val updated = DownloadQueueControlPlanning.cancelAll(
-            listOf(
-                job("pending", "pending"),
-                job("paused", "paused"),
-                job("downloading", "downloading"),
-                job("failed", "failed"),
-                job("completed", "completed"),
-            ),
-        )
+        val updated =
+            DownloadQueueControlPlanning.cancelAll(
+                listOf(
+                    job("pending", "pending"),
+                    job("paused", "paused"),
+                    job("downloading", "downloading"),
+                    job("failed", "failed"),
+                    job("completed", "completed"),
+                ),
+            )
 
         assertEquals(listOf("cancelled", "cancelled", "cancelled", "failed", "completed"), updated.map { it.status })
         assertEquals("cancelled", updated[0].error)
@@ -63,12 +66,28 @@ class DownloadQueueControlPlanningTest {
 
     @Test
     fun retryManualOnlyRetriesFailedJobsNotCancelledJobs() {
-        val updated = DownloadQueueControlPlanning.retryFailed(
-            listOf(
-                job("failed", "failed", retryCount = 2, error = "Timeout", errorCategory = "network", errorCode = "TIMEOUT", nextRetryAt = 100L),
-                job("cancelled", "cancelled", retryCount = 1, error = "cancelled", errorCategory = "cancelled", errorCode = "CANCELLED"),
-            ),
-        )
+        val updated =
+            DownloadQueueControlPlanning.retryFailed(
+                listOf(
+                    job(
+                        "failed",
+                        "failed",
+                        retryCount = 2,
+                        error = "Timeout",
+                        errorCategory = "network",
+                        errorCode = "TIMEOUT",
+                        nextRetryAt = 100L,
+                    ),
+                    job(
+                        "cancelled",
+                        "cancelled",
+                        retryCount = 1,
+                        error = "cancelled",
+                        errorCategory = "cancelled",
+                        errorCode = "CANCELLED",
+                    ),
+                ),
+            )
 
         assertEquals("pending", updated[0].status)
         assertEquals(3, updated[0].retryCount)
@@ -82,13 +101,14 @@ class DownloadQueueControlPlanningTest {
 
     @Test
     fun retryFailedForStoryOnlyTouchesMatchingStoryFailedJobs() {
-        val updated = DownloadQueueControlPlanning.retryFailed(
-            listOf(
-                job("story-1-failed", "failed", storyId = "story-1"),
-                job("story-2-failed", "failed", storyId = "story-2"),
-            ),
-            storyId = "story-1",
-        )
+        val updated =
+            DownloadQueueControlPlanning.retryFailed(
+                listOf(
+                    job("story-1-failed", "failed", storyId = "story-1"),
+                    job("story-2-failed", "failed", storyId = "story-2"),
+                ),
+                storyId = "story-1",
+            )
 
         assertEquals("pending", updated[0].status)
         assertEquals("failed", updated[1].status)

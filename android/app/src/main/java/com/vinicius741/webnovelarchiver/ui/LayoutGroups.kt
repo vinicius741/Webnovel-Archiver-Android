@@ -8,20 +8,26 @@ import android.widget.FrameLayout
 
 private const val WRAP_CONTENT = ViewGroup.LayoutParams.WRAP_CONTENT
 
-/* ------------------------------------------------------------------ */
-/* WrapLayout — a horizontal FlowLayout that wraps children to the    */
-/* next line when they exceed the available width. Used for button    */
-/* rows and chip groups so primary actions never overflow the screen. */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// WrapLayout — a horizontal FlowLayout that wraps children to the
+// next line when they exceed the available width. Used for button
+// rows and chip groups so primary actions never overflow the screen.
+// ------------------------------------------------------------------
 
-class WrapLayout(context: Context) : ViewGroup(context) {
+class WrapLayout(
+    context: Context,
+) : ViewGroup(context) {
     var horizontalSpacingDp: Int = 8
     var verticalSpacingDp: Int = 8
 
     private fun hd(): Int = context.dp(horizontalSpacingDp)
+
     private fun vd(): Int = context.dp(verticalSpacingDp)
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
         val maxWidth = MeasureSpec.getSize(widthMeasureSpec) - paddingStart - paddingEnd
         val padTop = paddingTop
         val padBottom = paddingBottom
@@ -49,14 +55,21 @@ class WrapLayout(context: Context) : ViewGroup(context) {
         }
         widthUsed = maxOf(widthUsed, lineWidth)
         heightUsed += lineHeight + padBottom
-        val resolvedWidth = when (MeasureSpec.getMode(widthMeasureSpec)) {
-            MeasureSpec.EXACTLY -> MeasureSpec.getSize(widthMeasureSpec)
-            else -> widthUsed + paddingStart + paddingEnd
-        }
+        val resolvedWidth =
+            when (MeasureSpec.getMode(widthMeasureSpec)) {
+                MeasureSpec.EXACTLY -> MeasureSpec.getSize(widthMeasureSpec)
+                else -> widthUsed + paddingStart + paddingEnd
+            }
         setMeasuredDimension(resolvedWidth, resolveSize(heightUsed, heightMeasureSpec))
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    override fun onLayout(
+        changed: Boolean,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+    ) {
         val maxWidth = (right - left) - paddingStart - paddingEnd
         var x = paddingStart
         var y = paddingTop
@@ -81,31 +94,43 @@ class WrapLayout(context: Context) : ViewGroup(context) {
     }
 
     override fun checkLayoutParams(p: LayoutParams?): Boolean = p is MarginLayoutParams
+
     override fun generateLayoutParams(p: LayoutParams): LayoutParams = MarginLayoutParams(p)
+
     override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams = MarginLayoutParams(context, attrs)
+
     override fun generateDefaultLayoutParams(): LayoutParams = MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT)
 }
 
-/* ------------------------------------------------------------------ */
-/* GridLayout — arranges children in a fixed number of equal-width     */
-/* columns. Use for button groups where a predictable grid is cleaner  */
-/* than a wrapping flow.                                              */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// GridLayout — arranges children in a fixed number of equal-width
+// columns. Use for button groups where a predictable grid is cleaner
+// than a wrapping flow.
+// ------------------------------------------------------------------
 
-class GridLayout(context: Context) : ViewGroup(context) {
+class GridLayout(
+    context: Context,
+) : ViewGroup(context) {
     var columnCount: Int = 2
     var horizontalSpacingDp: Int = 8
     var verticalSpacingDp: Int = 8
 
     private fun hd(): Int = context.dp(horizontalSpacingDp)
+
     private fun vd(): Int = context.dp(verticalSpacingDp)
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
         val rawWidth = MeasureSpec.getSize(widthMeasureSpec)
         val availableWidth = (rawWidth - paddingStart - paddingEnd).coerceAtLeast(0)
-        val cellWidth = if (columnCount > 0) {
-            (availableWidth - (columnCount - 1) * hd()) / columnCount
-        } else availableWidth
+        val cellWidth =
+            if (columnCount > 0) {
+                (availableWidth - (columnCount - 1) * hd()) / columnCount
+            } else {
+                availableWidth
+            }
 
         var totalHeight = paddingTop + paddingBottom
         var rowHeight = 0
@@ -135,18 +160,28 @@ class GridLayout(context: Context) : ViewGroup(context) {
             totalHeight += rowHeight
         }
 
-        val resolvedWidth = when (MeasureSpec.getMode(widthMeasureSpec)) {
-            MeasureSpec.EXACTLY -> rawWidth
-            else -> availableWidth + paddingStart + paddingEnd
-        }
+        val resolvedWidth =
+            when (MeasureSpec.getMode(widthMeasureSpec)) {
+                MeasureSpec.EXACTLY -> rawWidth
+                else -> availableWidth + paddingStart + paddingEnd
+            }
         setMeasuredDimension(resolvedWidth, resolveSize(totalHeight, heightMeasureSpec))
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+    override fun onLayout(
+        changed: Boolean,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+    ) {
         val availableWidth = ((right - left) - paddingStart - paddingEnd).coerceAtLeast(0)
-        val cellWidth = if (columnCount > 0) {
-            (availableWidth - (columnCount - 1) * hd()) / columnCount
-        } else availableWidth
+        val cellWidth =
+            if (columnCount > 0) {
+                (availableWidth - (columnCount - 1) * hd()) / columnCount
+            } else {
+                availableWidth
+            }
 
         var x = paddingStart
         var y = paddingTop
@@ -179,8 +214,11 @@ class GridLayout(context: Context) : ViewGroup(context) {
     }
 
     override fun checkLayoutParams(p: LayoutParams?): Boolean = p is MarginLayoutParams
+
     override fun generateLayoutParams(p: LayoutParams): LayoutParams = MarginLayoutParams(p)
+
     override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams = MarginLayoutParams(context, attrs)
+
     override fun generateDefaultLayoutParams(): LayoutParams = MarginLayoutParams(WRAP_CONTENT, WRAP_CONTENT)
 }
 
@@ -189,25 +227,32 @@ class GridLayout(context: Context) : ViewGroup(context) {
  * This lets screens apply large-screen content caps without forcing an oversized exact width on
  * compact windows.
  */
-class MaxWidthFrameLayout(context: Context) : FrameLayout(context) {
+class MaxWidthFrameLayout(
+    context: Context,
+) : FrameLayout(context) {
     var maxContentWidthDp: Int = 0
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
         val mode = MeasureSpec.getMode(widthMeasureSpec)
         val parentWidth = MeasureSpec.getSize(widthMeasureSpec)
         val maxWidthPx = if (maxContentWidthDp > 0) context.dp(maxContentWidthDp) else parentWidth
-        val contentWidth = when (mode) {
-            MeasureSpec.UNSPECIFIED -> maxWidthPx
-            else -> minOf(parentWidth, maxWidthPx)
-        }.coerceAtLeast(0)
+        val contentWidth =
+            when (mode) {
+                MeasureSpec.UNSPECIFIED -> maxWidthPx
+                else -> minOf(parentWidth, maxWidthPx)
+            }.coerceAtLeast(0)
 
         super.onMeasure(MeasureSpec.makeMeasureSpec(contentWidth, MeasureSpec.EXACTLY), heightMeasureSpec)
 
-        val resolvedWidth = when (mode) {
-            MeasureSpec.EXACTLY -> parentWidth
-            MeasureSpec.AT_MOST -> minOf(parentWidth, measuredWidth)
-            else -> measuredWidth
-        }
+        val resolvedWidth =
+            when (mode) {
+                MeasureSpec.EXACTLY -> parentWidth
+                MeasureSpec.AT_MOST -> minOf(parentWidth, measuredWidth)
+                else -> measuredWidth
+            }
         setMeasuredDimension(resolvedWidth, measuredHeight)
     }
 

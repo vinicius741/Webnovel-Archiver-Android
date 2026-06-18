@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.text.Editable
@@ -18,39 +17,40 @@ import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StoryActionGuards
 import com.vinicius741.webnovelarchiver.core.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.DESCRIPTION_PREVIEW_LENGTH
-import com.vinicius741.webnovelarchiver.ui.truncateDescription
+import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
-import com.vinicius741.webnovelarchiver.ui.makeBadge
-import com.vinicius741.webnovelarchiver.ui.makeSearchField
-import com.vinicius741.webnovelarchiver.ui.makeDivider
-import com.vinicius741.webnovelarchiver.ui.scroll
-import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
+import com.vinicius741.webnovelarchiver.ui.disableButton
+import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.makeBadge
+import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeChip
+import com.vinicius741.webnovelarchiver.ui.makeDivider
+import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
+import com.vinicius741.webnovelarchiver.ui.makeSearchField
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.sanitizeTitle
+import com.vinicius741.webnovelarchiver.ui.screen
+import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
+import com.vinicius741.webnovelarchiver.ui.toast
+import com.vinicius741.webnovelarchiver.ui.truncateDescription
 
 internal fun ScreenHost.showDetails(storyId: String) {
     val story = storage.getStory(storyId) ?: return showLibrary()
     val screenKey = "${story.title}|by ${story.author}"
-    val previousListState = if (frame.tag == screenKey) {
-        findDetailsChapterList(frame)?.layoutManager?.onSaveInstanceState()
-    } else {
-        null
-    }
+    val previousListState =
+        if (frame.tag == screenKey) {
+            findDetailsChapterList(frame)?.layoutManager?.onSaveInstanceState()
+        } else {
+            null
+        }
     // Stable reference to the download banner slot. Captured into the refresh closure so the loop
     // patches it in place even when the header is scrolled off-screen (the slot detaches from the
     // window but the reference stays valid). Allocated lazily by the banner block below.
@@ -85,16 +85,29 @@ internal fun ScreenHost.showDetails(storyId: String) {
         infoPanel.addView(buildDetailsHeader(story))
 
         if (story.isArchived == true) {
-            infoPanel.addView(makeText(context, "Archived snapshot: sync and downloads disabled", Type.LABEL_MEDIUM, ThemeManager.colors.tertiary).apply {
-                gravity = Gravity.CENTER
-                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
-            })
+            infoPanel.addView(
+                makeText(context, "Archived snapshot: sync and downloads disabled", Type.LABEL_MEDIUM, ThemeManager.colors.tertiary).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(Space.SM), 0, dp(Space.XS))
+                },
+            )
         }
         if (StoryActionGuards.canSync(story)) {
             // "Syncing..." label while a SYNC operation is in flight mirrors RN's
             // `{syncing ? "Syncing..." : "Sync Chapters"}`. The inline progress block is added below.
             val syncLabel = if (operation?.kind == StoryOperationKind.SYNC) "Syncing..." else "Sync Chapters"
-            infoPanel.addView(makeFullWidthButton(context, syncLabel, Btn.FILLED, R.drawable.wna_refresh, dp(Space.SM + 2), enabled = !isBusy) { syncStory(story) })
+            infoPanel.addView(
+                makeFullWidthButton(
+                    context,
+                    syncLabel,
+                    Btn.FILLED,
+                    R.drawable.wna_refresh,
+                    dp(Space.SM + 2),
+                    enabled = !isBusy,
+                ) {
+                    syncStory(story)
+                },
+            )
         }
         if (operation?.kind == StoryOperationKind.SYNC) {
             infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = true))
@@ -102,12 +115,37 @@ internal fun ScreenHost.showDetails(storyId: String) {
         if (StoryActionGuards.canQueueDownloads(story)) {
             val remainingChapters = story.chapters.count { !it.downloaded }
             if (remainingChapters > 0) {
-                val downloadLabel = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
+                val downloadLabel =
+                    if (remainingChapters ==
+                        story.chapters.size
+                    ) {
+                        "Download All"
+                    } else {
+                        "Download Remaining ($remainingChapters)"
+                    }
                 // Disable while a download is already running for this story (and during any blocking
                 // operation) so the user can't enqueue a duplicate batch — mirrors RN's disabled={downloading}.
-                infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2), enabled = !isBusy && !downloadSummary.isActive) {
-                    queueDownload(story, story.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null })
-                })
+                infoPanel.addView(
+                    makeFullWidthButton(
+                        context,
+                        downloadLabel,
+                        Btn.FILLED,
+                        R.drawable.wna_download,
+                        dp(Space.SM + 2),
+                        enabled =
+                            !isBusy && !downloadSummary.isActive,
+                    ) {
+                        queueDownload(
+                            story,
+                            story.chapters.mapIndexedNotNull {
+                                index,
+                                chapter,
+                                ->
+                                if (!chapter.downloaded) index else null
+                            },
+                        )
+                    },
+                )
             }
         }
         if (showDownloadBanner) {
@@ -116,10 +154,11 @@ internal fun ScreenHost.showDetails(storyId: String) {
             // place rather than rebuilding the screen. The slot is always allocated when shown so we
             // have a direct reference even while the header is scrolled off-screen and the slot is
             // detached from the window — patching a detached view is safe and shows on reattach.
-            bannerSlot = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(makeDownloadProgressBanner(context, downloadSummary) { showQueue() })
-            }
+            bannerSlot =
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(makeDownloadProgressBanner(context, downloadSummary) { showQueue() })
+                }
             infoPanel.addView(bannerSlot!!)
         }
         if (operation?.kind == StoryOperationKind.CLEANUP) {
@@ -129,55 +168,93 @@ internal fun ScreenHost.showDetails(storyId: String) {
         // D2: Generate EPUB is the primary action — promote it to a full-width button so its visual
         // weight matches its usage.
         val generateLabel = if (operation?.kind == StoryOperationKind.EPUB) "Generating..." else "Generate EPUB"
-        infoPanel.addView(makeFullWidthButton(context, generateLabel, Btn.TONAL, R.drawable.wna_menu_book, dp(Space.SM + 2), enabled = story.downloadedChapters > 0 && !isBusy) {
-            val config = story.epubConfig ?: EpubConfig(
-                maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
-                rangeStart = 1,
-                rangeEnd = story.chapters.size,
-                startAfterBookmark = false,
-            )
-            generateConfiguredEpub(story, config)
-        })
-        if (operation?.kind == StoryOperationKind.EPUB) {
-            infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = operation.progress == null))
-        }
-        // Read EPUB is now a full-width outlined button so it aligns with the other primary actions.
-        infoPanel.addView(makeFullWidthButton(context, "Read EPUB", Btn.OUTLINED, R.drawable.wna_book_open, dp(Space.SM + 2), enabled = hasEpub && !isBusy) {
-            openEpubForStory(story)
-        })
-        // D6: make the stale notice actionable with an inline Regenerate button.
-        if (story.epubStale == true && hasEpub) {
-            infoPanel.addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-                addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant))
-                val regenerateButton = makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
-                    val config = story.epubConfig ?: EpubConfig(
+        infoPanel.addView(
+            makeFullWidthButton(
+                context,
+                generateLabel,
+                Btn.TONAL,
+                R.drawable.wna_menu_book,
+                dp(Space.SM + 2),
+                enabled =
+                    story.downloadedChapters > 0 && !isBusy,
+            ) {
+                val config =
+                    story.epubConfig ?: EpubConfig(
                         maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
                         rangeStart = 1,
                         rangeEnd = story.chapters.size,
                         startAfterBookmark = false,
                     )
-                    generateConfiguredEpub(story, config)
-                }
-                if (isBusy) disableButton(regenerateButton)
-                addView(regenerateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(Space.SM) })
-            })
+                generateConfiguredEpub(story, config)
+            },
+        )
+        if (operation?.kind == StoryOperationKind.EPUB) {
+            infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = operation.progress == null))
+        }
+        // Read EPUB is now a full-width outlined button so it aligns with the other primary actions.
+        infoPanel.addView(
+            makeFullWidthButton(
+                context,
+                "Read EPUB",
+                Btn.OUTLINED,
+                R.drawable.wna_book_open,
+                dp(Space.SM + 2),
+                enabled =
+                    hasEpub && !isBusy,
+            ) {
+                openEpubForStory(story)
+            },
+        )
+        // D6: make the stale notice actionable with an inline Regenerate button.
+        if (story.epubStale == true && hasEpub) {
+            infoPanel.addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER
+                    addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant))
+                    val regenerateButton =
+                        makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
+                            val config =
+                                story.epubConfig ?: EpubConfig(
+                                    maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
+                                    rangeStart = 1,
+                                    rangeEnd = story.chapters.size,
+                                    startAfterBookmark = false,
+                                )
+                            generateConfiguredEpub(story, config)
+                        }
+                    if (isBusy) disableButton(regenerateButton)
+                    addView(
+                        regenerateButton,
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            marginStart =
+                                dp(Space.SM)
+                        },
+                    )
+                },
+            )
         }
 
         // ---- Description (inline expand/collapse, mirrors RN StoryDescription) ----
         story.description?.takeIf { it.isNotBlank() }?.let { description ->
             val canExpand = description.length > DESCRIPTION_PREVIEW_LENGTH
             var expanded = false
-            val descCol = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.START
-                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
-            }
-            val descText = makeText(context, if (canExpand) truncateDescription(description) else description, Type.BODY_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-                gravity = Gravity.START
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            }
+            val descCol =
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.START
+                    setPadding(0, dp(Space.SM), 0, dp(Space.XS))
+                }
+            val descText =
+                makeText(
+                    context,
+                    if (canExpand) truncateDescription(description) else description,
+                    Type.BODY_MEDIUM,
+                    ThemeManager.colors.onSurfaceVariant,
+                ).apply {
+                    gravity = Gravity.START
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                }
             descCol.addView(descText)
             if (canExpand) {
                 val toggle: Button = makeButton(context, "Read more", Btn.TEXT, 0) {}
@@ -193,57 +270,68 @@ internal fun ScreenHost.showDetails(storyId: String) {
 
         // ---- Tags (new; were missing on native) ----
         story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
-            infoPanel.addView(WrapLayout(context).apply {
-                horizontalSpacingDp = Space.SM
-                verticalSpacingDp = Space.SM
-                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
-                tags.forEach { tag ->
-                    addView(makeBadge(context, tag, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
-                }
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            })
+            infoPanel.addView(
+                WrapLayout(context).apply {
+                    horizontalSpacingDp = Space.SM
+                    verticalSpacingDp = Space.SM
+                    setPadding(0, dp(Space.SM), 0, dp(Space.XS))
+                    tags.forEach { tag ->
+                        addView(makeBadge(context, tag, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
+                    }
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                },
+            )
         }
 
         // ---- Chapter filter (search + chips) ----
         val chapterControls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val search = makeSearchField(context, "Search chapters")
         chapterControls.addView(search)
-        val chipsContainer = WrapLayout(context).apply {
-            horizontalSpacingDp = Space.SM
-            verticalSpacingDp = Space.SM
-            setPadding(0, dp(Space.SM), 0, dp(Space.SM))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
+        val chipsContainer =
+            WrapLayout(context).apply {
+                horizontalSpacingDp = Space.SM
+                verticalSpacingDp = Space.SM
+                setPadding(0, dp(Space.SM), 0, dp(Space.SM))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
         chapterControls.addView(chipsContainer)
 
         // ---- Chapter List (S1: RecyclerView so novels with hundreds/thousands of chapters recycle
         // views instead of inflating one row each on every render/filter tick) ----
-        val chaptersContainer = androidx.recyclerview.widget.RecyclerView(context).apply {
-            layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
-            setHasFixedSize(false)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-        }
+        val chaptersContainer =
+            androidx.recyclerview.widget.RecyclerView(context).apply {
+                layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
+                setHasFixedSize(false)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            }
 
         // Compact keeps one continuous scroll by exposing details and controls as the list's first
         // item. Two-pane keeps controls fixed above the independently scrolling chapter list.
-        val listHeader: View? = if (!layout.isTwoPane) {
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                var infoExpanded = true
-                val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
-                collapseToggle.setOnClickListener {
-                    infoExpanded = !infoExpanded
-                    infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
-                    collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
+        val listHeader: View? =
+            if (!layout.isTwoPane) {
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    var infoExpanded = true
+                    val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
+                    collapseToggle.setOnClickListener {
+                        infoExpanded = !infoExpanded
+                        infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
+                        collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
+                    }
+                    addView(
+                        collapseToggle,
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                            bottomMargin =
+                                dp(Space.XS)
+                        },
+                    )
+                    addView(infoPanel)
+                    addView(makeDivider(context))
+                    addView(chapterControls)
                 }
-                addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
-                addView(infoPanel)
-                addView(makeDivider(context))
-                addView(chapterControls)
+            } else {
+                null
             }
-        } else {
-            null
-        }
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
         var chapterFilter = storage.getChapterFilterSettings().filterMode
@@ -258,14 +346,28 @@ internal fun ScreenHost.showDetails(storyId: String) {
             renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
             renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
         }
-        search.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                chapterQuery = s?.toString().orEmpty()
-                renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
-            }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
+        search.addTextChangedListener(
+            object : TextWatcher {
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int,
+                ) = Unit
+
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int,
+                ) {
+                    chapterQuery = s?.toString().orEmpty()
+                    renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
+            },
+        )
         renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
         renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
 
@@ -275,18 +377,23 @@ internal fun ScreenHost.showDetails(storyId: String) {
             // list takes the remaining space, each with its own scroll surface. No divider is drawn
             // between the panes — a marginEnd on the info pane keeps the columns from touching.
             val leftScroll = scroll(infoPanel)
-            val rightPane = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(chapterControls)
-                addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            }
-            val shell = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(leftScroll, LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT).apply {
-                    marginEnd = dp(DETAILS_TWO_PANE_GAP_DP)
-                })
-                addView(rightPane, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
-            }
+            val rightPane =
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(chapterControls)
+                    addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                }
+            val shell =
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(
+                        leftScroll,
+                        LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                            marginEnd = dp(DETAILS_TWO_PANE_GAP_DP)
+                        },
+                    )
+                    addView(rightPane, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+                }
             addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         } else {
             addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -307,32 +414,33 @@ internal fun ScreenHost.showDetails(storyId: String) {
         val root = frame.getChildAt(0)
         root.tag = DETAILS_DOWNLOAD_TAG
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        val refresh = object : Runnable {
-            override fun run() {
-                if ((root.tag as? String) != DETAILS_DOWNLOAD_TAG || root.parent !== frame) return
-                val chapterList = findDetailsChapterList(root)
-                // Defer the patch if a touch/fling gesture is mid-flight so the row rebind doesn't
-                // interrupt the user's scroll. Once idle, patch in place.
-                if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
-                    handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
-                    return
-                }
-                if (refreshDetailsDownload(storyId, bannerSlot)) {
-                    handler.postDelayed(this, DETAILS_REFRESH_MS)
-                } else if ((root.tag as? String) == DETAILS_DOWNLOAD_TAG && root.parent === frame) {
-                    // The batch drained while the user is still viewing this story. The in-place
-                    // patches above only touch chapter rows + the banner, never the action buttons,
-                    // so without this re-derive the Download All button would stay disabled after a
-                    // Sync-triggered auto-download (isActive went true → false but nothing re-ran
-                    // the enable rule at line 91). RN avoids this because its `downloading` flag is
-                    // reactive state that re-renders the button the moment the queue drains — this
-                    // single rebuild is the imperative equivalent. showDetails re-reads the queue, so
-                    // if a fresh batch is now active it starts a new loop; if not, no loop starts.
-                    // The scroll-idle guard above already guarantees we're not interrupting a fling.
-                    showDetails(storyId)
+        val refresh =
+            object : Runnable {
+                override fun run() {
+                    if ((root.tag as? String) != DETAILS_DOWNLOAD_TAG || root.parent !== frame) return
+                    val chapterList = findDetailsChapterList(root)
+                    // Defer the patch if a touch/fling gesture is mid-flight so the row rebind doesn't
+                    // interrupt the user's scroll. Once idle, patch in place.
+                    if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                        handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
+                        return
+                    }
+                    if (refreshDetailsDownload(storyId, bannerSlot)) {
+                        handler.postDelayed(this, DETAILS_REFRESH_MS)
+                    } else if ((root.tag as? String) == DETAILS_DOWNLOAD_TAG && root.parent === frame) {
+                        // The batch drained while the user is still viewing this story. The in-place
+                        // patches above only touch chapter rows + the banner, never the action buttons,
+                        // so without this re-derive the Download All button would stay disabled after a
+                        // Sync-triggered auto-download (isActive went true → false but nothing re-ran
+                        // the enable rule at line 91). RN avoids this because its `downloading` flag is
+                        // reactive state that re-renders the button the moment the queue drains — this
+                        // single rebuild is the imperative equivalent. showDetails re-reads the queue, so
+                        // if a fresh batch is now active it starts a new loop; if not, no loop starts.
+                        // The scroll-idle guard above already guarantees we're not interrupting a fling.
+                        showDetails(storyId)
+                    }
                 }
             }
-        }
         handler.postDelayed(refresh, DETAILS_REFRESH_MS)
     }
 }
@@ -394,11 +502,12 @@ internal fun ScreenHost.renderChapterList(
 ) {
     val displayedChapters = filterDetailsChapters(story, query, filter)
     val isEmptyState = displayedChapters.isEmpty()
-    val existingChapterAdapter = when (val adapter = list.adapter) {
-        is ChapterListAdapter -> adapter
-        is androidx.recyclerview.widget.ConcatAdapter -> adapter.adapters.filterIsInstance<ChapterListAdapter>().singleOrNull()
-        else -> null
-    }
+    val existingChapterAdapter =
+        when (val adapter = list.adapter) {
+            is ChapterListAdapter -> adapter
+            is androidx.recyclerview.widget.ConcatAdapter -> adapter.adapters.filterIsInstance<ChapterListAdapter>().singleOrNull()
+            else -> null
+        }
     if (existingChapterAdapter != null) {
         existingChapterAdapter.update(
             if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else displayedChapters,
@@ -412,7 +521,8 @@ internal fun ScreenHost.renderChapterList(
     }
     val initialChapters = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else displayedChapters
     val chapterAdapter = ChapterListAdapter(this, initialChapters, story, isEmptyState, list, query, filter, chapterStatuses)
-    list.adapter = if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
+    list.adapter =
+        if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
 }
 
 /**

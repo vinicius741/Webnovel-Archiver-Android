@@ -39,7 +39,11 @@ class DownloadForegroundService : Service() {
         super.onDestroy()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         when (intent?.action ?: ACTION_START) {
             ACTION_PREPARE -> {
                 startForegroundIfNeeded(
@@ -109,40 +113,47 @@ class DownloadForegroundService : Service() {
     }
 
     private fun buildNotification(progress: DownloadProgress): Notification {
-        val openIntent = PendingIntent.getActivity(
-            this,
-            1,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val pauseIntent = PendingIntent.getService(
-            this,
-            2,
-            Intent(this, DownloadForegroundService::class.java).setAction(ACTION_PAUSE),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val resumeIntent = PendingIntent.getService(
-            this,
-            3,
-            Intent(this, DownloadForegroundService::class.java).setAction(ACTION_RESUME),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val stopIntent = PendingIntent.getService(
-            this,
-            4,
-            Intent(this, DownloadForegroundService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val openIntent =
+            PendingIntent.getActivity(
+                this,
+                1,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        val pauseIntent =
+            PendingIntent.getService(
+                this,
+                2,
+                Intent(this, DownloadForegroundService::class.java).setAction(ACTION_PAUSE),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        val resumeIntent =
+            PendingIntent.getService(
+                this,
+                3,
+                Intent(this, DownloadForegroundService::class.java).setAction(ACTION_RESUME),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        val stopIntent =
+            PendingIntent.getService(
+                this,
+                4,
+                Intent(this, DownloadForegroundService::class.java).setAction(ACTION_STOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
 
-        val title = getString(
-            if (progress.unfinished > 0) R.string.download_notif_active else R.string.download_notif_done,
-        )
-        val body = progress.activeTitle
-            ?: "Pending ${progress.pending}, active ${progress.active}, completed ${progress.completed}, failed ${progress.failed}"
+        val title =
+            getString(
+                if (progress.unfinished > 0) R.string.download_notif_active else R.string.download_notif_done,
+            )
+        val body =
+            progress.activeTitle
+                ?: "Pending ${progress.pending}, active ${progress.active}, completed ${progress.completed}, failed ${progress.failed}"
         val max = progress.total.coerceAtLeast(1)
         val done = (progress.completed + progress.failed + progress.cancelled).coerceAtMost(max)
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat
+            .Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
@@ -159,13 +170,14 @@ class DownloadForegroundService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.download_channel_name),
-            NotificationManager.IMPORTANCE_LOW,
-        ).apply {
-            description = getString(R.string.download_channel_desc)
-        }
+        val channel =
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.download_channel_name),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = getString(R.string.download_channel_desc)
+            }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 

@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.core
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,14 +7,15 @@ import org.junit.Test
 class EpubContentTest {
     @Test
     fun detailsPageIncludesDescriptionTagsAndEmptyTagPlaceholder() {
-        val details = EpubContent.details(
-            Story(
-                title = "A & B",
-                author = "Author",
-                description = "Line one\nLine two",
-                tags = mutableListOf("Fantasy", "Action & Adventure"),
-            ),
-        )
+        val details =
+            EpubContent.details(
+                Story(
+                    title = "A & B",
+                    author = "Author",
+                    description = "Line one\nLine two",
+                    tags = mutableListOf("Fantasy", "Action & Adventure"),
+                ),
+            )
 
         assertTrue(details.contains("<body class=\"details-page\">"))
         assertTrue(details.contains("<p>Line one</p>"))
@@ -41,10 +41,11 @@ class EpubContentTest {
 
     @Test
     fun chapterSanitizesFullHtmlDocumentsBeforeEmbedding() {
-        val html = EpubContent.chapter(
-            Chapter(title = "Chapter <One>"),
-            "<html><head><title>Wrong</title></head><body><p>Body</p><div>More</div></body></html>",
-        )
+        val html =
+            EpubContent.chapter(
+                Chapter(title = "Chapter <One>"),
+                "<html><head><title>Wrong</title></head><body><p>Body</p><div>More</div></body></html>",
+            )
 
         assertTrue(html.contains("<title>Chapter &lt;One&gt;</title>"))
         assertTrue(html.contains("<h2>Chapter &lt;One&gt;</h2>"))

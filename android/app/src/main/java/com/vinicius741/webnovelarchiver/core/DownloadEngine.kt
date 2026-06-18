@@ -42,19 +42,24 @@ class DownloadEngine(
      * [startNow] launches the local process loop — the activity passes `false` and hands the runner
      * to the foreground service instead.
      */
-    fun queue(story: Story, indexes: List<Int>, startNow: Boolean = true) {
+    fun queue(
+        story: Story,
+        indexes: List<Int>,
+        startNow: Boolean = true,
+    ) {
         // Hold the same storage monitor across read, planning, and persistence. Enqueue can run on a
         // process scope while the service updates job statuses, so synchronizing only saveEnqueue's
         // final write would allow either side to overwrite the other's newer queue snapshot.
-        val plan = DownloadEnqueueTransaction.execute(
-            lock = storage,
-            story = story,
-            indexes = indexes,
-            now = System.currentTimeMillis(),
-            readQueue = storage::getQueue,
-            readStory = storage::getStory,
-            persist = storage::saveEnqueue,
-        )
+        val plan =
+            DownloadEnqueueTransaction.execute(
+                lock = storage,
+                story = story,
+                indexes = indexes,
+                now = System.currentTimeMillis(),
+                readQueue = storage::getQueue,
+                readStory = storage::getStory,
+                persist = storage::saveEnqueue,
+            )
         if (startNow && plan.hasRunnableWork) start()
         onChanged?.invoke()
     }
@@ -120,14 +125,15 @@ class DownloadEngine(
      */
     fun start() {
         if (!running.compareAndSet(false, true)) return
-        worker = scope.launch {
-            try {
-                processLoop()
-            } finally {
-                running.set(false)
-                onChanged?.invoke()
+        worker =
+            scope.launch {
+                try {
+                    processLoop()
+                } finally {
+                    running.set(false)
+                    onChanged?.invoke()
+                }
             }
-        }
     }
 
     /** Pauses the process loop without mutating queue state (the service's ACTION_STOP pauses jobs). */
@@ -157,16 +163,17 @@ class DownloadEngine(
             lateinit var pending: List<DownloadJob>
             synchronized(storage) {
                 queue = storage.getQueue()
-                pending = DownloadScheduler.selectEligibleJobs(
-                    jobs = queue,
-                    now = System.currentTimeMillis(),
-                    globalConcurrency = settings.downloadConcurrency,
-                    globalDelay = settings.downloadDelay,
-                    sourceSettings = sourceSettings,
-                    activeCounts = emptyMap(),
-                    nextAllowedAt = nextAllowedJobAtBySource,
-                    providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
-                )
+                pending =
+                    DownloadScheduler.selectEligibleJobs(
+                        jobs = queue,
+                        now = System.currentTimeMillis(),
+                        globalConcurrency = settings.downloadConcurrency,
+                        globalDelay = settings.downloadDelay,
+                        sourceSettings = sourceSettings,
+                        activeCounts = emptyMap(),
+                        nextAllowedAt = nextAllowedJobAtBySource,
+                        providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
+                    )
                 if (pending.isNotEmpty()) {
                     pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
                     storage.saveQueue(queue)
@@ -174,12 +181,13 @@ class DownloadEngine(
             }
             emitProgress(null)
             if (pending.isEmpty()) {
-                val sleepUntil = DownloadScheduler.nextWakeUpAt(
-                    jobs = queue,
-                    now = System.currentTimeMillis(),
-                    nextAllowedAt = nextAllowedJobAtBySource,
-                    providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
-                )
+                val sleepUntil =
+                    DownloadScheduler.nextWakeUpAt(
+                        jobs = queue,
+                        now = System.currentTimeMillis(),
+                        nextAllowedAt = nextAllowedJobAtBySource,
+                        providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
+                    )
                 if (sleepUntil != null) {
                     delay((sleepUntil - System.currentTimeMillis()).coerceAtLeast(200))
                     continue
@@ -192,7 +200,14 @@ class DownloadEngine(
                 .mapNotNull { job -> SourceRegistry.getProvider(job.chapter.url)?.name }
                 .distinct()
                 .forEach { providerName ->
-                    val sourceDelay = DownloadScheduler.settingsFor(providerName, settings.downloadConcurrency, settings.downloadDelay, sourceSettings).delay
+                    val sourceDelay =
+                        DownloadScheduler
+                            .settingsFor(
+                                providerName,
+                                settings.downloadConcurrency,
+                                settings.downloadDelay,
+                                sourceSettings,
+                            ).delay
                     if (sourceDelay > 0) nextAllowedJobAtBySource[providerName] = now + sourceDelay
                 }
         }
@@ -202,9 +217,10 @@ class DownloadEngine(
         var cleaned = false
         synchronized(storage) {
             val queue = storage.getQueue()
-            val cleanup = DownloadQueueMaintenance.failUnsupportedSourceJobs(queue) { job ->
-                SourceRegistry.getProvider(job.chapter.url)?.name
-            }
+            val cleanup =
+                DownloadQueueMaintenance.failUnsupportedSourceJobs(queue) { job ->
+                    SourceRegistry.getProvider(job.chapter.url)?.name
+                }
             if (cleanup.cleanedJobCount == 0) return
             storage.saveQueue(queue)
             cleanup.affectedStoryIds.forEach { storyId ->
@@ -226,7 +242,12 @@ class DownloadEngine(
             val html = network.fetch(job.chapter.url)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
-            val clean = CleanupEngine.shared.applyDownload(provider.parseChapterContent(html), storage.getSentenceRemovalList(), storage.getRegexRules())
+            val clean =
+                CleanupEngine.shared.applyDownload(
+                    provider.parseChapterContent(html),
+                    storage.getSentenceRemovalList(),
+                    storage.getRegexRules(),
+                )
             val path = storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean)
             synchronized(storage) {
                 // Re-read after network I/O so sync/enqueue changes made while fetching are retained.
@@ -237,7 +258,11 @@ class DownloadEngine(
                 story.downloadedChapters = story.chapters.count { it.downloaded }
                 story.status = if (story.downloadedChapters == story.chapters.size) DownloadStatus.completed else DownloadStatus.partial
                 story.epubStale = true
-                story.pendingNewChapterIds = story.pendingNewChapterIds?.filterNot { it == chapter.id }?.toMutableList()?.ifEmpty { null }
+                story.pendingNewChapterIds =
+                    story.pendingNewChapterIds
+                        ?.filterNot { it == chapter.id }
+                        ?.toMutableList()
+                        ?.ifEmpty { null }
                 story.lastUpdated = System.currentTimeMillis()
                 storage.addOrUpdateStory(story)
             }
@@ -248,7 +273,11 @@ class DownloadEngine(
         }
     }
 
-    private fun updateJob(id: String, status: String, error: String?) {
+    private fun updateJob(
+        id: String,
+        status: String,
+        error: String?,
+    ) {
         lateinit var queue: List<DownloadJob>
         storage.mutateQueueInPlace { current ->
             current.find { it.id == id }?.let {
@@ -267,7 +296,10 @@ class DownloadEngine(
         onChanged?.invoke()
     }
 
-    private fun handleJobError(job: DownloadJob, error: Throwable) {
+    private fun handleJobError(
+        job: DownloadJob,
+        error: Throwable,
+    ) {
         val classified = DownloadErrorClassifier.classify(error)
         lateinit var queue: List<DownloadJob>
         storage.mutateQueueInPlace { current ->
@@ -291,11 +323,9 @@ class DownloadEngine(
         onChanged?.invoke()
     }
 
-    private fun isCancelled(id: String): Boolean =
-        storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
+    private fun isCancelled(id: String): Boolean = storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
 
-    private fun isPaused(id: String): Boolean =
-        storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Paused.wire }
+    private fun isPaused(id: String): Boolean = storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Paused.wire }
 
     fun currentProgress(): DownloadProgress = buildProgress(null)
 

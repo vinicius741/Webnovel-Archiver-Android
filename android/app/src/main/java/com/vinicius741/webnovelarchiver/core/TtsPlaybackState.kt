@@ -20,7 +20,10 @@ data class TtsPlaybackSnapshot(
 
 object TtsPlaybackState {
     /** Human-readable "Chunk X / Y" label used by the notification body + the reader transport. */
-    fun chunkProgress(chunkIndex: Int, totalChunks: Int): String {
+    fun chunkProgress(
+        chunkIndex: Int,
+        totalChunks: Int,
+    ): String {
         if (totalChunks <= 0) return "Buffering"
         val shown = (chunkIndex + 1).coerceIn(1, totalChunks)
         return "Chunk $shown / $totalChunks"

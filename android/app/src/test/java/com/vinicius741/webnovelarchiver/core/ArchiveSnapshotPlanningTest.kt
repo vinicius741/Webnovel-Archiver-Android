@@ -8,32 +8,35 @@ import org.junit.Test
 class ArchiveSnapshotPlanningTest {
     @Test
     fun buildArchiveSnapshotPreservesFullStoryAndCopiesDownloadedChapterFiles() {
-        val source = Story(
-            id = "story-1",
-            title = "Original Title",
-            author = "Author",
-            sourceUrl = "https://example.com/story",
-            chapters = mutableListOf(
-                Chapter(id = "c1", title = "One", downloaded = true, filePath = "/active/one.html"),
-                Chapter(id = "c2", title = "Two", downloaded = false, filePath = "/stale/two.html"),
-                Chapter(id = "c3", title = "Three", downloaded = true, filePath = "/active/three.html"),
-            ),
-            epubPath = "/active/story.epub",
-            epubPaths = mutableListOf("/active/story-1.epub"),
-            epubStale = true,
-            pendingNewChapterIds = mutableListOf("c4"),
-            tabId = "tab-1",
-        )
+        val source =
+            Story(
+                id = "story-1",
+                title = "Original Title",
+                author = "Author",
+                sourceUrl = "https://example.com/story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1", title = "One", downloaded = true, filePath = "/active/one.html"),
+                        Chapter(id = "c2", title = "Two", downloaded = false, filePath = "/stale/two.html"),
+                        Chapter(id = "c3", title = "Three", downloaded = true, filePath = "/active/three.html"),
+                    ),
+                epubPath = "/active/story.epub",
+                epubPaths = mutableListOf("/active/story-1.epub"),
+                epubStale = true,
+                pendingNewChapterIds = mutableListOf("c4"),
+                tabId = "tab-1",
+            )
         val copied = mutableListOf<String>()
 
-        val archive = ArchiveSnapshotPlanning.buildArchiveSnapshot(
-            source = source,
-            archivedAt = 42L,
-            randomSuffix = "abc123",
-        ) { archiveId, index, chapter ->
-            copied.add("$archiveId:$index:${chapter.id}")
-            "/archive/$index-${chapter.id}.html"
-        }
+        val archive =
+            ArchiveSnapshotPlanning.buildArchiveSnapshot(
+                source = source,
+                archivedAt = 42L,
+                randomSuffix = "abc123",
+            ) { archiveId, index, chapter ->
+                copied.add("$archiveId:$index:${chapter.id}")
+                "/archive/$index-${chapter.id}.html"
+            }
 
         assertEquals("story-1__archive_42_abc123", archive.id)
         assertEquals("Original Title", archive.title)
@@ -56,14 +59,16 @@ class ArchiveSnapshotPlanningTest {
 
     @Test
     fun buildArchiveSnapshotFallsBackToOriginalDownloadedFilePathWhenCopyFails() {
-        val source = Story(
-            id = "story-1",
-            chapters = mutableListOf(Chapter(id = "c1", downloaded = true, filePath = "/active/one.html")),
-        )
+        val source =
+            Story(
+                id = "story-1",
+                chapters = mutableListOf(Chapter(id = "c1", downloaded = true, filePath = "/active/one.html")),
+            )
 
-        val archive = ArchiveSnapshotPlanning.buildArchiveSnapshot(source, archivedAt = 42L, randomSuffix = "abc123") { _, _, _ ->
-            null
-        }
+        val archive =
+            ArchiveSnapshotPlanning.buildArchiveSnapshot(source, archivedAt = 42L, randomSuffix = "abc123") { _, _, _ ->
+                null
+            }
 
         assertEquals("/active/one.html", archive.chapters.single().filePath)
     }

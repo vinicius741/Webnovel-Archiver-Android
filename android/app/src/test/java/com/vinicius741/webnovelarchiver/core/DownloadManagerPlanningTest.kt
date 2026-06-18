@@ -73,12 +73,13 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun globalActionsSurfaceEachBucketConditionally() {
-        val counts = QueueStatusCounts(
-            downloading = 1,
-            paused = 1,
-            completed = 2,
-            failed = 1,
-        )
+        val counts =
+            QueueStatusCounts(
+                downloading = 1,
+                paused = 1,
+                completed = 2,
+                failed = 1,
+            )
         assertEquals(
             listOf(
                 GlobalQueueAction.RESUME_ALL,
@@ -115,16 +116,17 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun statusCountsFromJobsTalliesEachBucket() {
-        val jobs = listOf(
-            job("a", "downloading"),
-            job("b", "pending"),
-            job("c", "pending"),
-            job("d", "paused"),
-            job("e", "completed"),
-            job("f", "completed"),
-            job("g", "failed"),
-            job("h", "cancelled"),
-        )
+        val jobs =
+            listOf(
+                job("a", "downloading"),
+                job("b", "pending"),
+                job("c", "pending"),
+                job("d", "paused"),
+                job("e", "completed"),
+                job("f", "completed"),
+                job("g", "failed"),
+                job("h", "cancelled"),
+            )
 
         val counts = QueueStatusCounts.from(jobs)
 
@@ -156,10 +158,14 @@ class DownloadManagerPlanningTest {
         assertEquals("3/3 chapters", DownloadManagerPlanning.storySubtitle(counts))
     }
 
-    private fun job(id: String, status: String): DownloadJob = DownloadJob(
-        id = id,
-        storyId = "story-1",
-        storyTitle = "Story",
-        status = status,
-    )
+    private fun job(
+        id: String,
+        status: String,
+    ): DownloadJob =
+        DownloadJob(
+            id = id,
+            storyId = "story-1",
+            storyTitle = "Story",
+            status = status,
+        )
 }

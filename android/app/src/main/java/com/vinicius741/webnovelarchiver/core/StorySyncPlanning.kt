@@ -27,17 +27,18 @@ object StorySyncPlanning {
         }
 
         val newIds = mutableListOf<String>()
-        val chapters = incoming.map { info ->
-            val stable = provider.getChapterId(info.url) ?: info.id ?: info.url
-            val found = existingById[stable]
-            if (found != null) {
-                remaining.remove(stable)
-                found.copy(id = stable, title = sanitizeTitle(info.title), url = info.url)
-            } else {
-                newIds.add(stable)
-                Chapter(id = stable, title = sanitizeTitle(info.title), url = info.url, downloaded = false)
+        val chapters =
+            incoming.map { info ->
+                val stable = provider.getChapterId(info.url) ?: info.id ?: info.url
+                val found = existingById[stable]
+                if (found != null) {
+                    remaining.remove(stable)
+                    found.copy(id = stable, title = sanitizeTitle(info.title), url = info.url)
+                } else {
+                    newIds.add(stable)
+                    Chapter(id = stable, title = sanitizeTitle(info.title), url = info.url, downloaded = false)
+                }
             }
-        }
 
         var remappedLast = lastRead?.let { aliases[it] ?: it }
         if (remappedLast != null && chapters.none { it.id == remappedLast }) remappedLast = null
@@ -55,14 +56,18 @@ object StorySyncPlanning {
         existingPending.orEmpty().forEach { pending.add(it) }
         chapterIdsToAdd.forEach { pending.add(it) }
 
-        val filtered = pending.filter { id ->
-            val chapter = chapterById[id]
-            chapter != null && !chapter.downloaded
-        }
+        val filtered =
+            pending.filter { id ->
+                val chapter = chapterById[id]
+                chapter != null && !chapter.downloaded
+            }
         return filtered.toMutableList().ifEmpty { null }
     }
 
-    fun updateEpubConfigForSync(existing: Story?, nextChapterCount: Int): EpubConfig? {
+    fun updateEpubConfigForSync(
+        existing: Story?,
+        nextChapterCount: Int,
+    ): EpubConfig? {
         val config = existing?.epubConfig ?: return existing?.epubConfig
         if (nextChapterCount <= 0) return config
 
@@ -80,7 +85,10 @@ object StorySyncPlanning {
         return config.copy(rangeStart = nextStart, rangeEnd = nextEnd)
     }
 
-    fun shouldMarkEpubStale(existing: Story?, nextChapterCount: Int): Boolean {
+    fun shouldMarkEpubStale(
+        existing: Story?,
+        nextChapterCount: Int,
+    ): Boolean {
         if (existing == null) return false
         val hasEpub = existing.epubPath != null || !existing.epubPaths.isNullOrEmpty()
         return hasEpub && existing.chapters.size != nextChapterCount

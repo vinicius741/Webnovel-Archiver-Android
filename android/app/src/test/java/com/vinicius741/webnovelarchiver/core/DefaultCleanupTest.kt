@@ -16,6 +16,10 @@ class DefaultCleanupTest {
             "This story has been taken without authorization. Report any sightings.",
             DefaultCleanup.sentences.last(),
         )
-        assertTrue(DefaultCleanup.sentences.contains("Reading on Amazon or a pirate site? This novel is from Royal Road. Support the author by reading it there."))
+        assertTrue(
+            DefaultCleanup.sentences.contains(
+                "Reading on Amazon or a pirate site? This novel is from Royal Road. Support the author by reading it there.",
+            ),
+        )
     }
 }

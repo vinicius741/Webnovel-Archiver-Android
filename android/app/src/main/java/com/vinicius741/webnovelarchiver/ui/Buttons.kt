@@ -8,9 +8,9 @@ import android.util.TypedValue
 import android.widget.Button
 import android.widget.TextView
 
-/* ------------------------------------------------------------------ */
-/* Buttons                                                            */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Buttons
+// ------------------------------------------------------------------
 
 enum class Btn { THEME_DEFAULT, FILLED, TONAL, OUTLINED, TEXT, ELEVATED, ERROR }
 
@@ -38,40 +38,49 @@ fun makeButton(
     val padH = context.dp(Space.LG)
     val padV = context.dp(Space.SM + 2)
 
-    fun bgWithRipple(content: Drawable, rippleColor: Int): Drawable = ripple(content, radiusPx, rippleColor)
+    fun bgWithRipple(
+        content: Drawable,
+        rippleColor: Int,
+    ): Drawable = ripple(content, radiusPx, rippleColor)
 
-    val (bgDrawable, fgColor, ripple) = when (v) {
-        Btn.FILLED -> Triple(
-            roundedBg(colors.primary, radiusPx),
-            colors.onPrimary,
-            colors.onPrimary,
-        )
-        Btn.TONAL -> Triple(
-            roundedBg(colors.secondaryContainer, radiusPx),
-            colors.onSecondaryContainer,
-            colors.onSecondaryContainer,
-        )
-        Btn.ELEVATED -> {
-            val d = roundedBg(colors.elevation2, radiusPx)
-            Triple(d, colors.primary, colors.onSurface)
+    val (bgDrawable, fgColor, ripple) =
+        when (v) {
+            Btn.FILLED ->
+                Triple(
+                    roundedBg(colors.primary, radiusPx),
+                    colors.onPrimary,
+                    colors.onPrimary,
+                )
+            Btn.TONAL ->
+                Triple(
+                    roundedBg(colors.secondaryContainer, radiusPx),
+                    colors.onSecondaryContainer,
+                    colors.onSecondaryContainer,
+                )
+            Btn.ELEVATED -> {
+                val d = roundedBg(colors.elevation2, radiusPx)
+                Triple(d, colors.primary, colors.onSurface)
+            }
+            Btn.OUTLINED ->
+                Triple(
+                    strokeBg(Color.TRANSPARENT, radiusPx, colors.outline, context.dp(1)),
+                    colors.primary,
+                    colors.primary,
+                )
+            Btn.TEXT ->
+                Triple(
+                    roundedBg(Color.TRANSPARENT, radiusPx),
+                    colors.primary,
+                    colors.primary,
+                )
+            Btn.ERROR ->
+                Triple(
+                    roundedBg(colors.errorContainer, radiusPx),
+                    colors.onErrorContainer,
+                    colors.onErrorContainer,
+                )
+            Btn.THEME_DEFAULT -> error("unreachable")
         }
-        Btn.OUTLINED -> Triple(
-            strokeBg(Color.TRANSPARENT, radiusPx, colors.outline, context.dp(1)),
-            colors.primary,
-            colors.primary,
-        )
-        Btn.TEXT -> Triple(
-            roundedBg(Color.TRANSPARENT, radiusPx),
-            colors.primary,
-            colors.primary,
-        )
-        Btn.ERROR -> Triple(
-            roundedBg(colors.errorContainer, radiusPx),
-            colors.onErrorContainer,
-            colors.onErrorContainer,
-        )
-        Btn.THEME_DEFAULT -> error("unreachable")
-    }
 
     return Button(context).apply {
         text = label
@@ -99,9 +108,9 @@ fun makeButton(
     }
 }
 
-/* ------------------------------------------------------------------ */
-/* Filter chips                                                       */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Filter chips
+// ------------------------------------------------------------------
 
 fun makeChip(
     context: Context,
@@ -126,11 +135,19 @@ fun makeChip(
         setPadding(padH, padV, padH, padV)
         isClickable = true
         isFocusable = true
-        background = ripple(
-            if (selected) roundedBg(colors.secondaryContainer, radiusPx) else strokeBg(Color.TRANSPARENT, radiusPx, colors.outline, context.dp(1)),
-            radiusPx,
-            colors.onSurface,
-        )
+        background =
+            ripple(
+                if (selected) {
+                    roundedBg(
+                        colors.secondaryContainer,
+                        radiusPx,
+                    )
+                } else {
+                    strokeBg(Color.TRANSPARENT, radiusPx, colors.outline, context.dp(1))
+                },
+                radiusPx,
+                colors.onSurface,
+            )
         setOnClickListener { onClick() }
     }
 }
@@ -154,21 +171,24 @@ fun makeSourceChip(
     val padV = context.dp(Space.XS + 1)
     val containerColor = if (selected) colors.secondaryContainer else colors.surfaceVariant
     val contentColor = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
-    val icon = android.widget.ImageView(context).apply {
-        setImageDrawable(context.tintedIcon(com.vinicius741.webnovelarchiver.R.drawable.wna_globe, contentColor))
-        scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
-        layoutParams = android.widget.LinearLayout.LayoutParams(context.dp(16), context.dp(16)).apply {
-            marginEnd = context.dp(Space.XS + 2)
+    val icon =
+        android.widget.ImageView(context).apply {
+            setImageDrawable(context.tintedIcon(com.vinicius741.webnovelarchiver.R.drawable.wna_globe, contentColor))
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+            layoutParams =
+                android.widget.LinearLayout.LayoutParams(context.dp(16), context.dp(16)).apply {
+                    marginEnd = context.dp(Space.XS + 2)
+                }
         }
-    }
-    val text = TextView(context).apply {
-        text = "$label ($count)"
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_LARGE.size())
-        typeface = Typeface.create(typeface, Typeface.BOLD)
-        setTextColor(contentColor)
-        letterSpacing = 0.02f
-        includeFontPadding = false
-    }
+    val text =
+        TextView(context).apply {
+            text = "$label ($count)"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_LARGE.size())
+            typeface = Typeface.create(typeface, Typeface.BOLD)
+            setTextColor(contentColor)
+            letterSpacing = 0.02f
+            includeFontPadding = false
+        }
     return android.widget.LinearLayout(context).apply {
         orientation = android.widget.LinearLayout.HORIZONTAL
         gravity = android.view.Gravity.CENTER_VERTICAL

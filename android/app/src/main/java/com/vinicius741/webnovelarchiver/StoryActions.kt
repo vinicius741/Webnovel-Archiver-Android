@@ -20,7 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-internal fun ScreenHost.queueDownload(story: Story, indexes: List<Int>) {
+internal fun ScreenHost.queueDownload(
+    story: Story,
+    indexes: List<Int>,
+) {
     if (!StoryActionGuards.canQueueDownloads(story)) {
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return
@@ -35,46 +38,59 @@ internal fun ScreenHost.queueDownload(story: Story, indexes: List<Int>) {
     // the main thread. Process scope ensures persistence and service handoff survive Activity
     // recreation after the user initiated the operation.
     app.appContainer.applicationScope.launch {
-        val result = runCatching {
-            downloadEngine.queue(story, indexes, startNow = false)
-            DownloadForegroundService.startPrepared(app.applicationContext)
-        }
+        val result =
+            runCatching {
+                downloadEngine.queue(story, indexes, startNow = false)
+                DownloadForegroundService.startPrepared(app.applicationContext)
+            }
         if (result.isFailure) {
             runCatching { DownloadForegroundService.abortPrepare(app.applicationContext) }
         }
         app.runOnUiThread {
             if (app.isFinishing || app.isDestroyed) return@runOnUiThread
-            result.onSuccess {
-                val detailsScreenKey = "${story.title}|by ${story.author}"
-                if (
-                    activeStory?.id == story.id &&
-                    (frame.tag == screenTagAtEnqueue || frame.tag == detailsScreenKey)
-                ) {
-                    showDetails(story.id)
+            result
+                .onSuccess {
+                    val detailsScreenKey = "${story.title}|by ${story.author}"
+                    if (
+                        activeStory?.id == story.id &&
+                        (frame.tag == screenTagAtEnqueue || frame.tag == detailsScreenKey)
+                    ) {
+                        showDetails(story.id)
+                    }
+                }.onFailure { error ->
+                    toast(error.message ?: "Could not queue downloads")
                 }
-            }.onFailure { error ->
-                toast(error.message ?: "Could not queue downloads")
-            }
         }
     }
 }
 
-internal fun ScreenHost.syncStory(url: String, tabId: String?) {
+internal fun ScreenHost.syncStory(
+    url: String,
+    tabId: String?,
+) {
     if (url.isBlank()) return toast("Enter a URL")
     screen(title = "Working", onBack = null) { centerLoading("Starting...") }
     scope.launch {
         try {
-            val existingBeforeSync = withContext(Dispatchers.IO) {
-                SourceRegistry.getProvider(url)?.let { provider ->
-                    runCatching { storage.getStory(provider.getStoryId(url)) }.getOrNull()
+            val existingBeforeSync =
+                withContext(Dispatchers.IO) {
+                    SourceRegistry.getProvider(url)?.let { provider ->
+                        runCatching { storage.getStory(provider.getStoryId(url)) }.getOrNull()
+                    }
                 }
-            }
-            val story = withContext(Dispatchers.IO) { syncEngine.fetchOrSync(url, tabId) { msg -> app.runOnUiThread { screen(title = "Working", onBack = null) { centerLoading(msg) } } } }
+            val story =
+                withContext(Dispatchers.IO) {
+                    syncEngine.fetchOrSync(
+                        url,
+                        tabId,
+                    ) { msg -> app.runOnUiThread { screen(title = "Working", onBack = null) { centerLoading(msg) } } }
+                }
             if (existingBeforeSync != null && !story.pendingNewChapterIds.isNullOrEmpty()) {
                 val pending = story.pendingNewChapterIds.orEmpty().toSet()
-                val indexes = story.chapters.mapIndexedNotNull { index, chapter ->
-                    if (chapter.id in pending && !chapter.downloaded) index else null
-                }
+                val indexes =
+                    story.chapters.mapIndexedNotNull { index, chapter ->
+                        if (chapter.id in pending && !chapter.downloaded) index else null
+                    }
                 if (indexes.isNotEmpty()) {
                     queueDownload(story, indexes)
                 }
@@ -111,21 +127,24 @@ internal fun ScreenHost.syncStory(story: Story) {
         try {
             // Re-read the pre-sync state so the new-chapter auto-download logic below matches the
             // url-overload path exactly (it keys off pendingNewChapterIds set during the merge).
-            val existingBeforeSync = withContext(Dispatchers.IO) {
-                SourceRegistry.getProvider(story.sourceUrl)?.let { provider ->
-                    runCatching { storage.getStory(provider.getStoryId(story.sourceUrl)) }.getOrNull()
+            val existingBeforeSync =
+                withContext(Dispatchers.IO) {
+                    SourceRegistry.getProvider(story.sourceUrl)?.let { provider ->
+                        runCatching { storage.getStory(provider.getStoryId(story.sourceUrl)) }.getOrNull()
+                    }
                 }
-            }
-            val synced = withContext(Dispatchers.IO) {
-                syncEngine.fetchOrSync(story.sourceUrl, story.tabId) { msg ->
-                    app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
+            val synced =
+                withContext(Dispatchers.IO) {
+                    syncEngine.fetchOrSync(story.sourceUrl, story.tabId) { msg ->
+                        app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
+                    }
                 }
-            }
             if (existingBeforeSync != null && !synced.pendingNewChapterIds.isNullOrEmpty()) {
                 val pending = synced.pendingNewChapterIds.orEmpty().toSet()
-                val indexes = synced.chapters.mapIndexedNotNull { index, chapter ->
-                    if (chapter.id in pending && !chapter.downloaded) index else null
-                }
+                val indexes =
+                    synced.chapters.mapIndexedNotNull { index, chapter ->
+                        if (chapter.id in pending && !chapter.downloaded) index else null
+                    }
                 if (indexes.isNotEmpty()) {
                     queueDownload(synced, indexes)
                 }
@@ -185,7 +204,10 @@ internal fun ScreenHost.applyCleanup(story: Story) {
     }
 }
 
-internal fun ScreenHost.generateConfiguredEpub(story: Story, config: EpubConfig) {
+internal fun ScreenHost.generateConfiguredEpub(
+    story: Story,
+    config: EpubConfig,
+) {
     val selectedEntries = EpubSelection.selectDownloadedChapters(story, config)
     if (selectedEntries.isEmpty()) {
         toast("No downloaded chapters in selected EPUB range")
@@ -212,11 +234,12 @@ internal fun ScreenHost.generateEpub(
     scope.launch {
         try {
             setStoryOperation(story.id, StoryOperationKind.EPUB, "Preparing...")
-            val results = epubEngine.generate(story, chapters, maxChaptersPerFile, originalChapterNumbers) { msg ->
-                app.runOnUiThread {
-                    setStoryOperation(story.id, StoryOperationKind.EPUB, msg, epubProgressFromMessage(msg))
+            val results =
+                epubEngine.generate(story, chapters, maxChaptersPerFile, originalChapterNumbers) { msg ->
+                    app.runOnUiThread {
+                        setStoryOperation(story.id, StoryOperationKind.EPUB, msg, epubProgressFromMessage(msg))
+                    }
                 }
-            }
             clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast("Generated ${results.size} EPUB file(s)")
             showDetails(story.id)
@@ -228,12 +251,16 @@ internal fun ScreenHost.generateEpub(
     }
 }
 
-internal fun ScreenHost.navigateChapter(story: Story, chapter: Chapter, delta: Int) {
+internal fun ScreenHost.navigateChapter(
+    story: Story,
+    chapter: Chapter,
+    delta: Int,
+) {
     val next = story.chapters.getOrNull(story.chapters.indexOfFirst { it.id == chapter.id } + delta) ?: return
     showReader(story.id, next.id)
 }
 
-/* ---- URL helpers (pure delegates) ---- */
+// ---- URL helpers (pure delegates) ----
 
 internal fun resolveUrl(input: String): String = BrowserUrlPlanning.resolveUrl(input)
 
@@ -241,7 +268,7 @@ internal fun isNovelUrl(url: String): Boolean = SourceUrlValidation.isImportable
 
 internal fun isGoogleAuthUrl(url: String): Boolean = BrowserUrlPlanning.isGoogleAuthUrl(url)
 
-/* ---- File / share helpers ---- */
+// ---- File / share helpers ----
 
 internal fun ScreenHost.openFile(path: String?) {
     if (path == null) return toast("No EPUB generated")
@@ -256,9 +283,10 @@ internal fun ScreenHost.openEpubForStory(story: Story) {
     val candidates = paths ?: story.epubPath?.let { listOf(it) }.orEmpty()
     if (candidates.isEmpty()) return toast("No EPUB generated")
 
-    val existing = candidates.mapNotNull { candidate ->
-        storage.resolveAbsolutePath(candidate)?.let { candidate to it }
-    }
+    val existing =
+        candidates.mapNotNull { candidate ->
+            storage.resolveAbsolutePath(candidate)?.let { candidate to it }
+        }
     if (existing.isEmpty()) {
         story.epubPath = null
         story.epubPaths = null
@@ -282,17 +310,19 @@ internal fun ScreenHost.openEpubForStory(story: Story) {
         return
     }
 
-    val options = existing.map { (path, file) ->
-        EpubSelection.displayNameForPath(file.absolutePath) to { openFile(path) }
-    }
+    val options =
+        existing.map { (path, file) ->
+            EpubSelection.displayNameForPath(file.absolutePath) to { openFile(path) }
+        }
     showStyledOptionsDialog("Select EPUB to Read", options)
 }
 
 internal fun ScreenHost.share(file: File) {
-    val intent = Intent(Intent.ACTION_SEND)
-        .setType(FileMimeTypes.forFilename(file.name))
-        .putExtra(Intent.EXTRA_STREAM, fileUri(file))
-        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    val intent =
+        Intent(Intent.ACTION_SEND)
+            .setType(FileMimeTypes.forFilename(file.name))
+            .putExtra(Intent.EXTRA_STREAM, fileUri(file))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     app.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
 }
 
@@ -313,7 +343,11 @@ private fun ScreenHost.setStoryOperation(
     if (activeStory?.id == storyId) showDetails(storyId)
 }
 
-private fun ScreenHost.clearStoryOperation(storyId: String, kind: StoryOperationKind, rerender: Boolean = true) {
+private fun ScreenHost.clearStoryOperation(
+    storyId: String,
+    kind: StoryOperationKind,
+    rerender: Boolean = true,
+) {
     if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
         storyOperation = null
         if (rerender && activeStory?.id == storyId) showDetails(storyId)

@@ -31,7 +31,11 @@ object LibraryTabSelection {
      * Note: `"unassigned"` is never written by the app today (the Unassigned tab uses runtime `null`),
      * but it is accepted on read for forward/backward safety.
      */
-    fun resolve(stored: String?, tabs: List<Tab>, hasUnassignedStories: Boolean): String? {
+    fun resolve(
+        stored: String?,
+        tabs: List<Tab>,
+        hasUnassignedStories: Boolean,
+    ): String? {
         if (stored.isNullOrBlank()) return ALL_TAB_ID
         if (stored == ALL_TAB_ID) return ALL_TAB_ID
         if (stored == UNASSIGNED_TAB_ID) return if (hasUnassignedStories) null else ALL_TAB_ID

@@ -2,11 +2,12 @@ package com.vinicius741.webnovelarchiver.ui
 
 import android.content.Context
 
-/* ------------------------------------------------------------------ */
-/* Density + type-scale helpers                                       */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Density + type-scale helpers
+// ------------------------------------------------------------------
 
 fun Context.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
 fun Context.sp(value: Int): Float = value * resources.displayMetrics.scaledDensity
 
 /**
@@ -35,30 +36,41 @@ object Space {
 
 /** MD3 type scale tokens used across the app. */
 enum class Type {
-    HEADLINE, TITLE_LARGE, TITLE_MEDIUM, TITLE_SMALL,
-    BODY_LARGE, BODY_MEDIUM, BODY_SMALL,
-    LABEL_LARGE, LABEL_MEDIUM, LABEL_SMALL, CAPTION,
+    HEADLINE,
+    TITLE_LARGE,
+    TITLE_MEDIUM,
+    TITLE_SMALL,
+    BODY_LARGE,
+    BODY_MEDIUM,
+    BODY_SMALL,
+    LABEL_LARGE,
+    LABEL_MEDIUM,
+    LABEL_SMALL,
+    CAPTION,
 }
 
 // Internal (not private) so the view builders in other files of this package can read the
 // type scale. Kotlin `private` at top level is file-private, which would hide these once the
 // UI builders were split out of Ui.kt.
-internal fun Type.size(): Float = when (this) {
-    Type.HEADLINE -> 24f
-    Type.TITLE_LARGE -> 22f
-    Type.TITLE_MEDIUM -> 16f
-    Type.TITLE_SMALL -> 14f
-    Type.BODY_LARGE -> 16f
-    Type.BODY_MEDIUM -> 14f
-    Type.BODY_SMALL -> 12f
-    Type.LABEL_LARGE -> 14f
-    Type.LABEL_MEDIUM -> 12f
-    Type.LABEL_SMALL -> 11f
-    Type.CAPTION -> 11f
-}
+internal fun Type.size(): Float =
+    when (this) {
+        Type.HEADLINE -> 24f
+        Type.TITLE_LARGE -> 22f
+        Type.TITLE_MEDIUM -> 16f
+        Type.TITLE_SMALL -> 14f
+        Type.BODY_LARGE -> 16f
+        Type.BODY_MEDIUM -> 14f
+        Type.BODY_SMALL -> 12f
+        Type.LABEL_LARGE -> 14f
+        Type.LABEL_MEDIUM -> 12f
+        Type.LABEL_SMALL -> 11f
+        Type.CAPTION -> 11f
+    }
 
-internal fun Type.bold(): Boolean = when (this) {
-    Type.HEADLINE, Type.TITLE_LARGE, Type.TITLE_MEDIUM, Type.TITLE_SMALL,
-    Type.LABEL_LARGE, Type.LABEL_MEDIUM -> true
-    else -> false
-}
+internal fun Type.bold(): Boolean =
+    when (this) {
+        Type.HEADLINE, Type.TITLE_LARGE, Type.TITLE_MEDIUM, Type.TITLE_SMALL,
+        Type.LABEL_LARGE, Type.LABEL_MEDIUM,
+        -> true
+        else -> false
+    }

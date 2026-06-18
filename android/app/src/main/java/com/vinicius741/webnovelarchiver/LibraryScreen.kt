@@ -46,22 +46,24 @@ internal fun ScreenHost.showLibrary() {
     screen(
         title = "Library",
         subtitle = if (stories.isEmpty()) null else "${stories.size} novel${if (stories.size == 1) "" else "s"}",
-        actions = listOf(
-            AppBarAction(R.drawable.wna_globe, "Browser") { showBrowser("https://www.royalroad.com") },
-            AppBarAction(R.drawable.wna_list, "Queue") { showQueue() },
-            AppBarAction(R.drawable.wna_check, "Select") { showLibrarySelection() },
-            AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
-        ),
+        actions =
+            listOf(
+                AppBarAction(R.drawable.wna_globe, "Browser") { showBrowser("https://www.royalroad.com") },
+                AppBarAction(R.drawable.wna_list, "Queue") { showQueue() },
+                AppBarAction(R.drawable.wna_check, "Select") { showLibrarySelection() },
+                AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
+            ),
         fab = { showAddStory() },
     ) {
         // Resolve and persist tab selection even when the library is empty. Configured tabs are
         // still useful before the first import, and hiding them makes tab creation look ineffective.
         val hasUnassigned = stories.any { it.tabId == null }
-        var selectedTabId: String? = LibraryTabSelection.resolve(
-            storage.getDisplayPreferences().libraryTabId,
-            tabs,
-            hasUnassigned,
-        )
+        var selectedTabId: String? =
+            LibraryTabSelection.resolve(
+                storage.getDisplayPreferences().libraryTabId,
+                tabs,
+                hasUnassigned,
+            )
 
         fun persistTab(id: String?) {
             val encoded = LibraryTabSelection.encode(id)
@@ -72,10 +74,12 @@ internal fun ScreenHost.showLibrary() {
         }
 
         if (stories.isEmpty()) {
-            addView(makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
-                selectedTabId = newTabId
-                persistTab(newTabId)
-            }.view)
+            addView(
+                makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+                    selectedTabId = newTabId
+                    persistTab(newTabId)
+                }.view,
+            )
             addView(makeEmptyState(context, "No novels yet. Tap + to add a Royal Road or Scribble Hub story.", R.drawable.wna_menu_book))
             return@screen
         }
@@ -89,11 +93,12 @@ internal fun ScreenHost.showLibrary() {
         // pager so their ordering can never drift. Matches the legacy RN `useLibraryPager.pageTabIds`:
         // All first, then the synthetic Unassigned tab (only when stories are unassigned), then real
         // tabs in their configured order. `null` is the runtime sentinel for Unassigned.
-        val pageTabs: List<String?> = buildList {
-            add(LibraryTabSelection.ALL_TAB_ID)
-            if (hasUnassigned) add(null)
-            addAll(tabs.map { it.id })
-        }
+        val pageTabs: List<String?> =
+            buildList {
+                add(LibraryTabSelection.ALL_TAB_ID)
+                if (hasUnassigned) add(null)
+                addAll(tabs.map { it.id })
+            }
 
         val selectedTags = mutableSetOf<String>()
         var sortOption = "updated"
@@ -104,20 +109,23 @@ internal fun ScreenHost.showLibrary() {
         // one closure so search/sort/tag callbacks never have to know which mode is active.
         var applyFilters: () -> Unit = {}
 
-        val tabBar = makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
-            selectedTabId = newTabId
-            persistTab(newTabId)
-            applyFilters()
-        }
+        val tabBar =
+            makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+                selectedTabId = newTabId
+                persistTab(newTabId)
+                applyFilters()
+            }
         addView(tabBar.view)
-        addView(makeLibraryFilters(context, search, tabs.isNotEmpty(), stories, selectedTabId, selectedTags, sortOption, sortAscending, { newSort ->
-            sortOption = newSort.first
-            sortAscending = newSort.second
-            applyFilters()
-        }, { tag ->
-            if (!selectedTags.add(tag)) selectedTags.remove(tag)
-            applyFilters()
-        }))
+        addView(
+            makeLibraryFilters(context, search, tabs.isNotEmpty(), stories, selectedTabId, selectedTags, sortOption, sortAscending, { newSort ->
+                sortOption = newSort.first
+                sortAscending = newSort.second
+                applyFilters()
+            }, { tag ->
+                if (!selectedTags.add(tag)) selectedTags.remove(tag)
+                applyFilters()
+            }),
+        )
 
         // `showLibrary` runs inside the receiver scope; make `search.text` resolve here.
         fun currentFilter(): String = search.text.toString()
@@ -128,12 +136,13 @@ internal fun ScreenHost.showLibrary() {
             // tapping the bar does. Tab bar ⇄ pager stay two-way synced: a swipe updates the bar's
             // active indicator, a bar tap animates the pager to that page.
             val adapter = LibraryPagesAdapter(host, stories, pageTabs, layoutResult)
-            val pager = ViewPager2(context).apply {
-                this.adapter = adapter
-                // Disable the (default horizontal) page-over-scroll glow; the tab bar's indicator is
-                // the affordance that a swipe changed the active tab.
-                getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
-            }
+            val pager =
+                ViewPager2(context).apply {
+                    this.adapter = adapter
+                    // Disable the (default horizontal) page-over-scroll glow; the tab bar's indicator is
+                    // the affordance that a swipe changed the active tab.
+                    getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
+                }
             // Land on the persisted tab without animating on first show.
             val initialPage = pageTabs.indexOf(selectedTabId).coerceAtLeast(0)
             pager.setCurrentItem(initialPage, false)
@@ -144,19 +153,21 @@ internal fun ScreenHost.showLibrary() {
             // Swipe → tab. Mirrors RN's `tabId !== activeTabId` guard so the two-way wiring never
             // feeds back into itself.
             var suppressingPageCallback = false
-            pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) {
-                    if (suppressingPageCallback) return
-                    val newTabId = pageTabs.getOrNull(position) ?: return
-                    if (newTabId != selectedTabId) {
-                        selectedTabId = newTabId
-                        persistTab(newTabId)
-                        tabBar.selectVisual(newTabId)
-                        // Re-filter so the newly visible page reflects the active search/tags/sort.
-                        applyFilters()
+            pager.registerOnPageChangeCallback(
+                object : ViewPager2.OnPageChangeCallback() {
+                    override fun onPageSelected(position: Int) {
+                        if (suppressingPageCallback) return
+                        val newTabId = pageTabs.getOrNull(position) ?: return
+                        if (newTabId != selectedTabId) {
+                            selectedTabId = newTabId
+                            persistTab(newTabId)
+                            tabBar.selectVisual(newTabId)
+                            // Re-filter so the newly visible page reflects the active search/tags/sort.
+                            applyFilters()
+                        }
                     }
-                }
-            })
+                },
+            )
             // Bar tap → page (animate), in addition to the selection/persist/filter work the bar already
             // does above. Routed through a flag so setCurrentItem's resulting onPageSelected is a no-op.
             tabBar.onSelectFromBar = { id ->
@@ -172,29 +183,61 @@ internal fun ScreenHost.showLibrary() {
         } else {
             // Single-tab path (the common case: no custom tabs and nothing unassigned). This is the
             // original layout — one scrolling grid — untouched in behaviour.
-            val list = GridLayout(context).apply {
-                columnCount = layoutResult.numColumns.coerceAtLeast(1)
-                horizontalSpacingDp = Space.LG
-                verticalSpacingDp = Space.LG
-            }
+            val list =
+                GridLayout(context).apply {
+                    columnCount = layoutResult.numColumns.coerceAtLeast(1)
+                    horizontalSpacingDp = Space.LG
+                    verticalSpacingDp = Space.LG
+                }
             applyFilters = {
                 renderTabGrid(stories, list, layoutResult, currentFilter(), selectedTabId, selectedTags, sortOption, sortAscending)
             }
-            val gridShell = MaxWidthFrameLayout(context).apply {
-                // Center the grid and cap its width at the size-class content max (760/1040/1320dp) so it
-                // never stretches edge-to-edge on tablets, matching the RN library layout.
-                maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
-                addView(list, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
-            }
+            val gridShell =
+                MaxWidthFrameLayout(context).apply {
+                    // Center the grid and cap its width at the size-class content max (760/1040/1320dp) so it
+                    // never stretches edge-to-edge on tablets, matching the RN library layout.
+                    maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
+                    addView(
+                        list,
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            Gravity.CENTER_HORIZONTAL,
+                        ),
+                    )
+                }
             addView(scroll(gridShell), verticalFill().apply { topMargin = dp(Space.LG) })
 
-            search.addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    renderTabGrid(stories, list, layoutResult, s?.toString().orEmpty(), selectedTabId, selectedTags, sortOption, sortAscending)
-                }
-                override fun afterTextChanged(s: Editable?) = Unit
-            })
+            search.addTextChangedListener(
+                object : TextWatcher {
+                    override fun beforeTextChanged(
+                        s: CharSequence?,
+                        start: Int,
+                        count: Int,
+                        after: Int,
+                    ) = Unit
+
+                    override fun onTextChanged(
+                        s: CharSequence?,
+                        start: Int,
+                        before: Int,
+                        count: Int,
+                    ) {
+                        renderTabGrid(
+                            stories,
+                            list,
+                            layoutResult,
+                            s?.toString().orEmpty(),
+                            selectedTabId,
+                            selectedTags,
+                            sortOption,
+                            sortAscending,
+                        )
+                    }
+
+                    override fun afterTextChanged(s: Editable?) = Unit
+                },
+            )
             applyFilters()
         }
     }
@@ -213,6 +256,7 @@ private class LibraryTabBarHolder(
     private val applySelection: (String?) -> Unit,
 ) {
     var onSelectFromBar: ((String?) -> Unit)? = null
+
     fun selectVisual(id: String?) = applySelection(id)
 }
 
@@ -224,17 +268,23 @@ private fun ScreenHost.makeLibraryTabBar(
     onSelect: (String?) -> Unit,
 ): LibraryTabBarHolder {
     val unassignedCount = stories.count { it.tabId == null }
-    val scroll = HorizontalScrollView(context).apply {
-        isHorizontalScrollBarEnabled = false
-    }
-    val row = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-    }
+    val scroll =
+        HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+    val row =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
     // Keep each tab's id paired with its text + underline views so we can restyle the active
     // tab in place on selection, instead of rebuilding the whole bar (which would leave the
     // indicator stuck on the initially-selected tab).
-    data class TabView(val id: String?, val text: TextView, val underline: View)
+    data class TabView(
+        val id: String?,
+        val text: TextView,
+        val underline: View,
+    )
     val tabViews = mutableListOf<TabView>()
     var currentSelection = selectedTabId
 
@@ -253,37 +303,46 @@ private fun ScreenHost.makeLibraryTabBar(
     // animates to the tapped tab's page. Order matters only visually; both are idempotent. The holder
     // is assigned after it is constructed below; fireSelect reads it at click time, never at setup time.
     var holderRef: LibraryTabBarHolder? = null
+
     fun fireSelect(id: String?) {
         applySelection(id)
         onSelect(id)
         holderRef?.onSelectFromBar?.invoke(id)
     }
 
-    fun addTab(label: String, id: String?) {
-        val text = makeText(context, label, Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
-            minWidth = dp(60)
-            gravity = Gravity.CENTER
-        }
-        val underline = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
-        }
-        val tabContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            addView(text)
-            addView(underline)
-            isClickable = true
-            isFocusable = true
-            background = selectableRipple(ThemeManager.colors.onSurface)
-            setOnClickListener { fireSelect(id) }
-        }
+    fun addTab(
+        label: String,
+        id: String?,
+    ) {
+        val text =
+            makeText(context, label, Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
+                setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
+                minWidth = dp(60)
+                gravity = Gravity.CENTER
+            }
+        val underline =
+            View(context).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
+            }
+        val tabContainer =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                addView(text)
+                addView(underline)
+                isClickable = true
+                isFocusable = true
+                background = selectableRipple(ThemeManager.colors.onSurface)
+                setOnClickListener { fireSelect(id) }
+            }
         // Space tabs apart with an end margin (outside the ripple) rather than right padding, so the
         // label and underline stay centered within each tab's tap target instead of shifting left.
-        val tabLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-        ).apply { marginEnd = dp(Space.SM + 2) }
+        val tabLp =
+            LinearLayout
+                .LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = dp(Space.SM + 2) }
         row.addView(tabContainer, tabLp)
         tabViews += TabView(id, text, underline)
     }
@@ -314,70 +373,107 @@ private fun ScreenHost.makeLibraryFilters(
     onSortChanged: (Pair<String, Boolean>) -> Unit,
     onTagToggled: (String) -> Unit,
 ): View {
-    val filtersContainer = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-    }
-    val filterTopMargin = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-        topMargin = dp(Space.SM)
-    }
+    val filtersContainer =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+    val filterTopMargin =
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.SM)
+        }
 
     // Search + sort row
-    val searchRow = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-    }
+    val searchRow =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
     searchRow.addView(search, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
     val sortIcon = if (sortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
     // L2: a labeled chip communicates the active sort + direction instead of a bare, stateless icon.
     val sortLabel = sortOptionLabel(sortOption) + if (sortAscending) " ↑" else " ↓"
-    val sortButton = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
-        background = ripple(strokeBg(Color.TRANSPARENT, context.dp(ThemeManager.shapes.chipRadius).toFloat(), ThemeManager.colors.outline, context.dp(1)), context.dp(ThemeManager.shapes.chipRadius).toFloat(), ThemeManager.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { showSortDialog(context, sortOption, sortAscending, onSortChanged) }
-        addView(ImageView(context).apply {
-            setImageDrawable(context.tintedIcon(sortIcon, ThemeManager.colors.onSurfaceVariant))
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            layoutParams = LinearLayout.LayoutParams(dp(Space.SM + Space.XS + 2), dp(Space.SM + Space.XS + 2)).apply { rightMargin = dp(Space.XS + 2) }
-        })
-        addView(makeText(context, sortLabel, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
-    }
-    searchRow.addView(sortButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(Space.MD) })
+    val sortButton =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
+            background =
+                ripple(
+                    strokeBg(
+                        Color.TRANSPARENT,
+                        context.dp(ThemeManager.shapes.chipRadius).toFloat(),
+                        ThemeManager.colors.outline,
+                        context.dp(1),
+                    ),
+                    context.dp(ThemeManager.shapes.chipRadius).toFloat(),
+                    ThemeManager.colors.onSurface,
+                )
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { showSortDialog(context, sortOption, sortAscending, onSortChanged) }
+            addView(
+                ImageView(context).apply {
+                    setImageDrawable(context.tintedIcon(sortIcon, ThemeManager.colors.onSurfaceVariant))
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    layoutParams =
+                        LinearLayout.LayoutParams(dp(Space.SM + Space.XS + 2), dp(Space.SM + Space.XS + 2)).apply {
+                            rightMargin =
+                                dp(Space.XS + 2)
+                        }
+                },
+            )
+            addView(makeText(context, sortLabel, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
+        }
+    searchRow.addView(
+        sortButton,
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            leftMargin =
+                dp(Space.MD)
+        },
+    )
     filtersContainer.addView(searchRow)
 
     // Tag chips — L4: render source filters (globe icon, filled) separately from genre tags so the
     // two filter kinds are visually distinguishable instead of one flat row of identical chips.
     val (sourceLabels, tagLabels) = LibraryQuery.availableFilterGroups(stories, selectedTabId)
     if (sourceLabels.isNotEmpty() || tagLabels.isNotEmpty()) {
-        val tagScroll = HorizontalScrollView(context).apply {
-            isHorizontalScrollBarEnabled = false
-        }
-        val tagRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        val tagScroll =
+            HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
+            }
+        val tagRow =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+            }
         sourceLabels.take(4).forEach { (label, count) ->
             val selected = selectedTags.contains(label)
             val chip = makeSourceChip(context, label, count, selected) { onTagToggled(label) }
-            tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dp(Space.SM + 2)
-            })
+            tagRow.addView(
+                chip,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    rightMargin = dp(Space.SM + 2)
+                },
+            )
         }
         tagLabels.take(8).forEach { (label, count) ->
             val chipLabel = "$label ($count)"
             val selected = selectedTags.contains(label)
             val chip = makeChip(context, chipLabel, selected) { onTagToggled(label) }
-            tagRow.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                rightMargin = dp(Space.SM + 2)
-            })
+            tagRow.addView(
+                chip,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    rightMargin = dp(Space.SM + 2)
+                },
+            )
         }
         tagScroll.addView(tagRow)
-        filtersContainer.addView(tagScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(Space.SM)
-        })
+        filtersContainer.addView(
+            tagScroll,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Space.SM)
+            },
+        )
     }
 
     if (!hasCustomTabs) return filtersContainer.also { it.layoutParams = filterTopMargin }
@@ -389,32 +485,56 @@ private fun ScreenHost.makeLibraryFilters(
     // NOT be clickable/focusable, otherwise Android dispatches the touch to this ImageView (which has
     // its own no-op listener from iconButtonSmall), consumes it, and the parent never expands — leaving
     // the search/sort/tag filters trapped behind View.GONE and the whole filter row unresponsive.
-    val toggleIcon = context.iconButtonSmall(R.drawable.wna_chevron_down, "Toggle filters") { }.apply {
-        isClickable = false
-        isFocusable = false
-    }
-    val toggleWrap = FrameLayout(context).apply {
-        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-            gravity = Gravity.END
+    val toggleIcon =
+        context.iconButtonSmall(R.drawable.wna_chevron_down, "Toggle filters") { }.apply {
+            isClickable = false
+            isFocusable = false
         }
-        addView(toggleIcon)
-        if (hasActiveFilters) {
-            addView(View(context).apply {
-                layoutParams = FrameLayout.LayoutParams(dp(Space.SM), dp(Space.SM), Gravity.TOP or Gravity.END).apply { topMargin = dp(Space.XS + 2); rightMargin = dp(Space.XS + 2) }
-                background = roundedBg(ThemeManager.colors.primary, dp(Space.XS).toFloat())
-            })
+    val toggleWrap =
+        FrameLayout(context).apply {
+            layoutParams =
+                LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                    gravity = Gravity.END
+                }
+            addView(toggleIcon)
+            if (hasActiveFilters) {
+                addView(
+                    View(context).apply {
+                        layoutParams =
+                            FrameLayout.LayoutParams(dp(Space.SM), dp(Space.SM), Gravity.TOP or Gravity.END).apply {
+                                topMargin = dp(Space.XS + 2)
+                                rightMargin =
+                                    dp(Space.XS + 2)
+                            }
+                        background = roundedBg(ThemeManager.colors.primary, dp(Space.XS).toFloat())
+                    },
+                )
+            }
         }
-    }
-    val headerRow = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-    }
+    val headerRow =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
     // L3: pair the chevron with a "Filters" label so the toggle is discoverable instead of a lone arrow.
-    headerRow.addView(makeText(context, "Filters", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-        setPadding(0, 0, dp(Space.XS + 2), 0)
-    })
+    headerRow.addView(
+        makeText(context, "Filters", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+            setPadding(0, 0, dp(Space.XS + 2), 0)
+        },
+    )
     if (hasActiveFilters) {
-        headerRow.addView(makeText(context, "•", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply { setPadding(0, 0, dp(Space.XS + 2), 0) })
+        headerRow.addView(
+            makeText(context, "•", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+                setPadding(
+                    0,
+                    0,
+                    dp(
+                        Space.XS + 2,
+                    ),
+                    0,
+                )
+            },
+        )
     }
     headerRow.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
     headerRow.addView(toggleWrap)
@@ -426,7 +546,11 @@ private fun ScreenHost.makeLibraryFilters(
     toggleWrap.setOnClickListener {
         expanded = !expanded
         filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
-        toggleIcon.animate().rotation(if (expanded) 180f else 0f).setDuration(200).start()
+        toggleIcon
+            .animate()
+            .rotation(if (expanded) 180f else 0f)
+            .setDuration(200)
+            .start()
     }
     wrapper.layoutParams = filterTopMargin
     return wrapper
@@ -438,48 +562,54 @@ private fun showSortDialog(
     ascending: Boolean,
     onChanged: (Pair<String, Boolean>) -> Unit,
 ) {
-    val options = listOf(
-        "default" to "Default (Smart)",
-        "title" to "Title",
-        "lastUpdated" to "Last Updated",
-        "dateAdded" to "Date Added",
-        "totalChapters" to "Chapter Count",
-        "score" to "Score",
-    )
+    val options =
+        listOf(
+            "default" to "Default (Smart)",
+            "title" to "Title",
+            "lastUpdated" to "Last Updated",
+            "dateAdded" to "Date Added",
+            "totalChapters" to "Chapter Count",
+            "score" to "Score",
+        )
 
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
     val radiusPx = context.dp(shapes.dialogRadius).toFloat()
 
-    val dialogView = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(context.dp(24), context.dp(20), context.dp(24), context.dp(12))
-        background = roundedBg(colors.surface, radiusPx)
-        roundCorners(shapes.dialogRadius.toFloat())
-    }
+    val dialogView =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(context.dp(24), context.dp(20), context.dp(24), context.dp(12))
+            background = roundedBg(colors.surface, radiusPx)
+            roundCorners(shapes.dialogRadius.toFloat())
+        }
 
     dialogView.addView(makeText(context, "Sort by", Type.TITLE_LARGE, colors.onSurface))
-    dialogView.addView(View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(16))
-    })
+    dialogView.addView(
+        View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(16))
+        },
+    )
 
     val checkIcon = context.tintedIcon(R.drawable.wna_check, colors.primary)
     var dialogRef: AlertDialog? = null
 
     options.forEach { (key, label) ->
         val isSelected = key == currentOption
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, context.dp(12), 0, context.dp(12))
-            isClickable = true
-            isFocusable = true
-            background = selectableRipple(colors.onSurface)
-        }
-        val check = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
-            if (isSelected) setImageDrawable(checkIcon)
-        }
+        val row =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, context.dp(12), 0, context.dp(12))
+                isClickable = true
+                isFocusable = true
+                background = selectableRipple(colors.onSurface)
+            }
+        val check =
+            ImageView(context).apply {
+                layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
+                if (isSelected) setImageDrawable(checkIcon)
+            }
         val text = makeText(context, label, Type.BODY_LARGE, colors.onSurface)
         row.addView(check)
         row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -493,22 +623,25 @@ private fun showSortDialog(
 
     // Direction toggle row
     dialogView.addView(makeDivider(context))
-    val directionRow = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, context.dp(12), 0, context.dp(12))
-        isClickable = true
-        isFocusable = true
-        background = selectableRipple(colors.onSurface)
-    }
-    val directionIcon = context.tintedIcon(
-        if (ascending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending,
-        colors.primary,
-    )
-    val directionImage = ImageView(context).apply {
-        layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
-        setImageDrawable(directionIcon)
-    }
+    val directionRow =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, context.dp(12), 0, context.dp(12))
+            isClickable = true
+            isFocusable = true
+            background = selectableRipple(colors.onSurface)
+        }
+    val directionIcon =
+        context.tintedIcon(
+            if (ascending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending,
+            colors.primary,
+        )
+    val directionImage =
+        ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
+            setImageDrawable(directionIcon)
+        }
     val directionText = makeText(context, if (ascending) "Ascending" else "Descending", Type.BODY_LARGE, colors.onSurface)
     directionRow.addView(directionImage)
     directionRow.addView(directionText)
@@ -519,36 +652,46 @@ private fun showSortDialog(
     dialogView.addView(directionRow)
 
     val cancelButton = makeButton(context, "Cancel", Btn.TEXT) { dialogRef?.dismiss() }
-    dialogView.addView(LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.END
-        setPadding(0, context.dp(8), 0, 0)
-        addView(cancelButton)
-    })
+    dialogView.addView(
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, context.dp(8), 0, 0)
+            addView(cancelButton)
+        },
+    )
 
-    dialogRef = AlertDialog.Builder(context)
-        .setView(dialogView)
-        .create()
+    dialogRef =
+        AlertDialog
+            .Builder(context)
+            .setView(dialogView)
+            .create()
     dialogRef.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     dialogRef.show()
 }
 
-private fun defaultDirectionFor(option: String): Boolean = when (option) {
-    "title" -> true
-    else -> false
-}
+private fun defaultDirectionFor(option: String): Boolean =
+    when (option) {
+        "title" -> true
+        else -> false
+    }
 
 /** Short human label for a sort option key, shown on the Library sort chip. */
-private fun sortOptionLabel(option: String): String = when (option) {
-    "title" -> "Title"
-    "lastUpdated" -> "Updated"
-    "dateAdded" -> "Added"
-    "totalChapters" -> "Chapters"
-    "score" -> "Score"
-    else -> "Default"
-}
+private fun sortOptionLabel(option: String): String =
+    when (option) {
+        "title" -> "Title"
+        "lastUpdated" -> "Updated"
+        "dateAdded" -> "Added"
+        "totalChapters" -> "Chapters"
+        "score" -> "Score"
+        else -> "Default"
+    }
 
-private fun Context.iconButtonSmall(iconRes: Int, desc: String, onClick: () -> Unit): ImageView {
+private fun Context.iconButtonSmall(
+    iconRes: Int,
+    desc: String,
+    onClick: () -> Unit,
+): ImageView {
     val size = dp(40)
     return ImageView(this).apply {
         contentDescription = desc
@@ -578,7 +721,6 @@ private class LibraryPagesAdapter(
     private val pageTabs: List<String?>,
     private val layout: ScreenLayoutResult,
 ) : RecyclerView.Adapter<LibraryPagesAdapter.PageViewHolder>() {
-
     private data class FilterSnapshot(
         val text: String,
         val tags: Set<String>,
@@ -593,35 +735,50 @@ private class LibraryPagesAdapter(
         setHasStableIds(true)
     }
 
-    override fun getItemId(position: Int): Long =
-        pageTabs[position]?.hashCode()?.toLong() ?: -1L
+    override fun getItemId(position: Int): Long = pageTabs[position]?.hashCode()?.toLong() ?: -1L
 
     override fun getItemCount(): Int = pageTabs.size
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): PageViewHolder {
         val context = parent.context
-        val grid = GridLayout(context).apply {
-            columnCount = layout.numColumns.coerceAtLeast(1)
-            horizontalSpacingDp = Space.LG
-            verticalSpacingDp = Space.LG
-        }
+        val grid =
+            GridLayout(context).apply {
+                columnCount = layout.numColumns.coerceAtLeast(1)
+                horizontalSpacingDp = Space.LG
+                verticalSpacingDp = Space.LG
+            }
         // Same shell as the single-grid path: cap width at the size-class content max and center it,
         // inside a scroller so a long list scrolls vertically within its page.
-        val shell = MaxWidthFrameLayout(context).apply {
-            maxContentWidthDp = libraryMaxContentWidth(layout.numColumns)
-            addView(grid, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL))
-        }
-        val scroll = ScrollView(context).apply {
-            isFillViewport = true
-            addView(shell)
-        }
+        val shell =
+            MaxWidthFrameLayout(context).apply {
+                maxContentWidthDp = libraryMaxContentWidth(layout.numColumns)
+                addView(
+                    grid,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.CENTER_HORIZONTAL,
+                    ),
+                )
+            }
+        val scroll =
+            ScrollView(context).apply {
+                isFillViewport = true
+                addView(shell)
+            }
         // ViewPager2 requires every page's root view to fill the whole pager (match_parent on both
         // axes); otherwise it throws "Pages must fill the whole ViewPager2 (use match_parent)".
         scroll.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         return PageViewHolder(scroll, grid)
     }
 
-    override fun onBindViewHolder(holder: PageViewHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: PageViewHolder,
+        position: Int,
+    ) {
         val tabId = pageTabs[position]
         val snap = filterSnapshot
         host.renderTabGrid(stories, holder.grid, layout, snap.text, tabId, snap.tags, snap.sortOption, snap.sortAscending)
@@ -629,12 +786,20 @@ private class LibraryPagesAdapter(
 
     /** Apply a new search/tag/sort snapshot to every page. Re-renders bound pages in place without
      *  disturbing the current page position. */
-    fun updateFilter(text: String, tags: Set<String>, sortOption: String, sortAscending: Boolean) {
+    fun updateFilter(
+        text: String,
+        tags: Set<String>,
+        sortOption: String,
+        sortAscending: Boolean,
+    ) {
         filterSnapshot = FilterSnapshot(text, tags, sortOption, sortAscending)
         notifyItemRangeChanged(0, itemCount)
     }
 
-    class PageViewHolder(view: android.view.View, val grid: GridLayout) : RecyclerView.ViewHolder(view)
+    class PageViewHolder(
+        view: android.view.View,
+        val grid: GridLayout,
+    ) : RecyclerView.ViewHolder(view)
 }
 
 internal fun ScreenHost.renderTabGrid(
@@ -660,64 +825,91 @@ internal fun ScreenHost.renderTabGrid(
     // wider windows. The previous vertical "compact" card cropped portrait covers badly and looked
     // inconsistent with the single-column view.
     visible.forEach { story ->
-        list.addView(list.card {
-            val content = buildStoryCard(story)
-            content.background = selectableRipple(ThemeManager.colors.onSurface)
-            content.isClickable = true
-            content.setOnClickListener { showDetails(story.id) }
-            content.setOnLongClickListener {
-                showStoryActionsDialog(story)
-                true
-            }
-            addView(content)
-            if (story.totalChapters > 0) {
-                // L5: show the download-count text alongside the thin progress bar so you don't have
-                // to open the story to see "12 / 140 chapters".
-                addView(makeProgressSummary(context, story.downloadedChapters, story.totalChapters).apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(Space.MD) }
-                })
-            }
-        })
+        list.addView(
+            list.card {
+                val content = buildStoryCard(story)
+                content.background = selectableRipple(ThemeManager.colors.onSurface)
+                content.isClickable = true
+                content.setOnClickListener { showDetails(story.id) }
+                content.setOnLongClickListener {
+                    showStoryActionsDialog(story)
+                    true
+                }
+                addView(content)
+                if (story.totalChapters > 0) {
+                    // L5: show the download-count text alongside the thin progress bar so you don't have
+                    // to open the story to see "12 / 140 chapters".
+                    addView(
+                        makeProgressSummary(context, story.downloadedChapters, story.totalChapters).apply {
+                            layoutParams =
+                                LinearLayout
+                                    .LayoutParams(
+                                        LinearLayout.LayoutParams.MATCH_PARENT,
+                                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                                    ).apply {
+                                        topMargin =
+                                            dp(Space.MD)
+                                    }
+                        },
+                    )
+                }
+            },
+        )
     }
 }
 
 /** Full-width horizontal card content for the single-column library: 80×120 cover + stacked text. */
 private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
-    val row = LinearLayout(app).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-    }
+    val row =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
     row.addView(coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false))
-    row.addView(LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        addView(makeText(app, story.title, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
-            maxLines = 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        })
-        addView(makeText(app, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(0, dp(Space.XS), 0, 0)
-        })
-        SourceRegistry.getProvider(story.sourceUrl)?.let {
-            addView(makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
-                setPadding(0, dp(Space.XS), 0, 0)
-            })
-        }
-        story.score?.takeIf { it.isNotBlank() }?.let { score ->
-            addView(scoreRow(score))
-        }
-        story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
-            addView(makeText(app, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                setPadding(0, dp(Space.XS), 0, 0)
-            })
-        }
-    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-    if (story.isArchived == true) {
-        row.addView(ImageView(app).apply {
-            setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
-            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                marginStart = dp(Space.SM)
+    row.addView(
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                makeText(app, story.title, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+                    maxLines = 2
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                },
+            )
+            addView(
+                makeText(app, "by ${story.author}", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    setPadding(0, dp(Space.XS), 0, 0)
+                },
+            )
+            SourceRegistry.getProvider(story.sourceUrl)?.let {
+                addView(
+                    makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+                        setPadding(0, dp(Space.XS), 0, 0)
+                    },
+                )
             }
-        })
+            story.score?.takeIf { it.isNotBlank() }?.let { score ->
+                addView(scoreRow(score))
+            }
+            story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
+                addView(
+                    makeText(app, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                        setPadding(0, dp(Space.XS), 0, 0)
+                    },
+                )
+            }
+        },
+        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+    )
+    if (story.isArchived == true) {
+        row.addView(
+            ImageView(app).apply {
+                setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
+                layoutParams =
+                    LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                        marginStart = dp(Space.SM)
+                    }
+            },
+        )
     }
     return row
 }
@@ -726,7 +918,12 @@ private fun ScreenHost.showStoryActionsDialog(story: Story) {
     val options = mutableListOf<Pair<String, () -> Unit>>("Open" to { showDetails(story.id) })
     if (StoryActionGuards.canSync(story)) options += "Sync" to { syncStory(story) }
     options += "Move" to { showMoveStoryDialog(story) }
-    options += "Delete" to { confirm("Delete ${story.title}?") { storage.deleteStory(story.id); showLibrary() } }
+    options += "Delete" to {
+        confirm("Delete ${story.title}?") {
+            storage.deleteStory(story.id)
+            showLibrary()
+        }
+    }
     showStyledOptionsDialog(story.title, options)
 }
 
@@ -747,37 +944,46 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                 showLibrarySelection(selectedIds)
             }
         }
-        addView(scroll(LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            // X1: card-style rows with title/author instead of bare CheckBoxes.
-            stories.forEach { story ->
-                addView(makeSelectableCardRow(
-                    context,
-                    title = story.title,
-                    subtitle = story.author,
-                    selected = selectedIds.contains(story.id),
-                ) { checked ->
-                    if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
-                    refreshBulkActions()
-                })
-            }
-        }), verticalFill())
+        addView(
+            scroll(
+                LinearLayout(app).apply {
+                    orientation = LinearLayout.VERTICAL
+                    // X1: card-style rows with title/author instead of bare CheckBoxes.
+                    stories.forEach { story ->
+                        addView(
+                            makeSelectableCardRow(
+                                context,
+                                title = story.title,
+                                subtitle = story.author,
+                                selected = selectedIds.contains(story.id),
+                            ) { checked ->
+                                if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
+                                refreshBulkActions()
+                            },
+                        )
+                    }
+                },
+            ),
+            verticalFill(),
+        )
         // X2: bulk actions docked at the bottom as full-width primary CTAs.
         lateinit var moveButton: Button
         lateinit var deleteButton: Button
-        moveButton = fullButton("Move ${selectedIds.size} Selected", Btn.TONAL, R.drawable.wna_folder, bottomMarginDp = 8) {
-            if (selectedIds.isEmpty()) toast("No novels selected") else showMoveStoriesDialog(selectedIds.toList())
-        }
-        deleteButton = fullButton("Delete Selected", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) {
-            if (selectedIds.isEmpty()) {
-                toast("No novels selected")
-            } else {
-                confirm("Delete ${selectedIds.size} selected novels?", confirmLabel = "Delete") {
-                    selectedIds.forEach { storage.deleteStory(it) }
-                    showLibrary()
+        moveButton =
+            fullButton("Move ${selectedIds.size} Selected", Btn.TONAL, R.drawable.wna_folder, bottomMarginDp = 8) {
+                if (selectedIds.isEmpty()) toast("No novels selected") else showMoveStoriesDialog(selectedIds.toList())
+            }
+        deleteButton =
+            fullButton("Delete Selected", Btn.ERROR, R.drawable.wna_delete, bottomMarginDp = 0) {
+                if (selectedIds.isEmpty()) {
+                    toast("No novels selected")
+                } else {
+                    confirm("Delete ${selectedIds.size} selected novels?", confirmLabel = "Delete") {
+                        selectedIds.forEach { storage.deleteStory(it) }
+                        showLibrary()
+                    }
                 }
             }
-        }
         refreshBulkActions = {
             moveButton.text = "Move ${selectedIds.size} Selected"
             deleteButton.text = if (selectedIds.isEmpty()) "Delete Selected" else "Delete ${selectedIds.size} Selected"
@@ -789,17 +995,18 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
 internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
     val tabs = storage.getTabs().sortedBy { it.order }
     val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
-    val options = tabOptions.map { (tabId, label) ->
-        label to {
-            storyIds.forEach { id ->
-                storage.getStory(id)?.let { story ->
-                    story.tabId = tabId
-                    storage.addOrUpdateStory(story)
+    val options =
+        tabOptions.map { (tabId, label) ->
+            label to {
+                storyIds.forEach { id ->
+                    storage.getStory(id)?.let { story ->
+                        story.tabId = tabId
+                        storage.addOrUpdateStory(story)
+                    }
                 }
+                showLibrary()
             }
-            showLibrary()
         }
-    }
     val novelLabel = if (storyIds.size == 1) "Novel" else "Novels"
     showStyledOptionsDialog("Move ${storyIds.size} $novelLabel", options)
 }
@@ -807,48 +1014,57 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 internal fun ScreenHost.showAddStory() {
     val tabs = storage.getTabs().sortedBy { it.order }
     screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
-        val url = makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
-            // Roomier vertical padding than the compact field style shared with search bars/dialogs,
-            // so this primary URL input is easier to tap and read.
-            setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
-        }
+        val url =
+            makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
+                // Roomier vertical padding than the compact field style shared with search bars/dialogs,
+                // so this primary URL input is easier to tap and read.
+                setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
+            }
         // Paste button beside the field — mirrors the React Native app's content-paste affordance,
         // reading the system clipboard in one tap instead of long-pressing the field.
-        val pasteButton = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            val radiusPx = context.dp(ThemeManager.current.shapes.buttonRadius).toFloat()
-            background = ripple(
-                roundedBg(ThemeManager.colors.secondaryContainer, radiusPx),
-                radiusPx,
-                ThemeManager.colors.onSecondaryContainer,
-            )
-            isClickable = true
-            isFocusable = true
-            setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD))
-            addView(ImageView(context).apply {
-                contentDescription = "Paste URL"
-                setImageDrawable(context.tintedIcon(R.drawable.wna_paste, ThemeManager.colors.onSecondaryContainer))
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-            })
-            setOnClickListener {
-                val clip = clipboardText()?.trim()
-                if (clip.isNullOrEmpty()) {
-                    toast("Clipboard is empty")
-                } else {
-                    url.setText(clip)
-                    url.setSelection(clip.length)
+        val pasteButton =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                val radiusPx = context.dp(ThemeManager.current.shapes.buttonRadius).toFloat()
+                background =
+                    ripple(
+                        roundedBg(ThemeManager.colors.secondaryContainer, radiusPx),
+                        radiusPx,
+                        ThemeManager.colors.onSecondaryContainer,
+                    )
+                isClickable = true
+                isFocusable = true
+                setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD))
+                addView(
+                    ImageView(context).apply {
+                        contentDescription = "Paste URL"
+                        setImageDrawable(context.tintedIcon(R.drawable.wna_paste, ThemeManager.colors.onSecondaryContainer))
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    },
+                )
+                setOnClickListener {
+                    val clip = clipboardText()?.trim()
+                    if (clip.isNullOrEmpty()) {
+                        toast("Clipboard is empty")
+                    } else {
+                        url.setText(clip)
+                        url.setSelection(clip.length)
+                    }
                 }
             }
-        }
-        val urlRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(url, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(pasteButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(Space.SM)
-            })
-        }
+        val urlRow =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(url, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(
+                    pasteButton,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        marginStart = dp(Space.SM)
+                    },
+                )
+            }
         addView(urlRow)
         // A1: only render the "Save to tab" section when there are tabs to choose from.
         var tabSpinner: Spinner? = null
@@ -873,12 +1089,13 @@ internal fun ScreenHost.showAddStory() {
 internal fun ScreenHost.showMoveStoryDialog(story: Story) {
     val tabs = storage.getTabs().sortedBy { it.order }
     val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
-    val options = tabOptions.map { (tabId, label) ->
-        label to {
-            story.tabId = tabId
-            storage.addOrUpdateStory(story)
-            showLibrary()
+    val options =
+        tabOptions.map { (tabId, label) ->
+            label to {
+                story.tabId = tabId
+                storage.addOrUpdateStory(story)
+                showLibrary()
+            }
         }
-    }
     showStyledOptionsDialog("Move Novel", options)
 }

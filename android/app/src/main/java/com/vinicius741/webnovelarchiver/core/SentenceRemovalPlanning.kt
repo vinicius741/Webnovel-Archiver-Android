@@ -7,7 +7,11 @@ data class SentenceSaveResult(
 )
 
 object SentenceRemovalPlanning {
-    fun save(sentences: List<String>, rawSentence: String, editingIndex: Int? = null): SentenceSaveResult {
+    fun save(
+        sentences: List<String>,
+        rawSentence: String,
+        editingIndex: Int? = null,
+    ): SentenceSaveResult {
         val trimmed = rawSentence.trim()
         if (trimmed.isBlank()) {
             return SentenceSaveResult(false, sentences.toMutableList(), "Sentence cannot be empty")
@@ -27,6 +31,8 @@ object SentenceRemovalPlanning {
         return SentenceSaveResult(true, next)
     }
 
-    fun delete(sentences: List<String>, index: Int): MutableList<String> =
-        sentences.filterIndexed { currentIndex, _ -> currentIndex != index }.toMutableList()
+    fun delete(
+        sentences: List<String>,
+        index: Int,
+    ): MutableList<String> = sentences.filterIndexed { currentIndex, _ -> currentIndex != index }.toMutableList()
 }

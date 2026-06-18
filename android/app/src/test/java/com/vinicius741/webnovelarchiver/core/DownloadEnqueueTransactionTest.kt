@@ -9,20 +9,24 @@ import java.util.concurrent.TimeUnit
 class DownloadEnqueueTransactionTest {
     @Test
     fun enqueuePersistsLatestStoryInsteadOfStaleUiSnapshot() {
-        val staleStory = Story(
-            id = "story",
-            chapters = mutableListOf(
-                Chapter(id = "one"),
-                Chapter(id = "two"),
-            ),
-        )
-        val currentStory = staleStory.copy(
-            chapters = staleStory.chapters.map { chapter -> chapter.copy() }.toMutableList(),
-        ).apply {
-            chapters[0].downloaded = true
-            chapters[0].filePath = "novels/story/one.html"
-            downloadedChapters = 1
-        }
+        val staleStory =
+            Story(
+                id = "story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "one"),
+                        Chapter(id = "two"),
+                    ),
+            )
+        val currentStory =
+            staleStory
+                .copy(
+                    chapters = staleStory.chapters.map { chapter -> chapter.copy() }.toMutableList(),
+                ).apply {
+                    chapters[0].downloaded = true
+                    chapters[0].filePath = "novels/story/one.html"
+                    downloadedChapters = 1
+                }
         var persistedStory: Story? = null
 
         DownloadEnqueueTransaction.execute(
@@ -43,16 +47,19 @@ class DownloadEnqueueTransactionTest {
     fun enqueueAndServiceStatusMutationPreserveEachOthersUpdates() {
         repeat(50) {
             val lock = Any()
-            val story = Story(
-                id = "story",
-                chapters = mutableListOf(
-                    Chapter(id = "one"),
-                    Chapter(id = "two"),
-                ),
-            )
-            var queue: List<DownloadJob> = DownloadQueuePlanning
-                .queueChapters(emptyList(), story, listOf(0))
-                .jobs
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one"),
+                            Chapter(id = "two"),
+                        ),
+                )
+            var queue: List<DownloadJob> =
+                DownloadQueuePlanning
+                    .queueChapters(emptyList(), story, listOf(0))
+                    .jobs
             val ready = CountDownLatch(2)
             val start = CountDownLatch(1)
             val executor = Executors.newFixedThreadPool(2)
@@ -99,14 +106,16 @@ class DownloadEnqueueTransactionTest {
         repeat(50) {
             val lock = Any()
             var queue: List<DownloadJob> = emptyList()
-            val story = Story(
-                id = "story",
-                title = "Story",
-                chapters = mutableListOf(
-                    Chapter(id = "one", title = "One"),
-                    Chapter(id = "two", title = "Two"),
-                ),
-            )
+            val story =
+                Story(
+                    id = "story",
+                    title = "Story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", title = "One"),
+                            Chapter(id = "two", title = "Two"),
+                        ),
+                )
             val ready = CountDownLatch(2)
             val start = CountDownLatch(1)
             val executor = Executors.newFixedThreadPool(2)

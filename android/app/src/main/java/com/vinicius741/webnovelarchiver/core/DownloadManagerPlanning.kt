@@ -46,17 +46,18 @@ enum class GlobalQueueAction { RESUME_ALL, PAUSE_ALL, RETRY_ALL, CANCEL_ALL, CLE
 
 object DownloadManagerPlanning {
     /** Returns the inline actions for a chapter job. Unknown/legacy statuses yield no actions. */
-    fun chapterActions(status: String): List<QueueAction> = when (DownloadJobStatus.parse(status)) {
-        DownloadJobStatus.Pending -> listOf(QueueAction.PAUSE, QueueAction.CANCEL)
-        DownloadJobStatus.Downloading -> listOf(QueueAction.PAUSE)
-        DownloadJobStatus.Paused -> listOf(QueueAction.RESUME, QueueAction.CANCEL)
-        DownloadJobStatus.Failed, DownloadJobStatus.Cancelled -> listOf(QueueAction.RETRY, QueueAction.REMOVE)
-        DownloadJobStatus.Completed -> listOf(QueueAction.REMOVE)
-    }.let { actions ->
-        // `parse` maps unknown strings to Failed; recover the "no actions for unknown" contract
-        // so a status that isn't a real job lifecycle value (e.g. "idle") yields nothing.
-        if (DownloadJobStatus.wires.contains(status)) actions else emptyList()
-    }
+    fun chapterActions(status: String): List<QueueAction> =
+        when (DownloadJobStatus.parse(status)) {
+            DownloadJobStatus.Pending -> listOf(QueueAction.PAUSE, QueueAction.CANCEL)
+            DownloadJobStatus.Downloading -> listOf(QueueAction.PAUSE)
+            DownloadJobStatus.Paused -> listOf(QueueAction.RESUME, QueueAction.CANCEL)
+            DownloadJobStatus.Failed, DownloadJobStatus.Cancelled -> listOf(QueueAction.RETRY, QueueAction.REMOVE)
+            DownloadJobStatus.Completed -> listOf(QueueAction.REMOVE)
+        }.let { actions ->
+            // `parse` maps unknown strings to Failed; recover the "no actions for unknown" contract
+            // so a status that isn't a real job lifecycle value (e.g. "idle") yields nothing.
+            if (DownloadJobStatus.wires.contains(status)) actions else emptyList()
+        }
 
     /** Story-header action group. While a story has active or paused work it shows the in-progress
      *  group (pause/resume/cancel/retry-as-relevant); a story with only terminal failures shows a
@@ -74,13 +75,14 @@ object DownloadManagerPlanning {
         return emptyList()
     }
 
-    fun globalActions(counts: QueueStatusCounts): List<GlobalQueueAction> = buildList {
-        if (counts.hasPaused) add(GlobalQueueAction.RESUME_ALL)
-        if (counts.hasActive) add(GlobalQueueAction.PAUSE_ALL)
-        if (counts.hasFailed) add(GlobalQueueAction.RETRY_ALL)
-        if (counts.hasActive || counts.hasPaused) add(GlobalQueueAction.CANCEL_ALL)
-        if (counts.completed > 0) add(GlobalQueueAction.CLEAR_DONE)
-    }
+    fun globalActions(counts: QueueStatusCounts): List<GlobalQueueAction> =
+        buildList {
+            if (counts.hasPaused) add(GlobalQueueAction.RESUME_ALL)
+            if (counts.hasActive) add(GlobalQueueAction.PAUSE_ALL)
+            if (counts.hasFailed) add(GlobalQueueAction.RETRY_ALL)
+            if (counts.hasActive || counts.hasPaused) add(GlobalQueueAction.CANCEL_ALL)
+            if (counts.completed > 0) add(GlobalQueueAction.CLEAR_DONE)
+        }
 
     /** Single-line status summary for a story, e.g. "12/20 chapters • 3 downloading • 2 queued • 1 failed".
      *  Mirrors the legacy RN getSubtitleText: always leads with "X/Y chapters" then appends each

@@ -8,9 +8,9 @@ import android.util.TypedValue
 import android.widget.CheckBox
 import android.widget.EditText
 
-/* ------------------------------------------------------------------ */
-/* Inputs                                                             */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Inputs
+// ------------------------------------------------------------------
 
 private fun inputBackground(context: Context): StateListDrawable {
     val t = ThemeManager.current
@@ -48,10 +48,17 @@ internal fun EditText.applyInputStyle(
     if (singleLine) gravity = android.view.Gravity.CENTER_VERTICAL else gravity = android.view.Gravity.TOP
 }
 
-fun makeSearchField(context: Context, hint: String): EditText =
-    EditText(context).apply { applyInputStyle(hint, InputType.TYPE_CLASS_TEXT) }
+fun makeSearchField(
+    context: Context,
+    hint: String,
+): EditText = EditText(context).apply { applyInputStyle(hint, InputType.TYPE_CLASS_TEXT) }
 
-fun makeField(context: Context, value: String, hint: String, inputType: Int): EditText =
+fun makeField(
+    context: Context,
+    value: String,
+    hint: String,
+    inputType: Int,
+): EditText =
     EditText(context).apply {
         applyInputStyle(hint, inputType)
         setText(value)

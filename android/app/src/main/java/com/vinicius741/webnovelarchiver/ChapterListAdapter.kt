@@ -21,23 +21,35 @@ import com.vinicius741.webnovelarchiver.ui.chapterStatusDot
 import com.vinicius741.webnovelarchiver.ui.dot
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.ripple
+import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /** A single existing View exposed as a RecyclerView item so compact Details can keep one scrolling
  * surface without nesting the chapter list inside a ScrollView. */
-class DetailsHeaderAdapter(private val header: View) : RecyclerView.Adapter<DetailsHeaderAdapter.HeaderHolder>() {
-    class HeaderHolder(val container: FrameLayout) : RecyclerView.ViewHolder(container)
+class DetailsHeaderAdapter(
+    private val header: View,
+) : RecyclerView.Adapter<DetailsHeaderAdapter.HeaderHolder>() {
+    class HeaderHolder(
+        val container: FrameLayout,
+    ) : RecyclerView.ViewHolder(container)
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HeaderHolder =
-        HeaderHolder(FrameLayout(parent.context).apply {
-            layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        })
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): HeaderHolder =
+        HeaderHolder(
+            FrameLayout(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            },
+        )
 
-    override fun onBindViewHolder(holder: HeaderHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: HeaderHolder,
+        position: Int,
+    ) {
         (header.parent as? ViewGroup)?.removeView(header)
         holder.container.removeAllViews()
         holder.container.addView(header, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -70,8 +82,9 @@ class ChapterListAdapter(
     private var filter: String = "all",
     private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap(),
 ) : RecyclerView.Adapter<ChapterListAdapter.RowHolder>() {
-
-    class RowHolder(val row: LinearLayout) : RecyclerView.ViewHolder(row)
+    class RowHolder(
+        val row: LinearLayout,
+    ) : RecyclerView.ViewHolder(row)
 
     fun update(
         chapters: List<Pair<Int, Chapter>>,
@@ -93,23 +106,33 @@ class ChapterListAdapter(
     /** The query/filter currently applied so the in-place download refresh can re-filter against the
      *  user's live view without forcing a full screen rebuild. */
     fun currentQuery(): String = query
+
     fun currentFilter(): String = filter
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RowHolder {
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): RowHolder {
         val context = parent.context
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(context.dp(Space.MD), context.dp(Space.SM + 2), context.dp(Space.XS + 2), context.dp(Space.SM + 2))
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { bottomMargin = context.dp(Space.XS + 2) }
-        }
+        val row =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(context.dp(Space.MD), context.dp(Space.SM + 2), context.dp(Space.XS + 2), context.dp(Space.SM + 2))
+                layoutParams =
+                    LinearLayout
+                        .LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ).apply { bottomMargin = context.dp(Space.XS + 2) }
+            }
         return RowHolder(row)
     }
 
-    override fun onBindViewHolder(holder: RowHolder, position: Int) {
+    override fun onBindViewHolder(
+        holder: RowHolder,
+        position: Int,
+    ) {
         val (index, chapter) = chapters[position]
         val context: Context = holder.row.context
         val row = holder.row
@@ -138,66 +161,77 @@ class ChapterListAdapter(
         // Live status from the download queue takes precedence over the static downloaded flag, so
         // an in-flight/queued/failed chapter shows real-time feedback rather than "not downloaded".
         val liveStatus = chapterStatuses[chapter.id]
-        val statusLeading: android.view.View = when (liveStatus) {
-            DownloadJobStatus.Downloading -> chapterSpinner(context)
-            DownloadJobStatus.Pending -> host.dot(ThemeManager.colors.primary)
-            DownloadJobStatus.Failed -> host.dot(ThemeManager.colors.error)
-            else -> host.chapterStatusDot(chapter.downloaded)
-        }
-        row.addView(statusLeading.apply {
-            (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, context.dp(Space.SM + 2), 0)
-        })
-        row.addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            addView(
-                makeText(
-                    context,
-                    "${index + 1}. ${sanitizeTitle(chapter.title)}",
-                    Type.TITLE_SMALL,
-                    if (isLastRead) ThemeManager.colors.primary else ThemeManager.colors.onSurface,
-                ).apply {
-                    maxLines = 2
-                    ellipsize = TextUtils.TruncateAt.END
-                    if (isLastRead) setTypeface(typeface, android.graphics.Typeface.BOLD)
-                },
-            )
-            // Subtitle: live queue state first (it's more immediate), then the static offline badge.
+        val statusLeading: android.view.View =
             when (liveStatus) {
-                DownloadJobStatus.Downloading -> addView(
-                    makeText(context, "Downloading…", Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
-                        setPadding(0, context.dp(2), 0, 0)
-                    },
-                )
-                DownloadJobStatus.Pending -> addView(
-                    makeText(context, "Queued", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-                        setPadding(0, context.dp(2), 0, 0)
-                    },
-                )
-                DownloadJobStatus.Failed -> addView(
-                    makeText(context, "Download failed", Type.LABEL_SMALL, ThemeManager.colors.error).apply {
-                        setPadding(0, context.dp(2), 0, 0)
-                    },
-                )
-                else -> if (chapter.downloaded) {
-                    addView(
-                        makeText(context, "Available Offline", Type.LABEL_SMALL, ThemeManager.colors.secondary).apply {
-                            setPadding(0, context.dp(2), 0, 0)
-                        },
-                    )
-                }
+                DownloadJobStatus.Downloading -> chapterSpinner(context)
+                DownloadJobStatus.Pending -> host.dot(ThemeManager.colors.primary)
+                DownloadJobStatus.Failed -> host.dot(ThemeManager.colors.error)
+                else -> host.chapterStatusDot(chapter.downloaded)
             }
-        })
-        row.addView(ImageView(context).apply {
-            setImageDrawable(context.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.onSurfaceVariant))
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2))
-            background = selectableRipple(ThemeManager.colors.onSurface)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { host.showChapterActions(story, chapter, index, list, query, filter) }
-            layoutParams = LinearLayout.LayoutParams(context.dp(44), context.dp(44))
-        })
+        row.addView(
+            statusLeading.apply {
+                (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, context.dp(Space.SM + 2), 0)
+            },
+        )
+        row.addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(
+                    makeText(
+                        context,
+                        "${index + 1}. ${sanitizeTitle(chapter.title)}",
+                        Type.TITLE_SMALL,
+                        if (isLastRead) ThemeManager.colors.primary else ThemeManager.colors.onSurface,
+                    ).apply {
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
+                        if (isLastRead) setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    },
+                )
+                // Subtitle: live queue state first (it's more immediate), then the static offline badge.
+                when (liveStatus) {
+                    DownloadJobStatus.Downloading ->
+                        addView(
+                            makeText(context, "Downloading…", Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+                                setPadding(0, context.dp(2), 0, 0)
+                            },
+                        )
+                    DownloadJobStatus.Pending ->
+                        addView(
+                            makeText(context, "Queued", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                                setPadding(0, context.dp(2), 0, 0)
+                            },
+                        )
+                    DownloadJobStatus.Failed ->
+                        addView(
+                            makeText(context, "Download failed", Type.LABEL_SMALL, ThemeManager.colors.error).apply {
+                                setPadding(0, context.dp(2), 0, 0)
+                            },
+                        )
+                    else ->
+                        if (chapter.downloaded) {
+                            addView(
+                                makeText(context, "Available Offline", Type.LABEL_SMALL, ThemeManager.colors.secondary).apply {
+                                    setPadding(0, context.dp(2), 0, 0)
+                                },
+                            )
+                        }
+                }
+            },
+        )
+        row.addView(
+            ImageView(context).apply {
+                setImageDrawable(context.tintedIcon(R.drawable.wna_more_vert, ThemeManager.colors.onSurfaceVariant))
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2))
+                background = selectableRipple(ThemeManager.colors.onSurface)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { host.showChapterActions(story, chapter, index, list, query, filter) }
+                layoutParams = LinearLayout.LayoutParams(context.dp(44), context.dp(44))
+            },
+        )
     }
 
     override fun getItemCount(): Int = chapters.size

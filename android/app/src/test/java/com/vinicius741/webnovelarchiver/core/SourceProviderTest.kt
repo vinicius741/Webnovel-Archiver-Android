@@ -8,72 +8,78 @@ import org.junit.Test
 
 class SourceProviderTest {
     @Test
-    fun royalRoadParsesMetadataChaptersAndContent() = runBlocking {
-        val html = """
-            <html><head>
-              <link rel="canonical" href="https://www.royalroad.com/fiction/123/story" />
-              <meta property="og:image" content="https://img.example/cover.jpg" />
-            </head><body>
-              <h1>Example RR</h1>
-              <h4><a>Author Name</a></h4>
-              <div class="description">A synopsis.</div>
-              <div class="tags"><a>Fantasy</a><a>Adventure</a></div>
-              <div class="chapter-row"><a href="/fiction/123/story/chapter/456/one">Chapter One (2 hours ago)</a></div>
-              <div class="chapter-inner"><p>Body</p><script>bad()</script><div class="portlet">ad</div></div>
-            </body></html>
-        """.trimIndent()
+    fun royalRoadParsesMetadataChaptersAndContent() =
+        runBlocking {
+            val html =
+                """
+                <html><head>
+                  <link rel="canonical" href="https://www.royalroad.com/fiction/123/story" />
+                  <meta property="og:image" content="https://img.example/cover.jpg" />
+                </head><body>
+                  <h1>Example RR</h1>
+                  <h4><a>Author Name</a></h4>
+                  <div class="description">A synopsis.</div>
+                  <div class="tags"><a>Fantasy</a><a>Adventure</a></div>
+                  <div class="chapter-row"><a href="/fiction/123/story/chapter/456/one">Chapter One (2 hours ago)</a></div>
+                  <div class="chapter-inner"><p>Body</p><script>bad()</script><div class="portlet">ad</div></div>
+                </body></html>
+                """.trimIndent()
 
-        val metadata = RoyalRoadProvider.parseMetadata(html)
-        val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/123/story", NetworkClient())
-        val content = RoyalRoadProvider.parseChapterContent(html)
+            val metadata = RoyalRoadProvider.parseMetadata(html)
+            val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/123/story", NetworkClient())
+            val content = RoyalRoadProvider.parseChapterContent(html)
 
-        assertEquals("Example RR", metadata.title)
-        assertEquals("Author Name", metadata.author)
-        assertEquals("456", chapters.single().id)
-        assertEquals("Chapter One", chapters.single().title)
-        assertTrue(chapters.single().url.contains("/chapter/456/"))
-        assertEquals("<p>Body</p>", content.trim())
-    }
+            assertEquals("Example RR", metadata.title)
+            assertEquals("Author Name", metadata.author)
+            assertEquals("456", chapters.single().id)
+            assertEquals("Chapter One", chapters.single().title)
+            assertTrue(chapters.single().url.contains("/chapter/456/"))
+            assertEquals("<p>Body</p>", content.trim())
+        }
 
     @Test
     fun royalRoadUsesArticleAndTwitterAuthorMetadataFallbacks() {
-        val articleMetadata = RoyalRoadProvider.parseMetadata(
-            """
+        val articleMetadata =
+            RoyalRoadProvider.parseMetadata(
+                """
                 <html><head><meta property="article:author" content="Article Author" /></head><body><h1>Story</h1></body></html>
-            """.trimIndent(),
-        )
-        val twitterMetadata = RoyalRoadProvider.parseMetadata(
-            """
+                """.trimIndent(),
+            )
+        val twitterMetadata =
+            RoyalRoadProvider.parseMetadata(
+                """
                 <html><head><meta name="twitter:creator" content="Twitter Author" /></head><body><h1>Story</h1></body></html>
-            """.trimIndent(),
-        )
+                """.trimIndent(),
+            )
 
         assertEquals("Article Author", articleMetadata.author)
         assertEquals("Twitter Author", twitterMetadata.author)
     }
 
     @Test
-    fun scribbleHubParsesMetadataChaptersAndContent() = runBlocking {
-        val html = """
-            <html><head><link rel="canonical" href="https://www.scribblehub.com/series/99/story/" /></head><body>
-              <div class="fic_title">Example SH</div>
-              <div class="auth_name_fic"><a>SH Author</a></div>
-              <div class="wi_fic_desc">SH synopsis.</div>
-              <div class="wi_fic_tags"><a>LitRPG</a></div>
-              <ol class="toc_ol"><li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A</a></li></ol>
-              <div id="chp_raw"><p>Chapter body</p><div class="wi_authornotes">note</div><script>bad()</script></div>
-            </body></html>
-        """.trimIndent()
+    fun scribbleHubParsesMetadataChaptersAndContent() =
+        runBlocking {
+            val html =
+                """
+                <html><head><link rel="canonical" href="https://www.scribblehub.com/series/99/story/" /></head><body>
+                  <div class="fic_title">Example SH</div>
+                  <div class="auth_name_fic"><a>SH Author</a></div>
+                  <div class="wi_fic_desc">SH synopsis.</div>
+                  <div class="wi_fic_tags"><a>LitRPG</a></div>
+                  <ol class="toc_ol"><li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A</a></li></ol>
+                  <div id="chp_raw"><p>Chapter body</p><div class="wi_authornotes">note</div><script>bad()</script></div>
+                </body></html>
+                """.trimIndent()
 
-        val metadata = ScribbleHubProvider.parseMetadata(html)
-        val chapters = ScribbleHubProvider.getChapterList(html, "https://www.scribblehub.com/series/99/story/", NetworkClient())
-        val content = ScribbleHubProvider.parseChapterContent(html)
+            val metadata = ScribbleHubProvider.parseMetadata(html)
+            val chapters = ScribbleHubProvider.getChapterList(html, "https://www.scribblehub.com/series/99/story/", NetworkClient())
+            val content = ScribbleHubProvider.parseChapterContent(html)
 
-        assertEquals("Example SH", metadata.title)
-        assertEquals("SH Author", metadata.author)
-        assertEquals("sh_1000", chapters.single().id)
-        assertEquals("<p>Chapter body</p>", content.trim())
-    }
+            assertEquals("Example SH", metadata.title)
+            assertEquals("SH Author", metadata.author)
+            assertEquals("sh_1000", chapters.single().id)
+            assertEquals("<p>Chapter body</p>", content.trim())
+        }
 
     @Test
     fun scribbleHubFallbackStoryIdMatchesJavascriptEncodeURIComponent() {

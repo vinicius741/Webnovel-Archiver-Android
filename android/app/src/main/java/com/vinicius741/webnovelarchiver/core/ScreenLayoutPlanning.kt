@@ -15,7 +15,6 @@ package com.vinicius741.webnovelarchiver.core
  * nesting).
  */
 object ScreenLayoutPlanning {
-
     const val SCREEN_LAYOUT_MODE_AUTO = "auto"
     const val SCREEN_LAYOUT_MODE_COVER = "cover"
     const val SCREEN_LAYOUT_MODE_INNER = "inner"
@@ -58,10 +57,16 @@ enum class WidthClass { COMPACT, MEDIUM, EXPANDED }
 enum class HeightClass { COMPACT, MEDIUM, EXPANDED }
 
 /** How the user wants the app to treat the screen, independent of physical fold detection. */
-enum class ScreenLayoutMode { AUTO, COVER, INNER
+enum class ScreenLayoutMode {
+    AUTO,
+    COVER,
+    INNER
 
     /** Normalizes an arbitrary stored string to a valid mode, defaulting to AUTO. */
-        ; companion object {
+    ,
+    ;
+
+    companion object {
         fun fromStored(value: String?): ScreenLayoutMode =
             when (value) {
                 ScreenLayoutPlanning.SCREEN_LAYOUT_MODE_COVER -> COVER
@@ -117,23 +122,26 @@ fun resolveScreenLayout(layout: ScreenLayout): ScreenLayoutResult {
 
     val automaticWidthClass = automaticWidthClass(width, shortestSide, aspectRatio)
 
-    val widthClass: WidthClass = when (layout.mode) {
-        ScreenLayoutMode.COVER -> WidthClass.COMPACT
-        ScreenLayoutMode.INNER -> if (width >= ScreenLayoutPlanning.WIDTH_EXPANDED) WidthClass.EXPANDED else WidthClass.MEDIUM
-        ScreenLayoutMode.AUTO -> when {
-            layout.hasFoldingFeature -> if (width >= ScreenLayoutPlanning.WIDTH_EXPANDED) WidthClass.EXPANDED else WidthClass.MEDIUM
-            else -> automaticWidthClass
+    val widthClass: WidthClass =
+        when (layout.mode) {
+            ScreenLayoutMode.COVER -> WidthClass.COMPACT
+            ScreenLayoutMode.INNER -> if (width >= ScreenLayoutPlanning.WIDTH_EXPANDED) WidthClass.EXPANDED else WidthClass.MEDIUM
+            ScreenLayoutMode.AUTO ->
+                when {
+                    layout.hasFoldingFeature -> if (width >= ScreenLayoutPlanning.WIDTH_EXPANDED) WidthClass.EXPANDED else WidthClass.MEDIUM
+                    else -> automaticWidthClass
+                }
         }
-    }
 
     val heightClass = heightClass(height)
     val isCompactHeight = heightClass == HeightClass.COMPACT
 
-    val numColumns = when (widthClass) {
-        WidthClass.EXPANDED -> 3
-        WidthClass.MEDIUM -> if (isCompactHeight) 1 else 2
-        WidthClass.COMPACT -> 1
-    }
+    val numColumns =
+        when (widthClass) {
+            WidthClass.EXPANDED -> 3
+            WidthClass.MEDIUM -> if (isCompactHeight) 1 else 2
+            WidthClass.COMPACT -> 1
+        }
     val isLargeScreen = numColumns > 1
     val isTwoPane = widthClass != WidthClass.COMPACT && !isCompactHeight
 
@@ -149,7 +157,11 @@ fun resolveScreenLayout(layout: ScreenLayout): ScreenLayoutResult {
     )
 }
 
-private fun automaticWidthClass(width: Int, shortestSide: Int, aspectRatio: Double): WidthClass {
+private fun automaticWidthClass(
+    width: Int,
+    shortestSide: Int,
+    aspectRatio: Double,
+): WidthClass {
     if (width >= ScreenLayoutPlanning.WIDTH_EXPANDED) return WidthClass.EXPANDED
     if (width >= ScreenLayoutPlanning.WIDTH_MEDIUM) return WidthClass.MEDIUM
     if (shortestSide >= ScreenLayoutPlanning.FOLD_INNER_SHORTEST_SIDE && aspectRatio <= ScreenLayoutPlanning.FOLD_INNER_MAX_ASPECT) {
@@ -165,28 +177,32 @@ private fun heightClass(height: Int): HeightClass {
 }
 
 /** Maximum library content width (dp) for a given column count, mirroring `useLibraryLayout.ts`. */
-fun libraryMaxContentWidth(numColumns: Int): Int = when (numColumns) {
-    1 -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_1_COL
-    2 -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_2_COL
-    else -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_3_COL
-}
+fun libraryMaxContentWidth(numColumns: Int): Int =
+    when (numColumns) {
+        1 -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_1_COL
+        2 -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_2_COL
+        else -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_3_COL
+    }
 
 /** Reader horizontal padding (dp) by width class, mirroring the RN reader `shellPadding`. */
-fun readerSidePadding(widthClass: WidthClass): Int = when (widthClass) {
-    WidthClass.EXPANDED -> 40
-    WidthClass.MEDIUM -> 28
-    WidthClass.COMPACT -> 16
-}
+fun readerSidePadding(widthClass: WidthClass): Int =
+    when (widthClass) {
+        WidthClass.EXPANDED -> 40
+        WidthClass.MEDIUM -> 28
+        WidthClass.COMPACT -> 16
+    }
 
 /** Queue content cap (dp) by width class. */
-fun queueMaxWidth(widthClass: WidthClass): Int = when (widthClass) {
-    WidthClass.EXPANDED -> ScreenLayoutPlanning.QUEUE_MAX_WIDTH_EXPANDED
-    else -> ScreenLayoutPlanning.QUEUE_MAX_WIDTH_OTHER
-}
+fun queueMaxWidth(widthClass: WidthClass): Int =
+    when (widthClass) {
+        WidthClass.EXPANDED -> ScreenLayoutPlanning.QUEUE_MAX_WIDTH_EXPANDED
+        else -> ScreenLayoutPlanning.QUEUE_MAX_WIDTH_OTHER
+    }
 
 /** Settings content cap (dp) by width class. */
-fun settingsMaxWidth(widthClass: WidthClass): Int = when (widthClass) {
-    WidthClass.EXPANDED -> ScreenLayoutPlanning.SETTINGS_MAX_WIDTH_EXPANDED
-    WidthClass.MEDIUM -> ScreenLayoutPlanning.SETTINGS_MAX_WIDTH_MEDIUM
-    WidthClass.COMPACT -> ScreenLayoutPlanning.SETTINGS_MAX_WIDTH_MEDIUM
-}
+fun settingsMaxWidth(widthClass: WidthClass): Int =
+    when (widthClass) {
+        WidthClass.EXPANDED -> ScreenLayoutPlanning.SETTINGS_MAX_WIDTH_EXPANDED
+        WidthClass.MEDIUM -> ScreenLayoutPlanning.SETTINGS_MAX_WIDTH_MEDIUM
+        WidthClass.COMPACT -> ScreenLayoutPlanning.SETTINGS_MAX_WIDTH_MEDIUM
+    }

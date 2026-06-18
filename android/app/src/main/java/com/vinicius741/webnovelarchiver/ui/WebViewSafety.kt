@@ -28,7 +28,10 @@ object WebViewSafety {
      *   content access stay disabled regardless, so the only script that can run is the one this app
      *   injects. Defaults to `false` to preserve the historical posture for any non-reader caller.
      */
-    fun applyReaderSettings(web: WebView, enableTtsHighlight: Boolean = false) {
+    fun applyReaderSettings(
+        web: WebView,
+        enableTtsHighlight: Boolean = false,
+    ) {
         val s = web.settings
         s.javaScriptEnabled = enableTtsHighlight
         // DOM storage stays off for the reader even with JS on: the TTS highlight script is stateless

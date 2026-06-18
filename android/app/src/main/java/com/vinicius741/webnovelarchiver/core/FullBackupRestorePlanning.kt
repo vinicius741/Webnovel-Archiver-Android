@@ -28,9 +28,10 @@ object FullBackupRestorePlanning {
         chapterFiles: List<RestoredChapterFileIndex>,
         resolveExistingPath: (String) -> String?,
     ): MutableList<Story> {
-        val pathByStoryAndChapter = chapterFiles
-            .filter { it.storyId.isNotBlank() && it.chapterId.isNotBlank() && it.path.isNotBlank() }
-            .associate { Pair(it.storyId, it.chapterId) to it.path }
+        val pathByStoryAndChapter =
+            chapterFiles
+                .filter { it.storyId.isNotBlank() && it.chapterId.isNotBlank() && it.path.isNotBlank() }
+                .associate { Pair(it.storyId, it.chapterId) to it.path }
 
         stories.forEach { story ->
             story.chapters.forEach { chapter ->

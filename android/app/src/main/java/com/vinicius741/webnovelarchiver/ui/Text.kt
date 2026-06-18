@@ -5,22 +5,23 @@ import android.graphics.Typeface
 import android.util.TypedValue
 import android.widget.TextView
 
-/* ------------------------------------------------------------------ */
-/* Text                                                               */
-/* ------------------------------------------------------------------ */
+// ------------------------------------------------------------------
+// Text
+// ------------------------------------------------------------------
 
 fun makeText(
     context: Context,
     text: CharSequence,
     type: Type,
     color: Int = ThemeManager.colors.onSurface,
-): TextView = TextView(context).apply {
-    this.text = text
-    setTextSize(TypedValue.COMPLEX_UNIT_SP, type.size())
-    setTextColor(color)
-    if (type.bold()) setTypeface(typeface, Typeface.BOLD)
-    includeFontPadding = false
-}
+): TextView =
+    TextView(context).apply {
+        this.text = text
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, type.size())
+        setTextColor(color)
+        if (type.bold()) setTypeface(typeface, Typeface.BOLD)
+        includeFontPadding = false
+    }
 
 fun Context.text(
     text: CharSequence,

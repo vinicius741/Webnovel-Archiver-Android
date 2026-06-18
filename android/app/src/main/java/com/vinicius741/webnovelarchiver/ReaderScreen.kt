@@ -11,7 +11,6 @@ import com.vinicius741.webnovelarchiver.core.ChapterHtmlSanitizer
 import com.vinicius741.webnovelarchiver.core.ReaderContentRenderer
 import com.vinicius741.webnovelarchiver.core.ReaderContentRenderer.ReaderDocumentColors
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutPlanning
-import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.core.TextCleanup
 import com.vinicius741.webnovelarchiver.core.TtsPlaybackSnapshot
@@ -36,7 +35,10 @@ internal fun ScreenHost.detachReaderTtsListener() {
     activeReaderTtsListener = null
 }
 
-internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
+internal fun ScreenHost.showReader(
+    storyId: String,
+    chapterId: String,
+) {
     val story = storage.getStory(storyId) ?: return
     val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return
     val currentIndex = story.chapters.indexOfFirst { it.id == chapter.id }
@@ -50,19 +52,21 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
     // list is fed to the floating transport's progress label.
     val rawContent = ReaderContentRenderer.contentOrUndownloadedMessage(storage.readChapter(chapter) ?: chapter.content)
     val settings = storage.getTtsSettings()
-    val annotated = TextCleanup.prepareTtsAnnotatedHtml(
-        ChapterHtmlSanitizer.sanitize(rawContent),
-        storage.getRegexRules(),
-        settings.chunkSize,
-    )
+    val annotated =
+        TextCleanup.prepareTtsAnnotatedHtml(
+            ChapterHtmlSanitizer.sanitize(rawContent),
+            storage.getRegexRules(),
+            settings.chunkSize,
+        )
     val formattedText = TextCleanup.htmlToFormattedText(rawContent)
     val display = storage.getDisplayPreferences()
-    val reader = WebView(app).apply {
-        // R9 + gap 3: JS is enabled ONLY because the HTML was just sanitized; file/content access
-        // stays locked down so the only script that runs is the highlight + tap-to-start one we
-        // inject via [ReaderContentRenderer.document].
-        WebViewSafety.applyReaderSettings(this, enableTtsHighlight = true)
-    }
+    val reader =
+        WebView(app).apply {
+            // R9 + gap 3: JS is enabled ONLY because the HTML was just sanitized; file/content access
+            // stays locked down so the only script that runs is the highlight + tap-to-start one we
+            // inject via [ReaderContentRenderer.document].
+            WebViewSafety.applyReaderSettings(this, enableTtsHighlight = true)
+        }
 
     /**
      * Single-method JavascriptInterface (gap 3 tap-to-start): the reader's injected script calls
@@ -110,31 +114,35 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
     fun rebuild() = showReader(story.id, chapter.id)
 
     val bookmarkActive = story.lastReadChapterId == chapter.id
-    val actions = listOf(
-        AppBarAction(
-            icon = if (bookmarkActive) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
-            label = if (bookmarkActive) "Clear bookmark" else "Bookmark",
-            tint = ThemeManager.colors.primary.takeIf { bookmarkActive },
-        ) {
-            val latest = storage.getStory(story.id) ?: story
-            val wasActive = latest.lastReadChapterId == chapter.id
-            storage.addOrUpdateStory(StoryBookmarkPlanning.withBookmark(latest, chapter.id, toggleExisting = true))
-            toast(if (wasActive) "Bookmark cleared" else "Bookmarked")
-            rebuild()
-        },
-        AppBarAction(R.drawable.wna_speaker, "Read aloud") {
-            showReaderTtsPanel(story, chapter)
-        },
-        AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
-            // The panel mutates the shared `display` and calls back into `renderReader`, so
-            // font-size / dark-reader changes preview live on the WebView behind the dialog.
-            showReaderSettingsPanel(
-                display = display,
-                onRerender = { renderReader() },
-                onCopy = { copyToClipboard("Chapter text", formattedText); toast("Chapter copied") },
-            )
-        },
-    )
+    val actions =
+        listOf(
+            AppBarAction(
+                icon = if (bookmarkActive) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
+                label = if (bookmarkActive) "Clear bookmark" else "Bookmark",
+                tint = ThemeManager.colors.primary.takeIf { bookmarkActive },
+            ) {
+                val latest = storage.getStory(story.id) ?: story
+                val wasActive = latest.lastReadChapterId == chapter.id
+                storage.addOrUpdateStory(StoryBookmarkPlanning.withBookmark(latest, chapter.id, toggleExisting = true))
+                toast(if (wasActive) "Bookmark cleared" else "Bookmarked")
+                rebuild()
+            },
+            AppBarAction(R.drawable.wna_speaker, "Read aloud") {
+                showReaderTtsPanel(story, chapter)
+            },
+            AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
+                // The panel mutates the shared `display` and calls back into `renderReader`, so
+                // font-size / dark-reader changes preview live on the WebView behind the dialog.
+                showReaderSettingsPanel(
+                    display = display,
+                    onRerender = { renderReader() },
+                    onCopy = {
+                        copyToClipboard("Chapter text", formattedText)
+                        toast("Chapter copied")
+                    },
+                )
+            },
+        )
 
     // Gap 3 + 4: the engine emits a snapshot after every playback state change. We subscribe while
     // this reader screen is alive to (a) move the in-document highlight to the speaking chunk and
@@ -162,10 +170,12 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
             transportLabel?.text = readerTransportLabel(relevant)
             transportPlayPause?.let { button ->
                 val isPaused = relevant?.isPaused != false
-                button.setImageDrawable(app.tintedIcon(
-                    if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
-                    ThemeManager.colors.primary,
-                ))
+                button.setImageDrawable(
+                    app.tintedIcon(
+                        if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
+                        ThemeManager.colors.primary,
+                    ),
+                )
                 button.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
             }
             // Gap 3 highlight refresh — evaluateJavascript is async + non-reloading, so the page
@@ -193,51 +203,75 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
         // so text lines stay comfortable on the Fold's wide inner display instead of spanning edge
         // to edge. The column still fills all vertical space between the app bar and the nav bar.
         val sidePad = readerSidePadding(layout.widthClass)
-        val column = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(sidePad), 0, dp(sidePad), 0)
-        }
+        val column =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(sidePad), 0, dp(sidePad), 0)
+            }
         column.addView(reader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        addView(MaxWidthFrameLayout(context).apply {
-            // Cap the column width and center it; compact screens still measure at the parent width.
-            maxContentWidthDp = ScreenLayoutPlanning.READER_COLUMN_MAX_WIDTH
-            addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER_HORIZONTAL))
-        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        addView(
+            MaxWidthFrameLayout(context).apply {
+                // Cap the column width and center it; compact screens still measure at the parent width.
+                maxContentWidthDp = ScreenLayoutPlanning.READER_COLUMN_MAX_WIDTH
+                addView(
+                    column,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER_HORIZONTAL,
+                    ),
+                )
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
+        )
 
         // Slim docked chapter navigation: keep the controls thumb-reachable without taking a large
         // bite out of the reading viewport.
-        val navBar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(ThemeManager.colors.elevation2)
-            setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
-        }
+        val navBar =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setBackgroundColor(ThemeManager.colors.elevation2)
+                setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
+            }
         val hasPrev = currentIndex > 0
         val hasNext = currentIndex < story.chapters.lastIndex
-        val progress = makeText(context, "${currentIndex + 1} / ${story.chapters.size}", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        fun navButton(desc: String, icon: Int, enabled: Boolean, action: () -> Unit) =
-            ImageView(context).apply {
-                contentDescription = desc
-                val tint = if (enabled) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant
-                setImageDrawable(context.tintedIcon(icon, tint))
-                alpha = if (enabled) 1f else 0.38f
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                val pad = dp(Spacing.SM)
-                setPadding(pad, pad, pad, pad)
-                background = selectableRipple(ThemeManager.colors.onSurface)
-                isEnabled = enabled
-                isClickable = enabled
-                isFocusable = enabled
-                if (enabled) setOnClickListener { action() }
-                layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+        val progress =
+            makeText(
+                context,
+                "${currentIndex + 1} / ${story.chapters.size}",
+                Type.LABEL_MEDIUM,
+                ThemeManager.colors.onSurfaceVariant,
+            ).apply {
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+        fun navButton(
+            desc: String,
+            icon: Int,
+            enabled: Boolean,
+            action: () -> Unit,
+        ) = ImageView(context).apply {
+            contentDescription = desc
+            val tint = if (enabled) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant
+            setImageDrawable(context.tintedIcon(icon, tint))
+            alpha = if (enabled) 1f else 0.38f
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val pad = dp(Spacing.SM)
+            setPadding(pad, pad, pad, pad)
+            background = selectableRipple(ThemeManager.colors.onSurface)
+            isEnabled = enabled
+            isClickable = enabled
+            isFocusable = enabled
+            if (enabled) setOnClickListener { action() }
+            layoutParams =
+                LinearLayout.LayoutParams(dp(44), dp(44)).apply {
                     marginStart = dp(Spacing.XS)
                     marginEnd = dp(Spacing.XS)
                 }
-            }
+        }
         navBar.addView(navButton("Previous chapter", R.drawable.wna_skip_prev, hasPrev) { navigateChapter(story, chapter, -1) })
         navBar.addView(progress)
         navBar.addView(navButton("Next chapter", R.drawable.wna_skip_next, hasNext) { navigateChapter(story, chapter, 1) })
@@ -248,22 +282,24 @@ internal fun ScreenHost.showReader(storyId: String, chapterId: String) {
         // GONE otherwise). Toggling — rather than add/remove — is what lets a TTS session that starts
         // AFTER the reader was built (open chapter → tap "Read aloud" → "Play this chapter") reveal
         // the transport live via the state listener, without rebuilding the whole screen.
-        val transport = readerTtsTransport(
-            snapshot = transportSnapshot,
-            onLabel = { transportLabel = it },
-            onPlayPause = { transportPlayPause = it },
-            onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
-            onPlayPauseTap = {
-                val action = if (transportSnapshot?.isPaused != false) {
-                    TtsForegroundService.ACTION_RESUME_SESSION
-                } else {
-                    TtsForegroundService.ACTION_PAUSE
-                }
-                TtsForegroundService.command(app, action)
-            },
-            onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
-            onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
-        )
+        val transport =
+            readerTtsTransport(
+                snapshot = transportSnapshot,
+                onLabel = { transportLabel = it },
+                onPlayPause = { transportPlayPause = it },
+                onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
+                onPlayPauseTap = {
+                    val action =
+                        if (transportSnapshot?.isPaused != false) {
+                            TtsForegroundService.ACTION_RESUME_SESSION
+                        } else {
+                            TtsForegroundService.ACTION_PAUSE
+                        }
+                    TtsForegroundService.command(app, action)
+                },
+                onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
+                onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
+            )
         transport.visibility = if (transportSnapshot != null) android.view.View.VISIBLE else android.view.View.GONE
         transportBar = transport
         addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -286,15 +322,18 @@ private fun readerDocumentColors(forceDark: Boolean): ReaderDocumentColors {
 
 private fun Int.toCssHex(): String = "#%06X".format(this and 0xFFFFFF)
 
-private fun cssColorToInt(cssColor: String): Int =
-    android.graphics.Color.parseColor(cssColor)
+private fun cssColorToInt(cssColor: String): Int = android.graphics.Color.parseColor(cssColor)
 
 /**
  * Builds the initial transport snapshot for [showReader] from any persisted TTS session, so the
  * floating transport + highlight reflect "already playing this chapter" on entry. Returns null when
  * there is no session or it targets a different chapter.
  */
-private fun ScreenHost.currentReaderSnapshot(storyId: String, chapterId: String, chunkCount: Int): TtsPlaybackSnapshot? {
+private fun ScreenHost.currentReaderSnapshot(
+    storyId: String,
+    chapterId: String,
+    chunkCount: Int,
+): TtsPlaybackSnapshot? {
     val session = storage.getTtsSession() ?: return null
     if (session.storyId != storyId || session.chapterId != chapterId) return null
     return TtsPlaybackState.snapshotForSession(
@@ -321,7 +360,11 @@ private fun readerTransportLabel(snapshot: TtsPlaybackSnapshot?): String =
  * `chunkIndex == null` clears the highlight (playback stopped / different chapter). Cheap and
  * non-reloading: evaluateJavascript does not re-render the WebView, so there's no page flash.
  */
-private fun applyHighlight(reader: WebView, chunkIndex: Int?, totalChunks: Int) {
+private fun applyHighlight(
+    reader: WebView,
+    chunkIndex: Int?,
+    totalChunks: Int,
+) {
     if (totalChunks <= 0 && chunkIndex == null) {
         reader.evaluateJavascript("if(window.WnaTts){WnaTts.setActive(null);}", null)
         return
@@ -346,13 +389,19 @@ private fun ScreenHost.readerTtsTransport(
     onStop: () -> Unit,
 ): LinearLayout {
     val colors = ThemeManager.colors
-    val bar = LinearLayout(app).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setBackgroundColor(colors.elevation1)
-        setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
-    }
-    fun transportIcon(desc: String, icon: Int, action: () -> Unit) = ImageView(app).apply {
+    val bar =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(colors.elevation1)
+            setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
+        }
+
+    fun transportIcon(
+        desc: String,
+        icon: Int,
+        action: () -> Unit,
+    ) = ImageView(app).apply {
         contentDescription = desc
         setImageDrawable(app.tintedIcon(icon, colors.primary))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
@@ -360,25 +409,28 @@ private fun ScreenHost.readerTtsTransport(
         setPadding(pad, pad, pad, pad)
         background = selectableRipple(colors.onSurface)
         setOnClickListener { action() }
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
-            marginStart = dp(Spacing.XS)
-            marginEnd = dp(Spacing.XS)
-        }
+        layoutParams =
+            LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                marginStart = dp(Spacing.XS)
+                marginEnd = dp(Spacing.XS)
+            }
     }
     bar.addView(transportIcon("Previous chunk", R.drawable.wna_skip_prev, onPrev))
-    val label = makeText(app, readerTransportLabel(snapshot), Type.LABEL_MEDIUM, colors.onSurface).apply {
-        gravity = Gravity.CENTER
-        includeFontPadding = false
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-    }
+    val label =
+        makeText(app, readerTransportLabel(snapshot), Type.LABEL_MEDIUM, colors.onSurface).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
     onLabel(label)
     bar.addView(label)
     val isPaused = snapshot?.isPaused != false
-    val playPause = transportIcon(
-        if (isPaused) "Play TTS" else "Pause TTS",
-        if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
-        onPlayPauseTap,
-    )
+    val playPause =
+        transportIcon(
+            if (isPaused) "Play TTS" else "Pause TTS",
+            if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
+            onPlayPauseTap,
+        )
     onPlayPause(playPause)
     bar.addView(playPause)
     bar.addView(transportIcon("Next chunk", R.drawable.wna_skip_next, onNext))

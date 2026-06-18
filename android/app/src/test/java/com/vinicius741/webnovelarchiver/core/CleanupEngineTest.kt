@@ -14,7 +14,8 @@ class CleanupEngineTest {
     @Test
     fun cachedSnapshotReusedWhenInputsUnchanged() {
         val engine = CleanupEngine()
-        val rules = listOf(RegexCleanupRule(id = "r1", name = "ads", pattern = "/buy now/gi", flags = "gi", enabled = true, appliesTo = "both"))
+        val rules =
+            listOf(RegexCleanupRule(id = "r1", name = "ads", pattern = "/buy now/gi", flags = "gi", enabled = true, appliesTo = "both"))
         val sentences = listOf("Patreon exclusive")
 
         val first = engine.compiled(sentences, rules)
@@ -48,10 +49,11 @@ class CleanupEngineTest {
     @Test
     fun engineCompilesBothDownloadAndTtsRegexSets() {
         val engine = CleanupEngine()
-        val rules = listOf(
-            RegexCleanupRule(id = "d", name = "dl", pattern = "/foo/g", flags = "g", appliesTo = "download"),
-            RegexCleanupRule(id = "t", name = "tt", pattern = "/bar/g", flags = "g", appliesTo = "tts"),
-        )
+        val rules =
+            listOf(
+                RegexCleanupRule(id = "d", name = "dl", pattern = "/foo/g", flags = "g", appliesTo = "download"),
+                RegexCleanupRule(id = "t", name = "tt", pattern = "/bar/g", flags = "g", appliesTo = "tts"),
+            )
         val compiled = engine.compiled(emptyList(), rules)
         assertEquals(1, compiled.downloadRegexes.size)
         assertEquals(1, compiled.ttsRegexes.size)

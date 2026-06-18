@@ -1,7 +1,10 @@
 package com.vinicius741.webnovelarchiver.core
 
 object TtsSessionPlanning {
-    data class ReaderResumeTarget(val storyId: String, val chapterId: String)
+    data class ReaderResumeTarget(
+        val storyId: String,
+        val chapterId: String,
+    )
 
     fun isResumeEligible(session: TtsSession?): Boolean {
         if (session == null) return false
@@ -9,7 +12,10 @@ object TtsSessionPlanning {
         return session.wasPlaying || session.isPaused
     }
 
-    fun readerResumeTarget(session: TtsSession?, storyProvider: (String) -> Story?): ReaderResumeTarget? {
+    fun readerResumeTarget(
+        session: TtsSession?,
+        storyProvider: (String) -> Story?,
+    ): ReaderResumeTarget? {
         if (!isResumeEligible(session)) return null
         val activeSession = session ?: return null
         val story = storyProvider(activeSession.storyId) ?: return null
@@ -18,15 +24,20 @@ object TtsSessionPlanning {
         return ReaderResumeTarget(activeSession.storyId, activeSession.chapterId)
     }
 
-    fun boundedChunkIndex(session: TtsSession, chunkCount: Int): Int {
+    fun boundedChunkIndex(
+        session: TtsSession,
+        chunkCount: Int,
+    ): Int {
         if (chunkCount <= 0) return 0
         return session.currentChunkIndex.coerceIn(0, chunkCount - 1)
     }
 
-    fun restoredChunkSize(settings: TtsSettings): Int =
-        settings.chunkSize.coerceAtLeast(100)
+    fun restoredChunkSize(settings: TtsSettings): Int = settings.chunkSize.coerceAtLeast(100)
 
-    fun nextChapterIndex(story: Story, currentChapterId: String): Int? {
+    fun nextChapterIndex(
+        story: Story,
+        currentChapterId: String,
+    ): Int? {
         val current = story.chapters.indexOfFirst { it.id == currentChapterId }
         if (current < 0 || current >= story.chapters.lastIndex) return null
         return current + 1

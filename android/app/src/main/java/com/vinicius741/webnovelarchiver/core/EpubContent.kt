@@ -7,40 +7,58 @@ import org.jsoup.nodes.Entities
 import org.jsoup.nodes.TextNode
 
 object EpubContent {
-    fun cover(story: Story, coverHref: String?): String {
-        val body = if (coverHref != null) {
-            """<img class="cover-image" src="${EpubMetadata.xml(coverHref)}" alt="${EpubMetadata.xml(story.title)} cover"/>"""
-        } else {
-            """<div class="cover-placeholder"><p>No cover image available</p></div>"""
-        }
+    fun cover(
+        story: Story,
+        coverHref: String?,
+    ): String {
+        val body =
+            if (coverHref != null) {
+                """<img class="cover-image" src="${EpubMetadata.xml(coverHref)}" alt="${EpubMetadata.xml(story.title)} cover"/>"""
+            } else {
+                """<div class="cover-placeholder"><p>No cover image available</p></div>"""
+            }
         return xhtml("${story.title} Cover", """<body class="cover-page"><div class="cover-frame">$body</div></body>""")
     }
 
     fun details(story: Story): String {
         val description = story.description?.trim()?.takeIf { it.isNotBlank() }
-        val descriptionContent = description
-            ?.split(Regex("\n+"))
-            ?.joinToString("\n") { "<p>${EpubMetadata.xml(it)}</p>" }
-            ?: """<p class="muted">No description available.</p>"""
+        val descriptionContent =
+            description
+                ?.split(Regex("\n+"))
+                ?.joinToString("\n") { "<p>${EpubMetadata.xml(it)}</p>" }
+                ?: """<p class="muted">No description available.</p>"""
         val tags = story.tags.orEmpty().filter { it.isNotBlank() }
-        val tagsContent = if (tags.isEmpty()) {
-            """<p class="muted">No tags available.</p>"""
-        } else {
-            """<div class="tags">${tags.joinToString("\n") { """<span class="tag">${EpubMetadata.xml(it)}</span>""" }}</div>"""
-        }
+        val tagsContent =
+            if (tags.isEmpty()) {
+                """<p class="muted">No tags available.</p>"""
+            } else {
+                """<div class="tags">${tags.joinToString("\n") { """<span class="tag">${EpubMetadata.xml(it)}</span>""" }}</div>"""
+            }
         return xhtml(
             "${story.title} Details",
-            """<body class="details-page"><h1>${EpubMetadata.xml(story.title)}</h1><p class="byline">by ${EpubMetadata.xml(story.author)}</p><div class="details-section"><h2>Description</h2><div class="description">$descriptionContent</div></div><div class="details-section"><h2>Tags</h2>$tagsContent</div></body>""",
+            """<body class="details-page"><h1>${EpubMetadata.xml(
+                story.title,
+            )}</h1><p class="byline">by ${EpubMetadata.xml(
+                story.author,
+            )}</p><div class="details-section"><h2>Description</h2><div class="description">$descriptionContent</div></div><div class="details-section"><h2>Tags</h2>$tagsContent</div></body>""",
         )
     }
 
     fun tableOfContents(chapters: List<Chapter>): String =
         xhtml(
             "Table of Contents",
-            """<body><h1>Table of Contents</h1><ul>${chapters.mapIndexed { index, chapter -> """<li><a href="chapter_${index + 1}.xhtml">${EpubMetadata.xml(chapter.title)}</a></li>""" }.joinToString("\n")}</ul></body>""",
+            """<body><h1>Table of Contents</h1><ul>${chapters.mapIndexed {
+                index,
+                chapter,
+                ->
+                """<li><a href="chapter_${index + 1}.xhtml">${EpubMetadata.xml(chapter.title)}</a></li>"""
+            }.joinToString("\n")}</ul></body>""",
         )
 
-    fun chapter(chapter: Chapter, content: String): String {
+    fun chapter(
+        chapter: Chapter,
+        content: String,
+    ): String {
         val sanitized = sanitizeContent(content)
         // Fall back to a neutral placeholder so an empty chapter still renders as valid XHTML
         // rather than a blank/broken page. Source-side parse failures are now surfaced as
@@ -60,7 +78,8 @@ object EpubContent {
         // "Opening and ending tag mismatch". Round-trip through Jsoup and re-emit with XML syntax so
         // the fragment is always well-formed XHTML (self-closing void tags, escaped entities).
         val doc = Jsoup.parse(html)
-        doc.outputSettings()
+        doc
+            .outputSettings()
             .syntax(Document.OutputSettings.Syntax.xml)
             .escapeMode(Entities.EscapeMode.xhtml)
             .prettyPrint(false)
@@ -74,7 +93,8 @@ object EpubContent {
         }
     }
 
-    fun css(): String = """
+    fun css(): String =
+        """
 body { color: #1f2933; font-family: sans-serif; margin: 1em; }
 h1, h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.5em; text-align: center; }
 p { line-height: 1.6; margin-bottom: 1em; }
@@ -95,8 +115,13 @@ a:hover { text-decoration: underline; }
 .tags { line-height: 2.2; }
 .tag { background: #eef2f7; border: 1px solid #c8d0d8; border-radius: 0.35em; display: inline-block; margin: 0 0.4em 0.5em 0; padding: 0.25em 0.65em; }
 .muted { color: #6b7280; font-style: italic; }
-""".trimIndent()
+        """.trimIndent()
 
-    private fun xhtml(title: String, body: String): String =
-        """<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${EpubMetadata.xml(title)}</title><link href="style.css" type="text/css" rel="stylesheet"/></head>$body</html>"""
+    private fun xhtml(
+        title: String,
+        body: String,
+    ): String =
+        """<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${EpubMetadata.xml(
+            title,
+        )}</title><link href="style.css" type="text/css" rel="stylesheet"/></head>$body</html>"""
 }

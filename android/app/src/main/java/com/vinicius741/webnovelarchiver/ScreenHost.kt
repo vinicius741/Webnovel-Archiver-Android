@@ -41,6 +41,7 @@ interface ScreenHost {
     val app: AppCompatActivity
     val scope: CoroutineScope
     val storage: AppStorage
+
     /**
      * Single-owner repository (R2). Screens read observable/cached state (library, queue, settings)
      * through this rather than re-reading JSON from [storage] on every render (Speed S3 — disk reads
@@ -53,6 +54,7 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
     var storyOperation: StoryOperationState?
+
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by
      * `storyId`. A story absent from the map defaults to expanded when it has active work or
@@ -60,6 +62,7 @@ interface ScreenHost {
      * whole tree) so a user's manual collapse isn't undone 30s later.
      */
     val storyExpandOverride: MutableMap<String, Boolean>
+
     /**
      * The current screen's in-app back navigation, set by [com.vinicius741.webnovelarchiver.ui.screen].
      * The system back button (wired in [com.vinicius741.webnovelarchiver.MainActivity]) invokes this so
@@ -68,6 +71,7 @@ interface ScreenHost {
      */
     var backHandler: (() -> Unit)?
     val frame: FrameLayout
+
     /**
      * Re-renders the screen that is currently on the [frame]. Each screen sets this to a lambda that
      * re-invokes its own `showXxx()` (which rebuilds the view tree), so fold/unfold/rotation and the
@@ -75,6 +79,7 @@ interface ScreenHost {
      * opts in.
      */
     var rerender: (() -> Unit)?
+
     /** Foldable hinge/inner-display detector (androidx.window). Read on every screen render. */
     val foldTracker: FoldTracker
     val importBackupLauncher: ActivityResultLauncher<Array<String>>

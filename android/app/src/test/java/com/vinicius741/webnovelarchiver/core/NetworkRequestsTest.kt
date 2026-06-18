@@ -16,10 +16,11 @@ class NetworkRequestsTest {
 
     @Test
     fun formRequestMatchesReactNativeFetcherHeadersAndBodyShape() {
-        val request = NetworkRequests.formRequest(
-            "https://www.scribblehub.com/wp-admin/admin-ajax.php",
-            mapOf("action" to "wi_getreleases_pagination", "pagenum" to 2, "mypostid" to 123),
-        )
+        val request =
+            NetworkRequests.formRequest(
+                "https://www.scribblehub.com/wp-admin/admin-ajax.php",
+                mapOf("action" to "wi_getreleases_pagination", "pagenum" to 2, "mypostid" to 123),
+            )
         val buffer = Buffer()
         request.body?.writeTo(buffer)
 

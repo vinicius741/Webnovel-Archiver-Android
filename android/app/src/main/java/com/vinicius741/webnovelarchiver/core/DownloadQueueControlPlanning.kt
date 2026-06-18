@@ -12,7 +12,10 @@ object DownloadQueueControlPlanning {
             }
         }
 
-    fun pauseJob(jobs: List<DownloadJob>, jobId: String): MutableList<DownloadJob> =
+    fun pauseJob(
+        jobs: List<DownloadJob>,
+        jobId: String,
+    ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status in activeStatuses) {
                 job.status = DownloadJobStatus.Paused.wire
@@ -28,7 +31,10 @@ object DownloadQueueControlPlanning {
             }
         }
 
-    fun resumeJob(jobs: List<DownloadJob>, jobId: String): MutableList<DownloadJob> =
+    fun resumeJob(
+        jobs: List<DownloadJob>,
+        jobId: String,
+    ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status == DownloadJobStatus.Paused.wire) {
                 job.status = DownloadJobStatus.Pending.wire
@@ -36,21 +42,31 @@ object DownloadQueueControlPlanning {
             }
         }
 
-    fun cancelAll(jobs: List<DownloadJob>, reason: String = "cancelled"): MutableList<DownloadJob> =
+    fun cancelAll(
+        jobs: List<DownloadJob>,
+        reason: String = "cancelled",
+    ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.status in cancellableStatuses) {
                 markCancelled(job, reason)
             }
         }
 
-    fun cancelJob(jobs: List<DownloadJob>, jobId: String, reason: String = "cancelled by user"): MutableList<DownloadJob> =
+    fun cancelJob(
+        jobs: List<DownloadJob>,
+        jobId: String,
+        reason: String = "cancelled by user",
+    ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status in cancellableStatuses) {
                 markCancelled(job, reason)
             }
         }
 
-    fun retryFailed(jobs: List<DownloadJob>, storyId: String? = null): MutableList<DownloadJob> =
+    fun retryFailed(
+        jobs: List<DownloadJob>,
+        storyId: String? = null,
+    ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             val storyMatches = storyId == null || job.storyId == storyId
             if (storyMatches && job.status == DownloadJobStatus.Failed.wire) {
@@ -58,14 +74,20 @@ object DownloadQueueControlPlanning {
             }
         }
 
-    fun retryFailedJob(jobs: List<DownloadJob>, jobId: String): MutableList<DownloadJob> =
+    fun retryFailedJob(
+        jobs: List<DownloadJob>,
+        jobId: String,
+    ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status == DownloadJobStatus.Failed.wire) {
                 markPendingForRetry(job)
             }
         }
 
-    private fun markCancelled(job: DownloadJob, reason: String) {
+    private fun markCancelled(
+        job: DownloadJob,
+        reason: String,
+    ) {
         job.status = DownloadJobStatus.Cancelled.wire
         job.error = reason
         job.errorCategory = "cancelled"
@@ -82,6 +104,5 @@ object DownloadQueueControlPlanning {
         job.nextRetryAt = null
     }
 
-    private fun List<DownloadJob>.copyJobs(): MutableList<DownloadJob> =
-        map { it.copy(chapter = it.chapter.copy()) }.toMutableList()
+    private fun List<DownloadJob>.copyJobs(): MutableList<DownloadJob> = map { it.copy(chapter = it.chapter.copy()) }.toMutableList()
 }

@@ -54,13 +54,15 @@ class TtsSessionPlanningTest {
 
     @Test
     fun nextChapterIndexAdvancesOnlyWhenAFollowingChapterExists() {
-        val story = Story(
-            chapters = mutableListOf(
-                Chapter(id = "c1"),
-                Chapter(id = "c2"),
-                Chapter(id = "c3"),
-            ),
-        )
+        val story =
+            Story(
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1"),
+                        Chapter(id = "c2"),
+                        Chapter(id = "c3"),
+                    ),
+            )
 
         assertEquals(1, TtsSessionPlanning.nextChapterIndex(story, "c1"))
         assertEquals(2, TtsSessionPlanning.nextChapterIndex(story, "c2"))

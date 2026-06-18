@@ -1,54 +1,63 @@
 package com.vinicius741.webnovelarchiver.core
 
 object BackupMergePlanning {
-    fun mergeJsonBackupStory(incoming: Story, existing: Story?): Story {
+    fun mergeJsonBackupStory(
+        incoming: Story,
+        existing: Story?,
+    ): Story {
         if (existing == null) return scrubPortableIncomingStory(incoming)
 
         val existingChaptersById = existing.chapters.associateBy { it.id }
-        val mergedChapters = incoming.chapters.map { chapter ->
-            val existingChapter = existingChaptersById[chapter.id]
-            if (existingChapter == null) {
-                chapter.copy(
-                    content = null,
-                    filePath = null,
-                    downloaded = false,
-                )
-            } else {
-                chapter.copy(
-                    content = existingChapter.content,
-                    filePath = existingChapter.filePath,
-                    downloaded = existingChapter.downloaded,
-                )
-            }
-        }.toMutableList()
+        val mergedChapters =
+            incoming.chapters
+                .map { chapter ->
+                    val existingChapter = existingChaptersById[chapter.id]
+                    if (existingChapter == null) {
+                        chapter.copy(
+                            content = null,
+                            filePath = null,
+                            downloaded = false,
+                        )
+                    } else {
+                        chapter.copy(
+                            content = existingChapter.content,
+                            filePath = existingChapter.filePath,
+                            downloaded = existingChapter.downloaded,
+                        )
+                    }
+                }.toMutableList()
 
-        val merged = incoming.copy(
-            chapters = mergedChapters,
-            downloadedChapters = mergedChapters.count { it.downloaded },
-            lastUpdated = existing.lastUpdated,
-            lastReadChapterId = existing.lastReadChapterId,
-            dateAdded = existing.dateAdded,
-            epubPath = existing.epubPath,
-            epubPaths = existing.epubPaths,
-            epubStale = existing.epubStale,
-            pendingNewChapterIds = StorySyncPlanning.buildPendingNewChapterIds(
-                existing.pendingNewChapterIds,
-                incoming.pendingNewChapterIds.orEmpty(),
-                mergedChapters,
-            ),
-        )
+        val merged =
+            incoming.copy(
+                chapters = mergedChapters,
+                downloadedChapters = mergedChapters.count { it.downloaded },
+                lastUpdated = existing.lastUpdated,
+                lastReadChapterId = existing.lastReadChapterId,
+                dateAdded = existing.dateAdded,
+                epubPath = existing.epubPath,
+                epubPaths = existing.epubPaths,
+                epubStale = existing.epubStale,
+                pendingNewChapterIds =
+                    StorySyncPlanning.buildPendingNewChapterIds(
+                        existing.pendingNewChapterIds,
+                        incoming.pendingNewChapterIds.orEmpty(),
+                        mergedChapters,
+                    ),
+            )
         merged.totalChapters = mergedChapters.size
         return merged
     }
 
     private fun scrubPortableIncomingStory(incoming: Story): Story {
-        val chapters = incoming.chapters.map { chapter ->
-            chapter.copy(
-                content = null,
-                filePath = null,
-                downloaded = false,
-            )
-        }.toMutableList()
+        val chapters =
+            incoming.chapters
+                .map { chapter ->
+                    chapter.copy(
+                        content = null,
+                        filePath = null,
+                        downloaded = false,
+                    )
+                }.toMutableList()
         return incoming.copy(
             chapters = chapters,
             totalChapters = chapters.size,

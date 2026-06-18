@@ -23,7 +23,9 @@ data class LibraryStorySummary(
     val isArchived: Boolean,
 )
 
-enum class LibrarySort(val label: String) {
+enum class LibrarySort(
+    val label: String,
+) {
     RECENT("Recently updated"),
     TITLE("Title (A–Z)"),
     DATE_ADDED("Date added"),
@@ -36,7 +38,9 @@ data class LibraryUiState(
     val sort: LibrarySort,
 )
 
-class LibraryPresenter(private val repository: AppRepository) {
+class LibraryPresenter(
+    private val repository: AppRepository,
+) {
     /**
      * Derives the current library view state from the cached library snapshot + selection. Filtering
      * + sorting reuse the tested [LibraryQuery.filterAndSort] (operating on Story); the result is then
@@ -49,19 +53,22 @@ class LibraryPresenter(private val repository: AppRepository) {
         sort: LibrarySort,
         sortAscending: Boolean,
     ): LibraryUiState {
-        val sortOption = when (sort) {
-            LibrarySort.TITLE -> "title"
-            LibrarySort.DATE_ADDED -> "dateAdded"
-            LibrarySort.RECENT -> "default"
-        }
-        val filtered = LibraryQuery.filterAndSort(
-            stories = repository.library(),
-            searchQuery = query,
-            selectedTabId = selectedTabId,
-            selectedTags = selectedTags,
-            sortOption = sortOption,
-            sortAscending = sortAscending,
-        ).map { it.toSummary() }
+        val sortOption =
+            when (sort) {
+                LibrarySort.TITLE -> "title"
+                LibrarySort.DATE_ADDED -> "dateAdded"
+                LibrarySort.RECENT -> "default"
+            }
+        val filtered =
+            LibraryQuery
+                .filterAndSort(
+                    stories = repository.library(),
+                    searchQuery = query,
+                    selectedTabId = selectedTabId,
+                    selectedTags = selectedTags,
+                    sortOption = sortOption,
+                    sortAscending = sortAscending,
+                ).map { it.toSummary() }
         return LibraryUiState(
             stories = filtered,
             selectedTabId = selectedTabId,
@@ -70,13 +77,14 @@ class LibraryPresenter(private val repository: AppRepository) {
         )
     }
 
-    private fun Story.toSummary() = LibraryStorySummary(
-        id = id,
-        title = title,
-        author = author,
-        coverUrl = coverUrl,
-        downloadedChapters = downloadedChapters,
-        totalChapters = totalChapters,
-        isArchived = isArchived == true,
-    )
+    private fun Story.toSummary() =
+        LibraryStorySummary(
+            id = id,
+            title = title,
+            author = author,
+            coverUrl = coverUrl,
+            downloadedChapters = downloadedChapters,
+            totalChapters = totalChapters,
+            isArchived = isArchived == true,
+        )
 }

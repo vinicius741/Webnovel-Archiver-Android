@@ -27,15 +27,16 @@ class TtsPlaybackStateTest {
 
     @Test
     fun snapshotForSessionBuildsFromEligibleSession() {
-        val session = TtsSession(
-            storyId = "rr_1",
-            chapterId = "ch_1",
-            chapterTitle = "Chapter One",
-            currentChunkIndex = 3,
-            isPaused = false,
-            wasPlaying = true,
-            chunkSize = 500,
-        )
+        val session =
+            TtsSession(
+                storyId = "rr_1",
+                chapterId = "ch_1",
+                chapterTitle = "Chapter One",
+                currentChunkIndex = 3,
+                isPaused = false,
+                wasPlaying = true,
+                chunkSize = 500,
+            )
 
         val snapshot = TtsPlaybackState.snapshotForSession(session, totalChunks = 10, isPlaying = true)
 
@@ -56,37 +57,40 @@ class TtsPlaybackStateTest {
     @Test
     fun snapshotForSessionReturnsNullWhenSessionNotResumeEligible() {
         // A session that was neither playing nor paused is not eligible (nothing to surface).
-        val session = TtsSession(
-            storyId = "rr_1",
-            chapterId = "ch_1",
-            chapterTitle = "Chapter One",
-            wasPlaying = false,
-            isPaused = false,
-        )
+        val session =
+            TtsSession(
+                storyId = "rr_1",
+                chapterId = "ch_1",
+                chapterTitle = "Chapter One",
+                wasPlaying = false,
+                isPaused = false,
+            )
         assertNull(TtsPlaybackState.snapshotForSession(session, totalChunks = 10, isPlaying = false))
     }
 
     @Test
     fun snapshotForSessionFallsBackTitleWhenBlank() {
-        val session = TtsSession(
-            storyId = "rr_1",
-            chapterId = "ch_1",
-            chapterTitle = "",
-            wasPlaying = true,
-        )
+        val session =
+            TtsSession(
+                storyId = "rr_1",
+                chapterId = "ch_1",
+                chapterTitle = "",
+                wasPlaying = true,
+            )
         val snapshot = TtsPlaybackState.snapshotForSession(session, totalChunks = 1, isPlaying = true)
         assertEquals("Reading", snapshot?.title)
     }
 
     @Test
     fun snapshotForSessionMarksPausedWhenNotPlaying() {
-        val session = TtsSession(
-            storyId = "rr_1",
-            chapterId = "ch_1",
-            chapterTitle = "Chapter One",
-            isPaused = true,
-            wasPlaying = true,
-        )
+        val session =
+            TtsSession(
+                storyId = "rr_1",
+                chapterId = "ch_1",
+                chapterTitle = "Chapter One",
+                isPaused = true,
+                wasPlaying = true,
+            )
         val snapshot = TtsPlaybackState.snapshotForSession(session, totalChunks = 5, isPlaying = false)
         assertTrue(snapshot?.isPaused == true)
         assertFalse(snapshot?.isPlaying == true)
