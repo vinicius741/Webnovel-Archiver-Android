@@ -278,16 +278,11 @@ internal fun ScreenHost.showTtsVoicePicker() {
         toast("No local TTS voices available yet")
         return
     }
-    val voiceOptions = listOf(null to "System default") + voices.map { it to "${it.name} (${it.language})" }
-    val options =
-        voiceOptions.map { (voice, label) ->
-            label to {
-                val current = storage.getTtsSettings()
-                storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-                showTtsSettings()
-            }
-        }
-    showStyledOptionsDialog("TTS Voice", options)
+    showTtsVoiceDialog(voices, storage.getTtsSettings().voiceIdentifier) { voice ->
+        val current = storage.getTtsSettings()
+        storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
+        showTtsSettings()
+    }
 }
 
 internal fun ScreenHost.saveThemePreference(themeId: String) {
