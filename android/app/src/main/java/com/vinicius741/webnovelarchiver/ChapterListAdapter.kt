@@ -166,11 +166,11 @@ class ChapterListAdapter(
                 DownloadJobStatus.Failed -> host.dot(ThemeManager.colors.error)
                 else -> host.chapterStatusDot(chapter.downloaded)
             }
-        row.addView(
-            statusLeading.apply {
-                (layoutParams as? LinearLayout.LayoutParams)?.setMargins(0, 0, context.dp(Space.SM + 2), 0)
-            },
-        )
+        // Keep every row's text aligned while allowing the active spinner to be larger than the
+        // 10dp status dot. Giving the ProgressBar its own FrameLayout slot also avoids passing its
+        // FrameLayout.LayoutParams directly to this LinearLayout (which previously dropped the
+        // trailing gap and pulled the downloading chapter title to the left).
+        row.addView(chapterStatusSlot(context, statusLeading))
         row.addView(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -249,9 +249,27 @@ class ChapterListAdapter(
  */
 private fun chapterSpinner(context: Context): android.view.View {
     val t = ThemeManager.current
-    val size = context.dp(10)
-    return ProgressBar(context).apply {
+    val size = context.dp(16)
+    return ProgressBar(context, null, android.R.attr.progressBarStyleSmall).apply {
         indeterminateTintList = ColorStateList.valueOf(t.colors.primary)
-        layoutParams = android.widget.FrameLayout.LayoutParams(size, size)
+        layoutParams = FrameLayout.LayoutParams(size, size)
     }
 }
+
+/** Fixed-width leading slot shared by dots and spinners so status changes never move row text. */
+private fun chapterStatusSlot(
+    context: Context,
+    status: View,
+): FrameLayout =
+    FrameLayout(context).apply {
+        layoutParams = LinearLayout.LayoutParams(context.dp(20), context.dp(18))
+        val isSpinner = status is ProgressBar
+        addView(
+            status,
+            FrameLayout.LayoutParams(
+                context.dp(if (isSpinner) 16 else 10),
+                context.dp(if (isSpinner) 16 else 10),
+                Gravity.START or Gravity.CENTER_VERTICAL,
+            ),
+        )
+    }
