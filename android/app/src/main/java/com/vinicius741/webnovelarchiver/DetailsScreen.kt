@@ -28,6 +28,12 @@ import com.vinicius741.webnovelarchiver.ui.*
 
 internal fun ScreenHost.showDetails(storyId: String) {
     val story = storage.getStory(storyId) ?: return showLibrary()
+    val screenKey = "${story.title}|by ${story.author}"
+    val previousListState = if (frame.tag == screenKey) {
+        findDetailsChapterList(frame)?.layoutManager?.onSaveInstanceState()
+    } else {
+        null
+    }
     activeStory = story
     // Re-render on fold/unfold/rotation so the two-pane ↔ single-scroll layout can switch live.
     rerender = { showDetails(storyId) }
@@ -50,10 +56,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
         subtitle = "by ${story.author}",
         onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
-        // When two-pane we manage scrolling per-pane (info scrolls left, chapters scroll right), so
-        // the body must NOT be wrapped in a single ScrollView. Compact mode keeps the original
-        // single-surface scroll (D1) where header + chapters scroll together.
-        scrollable = !layout.isTwoPane,
+        // The chapter RecyclerView must be the scrolling surface. Wrapping it in a ScrollView makes
+        // Android measure and inflate every chapter row, defeating recycling for large novels.
+        scrollable = false,
     ) {
         // ---- Info panel: header + actions + description + tags ----
         val infoPanel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -82,7 +87,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 // operation) so the user can't enqueue a duplicate batch — mirrors RN's disabled={downloading}.
                 infoPanel.addView(makeFullWidthButton(context, downloadLabel, Btn.FILLED, R.drawable.wna_download, dp(Space.SM + 2), enabled = !isBusy && !downloadSummary.isActive) {
                     queueDownload(story, story.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null })
-                    showDetails(story.id)
                 })
             }
         }
@@ -171,39 +175,46 @@ internal fun ScreenHost.showDetails(storyId: String) {
             })
         }
 
-        // ---- Pinned chapter filter (search + chips) ----
-        val chapterSection = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        if (!layout.isTwoPane) {
-            // Compact: collapse toggle so the info panel can be tucked away while browsing chapters.
-            var infoExpanded = true
-            val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
-            collapseToggle.setOnClickListener {
-                infoExpanded = !infoExpanded
-                infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
-                collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
-            }
-            addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
-            addView(infoPanel)
-            chapterSection.addView(makeDivider(context))
-        }
+        // ---- Chapter filter (search + chips) ----
+        val chapterControls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val search = makeSearchField(context, "Search chapters")
-        chapterSection.addView(search)
+        chapterControls.addView(search)
         val chipsContainer = WrapLayout(context).apply {
             horizontalSpacingDp = Space.SM
             verticalSpacingDp = Space.SM
             setPadding(0, dp(Space.SM), 0, dp(Space.SM))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        chapterSection.addView(chipsContainer)
+        chapterControls.addView(chipsContainer)
 
         // ---- Chapter List (S1: RecyclerView so novels with hundreds/thousands of chapters recycle
         // views instead of inflating one row each on every render/filter tick) ----
         val chaptersContainer = androidx.recyclerview.widget.RecyclerView(context).apply {
             layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
             setHasFixedSize(false)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         }
-        chapterSection.addView(chaptersContainer)
+
+        // Compact keeps one continuous scroll by exposing details and controls as the list's first
+        // item. Two-pane keeps controls fixed above the independently scrolling chapter list.
+        val listHeader: View? = if (!layout.isTwoPane) {
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                var infoExpanded = true
+                val collapseToggle = makeButton(context, "Hide details", Btn.TEXT, R.drawable.wna_chevron_down) {}
+                collapseToggle.setOnClickListener {
+                    infoExpanded = !infoExpanded
+                    infoPanel.visibility = if (infoExpanded) View.VISIBLE else View.GONE
+                    collapseToggle.text = if (infoExpanded) "Hide details" else "Show details"
+                }
+                addView(collapseToggle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(Space.XS) })
+                addView(infoPanel)
+                addView(makeDivider(context))
+                addView(chapterControls)
+            }
+        } else {
+            null
+        }
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
         var chapterFilter = storage.getChapterFilterSettings().filterMode
@@ -216,37 +227,43 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chapterFilter = mode
             storage.saveChapterFilterSettings(ChapterFilterSettings(mode))
             renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
-            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses)
+            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
         }
         search.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 chapterQuery = s?.toString().orEmpty()
-                renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses)
+                renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
             }
             override fun afterTextChanged(s: Editable?) = Unit
         })
         renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
-        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses)
+        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
 
         if (layout.isTwoPane) {
-            // Two-pane: info scrolls on the left, chapter filter + list scroll on the right. The info
+            // Two-pane: info scrolls on the left, chapter list scrolls on the right. The info
             // pane stays pinned at a fixed width (RN StoryDetailsLayout: 280–440dp) while the chapter
             // list takes the remaining space, each with its own scroll surface. No divider is drawn
             // between the panes — a marginEnd on the info pane keeps the columns from touching.
             val leftScroll = scroll(infoPanel)
-            val rightScroll = scroll(chapterSection)
+            val rightPane = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(chapterControls)
+                addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            }
             val shell = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 addView(leftScroll, LinearLayout.LayoutParams(dp(DETAILS_TWO_PANE_LEFT_WIDTH_DP), ViewGroup.LayoutParams.MATCH_PARENT).apply {
                     marginEnd = dp(DETAILS_TWO_PANE_GAP_DP)
                 })
-                addView(rightScroll, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+                addView(rightPane, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
             }
             addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         } else {
-            // Compact: chapter section flows in the same scroll surface as the info header above.
-            addView(chapterSection)
+            addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        previousListState?.let { state ->
+            chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }
     }
     // Real-time refresh: while this story has active downloads, re-render the Details screen on a
@@ -259,19 +276,38 @@ internal fun ScreenHost.showDetails(storyId: String) {
         val root = frame.getChildAt(0)
         root.tag = DETAILS_DOWNLOAD_TAG
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        handler.postDelayed({
-            if ((root.tag as? String) == DETAILS_DOWNLOAD_TAG && root.parent === frame) {
-                showDetails(storyId)
+        val refresh = object : Runnable {
+            override fun run() {
+                if ((root.tag as? String) != DETAILS_DOWNLOAD_TAG || root.parent !== frame) return
+                val chapterList = findDetailsChapterList(root)
+                if (chapterList?.scrollState == androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                    showDetails(storyId)
+                } else {
+                    handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
+                }
             }
-        }, DETAILS_REFRESH_MS)
+        }
+        handler.postDelayed(refresh, DETAILS_REFRESH_MS)
     }
 }
 
 /** Auto-refresh cadence (ms) for the Details screen while a download is active. Short enough that
  *  the progress bar + spinners feel live, long enough to avoid thrashing the view tree. */
 private const val DETAILS_REFRESH_MS = 1200L
+/** Avoid replacing the RecyclerView hierarchy while a touch/fling gesture is still active. */
+private const val DETAILS_SCROLL_RETRY_MS = 250L
 /** Tag stamped on the Details root view so the download refresher can detect navigation away. */
 private const val DETAILS_DOWNLOAD_TAG = "details-download"
+
+private fun findDetailsChapterList(root: View): androidx.recyclerview.widget.RecyclerView? {
+    if (root is androidx.recyclerview.widget.RecyclerView) return root
+    if (root is ViewGroup) {
+        for (index in 0 until root.childCount) {
+            findDetailsChapterList(root.getChildAt(index))?.let { return it }
+        }
+    }
+    return null
+}
 
 private fun makeStoryOperationProgress(context: Context, operation: StoryOperationState, indeterminate: Boolean): LinearLayout {
     return LinearLayout(context).apply {
@@ -448,7 +484,6 @@ internal fun ScreenHost.showChapterSelection(storyId: String, initialSelectedIds
                 toast("No undownloaded chapters selected")
             } else {
                 queueDownload(story, selectedIndexes)
-                showDetails(story.id)
             }
         }
         refreshBulkActions = {
@@ -464,6 +499,7 @@ internal fun ScreenHost.renderChapterList(
     query: String,
     filter: String,
     chapterStatuses: Map<String, com.vinicius741.webnovelarchiver.core.DownloadJobStatus> = emptyMap(),
+    header: View? = null,
 ) {
     val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
     val filtered = story.chapters
@@ -476,17 +512,23 @@ internal fun ScreenHost.renderChapterList(
                 else -> true
             }
         }
-    if (filtered.isEmpty()) {
-        list.adapter = ChapterListAdapter(
-            host = this,
-            chapters = listOf(-1 to Chapter(title = "No chapters match this view.")),
-            story = story,
-            isEmptyState = true,
-            list = list,
-        )
+    val isEmptyState = filtered.isEmpty()
+    val displayedChapters = if (isEmptyState) {
+        listOf(-1 to Chapter(title = "No chapters match this view."))
+    } else {
+        filtered
+    }
+    val existingChapterAdapter = when (val adapter = list.adapter) {
+        is ChapterListAdapter -> adapter
+        is androidx.recyclerview.widget.ConcatAdapter -> adapter.adapters.filterIsInstance<ChapterListAdapter>().singleOrNull()
+        else -> null
+    }
+    if (existingChapterAdapter != null) {
+        existingChapterAdapter.update(displayedChapters, story, isEmptyState, query, filter, chapterStatuses)
         return
     }
-    list.adapter = ChapterListAdapter(this, filtered, story, list = list, query = query, filter = filter, chapterStatuses = chapterStatuses)
+    val chapterAdapter = ChapterListAdapter(this, displayedChapters, story, isEmptyState, list, query, filter, chapterStatuses)
+    list.adapter = if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
 }
 
 
@@ -504,7 +546,6 @@ internal fun ScreenHost.showChapterActions(
     if (!chapter.downloaded && StoryActionGuards.canQueueDownloads(story)) {
         options += "Download" to {
             queueDownload(story, listOf(index))
-            showDetails(story.id)
         }
     }
     val isBookmarked = story.lastReadChapterId == chapter.id

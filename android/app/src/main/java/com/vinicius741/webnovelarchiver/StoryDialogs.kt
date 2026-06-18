@@ -102,7 +102,6 @@ internal fun ScreenHost.showDownloadRangeDialog(story: Story) {
             }
             queueDownload(story, selection.indexes)
             dialog.dismiss()
-            showDetails(story.id)
         }
     }
     dialog.show()

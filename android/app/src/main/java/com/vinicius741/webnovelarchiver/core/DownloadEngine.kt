@@ -43,12 +43,18 @@ class DownloadEngine(
      * to the foreground service instead.
      */
     fun queue(story: Story, indexes: List<Int>, startNow: Boolean = true) {
-        val plan = DownloadQueuePlanning.queueChapters(storage.getQueue(), story, indexes)
-        if (plan.changed) {
-            story.status = DownloadStatus.downloading
-            story.lastUpdated = System.currentTimeMillis()
-            storage.saveEnqueue(story, plan.jobs)
-        }
+        // Hold the same storage monitor across read, planning, and persistence. Enqueue can run on a
+        // process scope while the service updates job statuses, so synchronizing only saveEnqueue's
+        // final write would allow either side to overwrite the other's newer queue snapshot.
+        val plan = DownloadEnqueueTransaction.execute(
+            lock = storage,
+            story = story,
+            indexes = indexes,
+            now = System.currentTimeMillis(),
+            readQueue = storage::getQueue,
+            readStory = storage::getStory,
+            persist = storage::saveEnqueue,
+        )
         if (startNow && plan.hasRunnableWork) start()
         onChanged?.invoke()
     }
@@ -146,19 +152,27 @@ class DownloadEngine(
         val settings = storage.getSettings()
         while (true) {
             cleanupUnsupportedSourceJobs()
-            val queue = storage.getQueue()
-            emitProgress(null)
             val sourceSettings = storage.getSourceDownloadSettings()
-            val pending = DownloadScheduler.selectEligibleJobs(
-                jobs = queue,
-                now = System.currentTimeMillis(),
-                globalConcurrency = settings.downloadConcurrency,
-                globalDelay = settings.downloadDelay,
-                sourceSettings = sourceSettings,
-                activeCounts = emptyMap(),
-                nextAllowedAt = nextAllowedJobAtBySource,
-                providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
-            )
+            lateinit var queue: MutableList<DownloadJob>
+            lateinit var pending: List<DownloadJob>
+            synchronized(storage) {
+                queue = storage.getQueue()
+                pending = DownloadScheduler.selectEligibleJobs(
+                    jobs = queue,
+                    now = System.currentTimeMillis(),
+                    globalConcurrency = settings.downloadConcurrency,
+                    globalDelay = settings.downloadDelay,
+                    sourceSettings = sourceSettings,
+                    activeCounts = emptyMap(),
+                    nextAllowedAt = nextAllowedJobAtBySource,
+                    providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
+                )
+                if (pending.isNotEmpty()) {
+                    pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
+                    storage.saveQueue(queue)
+                }
+            }
+            emitProgress(null)
             if (pending.isEmpty()) {
                 val sleepUntil = DownloadScheduler.nextWakeUpAt(
                     jobs = queue,
@@ -172,9 +186,6 @@ class DownloadEngine(
                 }
                 break
             }
-            pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
-            storage.saveQueue(queue)
-            emitProgress(null)
             pending.map { job -> scope.launch { processJob(job) } }.forEach { it.join() }
             val now = System.currentTimeMillis()
             pending
@@ -188,40 +199,48 @@ class DownloadEngine(
     }
 
     private fun cleanupUnsupportedSourceJobs() {
-        val queue = storage.getQueue()
-        val cleanup = DownloadQueueMaintenance.failUnsupportedSourceJobs(queue) { job ->
-            SourceRegistry.getProvider(job.chapter.url)?.name
-        }
-        if (cleanup.cleanedJobCount == 0) return
-        storage.saveQueue(queue)
-        cleanup.affectedStoryIds.forEach { storyId ->
-            val story = storage.getStory(storyId) ?: return@forEach
-            if (DownloadQueueMaintenance.recoverStuckDownloadingStory(story, queue.filter { it.storyId == storyId })) {
-                storage.addOrUpdateStory(story)
+        var cleaned = false
+        synchronized(storage) {
+            val queue = storage.getQueue()
+            val cleanup = DownloadQueueMaintenance.failUnsupportedSourceJobs(queue) { job ->
+                SourceRegistry.getProvider(job.chapter.url)?.name
             }
+            if (cleanup.cleanedJobCount == 0) return
+            storage.saveQueue(queue)
+            cleanup.affectedStoryIds.forEach { storyId ->
+                val story = storage.getStory(storyId) ?: return@forEach
+                if (DownloadQueueMaintenance.recoverStuckDownloadingStory(story, queue.filter { it.storyId == storyId })) {
+                    storage.addOrUpdateStory(story)
+                }
+            }
+            cleaned = true
         }
-        onChanged?.invoke()
+        if (cleaned) onChanged?.invoke()
     }
 
     private suspend fun processJob(job: DownloadJob) {
         try {
             emitProgress(job)
-            val story = storage.getStory(job.storyId) ?: error("Story not found")
+            storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
             val html = network.fetch(job.chapter.url)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
             val clean = CleanupEngine.shared.applyDownload(provider.parseChapterContent(html), storage.getSentenceRemovalList(), storage.getRegexRules())
-            val path = storage.saveChapter(story.id, job.chapterIndex, job.chapter, clean)
-            val chapter = story.chapters[job.chapterIndex]
-            chapter.filePath = path
-            chapter.downloaded = true
-            story.downloadedChapters = story.chapters.count { it.downloaded }
-            story.status = if (story.downloadedChapters == story.chapters.size) DownloadStatus.completed else DownloadStatus.partial
-            story.epubStale = true
-            story.pendingNewChapterIds = story.pendingNewChapterIds?.filterNot { it == chapter.id }?.toMutableList()?.ifEmpty { null }
-            story.lastUpdated = System.currentTimeMillis()
-            storage.addOrUpdateStory(story)
+            val path = storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean)
+            synchronized(storage) {
+                // Re-read after network I/O so sync/enqueue changes made while fetching are retained.
+                val story = storage.getStory(job.storyId) ?: error("Story not found")
+                val chapter = story.chapters.getOrNull(job.chapterIndex) ?: error("Chapter not found")
+                chapter.filePath = path
+                chapter.downloaded = true
+                story.downloadedChapters = story.chapters.count { it.downloaded }
+                story.status = if (story.downloadedChapters == story.chapters.size) DownloadStatus.completed else DownloadStatus.partial
+                story.epubStale = true
+                story.pendingNewChapterIds = story.pendingNewChapterIds?.filterNot { it == chapter.id }?.toMutableList()?.ifEmpty { null }
+                story.lastUpdated = System.currentTimeMillis()
+                storage.addOrUpdateStory(story)
+            }
             if (!isCancelled(job.id)) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: Throwable) {
             if (error is CancellationException && isPaused(job.id)) return
@@ -230,38 +249,44 @@ class DownloadEngine(
     }
 
     private fun updateJob(id: String, status: String, error: String?) {
-        val queue = storage.getQueue()
-        queue.find { it.id == id }?.let {
-            it.status = status
-            it.error = error
-            if (status == DownloadJobStatus.Completed.wire) {
-                it.errorCategory = null
-                it.errorCode = null
-                it.nextRetryAt = null
+        lateinit var queue: List<DownloadJob>
+        storage.mutateQueueInPlace { current ->
+            current.find { it.id == id }?.let {
+                it.status = status
+                it.error = error
+                if (status == DownloadJobStatus.Completed.wire) {
+                    it.errorCategory = null
+                    it.errorCode = null
+                    it.nextRetryAt = null
+                }
             }
+            queue = current
+            current
         }
-        storage.saveQueue(queue)
         emitProgress(queue.find { it.id == id })
         onChanged?.invoke()
     }
 
     private fun handleJobError(job: DownloadJob, error: Throwable) {
         val classified = DownloadErrorClassifier.classify(error)
-        val queue = storage.getQueue()
-        queue.find { it.id == job.id }?.let {
-            it.retryCount += 1
-            it.error = classified.message
-            it.errorCategory = classified.category
-            it.errorCode = classified.code
-            if (DownloadErrorClassifier.shouldAutoRetry(it, classified)) {
-                it.status = DownloadJobStatus.Pending.wire
-                it.nextRetryAt = System.currentTimeMillis() + DownloadErrorClassifier.retryDelayMs(it)
-            } else {
-                it.status = if (classified.category == "cancelled") DownloadJobStatus.Cancelled.wire else DownloadJobStatus.Failed.wire
-                it.nextRetryAt = null
+        lateinit var queue: List<DownloadJob>
+        storage.mutateQueueInPlace { current ->
+            current.find { it.id == job.id }?.let {
+                it.retryCount += 1
+                it.error = classified.message
+                it.errorCategory = classified.category
+                it.errorCode = classified.code
+                if (DownloadErrorClassifier.shouldAutoRetry(it, classified)) {
+                    it.status = DownloadJobStatus.Pending.wire
+                    it.nextRetryAt = System.currentTimeMillis() + DownloadErrorClassifier.retryDelayMs(it)
+                } else {
+                    it.status = if (classified.category == "cancelled") DownloadJobStatus.Cancelled.wire else DownloadJobStatus.Failed.wire
+                    it.nextRetryAt = null
+                }
             }
+            queue = current
+            current
         }
-        storage.saveQueue(queue)
         emitProgress(queue.find { it.id == job.id })
         onChanged?.invoke()
     }

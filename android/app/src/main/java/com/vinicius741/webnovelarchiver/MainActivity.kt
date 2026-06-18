@@ -108,7 +108,6 @@ class MainActivity : AppCompatActivity(), ScreenHost {
         ttsEngine = container.ttsEngine
         ThemeManager.apply(storage.getDisplayPreferences().activeThemeId)
         applyWindowTheme()
-        downloadEngine.onChanged = { runOnUiThread { if (activeStory == null) showLibrary() else activeStory?.let { showDetails(it.id) } } }
         frame = FrameLayout(this)
         setContentView(frame)
         onBackPressedDispatcher.addCallback(this, backCallback)

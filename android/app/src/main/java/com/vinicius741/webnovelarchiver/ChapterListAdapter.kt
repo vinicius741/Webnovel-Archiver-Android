@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -25,6 +27,25 @@ import com.vinicius741.webnovelarchiver.ui.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
+/** A single existing View exposed as a RecyclerView item so compact Details can keep one scrolling
+ * surface without nesting the chapter list inside a ScrollView. */
+class DetailsHeaderAdapter(private val header: View) : RecyclerView.Adapter<DetailsHeaderAdapter.HeaderHolder>() {
+    class HeaderHolder(val container: FrameLayout) : RecyclerView.ViewHolder(container)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HeaderHolder =
+        HeaderHolder(FrameLayout(parent.context).apply {
+            layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+
+    override fun onBindViewHolder(holder: HeaderHolder, position: Int) {
+        (header.parent as? ViewGroup)?.removeView(header)
+        holder.container.removeAllViews()
+        holder.container.addView(header, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+
+    override fun getItemCount(): Int = 1
+}
+
 /**
  * RecyclerView adapter for the Details chapter list (Speed S1). Replaces the per-render
  * `LinearLayout.addView` loop with view recycling, so novels with hundreds/thousands of chapters
@@ -41,16 +62,33 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
  */
 class ChapterListAdapter(
     private val host: ScreenHost,
-    private val chapters: List<Pair<Int, Chapter>>,
-    private val story: Story,
-    private val isEmptyState: Boolean = false,
+    private var chapters: List<Pair<Int, Chapter>>,
+    private var story: Story,
+    private var isEmptyState: Boolean = false,
     private val list: androidx.recyclerview.widget.RecyclerView,
-    private val query: String = "",
-    private val filter: String = "all",
-    private val chapterStatuses: Map<String, DownloadJobStatus> = emptyMap(),
+    private var query: String = "",
+    private var filter: String = "all",
+    private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap(),
 ) : RecyclerView.Adapter<ChapterListAdapter.RowHolder>() {
 
     class RowHolder(val row: LinearLayout) : RecyclerView.ViewHolder(row)
+
+    fun update(
+        chapters: List<Pair<Int, Chapter>>,
+        story: Story,
+        isEmptyState: Boolean,
+        query: String,
+        filter: String,
+        chapterStatuses: Map<String, DownloadJobStatus>,
+    ) {
+        this.chapters = chapters
+        this.story = story
+        this.isEmptyState = isEmptyState
+        this.query = query
+        this.filter = filter
+        this.chapterStatuses = chapterStatuses
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RowHolder {
         val context = parent.context

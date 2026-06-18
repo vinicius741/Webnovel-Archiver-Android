@@ -41,6 +41,20 @@ class DownloadForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action ?: ACTION_START) {
+            ACTION_PREPARE -> {
+                startForegroundIfNeeded(
+                    DownloadProgress(
+                        pending = 1,
+                        active = 0,
+                        completed = 0,
+                        failed = 0,
+                        cancelled = 0,
+                        paused = 0,
+                        total = 1,
+                        activeTitle = getString(R.string.download_notif_active),
+                    ),
+                )
+            }
             ACTION_START -> {
                 startForegroundIfNeeded(engine.currentProgress())
                 engine.start()
@@ -55,6 +69,10 @@ class DownloadForegroundService : Service() {
             }
             ACTION_STOP -> {
                 engine.pauseAll()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+            ACTION_ABORT_PREPARE -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -155,6 +173,8 @@ class DownloadForegroundService : Service() {
         private const val CHANNEL_ID = "webnovel_downloads"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.vinicius741.webnovelarchiver.download.START"
+        const val ACTION_PREPARE = "com.vinicius741.webnovelarchiver.download.PREPARE"
+        const val ACTION_ABORT_PREPARE = "com.vinicius741.webnovelarchiver.download.ABORT_PREPARE"
         const val ACTION_PAUSE = "com.vinicius741.webnovelarchiver.download.PAUSE"
         const val ACTION_RESUME = "com.vinicius741.webnovelarchiver.download.RESUME"
         const val ACTION_STOP = "com.vinicius741.webnovelarchiver.download.STOP"
@@ -166,6 +186,25 @@ class DownloadForegroundService : Service() {
             } else {
                 context.startService(intent)
             }
+        }
+
+        /** Enter the foreground while the user-initiated queue is still being persisted. */
+        fun prepare(context: Context) {
+            val intent = Intent(context, DownloadForegroundService::class.java).setAction(ACTION_PREPARE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /** Starts work on a service already foregrounded by [prepare]. */
+        fun startPrepared(context: Context) {
+            context.startService(Intent(context, DownloadForegroundService::class.java).setAction(ACTION_START))
+        }
+
+        fun abortPrepare(context: Context) {
+            context.startService(Intent(context, DownloadForegroundService::class.java).setAction(ACTION_ABORT_PREPARE))
         }
     }
 }

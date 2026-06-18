@@ -7,6 +7,9 @@ import com.vinicius741.webnovelarchiver.core.EpubEngine
 import com.vinicius741.webnovelarchiver.core.NetworkClient
 import com.vinicius741.webnovelarchiver.core.StorySyncEngine
 import com.vinicius741.webnovelarchiver.core.TtsEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * Lightweight process-wide dependency container (Maintainability M2). Attached to
@@ -28,6 +31,8 @@ import com.vinicius741.webnovelarchiver.core.TtsEngine
  * engines racing against the same files.
  */
 class AppContainer(context: Context) {
+    /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val network: NetworkClient = NetworkClient()
     val storage: AppStorage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)

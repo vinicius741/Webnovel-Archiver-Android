@@ -25,8 +25,38 @@ internal fun ScreenHost.queueDownload(story: Story, indexes: List<Int>) {
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return
     }
-    downloadEngine.queue(story, indexes, startNow = false)
-    DownloadForegroundService.start(app)
+    val screenTagAtEnqueue = frame.tag
+    val servicePrepared = runCatching { DownloadForegroundService.prepare(app.applicationContext) }
+    if (servicePrepared.isFailure) {
+        toast(servicePrepared.exceptionOrNull()?.message ?: "Could not start downloads")
+        return
+    }
+    // Queue planning and durable JSON writes scale with the number of chapters, so keep them off
+    // the main thread. Process scope ensures persistence and service handoff survive Activity
+    // recreation after the user initiated the operation.
+    app.appContainer.applicationScope.launch {
+        val result = runCatching {
+            downloadEngine.queue(story, indexes, startNow = false)
+            DownloadForegroundService.startPrepared(app.applicationContext)
+        }
+        if (result.isFailure) {
+            runCatching { DownloadForegroundService.abortPrepare(app.applicationContext) }
+        }
+        app.runOnUiThread {
+            if (app.isFinishing || app.isDestroyed) return@runOnUiThread
+            result.onSuccess {
+                val detailsScreenKey = "${story.title}|by ${story.author}"
+                if (
+                    activeStory?.id == story.id &&
+                    (frame.tag == screenTagAtEnqueue || frame.tag == detailsScreenKey)
+                ) {
+                    showDetails(story.id)
+                }
+            }.onFailure { error ->
+                toast(error.message ?: "Could not queue downloads")
+            }
+        }
+    }
 }
 
 internal fun ScreenHost.syncStory(url: String, tabId: String?) {
