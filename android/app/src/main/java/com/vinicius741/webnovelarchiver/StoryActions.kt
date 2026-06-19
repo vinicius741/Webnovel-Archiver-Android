@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import com.vinicius741.webnovelarchiver.core.BrowserUrlPlanning
 import com.vinicius741.webnovelarchiver.core.Chapter
+import com.vinicius741.webnovelarchiver.core.CleanupEngine
 import com.vinicius741.webnovelarchiver.core.EpubConfig
 import com.vinicius741.webnovelarchiver.core.EpubSelection
 import com.vinicius741.webnovelarchiver.core.FileMimeTypes
@@ -12,7 +13,6 @@ import com.vinicius741.webnovelarchiver.core.SourceRegistry
 import com.vinicius741.webnovelarchiver.core.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.core.Story
 import com.vinicius741.webnovelarchiver.core.StoryActionGuards
-import com.vinicius741.webnovelarchiver.core.TextCleanup
 import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.ui.*
 import kotlinx.coroutines.Dispatchers
@@ -170,11 +170,27 @@ internal fun ScreenHost.applyCleanup(story: Story) {
         toast("No downloaded chapters to process")
         return
     }
+    confirm(
+        "This will apply sentence removal and regex cleanup rules to ${downloaded.size} downloaded chapters. " +
+            "The EPUB will need to be regenerated afterward.",
+        confirmLabel = "Apply",
+    ) {
+        runCleanup(story, downloaded)
+    }
+}
+
+private fun ScreenHost.runCleanup(
+    story: Story,
+    downloaded: List<Chapter>,
+) {
     setStoryOperation(story.id, StoryOperationKind.CLEANUP, "Processing...")
     scope.launch(Dispatchers.IO) {
         try {
             val sentenceRemoval = storage.getSentenceRemovalList()
             val regexRules = storage.getRegexRules()
+            var processed = 0
+            var errors = 0
+            var sentencesRemoved = 0
             downloaded.forEachIndexed { index, chapter ->
                 withContext(Dispatchers.Main) {
                     setStoryOperation(
@@ -184,15 +200,39 @@ internal fun ScreenHost.applyCleanup(story: Story) {
                         (index + 1).toFloat() / downloaded.size,
                     )
                 }
-                val html = storage.readChapter(chapter) ?: return@forEachIndexed
-                File(chapter.filePath!!).writeText(TextCleanup.applyDownloadCleanup(html, sentenceRemoval, regexRules))
+                runCatching {
+                    val html = storage.readChapter(chapter) ?: error("Downloaded chapter file is missing")
+                    val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules)
+                    check(storage.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }
+                    result
+                }.onSuccess { result ->
+                    processed += 1
+                    sentencesRemoved += result.sentencesRemoved
+                }.onFailure {
+                    errors += 1
+                }
             }
-            story.epubStale = true
-            storage.addOrUpdateStory(story)
+            if (processed > 0) {
+                story.epubStale = true
+                storage.addOrUpdateStory(story)
+            }
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
-                toast("Cleanup applied")
                 showDetails(story.id)
+                val sentenceLine =
+                    "$sentencesRemoved sentence${if (sentencesRemoved == 1) "" else "s"} removed."
+                if (errors > 0) {
+                    alert(
+                        "Processing Complete with Errors",
+                        "Processed $processed chapters; $errors had errors. $sentenceLine",
+                    )
+                } else {
+                    alert(
+                        "Processing Complete",
+                        "Successfully applied text cleanup to $processed chapters. $sentenceLine " +
+                            "Please regenerate the EPUB.",
+                    )
+                }
             }
         } catch (error: Throwable) {
             withContext(Dispatchers.Main) {

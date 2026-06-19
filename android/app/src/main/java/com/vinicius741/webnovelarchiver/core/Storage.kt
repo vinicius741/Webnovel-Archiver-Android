@@ -244,6 +244,16 @@ class AppStorage(
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
 
+    /** Replaces an existing downloaded chapter while honoring portable relative storage paths. */
+    fun overwriteChapter(
+        chapter: Chapter,
+        html: String,
+    ): Boolean {
+        val file = resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::exists) ?: return false
+        AtomicFileWrites.writeText(file, html)
+        return true
+    }
+
     fun saveEpub(
         storyId: String,
         filename: String,

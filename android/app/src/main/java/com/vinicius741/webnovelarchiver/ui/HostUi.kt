@@ -76,6 +76,17 @@ internal fun ScreenHost.confirm(
     .show()
     .also { it.applyAppTheme() }
 
+internal fun ScreenHost.alert(
+    title: String,
+    message: String,
+) = AlertDialog
+    .Builder(app)
+    .setTitle(title)
+    .setMessage(message)
+    .setPositiveButton("OK", null)
+    .show()
+    .also { it.applyAppTheme() }
+
 internal fun ScreenHost.prompt(
     title: String,
     value: String,

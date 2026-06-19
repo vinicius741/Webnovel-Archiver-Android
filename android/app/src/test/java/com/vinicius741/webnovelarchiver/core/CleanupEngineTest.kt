@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -11,6 +12,20 @@ import org.junit.Test
  * change and that its output matches the stateless TextCleanup path.
  */
 class CleanupEngineTest {
+    @Test
+    fun applyDownloadWithStatsCountsEverySentenceRemoval() {
+        val result =
+            CleanupEngine().applyDownloadWithStats(
+                "<p>Remove this. Keep this.</p><p>remove   this.</p>",
+                listOf("Remove this."),
+                emptyList(),
+            )
+
+        assertEquals(2, result.sentencesRemoved)
+        assertFalse(result.html.contains("Remove this", ignoreCase = true))
+        assertTrue(result.html.contains("Keep this"))
+    }
+
     @Test
     fun cachedSnapshotReusedWhenInputsUnchanged() {
         val engine = CleanupEngine()

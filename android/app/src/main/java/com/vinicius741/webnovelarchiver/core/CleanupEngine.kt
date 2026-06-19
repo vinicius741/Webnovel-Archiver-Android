@@ -15,6 +15,11 @@ import java.util.concurrent.atomic.AtomicReference
  * engine is the shared, cached path for hot loops (download batches, TTS preparation).
  */
 class CleanupEngine {
+    data class CleanupResult(
+        val html: String,
+        val sentencesRemoved: Int,
+    )
+
     /** Immutable snapshot of compiled rules + sentence patterns for a given settings version. */
     data class CompiledCleanup(
         val downloadRegexes: List<Regex>,
@@ -65,17 +70,28 @@ class CleanupEngine {
         html: String,
         sentences: List<String>,
         rules: List<RegexCleanupRule>,
-    ): String {
+    ): String = applyDownloadWithStats(html, sentences, rules).html
+
+    /** Applies download cleanup and reports sentence-blocklist matches removed for UI feedback. */
+    fun applyDownloadWithStats(
+        html: String,
+        sentences: List<String>,
+        rules: List<RegexCleanupRule>,
+    ): CleanupResult {
         val compiled = compiled(sentences, rules)
         val doc = Jsoup.parseBodyFragment(html)
+        var sentencesRemoved = 0
         doc.select("script,style,noscript,iframe").remove()
         traverseTextNodes(doc.body()).forEach { node ->
             var text = node.text()
-            compiled.sentencePatterns.forEach { text = it.replace(text, "") }
+            compiled.sentencePatterns.forEach { pattern ->
+                sentencesRemoved += pattern.findAll(text).count()
+                text = pattern.replace(text, "")
+            }
             compiled.downloadRegexes.forEach { text = it.replace(text, "") }
             node.text(text)
         }
-        return doc.body().html()
+        return CleanupResult(doc.body().html(), sentencesRemoved)
     }
 
     private fun traverseTextNodes(root: Node): List<TextNode> {
