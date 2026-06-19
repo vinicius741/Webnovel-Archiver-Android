@@ -5,12 +5,13 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -22,6 +23,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import com.vinicius741.webnovelarchiver.core.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.core.LibraryQuery
 import com.vinicius741.webnovelarchiver.core.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
@@ -41,7 +43,8 @@ internal fun ScreenHost.showLibrary() {
     // setting toggles, so the column count reflows 1 → 2 → 3 live.
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
-    val stories = storage.getLibrary()
+    var stories: List<Story> = storage.getLibrary()
+    var refreshLibraryContent: ((List<Story>) -> Unit)? = null
     val tabs = storage.getTabs().sortedBy { it.order }
     screen(
         title = "Library",
@@ -150,6 +153,10 @@ internal fun ScreenHost.showLibrary() {
             applyFilters = {
                 adapter.updateFilter(currentFilter(), selectedTags, sortOption, sortAscending)
             }
+            refreshLibraryContent = { latest ->
+                stories = latest
+                adapter.updateStories(latest)
+            }
             // Swipe → tab. Mirrors RN's `tabId !== activeTabId` guard so the two-way wiring never
             // feeds back into itself.
             var suppressingPageCallback = false
@@ -194,6 +201,10 @@ internal fun ScreenHost.showLibrary() {
                 }
             applyFilters = {
                 renderTabGrid(stories, list, layoutResult, currentFilter(), selectedTabId, selectedTags, sortOption, sortAscending)
+            }
+            refreshLibraryContent = { latest ->
+                stories = latest
+                applyFilters()
             }
             val gridShell =
                 MaxWidthFrameLayout(context).apply {
@@ -244,7 +255,61 @@ internal fun ScreenHost.showLibrary() {
             applyFilters()
         }
     }
+    refreshLibraryContent?.let { scheduleLibraryRefresh(stories, it) }
 }
+
+private const val LIBRARY_TAG = "library-screen"
+private const val LIBRARY_REFRESH_MS = 1_000L
+
+/**
+ * Keeps the chapter totals on Library cards in sync with the foreground download service. The
+ * service owns a separate [com.vinicius741.webnovelarchiver.core.DownloadEngine], so its callbacks
+ * cannot directly update this Activity. Poll storage only while queue work is unfinished, and patch
+ * the existing grids when a rendered story field changes; this preserves the selected tab, filters,
+ * pager position, and scroll position.
+ */
+private fun ScreenHost.scheduleLibraryRefresh(
+    renderedStories: List<Story>,
+    onStoriesChanged: (List<Story>) -> Unit,
+) {
+    if (frame.childCount == 0 || !storage.getQueue().hasUnfinishedLibraryWork()) return
+    val root = frame.getChildAt(0)
+    root.tag = LIBRARY_TAG
+    var renderedSnapshot = renderedStories.libraryProgressSnapshot()
+    val handler = Handler(Looper.getMainLooper())
+    val refresh =
+        object : Runnable {
+            override fun run() {
+                if ((root.tag as? String) != LIBRARY_TAG || root.parent !== frame) return
+                val latestStories = storage.getLibrary()
+                val latestSnapshot = latestStories.libraryProgressSnapshot()
+                if (latestSnapshot != renderedSnapshot) {
+                    renderedSnapshot = latestSnapshot
+                    onStoriesChanged(latestStories)
+                }
+                if (storage.getQueue().hasUnfinishedLibraryWork()) {
+                    handler.postDelayed(this, LIBRARY_REFRESH_MS)
+                }
+            }
+        }
+    handler.postDelayed(refresh, LIBRARY_REFRESH_MS)
+}
+
+private fun List<com.vinicius741.webnovelarchiver.core.DownloadJob>.hasUnfinishedLibraryWork(): Boolean =
+    any {
+        it.status == DownloadJobStatus.Pending.wire ||
+            it.status == DownloadJobStatus.Downloading.wire ||
+            it.status == DownloadJobStatus.Paused.wire
+    }
+
+private data class LibraryProgressSnapshot(
+    val id: String,
+    val downloadedChapters: Int,
+    val totalChapters: Int,
+)
+
+private fun List<Story>.libraryProgressSnapshot(): List<LibraryProgressSnapshot> =
+    map { LibraryProgressSnapshot(it.id, it.downloadedChapters, it.totalChapters) }
 
 /**
  * Tab bar for the Library. Holds the [view] to add to the screen plus hooks the pager uses to stay
@@ -720,7 +785,7 @@ private fun Context.iconButtonSmall(
  */
 private class LibraryPagesAdapter(
     private val host: ScreenHost,
-    private val stories: List<Story>,
+    private var stories: List<Story>,
     private val pageTabs: List<String?>,
     private val layout: ScreenLayoutResult,
 ) : RecyclerView.Adapter<LibraryPagesAdapter.PageViewHolder>() {
@@ -798,6 +863,12 @@ private class LibraryPagesAdapter(
         sortAscending: Boolean,
     ) {
         filterSnapshot = FilterSnapshot(text, tags, sortOption, sortAscending)
+        notifyItemRangeChanged(0, itemCount)
+    }
+
+    /** Rebinds page grids against the latest persisted chapter counts without replacing the pager. */
+    fun updateStories(latest: List<Story>) {
+        stories = latest
         notifyItemRangeChanged(0, itemCount)
     }
 
@@ -1075,15 +1146,14 @@ internal fun ScreenHost.showAddStory() {
         var tabSpinner: Spinner? = null
         if (tabs.isNotEmpty()) {
             section("Save to tab")
-            tabSpinner = Spinner(context)
-            val tabLabels = listOf("Unassigned") + tabs.map { it.name }
-            tabSpinner.adapter = ArrayAdapter(app, android.R.layout.simple_spinner_dropdown_item, tabLabels)
+            val tabLabels = tabs.map { it.name }
+            tabSpinner = makeThemedSpinner(context, tabLabels)
             addView(tabSpinner)
         }
         // A2: the primary action is full-width for a consistent, large tap target.
         fullButton("Fetch Story", Btn.FILLED, R.drawable.wna_download, topMarginDp = Space.LG) {
             val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
-            val tabId = tabs.getOrNull(spinnerPos - 1)?.id
+            val tabId = tabs.getOrNull(spinnerPos)?.id
             syncStory(url.text.toString(), tabId)
         }
         // A3: the "Or browse" Royal Road / Scribble Hub buttons were removed — they open the same
