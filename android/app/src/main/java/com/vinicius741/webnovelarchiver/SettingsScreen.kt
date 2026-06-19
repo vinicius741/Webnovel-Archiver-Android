@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver
 
+import android.app.AlertDialog
 import android.text.InputType
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
@@ -85,7 +87,7 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, chunk size, and voice") { showTtsSettings() }
         divider()
         section("Library Organization")
-        settingRow(R.drawable.wna_folder, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
+        settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
         divider()
         section("Data")
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
@@ -311,6 +313,7 @@ internal fun ScreenHost.showTabs() {
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
+        spacer(Space.SM)
         row {
             val name = makeField(context, "", "New tab name", InputType.TYPE_CLASS_TEXT)
             addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -335,7 +338,7 @@ internal fun ScreenHost.showTabs() {
                     row {
                         addView(
                             ImageView(context).apply {
-                                setImageDrawable(context.tintedIcon(R.drawable.wna_folder, ThemeManager.colors.primary))
+                                setImageDrawable(context.tintedIcon(R.drawable.wna_tab, ThemeManager.colors.primary))
                                 layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
                             },
                         )
@@ -349,27 +352,30 @@ internal fun ScreenHost.showTabs() {
                         val novelLabel = if (novelCount == 1) "novel" else "novels"
                         addView(makeText(context, "$novelCount $novelLabel", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
                     }
-                    flow {
-                        button("Up", Btn.TEXT, R.drawable.wna_up) {
+                    row(gravity = Gravity.END) {
+                        tabActionButton(R.drawable.wna_up, "Move ${tab.name} up", enabled = index > 0) {
                             if (index > 0) {
                                 storage.saveTabs(TabPlanning.move(tabs, index, index - 1))
                                 showTabs()
                             }
                         }
-                        button("Down", Btn.TEXT, R.drawable.wna_down) {
+                        tabActionButton(R.drawable.wna_down, "Move ${tab.name} down", enabled = index < tabs.lastIndex) {
                             if (index < tabs.lastIndex) {
                                 storage.saveTabs(TabPlanning.move(tabs, index, index + 1))
                                 showTabs()
                             }
                         }
-                        button("Rename", Btn.TEXT, R.drawable.wna_edit) {
-                            prompt("Rename Tab", tab.name) {
+                        tabActionButton(R.drawable.wna_edit, "Rename ${tab.name}") {
+                            showRenameTabPrompt(tab.name) {
                                 storage.saveTabs(TabPlanning.rename(tabs, tab.id, it))
                                 showTabs()
                             }
                         }
-                        // T2: Delete uses the error variant so it reads as destructive, not routine.
-                        button("Delete", Btn.ERROR, R.drawable.wna_delete) {
+                        tabActionButton(
+                            R.drawable.wna_delete,
+                            "Delete ${tab.name}",
+                            tint = ThemeManager.colors.error,
+                        ) {
                             confirm("Delete tab \"${tab.name}\" and move its novels to Unassigned?", confirmLabel = "Delete") {
                                 storage.getLibrary().forEach { story ->
                                     if (story.tabId == tab.id) {
@@ -386,4 +392,54 @@ internal fun ScreenHost.showTabs() {
             )
         }
     }
+}
+
+private fun ScreenHost.showRenameTabPrompt(
+    tabName: String,
+    onSave: (String) -> Unit,
+) {
+    val input = makeField(app, tabName, "Rename Tab", InputType.TYPE_CLASS_TEXT)
+    val content =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(app.dp(Space.XL), app.dp(Space.MD), app.dp(Space.XL), 0)
+            addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+    val dialog =
+        AlertDialog
+            .Builder(app)
+            .setTitle("Rename Tab")
+            .setView(content)
+            .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
+            .setNegativeButton("Cancel", null)
+            .create()
+    dialog.show()
+    dialog.applyAppTheme()
+}
+
+private fun LinearLayout.tabActionButton(
+    iconRes: Int,
+    description: String,
+    tint: Int = ThemeManager.colors.primary,
+    enabled: Boolean = true,
+    action: () -> Unit,
+) {
+    val size = context.dp(44)
+    addView(
+        ImageView(context).apply {
+            contentDescription = description
+            setImageDrawable(context.tintedIcon(iconRes, tint))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2))
+            background = selectableRipple(tint)
+            isEnabled = enabled
+            isClickable = enabled
+            isFocusable = enabled
+            alpha = if (enabled) 1f else 0.35f
+            if (enabled) setOnClickListener { action() }
+        },
+        LinearLayout.LayoutParams(size, size).apply {
+            if (childCount > 0) marginStart = context.dp(Space.SM)
+        },
+    )
 }
