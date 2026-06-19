@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.ui
 
 import android.webkit.WebSettings
 import android.webkit.WebView
+import com.vinicius741.webnovelarchiver.app.MainActivity
 
 /**
  * Centralized WebView configuration (Reliability R9). Reader and Browser WebViews route through
@@ -10,7 +11,7 @@ import android.webkit.WebView
  * Two policies:
  *  - [Reader]: JS off by default; opt-in via `enableTtsHighlight` so the reader can run the TTS
  *    highlight + tap-to-start script (parity gap 3). When JS is on, callers MUST sanitize the
- *    chapter HTML first ([com.vinicius741.webnovelarchiver.core.ChapterHtmlSanitizer]); file/content
+ *    chapter HTML first ([com.vinicius741.webnovelarchiver.feature.reader.ChapterHtmlSanitizer]); file/content
  *    access stays locked down either way, so the only script that can run is this app's own.
  *  - [Browser]: JS + DOM storage ON (required for novel sites' TOC pagination) but with file/content
  *    access locked down and Safe Browsing enabled where the platform supports it.
@@ -24,7 +25,7 @@ object WebViewSafety {
      *
      * @param enableTtsHighlight when true, enables JavaScript so the reader can run the TTS
      *   paragraph-highlight + tap-to-start script (parity gap 3). Callers MUST first sanitize the
-     *   chapter HTML through [com.vinicius741.webnovelarchiver.core.ChapterHtmlSanitizer]; file and
+     *   chapter HTML through [com.vinicius741.webnovelarchiver.feature.reader.ChapterHtmlSanitizer]; file and
      *   content access stay disabled regardless, so the only script that can run is the one this app
      *   injects. Defaults to `false` to preserve the historical posture for any non-reader caller.
      */
@@ -84,7 +85,7 @@ object WebViewSafety {
     }
 
     /**
-     * Walks [root] and destroys every WebView in the tree. Public so [com.vinicius741.webnovelarchiver.MainActivity]
+     * Walks [root] and destroys every WebView in the tree. Public so [com.vinicius741.webnovelarchiver.app.MainActivity]
      * can clean up the final Reader/Browser WebView in onDestroy, and so Scaffold can call it before
      * `removeAllViews()` on navigation.
      */

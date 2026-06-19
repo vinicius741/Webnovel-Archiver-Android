@@ -10,9 +10,10 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.vinicius741.webnovelarchiver.ScreenHost
-import com.vinicius741.webnovelarchiver.core.TtsVoicePlanning
-import com.vinicius741.webnovelarchiver.core.VoiceInfo
+import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsVoicePlanning
+import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 
 /** Applies the active app theme to framework AlertDialogs after they have been shown. */
 internal fun AlertDialog.applyAppTheme() {

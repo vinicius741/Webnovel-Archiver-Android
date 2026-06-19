@@ -7,10 +7,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import com.vinicius741.webnovelarchiver.ScreenHost
-import com.vinicius741.webnovelarchiver.core.DisplayPreferences
-import com.vinicius741.webnovelarchiver.core.PreferenceNormalization
-import com.vinicius741.webnovelarchiver.showTtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
+import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
+import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
+import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import kotlin.math.roundToInt
 
 /**

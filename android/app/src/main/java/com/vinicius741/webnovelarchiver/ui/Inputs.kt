@@ -7,6 +7,7 @@ import android.text.InputType
 import android.util.TypedValue
 import android.widget.CheckBox
 import android.widget.EditText
+import com.vinicius741.webnovelarchiver.R
 
 // ------------------------------------------------------------------
 // Inputs

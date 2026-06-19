@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.ui
 
 import android.graphics.Color
+import com.vinicius741.webnovelarchiver.app.MainActivity
 
 /**
  * Material Design 3 color tokens for a single theme. Values mirror the legacy

@@ -12,9 +12,9 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ScreenHost
-import com.vinicius741.webnovelarchiver.core.Story
-import com.vinicius741.webnovelarchiver.showCoverDialog
+import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
+import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 
 internal data class AppBarAction(
     val icon: Int,

@@ -16,14 +16,14 @@ import android.widget.Toast
 import androidx.window.layout.WindowMetricsCalculator
 import coil.load
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ScreenHost
-import com.vinicius741.webnovelarchiver.core.DisplayPreferences
-import com.vinicius741.webnovelarchiver.core.DownloadJobStatus
-import com.vinicius741.webnovelarchiver.core.DownloadStatus
-import com.vinicius741.webnovelarchiver.core.ScreenLayout
-import com.vinicius741.webnovelarchiver.core.ScreenLayoutMode
-import com.vinicius741.webnovelarchiver.core.ScreenLayoutResult
-import com.vinicius741.webnovelarchiver.core.resolveScreenLayout
+import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
+import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
+import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
+import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayout
+import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutMode
+import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
+import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
 
 /** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)

@@ -4,11 +4,15 @@ These instructions apply to the active Kotlin application under `android/`. Comm
 
 ## Project Map
 
-- `app/src/main/java/com/vinicius741/webnovelarchiver/MainActivity.kt` owns Android lifecycle and dependency wiring only.
-- Screen, presenter, dialog, and story-action files in the main package implement navigation and programmatic View UI through `ScreenHost`.
-- `core/` contains models, storage, source providers, pure planning functions, and separately named stateful engines.
-- `download/` and `tts/` contain foreground services.
-- `ui/` contains the programmatic View DSL, themes, responsive/foldable behavior, and reusable widgets.
+All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarchiver/`.
+
+- `app/` owns Android lifecycle and process-wide dependency wiring; `navigation/` defines the `ScreenHost` contract.
+- `feature/` groups browser, cleanup, details, downloads, library, reader, settings, and shared story-action UI by user-facing flow.
+- `domain/model/` contains persisted/application models; `domain/archive/` and `domain/story/` contain pure domain rules.
+- `data/repository/`, `data/storage/`, and `data/backup/` own state access and persistence concerns.
+- `source/` owns network/source providers, while `sync/`, `download/`, `epub/`, `cleanup/`, and `tts/` own their respective engines and planning logic.
+- `ui/` contains the programmatic View DSL, themes, responsive/foldable behavior, and reusable widgets; `ui/layout/` contains pure layout planning.
+- Unit tests mirror production package paths under `app/src/test/java/`.
 
 ## Architecture Rules
 
@@ -23,7 +27,7 @@ These instructions apply to the active Kotlin application under `android/`. Comm
 ## Build and Validation
 
 - Debug build: `android/gradlew -p android :app:assembleDebug`
-- Targeted test class: `android/gradlew -p android :app:testDebugUnitTest --tests "com.vinicius741.webnovelarchiver.core.TextCleanupTest"`
+- Targeted test class: `android/gradlew -p android :app:testDebugUnitTest --tests "com.vinicius741.webnovelarchiver.cleanup.TextCleanupTest"`
 - Targeted test method: `android/gradlew -p android :app:testDebugUnitTest --tests "*.TextCleanupTest.cleanupRemovesScripts"`
 - Kotlin formatting: `android/gradlew -p android :app:formatKotlin`
 - Kotlin format check: `android/gradlew -p android :app:lintKotlin`
@@ -47,7 +51,7 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 - Use `scripts/redeploy.sh` for a one-shot debug rebuild/install/relaunch and `scripts/watch-redeploy.sh` for iterative UI work.
 - Both scripts must target an `emulator-` serial explicitly and fail closed rather than selecting a physical device.
 - Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`
-- Main activity: `com.vinicius741.webnovelarchiver.MainActivity`
+- Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`
 - Redeploy is a cold restart. Persisted `AppStorage` state survives; in-memory state does not.
 
 ## Completion Expectations

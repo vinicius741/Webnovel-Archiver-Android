@@ -14,11 +14,9 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.vinicius741.webnovelarchiver.MainActivity
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.appContainer
-import com.vinicius741.webnovelarchiver.core.DownloadEngine
-import com.vinicius741.webnovelarchiver.core.DownloadProgress
+import com.vinicius741.webnovelarchiver.app.MainActivity
+import com.vinicius741.webnovelarchiver.app.appContainer
 
 class DownloadForegroundService : Service() {
     private lateinit var engine: DownloadEngine

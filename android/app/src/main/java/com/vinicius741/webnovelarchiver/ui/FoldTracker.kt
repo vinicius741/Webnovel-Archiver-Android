@@ -4,6 +4,8 @@ import android.app.Activity
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
 import androidx.window.layout.WindowLayoutInfo
+import com.vinicius741.webnovelarchiver.app.MainActivity
+import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +22,7 @@ import kotlinx.coroutines.launch
  * The presence of *any* [FoldingFeature] in the [WindowLayoutInfo] is enough; the planning engine
  * only consults the boolean (matching the RN `hasFoldingFeature`), not the hinge geometry.
  *
- * Constructed once in [com.vinicius741.webnovelarchiver.MainActivity] and re-queried on every screen
+ * Constructed once in [com.vinicius741.webnovelarchiver.app.MainActivity] and re-queried on every screen
  * render via [com.vinicius741.webnovelarchiver.ui.currentScreenLayout].
  */
 class FoldTracker(

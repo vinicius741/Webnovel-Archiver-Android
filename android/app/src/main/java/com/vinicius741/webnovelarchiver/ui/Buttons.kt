@@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable
 import android.util.TypedValue
 import android.widget.Button
 import android.widget.TextView
+import com.vinicius741.webnovelarchiver.R
 
 // ------------------------------------------------------------------
 // Buttons

@@ -21,13 +21,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
-import com.vinicius741.webnovelarchiver.MainActivity
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.appContainer
-import com.vinicius741.webnovelarchiver.core.TtsEngine
-import com.vinicius741.webnovelarchiver.core.TtsNotificationActions
-import com.vinicius741.webnovelarchiver.core.TtsPlaybackSnapshot
-import com.vinicius741.webnovelarchiver.core.TtsPlaybackState
+import com.vinicius741.webnovelarchiver.app.MainActivity
+import com.vinicius741.webnovelarchiver.app.appContainer
 
 class TtsForegroundService : Service() {
     private lateinit var engine: TtsEngine

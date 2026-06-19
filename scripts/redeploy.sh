@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PKG="com.vinicius741.webnovelarchiver.nativeapp.debug"
-ACTIVITY="com.vinicius741.webnovelarchiver.MainActivity"
+ACTIVITY="com.vinicius741.webnovelarchiver.app.MainActivity"
 APK="android/app/build/outputs/apk/debug/app-debug.apk"
 ADB="${ADB:-$(command -v adb || echo adb)}"
 APK_TIME="${APK}.mtime"
