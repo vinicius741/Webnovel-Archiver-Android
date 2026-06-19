@@ -19,6 +19,20 @@ data class TtsPlaybackSnapshot(
 )
 
 object TtsPlaybackState {
+    /**
+     * Returns the chapter the visible reader should open when TTS moves to another chapter in the
+     * same story. Chunk updates for the chapter already on screen, stopped playback, and snapshots
+     * from a different story do not cause reader navigation.
+     */
+    fun readerChapterTransition(
+        currentStoryId: String,
+        currentChapterId: String,
+        snapshot: TtsPlaybackSnapshot?,
+    ): String? =
+        snapshot
+            ?.takeIf { it.storyId == currentStoryId && it.chapterId != currentChapterId }
+            ?.chapterId
+
     /** Human-readable "Chunk X / Y" label used by the notification body + the reader transport. */
     fun chunkProgress(
         chunkIndex: Int,

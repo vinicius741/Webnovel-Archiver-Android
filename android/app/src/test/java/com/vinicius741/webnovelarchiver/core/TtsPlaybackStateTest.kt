@@ -8,6 +8,35 @@ import org.junit.Test
 
 class TtsPlaybackStateTest {
     @Test
+    fun readerChapterTransitionFollowsSameStoryChapterChange() {
+        val snapshot = playbackSnapshot(storyId = "story-1", chapterId = "chapter-2")
+
+        assertEquals(
+            "chapter-2",
+            TtsPlaybackState.readerChapterTransition("story-1", "chapter-1", snapshot),
+        )
+    }
+
+    @Test
+    fun readerChapterTransitionIgnoresCurrentChapterAndOtherStories() {
+        assertNull(
+            TtsPlaybackState.readerChapterTransition(
+                "story-1",
+                "chapter-1",
+                playbackSnapshot(storyId = "story-1", chapterId = "chapter-1"),
+            ),
+        )
+        assertNull(
+            TtsPlaybackState.readerChapterTransition(
+                "story-1",
+                "chapter-1",
+                playbackSnapshot(storyId = "story-2", chapterId = "chapter-2"),
+            ),
+        )
+        assertNull(TtsPlaybackState.readerChapterTransition("story-1", "chapter-1", null))
+    }
+
+    @Test
     fun chunkProgressReportsOneIndexedPosition() {
         assertEquals("Chunk 1 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 0, totalChunks = 10))
         assertEquals("Chunk 5 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 4, totalChunks = 10))
@@ -95,4 +124,17 @@ class TtsPlaybackStateTest {
         assertTrue(snapshot?.isPaused == true)
         assertFalse(snapshot?.isPlaying == true)
     }
+
+    private fun playbackSnapshot(
+        storyId: String,
+        chapterId: String,
+    ) = TtsPlaybackSnapshot(
+        title = "Chapter",
+        storyId = storyId,
+        chapterId = chapterId,
+        chunkIndex = 0,
+        totalChunks = 1,
+        isPlaying = true,
+        isPaused = false,
+    )
 }

@@ -160,6 +160,14 @@ internal fun ScreenHost.showReader(
     activeReaderTtsListener?.let { ttsEngine.removeStateListener(it) }
     val readerListener: (TtsPlaybackSnapshot?) -> Unit = { snapshot ->
         app.runOnUiThread {
+            val chapterToOpen = TtsPlaybackState.readerChapterTransition(story.id, chapter.id, snapshot)
+            if (chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
+                // Auto-advance changes the engine session before emitting its first snapshot for the
+                // next chapter. Follow that transition by rebuilding the reader for the same chapter
+                // the engine is now speaking; showReader swaps this listener out during the rebuild.
+                showReader(story.id, chapterToOpen)
+                return@runOnUiThread
+            }
             val relevant = snapshot?.takeIf { it.storyId == story.id && it.chapterId == chapter.id }
             transportSnapshot = relevant
             // Gap 4 transport refresh. The bar is always present in the tree; we toggle its
