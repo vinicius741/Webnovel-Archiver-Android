@@ -27,6 +27,11 @@ internal data class AppBarAction(
     val onClick: () -> Unit,
 )
 
+internal enum class ScreenChrome {
+    STANDARD,
+    IMMERSIVE,
+}
+
 internal fun ScreenHost.screen(
     title: String,
     subtitle: String? = null,
@@ -34,6 +39,7 @@ internal fun ScreenHost.screen(
     actions: List<AppBarAction> = emptyList(),
     fab: (() -> Unit)? = null,
     scrollable: Boolean = false,
+    chrome: ScreenChrome = ScreenChrome.STANDARD,
     block: LinearLayout.() -> Unit,
 ) {
     // Capture the outgoing ScrollView's position before the tree is torn down, so a re-render of the
@@ -57,11 +63,11 @@ internal fun ScreenHost.screen(
             // content stays clear of it whether the body scrolls or not.
             setPadding(0, 0, 0, systemBarBottom())
         }
-    column.addView(appBar(title, subtitle, onBack, actions))
+    if (chrome == ScreenChrome.STANDARD) column.addView(appBar(title, subtitle, onBack, actions))
     val content =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(Spacing.XL), dp(Spacing.MD), dp(Spacing.XL), dp(Spacing.XL))
+            if (chrome == ScreenChrome.STANDARD) setPadding(dp(Spacing.XL), dp(Spacing.MD), dp(Spacing.XL), dp(Spacing.XL))
             block()
         }
     val body: View =

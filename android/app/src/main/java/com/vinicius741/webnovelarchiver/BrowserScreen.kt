@@ -1,36 +1,46 @@
 package com.vinicius741.webnovelarchiver
 
-import android.content.Intent
-import android.net.Uri
+import android.content.res.ColorStateList
+import android.view.Gravity
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.ArrayAdapter
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.Spinner
-import com.vinicius741.webnovelarchiver.ui.*
+import android.widget.ProgressBar
+import com.vinicius741.webnovelarchiver.ui.ScreenChrome
+import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.WebViewSafety
+import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.makeField
+import com.vinicius741.webnovelarchiver.ui.screen
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
+import com.vinicius741.webnovelarchiver.ui.systemBarTop
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 internal fun ScreenHost.showBrowser(startUrl: String) {
     val tabs = storage.getTabs().sortedBy { it.order }
-    // System/app-bar back steps through in-webview history first, then returns to the Library —
-    // matching the on-screen navigation. `webRef` is populated inside the screen block below.
     var webRef: WebView? = null
-    screen(title = "Browser", subtitle = "Browse and import novels", onBack = {
+    val navigateBack = {
         val web = webRef
         if (web != null && web.canGoBack()) web.goBack() else showLibrary()
-    }) {
-        val activity = app
+    }
+    screen(
+        title = "Browser",
+        onBack = navigateBack,
+        chrome = ScreenChrome.IMMERSIVE,
+    ) {
         val web = WebView(context)
         webRef = web
-        // B4: address bar with a leading lock icon that reflects the current page's scheme, so https
-        // pages read as secure at a glance like a real browser URL bar.
         val input = makeField(context, startUrl, "Address", android.text.InputType.TYPE_TEXT_VARIATION_URI)
         val lockIcon =
-            android.widget.ImageView(context).apply {
+            ImageView(context).apply {
                 setImageDrawable(context.tintedIcon(R.drawable.wna_globe, ThemeManager.colors.onSurfaceVariant))
-                scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
                 setPadding(context.dp(Space.SM + 2), 0, context.dp(Space.XS + 2), 0)
             }
         val addressRow =
@@ -51,7 +61,6 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
             ),
         )
         addressRow.addView(input, LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        // Address bar: pressing Go/Done on the IME loads the typed URL.
         input.imeOptions = EditorInfo.IME_ACTION_GO
         input.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
@@ -61,16 +70,50 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
                 false
             }
         }
-        addView(addressRow)
-        // B3: the in-content "Back" button was removed — the app-bar back arrow already covers
-        // webview-history-then-Library. Go / Forward / Refresh remain for in-page navigation.
-        flow {
-            button("Go", Btn.TONAL, R.drawable.wna_arrow_forward) { web.loadUrl(resolveUrl(input.text.toString())) }
-            button("Forward", Btn.TEXT, R.drawable.wna_arrow_forward) { if (web.canGoForward()) web.goForward() }
-            button("Refresh", Btn.TEXT, R.drawable.wna_refresh) { web.reload() }
-        }
-        // R9: JS + DOM storage enabled (Scribble Hub TOC pagination needs AJAX) but file/content
-        // access locked down and Safe Browsing on. Centralized in WebViewSafety.
+
+        var currentUrl = resolveUrl(startUrl)
+        val importButton =
+            browserToolbarButton(R.drawable.wna_download, "Import novel") {
+                if (!isNovelUrl(currentUrl)) return@browserToolbarButton
+                if (tabs.isEmpty()) {
+                    syncStory(currentUrl, null)
+                } else {
+                    showStyledOptionsDialog(
+                        "Import to library",
+                        tabs.map { tab -> tab.name to { syncStory(currentUrl, tab.id) } },
+                    )
+                }
+            }
+        importButton.visibility = View.GONE
+
+        addView(
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setBackgroundColor(ThemeManager.colors.elevation2)
+                setPadding(context.dp(Space.SM), systemBarTop() + context.dp(Space.SM), context.dp(Space.SM), context.dp(Space.SM))
+                addView(browserToolbarButton(R.drawable.wna_arrow_back, "Back", navigateBack))
+                addView(
+                    addressRow,
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginStart = context.dp(Space.XS)
+                        marginEnd = context.dp(Space.XS)
+                    },
+                )
+                addView(browserToolbarButton(R.drawable.wna_refresh, "Refresh") { web.reload() })
+                addView(importButton)
+            },
+        )
+
+        val progress =
+            ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                progressTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+                progressBackgroundTintList = ColorStateList.valueOf(ThemeManager.colors.elevation2)
+                visibility = View.GONE
+            }
+        addView(progress, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, context.dp(2)))
+
         WebViewSafety.applyBrowserSettings(web)
         web.webViewClient =
             object : WebViewClient() {
@@ -79,17 +122,24 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
                     url: String?,
                     favicon: android.graphics.Bitmap?,
                 ) {
-                    if (url != null) input.setText(url)
+                    if (url != null) {
+                        currentUrl = url
+                        input.setText(url)
+                    }
                     updateLockIcon(lockIcon, url)
+                    importButton.visibility = if (isNovelUrl(url.orEmpty())) View.VISIBLE else View.GONE
                 }
 
                 override fun onPageFinished(
                     view: WebView?,
                     url: String?,
                 ) {
-                    if (url != null) input.setText(url)
+                    if (url != null) {
+                        currentUrl = url
+                        input.setText(url)
+                    }
                     updateLockIcon(lockIcon, url)
-                    if (!isNovelUrl(input.text.toString())) toast("Open a supported story page to import")
+                    importButton.visibility = if (isNovelUrl(url.orEmpty())) View.VISIBLE else View.GONE
                 }
             }
         web.webChromeClient =
@@ -98,32 +148,32 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
                     view: WebView?,
                     newProgress: Int,
                 ) {
+                    progress.progress = newProgress
+                    progress.visibility = if (newProgress in 0..99) View.VISIBLE else View.GONE
                 }
             }
-        // WebView fills all remaining vertical space; save/import controls dock below it.
         addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
-        // Below the WebView: save target + import actions docked at the bottom.
-        section("Save imported novel to")
-        val tabSpinner = Spinner(context)
-        val tabLabels = listOf("Unassigned") + tabs.map { it.name }
-        tabSpinner.adapter = ArrayAdapter(app, android.R.layout.simple_spinner_dropdown_item, tabLabels)
-        if (tabs.isNotEmpty()) addView(tabSpinner)
-        flow {
-            button("Import", Btn.FILLED, R.drawable.wna_download) {
-                val current = input.text.toString()
-                if (!isNovelUrl(current)) {
-                    toast("Open a supported story page before importing.")
-                } else {
-                    syncStory(current, tabs.getOrNull(tabSpinner.selectedItemPosition - 1)?.id)
-                }
-            }
-            button("External", Btn.TEXT, R.drawable.wna_open_external) {
-                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(resolveUrl(input.text.toString()))))
-            }
-        }
         web.loadUrl(resolveUrl(startUrl))
     }
 }
+
+private fun ScreenHost.browserToolbarButton(
+    icon: Int,
+    description: String,
+    onClick: () -> Unit,
+): ImageView =
+    ImageView(app).apply {
+        val size = app.dp(44)
+        contentDescription = description
+        setImageDrawable(app.tintedIcon(icon, ThemeManager.colors.onSurface))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(app.dp(Space.SM + 2), app.dp(Space.SM + 2), app.dp(Space.SM + 2), app.dp(Space.SM + 2))
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { onClick() }
+        layoutParams = LinearLayout.LayoutParams(size, size)
+    }
 
 /** B4: swap the leading address-bar icon between a lock (https) and a globe (http/other). */
 private fun updateLockIcon(
