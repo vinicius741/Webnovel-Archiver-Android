@@ -60,11 +60,10 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
                     .setToolbarColor(colors.elevation2)
                     .setNavigationBarColor(colors.background)
                     .build(),
-            )
-            .setCloseButtonIcon(closeIcon)
+            ).setCloseButtonIcon(closeIcon)
             .setActionButton(importIcon, "Import novel", importPendingIntent, true)
             .addMenuItem("Import novel", importPendingIntent)
-            .setShareState(CustomTabsIntent.SHARE_STATE_ON)
+            .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
             .build()
 
     runCatching { customTab.launchUrl(app, Uri.parse(url)) }
