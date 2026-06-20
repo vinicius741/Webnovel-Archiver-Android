@@ -268,12 +268,22 @@ internal fun ScreenHost.generateConfiguredEpub(
         toast("No downloaded chapters in selected EPUB range")
         return
     }
-    generateEpub(
-        story,
-        selectedEntries.map { it.chapter },
-        config.maxChaptersPerEpub,
-        selectedEntries.map { it.originalChapterNumber },
-    )
+    val run = {
+        generateEpub(
+            story,
+            selectedEntries.map { it.chapter },
+            config.maxChaptersPerEpub,
+            selectedEntries.map { it.originalChapterNumber },
+        )
+    }
+    // Warn before producing a partial EPUB: non-downloaded chapters in range are silently skipped by
+    // EpubSelection, so surface the gap and let the user confirm rather than generating unawares.
+    val coverage = EpubSelection.rangeCoverage(story, config)
+    if (coverage.missing > 0) {
+        showConfirmEpubWithMissingChaptersDialog(coverage) { run() }
+    } else {
+        run()
+    }
 }
 
 internal fun ScreenHost.generateEpub(
@@ -311,8 +321,20 @@ internal fun ScreenHost.navigateChapter(
     chapter: Chapter,
     delta: Int,
 ) {
-    val next = story.chapters.getOrNull(story.chapters.indexOfFirst { it.id == chapter.id } + delta) ?: return
-    showReader(story.id, next.id)
+    // Walk from the current chapter toward delta and open the first downloaded chapter, skipping
+    // gaps. Non-downloaded chapters aren't readable (no reader placeholder), so prev/next should land
+    // on real content rather than a dead end. If there is no downloaded chapter in that direction,
+    // do nothing — matching the previous `?: return` behavior at the end of the list.
+    val startIndex = story.chapters.indexOfFirst { it.id == chapter.id }
+    if (startIndex < 0) return
+    var i = startIndex + delta
+    while (i in story.chapters.indices) {
+        if (story.chapters[i].downloaded) {
+            showReader(story.id, story.chapters[i].id)
+            return
+        }
+        i += delta
+    }
 }
 
 // ---- URL helpers (pure delegates) ----

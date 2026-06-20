@@ -12,13 +12,57 @@ data class SelectedChapterForEpub(
     val originalChapterNumber: Int,
 )
 
+/**
+ * How many chapters fall inside the effective EPUB range vs. how many of those are downloaded.
+ * Used to warn before generating an EPUB from an incomplete download ([missing] > 0). Only the
+ * downloadable subset is ever written to the EPUB (see [EpubSelection.selectDownloadedChapters]).
+ */
+data class EpubRangeCoverage(
+    val inRange: Int,
+    val downloaded: Int,
+) {
+    val missing: Int get() = (inRange - downloaded).coerceAtLeast(0)
+}
+
 object EpubSelection {
     fun selectDownloadedChapters(
         story: Story,
         config: EpubConfig,
     ): List<SelectedChapterForEpub> {
         if (story.chapters.isEmpty()) return emptyList()
+        val range = effectiveRange(story, config)
 
+        return story.chapters
+            .mapIndexed { index, chapter -> SelectedChapterForEpub(chapter, index + 1) }
+            .filter { it.originalChapterNumber in range && it.chapter.downloaded }
+    }
+
+    /**
+     * Counts chapters in the effective range and how many of them are downloaded. Returns zeros when
+     * there are no chapters. The range math mirrors [selectDownloadedChapters] via [effectiveRange]
+     * so the two never drift.
+     */
+    fun rangeCoverage(
+        story: Story,
+        config: EpubConfig,
+    ): EpubRangeCoverage {
+        if (story.chapters.isEmpty()) return EpubRangeCoverage(inRange = 0, downloaded = 0)
+        val range = effectiveRange(story, config)
+        val inRangeIndices = (range.first - 1) until range.last
+        val inRange = inRangeIndices.count { it in story.chapters.indices }
+        val downloaded = inRangeIndices.count { it in story.chapters.indices && story.chapters[it].downloaded }
+        return EpubRangeCoverage(inRange = inRange, downloaded = downloaded)
+    }
+
+    /**
+     * The 1-based inclusive chapter range after clamping to the chapter list and applying the
+     * optional "start after bookmark" bump. Shared by [selectDownloadedChapters] and [rangeCoverage]
+     * so coverage reflects exactly what would be exported.
+     */
+    private fun effectiveRange(
+        story: Story,
+        config: EpubConfig,
+    ): IntRange {
         var start = config.rangeStart.coerceIn(1, story.chapters.size)
         val end = config.rangeEnd.coerceIn(start, story.chapters.size)
         if (config.startAfterBookmark && story.lastReadChapterId != null) {
@@ -27,10 +71,7 @@ object EpubSelection {
                 start = maxOf(start, bookmarkIndex + 2)
             }
         }
-
-        return story.chapters
-            .mapIndexed { index, chapter -> SelectedChapterForEpub(chapter, index + 1) }
-            .filter { it.originalChapterNumber in start..end && it.chapter.downloaded }
+        return start..end
     }
 
     fun displayNameForPath(path: String): String {

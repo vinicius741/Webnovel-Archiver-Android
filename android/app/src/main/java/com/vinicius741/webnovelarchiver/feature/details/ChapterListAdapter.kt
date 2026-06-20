@@ -155,12 +155,22 @@ class ChapterListAdapter(
             return
         }
 
+        // A chapter that isn't downloaded can't be read yet, so it isn't tappable: no ripple, no click
+        // listener. The existing outlineVariant status dot + muted title still show which chapters
+        // remain to be fetched. (A downloading/queued/failed chapter also has downloaded == false, so
+        // it is blocked here too — its live status is still conveyed by the dot/spinner/subtitle.)
+        val openable = chapter.downloaded
         val radiusPx = context.dp(Space.SM).toFloat()
         row.apply {
-            background = ripple(roundedBg(ThemeManager.colors.elevation1, radiusPx), radiusPx, ThemeManager.colors.onSurface)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { host.showReader(story.id, chapter.id) }
+            background =
+                if (openable) {
+                    ripple(roundedBg(ThemeManager.colors.elevation1, radiusPx), radiusPx, ThemeManager.colors.onSurface)
+                } else {
+                    roundedBg(ThemeManager.colors.elevation1, radiusPx)
+                }
+            isClickable = openable
+            isFocusable = openable
+            if (openable) setOnClickListener { host.showReader(story.id, chapter.id) }
         }
         // Live status from the download queue takes precedence over the static downloaded flag, so
         // an in-flight/queued/failed chapter shows real-time feedback rather than "not downloaded".
@@ -186,7 +196,9 @@ class ChapterListAdapter(
                         context,
                         "${index + 1}. ${sanitizeTitle(chapter.title)}",
                         Type.TITLE_SMALL,
-                        ThemeManager.colors.onSurface,
+                        // Dim the title when the chapter can't be opened so the row reads as disabled,
+                        // matching the faint status dot used for non-downloaded chapters.
+                        if (openable) ThemeManager.colors.onSurface else ThemeManager.colors.onSurfaceVariant,
                     ).apply {
                         maxLines = 2
                         ellipsize = TextUtils.TruncateAt.END

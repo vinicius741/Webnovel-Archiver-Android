@@ -79,7 +79,16 @@ internal fun ScreenHost.showLibrary() {
                     persistTab(newTabId)
                 }.view,
             )
-            addView(makeEmptyState(context, "No novels yet. Tap + to add a Royal Road or Scribble Hub story.", R.drawable.wna_menu_book))
+            addView(
+                makeEmptyState(
+                    context,
+                    message = "Import a Royal Road or Scribble Hub story to start building your library.",
+                    title = "Your library is empty",
+                    iconRes = R.drawable.wna_menu_book,
+                    actionLabel = "Add a story",
+                    onAction = { showAddStory() },
+                ),
+            )
             return@screen
         }
 

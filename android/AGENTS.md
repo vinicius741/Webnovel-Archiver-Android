@@ -7,6 +7,7 @@ These instructions apply to the active Kotlin application under `android/`. Comm
 All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarchiver/`.
 
 - `app/` owns Android lifecycle and process-wide dependency wiring; `navigation/` defines the `ScreenHost` contract.
+- `feature/browser/` launches third-party sites in a browser-powered Custom Tab and receives import URLs through `MainActivity`; do not move third-party OAuth back into a WebView.
 - `feature/` groups browser, cleanup, details, downloads, library, reader, settings, and shared story-action UI by user-facing flow.
 - `domain/model/` contains persisted/application models; `domain/archive/` and `domain/story/` contain pure domain rules.
 - `data/repository/`, `data/storage/`, and `data/backup/` own state access and persistence concerns.

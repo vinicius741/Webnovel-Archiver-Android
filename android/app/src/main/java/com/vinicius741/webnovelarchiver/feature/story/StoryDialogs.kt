@@ -20,6 +20,7 @@ import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.*
@@ -134,6 +135,29 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
                 toast("EPUB settings saved")
                 showDetails(story.id)
             }.setNegativeButton("Cancel", null)
+            .create()
+    dialog.show()
+    dialog.applyAppTheme()
+}
+
+/**
+ * Warns that the configured EPUB range includes chapters that aren't downloaded. Non-downloaded
+ * chapters are silently skipped by [com.vinicius741.webnovelarchiver.epub.EpubSelection], so without
+ * this gate the user could generate a partial EPUB with no notice. [onConfirm] runs only on "Generate".
+ */
+internal fun ScreenHost.showConfirmEpubWithMissingChaptersDialog(
+    coverage: EpubRangeCoverage,
+    onConfirm: () -> Unit,
+) {
+    val message =
+        "${coverage.missing} of ${coverage.inRange} chapter(s) in range aren't downloaded and will be skipped.\nGenerate anyway?"
+    val dialog =
+        AlertDialog
+            .Builder(app)
+            .setTitle("Incomplete download")
+            .setMessage(message)
+            .setPositiveButton("Generate") { _, _ -> onConfirm() }
+            .setNegativeButton("Cancel", null)
             .create()
     dialog.show()
     dialog.applyAppTheme()

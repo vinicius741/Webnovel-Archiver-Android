@@ -87,7 +87,14 @@ internal fun ScreenHost.showQueue() {
             }
         }
         if (queue.isEmpty()) {
-            centered.addView(makeEmptyState(context, "No active downloads. Downloaded chapters will appear here.", R.drawable.wna_download))
+            centered.addView(
+                makeEmptyState(
+                    context,
+                    message = "Chapters you download will appear here while they download.",
+                    title = "Nothing downloading",
+                    iconRes = R.drawable.wna_download,
+                ),
+            )
             addView(centeredShell, verticalFill())
             return@screen
         }

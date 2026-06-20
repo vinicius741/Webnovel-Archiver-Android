@@ -46,7 +46,12 @@ internal fun ScreenHost.showChapterSelection(
     screen(title = "Select Chapters", subtitle = story.title, onBack = { showDetails(story.id) }) {
         if (items.isEmpty()) {
             addView(
-                makeEmptyState(context, "All chapters are already downloaded.", R.drawable.wna_check),
+                makeEmptyState(
+                    context,
+                    message = "Every chapter is already saved — there's nothing left to queue.",
+                    title = "All caught up",
+                    iconRes = R.drawable.wna_check,
+                ),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
             )
             return@screen

@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
@@ -21,6 +22,8 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
+import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
+import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -137,20 +140,33 @@ class MainActivity :
         scope.launch {
             foldTracker.isFoldingFeature.collect { runOnUiThread { rerender?.invoke() } }
         }
+        val browserImportUrl = browserImportUrl(intent)
         val resumeTarget =
             TtsSessionPlanning.readerResumeTarget(storage.getTtsSession()) { storyId ->
                 storage.getStory(storyId)
             }
-        if (resumeTarget != null) {
+        if (browserImportUrl != null) {
+            showLibrary()
+            importFromBrowser(browserImportUrl)
+        } else if (resumeTarget != null) {
             showReader(resumeTarget.storyId, resumeTarget.chapterId)
         } else {
             showLibrary()
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        browserImportUrl(intent)?.let { url ->
+            showLibrary()
+            importFromBrowser(url)
+        }
+    }
+
     override fun onDestroy() {
-        // R9: destroy any lingering WebView in the frame (e.g. if the activity is destroyed while a
-        // Reader/Browser screen is showing) so it can't leak the activity reference.
+        // R9: destroy any lingering reader WebView in the frame so it can't leak the activity
+        // reference. Third-party browsing uses a browser-owned Custom Tab rather than this frame.
         com.vinicius741.webnovelarchiver.ui.WebViewSafety
             .disposeAll(frame)
         // Detach the reader's TTS observer (if a reader screen is active) so it can't fire into a
@@ -184,4 +200,6 @@ class MainActivity :
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
         ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
     }
+
+    private fun browserImportUrl(intent: Intent?): String? = BrowserImportPlanning.importUrl(intent?.action, intent?.dataString)
 }

@@ -46,7 +46,33 @@ internal fun ScreenHost.renderTabGrid(
     list.columnCount = layout.numColumns.coerceAtLeast(1)
     val visible = LibraryQuery.filterAndSort(stories, filter, selectedTabId, selectedTags, sortOption, sortAscending)
     if (visible.isEmpty()) {
-        list.addView(makeEmptyState(app, "No novels match this view.", R.drawable.wna_search))
+        // An empty state is page-level content, not a story card. Let it span the grid so it stays
+        // centered instead of being constrained to the first cell on multi-column layouts.
+        list.columnCount = 1
+        // Distinguish "this tab is just empty" (no search/tag filter active) from "your filters
+        // excluded everything". The first invites an action; the second should not, since the fix
+        // is to clear filters, not add a story.
+        val hasActiveFilter = filter.isNotBlank() || selectedTags.isNotEmpty()
+        val state =
+            if (hasActiveFilter) {
+                makeEmptyState(app, message = "Try clearing your search or filters.", title = "No matches", iconRes = R.drawable.wna_search)
+            } else {
+                makeEmptyState(
+                    app,
+                    message = "Novels you add or move here will show up in this tab.",
+                    title = "Nothing here yet",
+                    iconRes = R.drawable.wna_menu_book,
+                    actionLabel = "Add a story",
+                    onAction = { showAddStory() },
+                )
+            }
+        list.addView(
+            state,
+            ViewGroup.MarginLayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
         return
     }
     // The library always uses the horizontal story card (80×120 cover on the left, text on the right)

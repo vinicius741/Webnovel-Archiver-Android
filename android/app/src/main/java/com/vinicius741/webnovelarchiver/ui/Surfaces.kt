@@ -217,30 +217,76 @@ fun makeSelectableCardRow(
 // Empty state
 // ------------------------------------------------------------------
 
+/**
+ * A calm, contextual empty state. The icon sits inside a soft tinted disc (so it reads as an
+ * intentional illustration instead of a lone glyph floating in whitespace), an optional bold
+ * [title] leads the message, and an optional [actionLabel]/[onAction] renders a tonal CTA when
+ * there's an obvious next step (e.g. "Add a story"). All optional params default so legacy call
+ * sites keep working unchanged.
+ */
 fun makeEmptyState(
     context: Context,
     message: String,
     iconRes: Int = R.drawable.wna_book_open,
+    title: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
 ): View {
     val t = ThemeManager.current
+    val colors = t.colors
     return LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        setPadding(context.dp(Space.XL), context.dp(Space.XL + Space.XL), context.dp(Space.XL), context.dp(Space.XL + Space.XL))
+        setPadding(context.dp(Space.XL), context.dp(Space.XL + Space.LG), context.dp(Space.XL), context.dp(Space.XL + Space.LG))
+        // Soft tinted disc anchoring the icon. primaryContainer/onPrimaryContainer gives every
+        // theme (Obsidian gold, Midnight blue, Forest green, Classic navy) a recognisable accent
+        // without overpowering the surrounding surface.
+        val discSize = context.dp(80)
+        val iconSize = context.dp(32)
         addView(
-            ImageView(context).apply {
-                setImageDrawable(context.tintedIcon(iconRes, t.colors.outlineVariant))
-                layoutParams =
-                    LinearLayout.LayoutParams(context.dp(56), context.dp(56)).apply {
-                        bottomMargin = context.dp(Space.LG)
-                    }
-                alpha = 0.8f
+            LinearLayout(context).apply {
+                gravity = Gravity.CENTER
+                background = roundedBg(colors.primaryContainer, discSize / 2f)
+                addView(
+                    ImageView(context).apply {
+                        setImageDrawable(context.tintedIcon(iconRes, colors.onPrimaryContainer))
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    },
+                    LinearLayout.LayoutParams(iconSize, iconSize),
+                )
+            },
+            LinearLayout.LayoutParams(discSize, discSize).apply {
+                bottomMargin = context.dp(Space.LG)
             },
         )
+        title?.let {
+            addView(
+                makeText(context, it, Type.TITLE_MEDIUM, colors.onSurface).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                },
+            )
+        }
+        // Keep the legacy look for title-less call sites: BODY_LARGE reads as the primary line.
+        // Under a title the message becomes the supporting subtitle, so it drops to BODY_MEDIUM.
+        val messageType = if (title != null) Type.BODY_MEDIUM else Type.BODY_LARGE
         addView(
-            makeText(context, message, Type.BODY_LARGE, t.colors.onSurfaceVariant).apply {
+            makeText(context, message, messageType, colors.onSurfaceVariant).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
+                if (title != null) setPadding(0, context.dp(Space.XS), 0, 0)
+                maxLines = 4
             },
         )
+        if (actionLabel != null && onAction != null) {
+            addView(
+                makeButton(context, actionLabel, Btn.TONAL) { onAction() },
+                LinearLayout
+                    .LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = context.dp(Space.LG) },
+            )
+        }
     }
 }
