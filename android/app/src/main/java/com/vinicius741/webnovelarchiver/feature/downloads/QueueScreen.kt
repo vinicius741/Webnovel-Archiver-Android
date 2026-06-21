@@ -185,8 +185,13 @@ private fun ScreenHost.globalAppBarActions(counts: QueueStatusCounts): List<AppB
                 }
             GlobalQueueAction.CLEAR_DONE ->
                 AppBarAction(R.drawable.wna_check, "Clear Done") {
-                    downloadEngine.clearFinished()
-                    showQueue()
+                    confirm(
+                        "Remove all completed, failed, and cancelled downloads from the list?",
+                        confirmLabel = "Clear Done",
+                    ) {
+                        downloadEngine.clearFinished()
+                        showQueue()
+                    }
                 }
         }
     }
