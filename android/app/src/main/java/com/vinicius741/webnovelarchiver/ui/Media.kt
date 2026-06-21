@@ -160,6 +160,10 @@ fun makeProgressSummary(
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, 0, 0, 0)
+        // MATCH_PARENT so the weighted ProgressBar below stretches to fill the available width
+        // (the row/column it's placed in). Without this the root defaults to WRAP_CONTENT and the
+        // weight has no leftover space to claim, leaving the bar a thin sliver.
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         addView(
             TextView(context).apply {
                 text = "$done / $total"
