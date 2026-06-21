@@ -9,6 +9,7 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - `app/` owns Android lifecycle and process-wide dependency wiring; `navigation/` defines the `ScreenHost` contract.
 - `feature/browser/` launches third-party sites in a browser-powered Custom Tab and receives import URLs through `MainActivity`; do not move third-party OAuth back into a WebView.
 - `feature/` groups browser, cleanup, details, downloads, library, reader, settings, and shared story-action UI by user-facing flow.
+- "The download screen" is ambiguous: `feature/downloads/QueueScreen.kt` (`showQueue`) is the global queue across all stories; `feature/details/DetailsScreenDownload.kt` is the per-story download banner on the details page. The top-level `download/` package is the engine/planning layer (`DownloadEngine`, `DownloadForegroundService`, scheduler) and contains no screen — confirm which surface a change targets before editing.
 - `domain/model/` contains persisted/application models; `domain/archive/` and `domain/story/` contain pure domain rules.
 - `data/repository/`, `data/storage/`, and `data/backup/` own state access and persistence concerns.
 - `source/` owns network/source providers, while `sync/`, `download/`, `epub/`, `cleanup/`, and `tts/` own their respective engines and planning logic.
