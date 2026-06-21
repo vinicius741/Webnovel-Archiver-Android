@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.app.AppContainer
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
@@ -33,9 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The process loop itself ([start]) runs only in whichever component calls it (the foreground service).
  */
 class DownloadEngine(
-    private val storage: AppStorage,
+    private val repository: AppRepository,
     private val network: NetworkClient,
 ) {
+    private val storage: AppStorage = repository.storage
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private val nextAllowedJobAtBySource = mutableMapOf<String, Long>()
@@ -71,6 +73,7 @@ class DownloadEngine(
                 persist = storage::saveEnqueue,
             )
         if (startNow && plan.hasRunnableWork) start()
+        repository.publishDownloadState(libraryChanged = true, queueChanged = true)
         onChanged?.invoke()
     }
 
@@ -126,6 +129,7 @@ class DownloadEngine(
      */
     private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
         storage.mutateQueueInPlace { transform(it) }
+        repository.publishDownloadState(libraryChanged = false, queueChanged = true)
         onChanged?.invoke()
     }
 
@@ -189,6 +193,9 @@ class DownloadEngine(
                     storage.saveQueue(queue)
                 }
             }
+            if (pending.isNotEmpty()) {
+                repository.publishDownloadState(libraryChanged = false, queueChanged = true)
+            }
             emitProgress(null)
             if (pending.isEmpty()) {
                 val sleepUntil =
@@ -241,7 +248,10 @@ class DownloadEngine(
             }
             cleaned = true
         }
-        if (cleaned) onChanged?.invoke()
+        if (cleaned) {
+            repository.publishDownloadState(libraryChanged = true, queueChanged = true)
+            onChanged?.invoke()
+        }
     }
 
     private suspend fun processJob(job: DownloadJob) {
@@ -303,6 +313,7 @@ class DownloadEngine(
             current
         }
         emitProgress(queue.find { it.id == id })
+        repository.publishDownloadState(libraryChanged = true, queueChanged = true)
         onChanged?.invoke()
     }
 
@@ -330,6 +341,7 @@ class DownloadEngine(
             current
         }
         emitProgress(queue.find { it.id == job.id })
+        repository.publishDownloadState(libraryChanged = false, queueChanged = true)
         onChanged?.invoke()
     }
 

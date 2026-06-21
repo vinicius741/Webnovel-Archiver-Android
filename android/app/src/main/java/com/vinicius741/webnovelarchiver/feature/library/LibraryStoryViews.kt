@@ -30,6 +30,11 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import com.vinicius741.webnovelarchiver.ui.updateProgressSummary
+
+private data class LibraryProgressTag(
+    val storyId: String,
+)
 
 internal fun ScreenHost.renderTabGrid(
     stories: List<Story>,
@@ -87,7 +92,9 @@ internal fun ScreenHost.renderTabGrid(
                 content.isClickable = true
                 content.setOnClickListener { showDetails(story.id) }
                 content.setOnLongClickListener {
-                    showStoryActionsDialog(story)
+                    // Progress is patched without rebuilding this card, so resolve the latest story
+                    // before an action that may persist it; never act on the pre-download snapshot.
+                    storage.getStory(story.id)?.let(::showStoryActionsDialog)
                     true
                 }
                 addView(content)
@@ -96,6 +103,7 @@ internal fun ScreenHost.renderTabGrid(
                     // to open the story to see "12 / 140 chapters".
                     addView(
                         makeProgressSummary(context, story.downloadedChapters, story.totalChapters).apply {
+                            tag = LibraryProgressTag(story.id)
                             layoutParams =
                                 LinearLayout
                                     .LayoutParams(
@@ -110,6 +118,19 @@ internal fun ScreenHost.renderTabGrid(
                 }
             },
         )
+    }
+}
+
+/** Patches only the count text and progress bar for a story, preserving every scroll/gesture view. */
+internal fun patchLibraryProgress(
+    root: android.view.View,
+    story: Story,
+) {
+    if (root.tag == LibraryProgressTag(story.id)) {
+        updateProgressSummary(root, story.downloadedChapters, story.totalChapters)
+    }
+    if (root is ViewGroup) {
+        for (index in 0 until root.childCount) patchLibraryProgress(root.getChildAt(index), story)
     }
 }
 

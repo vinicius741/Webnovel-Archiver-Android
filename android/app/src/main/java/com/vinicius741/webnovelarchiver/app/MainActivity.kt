@@ -38,6 +38,7 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -71,6 +72,7 @@ class MainActivity :
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
+    override var screenObserver: Job? = null
 
     /** Foldable detector. Created in [onCreate] once engines/storage are up. */
     override lateinit var foldTracker: FoldTracker
@@ -123,7 +125,7 @@ class MainActivity :
         // The activity's download engine only enqueues/controls the queue (startNow=false); the
         // foreground service owns the actual process loop. They share one AppStorage, so queue
         // read-modify-writes serialize on its monitor (R3 single-owner).
-        downloadEngine = DownloadEngine(storage, container.network)
+        downloadEngine = DownloadEngine(repository, container.network)
         // Shared process-wide TTS engine (M2): the same instance the TtsForegroundService plays
         // through, so the reader's multicast state listener fires for service-driven playback.
         ttsEngine = container.ttsEngine
@@ -165,6 +167,7 @@ class MainActivity :
     }
 
     override fun onDestroy() {
+        screenObserver?.cancel()
         // R9: destroy any lingering reader WebView in the frame so it can't leak the activity
         // reference. Third-party browsing uses a browser-owned Custom Tab rather than this frame.
         com.vinicius741.webnovelarchiver.ui.WebViewSafety

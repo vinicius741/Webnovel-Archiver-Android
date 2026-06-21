@@ -110,10 +110,10 @@ internal class LibraryPagesAdapter(
         notifyItemRangeChanged(0, itemCount)
     }
 
-    /** Rebinds page grids against the latest persisted chapter counts without replacing the pager. */
-    fun updateStories(latest: List<Story>) {
+    /** Updates the backing snapshot for pages bound later; already-bound progress views are patched
+     *  directly by the screen so RecyclerView never rebinds during a vertical gesture. */
+    fun replaceStories(latest: List<Story>) {
         stories = latest
-        notifyItemRangeChanged(0, itemCount)
     }
 
     class PageViewHolder(

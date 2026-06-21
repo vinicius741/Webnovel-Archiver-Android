@@ -52,6 +52,7 @@ import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.truncateDescription
+import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showDetails(storyId: String) {
     val story = storage.getStory(storyId) ?: return showLibrary()
@@ -66,15 +67,15 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // patches it in place even when the header is scrolled off-screen (the slot detaches from the
     // window but the reference stays valid). Allocated lazily by the banner block below.
     var bannerSlot: ViewGroup? = null
+    var downloadActionSlot: LinearLayout? = null
     activeStory = story
     // Re-render on fold/unfold/rotation so the two-pane ↔ single-scroll layout can switch live.
     rerender = { showDetails(storyId) }
     val layout = currentScreenLayout()
     val operation = storyOperation?.takeIf { it.storyId == story.id }
     val isBusy = operation != null
-    // Live download feedback: reduce this story's queue jobs once per render. The banner + the
-    // per-chapter spinners are driven from this, and the auto-refresh loop below re-runs
-    // showDetails while [downloadSummary.isActive] so the counts/climb in real time.
+    // Live download feedback: reduce this story's queue jobs once for the initial render. Later
+    // repository events patch the banner and chapter rows in place below.
     val jobsForStory = storage.getQueue().filter { it.storyId == story.id }
     val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
@@ -124,40 +125,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
             infoPanel.addView(makeStoryOperationProgress(context, operation, indeterminate = true))
         }
         if (StoryActionGuards.canQueueDownloads(story)) {
-            val remainingChapters = story.chapters.count { !it.downloaded }
-            if (remainingChapters > 0) {
-                val downloadLabel =
-                    if (remainingChapters ==
-                        story.chapters.size
-                    ) {
-                        "Download All"
-                    } else {
-                        "Download Remaining ($remainingChapters)"
-                    }
-                // Disable while a download is already running for this story (and during any blocking
-                // operation) so the user can't enqueue a duplicate batch — mirrors RN's disabled={downloading}.
-                infoPanel.addView(
-                    makeFullWidthButton(
-                        context,
-                        downloadLabel,
-                        Btn.FILLED,
-                        R.drawable.wna_download,
-                        dp(Space.SM + 2),
-                        enabled =
-                            !isBusy && !downloadSummary.isActive,
-                    ) {
-                        queueDownload(
-                            story,
-                            story.chapters.mapIndexedNotNull {
-                                index,
-                                chapter,
-                                ->
-                                if (!chapter.downloaded) index else null
-                            },
-                        )
-                    },
-                )
-            }
+            downloadActionSlot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            renderDetailsDownloadAction(downloadActionSlot!!, story, downloadSummary, isBusy)
+            infoPanel.addView(downloadActionSlot!!)
         }
         if (showDownloadBanner) {
             // The live download banner lives in a stable slot view held by [bannerSlot] (a local
@@ -413,47 +383,72 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }
     }
-    // Real-time refresh: while this story has active downloads, patch the chapter rows + banner in
-    // place on a short cadence so the progress bar climbs and chapter rows flip to spinners /
-    // "Available Offline" as the foreground service completes them. This uses
-    // [refreshDetailsDownload] instead of showDetails() so the whole view tree is NOT torn down on
-    // every tick — that earlier path caused a visible flicker (blank frame → scroll snap-back) on
-    // each refresh. Storage is the single source of truth (R3 single-owner already serializes queue
-    // writes), so a fresh re-read each tick is correct and needs no service↔activity callback. Tag-
-    // guarded so the loop stops itself if the user navigates away or the batch finishes.
-    if (downloadSummary.isActive && frame.childCount > 0) {
+    // Download state is emitted process-wide by the shared repository. Patch only the chapter rows
+    // and banner after a coherent event; never poll disk or rebuild this screen for progress ticks.
+    // If the list is being dragged/flung, coalesce events until it becomes idle so an adapter update
+    // cannot interfere with the gesture.
+    if (frame.childCount > 0) {
         val root = frame.getChildAt(0)
-        root.tag = DETAILS_DOWNLOAD_TAG
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        val refresh =
-            object : Runnable {
-                override fun run() {
-                    if ((root.tag as? String) != DETAILS_DOWNLOAD_TAG || root.parent !== frame) return
-                    val chapterList = findDetailsChapterList(root)
-                    // Defer the patch if a touch/fling gesture is mid-flight so the row rebind doesn't
-                    // interrupt the user's scroll. Once idle, patch in place.
-                    if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
-                        handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
-                        return
-                    }
-                    if (refreshDetailsDownload(storyId, bannerSlot)) {
-                        handler.postDelayed(this, DETAILS_REFRESH_MS)
-                    } else if ((root.tag as? String) == DETAILS_DOWNLOAD_TAG && root.parent === frame) {
-                        // The batch drained while the user is still viewing this story. The in-place
-                        // patches above only touch chapter rows + the banner, never the action buttons,
-                        // so without this re-derive the Download All button would stay disabled after a
-                        // Sync-triggered auto-download (isActive went true → false but nothing re-ran
-                        // the enable rule at line 91). RN avoids this because its `downloading` flag is
-                        // reactive state that re-renders the button the moment the queue drains — this
-                        // single rebuild is the imperative equivalent. showDetails re-reads the queue, so
-                        // if a fresh batch is now active it starts a new loop; if not, no loop starts.
-                        // The scroll-idle guard above already guarantees we're not interrupting a fling.
-                        showDetails(storyId)
+        var patchPosted = false
+
+        fun postPatch() {
+            if (patchPosted) return
+            patchPosted = true
+            val patch =
+                object : Runnable {
+                    override fun run() {
+                        if (root.parent !== frame) return
+                        val chapterList = findDetailsChapterList(root)
+                        if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                            handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
+                            return
+                        }
+                        patchPosted = false
+                        refreshDetailsDownload(storyId, bannerSlot, downloadActionSlot, isBusy)
                     }
                 }
+            handler.post(patch)
+        }
+        // Capture before launching so an event before collector registration is not dropped.
+        val initialVersion = repository.downloadStateVersion.value
+        screenObserver =
+            scope.launch {
+                repository.downloadStateVersion.collect { version ->
+                    if (version == initialVersion) return@collect
+                    if (root.parent === frame) postPatch()
+                }
             }
-        handler.postDelayed(refresh, DETAILS_REFRESH_MS)
     }
+}
+
+/** Re-derives only the Details download action after a progress event. */
+internal fun ScreenHost.renderDetailsDownloadAction(
+    slot: LinearLayout,
+    story: Story,
+    summary: DownloadDetailsPlanning.StoryDownloadSummary,
+    isBusy: Boolean,
+) {
+    slot.removeAllViews()
+    val remainingChapters = story.chapters.count { !it.downloaded }
+    if (remainingChapters == 0 || !StoryActionGuards.canQueueDownloads(story)) return
+    val label = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
+    slot.addView(
+        makeFullWidthButton(
+            app,
+            label,
+            Btn.FILLED,
+            R.drawable.wna_download,
+            dp(Space.SM + 2),
+            enabled = !isBusy && !summary.isActive,
+        ) {
+            val latest = storage.getStory(story.id) ?: return@makeFullWidthButton
+            queueDownload(
+                latest,
+                latest.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null },
+            )
+        },
+    )
 }
 
 /** Fixed width (dp) of the left info pane in the two-pane details layout, within the RN range. */

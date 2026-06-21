@@ -15,15 +15,12 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Single owner of [AppStorage] (Reliability R2). All read-modify-write transactions on the library,
- * download queue, and settings go through [txMutex], so the activity and the download foreground
- * service can no longer race on `download_queue.json` or per-story files — even though both hold a
- * reference to this repository, there is exactly one [AppStorage] per process and one serialization
- * lock around every multi-step mutation.
+ * download queue, and settings synchronize on [storage], the same monitor used by [AppStorage] and
+ * the download engine. The activity and foreground service therefore cannot race on
+ * `download_queue.json` or per-story files, and there is one lock around every multi-step mutation.
  *
  * Exposes cached [StateFlow]s ([libraryFlow], [queueFlow], [settingsFlow]) that are refreshed after
  * each successful transaction, so screens can observe state without re-reading JSON on every render
@@ -33,13 +30,21 @@ import kotlinx.coroutines.sync.withLock
 class AppRepository(
     val storage: AppStorage,
 ) {
-    private val txMutex = Mutex()
-
     private val _libraryFlow = MutableStateFlow<List<Story>>(emptyList())
     val libraryFlow: StateFlow<List<Story>> = _libraryFlow.asStateFlow()
 
     private val _queueFlow = MutableStateFlow<List<DownloadJob>>(emptyList())
     val queueFlow: StateFlow<List<DownloadJob>> = _queueFlow.asStateFlow()
+
+    private val _downloadStateVersion = MutableStateFlow(0L)
+
+    /**
+     * Monotonic, process-wide signal emitted after a coherent download state snapshot has been
+     * published to [libraryFlow] and/or [queueFlow]. Screens observe this instead of polling JSON.
+     * A version is used rather than relying on model equality because queue/story models contain
+     * mutable fields and may be updated in place by the download engine.
+     */
+    val downloadStateVersion: StateFlow<Long> = _downloadStateVersion.asStateFlow()
 
     private val _settingsFlow = MutableStateFlow(storage.getSettings())
     val settingsFlow: StateFlow<AppSettings> = _settingsFlow.asStateFlow()
@@ -49,6 +54,22 @@ class AppRepository(
         _libraryFlow.value = storage.getLibrary()
         _queueFlow.value = storage.getQueue()
         _settingsFlow.value = storage.getSettings()
+    }
+
+    /**
+     * Publishes download-owned storage changes as one coherent observable update. The foreground
+     * service and Activity share this repository, so every visible screen receives the same event
+     * immediately without timers or cross-component callbacks.
+     */
+    internal fun publishDownloadState(
+        libraryChanged: Boolean,
+        queueChanged: Boolean,
+    ) {
+        synchronized(storage) {
+            if (libraryChanged) _libraryFlow.value = storage.getLibrary()
+            if (queueChanged) _queueFlow.value = storage.getQueue()
+            _downloadStateVersion.value = _downloadStateVersion.value + 1L
+        }
     }
 
     /** Cached library snapshot; reads from memory rather than re-parsing every story JSON. */
@@ -108,16 +129,16 @@ class AppRepository(
     // ---- Transactional library mutations ----
 
     /**
-     * Read-modify-write a story under [txMutex]. The block receives the current story (or null) and
-     * returns the replacement; the result is persisted and the library flow is refreshed.
+     * Read-modify-write a story under the shared [storage] monitor. The block receives the current
+     * story (or null) and returns the replacement; the result is persisted and the flow refreshed.
      */
     suspend fun updateStory(
         storyId: String,
         block: (Story?) -> Story?,
     ) {
-        txMutex.withLock {
+        synchronized(storage) {
             val current = storage.getStory(storyId)
-            val updated = block(current) ?: return@withLock
+            val updated = block(current) ?: return@synchronized
             storage.addOrUpdateStory(updated)
             _libraryFlow.value = storage.getLibrary()
         }
@@ -125,7 +146,7 @@ class AppRepository(
 
     /** Adds or replaces a story, then refreshes the library flow. */
     suspend fun upsertStory(story: Story) {
-        txMutex.withLock {
+        synchronized(storage) {
             storage.addOrUpdateStory(story)
             _libraryFlow.value = storage.getLibrary()
         }
@@ -135,7 +156,7 @@ class AppRepository(
     suspend fun persistStory(story: Story) = upsertStory(story)
 
     suspend fun deleteStory(id: String) {
-        txMutex.withLock {
+        synchronized(storage) {
             storage.deleteStory(id)
             _libraryFlow.value = storage.getLibrary()
             _queueFlow.value = storage.getQueue()
@@ -143,7 +164,7 @@ class AppRepository(
     }
 
     suspend fun saveLibrary(stories: List<Story>) {
-        txMutex.withLock {
+        synchronized(storage) {
             storage.saveLibrary(stories)
             _libraryFlow.value = storage.getLibrary()
         }
@@ -152,13 +173,11 @@ class AppRepository(
     // ---- Transactional queue mutations ----
 
     /**
-     * Read-modify-write the download queue under [txMutex]. The block receives the current queue and
-     * returns the new queue; the result is persisted and the queue flow is refreshed. This is the
-     * single serialization point that prevents the activity and the foreground service from racing
-     * on the queue file (Reliability R3).
+     * Read-modify-write the queue under the shared [storage] monitor. This is the same serialization
+     * point used by the download engine and prevents cross-component queue races (Reliability R3).
      */
     suspend fun updateQueue(block: (List<DownloadJob>) -> List<DownloadJob>) {
-        txMutex.withLock {
+        synchronized(storage) {
             val current = storage.getQueue()
             val updated = block(current)
             storage.saveQueue(updated)
@@ -168,7 +187,7 @@ class AppRepository(
 
     /** Replaces the queue wholesale and refreshes the flow (used by enqueue/recovery paths). */
     suspend fun saveQueue(jobs: List<DownloadJob>) {
-        txMutex.withLock {
+        synchronized(storage) {
             storage.saveQueue(jobs)
             _queueFlow.value = jobs
         }

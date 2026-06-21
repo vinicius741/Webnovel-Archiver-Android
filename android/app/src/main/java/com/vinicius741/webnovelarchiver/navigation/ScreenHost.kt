@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 
 enum class StoryOperationKind {
     EPUB,
@@ -80,6 +81,9 @@ interface ScreenHost {
      * opts in.
      */
     var rerender: (() -> Unit)?
+
+    /** Observer owned by the currently rendered screen. [screen] cancels it on navigation/rebuild. */
+    var screenObserver: Job?
 
     /** Foldable hinge/inner-display detector (androidx.window). Read on every screen render. */
     val foldTracker: FoldTracker

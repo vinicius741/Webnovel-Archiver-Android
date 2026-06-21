@@ -23,29 +23,22 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeProgress
 import com.vinicius741.webnovelarchiver.ui.makeText
 
-/** Auto-refresh cadence (ms) for the Details screen while a download is active. Short enough that
- *  the progress bar + spinners feel live, long enough to avoid thrashing the view tree. */
-internal const val DETAILS_REFRESH_MS = 1200L
-
 /** Avoid replacing the RecyclerView hierarchy while a touch/fling gesture is still active. */
 internal const val DETAILS_SCROLL_RETRY_MS = 250L
-
-/** Tag stamped on the Details root view so the download refresher can detect navigation away. */
-internal const val DETAILS_DOWNLOAD_TAG = "details-download"
 
 /**
  * Decides whether the live download banner should be shown for a story's current queue summary.
  * Shared by [showDetails] (initial render) and [refreshDetailsDownload] (in-place refresh) so the
- * banner appears/disappears by the same rule on the periodic refresh tick.
+ * banner appears/disappears by the same rule on each repository event.
  */
 internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownloadSummary): Boolean =
     summary.total > 0 &&
         (summary.isActive || summary.isPaused || (summary.isFinished && (summary.failed > 0 || summary.cancelled > 0)))
 
 /**
- * Handles the periodic Details download refresh *without* rebuilding the screen: reads the latest
- * queue + story, then patches the chapter adapter (per-row status flip to spinner/dot/"Available
- * Offline") and swaps the banner slot's contents in place. This replaces the old
+ * Handles a Details download event *without* rebuilding the screen: reads the repository's coherent
+ * queue + story snapshots, then patches the chapter adapter (per-row status flip to
+ * spinner/dot/"Available Offline") and swaps the banner slot's contents in place. This replaces the old
  * `showDetails(storyId)` full-screen re-render — tearing down the whole view tree every ~1.2s while
  * downloading caused a visible flicker (blank frame while the new tree inflated, then scroll
  * snapped back and was restored).
@@ -57,17 +50,19 @@ internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownl
  * — the exact flicker this fixes. The direct reference stays valid while detached: patching it is
  * safe and the change shows when the header scrolls back into view.
  *
- * Returns true while the story still has live download work (so the loop should keep refreshing);
- * false once the batch is fully terminal, so the loop can stop (the next navigation will rebuild).
  */
 internal fun ScreenHost.refreshDetailsDownload(
     storyId: String,
     bannerSlot: ViewGroup?,
-): Boolean {
-    val story = storage.getStory(storyId) ?: return false
-    val jobsForStory = storage.getQueue().filter { it.storyId == storyId }
+    downloadActionSlot: LinearLayout?,
+    isBusy: Boolean,
+) {
+    val story = repository.story(storyId) ?: return
+    val jobsForStory = repository.queue().filter { it.storyId == storyId }
     val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
+
+    downloadActionSlot?.let { renderDetailsDownloadAction(it, story, summary, isBusy) }
 
     // Patch the chapter rows in place via the adapter's update(), which reuses view holders
     // (notifyDataSetChanged) instead of inflating a new tree.
@@ -97,8 +92,6 @@ internal fun ScreenHost.refreshDetailsDownload(
             bannerSlot.removeAllViews()
         }
     }
-
-    return summary.isActive || summary.isPaused
 }
 
 internal fun findDetailsChapterList(root: View): androidx.recyclerview.widget.RecyclerView? {

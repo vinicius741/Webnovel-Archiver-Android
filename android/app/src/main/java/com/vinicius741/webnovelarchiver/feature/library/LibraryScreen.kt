@@ -1,14 +1,11 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
 import android.widget.FrameLayout
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.browser.showSourcePicker
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
@@ -29,6 +26,7 @@ import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrary() {
     activeStory = null
@@ -40,6 +38,7 @@ internal fun ScreenHost.showLibrary() {
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
     var stories: List<Story> = storage.getLibrary()
+    var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
     val tabs = storage.getTabs().sortedBy { it.order }
     screen(
@@ -170,8 +169,11 @@ internal fun ScreenHost.showLibrary() {
                 adapter.updateFilter(currentFilter(), selectedTags, sortOption, sortAscending)
             }
             refreshLibraryContent = { latest ->
+                val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
+                renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
                 stories = latest
-                adapter.updateStories(latest)
+                adapter.replaceStories(latest)
+                changed.forEach { patchLibraryProgress(frame, it) }
             }
             // Swipe → tab. Mirrors RN's `tabId !== activeTabId` guard so the two-way wiring never
             // feeds back into itself.
@@ -219,8 +221,10 @@ internal fun ScreenHost.showLibrary() {
                 renderTabGrid(stories, list, layoutResult, currentFilter(), selectedTabId, selectedTags, sortOption, sortAscending)
             }
             refreshLibraryContent = { latest ->
+                val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
+                renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
                 stories = latest
-                applyFilters()
+                changed.forEach { patchLibraryProgress(frame, it) }
             }
             val gridShell =
                 MaxWidthFrameLayout(context).apply {
@@ -271,58 +275,18 @@ internal fun ScreenHost.showLibrary() {
             applyFilters()
         }
     }
-    refreshLibraryContent?.let { scheduleLibraryRefresh(stories, it) }
-}
-
-private const val LIBRARY_TAG = "library-screen"
-private const val LIBRARY_REFRESH_MS = 1_000L
-
-/**
- * Keeps the chapter totals on Library cards in sync with the foreground download service. The
- * service owns a separate [com.vinicius741.webnovelarchiver.download.DownloadEngine], so its callbacks
- * cannot directly update this Activity. Poll storage only while queue work is unfinished, and patch
- * the existing grids when a rendered story field changes; this preserves the selected tab, filters,
- * pager position, and scroll position.
- */
-private fun ScreenHost.scheduleLibraryRefresh(
-    renderedStories: List<Story>,
-    onStoriesChanged: (List<Story>) -> Unit,
-) {
-    if (frame.childCount == 0 || !storage.getQueue().hasUnfinishedLibraryWork()) return
-    val root = frame.getChildAt(0)
-    root.tag = LIBRARY_TAG
-    var renderedSnapshot = renderedStories.libraryProgressSnapshot()
-    val handler = Handler(Looper.getMainLooper())
-    val refresh =
-        object : Runnable {
-            override fun run() {
-                if ((root.tag as? String) != LIBRARY_TAG || root.parent !== frame) return
-                val latestStories = storage.getLibrary()
-                val latestSnapshot = latestStories.libraryProgressSnapshot()
-                if (latestSnapshot != renderedSnapshot) {
-                    renderedSnapshot = latestSnapshot
-                    onStoriesChanged(latestStories)
-                }
-                if (storage.getQueue().hasUnfinishedLibraryWork()) {
-                    handler.postDelayed(this, LIBRARY_REFRESH_MS)
+    refreshLibraryContent?.let { refresh ->
+        val renderedRoot = frame.getChildAt(0)
+        // Capture before launching: unlike drop(1), this still handles a publish that races between
+        // the capture and collector registration because StateFlow then emits a different version.
+        val initialVersion = repository.downloadStateVersion.value
+        screenObserver =
+            scope.launch {
+                repository.downloadStateVersion.collect { version ->
+                    if (renderedRoot.parent !== frame) return@collect
+                    if (version == initialVersion) return@collect
+                    refresh(repository.library())
                 }
             }
-        }
-    handler.postDelayed(refresh, LIBRARY_REFRESH_MS)
-}
-
-private fun List<com.vinicius741.webnovelarchiver.domain.model.DownloadJob>.hasUnfinishedLibraryWork(): Boolean =
-    any {
-        it.status == DownloadJobStatus.Pending.wire ||
-            it.status == DownloadJobStatus.Downloading.wire ||
-            it.status == DownloadJobStatus.Paused.wire
     }
-
-private data class LibraryProgressSnapshot(
-    val id: String,
-    val downloadedChapters: Int,
-    val totalChapters: Int,
-)
-
-private fun List<Story>.libraryProgressSnapshot(): List<LibraryProgressSnapshot> =
-    map { LibraryProgressSnapshot(it.id, it.downloadedChapters, it.totalChapters) }
+}

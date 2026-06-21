@@ -1,7 +1,5 @@
 package com.vinicius741.webnovelarchiver.feature.downloads
 
-import android.os.Handler
-import android.os.Looper
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
@@ -43,10 +41,10 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
-import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.statusColor
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showQueue() {
     val queue = storage.getQueue()
@@ -110,63 +108,51 @@ internal fun ScreenHost.showQueue() {
         )
         addView(centeredShell, verticalFill())
     }
-    // Real-time refresh (formerly a 30s dumb timer). The actual download work runs in the foreground
-    // service's DownloadEngine — a *different* instance from this activity's — so onChanged/onProgress
-    // only update the notification, never this UI. With no cross-component signal available, we poll
-    // storage every second and rebuild only when the queue snapshot actually changed (or a "retry in
-    // Xs" countdown is ticking, which mutates the rendered string even when statuses don't). This
-    // keeps the screen live while a download is running without burning CPU when it's idle.
-    scheduleQueueRefresh(queue)
+    observeQueueUpdates()
 }
 
-private const val QUEUE_TAG = "queue-screen"
-private const val QUEUE_REFRESH_MS = 1_000L
-
-/**
- * Whether the rendered output can still change without any [DownloadJob] field changing: only the
- * "retry in Xm/Xs" countdown (driven by [formatRelativeTime] against the wall clock) does, so a tick
- * is needed while any job is waiting on [DownloadJob.nextRetryAt].
- */
-private fun List<DownloadJob>.hasActiveCountdown(): Boolean = any { it.nextRetryAt != null }
-
-private fun ScreenHost.scheduleQueueRefresh(renderedQueue: List<DownloadJob>) {
+private fun ScreenHost.observeQueueUpdates() {
     if (frame.childCount == 0) return
     val root = frame.getChildAt(0)
-    // Tag the root so the refresher can tell if the user has navigated away: a different screen
-    // replaces this view (and clears the tag), in which case the refresher stops itself.
-    root.tag = QUEUE_TAG
-    // Capture scroll across the rebuild so a 1s tick doesn't snap the list back to the top.
-    val savedScrollY = findScrollView(root)?.scrollY ?: 0
-    val handler = Handler(Looper.getMainLooper())
-    handler.postDelayed({
-        if ((root.tag as? String) != QUEUE_TAG || root.parent !== frame) return@postDelayed
-        val currentQueue = storage.getQueue()
-        val changed = !currentQueue.queueEquals(renderedQueue)
-        // Even with no status change, the "retry in Xs" countdown drifts each second, so keep
-        // ticking while any job has a nextRetryAt — otherwise the pill goes stale.
-        if (changed || currentQueue.hasActiveCountdown()) {
-            showQueue()
-            if (savedScrollY > 0) {
-                val target = findScrollView(frame)
-                target?.post { target.scrollTo(0, savedScrollY) }
-            }
-        } else {
-            // No change since last render: re-arm without rebuilding, still holding `renderedQueue`.
-            scheduleQueueRefresh(renderedQueue)
-        }
-    }, QUEUE_REFRESH_MS)
-}
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    var renderPosted = false
 
-/**
- * Structural equality on the fields the queue screen renders. [DownloadJob] is a `data class` with
- * `var` fields, so `==` compares them all — sufficient to detect any status/progress/countdown
- * mutation written by the service's process loop. Compared on every 1s tick to decide whether the
- * rebuild can be skipped.
- */
-private fun List<DownloadJob>.queueEquals(other: List<DownloadJob>): Boolean {
-    if (size != other.size) return false
-    for (i in indices) if (this[i] != other[i]) return false
-    return true
+    fun requestRender() {
+        if (renderPosted) return
+        renderPosted = true
+        var lastScrollY = findScrollView(root)?.scrollY ?: 0
+        val render =
+            object : Runnable {
+                override fun run() {
+                    if (root.parent !== frame) return
+                    val scroller = findScrollView(root)
+                    val currentScrollY = scroller?.scrollY ?: 0
+                    // Wait until both the drag and any following fling have settled. This screen
+                    // still rebuilds status-dependent controls, but never during a scroll gesture.
+                    if (currentScrollY != lastScrollY) {
+                        lastScrollY = currentScrollY
+                        handler.postDelayed(this, 100L)
+                        return
+                    }
+                    val savedScrollY = currentScrollY
+                    renderPosted = false
+                    showQueue()
+                    if (savedScrollY > 0) {
+                        findScrollView(frame)?.post { findScrollView(frame)?.scrollTo(0, savedScrollY) }
+                    }
+                }
+            }
+        handler.postDelayed(render, 100L)
+    }
+    // Capture before launching so an event before collector registration is not dropped.
+    val initialVersion = repository.downloadStateVersion.value
+    screenObserver =
+        scope.launch {
+            repository.downloadStateVersion.collect { version ->
+                if (version == initialVersion) return@collect
+                if (root.parent === frame) requestRender()
+            }
+        }
 }
 
 /** Global (whole-queue) actions rendered as the app-bar icon strip, conditional on queue state. */

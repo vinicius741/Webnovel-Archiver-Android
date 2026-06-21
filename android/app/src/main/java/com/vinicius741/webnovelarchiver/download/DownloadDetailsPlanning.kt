@@ -9,9 +9,9 @@ import com.vinicius741.webnovelarchiver.ui.size
  * screen (the native counterpart of the RN `useDownloadProgress` hook). All derivation happens
  * here so it is unit-testable without touching Android views or the queue file.
  *
- * The Details screen re-reads the queue on a periodic refresh tick (see `showDetails`) and calls
- * [summarizeStoryDownload] to decide whether to render the live banner + per-row status, and
- * [chapterJobStatuses] to drive the per-chapter spinner/dot. This module owns no state.
+ * The Details screen invokes these functions after a process-wide repository event to decide
+ * whether to render the live banner + per-row status and to drive each chapter's spinner/dot. This
+ * module owns no state.
  */
 object DownloadDetailsPlanning {
     /**

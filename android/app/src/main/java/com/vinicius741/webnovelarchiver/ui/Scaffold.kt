@@ -42,6 +42,8 @@ internal fun ScreenHost.screen(
     chrome: ScreenChrome = ScreenChrome.STANDARD,
     block: LinearLayout.() -> Unit,
 ) {
+    screenObserver?.cancel()
+    screenObserver = null
     // Capture the outgoing ScrollView's position before the tree is torn down, so a re-render of the
     // same screen (e.g. download-progress ticks, which re-run showDetails → screen(...)) doesn't snap
     // back to the top. scrollTo clamps to the valid range, so this is safe if the new content differs.

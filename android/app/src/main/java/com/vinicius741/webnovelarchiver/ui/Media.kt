@@ -180,3 +180,15 @@ fun makeProgressSummary(
         )
     }
 }
+
+/** Updates an existing [makeProgressSummary] without replacing its view hierarchy. */
+fun updateProgressSummary(
+    view: View,
+    done: Int,
+    total: Int,
+) {
+    val row = view as? LinearLayout ?: return
+    (row.getChildAt(0) as? TextView)?.text = "$done / $total"
+    (row.getChildAt(1) as? ProgressBar)?.progress =
+        if (total > 0) ((done.toFloat() / total).coerceIn(0f, 1f) * 100).toInt() else 0
+}
