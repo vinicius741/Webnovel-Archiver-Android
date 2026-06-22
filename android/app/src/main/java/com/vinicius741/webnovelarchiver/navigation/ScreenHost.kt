@@ -29,6 +29,20 @@ data class StoryOperationState(
 )
 
 /**
+ * Transient UI state for the Add Story screen. Kept on [ScreenHost] so it survives the in-place
+ * re-renders the screen performs while a fetch is in flight (mirroring [storyOperation] for the
+ * Details screen). `status` is `null` when idle; a non-null value means a fetch is running.
+ *
+ * A mutable holder rather than two `var`s on the interface because the Add Story screen reads and
+ * writes both fields together and Kotlin `var` interface properties backed by `MainActivity` fields
+ * are clearer bundled into one owner.
+ */
+class AddStoryScreenState {
+    var status: String? = null
+    var urlText: String? = null
+}
+
+/**
  * The contract between [MainActivity] and the screen/action extension functions split across
  * the `screens/`, `actions/`, and `ui/` files. Exposes only the shared dependencies and the
  * root view — everything else (navigation, business actions, the view DSL, shared helpers)
@@ -56,6 +70,12 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
     var storyOperation: StoryOperationState?
+
+    /**
+     * Transient state for the Add Story screen's inline fetch flow (status line + URL draft). See
+     * [AddStoryScreenState]; lives here so it survives the screen's status-driven re-renders.
+     */
+    val addStoryScreenState: AddStoryScreenState
 
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by

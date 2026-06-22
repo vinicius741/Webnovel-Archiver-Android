@@ -1,25 +1,32 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import android.content.res.ColorStateList
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Spinner
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.clipboardText
 import com.vinicius741.webnovelarchiver.ui.confirm
+import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeField
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.makeSelectableCardRow
 import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
 import com.vinicius741.webnovelarchiver.ui.ripple
@@ -120,12 +127,37 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 
 internal fun ScreenHost.showAddStory() {
     val tabs = storage.getTabs().sortedBy { it.order }
+    // Re-renderable state: the URL the user typed and the current fetch status, captured by the
+    // screen closure so they survive the re-renders we trigger as the sync progresses. Keeping the
+    // flow on this screen (instead of navigating to a separate "Working" page) means the user stays
+    // in context — the button flips to "Fetching..." and a spinner+status line appear beneath it.
+    //
+    // When invoked while idle (the FAB / empty-state CTAs all route here), treat it as a fresh open
+    // and clear any leftover URL draft from a previous visit. A non-null status means we're mid-fetch
+    // and this call is a status-driven re-render, so preserve both fields as-is.
+    if (addStoryStatus == null) {
+        addStoryUrlText = ""
+    }
+    val status = addStoryStatus
     screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
+        rerender = { showAddStory() }
         val url =
-            makeField(context, "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
+            makeField(context, addStoryUrlText ?: "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
                 // Roomier vertical padding than the compact field style shared with search bars/dialogs,
                 // so this primary URL input is easier to tap and read.
                 setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
+                // Mirror typing into the captured state so a status-driven re-render restores the
+                // exact text the user entered rather than blanking the field.
+                addTextChangedListener(
+                    object : android.text.TextWatcher {
+                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                            addStoryUrlText = s?.toString().orEmpty()
+                        }
+
+                        override fun afterTextChanged(s: android.text.Editable?) {}
+                    },
+                )
             }
         // Paste button beside the field — mirrors the React Native app's content-paste affordance,
         // reading the system clipboard in one tap instead of long-pressing the field.
@@ -151,6 +183,7 @@ internal fun ScreenHost.showAddStory() {
                     },
                 )
                 setOnClickListener {
+                    if (status != null) return@setOnClickListener // Ignore while a fetch is in flight.
                     val clip = clipboardText()?.trim()
                     if (clip.isNullOrEmpty()) {
                         toast("Clipboard is empty")
@@ -181,16 +214,97 @@ internal fun ScreenHost.showAddStory() {
             tabSpinner = makeThemedSpinner(context, tabLabels)
             addView(tabSpinner)
         }
-        // A2: the primary action is full-width for a consistent, large tap target.
-        fullButton("Fetch Story", Btn.FILLED, R.drawable.wna_download, topMarginDp = Space.LG) {
-            val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
-            val tabId = tabs.getOrNull(spinnerPos)?.id
-            syncStory(url.text.toString(), tabId)
+        // A2: the primary action is full-width for a consistent, large tap target. While a fetch is
+        // in flight, the button is disabled and relabelled so the user can't kick off a second one
+        // and the in-context loading state is unambiguous.
+        val fetching = status != null
+        val fetchButton =
+            fullButton(
+                if (fetching) "Fetching..." else "Fetch Story",
+                Btn.FILLED,
+                R.drawable.wna_download,
+                topMarginDp = Space.LG,
+            ) {
+                val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
+                val tabId = tabs.getOrNull(spinnerPos)?.id
+                // syncStory emits the first status ("Starting...") via onStatus, which re-renders
+                // this screen with the button disabled — no need to set/toggle state manually here.
+                syncStory(
+                    url.text.toString(),
+                    tabId,
+                    onStatus = { msg ->
+                        addStoryStatus = msg
+                        showAddStory()
+                    },
+                    onDone = { story ->
+                        addStoryStatus = null
+                        addStoryUrlText = null
+                        showDetails(story.id)
+                    },
+                    onError = { error ->
+                        addStoryStatus = null
+                        toast(error.message ?: "Sync failed")
+                        showAddStory()
+                    },
+                )
+            }
+        if (fetching) disableButton(fetchButton)
+        // Inline progress block: a small spinner + the live status message from the sync engine,
+        // rendered right where the user tapped so the screen never changes beneath them.
+        status?.let { msg ->
+            addView(makeAddStoryProgress(context, msg))
         }
         // A3: the "Or browse" Royal Road / Scribble Hub buttons were removed — they open the same
         // Browser screen the app-bar globe does, just with a preset URL. Use the Browser to browse.
     }
 }
+
+/**
+ * In-place fetch status shared across the Add Story screen's re-renders. `null` = idle (no fetch in
+ * flight); a non-null string is the latest status message from the sync engine and renders the
+ * inline spinner + status line while blocking the Fetch button. Declared on [ScreenHost] so it
+ * survives re-renders just like [com.vinicius741.webnovelarchiver.navigation.StoryOperationState].
+ */
+internal var ScreenHost.addStoryStatus: String?
+    get() = addStoryScreenState.status
+    set(value) {
+        addStoryScreenState.status = value
+    }
+
+/** URL field text persisted across status-driven re-renders of the Add Story screen. */
+internal var ScreenHost.addStoryUrlText: String?
+    get() = addStoryScreenState.urlText
+    set(value) {
+        addStoryScreenState.urlText = value
+    }
+
+/** Inline spinner + status message block shown beneath the Fetch button while a fetch is in flight. */
+private fun makeAddStoryProgress(
+    context: android.content.Context,
+    message: String,
+): LinearLayout =
+    LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(0, context.dp(Space.MD), 0, context.dp(Space.MD))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        addView(
+            ProgressBar(context).apply {
+                indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+                layoutParams =
+                    LinearLayout.LayoutParams(context.dp(28), context.dp(28)).apply {
+                        bottomMargin = context.dp(Space.SM)
+                    }
+            },
+        )
+        addView(
+            makeText(context, message, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                gravity = Gravity.CENTER
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+            },
+        )
+    }
 
 internal fun ScreenHost.showMoveStoryDialog(story: Story) {
     val tabs = storage.getTabs().sortedBy { it.order }

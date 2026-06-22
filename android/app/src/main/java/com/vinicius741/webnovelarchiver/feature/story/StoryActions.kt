@@ -82,9 +82,21 @@ internal fun ScreenHost.queueDownload(
 internal fun ScreenHost.syncStory(
     url: String,
     tabId: String?,
+    onStatus: (String) -> Unit = { msg ->
+        // Default: full-screen "Working" loader, used by the Browser import flow (no form to block).
+        app.runOnUiThread { screen(title = "Working", onBack = null) { centerLoading(msg) } }
+    },
+    onDone: (Story) -> Unit = { story -> showDetails(story.id) },
+    onError: (Throwable) -> Unit = { error ->
+        toast(error.message ?: "Sync failed")
+        showLibrary()
+    },
 ) {
     if (url.isBlank()) return toast("Enter a URL")
-    screen(title = "Working", onBack = null) { centerLoading("Starting...") }
+    // Surface the very first status before any work begins so the caller can flip its UI to a
+    // loading state immediately, instead of leaving the user with no feedback until the network
+    // request resolves. Callers that render inline (Add Story) rely on this to disable the button.
+    app.runOnUiThread { onStatus("Starting...") }
     scope.launch {
         try {
             val existingBeforeSync =
@@ -98,7 +110,7 @@ internal fun ScreenHost.syncStory(
                     syncEngine.fetchOrSync(
                         url,
                         tabId,
-                    ) { msg -> app.runOnUiThread { screen(title = "Working", onBack = null) { centerLoading(msg) } } }
+                    ) { msg -> app.runOnUiThread { onStatus(msg) } }
                 }
             if (existingBeforeSync != null && !story.pendingNewChapterIds.isNullOrEmpty()) {
                 val pending = story.pendingNewChapterIds.orEmpty().toSet()
@@ -110,10 +122,9 @@ internal fun ScreenHost.syncStory(
                     queueDownload(story, indexes)
                 }
             }
-            showDetails(story.id)
+            onDone(story)
         } catch (error: Throwable) {
-            toast(error.message ?: "Sync failed")
-            showLibrary()
+            onError(error)
         }
     }
 }

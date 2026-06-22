@@ -28,6 +28,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
+import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
@@ -68,6 +69,7 @@ class MainActivity :
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
+    override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
