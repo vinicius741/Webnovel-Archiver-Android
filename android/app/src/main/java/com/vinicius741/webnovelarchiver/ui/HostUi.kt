@@ -196,7 +196,10 @@ internal const val DESCRIPTION_PREVIEW_LENGTH = 200
 
 internal fun truncateDescription(description: String): String {
     if (description.length <= DESCRIPTION_PREVIEW_LENGTH) return description
-    val preview = description.take(DESCRIPTION_PREVIEW_LENGTH)
+    // Collapse the multi-paragraph layout (Sources.blockText) to a single line for the collapsed
+    // teaser; the expanded view keeps the original paragraph breaks.
+    val flat = description.replace(Regex("\\s+"), " ").trim()
+    val preview = flat.take(DESCRIPTION_PREVIEW_LENGTH)
     val lastSpace = preview.lastIndexOf(" ")
     val trimmed = if (lastSpace > 0) preview.take(lastSpace) else preview
     return "$trimmed..."

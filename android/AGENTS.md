@@ -23,7 +23,9 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - Add or update the matching JUnit test when changing planning logic.
 - Use the existing `AppContainer` for process-wide dependencies and explicit constructor dependencies elsewhere. Do not add a dependency-injection framework without an explicit architectural request.
 - Keep file-based JSON storage compatible with existing data. Treat migrations, backup formats, chapter paths, and archive IDs as compatibility-sensitive.
-- New novel sites implement `SourceProvider` and must be registered in `SourceRegistry`.
+- New novel sites implement `SourceProvider` and must be registered in `SourceRegistry`. Source
+  metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes and persists public or
+  tier-estimated Patreon statistics on every story sync without creator-specific mappings.
 - Archived snapshots remain read-only for sync and download.
 
 ## Build and Validation

@@ -87,6 +87,15 @@ data class Story(
     var archiveOfStoryId: String? = null,
     var archivedAt: Long? = null,
     var archiveReason: String? = null,
+    var patreonUrl: String? = null,
+    var patreonStats: PatreonStats? = null,
+)
+
+data class PatreonStats(
+    val paidMembers: Int = 0,
+    val monthlyUsdCents: Long = 0,
+    val amountIsEstimated: Boolean = true,
+    val updatedAt: Long = 0,
 )
 
 data class Tab(
@@ -182,6 +191,7 @@ data class NovelMetadata(
     val tags: MutableList<String>? = null,
     val score: String? = null,
     val canonicalUrl: String? = null,
+    val patreonUrl: String? = null,
 )
 
 data class ChapterInfo(

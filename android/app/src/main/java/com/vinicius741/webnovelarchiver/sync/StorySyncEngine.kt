@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.NetworkClient
+import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.ui.size
@@ -32,6 +33,12 @@ class StorySyncEngine(
         status("Parsing chapters...")
         val incoming = provider.getChapterList(html, url, network, status)
         if (incoming.isEmpty()) error("Source returned no chapters")
+        val patreonUrl = metadata.patreonUrl
+        val refreshedPatreonStats =
+            patreonUrl?.let { creatorUrl ->
+                status("Refreshing Patreon statistics...")
+                runCatching { PatreonStatsFetcher(network).fetch(creatorUrl) }.getOrNull()
+            }
         val merge = StorySyncPlanning.mergeChapters(existing?.chapters ?: emptyList(), incoming, provider, existing?.lastReadChapterId)
         if (existing != null && merge.removedChapters.isNotEmpty()) createArchive(existing)
         val pendingNewChapterIds =
@@ -69,6 +76,8 @@ class StorySyncEngine(
                 pendingNewChapterIds = pendingNewChapterIds,
                 tabId = tabId ?: existing?.tabId,
                 lastUpdated = System.currentTimeMillis(),
+                patreonUrl = patreonUrl,
+                patreonStats = refreshedPatreonStats ?: existing?.patreonStats?.takeIf { existing.patreonUrl == patreonUrl },
             )
         storage.addOrUpdateStory(story)
         return story

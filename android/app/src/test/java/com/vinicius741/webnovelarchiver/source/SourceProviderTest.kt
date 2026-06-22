@@ -18,7 +18,9 @@ class SourceProviderTest {
                 </head><body>
                   <h1>Example RR</h1>
                   <h4><a>Author Name</a></h4>
-                  <div class="description">A synopsis.</div>
+                  <div id="comments"><a href="https://www.patreon.com/commenter">Commenter's Patreon</a></div>
+                  <div class="author-profile"><a href="https://www.patreon.com/example-author?utm_source=royalroad">Support on Patreon</a></div>
+                  <div class="description"><p>First paragraph.</p><p>Second paragraph.</p></div>
                   <div class="tags"><a>Fantasy</a><a>Adventure</a></div>
                   <div class="chapter-row"><a href="/fiction/123/story/chapter/456/one">Chapter One (2 hours ago)</a></div>
                   <div class="chapter-inner"><p>Body</p><script>bad()</script><div class="portlet">ad</div></div>
@@ -30,7 +32,9 @@ class SourceProviderTest {
             val content = RoyalRoadProvider.parseChapterContent(html)
 
             assertEquals("Example RR", metadata.title)
+            assertEquals("First paragraph.\n\nSecond paragraph.", metadata.description)
             assertEquals("Author Name", metadata.author)
+            assertEquals("https://www.patreon.com/example-author", metadata.patreonUrl)
             assertEquals("456", chapters.single().id)
             assertEquals("Chapter One", chapters.single().title)
             assertTrue(chapters.single().url.contains("/chapter/456/"))
@@ -57,6 +61,34 @@ class SourceProviderTest {
     }
 
     @Test
+    fun descriptionPreservesParagraphsLineBreaksAndCollapsesWhitespace() {
+        val html =
+            """
+            <html><body>
+              <div class="description">
+                <p>First paragraph with  extra   spaces.</p>
+                <div><p>Second paragraph<br/>with a hard break.</p></div>
+                <blockquote>Quoted line.</blockquote>
+              </div>
+            </body></html>
+            """.trimIndent()
+        val metadata = RoyalRoadProvider.parseMetadata(html)
+        assertEquals(
+            "First paragraph with extra spaces.\n\nSecond paragraph\nwith a hard break.\n\nQuoted line.",
+            metadata.description,
+        )
+    }
+
+    @Test
+    fun descriptionFallsBackToSingleLineMetaTagWhenNoStructuredBlock() {
+        val metadata =
+            RoyalRoadProvider.parseMetadata(
+                """<html><head><meta property="og:description" content="Flat meta description." /></head><body><h1>Story</h1></body></html>""",
+            )
+        assertEquals("Flat meta description.", metadata.description)
+    }
+
+    @Test
     fun scribbleHubParsesMetadataChaptersAndContent() =
         runBlocking {
             val html =
@@ -64,7 +96,8 @@ class SourceProviderTest {
                 <html><head><link rel="canonical" href="https://www.scribblehub.com/series/99/story/" /></head><body>
                   <div class="fic_title">Example SH</div>
                   <div class="auth_name_fic"><a>SH Author</a></div>
-                  <div class="wi_fic_desc">SH synopsis.</div>
+                  <a href="https://patreon.com/sh-author/posts">Patreon</a>
+                  <div class="wi_fic_desc"><p>SH one.</p><p>SH two.</p></div>
                   <div class="wi_fic_tags"><a>LitRPG</a></div>
                   <ol class="toc_ol"><li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A</a></li></ol>
                   <div id="chp_raw"><p>Chapter body</p><div class="wi_authornotes">note</div><script>bad()</script></div>
@@ -76,7 +109,9 @@ class SourceProviderTest {
             val content = ScribbleHubProvider.parseChapterContent(html)
 
             assertEquals("Example SH", metadata.title)
+            assertEquals("SH one.\n\nSH two.", metadata.description)
             assertEquals("SH Author", metadata.author)
+            assertEquals("https://patreon.com/sh-author/posts", metadata.patreonUrl)
             assertEquals("sh_1000", chapters.single().id)
             assertEquals("<p>Chapter body</p>", content.trim())
         }

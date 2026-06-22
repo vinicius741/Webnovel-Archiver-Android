@@ -216,6 +216,10 @@ internal fun ScreenHost.showDetails(storyId: String) {
             )
         }
 
+        story.patreonStats?.let { stats ->
+            infoPanel.addView(buildPatreonStatsCard(stats, story.patreonUrl))
+        }
+
         // ---- Description (inline expand/collapse, mirrors RN StoryDescription) ----
         story.description?.takeIf { it.isNotBlank() }?.let { description ->
             val canExpand = description.length > DESCRIPTION_PREVIEW_LENGTH
@@ -234,6 +238,10 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     ThemeManager.colors.onSurfaceVariant,
                 ).apply {
                     gravity = Gravity.START
+                    // Descriptions keep the source's paragraph/line structure (Sources.blockText).
+                    // Add a touch of inter-line spacing so the \n\n between paragraphs reads as a
+                    // real gap instead of a single break.
+                    setLineSpacing(dp(Space.XS).toFloat(), 1f)
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                 }
             descCol.addView(descText)

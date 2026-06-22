@@ -11,6 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 
 /**
  * MockWebServer tests for [NetworkClient] (R6 + Test Recommendations: Network). Covers retry
@@ -50,6 +51,15 @@ class NetworkClientTest {
                 assertTrue(error.message!!.contains("HTTP 404"))
             }
             assertTrue(threw)
+        }
+
+    @Test
+    fun fetchHonorsPerCallTimeout() =
+        runBlocking {
+            server.enqueue(MockResponse().setBody("slow").setBodyDelay(250, TimeUnit.MILLISECONDS))
+            val result = runCatching { client.fetch(server.url("/slow").toString(), callTimeoutMillis = 25) }
+
+            assertTrue(result.isFailure)
         }
 
     @Test

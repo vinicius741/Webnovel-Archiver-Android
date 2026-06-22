@@ -15,6 +15,9 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
+import org.jsoup.nodes.TextNode
 import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -41,10 +44,13 @@ class NetworkClient(
             hostGates.getOrPut(host) { HostGate(Mutex()) }
         }
 
-    suspend fun fetch(url: String): String {
+    suspend fun fetch(
+        url: String,
+        callTimeoutMillis: Long? = null,
+    ): String {
         waitForRateLimit(url)
         val request = NetworkRequests.pageRequest(url)
-        return executeWithRetries(url, request) { it.body?.string().orEmpty() }
+        return executeWithRetries(url, request, callTimeoutMillis) { it.body?.string().orEmpty() }
     }
 
     suspend fun postForm(
@@ -86,11 +92,14 @@ class NetworkClient(
     private suspend fun <T> executeWithRetries(
         url: String,
         request: Request,
+        callTimeoutMillis: Long? = null,
         read: (Response) -> T,
     ): T {
         var attempt = 1
         while (attempt <= 3) {
-            val response = client.newCall(request).execute()
+            val call = client.newCall(request)
+            callTimeoutMillis?.let { timeout -> call.timeout().timeout(timeout, TimeUnit.MILLISECONDS) }
+            val response = call.execute()
             response.use {
                 if (it.isSuccessful) return read(it)
                 val host = runCatching { URL(url).host }.getOrNull()
@@ -243,7 +252,7 @@ object RoyalRoadProvider : SourceProvider {
                 .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
                 .ifBlank { null }
         val description =
-            doc.selectFirst(".description")?.text()?.trim()
+            doc.selectFirst(".description")?.blockText()
                 ?: doc.selectFirst("meta[name=description]")?.attr("content")
                 ?: doc.selectFirst("meta[property=og:description]")?.attr("content")
         val tags =
@@ -262,7 +271,8 @@ object RoyalRoadProvider : SourceProvider {
                 ?.selectFirst("span.star")
                 ?.attr("data-content")
         val canonical = doc.selectFirst("link[rel=canonical]")?.absUrl("href") ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
-        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical)
+        val patreonUrl = findPatreonUrl(doc)
+        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl)
     }
 
     override suspend fun getChapterList(
@@ -333,7 +343,7 @@ object ScribbleHubProvider : SourceProvider {
                 .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
                 .ifBlank { null }
         val description =
-            firstText(doc, ".wi_fic_desc", ".fic_synopsis", "#synopsis")
+            firstStructuredText(doc, ".wi_fic_desc", ".fic_synopsis", "#synopsis")
                 .ifBlank {
                     doc.selectFirst("meta[property=og:description]")?.attr("content")
                         ?: doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
@@ -348,7 +358,8 @@ object ScribbleHubProvider : SourceProvider {
                 .distinct()
                 .toMutableList()
         val score = firstText(doc, ".numscore", "[itemprop=ratingValue]", ".rate_fic_user").ifBlank { null }
-        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical)
+        val patreonUrl = findPatreonUrl(doc)
+        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl)
     }
 
     override suspend fun getChapterList(
@@ -416,6 +427,89 @@ object ScribbleHubProvider : SourceProvider {
                     it.isNotBlank()
                 }
             }.orEmpty()
+
+    // Like [firstText], but preserves the original paragraph/line-break layout of the matched
+    // element via [blockText]. Used for long free-form fields (e.g. synopsis) where collapsing
+    // `<p>`/`<br>` into a single space-joined line would discard the author's structure.
+    private fun firstStructuredText(
+        doc: Document,
+        vararg selectors: String,
+    ): String =
+        selectors
+            .firstNotNullOfOrNull { selector ->
+                doc.selectFirst(selector)?.blockText()?.takeIf { it.isNotBlank() }
+            }.orEmpty()
+}
+
+private val descriptionBlockTags =
+    setOf("p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr")
+
+/**
+ * Returns the visible text of [element] while preserving the author's paragraph/line-break layout.
+ * Unlike Jsoup's [Element.text] — which flattens every `<p>`/`<div>`/`<br>` into a single
+ * space-joined line — this walks the DOM and inserts `\n\n` around block elements and `\n` for
+ * `<br>`, then collapses runs of blank lines so the result is a clean, structured string.
+ *
+ * Used for novel descriptions so the Details screen and EPUB details page render real paragraphs
+ * instead of one dumped block of text (EpubContent.details already splits on `\n+`).
+ */
+private fun Element.blockText(): String {
+    val builder = StringBuilder()
+
+    fun walk(node: Node) {
+        when (node) {
+            is TextNode -> builder.append(node.text())
+            is Element -> {
+                val tag = node.tagName()
+                val isBlock = tag in descriptionBlockTags
+                if (isBlock && builder.isNotEmpty() && !builder.endsWith('\n')) {
+                    builder.append("\n\n")
+                }
+                node.childNodes().forEach(::walk)
+                if (tag == "br" && !builder.endsWith('\n')) {
+                    builder.append('\n')
+                } else if (isBlock && builder.isNotEmpty() && !builder.endsWith('\n')) {
+                    builder.append("\n\n")
+                }
+            }
+        }
+    }
+    walk(this)
+    return builder
+        .toString()
+        .replace(Regex("\\u00A0"), " ") // non-breaking space → normal space
+        .replace(Regex("[ \\t]+"), " ") // collapse intra-line whitespace
+        .replace(Regex("\\n[ \\t]+"), "\n") // trim leading spaces on each line
+        .replace(Regex("[ \\t]+\\n"), "\n") // trim trailing spaces on each line
+        .replace(Regex("\\n{3,}"), "\n\n") // collapse blank-line runs
+        .trim()
+}
+
+private fun findPatreonUrl(doc: Document): String? =
+    doc
+        .select("a[href*=patreon.com]")
+        .asSequence()
+        .filterNot { link -> link.parents().any { parent -> parent.classNames().any(::isCommentMarker) || isCommentMarker(parent.id()) } }
+        .mapNotNull { link ->
+            val url = link.absUrl("href").ifBlank { link.attr("href") }
+            url
+                .takeIf { Regex("https?://(?:www\\.)?patreon\\.com/", RegexOption.IGNORE_CASE).containsMatchIn(it) }
+                ?.substringBefore('?')
+                ?.let { candidate -> candidate to patreonLinkPriority(link) }
+        }.sortedByDescending { (_, priority) -> priority }
+        .firstOrNull()
+        ?.first
+
+private fun isCommentMarker(value: String): Boolean = value.contains("comment", ignoreCase = true)
+
+private fun patreonLinkPriority(link: org.jsoup.nodes.Element): Int {
+    val context = (link.text() + " " + link.parents().take(3).joinToString(" ") { it.className() }).lowercase()
+    return when {
+        "author" in context -> 3
+        "support" in context || "patreon" in link.text().lowercase() -> 2
+        "description" in context || "fiction" in context || "profile" in context -> 1
+        else -> 0
+    }
 }
 
 fun sanitizeTitle(value: String): String {
