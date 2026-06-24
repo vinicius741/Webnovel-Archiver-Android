@@ -43,6 +43,11 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 
 internal fun ScreenHost.showEpubConfigDialog(story: Story) {
+    // The details screen captures `story` once and never refreshes it, so a bookmark toggled from the
+    // chapter list (which persists a fresh Story.copy) wouldn't be reflected here — leaving the
+    // "Start after bookmark" checkbox disabled even though a bookmark exists. Re-read the latest
+    // persisted story so the dialog always matches on-disk state.
+    val story = storage.getStory(story.id) ?: story
     if (story.chapters.isEmpty()) return toast("No chapters available")
     val current =
         story.epubConfig ?: EpubConfig(
@@ -51,6 +56,10 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
             rangeEnd = story.chapters.size,
             startAfterBookmark = false,
         )
+    // Mirrors DetailsScreen.hasBookmark: a bookmark only counts when its chapter still exists, so a
+    // stale lastReadChapterId (e.g. after a sync that changed chapter ids) doesn't enable the checkbox.
+    val hasBookmark =
+        story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
     val view =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -70,8 +79,8 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     val startAfterBookmark =
         CheckBox(app).apply {
             text = "Start after bookmark"
-            isChecked = current.startAfterBookmark && story.lastReadChapterId != null
-            isEnabled = story.lastReadChapterId != null
+            isChecked = current.startAfterBookmark && hasBookmark
+            isEnabled = hasBookmark
         }
     styledCheckBox(startAfterBookmark)
     view.addView(maxChapters)
@@ -79,7 +88,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     view.addView(rangeEnd)
     view.addView(startAfterBookmark)
     // DL2: explain why "Start after bookmark" is disabled when there is no bookmark.
-    if (story.lastReadChapterId == null) {
+    if (!hasBookmark) {
         view.addView(
             makeText(
                 app,
@@ -128,7 +137,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
                         maxChaptersPerEpub = max,
                         rangeStart = start,
                         rangeEnd = end,
-                        startAfterBookmark = startAfterBookmark.isChecked && story.lastReadChapterId != null,
+                        startAfterBookmark = startAfterBookmark.isChecked && hasBookmark,
                     )
                 story.epubConfig = config
                 storage.addOrUpdateStory(story)
