@@ -161,6 +161,7 @@ fun makeSelectableCardRow(
         CheckBox(context).apply {
             isChecked = selected
             setOnCheckedChangeListener { _, checked -> onToggle(checked) }
+            applyCheckBoxTint()
         }
     val textCol =
         LinearLayout(context).apply {

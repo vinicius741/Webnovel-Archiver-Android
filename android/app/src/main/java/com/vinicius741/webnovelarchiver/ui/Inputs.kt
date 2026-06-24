@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.ui
 
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.text.InputType
@@ -65,10 +67,44 @@ fun makeField(
         setText(value)
     }
 
+/**
+ * Tints a CheckBox so the box matches the active theme instead of falling back to the
+ * platform default color. Mirrors the approach used by `ChapterSelectionAdapter`:
+ * the checked fill uses `primary`, the unchecked stroke uses `outline`, and a dimmed
+ * variant signals the disabled state.
+ */
+fun CheckBox.applyCheckBoxTint() {
+    val colors = ThemeManager.colors
+    // ~55% opacity applied to the unchecked color so a disabled box reads as muted rather
+    // than the full-strength outline, matching how Material dims inactive controls.
+    val disabledOutline = blend(colors.outline, colors.surface, 0.45f)
+    buttonTintList =
+        ColorStateList(
+            arrayOf(
+                intArrayOf(-android.R.attr.state_enabled),
+                intArrayOf(android.R.attr.state_checked),
+                intArrayOf(),
+            ),
+            intArrayOf(disabledOutline, colors.primary, colors.outline),
+        )
+}
+
+/** Linear RGB blend between [from] and [to] by [fraction] (0 = from, 1 = to). */
+private fun blend(from: Int, to: Int, fraction: Float): Int {
+    val f = fraction.coerceIn(0f, 1f)
+    fun lerp(a: Float, b: Float): Int = (a + (b - a) * f).toInt()
+    val a = lerp(Color.alpha(from).toFloat(), Color.alpha(to).toFloat())
+    val r = lerp(Color.red(from).toFloat(), Color.red(to).toFloat())
+    val g = lerp(Color.green(from).toFloat(), Color.green(to).toFloat())
+    val b = lerp(Color.blue(from).toFloat(), Color.blue(to).toFloat())
+    return Color.argb(a, r, g, b)
+}
+
 fun styledCheckBox(checkBox: CheckBox) {
     val colors = ThemeManager.colors
     checkBox.setTextColor(colors.onSurface)
     checkBox.setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.BODY_MEDIUM.size())
     checkBox.setPadding(checkBox.context.dp(Space.XS + 2), 0, 0, 0)
     checkBox.includeFontPadding = false
+    checkBox.applyCheckBoxTint()
 }

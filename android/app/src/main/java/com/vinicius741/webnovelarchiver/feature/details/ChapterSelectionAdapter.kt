@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
-import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +19,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.applyCheckBoxTint
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
@@ -56,11 +56,7 @@ internal class ChapterSelectionAdapter(
         val context = parent.context
         val checkbox =
             CheckBox(context).apply {
-                buttonTintList =
-                    ColorStateList(
-                        arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-                        intArrayOf(ThemeManager.colors.primary, ThemeManager.colors.outline),
-                    )
+                applyCheckBoxTint()
             }
         val title =
             TextView(context).apply {
