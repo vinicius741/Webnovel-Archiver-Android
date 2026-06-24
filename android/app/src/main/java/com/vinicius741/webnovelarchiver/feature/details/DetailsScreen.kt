@@ -190,9 +190,19 @@ internal fun ScreenHost.showDetails(storyId: String) {
         if (story.epubStale == true && hasEpub) {
             infoPanel.addView(
                 LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER
-                    addView(makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant))
+                    orientation = LinearLayout.VERTICAL
+                    addView(
+                        makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                            // Fill the panel width so the text is truly centered across the screen,
+                            // not just within a wrap-content label.
+                            gravity = Gravity.CENTER
+                            layoutParams =
+                                LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                )
+                        },
+                    )
                     val regenerateButton =
                         makeButton(context, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
                             val config =
@@ -208,8 +218,8 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     addView(
                         regenerateButton,
                         LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                            marginStart =
-                                dp(Space.SM)
+                            topMargin =
+                                dp(Space.XS)
                         },
                     )
                 },
