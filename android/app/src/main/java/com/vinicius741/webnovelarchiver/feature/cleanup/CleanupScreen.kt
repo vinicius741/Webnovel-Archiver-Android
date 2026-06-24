@@ -25,6 +25,7 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.applyInputStyle
 import com.vinicius741.webnovelarchiver.ui.button
+import com.vinicius741.webnovelarchiver.ui.clipboardText
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.divider
@@ -56,16 +57,38 @@ internal fun ScreenHost.showCleanupRules() {
         }
         divider()
         section("Sentences")
-        // C2: the Add button fills the row so it matches the field height instead of floating right.
-        row {
-            val sentence = makeField(context, "", "Sentence to remove", InputType.TYPE_CLASS_TEXT)
-            addView(
-                sentence,
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
-                    gravity =
-                        Gravity.CENTER_VERTICAL
-                },
-            )
+        // The input holds a full sentence — usually a paragraph, sometimes a long one — so it is a
+        // multiline textarea (minLines gives a comfortable editing area and it grows with the content)
+        // rather than the compact single-line field shared with search/URL inputs.
+        val sentence =
+            EditText(context).apply {
+                applyInputStyle(
+                    "Sentence to remove",
+                    InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
+                    singleLine = false,
+                )
+                minLines = 4
+                // Cap the visible height so the saved-sentence list below stays reachable on long
+                // paragraphs; the field scrolls internally past that.
+                maxLines = 10
+            }
+        addView(sentence)
+        // Breathing room between the textarea and its Paste/Add actions, and a slightly larger gap
+        // separating those actions from the saved-sentence list below — so neither edge feels cramped.
+        spacer(Space.SM)
+        // Paste + Add sit in their own row beneath the textarea. With a tall multiline field the old
+        // layout (button pinned beside the field, stretched to its height) no longer makes sense, so
+        // the actions drop to a flow row below — mirroring the Add Story screen's paste affordance.
+        flow {
+            button("Paste", Btn.TONAL, R.drawable.wna_paste) {
+                val clip = clipboardText()?.trim()
+                if (clip.isNullOrEmpty()) {
+                    toast("Clipboard is empty")
+                } else {
+                    sentence.setText(clip)
+                    sentence.setSelection(clip.length)
+                }
+            }
             button("Add", Btn.TONAL, R.drawable.wna_add) {
                 val list = storage.getSentenceRemovalList()
                 val result = SentenceRemovalPlanning.save(list, sentence.text.toString())
@@ -77,6 +100,7 @@ internal fun ScreenHost.showCleanupRules() {
                 }
             }
         }
+        spacer(Space.MD)
         // C1: compact single-line rows (tap to edit, trailing delete) instead of a wall of full cards.
         storage.getSentenceRemovalList().forEachIndexed { index, item ->
             addView(
