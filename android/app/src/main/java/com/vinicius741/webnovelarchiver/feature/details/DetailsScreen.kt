@@ -191,8 +191,13 @@ internal fun ScreenHost.showDetails(storyId: String) {
             infoPanel.addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
+                    // Center every child horizontally so the stale label (match_parent) and the
+                    // wrap-content Regenerate button line up on the same screen-center axis.
+                    gravity = Gravity.CENTER_HORIZONTAL
                     addView(
-                        makeText(context, "EPUB out of date", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                        // LABEL_MEDIUM keeps BODY_SMALL's 12f size but renders bold, matching the
+                        // bold Regenerate button beneath it.
+                        makeText(context, "EPUB out of date", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
                             // Fill the panel width so the text is truly centered across the screen,
                             // not just within a wrap-content label.
                             gravity = Gravity.CENTER
