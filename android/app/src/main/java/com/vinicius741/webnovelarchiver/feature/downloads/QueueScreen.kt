@@ -310,14 +310,17 @@ private fun ScreenHost.storyActionButton(
             }
     }
 
-/** Down chevron rotated to point left (collapsed) when the group is folded. */
+/** Down chevron rotated to point left (collapsed) when the group is folded. Sized generously so
+ *  the expand/collapse affordance stays clearly visible — a 24dp box with CENTER_INSIDE plus the old
+ *  8dp padding squeezed the glyph to ~8dp, making it nearly invisible. FIT_CENTER lets the 24dp
+ *  vector scale up to fill the larger touch target. */
 private fun ScreenHost.chevronIcon(expanded: Boolean): View =
     ImageView(app).apply {
         setImageDrawable(app.tintedIcon(R.drawable.wna_chevron_down, ThemeManager.colors.onSurfaceVariant))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(0, dp(Space.SM), dp(Space.SM), dp(Space.SM))
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
         rotation = if (expanded) 0f else -90f
-        layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+        layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
     }
 
 internal fun ScreenHost.addQueueJobRow(job: DownloadJob): View {
