@@ -71,6 +71,19 @@ fun selectableRipple(rippleColor: Int): Drawable {
     return RippleDrawable(ColorStateList.valueOf(rippleColor), null, mask)
 }
 
+/**
+ * Ripple clipped to a circle (OVAL mask filling the view bounds). Use for square icon-button
+ * tap targets so the feedback reads as a round highlight instead of a square block.
+ */
+fun circularRipple(rippleColor: Int): Drawable {
+    val mask =
+        GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.WHITE)
+        }
+    return RippleDrawable(ColorStateList.valueOf(rippleColor), null, mask)
+}
+
 // ------------------------------------------------------------------
 // View styling extensions
 // ------------------------------------------------------------------

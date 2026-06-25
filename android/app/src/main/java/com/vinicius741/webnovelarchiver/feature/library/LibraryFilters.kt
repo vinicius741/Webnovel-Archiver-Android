@@ -21,6 +21,7 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.chip
+import com.vinicius741.webnovelarchiver.ui.circularRipple
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeChip
@@ -374,7 +375,9 @@ private fun Context.iconButtonSmall(
         setImageDrawable(tintedIcon(iconRes, ThemeManager.colors.onSurfaceVariant))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
-        background = selectableRipple(ThemeManager.colors.onSurface)
+        // OVAL mask so the press feedback reads as a round highlight instead of a square block,
+        // matching Material's circular icon-button ripple for a square tap target.
+        background = circularRipple(ThemeManager.colors.onSurface)
         isClickable = true
         isFocusable = true
         setOnClickListener { onClick() }
