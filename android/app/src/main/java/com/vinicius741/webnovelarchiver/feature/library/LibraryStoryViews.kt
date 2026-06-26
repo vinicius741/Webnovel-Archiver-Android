@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
@@ -31,6 +32,9 @@ import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.updateProgressSummary
+import java.text.NumberFormat
+import java.util.Locale
+import kotlin.math.roundToLong
 
 private data class LibraryProgressTag(
     val storyId: String,
@@ -166,6 +170,15 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
             story.score?.takeIf { it.isNotBlank() }?.let { score ->
                 addView(scoreRow(score))
             }
+            story.patreonStats?.let { stats ->
+                addView(
+                    makeText(app, formatLibraryPatreonStats(stats), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        setPadding(0, dp(Space.XS), 0, 0)
+                    },
+                )
+            }
             story.tags?.takeIf { it.isNotEmpty() }?.let { tags ->
                 addView(
                     makeText(app, tags.take(5).joinToString("  •  "), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
@@ -188,6 +201,14 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
         )
     }
     return row
+}
+
+private fun formatLibraryPatreonStats(stats: PatreonStats): String {
+    val amountPrefix = if (stats.amountIsEstimated) "~" else ""
+    val dollars = (stats.monthlyUsdCents / 100.0).roundToLong()
+    val amount = "${amountPrefix}${'$'}${NumberFormat.getIntegerInstance(Locale.US).format(dollars)}/mo"
+    val members = NumberFormat.getIntegerInstance().format(stats.paidMembers)
+    return "Patreon $amount · $members paid"
 }
 
 private fun ScreenHost.showStoryActionsDialog(story: Story) {

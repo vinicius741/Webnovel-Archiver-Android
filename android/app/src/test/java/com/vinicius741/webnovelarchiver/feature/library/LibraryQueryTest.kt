@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -56,6 +57,34 @@ class LibraryQueryTest {
     }
 
     @Test
+    fun patreonMonthlySortUsesHighestEarningsDescending() {
+        val stories =
+            listOf(
+                story("low", "Low").withPatreonStats(paidMembers = 50, monthlyUsdCents = 25_000),
+                story("none", "None"),
+                story("high", "High").withPatreonStats(paidMembers = 12, monthlyUsdCents = 100_000),
+            )
+
+        val sorted = LibraryQuery.filterAndSort(stories, "", "__all__", emptySet(), "patreonMonthly", sortAscending = false)
+
+        assertEquals(listOf("high", "low", "none"), sorted.map { it.id })
+    }
+
+    @Test
+    fun patreonMembersSortUsesHighestPaidMembersDescending() {
+        val stories =
+            listOf(
+                story("few", "Few").withPatreonStats(paidMembers = 2, monthlyUsdCents = 100_000),
+                story("many", "Many").withPatreonStats(paidMembers = 200, monthlyUsdCents = 10_000),
+                story("none", "None"),
+            )
+
+        val sorted = LibraryQuery.filterAndSort(stories, "", "__all__", emptySet(), "patreonMembers", sortAscending = false)
+
+        assertEquals(listOf("many", "few", "none"), sorted.map { it.id })
+    }
+
+    @Test
     fun availableFilterLabelsReturnPopularSourcesBeforeTags() {
         val stories =
             listOf(
@@ -88,4 +117,11 @@ class LibraryQueryTest {
             lastUpdated = lastUpdated,
             dateAdded = dateAdded,
         )
+
+    private fun Story.withPatreonStats(
+        paidMembers: Int,
+        monthlyUsdCents: Long,
+    ): Story = apply {
+        patreonStats = PatreonStats(paidMembers = paidMembers, monthlyUsdCents = monthlyUsdCents)
+    }
 }

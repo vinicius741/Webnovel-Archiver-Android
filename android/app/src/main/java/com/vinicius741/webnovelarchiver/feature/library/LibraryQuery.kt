@@ -29,20 +29,7 @@ object LibraryQuery {
                     }
                 }
 
-        val sorted =
-            when (sortOption) {
-                "title" -> filtered.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
-                "dateAdded" -> filtered.sortedBy { it.dateAdded ?: 0L }
-                "lastUpdated", "updated" -> filtered.sortedBy { it.lastUpdated ?: 0L }
-                "totalChapters" -> filtered.sortedBy { it.totalChapters }
-                "score" -> filtered.sortedBy { parseScore(it.score) }
-                "progress" ->
-                    filtered.sortedBy { story ->
-                        if (story.totalChapters == 0) 0.0 else story.downloadedChapters.toDouble() / story.totalChapters.toDouble()
-                    }
-                "default" -> filtered.sortedBy { maxOf(it.lastUpdated ?: 0L, it.dateAdded ?: 0L) }
-                else -> filtered.sortedBy { maxOf(it.lastUpdated ?: 0L, it.dateAdded ?: 0L) }
-            }
+        val sorted = sortStories(filtered, sortOption)
         return if (sortAscending) sorted else sorted.asReversed()
     }
 
@@ -97,4 +84,30 @@ object LibraryQuery {
             ?.get(1)
             ?.toDoubleOrNull() ?: 0.0
     }
+
+    private fun sortStories(
+        stories: List<Story>,
+        sortOption: String,
+    ): List<Story> =
+        when (sortOption) {
+            "title" -> stories.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+            "dateAdded" -> stories.sortedBy { it.dateAdded ?: 0L }
+            "lastUpdated", "updated" -> stories.sortedBy { it.lastUpdated ?: 0L }
+            "totalChapters" -> stories.sortedBy { it.totalChapters }
+            "score" -> stories.sortedBy { parseScore(it.score) }
+            "patreonMonthly" -> stories.sortedBy { it.patreonStats?.monthlyUsdCents ?: 0L }
+            "patreonMembers" -> stories.sortedBy { it.patreonStats?.paidMembers ?: 0 }
+            "progress" -> stories.sortedBy { progressRatio(it) }
+            "default" -> stories.sortedBy { smartSortTimestamp(it) }
+            else -> stories.sortedBy { smartSortTimestamp(it) }
+        }
+
+    private fun progressRatio(story: Story): Double =
+        if (story.totalChapters == 0) {
+            0.0
+        } else {
+            story.downloadedChapters.toDouble() / story.totalChapters.toDouble()
+        }
+
+    private fun smartSortTimestamp(story: Story): Long = maxOf(story.lastUpdated ?: 0L, story.dateAdded ?: 0L)
 }

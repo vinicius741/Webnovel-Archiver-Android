@@ -247,6 +247,8 @@ private fun showSortDialog(
             "dateAdded" to "Date Added",
             "totalChapters" to "Chapter Count",
             "score" to "Score",
+            "patreonMonthly" to "Patreon Earnings",
+            "patreonMembers" to "Patreon Paid Members",
         )
 
     val colors = ThemeManager.colors
@@ -361,6 +363,8 @@ private fun sortOptionLabel(option: String): String =
         "dateAdded" -> "Added"
         "totalChapters" -> "Chapters"
         "score" -> "Score"
+        "patreonMonthly" -> "Patreon ${'$'}"
+        "patreonMembers" -> "Patrons"
         else -> "Default"
     }
 
