@@ -231,8 +231,11 @@ internal fun ScreenHost.showDetails(storyId: String) {
             )
         }
 
-        story.patreonStats?.let { stats ->
-            infoPanel.addView(buildPatreonStatsCard(stats, story.patreonUrl))
+        // Render the Patreon card whenever the story has a Patreon URL, even if the public stats
+        // could not be fetched: a link-only card surfaces that the creator has a Patreon, instead of
+        // silently showing nothing (which would be indistinguishable from having no Patreon).
+        if (!story.patreonUrl.isNullOrBlank()) {
+            infoPanel.addView(buildPatreonStatsCard(story.patreonStats, story.patreonUrl))
         }
 
         // ---- Description (inline expand/collapse, mirrors RN StoryDescription) ----

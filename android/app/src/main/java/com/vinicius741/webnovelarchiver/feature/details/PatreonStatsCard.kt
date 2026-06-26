@@ -31,9 +31,14 @@ import kotlin.math.roundToLong
  * so it reads as supplementary context (not a call to action). The whole card is tappable to open
  * the creator's Patreon page when [patreonUrl] is set; a trailing open-in-external glyph in
  * the header signals that affordance instead of leaving the tap target invisible.
+ *
+ * The card is rendered whenever the story has a [patreonUrl]. When [stats] are available they fill
+ * the divider + two-number body + footer; when [stats] is null the card still appears as a plain
+ * tappable link — surfacing that the creator has a Patreon even when the public stats could not be
+ * fetched, instead of silently showing nothing (which would be indistinguishable from no Patreon).
  */
 internal fun ScreenHost.buildPatreonStatsCard(
-    stats: PatreonStats,
+    stats: PatreonStats?,
     patreonUrl: String?,
 ): LinearLayout {
     val colors = ThemeManager.colors
@@ -83,33 +88,38 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 }
             },
         )
-        addView(makeDivider(app))
-        // ---- Stats: two big numbers side by side ----
-        addView(
-            LinearLayout(app).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(Space.XS), 0, dp(Space.SM))
-                addView(buildPatreonStat("Paid members", NumberFormat.getIntegerInstance().format(stats.paidMembers)), statLayoutParams())
-                addView(
-                    buildPatreonStat(
-                        if (stats.amountIsEstimated) "Estimated amount" else "Monthly earnings",
-                        formatMonthlyUsd(stats.monthlyUsdCents),
-                    ),
-                    statLayoutParams(),
-                )
-            },
-        )
-        // ---- Footer ----
-        if (stats.updatedAt > 0) {
+        if (stats != null) {
+            addView(makeDivider(app))
+            // ---- Stats: two big numbers side by side ----
             addView(
-                makeText(
-                    app,
-                    "Updated ${formatPatreonDate(stats.updatedAt)} · per month",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ),
+                LinearLayout(app).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(Space.XS), 0, dp(Space.SM))
+                    addView(
+                        buildPatreonStat("Paid members", NumberFormat.getIntegerInstance().format(stats.paidMembers)),
+                        statLayoutParams(),
+                    )
+                    addView(
+                        buildPatreonStat(
+                            if (stats.amountIsEstimated) "Estimated amount" else "Monthly earnings",
+                            formatMonthlyUsd(stats.monthlyUsdCents),
+                        ),
+                        statLayoutParams(),
+                    )
+                },
             )
+            // ---- Footer ----
+            if (stats.updatedAt > 0) {
+                addView(
+                    makeText(
+                        app,
+                        "Updated ${formatPatreonDate(stats.updatedAt)} · per month",
+                        Type.BODY_SMALL,
+                        colors.onSurfaceVariant,
+                    ),
+                )
+            }
         }
         isClickable = clickable
         isFocusable = clickable
