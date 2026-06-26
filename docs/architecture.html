@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Webnovel Archiver — Native Android Architecture</title>
+<style>
+  /* ============================================================= THEME */
+  :root {
+    --bg: #0d0f14;
+    --bg-2: #12151c;
+    --panel: #171b24;
+    --panel-2: #1c212c;
+    --panel-3: #232936;
+    --border: #2a3140;
+    --border-soft: #20262f;
+    --text: #e6e6e6;
+    --text-dim: #9aa3b2;
+    --text-faint: #6b7383;
+    --gold: #d4af37;
+    --gold-soft: #b8962e;
+    --blue: #5b9bd5;
+    --green: #6abf69;
+    --red: #e06c75;
+    --purple: #c678dd;
+    --orange: #d19a66;
+    --teal: #56b6c2;
+    --radius: 10px;
+    --shadow: 0 8px 30px rgba(0,0,0,0.35);
+    --mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(900px 500px at 85% -5%, rgba(212,175,55,0.06), transparent 60%),
+      radial-gradient(700px 500px at 0% 0%, rgba(91,155,213,0.05), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  /* ============================================================= LAYOUT */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(13,15,20,0.86);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 18px;
+    padding: 12px 26px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 16px; white-space: nowrap; }
+  .brand .logo {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-soft));
+    display: grid; place-items: center; color: #1a1305; font-weight: 800; font-size: 15px;
+    box-shadow: 0 0 18px rgba(212,175,55,0.35);
+  }
+  .brand small { color: var(--text-dim); font-weight: 500; font-size: 12px; }
+  .search-wrap { flex: 1; max-width: 460px; position: relative; }
+  .search-wrap input {
+    width: 100%; background: var(--panel); border: 1px solid var(--border);
+    color: var(--text); padding: 9px 14px 9px 38px; border-radius: 8px; font-size: 14px; font-family: var(--sans);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-wrap input:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 0 3px rgba(212,175,55,0.12); }
+  .search-wrap .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
+  .pill { font-size: 11px; color: var(--text-dim); border: 1px solid var(--border); padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+
+  .shell { display: flex; max-width: 1500px; margin: 0 auto; }
+  nav.sidenav {
+    width: 268px; flex-shrink: 0; position: sticky; top: 61px; height: calc(100vh - 61px);
+    overflow-y: auto; padding: 22px 14px 40px 22px;
+    border-right: 1px solid var(--border-soft);
+  }
+  nav.sidenav .group-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-faint); margin: 18px 8px 6px; font-weight: 700; }
+  nav.sidenav a {
+    display: flex; align-items: center; gap: 9px; text-decoration: none; color: var(--text-dim);
+    padding: 6px 12px; border-radius: 7px; font-size: 13.5px; font-weight: 500; margin-bottom: 1px;
+    border-left: 2px solid transparent; transition: all .12s;
+  }
+  nav.sidenav a:hover { color: var(--text); background: var(--panel); }
+  nav.sidenav a.active { color: var(--gold); background: rgba(212,175,55,0.08); border-left-color: var(--gold); }
+  nav.sidenav a .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  main { flex: 1; min-width: 0; padding: 0 44px 120px; max-width: 1180px; }
+
+  /* ============================================================= HEADINGS / TEXT */
+  section { padding-top: 38px; padding-bottom: 10px; border-bottom: 1px solid var(--border-soft); scroll-margin-top: 80px; }
+  section:last-of-type { border-bottom: none; }
+  h1 { font-size: 34px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 25px; margin: 0 0 16px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 12px; }
+  h2 .num { color: var(--gold); font-family: var(--mono); font-size: 18px; opacity: 0.85; }
+  h3 { font-size: 18px; margin: 28px 0 10px; color: var(--text); }
+  h4 { font-size: 15px; margin: 20px 0 8px; color: var(--gold); font-family: var(--mono); }
+  p { color: var(--text-dim); }
+  p.lead { color: var(--text); font-size: 17px; }
+  strong { color: var(--text); font-weight: 650; }
+  em { color: var(--text); font-style: normal; border-bottom: 1px dotted var(--gold-soft); }
+  a.code-link { color: var(--blue); text-decoration: none; border-bottom: 1px dotted; }
+  a.code-link:hover { color: var(--gold); }
+  ul, ol { color: var(--text-dim); padding-left: 22px; }
+  ul li, ol li { margin: 5px 0; }
+  ul li::marker { color: var(--gold-soft); }
+  code { font-family: var(--mono); font-size: 0.86em; background: var(--panel-2); padding: 2px 6px; border-radius: 5px; color: var(--gold); border: 1px solid var(--border-soft); }
+  kbd { font-family: var(--mono); font-size: 11px; background: var(--panel-3); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--text); }
+
+  /* ============================================================= HERO */
+  .hero { padding: 56px 0 30px; border-bottom: 1px solid var(--border-soft); }
+  .hero .eyebrow { color: var(--gold); font-family: var(--mono); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 14px; }
+  .hero h1 { font-size: 40px; max-width: 720px; }
+  .hero p.lead { max-width: 720px; margin-top: 14px; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; min-width: 130px; }
+  .stat .v { font-size: 22px; font-weight: 700; color: var(--gold); font-family: var(--mono); }
+  .stat .l { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ============================================================= CARDS / PANELS */
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--bg-2));
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px;
+    box-shadow: var(--shadow); margin: 16px 0;
+  }
+  .card.glow-gold { border-color: rgba(212,175,55,0.3); box-shadow: 0 0 0 1px rgba(212,175,55,0.08), var(--shadow); }
+  .card h3:first-child { margin-top: 0; }
+  .grid { display: grid; gap: 16px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 900px) { .grid.cols-2, .grid.cols-3 { grid-template-columns: 1fr; } }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; font-family: var(--mono); letter-spacing: 0.02em; }
+  .badge.gold { background: rgba(212,175,55,0.12); color: var(--gold); border: 1px solid rgba(212,175,55,0.3); }
+  .badge.blue { background: rgba(91,155,213,0.12); color: var(--blue); border: 1px solid rgba(91,155,213,0.3); }
+  .badge.green { background: rgba(106,191,105,0.12); color: var(--green); border: 1px solid rgba(106,191,105,0.3); }
+  .badge.red { background: rgba(224,108,117,0.12); color: var(--red); border: 1px solid rgba(224,108,117,0.3); }
+  .badge.purple { background: rgba(198,120,221,0.12); color: var(--purple); border: 1px solid rgba(198,120,221,0.3); }
+  .badge.teal { background: rgba(86,182,194,0.12); color: var(--teal); border: 1px solid rgba(86,182,194,0.3); }
+  .badge.orange { background: rgba(209,154,102,0.12); color: var(--orange); border: 1px solid rgba(209,154,102,0.3); }
+  .badge.gray { background: var(--panel-3); color: var(--text-dim); border: 1px solid var(--border); }
+
+  /* ============================================================= CODE BLOCKS */
+  pre {
+    background: #0a0c11; border: 1px solid var(--border); border-radius: 8px; padding: 16px 18px;
+    overflow-x: auto; margin: 14px 0; font-size: 13px; line-height: 1.6;
+  }
+  pre code { background: none; border: none; padding: 0; color: var(--text); font-size: 13px; }
+  .tok-kw { color: var(--purple); }
+  .tok-fn { color: var(--blue); }
+  .tok-str { color: var(--green); }
+  .tok-com { color: var(--text-faint); font-style: italic; }
+  .tok-type { color: var(--teal); }
+  .tok-num { color: var(--orange); }
+  .tok-ann { color: var(--gold); }
+
+  /* ============================================================= COLLAPSIBLES */
+  details.detail {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; overflow: hidden;
+  }
+  details.detail > summary {
+    cursor: pointer; padding: 13px 16px; font-weight: 600; color: var(--text); list-style: none;
+    display: flex; align-items: center; gap: 10px; transition: background .12s;
+    border-left: 3px solid var(--gold-soft);
+  }
+  details.detail > summary::-webkit-details-marker { display: none; }
+  details.detail > summary:hover { background: var(--panel-2); }
+  details.detail > summary .chev { transition: transform .2s; color: var(--gold); font-size: 11px; }
+  details.detail[open] > summary .chev { transform: rotate(90deg); }
+  details.detail > summary .tag { margin-left: auto; }
+  .detail-body { padding: 4px 18px 18px 18px; border-top: 1px solid var(--border-soft); }
+  .detail-body p:first-child { margin-top: 14px; }
+
+  /* ============================================================= TABS */
+  .tabs { margin: 18px 0; }
+  .tab-bar { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    background: var(--panel); border: 1px solid var(--border); border-bottom: none; color: var(--text-dim);
+    padding: 9px 16px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 13px; font-weight: 600; font-family: var(--sans);
+    transition: all .12s; display: flex; align-items: center; gap: 8px;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--panel-2); }
+  .tab-btn.active { color: var(--gold); background: var(--bg-2); border-color: var(--border); border-bottom-color: var(--bg-2); margin-bottom: -1px; }
+  .tab-pane { display: none; padding: 22px 0; border: 1px solid var(--border); border-top: none; background: var(--bg-2); border-radius: 0 0 8px 8px; padding: 18px 22px; }
+  .tab-pane.active { display: block; animation: fade .25s; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ============================================================= LAYER STACK DIAGRAM */
+  .layer-stack { display: flex; flex-direction: column; gap: 8px; margin: 24px 0; }
+  .layer {
+    border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; cursor: pointer;
+    background: var(--panel); transition: all .18s; position: relative; overflow: hidden;
+  }
+  .layer::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--layer-color, var(--gold)); }
+  .layer:hover { transform: translateX(4px); border-color: var(--layer-color); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+  .layer .lh { display: flex; align-items: center; gap: 12px; }
+  .layer .lh .ln { font-weight: 700; font-size: 16px; color: var(--text); }
+  .layer .lh .lp { color: var(--text-dim); font-size: 13px; flex: 1; }
+  .layer .lh .arr { color: var(--text-faint); }
+  .layer .pkgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .pkg-chip { font-family: var(--mono); font-size: 11.5px; background: var(--panel-3); border: 1px solid var(--border); padding: 2px 8px; border-radius: 5px; color: var(--text-dim); }
+
+  /* ============================================================= FLOW DIAGRAM */
+  .flow { display: flex; flex-direction: column; gap: 0; margin: 24px 0; }
+  .flow-row { display: flex; align-items: stretch; gap: 14px; }
+  .flow-step { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 13px 15px; position: relative; transition: all .15s; }
+  .flow-step:hover { border-color: var(--gold); transform: translateY(-2px); }
+  .flow-step .step-n { font-family: var(--mono); font-size: 11px; color: var(--gold); font-weight: 700; }
+  .flow-step .step-t { font-weight: 650; font-size: 13.5px; color: var(--text); margin: 3px 0; }
+  .flow-step .step-d { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+  .flow-step .step-f { font-family: var(--mono); font-size: 10.5px; color: var(--blue); margin-top: 6px; }
+  .flow-arrow { display: flex; align-items: center; color: var(--gold); font-size: 18px; flex-shrink: 0; }
+  @media (max-width: 800px) { .flow-row { flex-direction: column; } .flow-arrow { transform: rotate(90deg); justify-content: center; padding: 4px 0; } }
+
+  /* ============================================================= TABLES */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
+  th { text-align: left; padding: 10px 14px; background: var(--panel-3); color: var(--gold); font-weight: 650; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); vertical-align: top; }
+  td:first-child { color: var(--text); }
+  tr:hover td { background: rgba(255,255,255,0.015); }
+  td code { font-size: 12px; }
+
+  /* ============================================================= CALLOUTS */
+  .callout { border-radius: var(--radius); padding: 16px 18px 16px 52px; margin: 18px 0; position: relative; border: 1px solid; }
+  .callout::before { position: absolute; left: 16px; top: 15px; font-size: 18px; }
+  .callout.info { background: rgba(91,155,213,0.06); border-color: rgba(91,155,213,0.25); }
+  .callout.info::before { content: "ℹ"; color: var(--blue); }
+  .callout.warn { background: rgba(209,154,102,0.06); border-color: rgba(209,154,102,0.25); }
+  .callout.warn::before { content: "⚠"; color: var(--orange); }
+  .callout.key { background: rgba(212,175,55,0.06); border-color: rgba(212,175,55,0.25); }
+  .callout.key::before { content: "★"; color: var(--gold); }
+  .callout p { color: var(--text); margin: 0; }
+  .callout p + p { margin-top: 8px; }
+
+  /* ============================================================= MISC */
+  .file-tree { font-family: var(--mono); font-size: 13px; line-height: 1.8; color: var(--text-dim); background: #0a0c11; border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; white-space: pre; overflow-x: auto; }
+  .file-tree .dir { color: var(--gold); font-weight: 600; }
+  .file-tree .file { color: var(--blue); }
+  .file-tree .cmt { color: var(--text-faint); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--text-dim); margin: 10px 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; }
+  hr.sep { border: none; border-top: 1px solid var(--border-soft); margin: 30px 0; }
+  .footer-note { color: var(--text-faint); font-size: 12.5px; margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border-soft); }
+  .anchor-fade:target { animation: highlight 1.2s ease; }
+  @keyframes highlight { 0% { background: rgba(212,175,55,0.15); } 100% { background: transparent; } }
+
+  /* progress bar at top */
+  #progress { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--gold), var(--gold-soft)); width: 0%; z-index: 200; transition: width .1s; }
+
+  /* mobile */
+  @media (max-width: 860px) {
+    nav.sidenav { display: none; }
+    main { padding: 0 20px 100px; }
+    .topbar { padding: 10px 16px; gap: 10px; }
+    .pill { display: none; }
+    .hero h1 { font-size: 30px; }
+  }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<!-- ====================================================== TOP BAR -->
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">W</div>
+    <div>Webnovel Archiver <small>· native Android</small></div>
+  </div>
+  <div class="search-wrap">
+    <svg class="ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input id="search" type="text" placeholder="Filter sections…" autocomplete="off" />
+  </div>
+  <span class="pill">v1.0.1-native · Kotlin · API 26–36</span>
+</div>
+
+<div class="shell">
+
+<!-- ====================================================== SIDENAV -->
+<nav class="sidenav" id="sidenav">
+  <div class="group-label">Overview</div>
+  <a href="#overview"><span class="dot" style="background:var(--gold)"></span>At a Glance</a>
+  <a href="#layers"><span class="dot" style="background:var(--blue)"></span>Layered Architecture</a>
+  <a href="#stack"><span class="dot" style="background:var(--green)"></span>Tech Stack</a>
+  <div class="group-label">Core Layers</div>
+  <a href="#app"><span class="dot" style="background:var(--gold)"></span>App &amp; Lifecycle</a>
+  <a href="#ui"><span class="dot" style="background:var(--purple)"></span>UI / Programmatic Views</a>
+  <a href="#source"><span class="dot" style="background:var(--blue)"></span>Source &amp; Network</a>
+  <a href="#domain"><span class="dot" style="background:var(--teal)"></span>Domain &amp; Models</a>
+  <a href="#data"><span class="dot" style="background:var(--green)"></span>Data &amp; Persistence</a>
+  <div class="group-label">Engines</div>
+  <a href="#engines"><span class="dot" style="background:var(--orange)"></span>Engines Overview</a>
+  <a href="#sync"><span class="dot" style="background:var(--blue)"></span>Sync Engine</a>
+  <a href="#download"><span class="dot" style="background:var(--orange)"></span>Download Engine</a>
+  <a href="#epub"><span class="dot" style="background:var(--green)"></span>EPUB Engine</a>
+  <a href="#cleanup"><span class="dot" style="background:var(--teal)"></span>Cleanup Engine</a>
+  <a href="#tts"><span class="dot" style="background:var(--purple)"></span>TTS Engine</a>
+  <div class="group-label">Flows &amp; Patterns</div>
+  <a href="#fetch-flow"><span class="dot" style="background:var(--gold)"></span>End-to-End Fetch Flow</a>
+  <a href="#cross"><span class="dot" style="background:var(--red)"></span>Cross-Cutting Concerns</a>
+</nav>
+
+<!-- ====================================================== MAIN -->
+<main>
+
+<!-- ============ HERO ============ -->
+<div class="hero">
+  <div class="eyebrow">Architecture Reference · Native Kotlin</div>
+  <h1>How Webnovel Archiver is Built</h1>
+  <p class="lead">
+    A single-activity, <strong>no-XML, no-DI-framework</strong> Android app that archives web novels —
+    fetching story metadata &amp; chapters from Royal Road and ScribbleHub, cleaning the text, packaging
+    EPUBs, reading aloud with TTS, and surviving crashes &amp; restores. This document is an interactive
+    walkthrough of every layer, engine, and data flow.
+  </p>
+  <div class="hero-stats">
+    <div class="stat"><div class="v">1</div><div class="l">Activity (no Fragments)</div></div>
+    <div class="stat"><div class="v">0</div><div class="l">XML layouts / DI framework</div></div>
+    <div class="stat"><div class="v">5</div><div class="l">Stateful engines</div></div>
+    <div class="stat"><div class="v">2</div><div class="l">Foreground services</div></div>
+    <div class="stat"><div class="v">3</div><div class="l">Novel sources</div></div>
+  </div>
+</div>
+
+<!-- ============ OVERVIEW ============ -->
+<section id="overview">
+  <h2><span class="num">00</span>At a Glance</h2>
+  <p class="lead">
+    The app is organized as a classic <strong>layered architecture</strong>, but with a few deliberate
+    departures from "stock" Android. The code is split into pure, unit-testable <em>planning</em> objects
+    and stateful <em>engines/services</em> — and the UI is built entirely with a programmatic View DSL.
+  </p>
+
+  <div class="grid cols-2">
+    <div class="card glow-gold">
+      <h3>🎯 Guiding Principles</h3>
+      <ul>
+        <li><strong>Planning vs Engine split.</strong> Deterministic logic lives in pure <code>*Planning</code> objects (no Android imports); I/O &amp; coroutines live in <code>*Engine</code> classes.</li>
+        <li><strong>Single owner.</strong> One <code>AppStorage</code>, one <code>NetworkClient</code>, one of each engine — held by a manual service locator, not a DI framework.</li>
+        <li><strong>No XML UI.</strong> Every screen is built with a programmatic DSL of extension functions on <code>ViewGroup</code>.</li>
+        <li><strong>No WorkManager.</strong> Background work is foreground services with self-contained coroutine loops (<code>START_STICKY</code>).</li>
+        <li><strong>Durability-first storage.</strong> Atomic writes + fsync; relative paths; transactional restores.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🧭 Package Map <span class="badge gray">root: com.vinicius741.webnovelarchiver</span></h3>
+      <table style="margin:0">
+        <tr><td><code>app/</code></td><td>Application, MainActivity, AppContainer</td></tr>
+        <tr><td><code>navigation/</code></td><td><code>ScreenHost</code> contract</td></tr>
+        <tr><td><code>source/</code></td><td>Providers, registry, network client</td></tr>
+        <tr><td><code>data/</code></td><td>storage · repository · backup</td></tr>
+        <tr><td><code>domain/</code></td><td>model · archive · story rules</td></tr>
+        <tr><td><code>sync · download · epub · cleanup · tts</code></td><td>The five engines</td></tr>
+        <tr><td><code>feature/</code></td><td>Screens by user flow</td></tr>
+        <tr><td><code>ui/</code></td><td>View DSL, theme, widgets, layout</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <p><strong>Quick orientation:</strong> tap any <span style="color:var(--gold)">layer card</span> below to jump to its section. Use the search box (top) to filter the sidebar. Collapsible <em>▷ Deep dive</em> blocks hold the implementation detail.</p>
+  </div>
+</section>
+
+<!-- ============ LAYERED ARCHITECTURE ============ -->
+<section id="layers">
+  <h2><span class="num">01</span>Layered Architecture</h2>
+  <p>Dependencies flow <strong>downward only</strong>. The UI never touches the network or disk directly —
+     it goes through engines and the repository. The domain layer is pure Kotlin with zero Android imports.</p>
+
+  <div class="layer-stack" id="layerStack">
+    <div class="layer" style="--layer-color: var(--purple)" data-jump="#ui">
+      <div class="lh">
+        <span class="ln">UI Layer</span>
+        <span class="lp">Programmatic View DSL · screens · theme · foldable layout</span>
+        <span class="badge purple">feature/ · ui/</span>
+        <span class="arr">→</span>
+      </div>
+      <div class="pkgs">
+        <span class="pkg-chip">feature/library</span><span class="pkg-chip">feature/details</span>
+        <span class="pkg-chip">feature/reader</span><span class="pkg-chip">feature/browser</span>
+        <span class="pkg-chip">ui/ViewDsl</span><span class="pkg-chip">ui/AppTheme</span>
+      </div>
+    </div>
+    <div class="layer" style="--layer-color: var(--gold)" data-jump="#app">
+      <div class="lh">
+        <span class="ln">App &amp; Orchestration</span>
+        <span class="lp">MainActivity · ScreenHost contract · AppContainer (service locator) · lifecycle</span>
+        <span class="badge gold">app/ · navigation/</span>
+        <span class="arr">→</span>
+      </div>
+      <div class="pkgs"><span class="pkg-chip">MainActivity</span><span class="pkg-chip">ScreenHost</span><span class="pkg-chip">AppContainer</span><span class="pkg-chip">WebnovelArchiverApp</span></div>
+    </div>
+    <div class="layer" style="--layer-color: var(--orange)" data-jump="#engines">
+      <div class="lh">
+        <span class="ln">Engines</span>
+        <span class="lp">Stateful pipelines: sync · download · epub · cleanup · tts — each split into Engine + Planning</span>
+        <span class="badge orange">sync · download · epub · cleanup · tts</span>
+        <span class="arr">→</span>
+      </div>
+      <div class="pkgs"><span class="pkg-chip">StorySyncEngine</span><span class="pkg-chip">DownloadEngine</span><span class="pkg-chip">EpubEngine</span><span class="pkg-chip">CleanupEngine</span><span class="pkg-chip">TtsEngine</span></div>
+    </div>
+    <div class="layer" style="--layer-color: var(--green)" data-jump="#data">
+      <div class="lh">
+        <span class="ln">Data &amp; Persistence</span>
+        <span class="lp">File-based JSON storage · atomic writes · repository cache · backup/restore</span>
+        <span class="badge green">data/</span>
+        <span class="arr">→</span>
+      </div>
+      <div class="pkgs"><span class="pkg-chip">AppStorage</span><span class="pkg-chip">DurableJson</span><span class="pkg-chip">AtomicFileWrites</span><span class="pkg-chip">AppRepository</span><span class="pkg-chip">backup/</span></div>
+    </div>
+    <div class="layer" style="--layer-color: var(--teal)" data-jump="#domain">
+      <div class="lh">
+        <span class="ln">Domain</span>
+        <span class="lp">Pure models &amp; rules — no Android, no I/O. 100% unit-testable.</span>
+        <span class="badge teal">domain/</span>
+        <span class="arr">→</span>
+      </div>
+      <div class="pkgs"><span class="pkg-chip">Models.kt</span><span class="pkg-chip">ArchiveSnapshotPlanning</span><span class="pkg-chip">StoryActionGuards</span><span class="pkg-chip">StoryBookmarkPlanning</span></div>
+    </div>
+    <div class="layer" style="--layer-color: var(--blue)" data-jump="#source">
+      <div class="lh">
+        <span class="ln">Source &amp; Network</span>
+        <span class="lp">Per-site providers · OkHttp client with rate limiting · Jsoup parsing · Patreon scraping</span>
+        <span class="badge blue">source/</span>
+        <span class="arr">→</span>
+      </div>
+      <div class="pkgs"><span class="pkg-chip">SourceProvider</span><span class="pkg-chip">SourceRegistry</span><span class="pkg-chip">NetworkClient</span><span class="pkg-chip">RoyalRoadProvider</span><span class="pkg-chip">ScribbleHubProvider</span></div>
+    </div>
+  </div>
+  <p style="font-size:13px;color:var(--text-faint)">↑ The UI sits on top; the network &amp; domain form the foundation. Each layer only knows the one below it.</p>
+</section>
+
+<!-- ============ TECH STACK ============ -->
+<section id="stack">
+  <h2><span class="num">02</span>Tech Stack</h2>
+  <div class="grid cols-3">
+    <div class="card"><h4>Language &amp; Platform</h4><ul style="margin:0">
+      <li><strong>Kotlin</strong> · JVM target 17</li>
+      <li><strong>minSdk 26</strong> · target/compile 36</li>
+      <li><strong>Coroutines</strong> 1.10.2 (no RxJava)</li>
+      <li>Single <code>AppCompatActivity</code></li>
+    </ul></div>
+    <div class="card"><h4>Networking &amp; Parsing</h4><ul style="margin:0">
+      <li><strong>OkHttp</strong> 4.12.0 (one shared client)</li>
+      <li><strong>Jsoup</strong> 1.21.2 (all HTML extraction)</li>
+      <li><strong>Gson</strong> 2.13.2 (persistence + Patreon JSON)</li>
+      <li><strong>Frankfurter API</strong> (FX for Patreon USD)</li>
+    </ul></div>
+    <div class="card"><h4>AndroidX &amp; UI</h4><ul style="margin:0">
+      <li><strong>appcompat</strong>, <strong>activity</strong>, <strong>core-ktx</strong></li>
+      <li><strong>RecyclerView</strong> + <strong>ViewPager2</strong></li>
+      <li><strong>androidx.window</strong> (foldable detection)</li>
+      <li><strong>androidx.browser</strong> (Custom Tabs)</li>
+      <li><strong>androidx.media</strong> (MediaSession)</li>
+      <li><strong>Coil</strong> 2.7.0 (image loading)</li>
+    </ul></div>
+  </div>
+  <div class="callout warn">
+    <p><strong>Conspicuously absent:</strong> Room/SQLite, Jetpack Compose, WorkManager, Hilt/Dagger, Retrofit, DataStore, SharedPreferences. Each absence is intentional — see the relevant sections for why.</p>
+  </div>
+</section>
+
+<!-- ============ APP & LIFECYCLE ============ -->
+<section id="app">
+  <h2><span class="num">03</span>App &amp; Lifecycle Layer</h2>
+  <p class="lead">The thinnest layer: it wires process-wide dependencies, owns the single Activity, and defines the
+     <code>ScreenHost</code> contract that every screen implements against.</p>
+
+  <div class="card glow-gold">
+    <h3><span class="badge gold">service locator</span> AppContainer — the manual DI</h3>
+    <p>Instead of a DI framework, <code>AppContainer</code> is a plain class holding exactly one instance of each
+       process-wide dependency. It's created in <code>WebnovelArchiverApp.onCreate()</code> and accessed via the
+       <code>Context.appContainer</code> extension. The whole point: <strong>prevent the Activity and the two
+       foreground services from instantiating duplicate engines that race on the same JSON files.</strong></p>
+<pre><code><span class="tok-kw">class</span> <span class="tok-type">AppContainer</span>(context: <span class="tok-type">Context</span>) {
+    <span class="tok-kw">val</span> applicationScope = <span class="tok-type">CoroutineScope</span>(<span class="tok-type">SupervisorJob</span>() + <span class="tok-type">Dispatchers</span>.IO)
+    <span class="tok-kw">val</span> network: <span class="tok-type">NetworkClient</span> = <span class="tok-type">NetworkClient</span>()
+    <span class="tok-kw">val</span> storage: <span class="tok-type">AppStorage</span> = <span class="tok-type">AppStorage</span>(context)
+    <span class="tok-kw">val</span> repository = <span class="tok-type">AppRepository</span>(storage)
+    <span class="tok-kw">val</span> syncEngine = <span class="tok-type">StorySyncEngine</span>(storage, network)
+    <span class="tok-kw">val</span> epubEngine = <span class="tok-type">EpubEngine</span>(storage, network)
+    <span class="tok-kw">val</span> ttsEngine = <span class="tok-type">TtsEngine</span>(context.applicationContext, storage)
+
+    <span class="tok-kw">fun</span> <span class="tok-fn">init</span>() {                          <span class="tok-com">// called once from Application.onCreate</span>
+        storage.<span class="tok-fn">migrateChapterPathsToRelative</span>()
+        storage.<span class="tok-fn">recoverInterruptedDownloads</span>()
+        repository.<span class="tok-fn">refresh</span>()
+    }
+}</code></pre>
+  </div>
+
+  <h3>MainActivity — lifecycle &amp; wiring only</h3>
+  <p>The Activity declares <strong>all <code>configChanges</code></strong> in the manifest (orientation, screenSize, uiMode,
+     smallestScreenSize…) so Android does <em>not</em> recreate it on rotate/fold/theme change. It implements
+     <code>ScreenHost</code>, pulls dependencies from the container, sets up the root <code>FrameLayout</code>, and
+     hands the first screen off. All rendering &amp; navigation live in extension functions elsewhere.</p>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h4>onCreate responsibilities</h4>
+      <ol style="margin:0">
+        <li>Pull <code>storage</code>/<code>engines</code> from <code>appContainer</code></li>
+        <li>Build the Activity's own <code>DownloadEngine</code> (enqueue/control only)</li>
+        <li>Apply theme &amp; edge-to-edge window</li>
+        <li>Create <code>frame</code> root + register back callback</li>
+        <li>Start <code>FoldTracker</code> &amp; re-render on fold change</li>
+        <li>Resolve resume target (TTS session) or browser import, else <code>showLibrary()</code></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>Lifecycle hooks</h4>
+      <ul style="margin:0">
+        <li><code>onConfigurationChanged</code> → calls <code>rerender?.invoke()</code> to reflow the live screen</li>
+        <li><code>onNewIntent</code> → handles browser import URLs</li>
+        <li><code>onDestroy</code> → disposes WebViews &amp; detaches the reader TTS listener</li>
+      </ul>
+    </div>
+  </div>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> ScreenHost — the contract every screen uses <span class="tag badge gold">interface</span></summary>
+    <div class="detail-body">
+      <p><code>ScreenHost</code> is an interface that exposes shared dependencies (<code>storage</code>,
+         <code>repository</code>, all engines, <code>foldTracker</code>), the root <code>frame</code>, and
+         transient UI state (<code>activeStory</code>, <code>storyOperation</code>, etc.). Screens are
+         <code>internal fun ScreenHost.showXxx()</code> extension functions — Kotlin's implicit-receiver chain
+         lets them call <code>showDetails(id)</code> unqualified from inside nested layout blocks.</p>
+      <p>Key members: <code>backHandler</code> (set by <code>screen()</code>, drives hardware back),
+         <code>rerender</code> (rebuilds current screen on fold/rotate), <code>screenObserver</code>
+         (a <code>Job</code> cancelled on every navigation).</p>
+    </div>
+  </details>
+</section>
+
+<!-- ============ UI ============ -->
+<section id="ui">
+  <h2><span class="num">04</span>UI Layer — Programmatic Views</h2>
+  <p class="lead">No XML layouts, no Jetpack Compose. The entire UI is built with a programmatic View DSL:
+     a vocabulary of extension functions on <code>ViewGroup</code> that take trailing-lambda blocks.</p>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>🧩 The ViewDsl pattern</h3>
+      <p>Each builder creates a widget, configures it, <code>addView</code>s it into the receiver, and returns it.
+         Because <code>screen()</code> runs its block with a <code>LinearLayout</code> receiver, nested calls like
+         <code>card { text(…) }</code> resolve as <code>ViewGroup</code> members.</p>
+<pre><code><span class="tok-com">// ui/ViewDsl.kt — sample builders</span>
+<span class="tok-kw">fun</span> <span class="tok-type">ViewGroup</span>.<span class="tok-fn">row</span>(block: <span class="tok-type">LinearLayout</span>.() -&gt; <span class="tok-type">Unit</span>) = …
+<span class="tok-kw">fun</span> <span class="tok-type">ViewGroup</span>.<span class="tok-fn">card</span>(block: <span class="tok-type">LinearLayout</span>.() -&gt; <span class="tok-type">Unit</span>) = …
+<span class="tok-kw">fun</span> <span class="tok-type">ViewGroup</span>.<span class="tok-fn">text</span>(value, type) = …
+<span class="tok-kw">fun</span> <span class="tok-type">ViewGroup</span>.<span class="tok-fn">button</span>(label, action) = …</code></pre>
+    </div>
+    <div class="card">
+      <h3>🧭 Navigation</h3>
+      <p>Navigation is <strong>direct function calls</strong>, not a NavHost graph. Any <code>showXxx()</code>
+         replaces <code>frame</code>'s content via the universal <code>screen()</code> shell, which:</p>
+      <ul style="margin:0">
+        <li>Cancels the outgoing screen's observer</li>
+        <li>Preserves scroll position across re-renders</li>
+        <li>Disposes WebViews (leak fix)</li>
+        <li>Builds the app bar + content + optional FAB</li>
+        <li>Wires <code>backHandler</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Screens</h3>
+  <table>
+    <tr><th>Screen</th><th>Entry function</th><th>What it does</th></tr>
+    <tr><td>Library</td><td><code>showLibrary()</code></td><td>Multi-column grid / pager of story cards, tabs, filters, sorting; live-patches progress in place</td></tr>
+    <tr><td>Details</td><td><code>showDetails(id)</code></td><td>Cover, Patreon card, chapter list (RecyclerView), download banner, sync/cleanup/EPUB actions</td></tr>
+    <tr><td>Reader</td><td><code>showReader(id, ch)</code></td><td>WebView rendering sanitized HTML; bookmark, TTS transport + paragraph highlight, font/dark settings</td></tr>
+    <tr><td>Browser</td><td><code>showBrowser(url)</code></td><td>Opens a Custom Tab (real browser for OAuth); "Import novel" action returns the URL</td></tr>
+    <tr><td>Queue</td><td><code>showQueue()</code></td><td>Global download queue across all stories</td></tr>
+    <tr><td>Settings</td><td><code>showSettings()</code></td><td>Theme, cleanup rules, backup/restore, TTS voices</td></tr>
+  </table>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> Theming, foldables &amp; live updates <span class="tag badge purple">UI systems</span></summary>
+    <div class="detail-body">
+      <h4>Theming (4 hand-built themes)</h4>
+      <p><code>ThemeManager</code> is a process singleton — the single source of truth read by every view builder.
+         Four themes ported from the legacy RN app: <code>obsidian</code> (dark/gold), <code>midnight</code> (dark/blue),
+         <code>forest</code> (dark/green), <code>classicLight</code> (cream). Dark mode is a property of the active
+         theme, not system-driven (the reader has a separate per-document dark override).</p>
+      <h4>Foldable / responsive layout</h4>
+      <p><code>FoldTracker</code> uses <code>androidx.window</code> to detect a folding feature.
+         <code>ScreenLayoutPlanning.resolveScreenLayout()</code> is a pure function mapping width/height/fold/mode →
+         width class (COMPACT/MEDIUM/EXPANDED) and column count. The Activity declares all <code>configChanges</code>,
+         so it observes the fold sensor and calls <code>rerender</code> to reflow the live screen.</p>
+      <h4>Live updates without rebuilding</h4>
+      <p>Library &amp; Details collect <code>repository.downloadStateVersion</code> (a monotonic counter) in a
+         <code>screenObserver</code> job, diff state, and <strong>patch views in place</strong> rather than rebuilding
+         the whole tree. <code>screen()</code> cancels the observer on every navigation.</p>
+    </div>
+  </details>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> Reader WebView &amp; HTML sanitization <span class="tag badge red">security</span></summary>
+    <div class="detail-body">
+      <p>The reader renders chapter content in a <code>WebView</code>. Before display, the HTML is passed through
+         <code>ChapterHtmlSanitizer.sanitize()</code> — a Jsoup <code>Safelist.relaxed()</code> baseline that strips
+         <code>&lt;script&gt;</code>, <code>on*</code> handlers, risky inline styles, and <code>iframe/object/embed</code>,
+         while restricting <code>a href</code> to <code>http/https/mailto</code> with <code>rel="nofollow noopener"</code>.</p>
+      <p><strong>JavaScript is enabled only because the HTML was sanitized.</strong> The only script that runs is the
+         one the app injects — a tiny <code>WnaTts.setActive(i)</code> bridge for TTS paragraph highlighting. File/content
+         access stays locked. The bridge (<code>ReaderTtsBridge</code>) exposes a single <code>onTtsStart(index)</code>
+         method for double-tap-to-read-from-paragraph.</p>
+    </div>
+  </details>
+</section>
+
+<!-- ============ SOURCE / NETWORK ============ -->
+<section id="source">
+  <h2><span class="num">05</span>Source &amp; Network — How Novels Are Fetched</h2>
+  <p class="lead">Three types form the fetching seam: <code>NetworkClient</code> (the single HTTP chokepoint),
+     <code>SourceProvider</code> (the per-site strategy), and <code>SourceRegistry</code> (the dispatch table).</p>
+
+  <div class="card glow-gold">
+    <h3>SourceProvider — the per-site contract</h3>
+    <p>A small, mostly-synchronous interface. The only <code>suspend</code> method is <code>getChapterList</code>,
+       because ScribbleHub pages its table of contents via WordPress AJAX.</p>
+<pre><code><span class="tok-kw">interface</span> <span class="tok-type">SourceProvider</span> {
+    <span class="tok-kw">val</span> name: <span class="tok-type">String</span>;  <span class="tok-kw">val</span> baseUrl: <span class="tok-type">String</span>
+    <span class="tok-kw">fun</span> <span class="tok-fn">isSource</span>(url: <span class="tok-type">String</span>): <span class="tok-type">Boolean</span>
+    <span class="tok-kw">fun</span> <span class="tok-fn">getStoryId</span>(url: <span class="tok-type">String</span>): <span class="tok-type">String</span>          <span class="tok-com">// stable namespaced id</span>
+    <span class="tok-kw">fun</span> <span class="tok-fn">getChapterId</span>(url: <span class="tok-type">String</span>): <span class="tok-type">String</span>?
+    <span class="tok-kw">fun</span> <span class="tok-fn">parseMetadata</span>(html): <span class="tok-type">NovelMetadata</span>      <span class="tok-com">// pure, no network</span>
+    <span class="tok-kw">suspend fun</span> <span class="tok-fn">getChapterList</span>(html, url, network, progress): <span class="tok-type">List</span>&lt;<span class="tok-type">ChapterInfo</span>&gt;
+    <span class="tok-kw">fun</span> <span class="tok-fn">parseChapterContent</span>(html): <span class="tok-type">String</span>    <span class="tok-com">// throws on failure → retryable</span>
+}</code></pre>
+  </div>
+
+  <h3>Registered sources</h3>
+  <div class="grid cols-2">
+    <div class="card">
+      <h4><span class="badge blue">RoyalRoad</span> RoyalRoadProvider</h4>
+      <ul style="margin:0">
+        <li>ID: <code>rr_&lt;fictionId&gt;</code></li>
+        <li>Static TOC: <code>.chapter-row</code> anchors (no pagination)</li>
+        <li>Content: <code>.chapter-inner</code>; strips portlets/scripts</li>
+        <li>Ungated — no per-host rate limit</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4><span class="badge orange">ScribbleHub</span> ScribbleHubProvider</h4>
+      <ul style="margin:0">
+        <li>ID: <code>sh_&lt;seriesId&gt;</code> (fallback <code>sh_url_…</code>)</li>
+        <li>Paginated TOC: POSTs to <code>wp-admin/admin-ajax.php</code> with <code>X-Requested-With: XMLHttpRequest</code></li>
+        <li>Content: <code>#chp_raw</code>; strips author notes/sharedaddy</li>
+        <li><strong>Gated: 1500ms gap</strong> between requests</li>
+      </ul>
+    </div>
+  </div>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> NetworkClient — HTTP, rate limiting &amp; retry <span class="tag badge blue">shared client</span></summary>
+    <div class="detail-body">
+      <p>A thin suspend wrapper over one shared <code>OkHttpClient</code> (connect 30s, read 45s, no cache), constructed
+         once in <code>AppContainer</code>. Three methods: <code>fetch</code> (text), <code>postForm</code> (ScribbleHub AJAX),
+         <code>fetchBytes</code> (cover images, returns null on non-image/oversize, never throws).</p>
+      <h4>Per-host rate limiting</h4>
+      <p>A <code>ConcurrentHashMap&lt;host, HostGate&gt;</code> where each <code>HostGate</code> holds a <code>Mutex</code> +
+         <code>nextAllowedAt</code>. <strong>Only <code>www.scribblehub.com</code> is gated</strong> (1500ms gap); all other
+         hosts run ungated. The mutex is held only while computing the gap, so concurrent Activity + service fetches can't bypass it.</p>
+      <h4>Retry policy</h4>
+      <p>Up to 3 attempts, <strong>but only for ScribbleHub on HTTP 403/429</strong>, with backoff
+         <code>2.5s × attempt</code>. Any other non-2xx throws immediately. A hardcoded Android Chrome mobile User-Agent
+         is sent on every request; no cookies, no Referer.</p>
+    </div>
+  </details>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> HTML parsing &amp; the Patreon stats subsystem <span class="tag badge purple">Jsoup + Gson</span></summary>
+    <div class="detail-body">
+      <h4>Jsoup everywhere, regex only for IDs</h4>
+      <p>Metadata parsing follows a consistent "try specific selector → fall back to OG/Twitter meta tags" pattern.
+         Notable helper: <code>blockText()</code> walks the DOM inserting <code>\n\n</code> around block tags so the
+         synopsis stays readable (Jsoup's <code>.text()</code> collapses everything to one line). Chapter content is
+         returned as cleaned inner HTML, fed later to both the reader WebView and the EPUB.</p>
+      <h4>Patreon discovery &amp; estimation</h4>
+      <p>During <code>parseMetadata</code>, <code>findPatreonUrl()</code> scans <code>a[href*=patreon.com]</code> links,
+         <strong>filtering out any inside comment subtrees</strong>, and scores them by context (author link = 3, "support"
+         anchor = 2, description = 1). The winner is stored on <code>NovelMetadata.patreonUrl</code>.</p>
+      <p><code>PatreonStatsFetcher</code> then scrapes the creator's <code>/about</code> page: it walks Patreon's embedded
+         JSON (Gson <code>JsonParser</code>) extracting <code>paid_member_count</code> and, when <code>show_earnings</code>,
+         the exact pledge sum; otherwise it <strong>estimates</strong> from tier prices (median × members) with a
+         conservative 0.9 net-of-fees multiplier. Non-USD amounts are converted via the public Frankfurter API. A regex
+         fallback covers fields the JSON walk misses. All wrapped in <code>runCatching</code> so a Patreon failure never
+         breaks a sync.</p>
+    </div>
+  </details>
+
+  <div class="callout key">
+    <p><strong>Key seam:</strong> the sync engine fetches metadata + TOC + Patreon; the download engine fetches individual
+       chapter bodies. <strong>Both reach the source exclusively through these three types</strong> — never via raw HTTP.</p>
+  </div>
+</section>
+
+<!-- ============ DOMAIN ============ -->
+<section id="domain">
+  <h2><span class="num">06</span>Domain &amp; Models</h2>
+  <p class="lead">Pure Kotlin — zero Android imports. Holds the persisted data models and the deterministic business rules.</p>
+
+  <div class="card">
+    <h3>📦 Core model: Story (the central aggregate)</h3>
+<pre><code><span class="tok-kw">data class</span> <span class="tok-type">Story</span>(
+    <span class="tok-com">// identity</span>
+    <span class="tok-kw">val</span> id, title, author, coverUrl?, description?, sourceUrl,
+    <span class="tok-com">// download progress</span>
+    status: <span class="tok-type">DownloadStatus</span>, totalChapters, downloadedChapters,
+    chapters: <span class="tok-type">MutableList</span>&lt;<span class="tok-type">Chapter</span>&gt;, lastUpdated?, dateAdded?,
+    <span class="tok-com">// EPUB bookkeeping</span>
+    epubPath?, epubPaths?, epubStale?, epubConfig?,
+    <span class="tok-com">// workflow</span>
+    pendingNewChapterIds?, tags?, lastReadChapterId?, score?, tabId?,
+    <span class="tok-com">// archive snapshots</span>
+    isArchived?, archiveOfStoryId?, archivedAt?, archiveReason?,
+    <span class="tok-com">// Patreon</span>
+    patreonUrl?, patreonStats?
+)</code></pre>
+    <p style="margin-top:12px">Fields are <code>var</code> (mutable) by design — they round-trip through Gson to JSON on disk.
+       A <strong>chapter</strong> is <code>id, title, url, content? (in-memory), filePath? (persisted), downloaded</code>.
+       Chapter HTML is stored as separate files, <em>not</em> embedded in the story JSON.</p>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h4>🗄 Archive snapshots</h4>
+      <p>An archive is itself a <code>Story</code> row with <code>isArchived=true</code> and
+         <code>archiveOfStoryId=&lt;original&gt;</code>. <code>ArchiveSnapshotPlanning.buildArchiveSnapshot()</code>
+         synthesizes a frozen, <strong>file-copied</strong> record of a story at a moment in time, with a random
+         suffix in its id. Created <em>before</em> the live story is overwritten on sync, so removed chapters stay readable.</p>
+    </div>
+    <div class="card">
+      <h4>🛡 Action guards &amp; bookmarks</h4>
+      <p><code>StoryActionGuards</code> gates actions on archives (<code>canSync</code>, <code>canQueueDownloads</code> →
+         false if archived). <code>StoryBookmarkPlanning.withBookmark()</code> sets <code>lastReadChapterId</code>
+         and re-derives the EPUB range ("start after bookmark" begins on the chapter after the bookmark).</p>
+    </div>
+  </div>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> All model types at a glance <span class="tag badge teal">Models.kt</span></summary>
+    <div class="detail-body">
+      <table style="margin:0">
+        <tr><th>Type</th><th>Purpose</th></tr>
+        <tr><td><code>DownloadStatus</code></td><td>Coarse per-story state: idle, downloading, completed, failed, paused, partial</td></tr>
+        <tr><td><code>DownloadJobStatus</code></td><td>Typed job lifecycle with a <code>wire</code> string for legacy JSON compat</td></tr>
+        <tr><td><code>Chapter</code> / <code>Story</code></td><td>Persisted novel entities</td></tr>
+        <tr><td><code>EpubConfig</code></td><td>maxChaptersPerEpub, rangeStart/End, startAfterBookmark</td></tr>
+        <tr><td><code>PatreonStats</code></td><td>paidMembers, monthlyUsdCents, amountIsEstimated, updatedAt</td></tr>
+        <tr><td><code>Tab</code></td><td>User-defined library grouping</td></tr>
+        <tr><td><code>DownloadJob</code></td><td>Queued chapter with retry metadata</td></tr>
+        <tr><td><code>NovelMetadata</code> / <code>ChapterInfo</code></td><td>Parse results from a source (distinct from persisted)</td></tr>
+        <tr><td><code>TtsSession</code> / <code>TtsSettings</code></td><td>Resume state &amp; voice config</td></tr>
+      </table>
+    </div>
+  </details>
+</section>
+
+<!-- ============ DATA / PERSISTENCE ============ -->
+<section id="data">
+  <h2><span class="num">07</span>Data &amp; Persistence</h2>
+  <p class="lead">No SQLite, no Room, no SharedPreferences. <strong>Everything is file-based JSON</strong> under
+     <code>filesDir/webnovel_archiver/</code>, with two durability primitives making every write crash-safe.</p>
+
+  <div class="card">
+    <h3>📁 On-disk layout</h3>
+    <div class="file-tree"><span class="dir">webnovel_archiver/</span>                      <span class="cmt"># root</span>
+├── <span class="dir">stories/</span>                  <span class="cmt"># one JSON per story</span>
+│   └── <span class="file">rr_123.json</span>
+├── <span class="dir">novels/</span> &lt;storyId&gt;/         <span class="cmt"># chapter HTML files</span>
+│   └── <span class="file">0001_Chapter_Title.html</span>
+├── <span class="dir">epubs/</span> &lt;storyId&gt;/          <span class="cmt"># generated EPUBs (regenerated on demand)</span>
+├── <span class="dir">backups/</span>                  <span class="cmt"># exported backups</span>
+├── <span class="file">library_index.json</span>        <span class="cmt"># ordered list of story IDs</span>
+├── <span class="file">settings.json</span>  <span class="file">download_queue.json</span>
+├── <span class="file">display_preferences.json</span>  <span class="file">tabs.json</span>
+├── <span class="file">tts_session.json</span>  <span class="file">tts_settings.json</span>
+└── <span class="file">regex_cleanup_rules.json</span>  <span class="file">sentence_removal.json</span></div>
+    <p style="margin-top:12px"><strong>Chapter paths are stored relative to root</strong> — so backups, restores, and
+       app-data moves stay portable. Legacy absolute paths are migrated on read.</p>
+  </div>
+
+  <div class="grid cols-2">
+    <div class="card">
+      <h4>🔐 Durability primitive #1 — DurableJson</h4>
+      <p>Used for every JSON document. Wraps Android's <code>AtomicFile</code>: writes to a temp file, then renames.
+         Uniform <strong>envelope</strong> <code>{schemaVersion, appVersion, payload}</code> with backward-compatible
+         reads of legacy bare-payload files. Serializer is <strong>Gson</strong> with pretty-printing.</p>
+    </div>
+    <div class="card">
+      <h4>🔐 Durability primitive #2 — AtomicFileWrites</h4>
+      <p>For binary/streamed files (chapter HTML, EPUBs). Classic <strong>write-temp → fsync → atomic rename</strong>.
+         A sibling temp file with a monotonic counter avoids collisions; <code>RandomAccessFile.fd.sync()</code> forces
+         data to disk <em>before</em> the rename, so a post-rename crash can't lose the file.</p>
+    </div>
+  </div>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> AppRepository — the caching layer with StateFlow <span class="tag badge green">R2 single owner</span></summary>
+    <div class="detail-body">
+      <p><code>AppRepository</code> is the single owner of <code>AppStorage</code>. It wraps raw file I/O with cached,
+         observable state so UI screens don't re-parse JSON on every render (disk reads off the render path).</p>
+      <p>Holds <code>StateFlow</code>s: <code>libraryFlow</code>, <code>queueFlow</code>, <code>settingsFlow</code>,
+         and a monotonic <code>downloadStateVersion</code> counter (because queue/story models are mutated in place,
+         so equality is unreliable — a counter is a safer change signal). The download engine pushes updates back via
+         <code>publishDownloadState()</code>, which re-reads from storage <strong>under the shared storage monitor</strong>
+         and bumps the version.</p>
+      <p>Transactional library/queue mutations are <code>suspend</code> and <code>synchronized(storage)</code> — the
+         <em>same monitor</em> <code>AppStorage</code> uses, so UI, foreground service, and download engine never interleave.</p>
+    </div>
+  </details>
+
+  <details class="detail">
+    <summary><span class="chev">▶</span> Backup &amp; restore — two formats, transactional restore <span class="tag badge blue">backup/</span></summary>
+    <div class="detail-body">
+      <h4>JSON backup (metadata only)</h4>
+      <p>Exports library + tabs as JSON with chapter content scrubbed. Import <strong>merges</strong> into the existing
+         library by ID, preserving local downloaded state for chapters already present. Capped at 50 MiB.</p>
+      <h4>Full backup (ZIP with chapter files + all config)</h4>
+      <p>A <code>manifest.json</code> plus one entry per downloaded chapter file. Paths are percent-encoded so they're
+         safe inside a ZIP across platforms.</p>
+      <h4>Transactional full restore</h4>
+      <p>A <strong>staged swap</strong>: extract with limits (200k entries, 2GB total, zip-slip protection) → validate
+         manifest → scrub transient state → build a staged replacement tree → verify it → <strong>atomic rename</strong>
+         the old root to a cache snapshot and the staged tree into place. Because the existing root is snapshotted
+         <em>before</em> the single-rename swap, a failed or interrupted restore leaves the previous library untouched.</p>
+    </div>
+  </details>
+
+  <div class="callout info">
+    <p><strong>Startup recovery:</strong> <code>recoverInterruptedDownloads()</code> flips any job stuck in
+       <code>downloading</code> (process was killed mid-download) back to <code>pending</code> on the next cold start,
+       reading/writing the queue file <em>directly</em> inside the synchronized block so a concurrent writer can't interleave.</p>
+  </div>
+</section>
+
+<!-- ============ ENGINES OVERVIEW ============ -->
+<section id="engines">
+  <h2><span class="num">08</span>The Five Engines</h2>
+  <p class="lead">Each engine is a stateful pipeline that orchestrates network, storage, and coroutines. They share the
+     same "Planning vs Engine" split: pure logic in <code>*Planning</code> objects, lifecycle/I/O in the engine class.
+     Use the tabs to explore each one.</p>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--blue)"></span>Sync</span>
+    <span><span class="sw" style="background:var(--orange)"></span>Download</span>
+    <span><span class="sw" style="background:var(--green)"></span>EPUB</span>
+    <span><span class="sw" style="background:var(--teal)"></span>Cleanup</span>
+    <span><span class="sw" style="background:var(--purple)"></span>TTS</span>
+  </div>
+
+  <div class="tabs">
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="sync"><span class="sw" style="background:var(--blue);width:8px;height:8px;border-radius:50%"></span>Sync</button>
+      <button class="tab-btn" data-tab="download"><span class="sw" style="background:var(--orange);width:8px;height:8px;border-radius:50%"></span>Download</button>
+      <button class="tab-btn" data-tab="epub"><span class="sw" style="background:var(--green);width:8px;height:8px;border-radius:50%"></span>EPUB</button>
+      <button class="tab-btn" data-tab="cleanup"><span class="sw" style="background:var(--teal);width:8px;height:8px;border-radius:50%"></span>Cleanup</button>
+      <button class="tab-btn" data-tab="tts"><span class="sw" style="background:var(--purple);width:8px;height:8px;border-radius:50%"></span>TTS</button>
+    </div>
+
+    <!-- SYNC TAB -->
+    <div class="tab-pane active" id="tab-sync">
+      <h3 style="margin-top:0"><span class="badge blue">StorySyncEngine</span> Refreshes a story's metadata, chapter list &amp; Patreon stats</h3>
+      <p>A suspend pipeline (no long-lived scope) dispatched on <code>applicationScope</code> + <code>Dispatchers.IO</code>.
+         Concurrency safety comes from being a single coroutine plus the storage monitor.</p>
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-step"><div class="step-n">01</div><div class="step-t">Resolve provider</div><div class="step-d"><code>SourceRegistry.getProvider(url)</code> + URL validation</div><div class="step-f">StorySyncEngine.kt</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="step-n">02</div><div class="step-t">Fetch + parse metadata</div><div class="step-d">Single GET carries metadata + first TOC page → <code>parseMetadata</code></div><div class="step-f">provider.parseMetadata</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="step-n">03</div><div class="step-t">Build chapter list</div><div class="step-d"><code>getChapterList</code> (ScribbleHub may issue AJAX POSTs)</div><div class="step-f">provider.getChapterList</div></div>
+        </div>
+        <div class="flow-row" style="margin-top:4px">
+          <div class="flow-step"><div class="step-n">04</div><div class="step-t">Refresh Patreon (best-effort)</div><div class="step-d">If <code>patreonUrl</code> present, <code>PatreonStatsFetcher</code> in <code>runCatching</code></div><div class="step-f">PatreonStatsFetcher</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="step-n">05</div><div class="step-t">Merge chapters</div><div class="step-d">Reconcile by stable id; preserve downloaded content; compute new/removed</div><div class="step-f">StorySyncPlanning.mergeChapters</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="step-n">06</div><div class="step-t">Archive on removal</div><div class="step-d">If chapters removed &amp; existing story → create read-only snapshot <em>before</em> overwrite</div><div class="step-f">createArchive</div></div>
+        </div>
+      </div>
+      <div class="callout key"><p><strong>Archived snapshots remain read-only for sync and download.</strong> A snapshot is created before the live story is overwritten, preserving removed chapters' content.</p></div>
+    </div>
+
+    <!-- DOWNLOAD TAB -->
+    <div class="tab-pane" id="tab-download">
+      <h3 style="margin-top:0"><span class="badge orange">DownloadEngine</span> Fetches chapter bodies &amp; writes them to disk</h3>
+      <p>A foreground service + self-contained coroutine loop (no WorkManager). The Activity and the service each
+         instantiate their own <code>DownloadEngine</code>, but they share one <code>AppStorage</code> — the monitor serializes them.</p>
+      <div class="grid cols-2">
+        <div class="card"><h4>Per-chapter hot path</h4><ol style="margin:0">
+          <li>Resolve provider + <code>network.fetch(url)</code></li>
+          <li>Parse + clean in one shot: <code>CleanupEngine.shared.applyDownload(parseChapterContent(html), …)</code></li>
+          <li><code>storage.saveChapter(...)</code> (atomic write)</li>
+          <li>Under <code>synchronized(storage)</code>: set <code>filePath</code>, <code>downloaded=true</code>, recompute counts, mark <code>epubStale=true</code></li>
+        </ol></div>
+        <div class="card"><h4>The process loop</h4><ol style="margin:0">
+          <li>Fail unsupported-source jobs each iteration</li>
+          <li>Under monitor: read queue, <code>selectEligibleJobs</code> (global + per-source concurrency caps), flip to Downloading</li>
+          <li>Fan out: <code>launch</code> each job, <code>join</code> all before next batch</li>
+          <li>Update per-source rate-limit bookkeeping</li>
+        </ol></div>
+      </div>
+      <div class="callout warn"><p><strong>The foreground-service handshake:</strong> to satisfy Android O+'s 5-second
+         <code>startForegroundService→startForeground</code> window while the durable queue write may be slow: the UI sends
+         <code>ACTION_PREPARE</code> (immediate foreground with placeholder) → enqueues <em>off the main thread</em> →
+         sends <code>ACTION_START</code>; on failure, <code>abortPrepare</code> rolls back.</p></div>
+      <p><strong>Retry:</strong> exponential backoff (<code>3s × 2^attempt</code>, cap 60s), auto-retry up to
+         <code>maxRetries</code> for classified-retryable errors (403/429, 5xx). Cross-process resume via
+         <code>recoverInterruptedDownloads()</code> on cold start.</p>
+    </div>
+
+    <!-- EPUB TAB -->
+    <div class="tab-pane" id="tab-epub">
+      <h3 style="margin-top:0"><span class="badge green">EpubEngine</span> Packages downloaded chapters into EPUB 2.0 files</h3>
+      <p>A single suspend function (no long-lived scope). Supports <strong>multi-volume</strong> output by chunking
+         chapters into <code>maxChaptersPerEpub</code> groups.</p>
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-step"><div class="step-n">01</div><div class="step-t">Select chapters</div><div class="step-d">Apply range + keep only downloaded</div><div class="step-f">EpubSelection</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="step-n">02</div><div class="step-t">Fetch cover</div><div class="step-d">Via shared <code>network.fetchBytes</code> (optional)</div><div class="step-f">fetchCover</div></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step"><div class="step-n">03</div><div class="step-t">Stream ZIP</div><div class="step-d">One chapter's XHTML resident at a time → temp → fsync → rename</div><div class="step-f">saveEpubStreamed</div></div>
+        </div>
+      </div>
+      <p>The EPUB structure: stored <code>mimetype</code>, <code>META-INF/container.xml</code>, <code>OEBPS/</code> with
+         <code>style.css</code>, cover/details/toc XHTML, per-chapter XHTML, <code>content.opf</code> + <code>toc.ncx</code>.
+         Source HTML is round-tripped through Jsoup with XHTML escape mode so fragments are well-formed for the strict EPUB parser.</p>
+      <div class="callout info"><p><strong>Memory optimization:</strong> the ZIP is streamed straight to a temp file — only
+         one chapter's XHTML is resident at a time, instead of buffering the whole book in memory.</p></div>
+    </div>
+
+    <!-- CLEANUP TAB -->
+    <div class="tab-pane" id="tab-cleanup">
+      <h3 style="margin-top:0"><span class="badge teal">CleanupEngine</span> Strips ads, boilerplate &amp; author notes from chapter text</h3>
+      <p>A process singleton (<code>CleanupEngine.shared</code>) with a <strong>cached compiled rule set</strong> —
+         regexes compile at most once per settings change, not once per chapter (keyed by settings hash in an
+         <code>AtomicReference</code>, swapped without locks).</p>
+      <table>
+        <tr><th>Removes</th><th>How</th></tr>
+        <tr><td><code>&lt;script&gt;</code>, <code>&lt;style&gt;</code>, <code>&lt;noscript&gt;</code>, <code>&lt;iframe&gt;</code></td><td>Element removal via Jsoup</td></tr>
+        <tr><td>Anti-piracy / "stolen from Royal Road" boilerplate</td><td>Built-in <code>DefaultCleanup.sentences</code> (~80 strings)</td></tr>
+        <tr><td>User sentence blocklist</td><td>Whitespace-flexible, case-insensitive patterns</td></tr>
+        <tr><td>User regex rules (download / tts / both scope)</td><td>Compiled once, with ReDoS-risk rejection</td></tr>
+      </table>
+      <p><code>TextCleanup</code> also produces <strong>TTS chunks</strong>: <code>prepareTtsChunks()</code> walks block
+         elements and groups text into ~chunkSize pieces; <code>prepareTtsAnnotatedHtml()</code> tags each element with
+         <code>data-tts-group</code>, byte-aligned with the chunks list so the reader highlight script can map a chunk
+         index back to a DOM node.</p>
+    </div>
+
+    <!-- TTS TAB -->
+    <div class="tab-pane" id="tab-tts">
+      <h3 style="margin-top:0"><span class="badge purple">TtsEngine</span> Reads chapters aloud with MediaSession + lock-screen controls</h3>
+      <p>One process-wide engine shared by the Activity (reader transport + highlight) and the foreground service
+         (MediaSession + notification). <strong>Sharing one instance</strong> means the reader's listener fires for
+         playback the service drives.</p>
+      <div class="grid cols-2">
+        <div class="card"><h4>Concurrency (R8)</h4><p style="margin:0">Constructed on <code>Dispatchers.Main.immediate</code>;
+           all state mutations (UtteranceProgressListener callbacks <em>and</em> control methods) serialize through a
+           <code>Mutex</code> — so Android's TTS callbacks from any thread can't race storage writes or playback continuation.</p></div>
+        <div class="card"><h4>Multicast observation</h4><p style="margin:0">A list of state listeners; both the service
+           and reader register. <code>notifyStateListeners()</code> fans out snapshots — push-based, never polling.</p></div>
+      </div>
+      <p><strong>Resume across restarts:</strong> <code>TtsSession</code> is persisted to JSON on every chunk boundary.
+         On launch, <code>resumePersistedSession()</code> rebuilds chunks and continues from the bounded index.
+         <strong>Auto-advance:</strong> when a chapter finishes, <code>handleChapterFinished()</code> rebuilds the next
+         chapter's chunks and continues seamlessly.</p>
+      <p>The foreground service owns <code>MediaSessionCompat</code> (transport controls, headset/Bluetooth media buttons via
+         <code>MediaButtonReceiver</code>) and a <code>MediaStyle</code> notification with Prev/Play-Pause/Next/Stop.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SYNC ENGINE (anchor sections for nav) ============ -->
+<section id="sync">
+  <h2><span class="num">09</span>Sync Engine — in detail</h2>
+  <p class="lead">See the <a class="code-link" href="#engines">Engines ▸ Sync tab</a> for the visual flow. Key details below.</p>
+  <div class="card">
+    <h4>mergeChapters — the reconciliation core</h4>
+    <p>Keyed by <strong>stable id</strong> = <code>provider.getChapterId(url)</code>. For each incoming chapter: if it
+       matches an existing one, it survives (preserving <code>downloaded</code>/<code>filePath</code>) but refreshes
+       title/url; otherwise it's new (<code>downloaded=false</code>). Survivors are removed from a "remaining" set;
+       whatever remains at the end is the <code>removedChapters</code> list that triggers an archive snapshot.</p>
+    <p>The <code>lastReadChapterId</code> is remapped through an alias table and dropped if it no longer matches a
+       surviving chapter. <code>epubStale</code> is set true when new chapters were appended beyond the old range.</p>
+  </div>
+</section>
+
+<!-- ============ DOWNLOAD ============ -->
+<section id="download">
+  <h2><span class="num">10</span>Download Engine — in detail</h2>
+  <p class="lead">See the <a class="code-link" href="#engines">Engines ▸ Download tab</a> for the flow. Key details below.</p>
+  <div class="card">
+    <h4>Queue atomicity — the "R3" design</h4>
+    <p>Queue read-modify-writes <strong>never use a coroutine <code>Mutex</code> or <code>runBlocking</code></strong>
+       (an ANR risk on the main thread). Instead everything serializes on the JVM monitor of the single
+       <code>AppStorage</code> instance. Three primitives:</p>
+    <ul>
+      <li><code>mutateQueueInPlace(transform)</code> — atomic single-document RMW of <code>download_queue.json</code></li>
+      <li><code>saveEnqueue(story, jobs)</code> — atomic multi-document RMW (story + queue under one monitor acquisition)</li>
+      <li><code>recoverInterruptedDownloads()</code> — re-promotes <code>downloading → pending</code> on cold start</li>
+    </ul>
+    <p>The Activity's engine handles enqueue/control + UI callbacks; the service's engine runs the loop. Both share one <code>AppStorage</code>.</p>
+  </div>
+</section>
+
+<!-- ============ EPUB ============ -->
+<section id="epub">
+  <h2><span class="num">11</span>EPUB Engine — in detail</h2>
+  <p class="lead">See the <a class="code-link" href="#engines">Engines ▸ EPUB tab</a>. Range selection &amp; coverage warning via <code>EpubSelection</code>;
+     filenames via <code>EpubFilename</code> (<code>&lt;sanitized&gt;_Ch&lt;start&gt;-&lt;end&gt;.epub</code>).</p>
+</section>
+
+<!-- ============ CLEANUP ============ -->
+<section id="cleanup">
+  <h2><span class="num">12</span>Cleanup Engine — in detail</h2>
+  <p class="lead">See the <a class="code-link" href="#engines">Engines ▸ Cleanup tab</a>. ReDoS prevention: <code>validateRegexRule</code>
+     rejects risky nested-quantified-group patterns and caps pattern length at 500 chars.</p>
+</section>
+
+<!-- ============ TTS ============ -->
+<section id="tts">
+  <h2><span class="num">13</span>TTS Engine — in detail</h2>
+  <p class="lead">See the <a class="code-link" href="#engines">Engines ▸ TTS tab</a>. The service deliberately does <strong>not</strong> shut down the
+     process-wide engine in <code>onDestroy</code> — a system-killed service leaves the persisted session intact for resume.</p>
+</section>
+
+<!-- ============ END TO END FLOW ============ -->
+<section id="fetch-flow">
+  <h2><span class="num">14</span>End-to-End: Importing &amp; Archiving a Novel</h2>
+  <p class="lead">Trace a story from URL to archived EPUB — the two-phase fetch split (sync for metadata, download for bodies).</p>
+
+  <h3>Phase 1 — Import / Sync (metadata + TOC)</h3>
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-step"><div class="step-n">1</div><div class="step-t">Browse in Custom Tab</div><div class="step-d">User opens a source site in a real browser (secure OAuth); taps "Import novel"</div><div class="step-f">feature/browser</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">2</div><div class="step-t">Intent → MainActivity</div><div class="step-d">PendingIntent carries the current URL back to the app</div><div class="step-f">BrowserImportPlanning</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">3</div><div class="step-t">syncStory(url)</div><div class="step-d">Dispatches <code>StorySyncEngine.fetchOrSync</code> on IO</div><div class="step-f">StoryActions.kt</div></div>
+    </div>
+    <div class="flow-row" style="margin-top:4px">
+      <div class="flow-step"><div class="step-n">4</div><div class="step-t">Fetch + parse</div><div class="step-d">One GET → metadata + first TOC page; Patreon stats (best-effort)</div><div class="step-f">SourceProvider</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">5</div><div class="step-t">Merge + persist</div><div class="step-d">Reconcile chapters; archive removed; write story JSON</div><div class="step-f">StorySyncPlanning</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">6</div><div class="step-t">Library updates</div><div class="step-d"><code>repository</code> flow fires; Library patches the card in place</div><div class="step-f">AppRepository</div></div>
+    </div>
+  </div>
+
+  <h3>Phase 2 — Download (chapter bodies)</h3>
+  <div class="flow">
+    <div class="flow-row">
+      <div class="flow-step"><div class="step-n">1</div><div class="step-t">Queue chapters</div><div class="step-d">Details screen → <code>downloadEngine.queue(...)</code> → foreground service</div><div class="step-f">DownloadEnqueueTransaction</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">2</div><div class="step-t">Process loop selects</div><div class="step-d">Scheduler picks eligible jobs within concurrency caps</div><div class="step-f">DownloadScheduler</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">3</div><div class="step-t">Fetch + clean</div><div class="step-d">GET chapter URL → parse → <code>CleanupEngine</code> strips boilerplate</div><div class="step-f">DownloadEngine.processJob</div></div>
+    </div>
+    <div class="flow-row" style="margin-top:4px">
+      <div class="flow-step"><div class="step-n">4</div><div class="step-t">Write atomically</div><div class="step-d"><code>saveChapter</code> → temp + fsync + rename → relative path</div><div class="step-f">AtomicFileWrites</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">5</div><div class="step-t">Update story</div><div class="step-d">Under monitor: mark downloaded, recompute counts, set epubStale</div><div class="step-f">AppStorage</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="step-n">6</div><div class="step-t">Export EPUB</div><div class="step-d">On demand: stream chapters into a multi-volume EPUB 2.0</div><div class="step-f">EpubEngine</div></div>
+    </div>
+  </div>
+  <div class="callout key">
+    <p><strong>The same novel is fetched in two halves:</strong> the sync engine gets metadata + the table of contents
+       (and Patreon), the download engine gets each chapter body. Both go through <code>SourceProvider</code> +
+       <code>NetworkClient</code>; both persist through <code>AppStorage</code>.</p>
+  </div>
+</section>
+
+<!-- ============ CROSS CUTTING ============ -->
+<section id="cross">
+  <h2><span class="num">15</span>Cross-Cutting Concerns</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>🔒 Concurrency &amp; single-owner</h3>
+      <ul>
+        <li>One <code>AppStorage</code> per process; its monitor (<code>@Synchronized</code>) serializes all queue/story RMW — no coroutine mutex on the main thread</li>
+        <li>One <code>TtsEngine</code> on <code>Dispatchers.Main.immediate</code> + a <code>Mutex</code> around all state</li>
+        <li><code>CleanupEngine</code> uses an <code>AtomicReference</code> swap — readers never lock</li>
+        <li>Per-host rate limiting via a <code>ConcurrentHashMap</code> of mutex+timestamp</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>💾 Durability &amp; compatibility</h3>
+      <ul>
+        <li>Two primitives: <code>DurableJson</code> (AtomicFile) + <code>AtomicFileWrites</code> (temp+fsync+rename)</li>
+        <li>Uniform JSON envelope with legacy bare-payload read tolerance</li>
+        <li>Relative chapter paths; transactional staged-swap restore</li>
+        <li>Zip-slip protection + size limits on backup extraction</li>
+        <li><code>DownloadJobStatus.wire</code> preserves legacy on-disk strings</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>⚙️ Background work — no WorkManager</h3>
+    <p>Both background loops are <strong>foreground services with self-contained coroutine scopes</strong> and
+       <code>START_STICKY</code>:</p>
+    <table style="margin:8px 0 0">
+      <tr><th>Service</th><th>Type</th><th>Scope</th><th>Notification</th></tr>
+      <tr><td><code>DownloadForegroundService</code></td><td><code>dataSync</code></td><td>Service's own <code>DownloadEngine</code> on <code>Dispatchers.IO</code></td><td>Channel <code>webnovel_downloads</code> · open/pause/resume/stop</td></tr>
+      <tr><td><code>TtsForegroundService</code></td><td><code>mediaPlayback</code></td><td>Shared process-wide <code>ttsEngine</code></td><td>Channel <code>webnovel_tts</code> · MediaStyle + MediaSession</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>🧪 Testing strategy</h3>
+    <p>Unit tests mirror production package paths under <code>app/src/test/java/</code>. The Planning/Engine split exists
+       precisely so the deterministic logic is unit-testable with no Android — fixtures for Royal Road &amp; ScribbleHub HTML
+       live in <code>src/test/resources/fixtures/</code>, and <code>MockWebServer</code> drives the network layer.</p>
+  </div>
+
+  <div class="card">
+    <h3>🔐 Permissions (AndroidManifest)</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <span class="badge gray">INTERNET</span>
+      <span class="badge gray">FOREGROUND_SERVICE</span>
+      <span class="badge orange">FOREGROUND_SERVICE_DATA_SYNC</span>
+      <span class="badge purple">FOREGROUND_SERVICE_MEDIA_PLAYBACK</span>
+      <span class="badge gray">POST_NOTIFICATIONS</span>
+      <span class="badge gray">WAKE_LOCK</span>
+    </div>
+    <p style="margin-top:12px">A <code>&lt;queries&gt;</code> block declares visibility into browser, EPUB, JSON, and ZIP intents.
+       A <code>FileProvider</code> + <code>MediaButtonReceiver</code> round out the components. Deep link scheme:
+       <code>webnovel-archiver://</code>.</p>
+  </div>
+</section>
+
+<div class="footer-note">
+  <strong>Webnovel Archiver — Native Android</strong> · Architecture reference generated from source
+  (<code>android/app/src/main/java/com/vinicius741/webnovelarchiver/</code>).<br/>
+  Applies to the active Kotlin app; <code>app/</code>, <code>src/</code>, and <code>modules/</code> are the legacy
+  React Native/Expo implementation (reference-only). Open this file in any browser — it's fully self-contained.
+</div>
+
+</main>
+</div>
+
+<script>
+  // ====================================================== TABS
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const bar = btn.closest('.tabs');
+      bar.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      bar.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ====================================================== LAYER CARDS → jump
+  document.querySelectorAll('.layer[data-jump]').forEach(layer => {
+    layer.addEventListener('click', () => {
+      const target = layer.dataset.jump;
+      document.querySelector(target)?.scrollIntoView({ behavior: 'smooth' });
+    });
+  });
+
+  // ====================================================== SIDENAV active highlight + progress
+  const navLinks = document.querySelectorAll('nav.sidenav a');
+  const sections = [...navLinks].map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const progress = document.getElementById('progress');
+
+  function onScroll() {
+    progress.style.width = ((window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100) + '%';
+    let current = sections[0];
+    const y = window.scrollY + 120;
+    for (const s of sections) { if (s.offsetTop <= y) current = s; }
+    navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + current.id));
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  // ====================================================== SEARCH FILTER
+  const search = document.getElementById('search');
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase().trim();
+    document.querySelectorAll('main section, main .hero').forEach(sec => {
+      if (!q) { sec.style.display = ''; return; }
+      const text = sec.textContent.toLowerCase();
+      sec.style.display = text.includes(q) ? '' : 'none';
+    });
+    // nav visibility
+    navLinks.forEach(a => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (!target) return;
+      a.style.display = (!q || target.style.display !== 'none') ? '' : 'none';
+    });
+  });
+</script>
+</body>
+</html>
