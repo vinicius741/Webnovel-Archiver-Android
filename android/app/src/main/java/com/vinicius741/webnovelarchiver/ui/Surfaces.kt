@@ -142,11 +142,13 @@ fun makeSettingRow(
     }
 }
 
-// ------------------------------------------------------------------
-/* Selectable card row — a card surface with an embedded checkbox. Used by the
+/*
+ * ------------------------------------------------------------------
+ * Selectable card row — a card surface with an embedded checkbox. Used by the
  * selection screens (Select Novels / Select Chapters) so multi-select reuses the
- * library's card design instead of dropping to bare CheckBoxes. */
-// ------------------------------------------------------------------
+ * library's card design instead of dropping to bare CheckBoxes.
+ * ------------------------------------------------------------------
+ */
 
 fun makeSelectableCardRow(
     context: Context,

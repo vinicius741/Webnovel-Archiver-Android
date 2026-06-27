@@ -20,7 +20,6 @@ import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
-import com.vinicius741.webnovelarchiver.ui.*
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Spacing

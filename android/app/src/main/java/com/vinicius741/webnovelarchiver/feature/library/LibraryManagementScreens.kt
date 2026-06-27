@@ -26,8 +26,8 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeField
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.makeSelectableCardRow
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
@@ -142,7 +142,12 @@ internal fun ScreenHost.showAddStory() {
     screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
         rerender = { showAddStory() }
         val url =
-            makeField(context, addStoryUrlText ?: "", "Royal Road or Scribble Hub story URL", android.text.InputType.TYPE_TEXT_VARIATION_URI).apply {
+            makeField(
+                context,
+                addStoryUrlText ?: "",
+                "Royal Road or Scribble Hub story URL",
+                android.text.InputType.TYPE_TEXT_VARIATION_URI,
+            ).apply {
                 // Roomier vertical padding than the compact field style shared with search bars/dialogs,
                 // so this primary URL input is easier to tap and read.
                 setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
@@ -150,8 +155,19 @@ internal fun ScreenHost.showAddStory() {
                 // exact text the user entered rather than blanking the field.
                 addTextChangedListener(
                     object : android.text.TextWatcher {
-                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        override fun beforeTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            count: Int,
+                            after: Int,
+                        ) {}
+
+                        override fun onTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            before: Int,
+                            count: Int,
+                        ) {
                             addStoryUrlText = s?.toString().orEmpty()
                         }
 

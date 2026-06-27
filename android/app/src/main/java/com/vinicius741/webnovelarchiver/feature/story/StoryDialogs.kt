@@ -23,7 +23,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.*
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.ZoomableImageView

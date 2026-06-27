@@ -305,7 +305,7 @@ object RoyalRoadProvider : SourceProvider {
 object ScribbleHubProvider : SourceProvider {
     override val name = "Scribble Hub"
     override val baseUrl = "https://www.scribblehub.com"
-    private const val ajaxUrl = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
+    private const val AJAX_URL = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
 
     override fun isSource(url: String) =
         Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
@@ -379,7 +379,7 @@ object ScribbleHubProvider : SourceProvider {
                 val pageHtml =
                     network
                         .postForm(
-                            ajaxUrl,
+                            AJAX_URL,
                             mapOf(
                                 "action" to "wi_getreleases_pagination",
                                 "pagenum" to page,

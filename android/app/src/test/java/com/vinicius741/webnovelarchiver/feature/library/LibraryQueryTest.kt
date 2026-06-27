@@ -121,7 +121,8 @@ class LibraryQueryTest {
     private fun Story.withPatreonStats(
         paidMembers: Int,
         monthlyUsdCents: Long,
-    ): Story = apply {
-        patreonStats = PatreonStats(paidMembers = paidMembers, monthlyUsdCents = monthlyUsdCents)
-    }
+    ): Story =
+        apply {
+            patreonStats = PatreonStats(paidMembers = paidMembers, monthlyUsdCents = monthlyUsdCents)
+        }
 }

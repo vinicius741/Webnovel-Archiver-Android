@@ -1,3 +1,8 @@
+// DownloadStatus entries stay lowercase on purpose: Gson serializes the enum by its name() into the
+// persisted Story JSON, and renaming them (e.g. to IDLE) would break existing on-disk libraries and
+// backups. Mirrors the wire-string compat approach used by DownloadJobStatus.
+@file:Suppress("ktlint:standard:enum-entry-name-case")
+
 package com.vinicius741.webnovelarchiver.domain.model
 
 import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection

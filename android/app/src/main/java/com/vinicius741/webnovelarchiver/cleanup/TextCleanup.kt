@@ -24,8 +24,8 @@ object TextCleanup {
             Regex("\\((?:[^()\\\\]|\\\\.)*\\.\\*(?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
             Regex("\\((?:[^()\\\\]|\\\\.)*\\\\\\d+(?:[^()\\\\]|\\\\.)*\\)\\s*(?:\\+|\\*|\\{\\d*,?\\d*\\})"),
         )
-    private const val maxRegexPatternLength = 500
-    private const val maxRuleNameLength = 80
+    private const val MAX_REGEX_PATTERN_LENGTH = 500
+    private const val MAX_RULE_NAME_LENGTH = 80
 
     data class RegexValidationResult(
         val valid: Boolean,
@@ -362,8 +362,8 @@ object TextCleanup {
     ): RegexValidationResult {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) return RegexValidationResult(false, "Rule name is required.")
-        if (trimmedName.length > maxRuleNameLength) {
-            return RegexValidationResult(false, "Rule name must be $maxRuleNameLength characters or fewer.")
+        if (trimmedName.length > MAX_RULE_NAME_LENGTH) {
+            return RegexValidationResult(false, "Rule name must be $MAX_RULE_NAME_LENGTH characters or fewer.")
         }
 
         val normalizedInput = normalizeRegexInput(patternInput, flagsInput)
@@ -372,8 +372,8 @@ object TextCleanup {
         val flags = normalizedInput.flags
 
         if (pattern.isBlank()) return RegexValidationResult(false, "Regex pattern is required.")
-        if (pattern.length > maxRegexPatternLength) {
-            return RegexValidationResult(false, "Regex pattern must be $maxRegexPatternLength characters or fewer.")
+        if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
+            return RegexValidationResult(false, "Regex pattern must be $MAX_REGEX_PATTERN_LENGTH characters or fewer.")
         }
         flags.forEach { flag ->
             if (flag !in allowedRegexFlags) {

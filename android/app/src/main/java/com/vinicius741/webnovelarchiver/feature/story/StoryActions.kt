@@ -22,7 +22,6 @@ import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
-import com.vinicius741.webnovelarchiver.ui.*
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.centerLoading
 import com.vinicius741.webnovelarchiver.ui.confirm

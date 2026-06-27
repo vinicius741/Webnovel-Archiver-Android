@@ -15,13 +15,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.applyCheckBoxTint
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.applyCheckBoxTint
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg

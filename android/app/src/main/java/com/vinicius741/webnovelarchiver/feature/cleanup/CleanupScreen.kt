@@ -17,7 +17,6 @@ import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.story.share
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.*
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -25,14 +24,13 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.applyInputStyle
 import com.vinicius741.webnovelarchiver.ui.button
-import com.vinicius741.webnovelarchiver.ui.clipboardText
 import com.vinicius741.webnovelarchiver.ui.card
+import com.vinicius741.webnovelarchiver.ui.clipboardText
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.divider
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.makeField
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.prompt
 import com.vinicius741.webnovelarchiver.ui.ripple
@@ -42,6 +40,7 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
+import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.styledDialogField
 import com.vinicius741.webnovelarchiver.ui.text

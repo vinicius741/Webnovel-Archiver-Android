@@ -90,9 +90,17 @@ fun CheckBox.applyCheckBoxTint() {
 }
 
 /** Linear RGB blend between [from] and [to] by [fraction] (0 = from, 1 = to). */
-private fun blend(from: Int, to: Int, fraction: Float): Int {
+private fun blend(
+    from: Int,
+    to: Int,
+    fraction: Float,
+): Int {
     val f = fraction.coerceIn(0f, 1f)
-    fun lerp(a: Float, b: Float): Int = (a + (b - a) * f).toInt()
+
+    fun lerp(
+        a: Float,
+        b: Float,
+    ): Int = (a + (b - a) * f).toInt()
     val a = lerp(Color.alpha(from).toFloat(), Color.alpha(to).toFloat())
     val r = lerp(Color.red(from).toFloat(), Color.red(to).toFloat())
     val g = lerp(Color.green(from).toFloat(), Color.green(to).toFloat())
