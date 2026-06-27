@@ -17,7 +17,7 @@ class EpubSelectionTest {
         val selected =
             EpubSelection.selectDownloadedChapters(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 2, rangeEnd = 4, startAfterBookmark = false),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 2, rangeEnd = 4, startAtBookmark = false),
             )
 
         assertEquals(listOf("c3", "c4"), selected.map { it.chapter.id })
@@ -25,7 +25,7 @@ class EpubSelectionTest {
     }
 
     @Test
-    fun startAfterBookmarkBeginsAfterLastReadChapter() {
+    fun startAtBookmarkBeginsAtLastReadChapter() {
         val story =
             storyWithChapters(
                 downloaded = listOf(true, true, true, true),
@@ -33,14 +33,15 @@ class EpubSelectionTest {
                 lastReadChapterId = "c2"
             }
 
+        // Bookmark on chapter 2 → the range starts AT chapter 2, so the bookmarked chapter is included.
         val selected =
             EpubSelection.selectDownloadedChapters(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAfterBookmark = true),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAtBookmark = true),
             )
 
-        assertEquals(listOf("c3", "c4"), selected.map { it.chapter.id })
-        assertEquals(listOf(3, 4), selected.map { it.originalChapterNumber })
+        assertEquals(listOf("c2", "c3", "c4"), selected.map { it.chapter.id })
+        assertEquals(listOf(2, 3, 4), selected.map { it.originalChapterNumber })
     }
 
     @Test
@@ -62,7 +63,7 @@ class EpubSelectionTest {
         val coverage =
             EpubSelection.rangeCoverage(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAfterBookmark = false),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAtBookmark = false),
             )
 
         assertEquals(4, coverage.inRange)
@@ -77,7 +78,7 @@ class EpubSelectionTest {
         val coverage =
             EpubSelection.rangeCoverage(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAfterBookmark = false),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAtBookmark = false),
             )
 
         assertEquals(0, coverage.missing)
@@ -91,7 +92,7 @@ class EpubSelectionTest {
         val coverage =
             EpubSelection.rangeCoverage(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 2, rangeEnd = 4, startAfterBookmark = false),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 2, rangeEnd = 4, startAtBookmark = false),
             )
 
         assertEquals(3, coverage.inRange)
@@ -100,21 +101,21 @@ class EpubSelectionTest {
     }
 
     @Test
-    fun rangeCoverageStartsAfterBookmarkWhenRequested() {
+    fun rangeCoverageStartsAtBookmarkWhenRequested() {
         val story =
             storyWithChapters(downloaded = listOf(true, true, true, true)).apply {
                 lastReadChapterId = "c2"
             }
 
-        // Bookmark on chapter 2 → effective range starts at chapter 3, so chapters 1-2 are excluded.
+        // Bookmark on chapter 2 → effective range starts at chapter 2, so only chapter 1 is excluded.
         val coverage =
             EpubSelection.rangeCoverage(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAfterBookmark = true),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 4, startAtBookmark = true),
             )
 
-        assertEquals(2, coverage.inRange)
-        assertEquals(2, coverage.downloaded)
+        assertEquals(3, coverage.inRange)
+        assertEquals(3, coverage.downloaded)
         assertEquals(0, coverage.missing)
     }
 
@@ -125,7 +126,7 @@ class EpubSelectionTest {
         val coverage =
             EpubSelection.rangeCoverage(
                 story,
-                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 10, startAfterBookmark = false),
+                EpubConfig(maxChaptersPerEpub = 150, rangeStart = 1, rangeEnd = 10, startAtBookmark = false),
             )
 
         assertEquals(0, coverage.inRange)

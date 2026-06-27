@@ -45,7 +45,7 @@ import com.vinicius741.webnovelarchiver.ui.toast
 internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     // The details screen captures `story` once and never refreshes it, so a bookmark toggled from the
     // chapter list (which persists a fresh Story.copy) wouldn't be reflected here — leaving the
-    // "Start after bookmark" checkbox disabled even though a bookmark exists. Re-read the latest
+    // "Start at the bookmark" checkbox disabled even though a bookmark exists. Re-read the latest
     // persisted story so the dialog always matches on-disk state.
     val story = storage.getStory(story.id) ?: story
     if (story.chapters.isEmpty()) return toast("No chapters available")
@@ -54,7 +54,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
             maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
             rangeStart = 1,
             rangeEnd = story.chapters.size,
-            startAfterBookmark = false,
+            startAtBookmark = false,
         )
     // Mirrors DetailsScreen.hasBookmark: a bookmark only counts when its chapter still exists, so a
     // stale lastReadChapterId (e.g. after a sync that changed chapter ids) doesn't enable the checkbox.
@@ -76,23 +76,23 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
             "To chapter",
             InputType.TYPE_CLASS_NUMBER,
         )
-    val startAfterBookmark =
+    val startAtBookmark =
         CheckBox(app).apply {
-            text = "Start after bookmark"
-            isChecked = current.startAfterBookmark && hasBookmark
+            text = "Start at the bookmark"
+            isChecked = current.startAtBookmark && hasBookmark
             isEnabled = hasBookmark
         }
-    styledCheckBox(startAfterBookmark)
+    styledCheckBox(startAtBookmark)
     view.addView(maxChapters)
     view.addView(rangeStart)
     view.addView(rangeEnd)
-    view.addView(startAfterBookmark)
-    // DL2: explain why "Start after bookmark" is disabled when there is no bookmark.
+    view.addView(startAtBookmark)
+    // DL2: explain why "Start at the bookmark" is disabled when there is no bookmark.
     if (!hasBookmark) {
         view.addView(
             makeText(
                 app,
-                "Set a bookmark by reading a chapter to enable \"Start after bookmark.\"",
+                "Set a bookmark by reading a chapter to enable \"Start at the bookmark.\"",
                 Type.BODY_SMALL,
                 ThemeManager.colors.onSurfaceVariant,
             ).apply {
@@ -137,7 +137,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
                         maxChaptersPerEpub = max,
                         rangeStart = start,
                         rangeEnd = end,
-                        startAfterBookmark = startAfterBookmark.isChecked && hasBookmark,
+                        startAtBookmark = startAtBookmark.isChecked && hasBookmark,
                     )
                 story.epubConfig = config
                 storage.addOrUpdateStory(story)

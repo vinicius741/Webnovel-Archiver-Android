@@ -21,11 +21,12 @@ object StoryBookmarkPlanning {
         nextLastReadChapterId: String?,
     ): EpubConfig? {
         val config = story.epubConfig ?: return story.epubConfig
-        if (!config.startAfterBookmark || nextLastReadChapterId == null) return config
+        if (!config.startAtBookmark || nextLastReadChapterId == null) return config
 
         val bookmarkIndex = story.chapters.indexOfFirst { it.id == nextLastReadChapterId }
         if (bookmarkIndex < 0) return config
 
-        return config.copy(rangeStart = bookmarkIndex + 2)
+        // Anchor the range start AT the bookmarked chapter (1-based), so it is included rather than skipped.
+        return config.copy(rangeStart = bookmarkIndex + 1)
     }
 }

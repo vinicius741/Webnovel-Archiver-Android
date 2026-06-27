@@ -164,7 +164,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                         maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
                         rangeStart = 1,
                         rangeEnd = story.chapters.size,
-                        startAfterBookmark = false,
+                        startAtBookmark = false,
                     )
                 generateConfiguredEpub(story, config)
             },
@@ -215,7 +215,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                                     maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
                                     rangeStart = 1,
                                     rangeEnd = story.chapters.size,
-                                    startAfterBookmark = false,
+                                    startAtBookmark = false,
                                 )
                             generateConfiguredEpub(story, config)
                         }

@@ -56,7 +56,7 @@ object EpubSelection {
 
     /**
      * The 1-based inclusive chapter range after clamping to the chapter list and applying the
-     * optional "start after bookmark" bump. Shared by [selectDownloadedChapters] and [rangeCoverage]
+     * optional "start at the bookmark" anchor. Shared by [selectDownloadedChapters] and [rangeCoverage]
      * so coverage reflects exactly what would be exported.
      */
     private fun effectiveRange(
@@ -65,10 +65,11 @@ object EpubSelection {
     ): IntRange {
         var start = config.rangeStart.coerceIn(1, story.chapters.size)
         val end = config.rangeEnd.coerceIn(start, story.chapters.size)
-        if (config.startAfterBookmark && story.lastReadChapterId != null) {
+        if (config.startAtBookmark && story.lastReadChapterId != null) {
             val bookmarkIndex = story.chapters.indexOfFirst { it.id == story.lastReadChapterId }
             if (bookmarkIndex >= 0) {
-                start = maxOf(start, bookmarkIndex + 2)
+                // Include the bookmarked chapter (index → 1-based number) rather than starting after it.
+                start = maxOf(start, bookmarkIndex + 1)
             }
         }
         return start..end

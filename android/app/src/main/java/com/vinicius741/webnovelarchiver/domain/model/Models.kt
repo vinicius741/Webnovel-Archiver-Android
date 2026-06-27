@@ -58,7 +58,11 @@ data class EpubConfig(
     val maxChaptersPerEpub: Int = 150,
     val rangeStart: Int = 1,
     val rangeEnd: Int = 1,
-    val startAfterBookmark: Boolean = false,
+    // SerializedName keeps the historical "startAfterBookmark" JSON key so existing on-disk configs
+    // and backups keep deserializing after the field was renamed to reflect its new "start at the
+    // bookmark" (include, not skip) semantics.
+    @com.google.gson.annotations.SerializedName("startAfterBookmark")
+    val startAtBookmark: Boolean = false,
 )
 
 data class Story(
