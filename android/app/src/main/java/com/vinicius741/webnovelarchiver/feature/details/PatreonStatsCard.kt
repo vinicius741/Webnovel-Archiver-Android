@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.circularRipple
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeDivider
@@ -28,14 +29,14 @@ import kotlin.math.roundToLong
 
 /**
  * Patreon support snapshot for the creator behind a story. Sits below the primary action buttons
- * so it reads as supplementary context (not a call to action). The whole card is tappable to open
- * the creator's Patreon page when [patreonUrl] is set; a trailing open-in-external glyph in
- * the header signals that affordance instead of leaving the tap target invisible.
+ * so it reads as supplementary context (not a call to action). The card itself is informational; the
+ * trailing open-in-external glyph in the header is the only tap target and opens the creator's
+ * Patreon page when [patreonUrl] is set, so the rest of the card stays non-interactive.
  *
  * The card is rendered whenever the story has a [patreonUrl]. When [stats] are available they fill
  * the divider + two-number body + footer; when [stats] is null the card still appears as a plain
- * tappable link — surfacing that the creator has a Patreon even when the public stats could not be
- * fetched, instead of silently showing nothing (which would be indistinguishable from no Patreon).
+ * link-only surface — surfacing that the creator has a Patreon even when the public stats could not
+ * be fetched, instead of silently showing nothing (which would be indistinguishable from no Patreon).
  */
 internal fun ScreenHost.buildPatreonStatsCard(
     stats: PatreonStats?,
@@ -80,10 +81,21 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 if (clickable) {
                     addView(
                         ImageView(app).apply {
+                            contentDescription = "Open this creator's Patreon"
                             setImageDrawable(app.tintedIcon(R.drawable.wna_open_external, colors.onSurfaceVariant))
                             scaleType = ImageView.ScaleType.CENTER_INSIDE
+                            // Pad out to a comfortable square tap target (40dp), matching
+                            // iconButtonSmall elsewhere in the app. OVAL mask so the press
+                            // feedback reads as a round highlight instead of a square block.
+                            setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
+                            background = circularRipple(colors.onSurface)
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(patreonUrl)))
+                            }
                         },
-                        LinearLayout.LayoutParams(dp(20), dp(20)),
+                        LinearLayout.LayoutParams(dp(40), dp(40)),
                     )
                 }
             },
@@ -121,12 +133,9 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 )
             }
         }
-        isClickable = clickable
-        isFocusable = clickable
-        contentDescription = if (clickable) "Open this creator's Patreon" else null
-        if (clickable) {
-            setOnClickListener { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(patreonUrl))) }
-        }
+        isClickable = false
+        isFocusable = false
+        contentDescription = null
     }
 }
 
