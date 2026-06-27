@@ -35,6 +35,7 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.confirm
+import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.dp
@@ -47,6 +48,7 @@ import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.text
@@ -248,6 +250,10 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     gravity = Gravity.START
                     setPadding(0, dp(Space.SM), 0, dp(Space.XS))
                 }
+            val copyDescription = {
+                copyToClipboard(story.title, description)
+                toast("Description copied")
+            }
             val descText =
                 makeText(
                     context,
@@ -261,6 +267,25 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     // real gap instead of a single break.
                     setLineSpacing(dp(Space.XS).toFloat(), 1f)
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    // Copy the description on a double-tap (mirrors RN StoryDescription's 300ms
+                    // double-press → Clipboard.setStringAsync) or on a long press. A ripple gives
+                    // touch feedback that the text is tappable.
+                    isClickable = true
+                    isLongClickable = true
+                    isFocusable = true
+                    background = selectableRipple(ThemeManager.colors.onSurface)
+                    var lastTap = 0L
+                    setOnClickListener {
+                        val now = android.os.SystemClock.uptimeMillis()
+                        if (now - lastTap < DESCRIPTION_DOUBLE_TAP_COPY_WINDOW_MS) {
+                            copyDescription()
+                        }
+                        lastTap = now
+                    }
+                    setOnLongClickListener {
+                        copyDescription()
+                        true
+                    }
                 }
             descCol.addView(descText)
             if (canExpand) {
@@ -483,6 +508,12 @@ private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 /** Gap (dp) between the info pane and the chapter list in the two-pane layout, replacing the old
  *  1dp divider with clear whitespace. */
 private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
+
+/**
+ * Window (ms) within which two taps on the description copy it to the clipboard, matching the legacy
+ * RN StoryDescription's 300ms double-press → expo-clipboard behaviour.
+ */
+private const val DESCRIPTION_DOUBLE_TAP_COPY_WINDOW_MS = 300L
 
 /**
  * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that
