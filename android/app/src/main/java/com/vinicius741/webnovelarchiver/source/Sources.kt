@@ -341,7 +341,7 @@ object ScribbleHubProvider : SourceProvider {
                     ?: "Unknown Title"
             }
         val author =
-            firstText(doc, ".auth_name_fic a", "a[href*=/profile/]").ifBlank {
+            firstText(doc, ".auth_name_fic a", ".auth_name_fic", "a[href*=/profile/]").ifBlank {
                 doc.selectFirst("meta[name=author]")?.attr("content")
                     ?: "Unknown Author"
             }
@@ -365,7 +365,7 @@ object ScribbleHubProvider : SourceProvider {
                 }.filter { it.isNotBlank() }
                 .distinct()
                 .toMutableList()
-        val score = firstText(doc, ".numscore", "[itemprop=ratingValue]", ".rate_fic_user").ifBlank { null }
+        val score = scribbleHubScore(doc)
         val patreonUrl = findPatreonUrl(doc)
         return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl)
     }
@@ -447,6 +447,25 @@ object ScribbleHubProvider : SourceProvider {
             .firstNotNullOfOrNull { selector ->
                 doc.selectFirst(selector)?.blockText()?.takeIf { it.isNotBlank() }
             }.orEmpty()
+
+    private fun scribbleHubScore(doc: Document): String? =
+        doc
+            .select("script[type=application/ld+json]")
+            .asSequence()
+            .map { it.data().ifBlank { it.html() } }
+            .filter { it.contains("AggregateRating") }
+            .mapNotNull {
+                Regex(""""ratingValue"\s*:\s*"?([^",}]+)"?""")
+                    .find(it)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.trim()
+            }.firstOrNull { it.isNotBlank() }
+            ?: firstText(doc, ".numscore", "[itemprop=ratingValue]", ".rate_fic_user").ifBlank { null }
+            ?: doc
+                .selectFirst("#ratefic_user")
+                ?.text()
+                ?.let { Regex("""\d+(?:\.\d+)?(?=\s*\()""").find(it)?.value }
 }
 
 private val descriptionBlockTags =

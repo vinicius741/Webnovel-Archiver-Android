@@ -117,6 +117,44 @@ class SourceProviderTest {
         }
 
     @Test
+    fun scribbleHubParsesLiveAuthorSpanAndAggregateRatingJsonLd() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><head>
+                  <script type="application/ld+json">
+                    {"@context":"https://schema.org","@type":"AggregateRating","bestRating":"5","ratingValue":"4.8","ratingCount":53}
+                  </script>
+                </head><body>
+                  <h1 class="fic_title">System Lost</h1>
+                  <a href="/profile/me">Logged In User</a>
+                  <span class="auth_name_fic">DarkTechnomancer</span>
+                  <span id="ratefic_user"><i class="fa fa-star ficrate"></i><span> <span>4.7</span> <span>(53 ratings)</span></span></span>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals("DarkTechnomancer", metadata.author)
+        assertEquals("4.8", metadata.score)
+    }
+
+    @Test
+    fun scribbleHubParsesRatingBlockWhenJsonLdIsMissing() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">System Lost</h1>
+                  <span class="auth_name_fic">DarkTechnomancer</span>
+                  <span id="ratefic_user"><span> <span>4.8</span> <span>(53 ratings)</span></span></span>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals("4.8", metadata.score)
+    }
+
+    @Test
     fun scribbleHubFallbackStoryIdMatchesJavascriptEncodeURIComponent() {
         assertEquals(
             "sh_url_https%3A%2F%2Fwww.scribblehub.com%2Fbad%20path%3A%C3%A9",
