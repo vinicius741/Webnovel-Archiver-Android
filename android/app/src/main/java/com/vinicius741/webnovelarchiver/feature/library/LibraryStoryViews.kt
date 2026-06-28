@@ -207,8 +207,10 @@ private fun formatLibraryPatreonStats(stats: PatreonStats): String {
     val amountPrefix = if (stats.amountIsEstimated) "~" else ""
     val dollars = (stats.monthlyUsdCents / 100.0).roundToLong()
     val amount = "${amountPrefix}${'$'}${NumberFormat.getIntegerInstance(Locale.US).format(dollars)}/mo"
-    val members = NumberFormat.getIntegerInstance().format(stats.paidMembers)
-    return "Patreon $amount · $members paid"
+    val membersPrefix = if (stats.membersIsEstimated) "~" else ""
+    val members = "${membersPrefix}${NumberFormat.getIntegerInstance().format(stats.paidMembers)}"
+    val membersLabel = if (stats.membersIsEstimated) "est. paid" else "paid"
+    return "Patreon $amount · $members $membersLabel"
 }
 
 private fun ScreenHost.showStoryActionsDialog(story: Story) {

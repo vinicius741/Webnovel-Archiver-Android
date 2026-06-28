@@ -109,7 +109,10 @@ internal fun ScreenHost.buildPatreonStatsCard(
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(Space.XS), 0, dp(Space.SM))
                     addView(
-                        buildPatreonStat("Paid members", NumberFormat.getIntegerInstance().format(stats.paidMembers)),
+                        buildPatreonStat(
+                            if (stats.membersIsEstimated) "Est. paid members" else "Paid members",
+                            formatMemberCount(stats),
+                        ),
                         statLayoutParams(),
                     )
                     addView(
@@ -160,6 +163,11 @@ private fun ScreenHost.buildPatreonStat(
 private fun formatMonthlyUsd(cents: Long): String {
     val dollars = (cents / 100.0).roundToLong()
     return "$${NumberFormat.getIntegerInstance(Locale.US).format(dollars)}"
+}
+
+private fun formatMemberCount(stats: PatreonStats): String {
+    val prefix = if (stats.membersIsEstimated) "~" else ""
+    return "$prefix${NumberFormat.getIntegerInstance().format(stats.paidMembers)}"
 }
 
 private fun formatPatreonDate(timestamp: Long): String =

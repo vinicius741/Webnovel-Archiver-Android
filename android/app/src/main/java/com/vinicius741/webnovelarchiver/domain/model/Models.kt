@@ -105,6 +105,15 @@ data class PatreonStats(
     val monthlyUsdCents: Long = 0,
     val amountIsEstimated: Boolean = true,
     val updatedAt: Long = 0,
+    /**
+     * Whether [paidMembers] is a measured Patreon figure (`false`) or an assumption we derived
+     * because the creator hid both earnings and paid-member counts (`true`). Distinct from
+     * [amountIsEstimated], which only marks the dollar figure: a campaign can expose a real
+     * paid-member count while still hiding earnings, so the count reads as fact and only the
+     * monthly amount is labelled estimated. Defaults to `false` so persisted `PatreonStats` JSON
+     * written before this field existed keeps deserializing as a measured count.
+     */
+    val membersIsEstimated: Boolean = false,
 )
 
 data class Tab(
