@@ -15,12 +15,14 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.spacer
 
-/** Centered story header — cover, title, author, source/archived chips, and a compact
- *  "Saved / Chapters" progress summary. Mirrors the RN `StoryHeader`; D5 collapsed the three
- *  duplicate stat pills (Score/Chapters/Saved) — Score already shows in the tags row and the
- *  chapter total is implied by the list — into one progress summary. */
+/** Centered story header — cover, title, author, source/archived chips, an optional score row, and
+ *  a compact "Saved / Chapters" progress summary. Mirrors the RN `StoryHeader`; D5 collapsed the
+ *  three duplicate stat pills (Score/Chapters/Saved) — the chapter total is implied by the list —
+ *  into one progress summary. The score is now rendered directly in the header via [scoreRow],
+ *  matching the library card, instead of only appearing as a tag. */
 internal fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
     val col =
         LinearLayout(app).apply {
@@ -68,6 +70,20 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
             badgeRow.addView(makeBadge(app, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
         }
         col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+    // Score (e.g. "4.5" with a star glyph). Rendered in the header so the rating is visible on the
+    // details screen too, mirroring the library card — not only on the library list. The star is
+    // enlarged (24dp vs the 16dp library card default) since the header has room to breathe and the
+    // rating is a focal point on this screen.
+    story.score?.takeIf { it.isNotBlank() }?.let { score ->
+        col.addView(
+            scoreRow(score, iconSizeDp = 24).apply {
+                layoutParams =
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = dp(Space.SM)
+                    }
+            },
+        )
     }
     if (story.totalChapters > 0) {
         col.addView(

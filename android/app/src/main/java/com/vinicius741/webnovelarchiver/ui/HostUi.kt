@@ -146,14 +146,14 @@ internal fun ScreenHost.styledDialogField(
             }
     }
 
-internal fun ScreenHost.scoreRow(score: String): View =
+internal fun ScreenHost.scoreRow(score: String, iconSizeDp: Int = 16): View =
     LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(
             ImageView(app).apply {
                 setImageDrawable(app.tintedIcon(R.drawable.wna_star, ThemeManager.colors.tertiary))
-                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
+                layoutParams = LinearLayout.LayoutParams(dp(iconSizeDp), dp(iconSizeDp))
             },
         )
         addView(makeText(app, score, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
