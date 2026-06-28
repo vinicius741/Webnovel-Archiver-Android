@@ -31,6 +31,9 @@ class SourceProviderFixtureTest {
         assertTrue(tags.contains("Fantasy"))
         assertTrue(tags.contains("Adventure"))
         assertFalse(tags.any { it.equals("tags", true) })
+        // Content warnings from the red "Warning: This fiction contains:" block are captured as ⚠-prefixed tags.
+        assertTrue(tags.contains("⚠ AI-Assisted Content"))
+        assertTrue(tags.contains("⚠ Graphic Violence"))
     }
 
     @Test

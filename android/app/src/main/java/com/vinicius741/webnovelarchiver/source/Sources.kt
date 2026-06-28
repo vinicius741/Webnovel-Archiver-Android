@@ -255,14 +255,22 @@ object RoyalRoadProvider : SourceProvider {
             doc.selectFirst(".description")?.blockText()
                 ?: doc.selectFirst("meta[name=description]")?.attr("content")
                 ?: doc.selectFirst("meta[property=og:description]")?.attr("content")
-        val tags =
+        val genreTags =
             doc
                 .select(".tags .label, .tags a, .tag")
                 .map {
                     it.text().trim()
                 }.filter { it.isNotBlank() && !it.equals("tags", true) }
-                .distinct()
-                .toMutableList()
+        // Royal Road surfaces sensitive-content flags in a red "Warning: This fiction contains:" block
+        // (div.font-red-sunglo with <strong>Warning</strong> + <ul class="list-inline">). Capture them as
+        // tags with a ⚠ prefix so they stay distinct from genre tags while flowing through the tag system.
+        val contentWarnings =
+            doc
+                .select("div.font-red-sunglo:has(strong:containsOwn(Warning)) ul.list-inline li")
+                .map { it.text().trim() }
+                .filter { it.isNotBlank() }
+                .map { "\u26A0 $it" }
+        val tags = (genreTags + contentWarnings).distinct().toMutableList()
         val score =
             doc
                 .selectFirst(
