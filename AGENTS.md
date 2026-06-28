@@ -19,6 +19,13 @@
 - Use unqualified `adb devices -l` only to discover targets. For every device-targeting ADB operation, resolve a healthy serial whose name starts with `emulator-` and pass it with `adb -s "$EMULATOR_SERIAL" ...`.
 - Never run an unqualified device-targeting `adb` command. If no emulator is available, or multiple emulators are running and no serial was explicitly selected, stop instead of falling back to another device.
 
+### Build variant per target
+
+The native app ships as two distinct application IDs — each is a separate app with its own isolated data sandbox. Always use the variant that matches the target so you don't install the empty sibling over the user's working app:
+
+- **Simulator / emulator:** always the **debug** variant — `com.vinicius741.webnovelarchiver.nativeapp.debug` (APK: `android/app/build/outputs/apk/debug/app-debug.apk`). This is where the user's in-progress library and test data live; the release variant on the emulator starts empty.
+- **Owner's phone:** always the **release** variant — `com.vinicius741.webnovelarchiver.nativeapp` (APK: `android/app/build/outputs/apk/release/app-release.apk`), and only when phone use is explicitly authorized for the current message.
+
 ## Repository Boundaries
 
 - Do not expose signing credentials, keystores, `local.properties`, or other secrets.
