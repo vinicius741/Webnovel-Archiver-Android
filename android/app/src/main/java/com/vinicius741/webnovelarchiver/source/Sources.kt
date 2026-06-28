@@ -56,9 +56,10 @@ class NetworkClient(
     suspend fun postForm(
         url: String,
         fields: Map<String, Any>,
+        headers: Map<String, String> = emptyMap(),
     ): String {
         waitForRateLimit(url)
-        val request = NetworkRequests.formRequest(url, fields)
+        val request = NetworkRequests.formRequest(url, fields, headers)
         return executeWithRetries(url, request) { it.body?.string().orEmpty() }
     }
 
@@ -156,19 +157,22 @@ object NetworkRequests {
     fun formRequest(
         url: String,
         fields: Map<String, Any>,
+        headers: Map<String, String> = emptyMap(),
     ): Request {
         val bodyBuilder = FormBody.Builder()
         fields.forEach { (key, value) -> bodyBuilder.add(key, value.toString()) }
-        return Request
-            .Builder()
-            .url(url)
-            .post(bodyBuilder.build())
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", FORM_ACCEPT)
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .header("Content-Type", FORM_CONTENT_TYPE)
-            .header("X-Requested-With", "XMLHttpRequest")
-            .build()
+        val builder =
+            Request
+                .Builder()
+                .url(url)
+                .post(bodyBuilder.build())
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", FORM_ACCEPT)
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Content-Type", FORM_CONTENT_TYPE)
+                .header("X-Requested-With", "XMLHttpRequest")
+        headers.forEach { (key, value) -> builder.header(key, value) }
+        return builder.build()
     }
 
     /** Request builder for binary downloads (cover images) — reuses the shared client (R6). */
@@ -314,6 +318,8 @@ object ScribbleHubProvider : SourceProvider {
     override val name = "Scribble Hub"
     override val baseUrl = "https://www.scribblehub.com"
     private const val AJAX_URL = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
+    private const val MAX_TOC_PAGE_SIZE = 50
+    private val tocPageSizeHeaders = mapOf("Cookie" to "toc_show=$MAX_TOC_PAGE_SIZE")
 
     override fun isSource(url: String) =
         Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
@@ -379,11 +385,10 @@ object ScribbleHubProvider : SourceProvider {
         progress("Parsing chapter list...")
         val doc = Jsoup.parse(html, url)
         val postId = doc.selectFirst("#mypostid")?.attr("value")
-        val chapters = parseToc(doc, url).toMutableList()
+        val chapters = parseToc(doc).toMutableList()
         val seen = chapters.map { it.url }.toMutableSet()
         if (!postId.isNullOrBlank() && chapters.size >= 15) {
-            for (page in 2..500) {
-                progress("Fetching chapter page $page...")
+            suspend fun fetchPage(page: Int): List<ChapterInfo> {
                 val pageHtml =
                     network
                         .postForm(
@@ -393,14 +398,28 @@ object ScribbleHubProvider : SourceProvider {
                                 "pagenum" to page,
                                 "mypostid" to postId,
                             ),
+                            tocPageSizeHeaders,
                         ).replace(Regex("0\\s*$"), "")
                         .trim()
-                val pageChapters = parseToc(Jsoup.parse(pageHtml, url), url)
+                return parseToc(Jsoup.parse(pageHtml, url))
+            }
+
+            progress("Fetching chapter page 1...")
+            val firstPage = fetchPage(1)
+            if (firstPage.size >= chapters.size) {
+                chapters.clear()
+                chapters.addAll(firstPage)
+                seen.clear()
+                seen.addAll(chapters.map { it.url })
+            }
+            for (page in 2..500) {
+                progress("Fetching chapter page $page...")
+                val pageChapters = fetchPage(page)
                 if (pageChapters.isEmpty()) break
                 val newOnes = pageChapters.filter { seen.add(it.url) }
                 if (newOnes.isEmpty()) break
                 chapters.addAll(newOnes)
-                if (pageChapters.size < 15) break
+                if (pageChapters.size < MAX_TOC_PAGE_SIZE) break
             }
         }
         return chapters.asReversed()
@@ -415,10 +434,7 @@ object ScribbleHubProvider : SourceProvider {
         return content.html().trim()
     }
 
-    private fun parseToc(
-        doc: Document,
-        base: String,
-    ): List<ChapterInfo> =
+    private fun parseToc(doc: Document): List<ChapterInfo> =
         doc.select(".toc_ol li").mapNotNull { li ->
             val link = li.selectFirst("a[href*=/read/][href*=/chapter/]") ?: return@mapNotNull null
             val href = link.absUrl("href").ifBlank { link.attr("href") }

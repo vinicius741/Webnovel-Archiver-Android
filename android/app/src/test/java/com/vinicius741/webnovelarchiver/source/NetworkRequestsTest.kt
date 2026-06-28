@@ -32,4 +32,16 @@ class NetworkRequestsTest {
         assertEquals("XMLHttpRequest", request.header("X-Requested-With"))
         assertEquals("action=wi_getreleases_pagination&pagenum=2&mypostid=123", buffer.readUtf8())
     }
+
+    @Test
+    fun formRequestAppliesAdditionalHeaders() {
+        val request =
+            NetworkRequests.formRequest(
+                "https://www.scribblehub.com/wp-admin/admin-ajax.php",
+                mapOf("action" to "wi_getreleases_pagination"),
+                mapOf("Cookie" to "toc_show=50"),
+            )
+
+        assertEquals("toc_show=50", request.header("Cookie"))
+    }
 }
