@@ -6,6 +6,9 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
@@ -21,12 +24,10 @@ import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.divider
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.findScrollView
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.formatRelativeTime
 import com.vinicius741.webnovelarchiver.ui.jobStatusDot
@@ -38,7 +39,6 @@ import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.statusColor
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
@@ -46,12 +46,18 @@ import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showQueue() {
-    val queue = storage.getQueue()
-    val counts = QueueStatusCounts.from(queue)
+    val host = this
+    val queue =
+        repository.downloadState.value.queue
+            .ifEmpty { storage.getQueue() }
     // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
     rerender = { showQueue() }
     val layout = currentScreenLayout()
-    screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(counts)) {
+    lateinit var adapter: QueueGroupAdapter
+    lateinit var summarySlot: LinearLayout
+    lateinit var emptySlot: FrameLayout
+    lateinit var list: RecyclerView
+    screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions()) {
         // Center everything in a width-capped column (920/1080dp by width class) so the queue doesn't
         // stretch edge-to-edge on tablets/the Fold inner display. On phone widths the cap is larger
         // than the screen so it has no effect.
@@ -66,120 +72,226 @@ internal fun ScreenHost.showQueue() {
                     centered,
                     FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
                         android.view.Gravity.CENTER_HORIZONTAL,
                     ),
                 )
             }
-        if (queue.isNotEmpty()) {
-            centered.row {
-                addView(makeProgressSummary(context, counts.completed, counts.total))
+        summarySlot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        emptySlot = FrameLayout(context)
+        adapter =
+            QueueGroupAdapter(host) {
+                adapter.submitQueue(repository.downloadState.value.queue)
             }
-            centered.flow {
-                addView(makeCountChip(context, "active", counts.downloading, ThemeManager.colors.primary))
-                addView(makeCountChip(context, "queued", counts.pending, ThemeManager.colors.onSurfaceVariant))
-                addView(makeCountChip(context, "paused", counts.paused, ThemeManager.colors.secondary))
-                addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
-                addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
+        list =
+            RecyclerView(context).apply {
+                layoutManager = LinearLayoutManager(context)
+                this.adapter = adapter
+                itemAnimator = null
+                overScrollMode = View.OVER_SCROLL_NEVER
             }
-        }
-        if (queue.isEmpty()) {
-            centered.addView(
-                makeEmptyState(
-                    context,
-                    message = "Chapters you download will appear here while they download.",
-                    title = "Nothing downloading",
-                    iconRes = R.drawable.wna_download,
-                ),
-            )
-            addView(centeredShell, verticalFill())
-            return@screen
-        }
-        val groupList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        queue
-            .groupBy { it.storyId }
-            .values
-            .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
-            .forEach { jobs -> groupList.addView(addStoryGroup(jobs)) }
-        centered.addView(
-            scroll(groupList),
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
-        )
+        centered.addView(summarySlot)
+        centered.addView(emptySlot, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        centered.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        updateQueueContent(summarySlot, emptySlot, list, adapter, queue)
         addView(centeredShell, verticalFill())
     }
-    observeQueueUpdates()
+    observeQueueUpdates(summarySlot, emptySlot, list, adapter)
 }
 
-private fun ScreenHost.observeQueueUpdates() {
+private fun ScreenHost.observeQueueUpdates(
+    summarySlot: LinearLayout,
+    emptySlot: FrameLayout,
+    list: RecyclerView,
+    adapter: QueueGroupAdapter,
+) {
     if (frame.childCount == 0) return
     val root = frame.getChildAt(0)
-    val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    var renderPosted = false
-
-    fun requestRender() {
-        if (renderPosted) return
-        renderPosted = true
-        var lastScrollY = findScrollView(root)?.scrollY ?: 0
-        val render =
-            object : Runnable {
-                override fun run() {
-                    if (root.parent !== frame) return
-                    val scroller = findScrollView(root)
-                    val currentScrollY = scroller?.scrollY ?: 0
-                    // Wait until both the drag and any following fling have settled. This screen
-                    // still rebuilds status-dependent controls, but never during a scroll gesture.
-                    if (currentScrollY != lastScrollY) {
-                        lastScrollY = currentScrollY
-                        handler.postDelayed(this, 100L)
-                        return
-                    }
-                    val savedScrollY = currentScrollY
-                    renderPosted = false
-                    showQueue()
-                    if (savedScrollY > 0) {
-                        findScrollView(frame)?.post { findScrollView(frame)?.scrollTo(0, savedScrollY) }
-                    }
-                }
-            }
-        handler.postDelayed(render, 100L)
-    }
     // Capture before launching so an event before collector registration is not dropped.
-    val initialVersion = repository.downloadStateVersion.value
+    var observedQueueVersion = repository.downloadState.value.queueVersion
     screenObserver =
         scope.launch {
-            repository.downloadStateVersion.collect { version ->
-                if (version == initialVersion) return@collect
-                if (root.parent === frame) requestRender()
+            repository.downloadState.collect { snapshot ->
+                if (snapshot.queueVersion == observedQueueVersion) return@collect
+                observedQueueVersion = snapshot.queueVersion
+                if (root.parent === frame) {
+                    updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue)
+                }
             }
         }
 }
 
-/** Global (whole-queue) actions rendered as the app-bar icon strip, conditional on queue state. */
-private fun ScreenHost.globalAppBarActions(counts: QueueStatusCounts): List<AppBarAction> =
-    DownloadManagerPlanning.globalActions(counts).map { action ->
+private fun ScreenHost.updateQueueContent(
+    summarySlot: LinearLayout,
+    emptySlot: FrameLayout,
+    list: RecyclerView,
+    adapter: QueueGroupAdapter,
+    queue: List<DownloadJob>,
+) {
+    val counts = QueueStatusCounts.from(queue)
+    summarySlot.removeAllViews()
+    emptySlot.removeAllViews()
+    if (queue.isEmpty()) {
+        list.visibility = View.GONE
+        emptySlot.visibility = View.VISIBLE
+        emptySlot.addView(
+            makeEmptyState(
+                app,
+                message = "Chapters you download will appear here while they download.",
+                title = "Nothing downloading",
+                iconRes = R.drawable.wna_download,
+            ),
+        )
+    } else {
+        list.visibility = View.VISIBLE
+        emptySlot.visibility = View.GONE
+        summarySlot.row {
+            addView(makeProgressSummary(context, counts.completed, counts.total))
+        }
+        summarySlot.flow {
+            addView(makeCountChip(context, "active", counts.downloading, ThemeManager.colors.primary))
+            addView(makeCountChip(context, "queued", counts.pending, ThemeManager.colors.onSurfaceVariant))
+            addView(makeCountChip(context, "paused", counts.paused, ThemeManager.colors.secondary))
+            addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
+            addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
+        }
+    }
+    adapter.submitQueue(queue)
+}
+
+private data class QueueStoryGroup(
+    val storyId: String,
+    val jobs: List<DownloadJob>,
+    val signature: String,
+)
+
+private class QueueGroupAdapter(
+    private val host: ScreenHost,
+    private val onExpansionChanged: () -> Unit,
+) : RecyclerView.Adapter<QueueGroupAdapter.GroupHolder>() {
+    private var groups: List<QueueStoryGroup> = emptyList()
+
+    init {
+        setHasStableIds(true)
+    }
+
+    override fun getItemId(position: Int): Long = groups[position].storyId.hashCode().toLong()
+
+    override fun getItemCount(): Int = groups.size
+
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): GroupHolder =
+        GroupHolder(
+            FrameLayout(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            },
+        )
+
+    override fun onBindViewHolder(
+        holder: GroupHolder,
+        position: Int,
+    ) {
+        holder.container.removeAllViews()
+        holder.container.addView(host.addStoryGroup(groups[position].jobs, onExpansionChanged))
+    }
+
+    fun submitQueue(queue: List<DownloadJob>) {
+        val previous = groups
+        val next = host.queueGroups(queue)
+        groups = next
+        DiffUtil
+            .calculateDiff(
+                object : DiffUtil.Callback() {
+                    override fun getOldListSize(): Int = previous.size
+
+                    override fun getNewListSize(): Int = next.size
+
+                    override fun areItemsTheSame(
+                        oldItemPosition: Int,
+                        newItemPosition: Int,
+                    ): Boolean = previous[oldItemPosition].storyId == next[newItemPosition].storyId
+
+                    override fun areContentsTheSame(
+                        oldItemPosition: Int,
+                        newItemPosition: Int,
+                    ): Boolean = previous[oldItemPosition].signature == next[newItemPosition].signature
+                },
+            ).dispatchUpdatesTo(this)
+    }
+
+    class GroupHolder(
+        val container: FrameLayout,
+    ) : RecyclerView.ViewHolder(container)
+}
+
+private fun ScreenHost.queueGroups(queue: List<DownloadJob>): List<QueueStoryGroup> =
+    queue
+        .groupBy { it.storyId }
+        .values
+        .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
+        .map { jobs ->
+            val counts = QueueStatusCounts.from(jobs)
+            val expanded = storyExpandOverride[jobs.first().storyId] ?: (counts.hasActive || counts.hasFailed)
+            QueueStoryGroup(
+                storyId = jobs.first().storyId,
+                jobs = jobs,
+                signature =
+                    buildString {
+                        append(expanded)
+                        jobs.sortedBy { it.chapterIndex }.forEach { job ->
+                            append('|')
+                            append(job.id)
+                            append(':')
+                            append(job.chapterIndex)
+                            append(':')
+                            append(job.chapter.title)
+                            append(':')
+                            append(job.status)
+                            append(':')
+                            append(job.retryCount)
+                            append(':')
+                            append(job.error.orEmpty())
+                            append(':')
+                            append(job.errorCategory.orEmpty())
+                            append(':')
+                            append(job.errorCode.orEmpty())
+                            append(':')
+                            append(job.nextRetryAt ?: 0L)
+                        }
+                    },
+            )
+        }
+
+/** Global (whole-queue) actions rendered as a stable app-bar icon strip. */
+private fun ScreenHost.globalAppBarActions(): List<AppBarAction> =
+    listOf(
+        GlobalQueueAction.RESUME_ALL,
+        GlobalQueueAction.PAUSE_ALL,
+        GlobalQueueAction.RETRY_ALL,
+        GlobalQueueAction.CANCEL_ALL,
+        GlobalQueueAction.CLEAR_DONE,
+    ).map { action ->
         when (action) {
             GlobalQueueAction.RESUME_ALL ->
                 AppBarAction(R.drawable.wna_play, "Resume All") {
                     downloadEngine.resumeAll()
                     DownloadForegroundService.start(app)
-                    showQueue()
                 }
             GlobalQueueAction.PAUSE_ALL ->
                 AppBarAction(R.drawable.wna_pause, "Pause All") {
                     downloadEngine.pauseAll()
-                    showQueue()
                 }
             GlobalQueueAction.RETRY_ALL ->
                 AppBarAction(R.drawable.wna_refresh, "Retry Failed", ThemeManager.colors.primary) {
                     downloadEngine.retryFailed()
                     DownloadForegroundService.start(app)
-                    showQueue()
                 }
             GlobalQueueAction.CANCEL_ALL ->
                 AppBarAction(R.drawable.wna_stop, "Cancel All", ThemeManager.colors.error) {
                     confirm("Cancel all active and pending downloads?", confirmLabel = "Cancel All") {
                         downloadEngine.cancelAll()
-                        showQueue()
                     }
                 }
             GlobalQueueAction.CLEAR_DONE ->
@@ -189,7 +301,6 @@ private fun ScreenHost.globalAppBarActions(counts: QueueStatusCounts): List<AppB
                         confirmLabel = "Clear Done",
                     ) {
                         downloadEngine.clearFinished()
-                        showQueue()
                     }
                 }
         }
@@ -198,7 +309,10 @@ private fun ScreenHost.globalAppBarActions(counts: QueueStatusCounts): List<AppB
 /** One collapsible card per story: a clickable header (chevron + title/subtitle + story action
  *  icons) followed by its chapter rows when expanded. Novel grouping is unmistakable because the
  *  header and its chapters share a single card. */
-private fun ScreenHost.addStoryGroup(jobs: List<DownloadJob>): LinearLayout {
+private fun ScreenHost.addStoryGroup(
+    jobs: List<DownloadJob>,
+    onToggle: () -> Unit,
+): LinearLayout {
     val storyId = jobs.first().storyId
     val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
     val counts = QueueStatusCounts.from(jobs)
@@ -244,7 +358,7 @@ private fun ScreenHost.addStoryGroup(jobs: List<DownloadJob>): LinearLayout {
             header.background = selectableRipple(ThemeManager.colors.onSurface)
             header.setOnClickListener {
                 storyExpandOverride[storyId] = !expanded
-                showQueue()
+                onToggle()
             }
             if (expanded) {
                 divider()
@@ -283,29 +397,24 @@ private fun ScreenHost.storyActionButton(
         QueueAction.PAUSE ->
             iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause story", 44) {
                 jobs.filter { it.status in DownloadJobStatus.activeWires }.forEach { downloadEngine.pauseJob(it.id) }
-                showQueue()
             }
         QueueAction.RESUME ->
             iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume story", 44) {
                 jobs.filter { it.status == DownloadJobStatus.Paused.wire }.forEach { downloadEngine.resumeJob(it.id) }
                 DownloadForegroundService.start(app)
-                showQueue()
             }
         QueueAction.CANCEL ->
             iconAction(R.drawable.wna_stop, ThemeManager.colors.error, "Cancel story", 44) {
                 jobs.filter { it.status in DownloadJobStatus.cancellableWires }.forEach { downloadEngine.cancelJob(it.id) }
-                showQueue()
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry story", 44) {
                 downloadEngine.retryFailedForStory(storyId)
                 DownloadForegroundService.start(app)
-                showQueue()
             }
         QueueAction.REMOVE ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove story", 44) {
                 jobs.forEach { downloadEngine.removeJob(it.id) }
-                showQueue()
             }
     }
 
@@ -390,29 +499,24 @@ private fun ScreenHost.chapterActionButton(
         QueueAction.PAUSE ->
             iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause", 36) {
                 downloadEngine.pauseJob(job.id)
-                showQueue()
             }
         QueueAction.RESUME ->
             iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume", 36) {
                 downloadEngine.resumeJob(job.id)
                 DownloadForegroundService.start(app)
-                showQueue()
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry", 36) {
                 downloadEngine.retryJob(job.id)
                 DownloadForegroundService.start(app)
-                showQueue()
             }
         QueueAction.CANCEL ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.error, "Cancel", 36) {
                 downloadEngine.cancelJob(job.id)
-                showQueue()
             }
         QueueAction.REMOVE ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove", 36) {
                 downloadEngine.removeJob(job.id)
-                showQueue()
             }
     }
 

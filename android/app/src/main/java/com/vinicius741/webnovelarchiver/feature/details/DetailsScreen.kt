@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
@@ -442,6 +443,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         val root = frame.getChildAt(0)
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var patchPosted = false
+        var pendingSnapshot: DownloadUiSnapshot? = null
 
         fun postPatch() {
             if (patchPosted) return
@@ -456,18 +458,32 @@ internal fun ScreenHost.showDetails(storyId: String) {
                             return
                         }
                         patchPosted = false
-                        refreshDetailsDownload(storyId, bannerSlot, downloadActionSlot, isBusy)
+                        val snapshot = pendingSnapshot
+                        pendingSnapshot = null
+                        refreshDetailsDownload(storyId, bannerSlot, downloadActionSlot, isBusy, snapshot)
                     }
                 }
             handler.post(patch)
         }
         // Capture before launching so an event before collector registration is not dropped.
-        val initialVersion = repository.downloadStateVersion.value
+        val initialSnapshot = repository.downloadState.value
+        var observedLibraryVersion = initialSnapshot.libraryVersion
+        var observedQueueVersion = initialSnapshot.queueVersion
         screenObserver =
             scope.launch {
-                repository.downloadStateVersion.collect { version ->
-                    if (version == initialVersion) return@collect
-                    if (root.parent === frame) postPatch()
+                repository.downloadState.collect { snapshot ->
+                    if (
+                        snapshot.libraryVersion == observedLibraryVersion &&
+                        snapshot.queueVersion == observedQueueVersion
+                    ) {
+                        return@collect
+                    }
+                    observedLibraryVersion = snapshot.libraryVersion
+                    observedQueueVersion = snapshot.queueVersion
+                    if (root.parent === frame) {
+                        pendingSnapshot = snapshot
+                        postPatch()
+                    }
                 }
             }
     }

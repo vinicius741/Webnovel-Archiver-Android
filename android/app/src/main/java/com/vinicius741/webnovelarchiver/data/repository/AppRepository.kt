@@ -16,6 +16,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+data class DownloadUiSnapshot(
+    val version: Long = 0L,
+    val libraryVersion: Long = 0L,
+    val queueVersion: Long = 0L,
+    val library: List<Story> = emptyList(),
+    val queue: List<DownloadJob> = emptyList(),
+)
+
 /**
  * Single owner of [AppStorage] (Reliability R2). All read-modify-write transactions on the library,
  * download queue, and settings synchronize on [storage], the same monitor used by [AppStorage] and
@@ -46,14 +54,26 @@ class AppRepository(
      */
     val downloadStateVersion: StateFlow<Long> = _downloadStateVersion.asStateFlow()
 
+    private val _downloadState = MutableStateFlow(DownloadUiSnapshot())
+
+    /**
+     * Typed process-wide download snapshot. Unlike [downloadStateVersion], this carries the coherent
+     * library + queue state that UI surfaces should bind to directly, so screens no longer need to
+     * treat a counter tick as a signal to re-read storage or rebuild themselves.
+     */
+    val downloadState: StateFlow<DownloadUiSnapshot> = _downloadState.asStateFlow()
+
     private val _settingsFlow = MutableStateFlow(storage.getSettings())
     val settingsFlow: StateFlow<AppSettings> = _settingsFlow.asStateFlow()
 
     /** Loads the current library + queue + settings into the state flows. Call once at startup. */
     fun refresh() {
-        _libraryFlow.value = storage.getLibrary()
-        _queueFlow.value = storage.getQueue()
+        val library = storage.getLibrary()
+        val queue = storage.getQueue()
+        _libraryFlow.value = library
+        _queueFlow.value = queue
         _settingsFlow.value = storage.getSettings()
+        _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
     }
 
     /**
@@ -66,10 +86,29 @@ class AppRepository(
         queueChanged: Boolean,
     ) {
         synchronized(storage) {
-            if (libraryChanged) _libraryFlow.value = storage.getLibrary()
-            if (queueChanged) _queueFlow.value = storage.getQueue()
-            _downloadStateVersion.value = _downloadStateVersion.value + 1L
+            publishDownloadStateLocked(libraryChanged = libraryChanged, queueChanged = queueChanged)
         }
+    }
+
+    private fun publishDownloadStateLocked(
+        libraryChanged: Boolean,
+        queueChanged: Boolean,
+    ) {
+        val previous = _downloadState.value
+        val library = if (libraryChanged) storage.getLibrary() else _libraryFlow.value
+        val queue = if (queueChanged) storage.getQueue() else _queueFlow.value
+        if (libraryChanged) _libraryFlow.value = library
+        if (queueChanged) _queueFlow.value = queue
+        val version = previous.version + 1L
+        _downloadState.value =
+            DownloadUiSnapshot(
+                version = version,
+                libraryVersion = if (libraryChanged) previous.libraryVersion + 1L else previous.libraryVersion,
+                queueVersion = if (queueChanged) previous.queueVersion + 1L else previous.queueVersion,
+                library = library,
+                queue = queue,
+            )
+        _downloadStateVersion.value = version
     }
 
     /** Cached library snapshot; reads from memory rather than re-parsing every story JSON. */
@@ -140,7 +179,7 @@ class AppRepository(
             val current = storage.getStory(storyId)
             val updated = block(current) ?: return@synchronized
             storage.addOrUpdateStory(updated)
-            _libraryFlow.value = storage.getLibrary()
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
         }
     }
 
@@ -148,7 +187,7 @@ class AppRepository(
     suspend fun upsertStory(story: Story) {
         synchronized(storage) {
             storage.addOrUpdateStory(story)
-            _libraryFlow.value = storage.getLibrary()
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
         }
     }
 
@@ -158,15 +197,14 @@ class AppRepository(
     suspend fun deleteStory(id: String) {
         synchronized(storage) {
             storage.deleteStory(id)
-            _libraryFlow.value = storage.getLibrary()
-            _queueFlow.value = storage.getQueue()
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
         }
     }
 
     suspend fun saveLibrary(stories: List<Story>) {
         synchronized(storage) {
             storage.saveLibrary(stories)
-            _libraryFlow.value = storage.getLibrary()
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
         }
     }
 
@@ -181,7 +219,7 @@ class AppRepository(
             val current = storage.getQueue()
             val updated = block(current)
             storage.saveQueue(updated)
-            _queueFlow.value = updated
+            publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
         }
     }
 
@@ -189,7 +227,7 @@ class AppRepository(
     suspend fun saveQueue(jobs: List<DownloadJob>) {
         synchronized(storage) {
             storage.saveQueue(jobs)
-            _queueFlow.value = jobs
+            publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
         }
     }
 

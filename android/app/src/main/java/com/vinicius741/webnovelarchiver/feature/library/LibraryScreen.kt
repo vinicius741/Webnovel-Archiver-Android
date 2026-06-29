@@ -279,13 +279,14 @@ internal fun ScreenHost.showLibrary() {
         val renderedRoot = frame.getChildAt(0)
         // Capture before launching: unlike drop(1), this still handles a publish that races between
         // the capture and collector registration because StateFlow then emits a different version.
-        val initialVersion = repository.downloadStateVersion.value
+        var observedLibraryVersion = repository.downloadState.value.libraryVersion
         screenObserver =
             scope.launch {
-                repository.downloadStateVersion.collect { version ->
+                repository.downloadState.collect { snapshot ->
                     if (renderedRoot.parent !== frame) return@collect
-                    if (version == initialVersion) return@collect
-                    refresh(repository.library())
+                    if (snapshot.libraryVersion == observedLibraryVersion) return@collect
+                    observedLibraryVersion = snapshot.libraryVersion
+                    refresh(snapshot.library)
                 }
             }
     }

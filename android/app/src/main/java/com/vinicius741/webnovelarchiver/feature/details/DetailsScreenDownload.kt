@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
@@ -56,9 +57,10 @@ internal fun ScreenHost.refreshDetailsDownload(
     bannerSlot: ViewGroup?,
     downloadActionSlot: LinearLayout?,
     isBusy: Boolean,
+    snapshot: DownloadUiSnapshot? = null,
 ) {
-    val story = repository.story(storyId) ?: return
-    val jobsForStory = repository.queue().filter { it.storyId == storyId }
+    val story = snapshot?.library?.firstOrNull { it.id == storyId } ?: repository.story(storyId) ?: return
+    val jobsForStory = (snapshot?.queue ?: repository.queue()).filter { it.storyId == storyId }
     val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
 
