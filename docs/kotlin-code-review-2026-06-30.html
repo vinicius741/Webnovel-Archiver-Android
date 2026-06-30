@@ -182,6 +182,16 @@
   a { color: var(--accent); }
   .pill-row { display:flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+  /* Completion banner + done states for resolved roadmap items */
+  .done-banner {
+    background: var(--good-bg); border: 1px solid var(--good); border-left: 4px solid var(--good);
+    border-radius: 12px; padding: 14px 18px; margin: 0 0 16px;
+  }
+  .done-banner strong { color: var(--good); }
+  .priority-list li.done { opacity: 0.92; }
+  .priority-list li.done::before { background: var(--good); content: "✓"; }
+  .tag.done { background: var(--good-bg); color: var(--good); }
+  .done-summary { color: var(--muted); font-size: 13px; margin-top: 6px; }
   footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
   .stat-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 12px; margin: 20px 0; }
   .stat { background: var(--panel); border:1px solid var(--border); border-radius: 12px; padding: 14px 16px; text-align: center; }
@@ -221,6 +231,10 @@
     <div class="stat"><div class="big" style="color:var(--good)">5</div><div class="lbl">Strengths</div></div>
     <div class="stat"><div class="big">101</div><div class="lbl">Kotlin source files</div></div>
     <div class="stat"><div class="big">287</div><div class="lbl">JUnit tests</div></div>
+  </div>
+
+  <div class="done-banner" style="margin-top:0">
+    <strong>✓ Update — June 30, 2026: Tier 1 is fixed.</strong> All of the "fix first" items below (zero logging, <code>CancellationException</code> swallowing, silent data-loss on parse failure + incomplete restore rollback) have been resolved in the native app. See the <a href="#tier1">Tier 1 section of the roadmap</a> for per-finding detail. The findings text below is preserved as the original review record.
   </div>
 
   <div class="callout warn">
@@ -1298,23 +1312,40 @@ Use <code>kotlinx.coroutines.NonCancellable</code> where cleanup genuinely must 
   <h2><span class="num">11</span>Prioritized roadmap</h2>
   <p class="sec-lede">Ordered by impact × urgency. Each item references the finding IDs above.</p>
 
-  <h3>Tier 1 — Fix now (correctness, data-loss, debugging)</h3>
+  <h3 id="tier1">Tier 1 — Fix now (correctness, data-loss, debugging)</h3>
+
+  <div class="done-banner">
+    <strong>✓ Tier 1 complete — implemented June 30, 2026.</strong> All four Tier 1 items below have been fixed in the native Kotlin app under <code>android/</code>. The full quality gate passes: <code>assembleDebug</code> + <code>testDebugUnitTest</code> (287 tests, 0 failures) + <code>detekt</code> + <code>lintDebug</code> all green. Per-finding detail is recorded under each item.
+  </div>
+
   <ol class="priority-list">
-    <li>
-      <strong>Add logging</strong> <span class="tag high">T1</span><br>
+    <li class="done">
+      <strong>Add logging</strong> <span class="tag high">T1</span> <span class="tag done">DONE</span><br>
       Add <code>Timber</code> (or a thin wrapper); log warnings+ in every <code>catch</code> with the full throwable; log download state transitions; gate verbose on <code>BuildConfig.DEBUG</code>. Enables everything else to be diagnosed.
+      <div class="done-summary">
+        <strong>Done:</strong> added <code>com.jakewharton.timber:timber:5.0.1</code> + <code>buildFeatures.buildConfig true</code>; planted a <code>DebugTree</code> in debug and a WARN+-only <code>ReleaseLogTree</code> in release (<code>WebnovelArchiverApp</code>); <code>Timber.w(e,…)</code> is now called in every Tier 1 catch site and download error classification (<code>DownloadEngine.handleJobError</code>, the StoryActions operation handlers, restore, and corrupt-file quarantine).
+      </div>
     </li>
-    <li>
-      <strong>Stop swallowing <code>CancellationException</code></strong> <span class="tag high">E1 · E2 · E3</span><br>
+    <li class="done">
+      <strong>Stop swallowing <code>CancellationException</code></strong> <span class="tag high">E1 · E2 · E3</span> <span class="tag done">DONE</span><br>
       Add <code>if (error is CancellationException) throw error</code> to the StoryActions/download worker paths; catch <code>Exception</code> not <code>Throwable</code> where possible, and let restore cancellation/errors that should abort propagate. Re-enable detekt <code>TooGenericExceptionCaught</code> (E4) with per-site <code>@Suppress</code>.
+      <div class="done-summary">
+        <strong>Done (E1):</strong> all four StoryActions suspend handlers (<code>syncStory(url)</code>, <code>syncStory(story)</code>, <code>runCleanup</code>, <code>generateEpub</code>) now re-throw <code>CancellationException</code> before the toast/onError path. <strong>(E2):</strong> <code>DownloadEngine.processJob</code> now catches <code>CancellationException</code> first (always re-throws) then <code>Exception</code> (never <code>Throwable</code>); the now-dead <code>isPaused</code> helper was removed. <strong>(E3):</strong> restore catches <code>Throwable</code> but re-throws <code>InterruptedException</code>/<code>CancellationException</code> and <code>VirtualMachineError</code>, then dispatches the rest by type (<code>ZipException</code>/<code>IOException</code>/<code>JsonParseException</code>) with a logged cause. <strong>(E4):</strong> detekt <code>TooGenericExceptionCaught</code> re-enabled project-wide; the legitimate classifier/bridge sites carry explicit <code>@Suppress</code>.
+      </div>
     </li>
-    <li>
-      <strong>Make atomic writes actually atomic</strong> <span class="tag high">P1 · P2 · P3 · P4</span><br>
+    <li class="done">
+      <strong>Make atomic writes actually atomic</strong> <span class="tag high">P1 · P2 · P3 · P4</span> <span class="tag done">DONE</span><br>
       <code>try/finishWrite</code> + <code>catch/failWrite</code> in <code>DurableJson</code>; distinguish missing-file from parse-failure (and quarantine + log corrupt files); restore from snapshot in the restore catch path; don't pre-delete destinations; fsync the parent directory.
+      <div class="done-summary">
+        <strong>Done (P1):</strong> <code>DurableJson.writeAtomic</code> wraps the write in <code>try { finishWrite } catch { failWrite; throw }</code> — no more stale <code>.new</code> artifacts on failure. <strong>(P2):</strong> <code>readAtomic</code> distinguishes missing-file (clean null) from parse/read failure; corrupt files are logged and quarantined to a sibling <code>.corrupt</code> file (recoverable, not hidden). <strong>(P3):</strong> <code>swapRoots</code> keeps the pre-restore snapshot until the swap is verified, and a new <code>rollbackRootFromSnapshot()</code> restores the previous library from the snapshot on any failure. <strong>(P4):</strong> <code>AtomicFileWrites</code> no longer pre-deletes the destination (POSIX rename atomically replaces), fsyncs the parent directory after the rename via <code>android.system.Os</code>, and cleans up temp files on failure (P12).
+      </div>
     </li>
-    <li>
-      <strong>Fix the two heavy RecyclerView adapters</strong> <span class="tag high">U1 · U2</span><br>
+    <li class="done">
+      <strong>Fix the two heavy RecyclerView adapters</strong> <span class="tag high">U1 · U2</span> <span class="tag done">DONE</span><br>
       <code>setHasStableIds</code> + DiffUtil on <code>ChapterListAdapter</code>; stop rebuilding rows in <code>onBindViewHolder</code>; make the queue group ViewHolder hold a stable card structure. These lists hold thousands of items.
+      <div class="done-summary">
+        <strong>Done (U1):</strong> <code>ChapterListAdapter</code> now calls <code>setHasStableIds(true)</code> + <code>getItemId</code> keyed by chapter id, uses <code>DiffUtil.calculateDiff</code> in <code>update()</code> instead of <code>notifyDataSetChanged</code>, and builds the row skeleton once in <code>onCreateViewHolder</code> — <code>onBindViewHolder</code> only mutates title text/color, swaps the status slot's leading view, rebuilds the single subtitle TextView, and re-tints the bookmark icon. <strong>(U2):</strong> <code>QueueGroupAdapter</code> holders now own a persistent <code>QueueGroupCard</code> (card + header + title/subtitle/progress/action slots + body); <code>bind()</code> repopulates header fields and rebuilds only the cheap job rows instead of reconstructing the whole card subtree on every bind.
+      </div>
     </li>
   </ol>
 
