@@ -15,6 +15,7 @@ import android.widget.ScrollView
 import android.widget.Toast
 import androidx.window.layout.WindowMetricsCalculator
 import coil.load
+import java.util.Locale
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
@@ -146,6 +147,25 @@ internal fun ScreenHost.styledDialogField(
             }
     }
 
+// Renders a story score in a single canonical form ("X.XX / 5") regardless of which provider
+// produced it. Royal Road already stores "4.84 / 5", while Scribble Hub stores a bare "4.8", so
+// without normalization the two sources display inconsistently on cards and the details header
+// (see QA F1). We pull the leading number out of whatever string the provider saved, reformat it
+// to two decimals on a US locale (so the separator is always "."), and append " / 5".
+// LibraryQuery.parseScore does the same numeric extraction for sorting, so the canonical value is
+// recoverable from any stored form. Normalize here rather than at the provider layer so already-
+// stored stories pick up the new format without a re-sync.
+internal fun formatScore(score: String): String {
+    val value =
+        Regex("""(\d+(?:\.\d+)?)""")
+            .find(score)
+            ?.groupValues
+            ?.get(1)
+            ?.toDoubleOrNull()
+            ?: return score.trim()
+    return String.format(Locale.US, "%.2f / 5", value)
+}
+
 internal fun ScreenHost.scoreRow(score: String, iconSizeDp: Int = 16): View =
     LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -156,7 +176,7 @@ internal fun ScreenHost.scoreRow(score: String, iconSizeDp: Int = 16): View =
                 layoutParams = LinearLayout.LayoutParams(dp(iconSizeDp), dp(iconSizeDp))
             },
         )
-        addView(makeText(app, score, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
+        addView(makeText(app, formatScore(score), Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
     }
 
 internal fun ScreenHost.dot(color: Int): View =
