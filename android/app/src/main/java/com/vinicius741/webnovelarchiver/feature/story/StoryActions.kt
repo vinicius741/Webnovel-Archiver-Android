@@ -29,9 +29,11 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 
 internal fun ScreenHost.queueDownload(
@@ -78,6 +80,7 @@ internal fun ScreenHost.queueDownload(
     }
 }
 
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler funnels any non-cancellation failure into onError; CancellationException is re-thrown first.
 internal fun ScreenHost.syncStory(
     url: String,
     tabId: String?,
@@ -123,6 +126,10 @@ internal fun ScreenHost.syncStory(
             }
             onDone(story)
         } catch (error: Throwable) {
+            // E1: structured-concurrency safety — never swallow cancellation. A scope cancellation
+            // (Activity destroyed / lifecycleScope cancelled) must propagate, not become an onError.
+            if (error is CancellationException) throw error
+            Timber.w(error, "Sync failed for %s", url)
             onError(error)
         }
     }
@@ -139,6 +146,7 @@ internal fun ScreenHost.syncStory(
  * navigates to a `screen(title = "Working")` — that full-screen flow is reserved for brand-new
  * fetches (Library "Fetch Story", Browser "Add") where no Details screen exists yet.
  */
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler surfaces any non-cancellation failure as a toast; CancellationException is re-thrown first.
 internal fun ScreenHost.syncStory(story: Story) {
     if (!StoryActionGuards.canSync(story)) {
         toast(StoryActionGuards.archivedActionMessage("Sync"))
@@ -177,6 +185,9 @@ internal fun ScreenHost.syncStory(story: Story) {
             clearStoryOperation(synced.id, StoryOperationKind.SYNC, rerender = false)
             showDetails(synced.id)
         } catch (error: Throwable) {
+            // E1: structured-concurrency safety — never swallow cancellation.
+            if (error is CancellationException) throw error
+            Timber.w(error, "In-place sync failed for %s", story.id)
             clearStoryOperation(story.id, StoryOperationKind.SYNC, rerender = false)
             toast(error.message ?: "Sync failed")
             // Stay on Details (not the Library) so the user sees the result in context.
@@ -204,6 +215,7 @@ internal fun ScreenHost.applyCleanup(story: Story) {
     }
 }
 
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler surfaces any non-cancellation failure as a toast; CancellationException is re-thrown first.
 private fun ScreenHost.runCleanup(
     story: Story,
     downloaded: List<Chapter>,
@@ -260,6 +272,9 @@ private fun ScreenHost.runCleanup(
                 }
             }
         } catch (error: Throwable) {
+            // E1: structured-concurrency safety — never swallow cancellation.
+            if (error is CancellationException) throw error
+            Timber.w(error, "Cleanup failed for %s", story.id)
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
                 toast(error.message ?: "Cleanup failed")
@@ -296,6 +311,7 @@ internal fun ScreenHost.generateConfiguredEpub(
     }
 }
 
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler surfaces any non-cancellation failure as a toast; CancellationException is re-thrown first.
 internal fun ScreenHost.generateEpub(
     story: Story,
     chapters: List<Chapter>,
@@ -319,6 +335,9 @@ internal fun ScreenHost.generateEpub(
             toast("Generated ${results.size} EPUB file(s)")
             showDetails(story.id)
         } catch (error: Throwable) {
+            // E1: structured-concurrency safety — never swallow cancellation.
+            if (error is CancellationException) throw error
+            Timber.w(error, "EPUB generation failed for %s", story.id)
             clearStoryOperation(story.id, StoryOperationKind.EPUB, rerender = false)
             toast(error.message ?: "EPUB failed")
             showDetails(story.id)

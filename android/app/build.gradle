@@ -23,6 +23,12 @@ android {
     namespace 'com.vinicius741.webnovelarchiver'
     compileSdk 36
 
+    // Observability (Tier 1, T1): Timber logs are gated on BuildConfig.DEBUG in release, so the
+    // BuildConfig feature must be on for the variant to generate the class.
+    buildFeatures {
+        buildConfig true
+    }
+
     defaultConfig {
         applicationId 'com.vinicius741.webnovelarchiver.nativeapp'
         minSdk 26
@@ -102,6 +108,10 @@ dependencies {
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
     implementation 'androidx.window:window:1.4.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    // Timber — structured logging (Observability; Tier 1, T1). Plant a DebugTree in debug builds so
+    // every catch block and download/TTS state transition is diagnosable from logcat without forcing
+    // exceptions into user-facing toasts.
+    implementation 'com.jakewharton.timber:timber:5.0.1'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jsoup:jsoup:1.21.2'
     implementation 'com.google.code.gson:gson:2.13.2'

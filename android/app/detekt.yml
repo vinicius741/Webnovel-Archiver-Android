@@ -51,8 +51,13 @@ empty-blocks:
 
 exceptions:
   active: true
+  # E4: TooGenericExceptionCaught is re-enabled (it is the rule that would have caught the
+  # CancellationException-swallowing bugs in E1/E2/E3). The legitimate broad-catch sites — the
+  # restore error classifier and the user-facing operation handlers that funnel any failure into a
+  # toast/callback after re-throwing CancellationException — opt in explicitly with a per-site
+  # @Suppress("TooGenericExceptionCaught") rather than disabling the rule project-wide.
   TooGenericExceptionCaught:
-    active: false  # download/TTS error classification intentionally catches Throwable
+    active: true
 
 naming:
   active: true

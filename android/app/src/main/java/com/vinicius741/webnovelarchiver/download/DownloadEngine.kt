@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -254,6 +255,7 @@ class DownloadEngine(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught") // E2: DownloadErrorClassifier.classify needs a broad input; CancellationException is caught+rethrown first.
     private suspend fun processJob(job: DownloadJob) {
         try {
             emitProgress(job)
@@ -287,8 +289,14 @@ class DownloadEngine(
                 storage.addOrUpdateStory(story)
             }
             if (!isCancelled(job.id)) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
-        } catch (error: Throwable) {
-            if (error is CancellationException && isPaused(job.id)) return
+        } catch (error: CancellationException) {
+            // E2: a genuine scope/job cancellation must always propagate. A *user* pause does not
+            // cancel this coroutine (pauseJob/pauseAll only flip queue status), so any
+            // CancellationException here is a real teardown — re-throw so the parent is cleaned up.
+            Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
+            throw error
+        } catch (error: Exception) {
+            // E2: catch Exception (not Throwable) so OutOfMemoryError/StackOverflowError propagate.
             if (!isCancelled(job.id)) handleJobError(job, error)
         }
     }
@@ -322,6 +330,9 @@ class DownloadEngine(
         error: Throwable,
     ) {
         val classified = DownloadErrorClassifier.classify(error)
+        // T1: error classification decisions are otherwise invisible; log them with the cause so a
+        // "Download failed" report is diagnosable. (downloadErrorCategory/code map to classified.*)
+        Timber.w(error, "Download job %s failed (category=%s, code=%s, retry=%s)", job.id, classified.category, classified.code, job.retryCount)
         lateinit var queue: List<DownloadJob>
         storage.mutateQueueInPlace { current ->
             current.find { it.id == job.id }?.let {
@@ -346,8 +357,6 @@ class DownloadEngine(
     }
 
     private fun isCancelled(id: String): Boolean = storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
-
-    private fun isPaused(id: String): Boolean = storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Paused.wire }
 
     fun currentProgress(): DownloadProgress = buildProgress(null)
 

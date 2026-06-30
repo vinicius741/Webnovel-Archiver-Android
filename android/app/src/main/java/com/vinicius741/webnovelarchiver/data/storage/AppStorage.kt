@@ -34,9 +34,13 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.text
 import java.io.File
+import java.io.IOException
 import java.util.zip.ZipEntry
+import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import com.google.gson.JsonParseException
+import timber.log.Timber
 
 /**
  * Low-level file-based persistence. All JSON documents are written through [DurableJson] (AtomicFile
@@ -505,6 +509,7 @@ class AppStorage(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E3: dispatches by exception type (Zip/IO/JSON); CancellationException + VM Errors are re-thrown above.
     private fun restoreFromZip(
         zipFile: File,
         restoreDir: File,
@@ -556,8 +561,33 @@ class AppStorage(
             cleanupRestoreArtifacts(restoreDir)
             return summary
         } catch (error: Throwable) {
+            // E3: a scope/thread cancellation or a serious VM Error (OOM on a huge ZIP, etc.) must
+            // propagate — it is not a recoverable restore failure, and swallowing it would mask the
+            // problem and run cleanup side-effects on an already-tearing-down context.
+            if (error is InterruptedException || error is kotlinx.coroutines.CancellationException) {
+                rollbackRootFromSnapshot()
+                cleanupRestoreArtifacts(restoreDir)
+                throw error
+            }
+            if (error is VirtualMachineError) {
+                rollbackRootFromSnapshot()
+                cleanupRestoreArtifacts(restoreDir)
+                throw error
+            }
+            // P3: if the swap threw midway, root may be a half-populated tree. Restore the pre-swap
+            // snapshot so the user keeps their previous library instead of a broken one.
+            rollbackRootFromSnapshot()
             cleanupRestoreArtifacts(restoreDir)
-            return "Restore failed: ${error.message ?: "unknown error"}. Your library was not changed."
+            // E3: log the real cause (T1) — previously every failure was flattened to one toast with
+            // no record of whether it was a corrupt ZIP, disk-full, or a malformed manifest.
+            Timber.e(error, "Restore failed")
+            return when (error) {
+                is ZipException -> "Restore failed: the backup file is corrupt or not a valid backup (${error.message ?: "invalid ZIP"})."
+                is IOException -> "Restore failed: a storage error occurred (${error.message ?: "I/O error"}). Your library was not changed."
+                is JsonParseException -> "Restore failed: the backup contents could not be read (${error.message ?: "invalid JSON"}). Your library was not changed."
+                is IllegalStateException -> "Restore failed: ${error.message ?: "the backup was rejected"}. Your library was not changed."
+                else -> "Restore failed: ${error.message ?: "unknown error"}. Your library was not changed."
+            }
         }
     }
 
@@ -637,12 +667,20 @@ class AppStorage(
         return null
     }
 
-    /** Snapshot the current [root] to cache, then move [staged] into its place. */
+    /**
+     * Snapshot the current [root] to the cache, then move [staged] into its place (P3 atomicity).
+     *
+     * The snapshot is kept until the swap is verified complete and is **only** deleted here on the
+     * success path. On any failure the caller's catch block invokes [rollbackRootFromSnapshot] to
+     * restore the previous data — so a half-completed cross-filesystem copy cannot leave a broken
+     * library behind after what the user was told was a safe restore.
+     */
     private fun swapRoots(staged: File) {
         preRestoreSnapshotDir.deleteRecursively()
         if (root.exists()) root.renameTo(preRestoreSnapshotDir)
         if (!staged.renameTo(root)) {
-            // Cross-filesystem fallback: copy then delete.
+            // Cross-filesystem fallback: copy then delete. If this throws midway, the caller rolls
+            // root back from preRestoreSnapshotDir; we never get here with the snapshot discarded.
             staged.copyRecursively(root, overwrite = true)
             staged.deleteRecursively()
         }
@@ -651,7 +689,31 @@ class AppStorage(
         chapterRoot.mkdirs()
         epubRoot.mkdirs()
         backupRoot.mkdirs()
-        // Restore succeeded; the snapshot can be discarded.
+        // Restore succeeded; the snapshot can now be discarded.
+        preRestoreSnapshotDir.deleteRecursively()
+    }
+
+    /**
+     * P3: restore [root] from [preRestoreSnapshotDir] after a failed swap. If the snapshot exists,
+     * the in-progress (possibly half-written) root is discarded and the previous good data is put
+     * back, so a failed restore never leaves a broken library.
+     */
+    private fun rollbackRootFromSnapshot() {
+        if (!preRestoreSnapshotDir.exists()) return
+        runCatching {
+            root.deleteRecursively()
+            if (!preRestoreSnapshotDir.renameTo(root)) {
+                // Cross-filesystem fallback for the rollback too.
+                preRestoreSnapshotDir.copyRecursively(root, overwrite = true)
+                preRestoreSnapshotDir.deleteRecursively()
+            }
+            root.mkdirs()
+            storyDir.mkdirs()
+            chapterRoot.mkdirs()
+            epubRoot.mkdirs()
+            backupRoot.mkdirs()
+            Timber.w("Restored previous library from pre-restore snapshot after a failed swap.")
+        }.onFailure { Timber.e(it, "Failed to roll back root from pre-restore snapshot; data may be inconsistent.") }
         preRestoreSnapshotDir.deleteRecursively()
     }
 
