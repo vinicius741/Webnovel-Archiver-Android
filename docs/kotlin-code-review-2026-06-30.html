@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kotlin Codebase Review — Webnovel Archiver (Native)</title>
+<style>
+  :root {
+    --bg: #0f1420;
+    --panel: #161c2c;
+    --panel-2: #1d2538;
+    --border: #2a3550;
+    --text: #e6ebf5;
+    --muted: #93a0bd;
+    --accent: #6ea8ff;
+    --accent-2: #8b7bff;
+    --code-bg: #0b0f1a;
+    --high: #ff6b6b;
+    --high-bg: rgba(255,107,107,0.12);
+    --med: #ffb454;
+    --med-bg: rgba(255,180,84,0.12);
+    --low: #4dd2a8;
+    --low-bg: rgba(77,210,168,0.12);
+    --good: #4dd2a8;
+    --good-bg: rgba(77,210,168,0.12);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: linear-gradient(180deg, #0b0f1a 0%, var(--bg) 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px 120px; }
+  header.hero {
+    padding: 56px 24px 40px;
+    border-bottom: 1px solid var(--border);
+    background: radial-gradient(1200px 400px at 20% -10%, rgba(110,168,255,0.12), transparent 60%),
+                radial-gradient(900px 400px at 90% 0%, rgba(139,123,255,0.10), transparent 60%);
+  }
+  .hero-inner { max-width: 1040px; margin: 0 auto; }
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.18em; font-size: 12px;
+    color: var(--accent); font-weight: 600; margin-bottom: 12px;
+  }
+  h1 { font-size: 38px; margin: 0 0 10px; line-height: 1.15; letter-spacing: -0.02em; }
+  .subtitle { color: var(--muted); font-size: 17px; max-width: 720px; }
+  .meta-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px; margin-top: 28px;
+  }
+  .meta-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .meta-card .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .meta-card .v { font-size: 16px; font-weight: 600; margin-top: 4px; }
+
+  section { margin-top: 56px; }
+  h2 {
+    font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em;
+    padding-bottom: 12px; border-bottom: 1px solid var(--border);
+  }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 10px; font-size: 20px; }
+  .sec-lede { color: var(--muted); margin: 8px 0 24px; font-size: 15px; }
+
+  h3 { font-size: 19px; margin: 28px 0 6px; }
+
+  /* Scorecard */
+  .scorecard {
+    display: grid; grid-template-columns: 1fr; gap: 10px;
+  }
+  .score-row {
+    display: grid; grid-template-columns: 1.6fr 0.5fr 2fr; gap: 16px;
+    align-items: center; padding: 14px 16px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .score-row .area { font-weight: 600; }
+  .score-row .area .sub { display:block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .grade {
+    font-size: 22px; font-weight: 700; text-align: center; padding: 6px 0;
+    border-radius: 8px;
+  }
+  .grade.A { background: var(--good-bg); color: var(--good); }
+  .grade.B { background: rgba(110,168,255,0.14); color: var(--accent); }
+  .grade.C { background: var(--med-bg); color: var(--med); }
+  .grade.D, .grade.F { background: var(--high-bg); color: var(--high); }
+  .score-row .headline { color: var(--muted); font-size: 14px; }
+  @media (max-width: 640px) {
+    .score-row { grid-template-columns: 1fr; gap: 6px; }
+    .grade { text-align: left; display: inline-block; padding: 4px 12px; }
+  }
+
+  /* Toc */
+  .toc {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 22px; columns: 2; column-gap: 32px;
+  }
+  .toc a { color: var(--text); text-decoration: none; display: block; padding: 3px 0; }
+  .toc a:hover { color: var(--accent); }
+
+  /* Priority roadmap */
+  .priority-list { list-style: none; padding: 0; margin: 0; counter-reset: prio; }
+  .priority-list li {
+    counter-increment: prio; position: relative; padding: 16px 18px 16px 56px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    margin-bottom: 12px;
+  }
+  .priority-list li::before {
+    content: counter(prio); position: absolute; left: 16px; top: 16px;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: #0b0f1a; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .priority-list .tag {
+    display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle;
+  }
+  .tag.high { background: var(--high-bg); color: var(--high); }
+  .tag.med { background: var(--med-bg); color: var(--med); }
+  .tag.low { background: var(--low-bg); color: var(--low); }
+
+  /* Finding cards */
+  .findings { display: flex; flex-direction: column; gap: 14px; }
+  .finding {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px 22px; border-left: 4px solid var(--muted);
+  }
+  .finding.high { border-left-color: var(--high); }
+  .finding.med { border-left-color: var(--med); }
+  .finding.low { border-left-color: var(--low); }
+  .finding.good { border-left-color: var(--good); }
+  .finding-head {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px;
+  }
+  .sev {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 3px 10px; border-radius: 999px;
+  }
+  .sev.high { background: var(--high-bg); color: var(--high); }
+  .sev.med { background: var(--med-bg); color: var(--med); }
+  .sev.low { background: var(--low-bg); color: var(--low); }
+  .sev.good { background: var(--good-bg); color: var(--good); }
+  .cat { font-size: 12px; color: var(--muted); background: var(--panel-2); padding: 3px 10px; border-radius: 999px; }
+  .finding h4 { margin: 0; font-size: 17px; flex: 1 1 100%; }
+  .finding .loc {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px; color: var(--accent); background: var(--code-bg);
+    padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border);
+  }
+  .finding dl { margin: 8px 0 0; display: grid; grid-template-columns: 110px 1fr; gap: 6px 12px; }
+  .finding dt { color: var(--muted); font-size: 13px; font-weight: 600; }
+  .finding dd { margin: 0; font-size: 14.5px; }
+
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; margin: 12px 0;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13.5px; line-height: 1.55; color: #d6deeb;
+  }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  p code, li code, td code {
+    background: var(--code-bg); border: 1px solid var(--border); padding: 1px 6px;
+    border-radius: 5px; font-size: 0.88em; color: #d6deeb;
+  }
+  .callout {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; margin: 20px 0;
+  }
+  .callout.warn { border-left: 4px solid var(--high); }
+  .callout.tip { border-left: 4px solid var(--good); }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  ul.tight { margin: 8px 0 0; padding-left: 22px; }
+  ul.tight li { margin-bottom: 4px; }
+  a { color: var(--accent); }
+  .pill-row { display:flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .pill { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+  .stat-band { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px,1fr)); gap: 12px; margin: 20px 0; }
+  .stat { background: var(--panel); border:1px solid var(--border); border-radius: 12px; padding: 14px 16px; text-align: center; }
+  .stat .big { font-size: 28px; font-weight: 700; }
+  .stat .lbl { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="eyebrow">Kotlin &amp; Android Codebase Review</div>
+    <h1>How well are we writing Kotlin?<br>A full audit of the native Webnovel Archiver.</h1>
+    <p class="subtitle">A best-practices review covering architecture, coroutines &amp; concurrency, the classic-View UI layer, build configuration, error handling, and testing — with 60+ concrete findings ranked by severity and a prioritized fix roadmap.</p>
+
+    <div class="meta-grid">
+      <div class="meta-card"><div class="k">Scope</div><div class="v">android/ native app</div></div>
+      <div class="meta-card"><div class="k">Stack</div><div class="v">Kotlin · Views · Coroutines</div></div>
+      <div class="meta-card"><div class="k">Date</div><div class="v">June 30, 2026</div></div>
+      <div class="meta-card"><div class="k">Kotlin</div><div class="v">2.1.20</div></div>
+      <div class="meta-card"><div class="k">AGP / Gradle</div><div class="v">8.13.2 / 9.0.0</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- =================== EXECUTIVE SUMMARY =================== -->
+<section id="summary">
+  <h2><span class="num">00</span>Executive summary</h2>
+  <p class="sec-lede">The headline: this is a <strong>deliberately designed, well-documented codebase</strong> — not a naive one. The hardest problems (single source of truth, WebView lifecycle, foldable handling, atomic file writes) have clearly been reasoned about. But there are a handful of <strong>real correctness and data-loss risks</strong>, and a long tail of maintainability improvements.</p>
+
+  <div class="stat-band">
+    <div class="stat"><div class="big" style="color:var(--high)">8</div><div class="lbl">High severity</div></div>
+    <div class="stat"><div class="big" style="color:var(--med)">31</div><div class="lbl">Medium</div></div>
+    <div class="stat"><div class="big" style="color:var(--low)">24</div><div class="lbl">Low / nits</div></div>
+    <div class="stat"><div class="big" style="color:var(--good)">5</div><div class="lbl">Strengths</div></div>
+    <div class="stat"><div class="big">101</div><div class="lbl">Kotlin source files</div></div>
+    <div class="stat"><div class="big">287</div><div class="lbl">JUnit tests</div></div>
+  </div>
+
+  <div class="callout warn">
+    <strong>The three things to fix first.</strong> Everything else can wait.
+    <ol style="margin:8px 0 0; padding-left:22px;">
+      <li><strong>Zero logging anywhere.</strong> Every <code>catch</code> swallows exceptions into a toast — field debugging is effectively impossible. (See <a href="#obs">Observability</a>.)</li>
+      <li><strong><code>catch(Throwable)</code> swallows <code>CancellationException</code></strong> in 5 suspend/worker paths, while restore catches <code>Throwable</code> too. (See <a href="#err">Error handling</a>.)</li>
+      <li><strong>JSON parse failures silently delete user data from the app's view</strong>, and restore rollback is incomplete. Failed AtomicFile writes also skip <code>failWrite</code> cleanup. (See <a href="#persist">Persistence</a>.)</li>
+    </ol>
+  </div>
+
+  <div class="callout tip">
+    <strong>What's genuinely good.</strong> The <code>*Planning.kt</code> pattern (functional-core / imperative-shell) is exemplary — it's why 287 fast JVM tests exist with no Robolectric and no mocks. The <code>StateFlow</code> exposure via <code>asStateFlow()</code> is textbook-correct, there is <strong>no</strong> <code>GlobalScope</code>, <strong>no executable</strong> <code>runBlocking</code>, <strong>no</strong> <code>Thread.sleep</code> in production code, and the conditional release-signing setup is well-engineered.
+  </div>
+</section>
+
+<!-- =================== SCORECARD =================== -->
+<section id="scorecard">
+  <h2><span class="num">01</span>Scorecard</h2>
+  <p class="sec-lede">Letter grades across twelve dimensions, with the headline issue for each.</p>
+
+  <div class="scorecard">
+    <div class="score-row">
+      <div class="area">Test design &amp; architecture<span class="sub">The <code>*Planning.kt</code> functional-core pattern</span></div>
+      <div class="grade A">A−</div>
+      <div class="headline">Exemplary — pure-logic extraction enables fast JVM tests with no mocks.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Build tooling versions<span class="sub">AGP / Gradle / SDK</span></div>
+      <div class="grade B">B+</div>
+      <div class="headline">AGP 8.13 / Gradle 9 / SDK 36 current; Kotlin 2.1.20 is materially stale.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Architecture choices<span class="sub">Service-locator DI, JSON persistence</span></div>
+      <div class="grade B">B</div>
+      <div class="headline">Service-locator and JSON files are defensible; Gson should be replaced.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Release engineering<span class="sub">Signing, variants, APK output</span></div>
+      <div class="grade B">B</div>
+      <div class="headline">Conditional signing well done; manual versioning.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">State / concurrency<span class="sub">Flow exposure, scope discipline</span></div>
+      <div class="grade B">B−</div>
+      <div class="headline">No GlobalScope/executable runBlocking; <code>synchronized</code> blocks coroutines; no <code>repeatOnLifecycle</code>.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Test coverage<span class="sub">androidTest, Robolectric, orchestration</span></div>
+      <div class="grade C">C+</div>
+      <div class="headline">No instrumented tests; orchestration layer untested; one referenced test missing.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Dependency management<span class="sub">Catalog, automation, freshness</span></div>
+      <div class="grade C">C+</div>
+      <div class="headline">No version catalog; no update automation; okhttp one major behind.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Error handling<span class="sub">Exception strategy, cancellation</span></div>
+      <div class="grade C">C</div>
+      <div class="headline"><code>catch(Throwable)</code> eats <code>CancellationException</code> in worker/suspend paths; detekt rule disabled.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Shrinking / R8<span class="sub">Release size &amp; obfuscation</span></div>
+      <div class="grade C">C</div>
+      <div class="headline"><code>minifyEnabled false</code> ships dead code; no Gson keep rules ready.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">UI / View layer<span class="sub">RecyclerView, lifecycle, theming</span></div>
+      <div class="grade C">C</div>
+      <div class="headline"><code>notifyDataSetChanged</code> in big lists; no <code>repeatOnLifecycle</code>; theme not reactive.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Build hygiene<span class="sub">gradle.properties, proguard</span></div>
+      <div class="grade D">D</div>
+      <div class="headline"><code>gradle.properties</code> full of dead React Native / Expo / Hermes config.</div>
+    </div>
+    <div class="score-row">
+      <div class="area">Observability<span class="sub">Logging &amp; diagnostics</span></div>
+      <div class="grade F">F</div>
+      <div class="headline">Zero <code>Log.*</code> / Timber / SLF4J anywhere in the app.</div>
+    </div>
+  </div>
+</section>
+
+<!-- =================== TOC =================== -->
+<section id="toc">
+  <h2><span class="num">02</span>Contents</h2>
+  <nav class="toc">
+    <a href="#persist">03 · Persistence &amp; data layer</a>
+    <a href="#conc">04 · Coroutines &amp; concurrency</a>
+    <a href="#err">05 · Error handling</a>
+    <a href="#ui">06 · UI / View layer</a>
+    <a href="#idiom">07 · Kotlin idioms &amp; API design</a>
+    <a href="#build">08 · Build, deps &amp; hygiene</a>
+    <a href="#obs">09 · Observability &amp; testing</a>
+    <a href="#strengths">10 · Strengths to preserve</a>
+    <a href="#roadmap">11 · Prioritized roadmap</a>
+  </nav>
+</section>
+
+<!-- =================== PERSISTENCE =================== -->
+<section id="persist">
+  <h2><span class="num">03</span>Persistence &amp; data layer</h2>
+  <p class="sec-lede">The data layer is built around <code>AppStorage</code> (an 872-line god-object) doing JSON-file persistence with atomic writes and a versioned envelope, wrapped by <code>AppRepository</code> which exposes <code>StateFlow</code>s and serializes every mutation with <code>synchronized(storage){…}</code>. The atomic-write discipline is good in <em>intent</em> but has real correctness holes.</p>
+
+  <div class="findings">
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Persistence · durability</span>
+        <span class="loc">data/storage/DurableJson.kt:44-56</span>
+        <h4>P1 · Atomic JSON write never calls <code>failWrite</code> on failure</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The write uses <code>out.use { … atomic.finishWrite(it) }</code>. If <code>gson.toJson()</code> or <code>out.write()</code> throws (disk full, OOM), <code>use{}</code> calls <code>close()</code> — <strong>not</strong> <code>failWrite()</code>. The previous version of this report overstated this as "commits a half-written live file": Android's <code>AtomicFile</code> usually preserves/restores the previous base file on the next read when a backup/new file exists.</dd>
+        <dt>Risk</dt><dd>The rollback contract is still incomplete. Failed writes can leave stale <code>.new</code>/<code>.bak</code> artifacts, first-time writes have no previous document to restore, and callers get no distinct corruption signal. Combined with P2, any partial first-write or unreadable document is still collapsed to "missing" and silently hidden.</dd>
+        <dt>Fix</dt><dd>Wrap in <code>try { … finishWrite(out) } catch (e) { atomic.failWrite(out); throw e }</code>. Drop the <code>use{}</code> around the whole thing (finishWrite/failWrite already close).</dd>
+      </dl>
+    </div>
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">Error handling · data-loss</span>
+        <span class="loc">data/storage/DurableJson.kt:65-73 → AppStorage.kt:82,838</span>
+        <h4>P2 · JSON parse failures silently delete user data</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>readAtomic</code> wraps both the file read and every <code>gson.fromJson</code> in <code>runCatching{}.getOrNull()</code>. Downstream, <code>getLibrary()</code> uses <code>mapNotNull</code> and <code>getQueue()</code> returns <code>mutableListOf()</code> on null.</dd>
+        <dt>Risk</dt><dd>A single corrupt story JSON makes that story <strong>silently vanish</strong> from the library. A corrupt queue makes the whole download queue disappear. Combined with missing diagnostics and incomplete write-failure cleanup (P1), storage problems become invisible — no log, no error, no recovery path. This is the single highest-impact correctness risk.</dd>
+        <dt>Fix</dt><dd>Distinguish "file missing" (null is fine) from "parse failed" (throw, or return a sealed <code>ReadResult.Corrupt</code>). At minimum <strong>log</strong> parse failures and quarantine the bad file (rename to <code>.corrupt</code>) so data isn't hidden and can be recovered.</dd>
+      </dl>
+    </div>
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">Persistence · atomicity</span>
+        <span class="loc">data/storage/AppStorage.kt:641-656</span>
+        <h4>P3 · "Atomic swap" restore is neither atomic nor rolled back on failure</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>swapRoots</code> tries <code>renameTo</code>; on failure it falls back to a non-atomic recursive copy. On any exception during the restore path, the outer <code>catch(Throwable)</code> returns an error string and the <code>preRestoreSnapshotDir</code> with the old data is <strong>never restored</strong>.</dd>
+        <dt>Risk</dt><dd>If the cross-filesystem copy throws midway, <code>root</code> is left as a half-populated tree, the snapshot still holds the good data, but nothing puts it back. The user ends up with a broken library after what they were told was a safe restore.</dd>
+        <dt>Fix</dt><dd>In the catch path, restore from <code>preRestoreSnapshotDir</code> back to <code>root</code>. Don't delete the snapshot until <code>root</code> is verified post-swap.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Persistence · durability</span>
+        <span class="loc">data/storage/AtomicFileWrites.kt:78-96</span>
+        <h4>P4 · fsync on the temp file but no directory fsync + destination pre-deleted</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Before rename, the temp file is fsync'd, but the <strong>parent directory</strong> is not. Worse, <code>renameOnto</code> calls <code>destination.delete()</code> before <code>renameTo()</code>, removing the durability guarantee — between delete and rename there is no file at the destination.</dd>
+        <dt>Risk</dt><dd>Crash safety on ext4/f2fs requires fsync'ing the parent dir after the rename, otherwise the rename itself may not survive power loss. Pre-deleting the destination means a crash loses <em>both</em> the old and new content — directly contradicting the class doc ("the previous content survives until the new file is complete").</dd>
+        <dt>Fix</dt><dd>Don't pre-delete. Use a primitive that provides checked atomic replace semantics on Android/Linux (or switch these writes to <code>AtomicFile</code> too), and fsync the parent directory after the rename/replace. If a fallback copy is needed, keep an explicit backup until the replacement has been verified.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Persistence · migration</span>
+        <span class="loc">data/storage/DurableJson.kt:21,59-75</span>
+        <h4>P5 · Schema version is written but never read or migrated</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>Envelope.schemaVersion = 1</code> is persisted on every write, but <code>readAtomic</code> parses the envelope and <strong>never reads <code>schemaVersion</code></strong>.</dd>
+        <dt>Risk</dt><dd>The doc claims the envelope exists "so future migrations can detect the on-disk shape," but there is no migration hook, no version check, and nowhere to plug one in. The moment a field shape changes, old files silently fail to parse → P2 swallows them.</dd>
+        <dt>Fix</dt><dd>Add a <code>schemaVersion</code> check in <code>readAtomic</code> routing to a migration registry; add a test that a v1 file still loads after bumping <code>CURRENT_SCHEMA_VERSION</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Persistence · correctness</span>
+        <span class="loc">data/storage/DurableJson.kt:67-74</span>
+        <h4>P6 · Envelope detection is a string-contains heuristic with a lossy double round-trip</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>if (text.contains("\"payload\""))</code> decides envelope vs legacy. Then <code>Envelope.payload: Any?</code> is parsed as a Gson <code>LinkedTreeMap</code>, <strong>re-serialized with <code>gson.toJson(it)</code> and re-parsed</strong> into <code>T</code>.</dd>
+        <dt>Risk</dt><dd>(a) A legacy object with any top-level or nested <code>"payload"</code> key misdetects as an envelope. Plain user text is less likely to trigger this because quotes are JSON-escaped. (b) The double round-trip is type-erasing: unknown numbers become Gson <code>Double</code>s before being coerced back into typed models. Current epoch-millisecond timestamps are still exactly representable, but the pattern is fragile and repeats in <code>importBackupUri</code> and <code>restoreFromZip</code>.</dd>
+        <dt>Fix</dt><dd>Parse once into a typed <code>Envelope&lt;T&gt;</code> via a parameterized <code>TypeToken</code>; detect shape by a top-level <code>"schemaVersion"</code> key.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Concurrency</span>
+        <span class="loc">data/storage/AppStorage.kt:78-170</span>
+        <h4>P7 · Per-method <code>@Synchronized</code> is inconsistent — settings writes are unlocked</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Library/queue/story mutations are <code>@Synchronized</code>, but <code>saveSettings</code>, <code>saveSourceDownloadSettings</code>, <code>saveChapterFilterSettings</code>, <code>saveDisplayPreferences</code>, <code>saveTabs</code>, <code>saveTtsSettings</code>, <code>saveTtsSession</code> go straight to <code>write()</code> unsynchronized.</dd>
+        <dt>Risk</dt><dd>The "one lock around every multi-step mutation" promise is false. <code>AppRepository.saveSettings</code> also does <code>storage.saveSettings</code> + <code>_settingsFlow.value = settings</code> non-atomically.</dd>
+        <dt>Fix</dt><dd>Either make all mutators <code>@Synchronized</code>, or remove per-method locks and centralize locking in <code>AppRepository</code> exclusively.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Concurrency · main-thread I/O</span>
+        <span class="loc">data/storage/AppStorage.kt:269-272 → AppRepository.kt:142</span>
+        <h4>P8 · <code>readChapter</code> does synchronous disk I/O but is not a suspend function</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>readChapter</code> does <code>File(it).takeIf(File::exists)?.readText()</code> on the calling thread, and <code>AppRepository.readChapter</code> is a plain (non-suspending) passthrough.</dd>
+        <dt>Risk</dt><dd>Chapter HTML can be tens-to-hundreds of KB. Any UI caller that forgets <code>withContext(Dispatchers.IO)</code> blocks the main thread. The API gives no signal that it's blocking — it relies on caller discipline.</dd>
+        <dt>Fix</dt><dd>Make it <code>suspend</code> and read on <code>Dispatchers.IO</code> internally, or return a <code>Flow</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">API design</span>
+        <span class="loc">data/repository/AppRepository.kt:38-40</span>
+        <h4>P9 · Repository exposes its <code>AppStorage</code> publicly, breaking single-source-of-truth</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>val storage: AppStorage</code> is public. <code>DownloadEngine</code> immediately does <code>private val storage = repository.storage</code> and calls <code>storage.saveChapter</code>, <code>storage.mutateQueueInPlace</code>, <code>storage.getQueue</code> directly — bypassing the repository and its flow bookkeeping.</dd>
+        <dt>Risk</dt><dd>Two write paths into the store. Engines must remember to call <code>repository.publishDownloadState(...)</code> manually after every direct write (by convention, not enforced). This is the root cause of needing the <code>downloadStateVersion</code> counter — a symptom of the underlying dual-writer problem.</dd>
+        <dt>Fix</dt><dd>Make <code>storage</code> <code>private</code>. Give engines the narrow operations they need as repository methods, so every write inherently refreshes the flows.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">API design · god object</span>
+        <span class="loc">data/storage/AppStorage.kt (entire file, 872 lines)</span>
+        <h4>P10 · <code>AppStorage</code> is a god object</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>One class owns: JSON envelope read/write, library index + per-story files, chapter HTML I/O, EPUB binary streaming, settings/config/tabs/cleanup/TTS persistence, JSON backup export/import + merge, full ZIP backup + transactional restore with staging + zip-bomb protection, legacy path migration.</dd>
+        <dt>Risk</dt><dd>Mixing risky backup/restore with day-to-day persistence in the same class makes both hard to test, and every <code>@Synchronized</code> lock covers all of them (a slow restore blocks settings reads).</dd>
+        <dt>Fix</dt><dd>Split into <code>AppStorage</code> (JSON config + library + queue), <code>ChapterStore</code>/<code>EpubStore</code> (binary blobs), <code>BackupExporter</code>/<code>BackupImporter</code> (JSON + ZIP + restore staging), each with its own locking.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">API design</span>
+        <span class="loc">data/repository/AppRepository.kt:41-64</span>
+        <h4>P11 · Four overlapping <code>StateFlow</code>s for the same underlying state</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>_libraryFlow</code>, <code>_queueFlow</code>, <code>_downloadState</code> (a snapshot of both), and <code>_downloadStateVersion</code> (a counter) are all maintained in <code>publishDownloadStateLocked</code>.</dd>
+        <dt>Risk</dt><dd>Redundant observable surfaces for one logical state; observers get inconsistent "what changed" semantics. <code>downloadStateVersion</code> is acknowledged as legacy in its own doc but still updated.</dd>
+        <dt>Fix</dt><dd>Expose one <code>StateFlow&lt;DownloadUiSnapshot&gt;</code> (or two: <code>libraryFlow</code> + <code>queueFlow</code>). Delete <code>downloadStateVersion</code> after migrating observers.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Persistence · leak</span>
+        <span class="loc">data/storage/AtomicFileWrites.kt:72-88</span>
+        <h4>P12 · Temp files leak on write failure</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>tempSibling</code> creates <code>${name}.tmp.$n</code>; if <code>block</code>/<code>writeBytes</code> throws before <code>renameOnto</code>, the temp is never deleted.</dd>
+        <dt>Risk</dt><dd>Orphaned <code>.tmp.N</code> files accumulate in <code>novels/</code> and <code>epubs/</code> over a long session with intermittent disk errors (one per chapter save).</dd>
+        <dt>Fix</dt><dd><code>try { … } finally { if (!renamed &amp;&amp; temp.exists()) temp.delete() }</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Documentation drift</span>
+        <span class="loc">data/storage/AppStorage.kt:219-220,236 · sync/StorySyncEngine.kt:14-16</span>
+        <h4>P13 · Stale comments reference removed designs (<code>txMutex</code>, <code>core</code> package)</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Comments explain why <code>mutateQueueInPlace</code> exists "instead of the repository's <code>txMutex</code> path" — but there is no <code>txMutex</code> anywhere. <code>StorySyncEngine</code> says "Lives in the <code>core</code> package" but the package is <code>…sync</code>.</dd>
+        <dt>Risk</dt><dd>Comments describing a removed design actively mislead future readers about how locking works today.</dd>
+        <dt>Fix</dt><dd>Rewrite to describe the current <code>synchronized(storage)</code> monitor.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== CONCURRENCY =================== -->
+<section id="conc">
+  <h2><span class="num">04</span>Coroutines &amp; concurrency</h2>
+  <p class="sec-lede">The discipline here is mostly good: no <code>GlobalScope</code>, no executable <code>runBlocking</code>, no <code>Thread.sleep</code> in production, and <code>StateFlow</code>s are exposed read-only via <code>asStateFlow()</code>. The problems are about <strong>thread-blocking locks inside coroutines</strong>, <strong>lifecycle-ungated collection</strong>, and one TTS engine whose documented mutex discipline is not actually applied to public controls.</p>
+
+  <div class="callout tip">
+    <strong>Verified clean.</strong> <code>grep</code> confirms: 0 <code>GlobalScope</code>, 0 executable production <code>runBlocking</code> (comment/KDoc references only), 0 production <code>Thread.sleep</code>. <code>MutableStateFlow</code> instances are all private with public read-only <code>StateFlow</code> views. Scopes are tied to lifecycles (<code>lifecycleScope</code> in the activity, <code>SupervisorJob()</code> in engines). This is better hygiene than many production apps.
+  </div>
+
+  <div class="findings">
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">Concurrency · structured concurrency</span>
+        <span class="loc">data/repository/AppRepository.kt:88,178-228 · download/DownloadEngine.kt:178,235,272</span>
+        <h4>C1 · <code>synchronized(storage)</code> inside suspend functions blocks the IO dispatcher</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Every repository mutation is <code>suspend fun … = synchronized(storage) { storage.*(); publishDownloadStateLocked(...) }</code>. The download <code>processLoop</code> holds this same monitor across <code>getQueue()</code> + <code>selectEligibleJobs()</code> + <code>saveQueue()</code>.</dd>
+        <dt>Risk</dt><dd>This pins the calling coroutine's thread (typically a <code>Dispatchers.IO</code> thread, 64-thread cap) on a JVM monitor <strong>while doing file I/O</strong>. A <code>repository.upsertStory()</code> from a UI coroutine blocks until the download loop releases. Under a few concurrent enqueue/sync calls this is a contention bottleneck; with one fat library save it stalls the whole pipeline. Mixing <code>synchronized</code> (thread-blocking) with coroutines defeats structured concurrency.</dd>
+        <dt>Fix</dt><dd>Replace the shared JVM monitor with a single <code>kotlinx.coroutines.sync.Mutex</code> held only across the critical section, or route mutations through a single-writer actor/channel on <code>Dispatchers.IO</code>. Keep file I/O inside <code>withContext(Dispatchers.IO)</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Lifecycle</span>
+        <span class="loc">feature/library/LibraryScreen.kt:283 · feature/details/DetailsScreen.kt:472 · feature/downloads/QueueScreen.kt:112</span>
+        <h4>C2 · Flows collected on the activity scope with no <code>repeatOnLifecycle</code></h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Every screen that observes <code>repository.downloadState</code> launches the collector on <code>MainActivity.scope</code> (wrapping <code>lifecycleScope</code>). It does <strong>not</strong> gate on <code>STARTED</code>/<code>RESUMED</code>. Cancellation relies on <code>screen()</code> overwriting <code>screenObserver</code> and <code>onDestroy</code>.</dd>
+        <dt>Risk</dt><dd>Collection continues while the activity is <code>STOPPED</code> (another app in foreground, or this app's own foreground service running), so <code>runOnUiThread { refresh(...) }</code> can mutate a detached view tree. The manifest declares all <code>configChanges</code> so the activity is never recreated — which masks lifecycle bugs that would bite on a stock activity.</dd>
+        <dt>Fix</dt><dd>Use <code>lifecycleScope.launch { repeatOnLifecycle(Lifecycle.STARTED) { repository.downloadState.collect { … } } }</code> so collection pauses when the UI isn't visible. Lower priority than usual given the no-recreate design, but it's the correct View-system idiom.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Concurrency · TOCTOU</span>
+        <span class="loc">download/DownloadEngine.kt:348-350</span>
+        <h4>C3 · <code>isCancelled</code>/<code>isPaused</code> read the queue outside any lock</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>storage.getQueue().any { it.id == id &amp;&amp; it.status == … }</code> with no <code>synchronized(storage)</code>, used to guard whether to mutate a job after fetch.</dd>
+        <dt>Risk</dt><dd>A status change racing between read and the subsequent <code>updateJob</code>/<code>handleJobError</code> can mark a just-cancelled job as Completed/Failed. Benign in practice (eventually-consistent UI) but it's a TOCTOU that contradicts the otherwise strict "every queue RMW under the monitor" rule.</dd>
+        <dt>Fix</dt><dd>Do the status check inside <code>mutateQueueInPlace</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Concurrency · latent</span>
+        <span class="loc">download/DownloadEngine.kt:43,188,205,228</span>
+        <h4>C4 · <code>nextAllowedJobAtBySource</code> is a plain <code>MutableMap</code> mutated off-monitor</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>A <code>mutableMapOf&lt;String, Long&gt;()</code> read in <code>selectEligibleJobs</code>/<code>nextWakeUpAt</code> and written after each batch, all within the single <code>processLoop</code> coroutine.</dd>
+        <dt>Risk</dt><dd>Safe today only because the loop is single-threaded and <code>processJob</code> jobs don't touch it. But "only one caller ever" is exactly the invariant that breaks silently the moment a control method or a second <code>start()</code> touches it.</dd>
+        <dt>Fix</dt><dd>Make it <code>ConcurrentHashMap</code>, or move it inside the locked section with a clear ownership contract.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Concurrency · scope subtlety</span>
+        <span class="loc">app/MainActivity.kt:62</span>
+        <h4>C5 · <code>CoroutineScope(lifecycleScope.coroutineContext)</code> copies the Job — a subtle second scope</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>override val scope by lazy { CoroutineScope(lifecycleScope.coroutineContext) }</code>. This captures the <em>same</em> Job/CoroutineContext into a new scope wrapper.</dd>
+        <dt>Risk</dt><dd>Cancellation still works because the Job instance is shared, but it's a non-obvious pattern — a reader can't tell at a glance whether this is a child scope or an independent one.</dd>
+        <dt>Fix</dt><dd>Just use <code>lifecycleScope</code> directly (it already <em>is</em> a <code>LifecycleCoroutineScope</code>), or document why the wrapper exists.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">TTS · thread safety</span>
+        <span class="loc">tts/TtsEngine.kt:31-43,97-186,241-263</span>
+        <h4>C6 · <code>TtsEngine</code>'s mutex contract is documented but not enforced</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The class KDoc says public controls and TTS callbacks route through <code>stateMutex</code> on the engine scope. In reality, <code>stateMutex.withLock</code> is used only during <code>onInit</code> and <code>onDone</code>. Public methods such as <code>play</code>, <code>playFromChunk</code>, <code>pause</code>, <code>stop</code>, <code>next</code>, and <code>resumePersistedSession</code> mutate <code>chunks</code>, <code>index</code>, <code>session</code>, and <code>playbackActive</code> directly.</dd>
+        <dt>Risk</dt><dd>Notification actions, reader buttons, MediaSession callbacks, and TTS progress callbacks can interleave state changes. The same methods also perform file-backed storage reads and text cleanup on the caller thread, often the main/service thread. That can produce stale snapshots, skipped chunks, duplicated listener updates, and UI/notification jank on large chapters.</dd>
+        <dt>Fix</dt><dd>Make public controls dispatch onto the engine scope and wrap all state reads/writes in <code>stateMutex.withLock</code>. Move storage reads and chunk preparation to an IO/default dispatcher, then publish snapshots back on main.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Foreground service · lifecycle</span>
+        <span class="loc">tts/TtsForegroundService.kt:432-447,69-92,288-291</span>
+        <h4>C7 · Cold TTS commands can start a foreground service without foregrounding it</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>TtsForegroundService.command(...)</code> calls <code>startForegroundService</code> on Android O+ for every action, including <code>PAUSE</code>, <code>NEXT</code>, <code>PREVIOUS</code>, and <code>STOP</code>. Several of those <code>onStartCommand</code> branches do not call <code>startForegroundIfNeeded</code>. The MediaSession <code>onStop</code> path also calls <code>stopForeground</code> directly instead of the helper that resets <code>foregroundStarted</code>.</dd>
+        <dt>Risk</dt><dd>If the service is cold-started by a reader/settings command that is not <code>START</code> or <code>RESUME_SESSION</code>, Android expects <code>startForeground()</code> quickly and can throw a foreground-service start-timeout exception. The direct <code>onStop</code> path can also leave <code>foregroundStarted = true</code> in the same service instance, making the next start skip <code>startForeground()</code>.</dd>
+        <dt>Fix</dt><dd>Only use <code>startForegroundService</code> for actions that will enter foreground immediately, or have every cold command call <code>startForegroundIfNeeded</code> before doing work. Route all stop paths through <code>stopForegroundAndReset()</code>.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== ERROR HANDLING =================== -->
+<section id="err">
+  <h2><span class="num">05</span>Error handling</h2>
+  <p class="sec-lede">No <code>printStackTrace()</code>, no crashy ad hoc exception dumps — good instincts. But the <strong>consistent <code>catch(Throwable)</code> + toast/string</strong> pattern eats <code>CancellationException</code> in suspend/worker paths, restore catches <code>Throwable</code> too, and detekt's rule that would catch this is disabled project-wide.</p>
+
+  <div class="findings">
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">Error handling · structured concurrency</span>
+        <span class="loc">feature/story/StoryActions.kt:125,179,262,321</span>
+        <h4>E1 · <code>catch(Throwable)</code> swallows <code>CancellationException</code> in 4 suspend sites</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Four <code>suspend</code>-adjacent call sites wrap work in <code>try { … } catch (error: Throwable) { onError(error) / toast(error.message) / clearStoryOperation(...) }</code> and never rethrow <code>CancellationException</code>. Together with the download worker (E2), that is five suspend/worker cancellation paths; restore is the sixth production <code>catch(Throwable)</code> but is not a suspend function.</dd>
+        <dt>Risk</dt><dd>This is the canonical Kotlin-coroutines footgun. When the parent scope is cancelled (Activity destroyed, <code>lifecycleScope</code> cancelled, job paused), the cancellation signal is intercepted and converted into a user-facing toast/`onError` instead of propagating. This leaves coroutines running after their scope is dead, leaks work, and produces spurious "failed" toasts on back-navigation/config changes.</dd>
+        <dt>Fix</dt><dd>In every <code>catch(Throwable)</code> inside a suspend context:
+<pre>} catch (error: Throwable) {
+    if (error is CancellationException) throw error
+    // ... existing handling
+}</pre>
+Use <code>kotlinx.coroutines.NonCancellable</code> where cleanup genuinely must run after cancellation.</dd>
+      </dl>
+    </div>
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">Error handling · structured concurrency</span>
+        <span class="loc">download/DownloadEngine.kt:290-293</span>
+        <h4>E2 · Download worker only handles cancellation for the paused case</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>} catch (error: Throwable) { if (error is CancellationException &amp;&amp; isPaused(job.id)) return; if (!isCancelled(job.id)) handleJobError(job, error) }</code></dd>
+        <dt>Risk</dt><dd>A genuine scope cancellation that is <em>not</em> a user pause falls through to <code>handleJobError</code>, which mutates the queue and emits progress — running side-effects on a coroutine that should already be dead, racing with teardown. It also catches <code>OutOfMemoryError</code>/<code>StackOverflowError</code> as ordinary job failures.</dd>
+        <dt>Fix</dt><dd><code>catch (e: CancellationException) { …; throw e }</code> first, then <code>catch (e: Exception) { if (!isCancelled(job.id)) handleJobError(...) }</code>. Don't catch <code>Throwable</code> — catch <code>Exception</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Error handling · diagnostics</span>
+        <span class="loc">data/storage/AppStorage.kt:558-561</span>
+        <h4>E3 · Broad <code>catch(Throwable)</code> for restore flattens all failures to a string</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The entire restore flow is wrapped in <code>catch (error: Throwable)</code> returning <code>"Restore failed: ${error.message …}"</code>.</dd>
+        <dt>Risk</dt><dd>Swallows <code>CancellationException</code>/<code>InterruptedException</code>; <code>OutOfMemoryError</code> on a huge ZIP, <code>ZipException</code> on a corrupt archive, and <code>IOException</code> on disk-full all surface as the same message, and none is logged (see <a href="#obs">Observability</a>). The <code>verifyStagedTree</code> guard is commendable.</dd>
+        <dt>Fix</dt><dd>Catch <code>IOException</code> + <code>JsonParseException</code> + <code>ZipException</code> specifically; let <code>CancellationException</code>/<code>Error</code> propagate. Return a sealed <code>RestoreResult</code> so the caller can decide presentation.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Tooling · lint</span>
+        <span class="loc">app/detekt.yml:54-55</span>
+        <h4>E4 · detekt <code>TooGenericExceptionCaught</code> is disabled project-wide</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The rule that catches <code>catch(Throwable)</code>/<code>catch(Exception)</code> is blanket-off "because download/TTS error classification intentionally catches Throwable."</dd>
+        <dt>Risk</dt><dd>That rule is exactly what would have surfaced E1/E2/E3. Disabling it project-wide to accommodate a few legitimate classifier sites lets many latent bugs through.</dd>
+        <dt>Fix</dt><dd>Re-enable the rule and suppress it with <code>@Suppress("TooGenericExceptionCaught")</code> <em>only</em> at legitimate classifier/bridge sites. Note that <code>DownloadErrorClassifier</code> itself does not catch <code>Throwable</code>; the broad catches are in callers such as <code>DownloadEngine.processJob</code> and restore. Converts a global blind spot into an explicit per-site opt-in.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Error handling · API</span>
+        <span class="loc">data/storage/AppStorage.kt:564-602</span>
+        <h4>E5 · <code>extractZipWithLimits</code> return value ignored; <code>error()</code> used for control flow</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Returns the entry count; the caller ignores it. Limit violations throw <code>IllegalStateException</code> via <code>error()</code>, caught by the outer <code>catch(Throwable)</code>.</dd>
+        <dt>Risk</dt><dd>Dead return value; inconsistent with the <code>String?</code>-returning validators (<code>BackupExportPlanning</code>, <code>JsonBackupValidation</code>).</dd>
+        <dt>Fix</dt><dd>Return a sealed result or <code>String?</code> error like the other validators.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== UI =================== -->
+<section id="ui">
+  <h2><span class="num">06</span>UI / View layer</h2>
+  <p class="sec-lede">A single-<code>Activity</code> app hosting a <code>FrameLayout</code>, swapping entire view trees per screen via <code>internal fun ScreenHost.showXxx()</code> extensions — no Fragments, no ViewModels, no XML layouts, everything built programmatically. <strong>This is intentionally NOT Compose.</strong> The findings judge it on View-system merits; none warrant a migration.</p>
+
+  <div class="findings">
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">RecyclerView · performance</span>
+        <span class="loc">feature/details/ChapterListAdapter.kt:95-110,145</span>
+        <h4>U1 · <code>notifyDataSetChanged()</code> + full row rebuild on a list that can hold thousands of items</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>update(...)</code> reassigns fields then calls <code>notifyDataSetChanged()</code>. <code>onBindViewHolder</code> does <code>row.removeAllViews()</code> and re-builds the entire row (status slot, title column, subtitle, bookmark icon) on <strong>every</strong> rebind. The Lint <code>NotifyDataSetChanged</code> warning is already firing.</dd>
+        <dt>Risk</dt><dd>For novels with hundreds/thousands of chapters, every download-progress tick or filter keystroke causes a full rebind with no DiffUtil, no payload, no stable ids — and because rows are fully rebuilt, recycling only saves the top-level <code>LinearLayout</code>. This is an outlier: <code>QueueGroupAdapter</code> and <code>ChapterSelectionAdapter</code> <em>do</em> use DiffUtil correctly elsewhere in the same app.</dd>
+        <dt>Fix</dt><dd>Set <code>setHasStableIds(true)</code> + <code>getItemId</code> keyed by <code>chapter.id</code>; switch to <code>DiffUtil.calculateDiff</code> or <code>ListAdapter</code>; inflate the static row structure once in <code>onCreateViewHolder</code> and mutate only status/title/icon in bind. For progress-only updates, use <code>notifyItemChanged(pos, payload)</code> with a payload-aware <code>onBindViewHolder</code> overload.</dd>
+      </dl>
+    </div>
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">RecyclerView · performance</span>
+        <span class="loc">feature/downloads/QueueScreen.kt:192-198 → addStoryGroup:312-376</span>
+        <h4>U2 · Queue adapter rebuilds an entire expandable card subtree on every bind</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Each <code>onBindViewHolder</code> calls <code>holder.container.removeAllViews()</code> then <code>addStoryGroup(...)</code>, which constructs a fresh card with header rows, progress summary, and one child row per job. The recycled <code>FrameLayout</code> is reused but the entire content tree is re-created from zero.</dd>
+        <dt>Risk</dt><dd>Effectively "LinearLayout inside a RecyclerView" — recycling only saves the outer <code>FrameLayout</code>; the heavy card + all chapter job rows are redone every bind. Scales poorly with DiffUtil updates. Same pattern in <code>DetailsHeaderAdapter.onBindViewHolder</code>.</dd>
+        <dt>Fix</dt><dd>Make the group ViewHolder hold the card structure (header + nested <code>RecyclerView</code> or <code>LinearLayout</code> body) and update only contents; or use a <code>ConcatAdapter</code> so each job row is a real recycled item.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">State · process death</span>
+        <span class="loc">navigation/ScreenHost.kt:71-86 · app/MainActivity.kt:70-73,190-193</span>
+        <h4>U3 · No <code>ViewModel</code> / <code>SavedStateHandle</code> — nothing survives process death</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Because <code>configChanges</code> is declared, rotation/fold/theme change never recreate the activity; <code>onConfigurationChanged</code> calls <code>rerender?.invoke()</code> to rebuild the view tree. All transient state lives on <code>ScreenHost</code>/<code>MainActivity</code> fields.</dd>
+        <dt>Risk</dt><dd>This only works because config changes are suppressed. The OS can still reclaim the process (low memory, background too long); on return the activity is recreated with <strong>no <code>onSaveInstanceState</code>/<code>SavedStateHandle</code></strong> — <code>activeStory</code>, <code>storyOperation</code>, <code>storyExpandOverride</code>, scroll position, and <code>addStoryScreenState</code> are all lost, dropping the user back to the Library root.</dd>
+        <dt>Fix</dt><dd>Persist the minimal navigation state (active story id, current screen) via <code>onSaveInstanceState</code>, or introduce lightweight ViewModels for at least the reader/details screen.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Architecture · dead abstraction</span>
+        <span class="loc">feature/library/LibraryPresenter.kt:41-90</span>
+        <h4>U4 · <code>LibraryPresenter</code> exists but is unused — the screen re-derives state inline</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>LibraryPresenter</code> is documented as the "ViewModel/presenter" owning state derivation. But <code>showLibrary()</code> never instantiates it — it reads <code>storage.getLibrary()</code> directly and calls <code>LibraryQuery.filterAndSort(...)</code> inline on every filter keystroke. <code>LibraryUiState</code>/<code>LibraryStorySummary</code> are never referenced outside the presenter file.</dd>
+        <dt>Risk</dt><dd>Dead abstraction giving false confidence. The documented benefit ("disk reads off the render path") is <strong>not</strong> realized: <code>storage.getLibrary()</code> is a JSON read on the main thread during render, and the cached <code>repository.library()</code> is bypassed.</dd>
+        <dt>Fix</dt><dd>Wire <code>LibraryPresenter</code> in, or delete it. At minimum, replace <code>storage.getLibrary()</code> with <code>repository.library()</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Theming · global mutable state</span>
+        <span class="loc">ui/AppTheme.kt:246-256</span>
+        <h4>U5 · <code>ThemeManager</code> is a process-global singleton; theme changes aren't reactive</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>object ThemeManager { @Volatile var current: AppTheme }</code>. Every view reads <code>ThemeManager.colors</code> at construction time and bakes the resolved <code>Int</code> into its drawable / text color.</dd>
+        <dt>Risk</dt><dd>(a) Not reactive — picking a new theme in Settings works only because it triggers a full re-render; a view patched in place keeps old colors until rebuilt. (b) No system dark-mode mapping via resource qualifiers — <code>uiMode</code> is in <code>configChanges</code> so the system dark toggle does nothing unless it maps to a stored theme id.</dd>
+        <dt>Fix</dt><dd>Expose a <code>themeId: StateFlow&lt;String&gt;</code> and have screens re-render on change (the infra already exists), or drive theme through <code>ContextThemeWrapper</code> + Material <code>ColorScheme</code> so views resolve colors lazily. Document explicitly that dark mode is manual-only.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Accessibility</span>
+        <span class="loc">ui/HostUi.kt:182-195 · feature/library/LibraryStoryViews.kt:193-201 · feature/details/ChapterListAdapter.kt:189</span>
+        <h4>U6 · Status conveyed by color/dot shape is invisible to TalkBack</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Icon buttons and the bookmark icon do have <code>contentDescription</code> (good). But the status <code>dot</code> indicator, the archived badge <code>ImageView</code>, and the chapter download-state dot/spinner are unlabeled. <code>ZoomableImageView</code> has no role/label for the pinch-zoom gesture.</dd>
+        <dt>Risk</dt><dd>Status conveyed purely by color/dot shape is invisible to TalkBack users. The chapter row's subtitle text partially compensates, but the library card's progress bar and archived icon don't.</dd>
+        <dt>Fix</dt><dd>Add <code>contentDescription</code> (or <code>importantForAccessibility = NO</code> + adjacent label) to status dots/badges. Mark purely decorative <code>ImageView</code>s <code>importantForAccessibility = NO</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">WebView · coupling</span>
+        <span class="loc">feature/reader/ReaderScreen.kt:86-111,182-217</span>
+        <h4>U7 · Reader WebView rebuilt per render; TTS bridge does disk I/O on the UI thread</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Each <code>showReader()</code> creates a new <code>WebView</code> + new <code>ReaderTtsBridge</code> JS interface. The reader's <code>rerender</code> is a full <code>showReader()</code>, so fold/rotate destroys and reconstructs the WebView. The <code>onTtsStart</code> JS callback runs on the WebView's internal thread and calls <code>app.runOnUiThread { … storage.getStory(...) }</code>.</dd>
+        <dt>Risk</dt><dd>(a) WebView construction + HTML parse + first layout is heavy — visible flicker on fold/unfold of a foldable. (b) A JS-triggered native callback doing disk I/O on the UI thread is odd coupling and a potential ANR. Teardown itself is careful and correct (<code>WebViewSafety.disposeAll</code> + listener detach).</dd>
+        <dt>Fix</dt><dd>Make the reader's <code>rerender</code> only re-apply padding/column width (a layout pass), reserving full <code>showReader</code> rebuilds for chapter navigation. Move the <code>storage.getStory</code> read off the UI thread.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Theming · tokens</span>
+        <span class="loc">ui/Tokens.kt:14-16,28-35 · many call sites</span>
+        <h4>U8 · Spacing token migration is half-finished</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>Spacing</code>/<code>Space</code> tokens exist, but the file itself admits "existing call sites still pass raw ints; migrate incrementally." Most call sites use raw <code>dp(Space.SM + 2)</code> arithmetic or bare ints (<code>dp(44)</code>, <code>dp(48)</code>, <code>dp(56)</code>). The duplicated <code>Space</code>/<code>Spacing</code> aliasing signals an unfinished migration.</dd>
+        <dt>Risk</dt><dd>Visual tuning becomes find-and-replace; magic Material touch-target heights (44/48/56) are correct but unnamed.</dd>
+        <dt>Fix</dt><dd>Finish the migration — named constants (<code>TouchTarget.MIN</code>, <code>ListItem.HEIGHT</code>), delete the <code>Space</code> alias, consolidate arithmetic into tokens.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Performance · debounce</span>
+        <span class="loc">feature/library/LibraryScreen.kt:245-274 · feature/details/DetailsScreen.kt:382-403</span>
+        <h4>U9 · <code>TextWatcher</code> re-runs full filter+sort on every keystroke</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>onTextChanged</code> calls <code>renderTabGrid</code> / <code>renderChapterList</code> immediately, re-filtering and re-sorting the entire list (or <code>notifyDataSetChanged</code>) on the main thread for every character.</dd>
+        <dt>Risk</dt><dd>For large libraries / novels with thousands of chapters, fast typing produces jank.</dd>
+        <dt>Fix</dt><dd>Debounce search input (<code>Handler.postDelayed</code> 150-200ms, cancel on new keystroke), or move filter+sort to a background dispatcher.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Dead code · security posture</span>
+        <span class="loc">ui/WebViewSafety.kt:50-57</span>
+        <h4>U10 · <code>applyBrowserSettings</code> is dead code; class doc is misleading</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>applyBrowserSettings</code> configures a permissive (JS + DOM storage on) WebView for an in-app browser. But <code>showBrowser</code> opens a Custom Tab, never a WebView. The class doc still claims "Reader and Browser WebViews route through here."</dd>
+        <dt>Risk</dt><dd>Misleading doc + dead code. A future maintainer may assume the browser path uses an in-app WebView with the described lockdown when it doesn't.</dd>
+        <dt>Fix</dt><dd>Delete <code>applyBrowserSettings</code> and fix the class doc.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Navigation · predictive back</span>
+        <span class="loc">AndroidManifest.xml · app/MainActivity.kt:84-86</span>
+        <h4>U11 · Predictive-back not opted in; back stack is flat</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>A single always-registered <code>OnBackPressedCallback</code> toggled via a <code>var</code> setter — a clean pattern. But <code>android:enableOnBackInvokedCallback="true"</code> is not set, and every screen is a flat replacement (back is always one hop to Library).</dd>
+        <dt>Risk</dt><dd>Predictive-back home preview only fully works on API 34+ with the opt-in; deep navigation collapses to Library on back.</dd>
+        <dt>Fix</dt><dd>Add <code>android:enableOnBackInvokedCallback="true"</code> to the <code>&lt;application&gt;</code>. (Flat back stack is a product decision, not a bug.)</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Insets · touch targets</span>
+        <span class="loc">ui/Scaffold.kt:234-242</span>
+        <h4>U12 · <code>systemBarTop/Bottom</code> uses dimen resources instead of <code>WindowInsets</code></h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Reads <code>status_bar_height</code>/<code>navigation_bar_height</code> dimen resources. The window is set edge-to-edge.</dd>
+        <dt>Risk</dt><dd>Returns the <em>static</em> nav bar height even on gesture-navigation devices (no real nav bar) or in multi-window/landscape where insets differ. Can over-pad on gesture-nav devices or under-pad with the IME.</dd>
+        <dt>Fix</dt><dd>Use <code>ViewCompat.setOnApplyWindowInsetsListener</code> on the root view and apply <code>systemBars</code>/<code>ime</code> insets as padding/margins. Also handles keyboard appearance correctly.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Maintenance · naming</span>
+        <span class="loc">ui/LayoutGroups.kt:111</span>
+        <h4>U13 · Custom <code>GridLayout</code> shadows <code>android.widget.GridLayout</code></h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Three hand-written <code>ViewGroup</code>s (<code>WrapLayout</code>, <code>GridLayout</code>, <code>MaxWidthFrameLayout</code>). <code>GridLayout</code> shadows the platform class and is imported in <code>LibraryPagesAdapter.kt</code>/<code>LibraryScreen.kt</code>.</dd>
+        <dt>Risk</dt><dd>Confusing; reinvents <code>FlexboxLayout</code>/ConstraintLayout Flow. The measure/layout code is correct, but the name collision is a readability footgun.</dd>
+        <dt>Fix</dt><dd>Rename to avoid the shadow. Consider replacing <code>WrapLayout</code> with Google's <code>FlexboxLayout</code> for chip rows. Keep <code>MaxWidthFrameLayout</code> (clean, purpose-built).</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">UX · inputs</span>
+        <span class="loc">ui/Inputs.kt:54-68</span>
+        <h4>U14 · Search/URL fields lack IME action and autofill hints</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Plain <code>EditText</code> with <code>TYPE_CLASS_TEXT</code> watched via <code>TextWatcher</code>. No <code>imeOptions</code>, no <code>autofillHints</code>.</dd>
+        <dt>Risk</dt><dd>Keyboard shows a generic enter/newline key instead of a search icon; URL paste gets no "go" affordance.</dd>
+        <dt>Fix</dt><dd><code>imeOptions = IME_ACTION_SEARCH</code> + <code>setOnEditorActionListener</code> for search; <code>IME_ACTION_GO</code> for URL inputs.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== KOTLIN IDIOMS =================== -->
+<section id="idiom">
+  <h2><span class="num">07</span>Kotlin idioms &amp; API design</h2>
+  <p class="sec-lede">The model layer and naming conventions. Some choices are deliberately pragmatic; others are latent footguns.</p>
+
+  <div class="findings">
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Idioms · mutability</span>
+        <span class="loc">domain/model/Models.kt:53-60,73-101,141-155,173-186,188-202</span>
+        <h4>K1 · Mutable <code>var</code> data classes mutated both in-place and via <code>copy</code></h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>Story</code>/<code>Chapter</code>/<code>DownloadJob</code>/<code>DisplayPreferences</code>/<code>TtsSession</code> are <code>data class</code>es with all <code>var</code> fields. Code mutates them both ways: <code>story.copy(...)</code> in <code>BackupMergePlanning</code>/<code>ArchiveSnapshotPlanning</code>, <strong>and</strong> in-place <code>story.dateAdded = ...</code>, <code>job.status = ...</code>.</dd>
+        <dt>Risk</dt><dd><code>data class</code> equality/hashCode include those mutable fields, so a <code>Story</code> used as a map key or compared across mutations is unsafe. In-place mutation of objects held by <code>StateFlow</code> means a <code>Story</code> referenced by the UI can change underneath it without <code>copy()</code> — the very thing <code>MutableStateFlow</code> is supposed to make safe. The repo doc even admits models "may be updated in place by the download engine," which is why a <code>downloadStateVersion</code> counter was bolted on — a symptom of the mutability problem.</dd>
+        <dt>Fix</dt><dd>Pick one model: immutable <code>val</code> data classes + <code>copy()</code> everywhere. Given <code>StateFlow</code> usage, prefer <code>val</code> and always replace via <code>copy</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Idioms · stringly-typed</span>
+        <span class="loc">domain/model/Models.kt:194 · download/DownloadEngine.kt (many)</span>
+        <h4>K2 · <code>DownloadJob.status</code> is a raw <code>String</code> while a typed enum exists</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The wire string is stored in the model; call sites spell out <code>job.status == DownloadJobStatus.Downloading.wire</code> dozens of times.</dd>
+        <dt>Risk</dt><dd>Stringly-typed state — a typo (<code>"Pedning"</code>) compiles. Gson round-trips enums by name safely (as <code>DownloadStatus</code> shows), and <code>DownloadJobStatus.parse()</code> already exists, so the string indirection buys nothing but risk. The two <code>Download*Status</code> enums are easy to confuse.</dd>
+        <dt>Fix</dt><dd>Make <code>DownloadJob.status: DownloadJobStatus</code> and use a Gson <code>TypeAdapterFactory</code> (or migrate to kotlinx.serialization) to keep the wire string. Delete the <code>.wire</code> comparisons.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Architecture · layering</span>
+        <span class="loc">35 non-UI Kotlin files, including data/storage/*, domain/archive/*, download/*, source/*, sync/*, tts/*</span>
+        <h4>K3 · Non-UI packages import <code>…ui.size</code>/<code>…ui.text</code> (dead + layering violation)</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>At least 35 non-UI files import <code>com.vinicius741.webnovelarchiver.ui.size</code> and/or <code>ui.text</code>. Many actual <code>.size</code>/<code>.text</code> calls are Kotlin builtins/properties or unrelated string access, not the UI extension functions.</dd>
+        <dt>Risk</dt><dd>(a) Dead imports hide real dependencies in review. (b) The dependency arrow <code>data/domain/download/source/sync/tts → ui</code> violates layering — <code>ui</code> depends on Android <code>Context</code>, <code>ThemeManager</code>, and view classes. This would block extracting core/data/engine code into modules.</dd>
+        <dt>Fix</dt><dd>Delete the imports; run ktlint/detekt <code>UnusedImports</code> in CI.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Dependency choice · Gson</span>
+        <span class="loc">app/build.gradle:107 · data/storage/* · domain/model/Models.kt · source/PatreonStatsFetcher.kt</span>
+        <h4>K4 · Gson instead of <code>kotlinx.serialization</code></h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Single <code>GsonBuilder().setPrettyPrinting().create()</code>; the whole domain model relies on Gson reflection. The team already hand-rolls wire-string compat (<code>DownloadJobStatus.wire</code>) to dodge Gson's enum-name coupling — a sign Gson is fighting them.</dd>
+        <dt>Risk</dt><dd>Gson is in maintenance mode. On Kotlin it (a) uses reflection that breaks under R8 unless you write keep rules (interacts with the <code>minifyEnabled false</code> finding), (b) doesn't understand Kotlin nullability/defaults reliably (a missing field can yield <code>null</code> in a non-null <code>val</code>), (c) generates no compile-time errors for schema drift, and (d) the <code>Map&lt;String,Any?&gt;</code> → <code>toJson</code> → <code>fromJson&lt;T&gt;</code> round-trips erase numeric types (usually to <code>Double</code> before coercing back). Current epoch-ms timestamps remain exactly representable, but the type erasure is needless and fragile.</dd>
+        <dt>Fix</dt><dd>Adopt <code>kotlinx.serialization</code> with <code>@Serializable</code> models + the compiler plugin. Compile-time-checked schemas, sealed-class polymorphism, R8-friendly. Migrate incrementally — the <code>DownloadJobStatus.wire</code> pattern maps cleanly to a custom serializer.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Naming</span>
+        <span class="loc">19 files named *Planning.kt</span>
+        <h4>K5 · The <code>*Planning</code> naming is a misnomer</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Pure-function <code>object</code>s grouped under a "Planning" suffix: <code>BackupExportPlanning</code>, <code>BackupMergePlanning</code>, <code>ArchiveSnapshotPlanning</code>, <code>StoryBookmarkPlanning</code>, etc.</dd>
+        <dt>Risk</dt><dd>"Planning" implies producing a deferred/intended plan, but these actually <strong>execute</strong>: merge, validate, build snapshots, scrub state, guard. The name obscures what they do and makes grepping harder.</dd>
+        <dt>Fix</dt><dd>Rename to verbs/roles that describe the responsibility (<code>BackupMerger</code>, <code>BackupValidator</code>, <code>ArchiveSnapshots</code>, <code>StoryGuards</code>); treat them as a <code>domain</code>/<code>usecase</code> layer.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Robustness</span>
+        <span class="loc">app/WebnovelArchiverApp.kt:22-24</span>
+        <h4>K6 · <code>appContainer</code> cast can throw at access time</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>val Context.appContainer get() = (applicationContext as WebnovelArchiverApp).container</code> — an unchecked cast, and <code>container</code> is <code>lateinit</code>.</dd>
+        <dt>Risk</dt><dd>In any context where <code>applicationContext</code> isn't <code>WebnovelArchiverApp</code> (a mock/<code>ContextWrapper</code> in tests, a ContentProvider created before <code>Application.onCreate</code>), this throws <code>ClassCastException</code> with no useful message; before <code>onCreate</code> it throws <code>UninitializedPropertyAccessException</code>.</dd>
+        <dt>Fix</dt><dd><code>(applicationContext as? WebnovelArchiverApp)?.container ?: error("appContainer unavailable: …")</code>. Ensure no ContentProvider touches it before <code>Application.onCreate</code>.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== BUILD / DEPS =================== -->
+<section id="build">
+  <h2><span class="num">08</span>Build, dependencies &amp; hygiene</h2>
+  <p class="sec-lede">The build toolchain versions are mostly current (AGP 8.13 / Gradle 9 / SDK 36), but the build files carry a lot of dead weight from the React Native migration, and dependency management has no catalog or automation.</p>
+
+  <div class="findings">
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Build hygiene</span>
+        <span class="loc">gradle.properties:28-63</span>
+        <h4>B1 · <code>gradle.properties</code> is contaminated with dead React Native / Expo / Hermes config</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Defines <code>reactNativeArchitectures</code>, <code>newArchEnabled=true</code>, <code>hermesEnabled=true</code>, <code>edgeToEdgeEnabled=true</code>, <code>expo.gif/webp.*</code>, <code>EX_DEV_CLIENT_NETWORK_INSPECTOR=true</code>, <code>expo.useLegacyPackaging</code>, and <code>android.extraMavenRepos</code> pointing at <code>node_modules/@notifee/react-native/android/libs</code>.</dd>
+        <dt>Risk</dt><dd>Low runtime risk: none of these are read by any plugin in this pure-native build (<code>build.gradle</code> declares only AGP + Kotlin + kotlinter + detekt). The <code>android.extraMavenRepos</code> line points at a <code>node_modules</code> path that almost certainly doesn't exist and could cause confusing resolution errors. <code>hermesEnabled</code>/<code>newArchEnabled</code> describe a JS engine and Fabric/TurboModules that don't exist here. This was previously marked High, but that contradicted the report's severity definition and the finding's own risk.</dd>
+        <dt>Fix</dt><dd>Delete lines 28–63 entirely. Keep only <code>jvmargs</code>, <code>parallel</code>, <code>useAndroidX</code>.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Dependency freshness</span>
+        <span class="loc">build.gradle:3 · app/build.gradle:3</span>
+        <h4>B2 · Kotlin toolchain is stale (2.1.20)</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Pins <code>org.jetbrains.kotlin.android</code> <code>2.1.20</code> (March 2025).</dd>
+        <dt>Risk</dt><dd>As of June 30, 2026 the stable Kotlin line has moved beyond 2.1.x. You're missing more than a year of compiler performance work, language features, and security/bug fixes in the stdlib and compiler.</dd>
+        <dt>Fix</dt><dd>Bump to the latest stable Kotlin line after checking AGP and detekt compatibility. Verify detekt 1.23.7 support carefully (detekt often lags Kotlin compiler releases).</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Dependency management</span>
+        <span class="loc">app/build.gradle:86-112</span>
+        <h4>B3 · All dependency versions hardcoded — no version catalog</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Each dependency carries an inline literal version. There is no <code>gradle/libs.versions.toml</code>.</dd>
+        <dt>Risk</dt><dd>Coordinated upgrades are painful; duplicate versions are easy to introduce (e.g. okhttp and mockwebserver must be hand-synced); automated update tooling (renovate/dependabot) is less effective. The Google/AndroidX ecosystem standard since 2023 is the version catalog.</dd>
+        <dt>Fix</dt><dd>Migrate to <code>gradle/libs.versions.toml</code> with <code>[versions]</code>/<code>[libraries]</code>/<code>[plugins]</code>; reference via type-safe accessors. A one-time mechanical refactor with continuous payoff.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Build · release size</span>
+        <span class="loc">app/build.gradle:52-58</span>
+        <h4>B4 · <code>minifyEnabled false</code> on release — no R8 shrinking</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The <code>release</code> build type ships <code>minifyEnabled false</code>, so R8 does no code/resource shrinking or obfuscation. It still references <code>proguard-android-optimize.txt</code> + <code>proguard-rules.pro</code>, but those are inert without <code>minifyEnabled true</code>.</dd>
+        <dt>Risk</dt><dd>Release APKs ship every line of every dependency (Coil, okhttp, jsoup, Gson, AndroidX media/window) — likely several MB of dead code. Also loses R8 optimization and the anti-tampering benefit of obfuscation.</dd>
+        <dt>Fix</dt><dd>Enable <code>minifyEnabled true</code> + <code>shrinkResources true</code> on release. This surfaces the real need for keep rules: Gson reflectively accesses <code>Models.kt</code> fields, so add <code>-keep</code> rules for the model package (or migrate off Gson — see K4).</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Build hygiene · proguard</span>
+        <span class="loc">app/proguard-rules.pro:10-12</span>
+        <h4>B5 · ProGuard keeps React Native classes; no Gson rules</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>-keep class com.swmansion.reanimated.**</code> and <code>com.facebook.react.turbomodule.**</code> — same RN leftover, no-ops today. The file has <strong>no</strong> Gson keep rules, which becomes a real problem when <code>minifyEnabled</code> is turned on (B4).</dd>
+        <dt>Risk</dt><dd>Dead keeps will silently mask a future need to keep <em>real</em> app classes.</dd>
+        <dt>Fix</dt><dd>Remove the RN keeps. When enabling shrinking, add Gson-specific rules (<code>-keep class com.vinicius741.webnovelarchiver.domain.model.** { &lt;fields&gt;; }</code> + R8/Gson reflection rules).</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Dependency freshness</span>
+        <span class="loc">app/build.gradle:105,111</span>
+        <h4>B6 · okhttp/mockwebserver 4.12.0 — one major version behind 5.x</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Uses okhttp 4.12.0 (Dec 2023), aligned with <code>mockwebserver:4.12.0</code>.</dd>
+        <dt>Risk</dt><dd>okhttp 5.x is the active stable line, with Kotlin-first APIs and ongoing fixes. 4.12.0 is the legacy/maintenance branch.</dd>
+        <dt>Fix</dt><dd>Bump okhttp + mockwebserver together to the latest 5.x; run the MockWebServer <code>NetworkClientTest</code> suite to verify retry/429/timeout behavior.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">CI · automation</span>
+        <span class="loc">(repo root — no Dependabot/Renovate config)</span>
+        <h4>B7 · No dependency-update automation</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The <code>ci</code> Gradle task runs test + detekt + lint + assemble, but nothing periodically proposes dependency bumps.</dd>
+        <dt>Risk</dt><dd>Security advisories in okhttp, Gson, jsoup, or Coil arrive constantly; without automation, drift accumulates until a forced emergency bump.</dd>
+        <dt>Fix</dt><dd>Add a Dependabot or Renovate config scoped to <code>android/</code> targeting Gradle. Even a monthly schedule prevents 2-year staleness.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Build hygiene</span>
+        <span class="loc">gradle.properties:26</span>
+        <h4>B8 · <code>enablePngCrunchInReleaseBuilds</code> is a no-op on modern AGP</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Sets <code>android.enablePngCrunchInReleaseBuilds=true</code> — a legacy AAPT1 toggle that AGP ignores (AAPT2 crunches PNGs by default in release).</dd>
+        <dt>Risk</dt><dd>Dead config that implies a tuning lever that doesn't exist.</dd>
+        <dt>Fix</dt><dd>Remove the line.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Release engineering</span>
+        <span class="loc">app/build.gradle:30-31</span>
+        <h4>B9 · Manual versioning; low <code>versionCode</code>; <code>-native</code> suffix leaks</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>versionCode 2</code>, <code>versionName '1.0.1-native'</code> — both hardcoded literals.</dd>
+        <dt>Risk</dt><dd><code>versionCode 2</code> is easy to forget to bump (a Play Store rejection waiting to happen). The <code>-native</code> suffix leaks the rewrite history into user-visible strings.</dd>
+        <dt>Fix</dt><dd>Derive <code>versionCode</code> from git (e.g. commit count) in <code>defaultConfig</code>, or enforce a CI check that it increments. Drop the <code>-native</code> suffix once the migration is considered complete.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Release engineering</span>
+        <span class="loc">app/build.gradle:41</span>
+        <h4>B10 · <code>enableV1Signing</code> is unnecessary on minSdk 26+</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Release signing enables v1 + v2 + v3 signing.</dd>
+        <dt>Risk</dt><dd>v1/JAR signing is a legacy scheme; v2+v3 cover all devices on minSdk 26. v1 only adds signing time.</dd>
+        <dt>Fix</dt><dd>Drop <code>enableV1Signing true</code>.</dd>
+      </dl>
+    </div>
+
+  </div>
+
+  <h3 id="build-positive">Positive build findings (no action needed)</h3>
+  <ul class="tight">
+    <li><strong>AGP 8.13.2 / Gradle 9.0.0 / compileSdk &amp; targetSdk 36 / minSdk 26</strong> are appropriate and consistent for mid-2026. JDK 17 is correct for this AGP/Kotlin combo.</li>
+    <li><strong>Conditional release signing</strong> resolved from Gradle property / env var / <code>local.properties</code>, with a <code>requireReleaseSigning</code> task gating <code>preReleaseBuild</code> and APK copy tasks correctly <code>finalizedBy</code> — secrets never live in the repo, and the build fails loudly if signing is missing.</li>
+    <li><strong>Debug <code>applicationIdSuffix '.debug'</code></strong> allows side-by-side install with release.</li>
+    <li><strong><code>ci</code> task</strong> wires test + detekt + lint + assemble together; <strong>detekt + kotlinter</strong> both present.</li>
+  </ul>
+</section>
+
+<!-- =================== OBSERVABILITY & TESTING =================== -->
+<section id="obs">
+  <h2><span class="num">09</span>Observability &amp; testing</h2>
+  <p class="sec-lede">The biggest single surprise: an app doing network fetching, a custom download engine, TTS, file I/O, ZIP restore, and a foreground media service ships with <strong>zero logging</strong>. The testing architecture is the codebase's best feature, but coverage has real gaps.</p>
+
+  <div class="findings">
+
+    <div class="finding high">
+      <div class="finding-head">
+        <span class="sev high">High</span><span class="cat">Observability</span>
+        <span class="loc">entire app/src/main — 0 matches</span>
+        <h4>T1 · Zero logging anywhere — no <code>Log.*</code>, no Timber, no SLF4J</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>grep</code> confirms 0 matches for <code>android.util.Log</code>, <code>Timber</code>, <code>slf4j</code>, <code>Logger</code> across <code>app/src/main</code>. The app emits nothing to logcat.</dd>
+        <dt>Risk</dt><dd>Every <code>catch</code> swallows into a toast with <code>error.message</code> — there's no stack trace recorded anywhere. A user reporting "Sync failed" gives you nothing to diagnose. The download engine has retry/error classification (<code>DownloadErrorClassifier</code>) whose decisions are invisible. This is the highest-ROI fix in the whole review.</dd>
+        <dt>Fix</dt><dd>Add <code>Timber</code> (or a thin <code>Logger</code> wrapper). At minimum: log warnings+ in <code>catch</code> blocks with the full throwable, log download-job state transitions, gate verbose debug logs on <code>BuildConfig.DEBUG</code>. A one-day change with outsized debugging payoff.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Testing coverage</span>
+        <span class="loc">app/src/androidTest — does not exist</span>
+        <h4>T2 · No instrumented (<code>androidTest</code>) tests at all</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>All 287 current JUnit tests are pure-JVM unit tests under <code>app/src/test</code>. There is no <code>app/src/androidTest</code>, no <code>androidx.test</code> runner, no Espresso/UI test, and no on-device test.</dd>
+        <dt>Risk</dt><dd>Things that <em>cannot</em> be honestly tested on the JVM are untested: <code>FileProvider</code> runtime grant behavior (only structurally asserted), foreground-service lifecycle, <code>MediaSession</code>/<code>MediaButtonReceiver</code> wiring, the <code>POST_NOTIFICATIONS</code> flow, the <code>AtomicFile</code>-backed <code>DurableJson</code> path, and the entire programmatic View UI.</dd>
+        <dt>Fix</dt><dd>Add an <code>androidTest</code> source set with at least: a <code>FileProvider</code> share test, a <code>DurableJson</code>/<code>AppStorage</code> instrumented test (or Robolectric), and a smoke UI test for Library → Details navigation.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Testing · documentation accuracy</span>
+        <span class="loc">app/src/test/…/DurableJsonTest.kt:16-19</span>
+        <h4>T3 · Referenced-but-missing <code>StorageAtomicWriteTest</code> gives false confidence</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The KDoc claims the Android <code>AtomicFile</code>-based <code>DurableJson</code> path "is verified end-to-end via instrumented/Robolectric storage tests (see <code>StorageAtomicWriteTest</code>)." No such file exists.</dd>
+        <dt>Risk</dt><dd>The comment gives false confidence — a reader believes durability is covered when it isn't. This is worse than no comment. The one reliability property the team says they care about is only half-tested (the pure JVM helpers are tested; the Android <code>AtomicFile</code> integration is not).</dd>
+        <dt>Fix</dt><dd>Either create the test (Robolectric or <code>androidTest</code>), or fix the comment to say the Android path is currently untested and tracked as a TODO.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Testing · coverage</span>
+        <span class="loc">download/DownloadEngine.kt · data/storage/AppStorage.kt · feature/story/StoryActions.kt</span>
+        <h4>T4 · The orchestration shell is untested — only the pure brains are</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>The <code>*Planning</code> brains are heavily tested, but the shells that <em>call</em> them — <code>DownloadEngine</code> (the retry/cancel/pause state machine), <code>AppStorage</code> (every mutating write, the atomic swap in restore), <code>StoryActions</code> (the <code>catch(Throwable)</code> flows) — have no direct tests.</dd>
+        <dt>Risk</dt><dd>The bugs that matter in production (wrong job state after a cancel, partial write after crash, double-enqueue) live in the shell, not the pure functions. The pure functions are tested precisely because they're easy; the risky code is the untested code.</dd>
+        <dt>Fix</dt><dd>Add integration-style tests for <code>DownloadEngine</code> (drive <code>selectEligibleJobs</code> + <code>handleJobError</code> with a fake <code>AppStorage</code>), and an instrumented test for <code>AppStorage.restoreFromBackup</code> covering the swap-and-verify path.</dd>
+      </dl>
+    </div>
+
+    <div class="finding med">
+      <div class="finding-head">
+        <span class="sev med">Medium</span><span class="cat">Testing infra</span>
+        <span class="loc">app/build.gradle:112 · NetworkClientTest.kt et al.</span>
+        <h4>T5 · Coroutines tests use <code>runBlocking</code>, not <code>runTest</code> — and the dep is unused</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>kotlinx-coroutines-test</code> is declared but never imported. There are 17 coroutine test call sites using <code>runBlocking</code> across source/provider, network-client, and Patreon fetcher tests.</dd>
+        <dt>Risk</dt><dd>Dead dependency. <code>runBlocking</code> is the pre-<code>runTest</code> pattern. <code>runTest</code> skips virtual time for <code>delay</code>, gives a <code>TestScope</code> with a controllable dispatcher, and — critically — fails the test if a child coroutine throws an unhandled exception. With <code>runBlocking</code>, a swallowed exception in a detached child can pass the test.</dd>
+        <dt>Fix</dt><dd>Either remove the unused dependency, or (better) migrate the coroutine tests to <code>runTest</code> and inject a <code>TestDispatcher</code> for tests touching <code>delay</code>/retries.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">CI · quality gate</span>
+        <span class="loc">app/detekt.yml:5 · app/build.gradle:81-83</span>
+        <h4>T6 · detekt <code>maxIssues: 1000</code> — quality gate is advisory, not enforced</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd><code>ci</code> depends on <code>detekt</code>, but <code>maxIssues: 1000</code> means up to 1000 violations are tolerated and the build still passes.</dd>
+        <dt>Risk</dt><dd>A quality gate that doesn't fail is a reporting tool, not a gate. The "start permissive, tighten over time" intent is sound, but there's no ratchet tracking the count toward 0 — so "over time" never happens.</dd>
+        <dt>Fix</dt><dd>Add a step that fails if the detekt issue <em>count</em> increases vs. a baseline file, so it ratchets down monotonically. Set a date to drive <code>maxIssues</code> to 0.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Testing infra</span>
+        <span class="loc">app/build.gradle:110-112</span>
+        <h4>T7 · Robolectric absent — limits what JVM tests can cover</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>No Robolectric dependency. Any code touching <code>Context</code>, <code>SharedPreferences</code>, <code>AtomicFile</code>, <code>WebView</code> can't be JVM-tested. The team routes around this by extracting pure logic into <code>*Planning</code> and hand-rolling pure <code>java.io.File</code> helpers.</dd>
+        <dt>Risk</dt><dd>Avoiding Robolectric is a legitimate choice (heavy, slow, version-fragile), but it leaves the Android-framework-glue code untested (T2).</dd>
+        <dt>Fix</dt><dd>If you won't add <code>androidTest</code>, add Robolectric to at least cover <code>DurableJson</code>/<code>AppStorage</code>/<code>Context</code>-dependent paths. Otherwise accept the gap and document it.</dd>
+      </dl>
+    </div>
+
+    <div class="finding low">
+      <div class="finding-head">
+        <span class="sev low">Low</span><span class="cat">Testing · brittleness</span>
+        <span class="loc">app/src/test/…/AndroidManifestIntegrationTest.kt</span>
+        <h4>T8 · Manifest integration test is clever but brittle</h4>
+      </div>
+      <dl>
+        <dt>Now</dt><dd>Parses <code>AndroidManifest.xml</code> + <code>file_paths.xml</code> with JDK <code>DocumentBuilder</code> and asserts <code>&lt;queries&gt;</code> intent signatures and that <code>FileProvider</code> paths are scoped to specific export dirs, never <code>.</code>.</dd>
+        <dt>Risk</dt><dd>Smart way to enforce two security-relevant properties without an emulator. But brittle to file location (hardcoded relative path) and to path ordering (<code>entries.toSet() == scopedPaths</code> means adding a legitimate new export dir fails the test). It only checks structure, not runtime grant behavior.</dd>
+        <dt>Fix</dt><dd>Resolve paths defensively via <code>System.getProperty("user.dir")</code>; make the FileProvider assertion "no overly-broad root" rather than exact-set equality.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== STRENGTHS =================== -->
+<section id="strengths">
+  <h2><span class="num">10</span>Strengths to preserve</h2>
+  <p class="sec-lede">These are the things the codebase does <em>right</em>. Don't lose them while fixing the issues above.</p>
+
+  <div class="findings">
+
+    <div class="finding good">
+      <div class="finding-head">
+        <span class="sev good">Strength</span><span class="cat">Test design</span>
+        <h4>S1 · The <code>*Planning.kt</code> functional-core pattern is exemplary</h4>
+      </div>
+      <dl>
+        <dt>What</dt><dd>Side-effecting logic (file copies, network, storage mutations) is cleanly separated from pure decision logic. <code>ArchiveSnapshotPlanning.buildArchiveSnapshot</code> (a pure function) takes a <code>copyChapter</code> lambda as its only side-effect seam; the test injects an in-memory list and asserts the exact archive shape, including the fallback-when-copy-fails path. Same in <code>DownloadScheduler.selectEligibleJobs</code>, <code>StoryActionGuards</code>, <code>CleanupEngine</code>.</dd>
+        <dt>Why it matters</dt><dd>This is a disciplined "functional core, imperative shell." It's <em>why</em> 287 fast JVM tests exist with no Robolectric and no mocks, and it offsets the lack of DI — you don't need fakes if the logic under test takes pure inputs. Preserve and extend this convention.</dd>
+      </dl>
+    </div>
+
+    <div class="finding good">
+      <div class="finding-head">
+        <span class="sev good">Strength</span><span class="cat">Concurrency hygiene</span>
+        <h4>S2 · Clean coroutine fundamentals</h4>
+      </div>
+      <dl>
+        <dt>What</dt><dd>No <code>GlobalScope</code>, no executable production <code>runBlocking</code>, no <code>Thread.sleep</code>. <code>StateFlow</code>s are exposed read-only via <code>asStateFlow()</code> with private backing <code>MutableStateFlow</code>s. Scopes are tied to lifecycles (<code>lifecycleScope</code>, <code>SupervisorJob()</code> engines).</dd>
+        <dt>Why it matters</dt><dd>These are the most common coroutine footguns, and the codebase avoids all of them. The remaining concurrency issues (C1's <code>synchronized</code>-in-coroutines, C2's missing <code>repeatOnLifecycle</code>) are subtler and fixable incrementally.</dd>
+      </dl>
+    </div>
+
+    <div class="finding good">
+      <div class="finding-head">
+        <span class="sev good">Strength</span><span class="cat">Architecture</span>
+        <h4>S3 · The <code>AppContainer</code> service-locator is justified and well-scoped</h4>
+      </div>
+      <dl>
+        <dt>What</dt><dd>A process-wide manual service locator attached to <code>Application</code>, with a documented motivation: a single shared container prevents duplicate engines racing on the same JSON files.</dd>
+        <dt>Why it matters</dt><dd>For an app with one Activity, a handful of foreground services, and no multi-module graph, a service locator is a reasonable trade-off: zero kapt/ksp cost, fast builds, no annotation-processing fragility, and a graph small enough to hold in your head. No change needed unless the app goes multi-module.</dd>
+      </dl>
+    </div>
+
+    <div class="finding good">
+      <div class="finding-head">
+        <span class="sev good">Strength</span><span class="cat">Architecture</span>
+        <h4>S4 · JSON-file persistence is a defensible choice for this data shape</h4>
+      </div>
+      <dl>
+        <dt>What</dt><dd>All state is stored as JSON files with atomic writes + a versioned envelope. No Room/SQL.</dd>
+        <dt>Why it matters</dt><dd>For an archiver whose data is "a list of stories each with a list of chapters," small and append-mostly, JSON files are human-inspectable, trivially backup-able (the backup feature leans on exactly this), and avoid Room ceremony. The atomic-write + envelope discipline is good in intent. No urgent change — just fix the durability/recovery holes (P1–P4) and reconsider only if the library grows past a few hundred stories.</dd>
+      </dl>
+    </div>
+
+    <div class="finding good">
+      <div class="finding-head">
+        <span class="sev good">Strength</span><span class="cat">Documentation</span>
+        <h4>S5 · Exceptionally well-documented design decisions</h4>
+      </div>
+      <dl>
+        <dt>What</dt><dd>Nearly every non-trivial class carries a KDoc explaining <em>why</em> a choice was made (single-owner invariant, atomic write rationale, the no-ViewModel trade-off, foldable handling). Comments reference constraints (R1-R9, M1-M3, parity gaps) consistently.</dd>
+        <dt>Why it matters</dt><dd>This is rare and valuable. The handful of stale-comment findings (P13) are worth fixing precisely <em>because</em> the docs are otherwise trustworthy — keep the bar high.</dd>
+      </dl>
+    </div>
+
+  </div>
+</section>
+
+<!-- =================== ROADMAP =================== -->
+<section id="roadmap">
+  <h2><span class="num">11</span>Prioritized roadmap</h2>
+  <p class="sec-lede">Ordered by impact × urgency. Each item references the finding IDs above.</p>
+
+  <h3>Tier 1 — Fix now (correctness, data-loss, debugging)</h3>
+  <ol class="priority-list">
+    <li>
+      <strong>Add logging</strong> <span class="tag high">T1</span><br>
+      Add <code>Timber</code> (or a thin wrapper); log warnings+ in every <code>catch</code> with the full throwable; log download state transitions; gate verbose on <code>BuildConfig.DEBUG</code>. Enables everything else to be diagnosed.
+    </li>
+    <li>
+      <strong>Stop swallowing <code>CancellationException</code></strong> <span class="tag high">E1 · E2 · E3</span><br>
+      Add <code>if (error is CancellationException) throw error</code> to the StoryActions/download worker paths; catch <code>Exception</code> not <code>Throwable</code> where possible, and let restore cancellation/errors that should abort propagate. Re-enable detekt <code>TooGenericExceptionCaught</code> (E4) with per-site <code>@Suppress</code>.
+    </li>
+    <li>
+      <strong>Make atomic writes actually atomic</strong> <span class="tag high">P1 · P2 · P3 · P4</span><br>
+      <code>try/finishWrite</code> + <code>catch/failWrite</code> in <code>DurableJson</code>; distinguish missing-file from parse-failure (and quarantine + log corrupt files); restore from snapshot in the restore catch path; don't pre-delete destinations; fsync the parent directory.
+    </li>
+    <li>
+      <strong>Fix the two heavy RecyclerView adapters</strong> <span class="tag high">U1 · U2</span><br>
+      <code>setHasStableIds</code> + DiffUtil on <code>ChapterListAdapter</code>; stop rebuilding rows in <code>onBindViewHolder</code>; make the queue group ViewHolder hold a stable card structure. These lists hold thousands of items.
+    </li>
+  </ol>
+
+  <h3>Tier 2 — Do soon (maintainability, performance, security posture)</h3>
+  <ol class="priority-list">
+    <li>
+      <strong>Replace <code>synchronized(storage)</code> with a coroutine <code>Mutex</code></strong> <span class="tag med">C1</span><br>
+      Stops suspend functions from blocking the IO dispatcher under contention.
+    </li>
+    <li>
+      <strong>Adopt <code>libs.versions.toml</code> + dependency automation</strong> <span class="tag med">B3 · B7</span><br>
+      One-time refactor with continuous payoff; add Dependabot/Renovate.
+    </li>
+    <li>
+      <strong>Make models immutable; type the status enum</strong> <span class="tag med">K1 · K2</span><br>
+      <code>val</code> data classes + <code>copy()</code> everywhere; <code>DownloadJob.status: DownloadJobStatus</code>.
+    </li>
+    <li>
+      <strong>Wire or delete <code>LibraryPresenter</code>; read via <code>repository.library()</code></strong> <span class="tag med">U4</span><br>
+      Removes main-thread JSON reads during render.
+    </li>
+    <li>
+      <strong>Plan the Gson → <code>kotlinx.serialization</code> migration + enable R8</strong> <span class="tag med">K4 · B4 · B5</span><br>
+      Compile-time schemas unlock safe <code>minifyEnabled true</code> + <code>shrinkResources true</code>.
+    </li>
+    <li>
+      <strong>Split <code>AppStorage</code>; make <code>storage</code> private</strong> <span class="tag med">P9 · P10</span><br>
+      Restore single-source-of-truth; isolate risky backup/restore.
+    </li>
+    <li>
+      <strong>Address test gaps</strong> <span class="tag med">T2 · T3 · T4 · T5</span><br>
+      Add an <code>androidTest</code> source set; create the missing <code>StorageAtomicWriteTest</code> (or fix the comment); add <code>DownloadEngine</code> orchestration tests; migrate coroutine tests to <code>runTest</code>.
+    </li>
+    <li>
+      <strong>Bump Kotlin + okhttp</strong> <span class="tag med">B2 · B6</span><br>
+      Kotlin 2.1.20 → the current stable line after AGP/detekt compatibility checks; okhttp/mockwebserver 4.12 → 5.x.
+    </li>
+    <li>
+      <strong>Accessibility + reactive theme</strong> <span class="tag med">U5 · U6</span><br>
+      Label status dots/badges; expose <code>themeId: StateFlow</code>.
+    </li>
+    <li>
+      <strong>Make TTS service/engine lifecycle honest</strong> <span class="tag med">C6 · C7</span><br>
+      Serialize public TTS controls through the documented mutex, move chapter reads/chunking off the caller thread, and ensure every cold foreground-service command either enters foreground immediately or uses regular service startup.
+    </li>
+  </ol>
+
+  <h3>Tier 3 — Polish (nits, consistency, future-proofing)</h3>
+  <ul class="tight">
+    <li>Rename <code>*Planning</code> → role/verb names; rename custom <code>GridLayout</code> to avoid shadowing (K5, U13)</li>
+    <li>Delete dead <code>ui</code> imports in non-UI packages (K3)</li>
+    <li>Finish the spacing-token migration (U8)</li>
+    <li>Debounce search input (U9); delete dead <code>WebViewSafety.applyBrowserSettings</code> (U10)</li>
+    <li>Use <code>WindowInsets</code> instead of dimen resources (U12); add predictive-back opt-in (U11)</li>
+    <li>Fix stale <code>txMutex</code>/<code>core</code> comments (P13); restore rollback (P3)</li>
+    <li>Clean dead React Native / Expo / Hermes Gradle properties (B1, B8); drop <code>enableV1Signing</code> (B10); derive <code>versionCode</code> from git (B9)</li>
+    <li>Ratchet detekt <code>maxIssues</code> toward 0 (T6)</li>
+    <li>Temp-file cleanup on failure (P12); <code>appContainer</code> safe cast (K6)</li>
+  </ul>
+
+  <div class="callout tip">
+    <strong>A note on scope.</strong> This review intentionally does <strong>not</strong> recommend migrating the View system to Jetpack Compose. The custom-View DSL, custom <code>ViewGroup</code>s, and <code>ScreenHost</code> pattern are appropriate and well-executed for the View system. Every UI finding is an incremental View-system improvement.
+  </div>
+</section>
+
+<footer>
+  <p><strong>Kotlin &amp; Android Codebase Review · Webnovel Archiver (Native)</strong> — generated June 30, 2026.</p>
+  <p>Covers the native Kotlin app under <code>android/</code>. Findings are evidence-based with <code>file:line</code> references; severity reflects correctness/data-loss/security risk (High), maintainability/perf (Medium), and style/consistency (Low). All grep-verified facts (logging absence, <code>GlobalScope</code>/executable production <code>runBlocking</code>/<code>Thread.sleep</code> absence, flow exposure, <code>catch</code> sites, <code>gradle.properties</code> contamination, source/test counts) were confirmed directly against the source.</p>
+</footer>
+
+</div><!-- /wrap -->
+
+</body>
+</html>
