@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -26,7 +27,6 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
-import com.vinicius741.webnovelarchiver.ui.divider
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.formatRelativeTime
@@ -34,6 +34,7 @@ import com.vinicius741.webnovelarchiver.ui.jobStatusDot
 import com.vinicius741.webnovelarchiver.ui.layout.queueMaxWidth
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeCountChip
+import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -193,8 +194,16 @@ private class QueueGroupAdapter(
         holder: GroupHolder,
         position: Int,
     ) {
-        holder.container.removeAllViews()
-        holder.container.addView(host.addStoryGroup(groups[position].jobs, onExpansionChanged))
+        // U2: the holder now owns a persistent QueueGroupCard (built once, recycled). It is created
+        // lazily on first bind and replaced into the container only when missing, so each rebind
+        // repopulates the existing card's header + job rows instead of rebuilding the whole subtree.
+        val group = groups[position]
+        val card = holder.card ?: host.createQueueGroupCard().also { holder.card = it }
+        if (card.view.parent !== holder.container) {
+            holder.container.removeAllViews()
+            holder.container.addView(card.view)
+        }
+        card.bind(group.jobs, onExpansionChanged)
     }
 
     fun submitQueue(queue: List<DownloadJob>) {
@@ -223,7 +232,10 @@ private class QueueGroupAdapter(
 
     class GroupHolder(
         val container: FrameLayout,
-    ) : RecyclerView.ViewHolder(container)
+    ) : RecyclerView.ViewHolder(container) {
+        // U2: the recycled card shell persists across binds; only its contents are repopulated.
+        var card: QueueGroupCard? = null
+    }
 }
 
 private fun ScreenHost.queueGroups(queue: List<DownloadJob>): List<QueueStoryGroup> =
@@ -306,73 +318,105 @@ private fun ScreenHost.globalAppBarActions(): List<AppBarAction> =
         }
     }
 
-/** One collapsible card per story: a clickable header (chevron + title/subtitle + story action
- *  icons) followed by its chapter rows when expanded. Novel grouping is unmistakable because the
- *  header and its chapters share a single card. */
-private fun ScreenHost.addStoryGroup(
-    jobs: List<DownloadJob>,
-    onToggle: () -> Unit,
-): LinearLayout {
-    val storyId = jobs.first().storyId
-    val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
-    val counts = QueueStatusCounts.from(jobs)
-    val expanded = storyExpandOverride[storyId] ?: (counts.hasActive || counts.hasFailed)
+/**
+ * U2: a recycled, persistent card shell for one story's download group. The card, header, title,
+ * subtitle, progress summary, action group, and job-rows body are built once in [createQueueGroupCard];
+ * [bind] repopulates only the dynamic contents (header text/progress, the action group whose enabled
+ * set depends on live counts, and the job rows). This replaces the previous per-bind full subtree
+ * rebuild (`removeAllViews()` + `addStoryGroup(...)`), so recycling now actually reuses the heavy card
+ * instead of reconstructing it on every bind.
+ */
+private class QueueGroupCard(
+    val view: LinearLayout,
+    private val host: ScreenHost,
+    private val header: LinearLayout,
+    private val chevron: View,
+    private val title: TextView,
+    private val subtitle: TextView,
+    private val progressSlot: LinearLayout,
+    private val actionSlot: LinearLayout,
+    private val body: LinearLayout,
+) {
+    fun bind(
+        jobs: List<DownloadJob>,
+        onToggle: () -> Unit,
+    ) {
+        val storyId = jobs.first().storyId
+        val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
+        val counts = QueueStatusCounts.from(jobs)
+        val expanded = host.storyExpandOverride[storyId] ?: (counts.hasActive || counts.hasFailed)
+
+        title.text = storyTitle
+        subtitle.text = DownloadManagerPlanning.storySubtitle(counts)
+        chevron.rotation = if (expanded) 0f else -90f
+
+        // Progress summary + action group are small views; rebuild only their contents in place.
+        progressSlot.removeAllViews()
+        progressSlot.addView(makeProgressSummary(host.app, counts.completed, counts.total))
+        actionSlot.removeAllViews()
+        actionSlot.addView(host.storyActionGroup(storyId, jobs, counts))
+
+        header.setOnClickListener {
+            host.storyExpandOverride[storyId] = !expanded
+            onToggle()
+        }
+
+        // Body: only the job rows are rebuilt — and only when expanded. This is the cheap part.
+        body.removeAllViews()
+        if (expanded) {
+            body.addView(makeDivider(host.app))
+            jobs.sortedBy { it.chapterIndex }.forEachIndexed { index, job ->
+                if (index > 0) body.addView(makeDivider(host.app))
+                body.addView(host.addQueueJobRow(job))
+            }
+        }
+    }
+}
+
+/** Build the persistent skeleton for a [QueueGroupCard] (built once per recycled holder). */
+private fun ScreenHost.createQueueGroupCard(): QueueGroupCard {
+    val chevron = chevronIcon(expanded = true) // rotation is set in bind
+    val title =
+        makeText(app, "", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+        }
+    val subtitle =
+        makeText(app, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            setPadding(0, dp(2), 0, 0)
+        }
+    val progressSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    val actionSlot =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+    val textColumn =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(title)
+            addView(subtitle)
+            addView(progressSlot.apply { setPadding(0, dp(Space.XS + 2), 0, 0) })
+        }
     val card =
         makeCard(app).apply {
             val header =
                 row {
-                    addView(chevronIcon(expanded))
-                    addView(
-                        LinearLayout(context).apply {
-                            orientation = LinearLayout.VERTICAL
-                            addView(
-                                makeText(context, storyTitle, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
-                                    maxLines = 2
-                                    ellipsize = TextUtils.TruncateAt.END
-                                },
-                            )
-                            addView(
-                                makeText(
-                                    context,
-                                    DownloadManagerPlanning.storySubtitle(counts),
-                                    Type.BODY_SMALL,
-                                    ThemeManager.colors.onSurfaceVariant,
-                                ).apply {
-                                    setPadding(0, dp(2), 0, 0)
-                                },
-                            )
-                            addView(
-                                makeProgressSummary(
-                                    context,
-                                    counts.completed,
-                                    counts.total,
-                                ).apply { setPadding(0, dp(Space.XS + 2), 0, 0) },
-                            )
-                        },
-                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                    )
-                    addView(storyActionGroup(storyId, jobs, counts))
+                    addView(chevron)
+                    addView(textColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(actionSlot)
                 }
             header.isClickable = true
             header.isFocusable = true
             header.background = selectableRipple(ThemeManager.colors.onSurface)
-            header.setOnClickListener {
-                storyExpandOverride[storyId] = !expanded
-                onToggle()
-            }
-            if (expanded) {
-                divider()
-                jobs.sortedBy { it.chapterIndex }.forEachIndexed { index, job ->
-                    if (index > 0) divider()
-                    addView(addQueueJobRow(job))
-                }
-            }
+            addView(LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }) // body, captured below
         }
+    val body = card.getChildAt(card.childCount - 1) as LinearLayout
     card.layoutParams =
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             bottomMargin = app.dp(Space.LG)
         }
-    return card
+    return QueueGroupCard(card, this, card.getChildAt(0) as LinearLayout, chevron, title, subtitle, progressSlot, actionSlot, body)
 }
 
 /** Inline story-header action icons (pause/resume/cancel/retry as relevant). Tapping the header
