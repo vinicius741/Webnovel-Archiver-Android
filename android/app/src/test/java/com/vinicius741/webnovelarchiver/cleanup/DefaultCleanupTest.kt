@@ -7,7 +7,7 @@ import org.junit.Test
 
 class DefaultCleanupTest {
     @Test
-    fun defaultSentenceListMatchesReactNativeAssetShape() {
+    fun defaultSentenceListMatchesAssetShape() {
         assertEquals(81, DefaultCleanup.sentences.size)
         assertEquals(
             "If you come across this story on Amazon, it's taken without permission from the author. Report it.",

@@ -3,18 +3,16 @@ package com.vinicius741.webnovelarchiver.ui.layout
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 
 /**
- * Responsive layout engine — a faithful native port of the legacy React Native `useScreenLayout`
- * hook (src/hooks/common/useScreenLayout.ts). This is the single source of truth for how the app
- * decides a window's Material-style size class and the derived layout values (column count, two-pane,
- * compact-height) consumed by every screen.
+ * Responsive layout engine — the single source of truth for how the app decides a window's
+ * Material-style size class and the derived layout values (column count, two-pane, compact-height)
+ * consumed by every screen.
  *
  * Kept pure on purpose: no Android types, no I/O. All screen-aware code reads the result of
  * [resolveScreenLayout], so the breakpoints can be exhaustively unit-tested without a device.
  *
  * `screenLayoutMode` is the user-facing override ("auto" | "cover" | "inner") persisted in
- * [DisplayPreferences.screenLayoutMode]. It is the screen-fold analogue of the React Native app's
- * `FoldLayoutMode` (unrelated to [DisplayPreferences.foldLayoutMode], which only governs EPUB volume
- * nesting).
+ * [DisplayPreferences.screenLayoutMode]. It is the screen-fold analogue of the app's `FoldLayoutMode`
+ * (unrelated to [DisplayPreferences.foldLayoutMode], which only governs EPUB volume nesting).
  */
 object ScreenLayoutPlanning {
     const val SCREEN_LAYOUT_MODE_AUTO = "auto"

@@ -7,7 +7,7 @@ import org.junit.Test
 
 class EpubMetadataTest {
     @Test
-    fun opfIncludesReactNativeMetadataFieldsAndGuide() {
+    fun opfIncludesExpectedMetadataFieldsAndGuide() {
         val story =
             Story(
                 id = "story&1",

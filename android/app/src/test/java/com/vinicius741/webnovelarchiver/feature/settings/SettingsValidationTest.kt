@@ -5,7 +5,7 @@ import org.junit.Test
 
 class SettingsValidationTest {
     @Test
-    fun concurrencyMatchesReactNativeBounds() {
+    fun concurrencyStaysWithinBounds() {
         assertEquals(1, SettingsValidation.concurrency(""))
         assertEquals(1, SettingsValidation.concurrency("0"))
         assertEquals(5, SettingsValidation.concurrency("5"))

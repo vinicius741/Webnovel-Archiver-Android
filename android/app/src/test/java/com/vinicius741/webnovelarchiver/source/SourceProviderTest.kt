@@ -163,7 +163,7 @@ class SourceProviderTest {
     }
 
     @Test
-    fun sanitizeTitleMatchesReactNativeOverflowAndDateCleanup() {
+    fun sanitizeTitleTrimsOverflowAndDateSuffixes() {
         assertEquals("Test Story", sanitizeTitle("Test Story..."))
         assertEquals("Test Story", sanitizeTitle("Test Story…"))
         assertEquals("Chapter 1", sanitizeTitle("Chapter 1 (2 hours ago)"))

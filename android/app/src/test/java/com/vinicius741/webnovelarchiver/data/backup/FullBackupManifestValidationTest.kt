@@ -11,7 +11,7 @@ class FullBackupManifestValidationTest {
     }
 
     @Test
-    fun exposesReactNativeMissingManifestMessage() {
+    fun exposesMissingManifestMessage() {
         assertEquals(
             "Invalid full backup: missing manifest",
             FullBackupManifestValidation.MISSING_MANIFEST_MESSAGE,

@@ -4,9 +4,8 @@ import android.graphics.Color
 import com.vinicius741.webnovelarchiver.app.MainActivity
 
 /**
- * Material Design 3 color tokens for a single theme. Values mirror the legacy
- * React Native themes in `src/theme/themes` so the native app matches the
- * original look (Obsidian, Midnight, Forest, Classic Light).
+ * Material Design 3 color tokens for a single theme. Values are tuned so the
+ * native app matches its intended look (Obsidian, Midnight, Forest, Classic Light).
  */
 data class ThemeColors(
     val primary: Int,
@@ -64,7 +63,7 @@ data class AppTheme(
     val shadowColor: Int get() = Color.argb(120, 0, 0, 0)
 }
 
-/** The four legacy themes, ported 1:1 from the React Native definitions. */
+/** The four app themes, with color values defined 1:1 to keep the intended look. */
 object Themes {
     private fun c(hex: String): Int = Color.parseColor(hex)
 

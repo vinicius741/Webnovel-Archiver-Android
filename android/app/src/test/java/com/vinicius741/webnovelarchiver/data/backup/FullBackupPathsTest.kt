@@ -17,7 +17,7 @@ class FullBackupPathsTest {
     }
 
     @Test
-    fun chapterPathMatchesReactNativeFullBackupManifestShape() {
+    fun chapterPathMatchesFullBackupManifestShape() {
         assertEquals(
             "novels/story%2Fid/0007_chapter%3A8.html",
             FullBackupPaths.chapterPath("story/id", "chapter:8", 7),

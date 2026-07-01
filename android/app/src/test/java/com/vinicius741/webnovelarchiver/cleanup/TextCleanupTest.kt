@@ -169,7 +169,7 @@ class TextCleanupTest {
     }
 
     @Test
-    fun hasSimilarRegexRuleMatchesReactNativeDuplicateRuleGuard() {
+    fun hasSimilarRegexRuleGuardsAgainstDuplicateRules() {
         val rules =
             listOf(
                 RegexCleanupRule(id = "one", name = "One", pattern = "note", flags = "gim", appliesTo = "download"),

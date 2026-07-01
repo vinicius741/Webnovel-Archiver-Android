@@ -1,6 +1,5 @@
 <resources>
   <string name="app_name">Webnovel Archiver Native</string>
-  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
 
   <!-- Screen titles (Maintainability M6: user-facing strings centralized for localization). -->
   <string name="title_library">Library</string>

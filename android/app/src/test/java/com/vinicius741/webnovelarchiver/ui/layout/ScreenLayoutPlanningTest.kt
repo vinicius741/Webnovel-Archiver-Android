@@ -6,11 +6,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Unit tests for the responsive layout engine, ported 1:1 from the legacy React Native
- * `useScreenLayout` hook tests (src/hooks/common/__tests__/useScreenLayout.test.ts). These cases
- * lock in the exact fold/width behaviour the RN app had, so the native port is faithful.
+ * Unit tests for the responsive layout engine. These cases lock in the exact fold/width behaviour
+ * the app must honour.
  *
- * Defaults mirror the hook's test setup: AUTO mode, no detected folding feature.
+ * Defaults mirror the standard test setup: AUTO mode, no detected folding feature.
  */
 class ScreenLayoutPlanningTest {
     private fun layout(

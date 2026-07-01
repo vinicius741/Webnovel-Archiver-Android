@@ -16,11 +16,10 @@ import kotlinx.coroutines.launch
 /**
  * Wraps Jetpack WindowManager ([WindowInfoTracker]) for the single-activity app. Exposes whether the
  * current window has a folding feature (a hinge/inner display), so [resolveScreenLayout] can promote
- * a sub-600dp inner Fold screen to a tablet-style layout — the native equivalent of the legacy
- * `@logicwind/react-native-fold-detection` module.
+ * a sub-600dp inner Fold screen to a tablet-style layout.
  *
  * The presence of *any* [FoldingFeature] in the [WindowLayoutInfo] is enough; the planning engine
- * only consults the boolean (matching the RN `hasFoldingFeature`), not the hinge geometry.
+ * only consults the boolean, not the hinge geometry.
  *
  * Constructed once in [com.vinicius741.webnovelarchiver.app.MainActivity] and re-queried on every screen
  * render via [com.vinicius741.webnovelarchiver.ui.currentScreenLayout].

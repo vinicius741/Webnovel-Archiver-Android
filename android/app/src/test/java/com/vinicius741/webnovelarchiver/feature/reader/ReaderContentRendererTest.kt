@@ -7,7 +7,7 @@ import org.junit.Test
 
 class ReaderContentRendererTest {
     @Test
-    fun usesReactNativeUndownloadedChapterMessage() {
+    fun usesUndownloadedChapterMessage() {
         assertEquals("Chapter not downloaded yet.", ReaderContentRenderer.contentOrUndownloadedMessage(null))
         assertEquals("<p>Saved</p>", ReaderContentRenderer.contentOrUndownloadedMessage("<p>Saved</p>"))
     }

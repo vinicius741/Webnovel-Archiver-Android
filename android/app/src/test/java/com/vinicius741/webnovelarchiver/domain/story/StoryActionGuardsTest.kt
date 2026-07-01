@@ -24,7 +24,7 @@ class StoryActionGuardsTest {
     }
 
     @Test
-    fun archivedActionMessageMatchesReactNativeWording() {
+    fun archivedActionMessageMatchesExpectedWording() {
         assertEquals(
             "Downloading is disabled for archived snapshots. Use the active story entry instead.",
             StoryActionGuards.archivedActionMessage("Downloading"),

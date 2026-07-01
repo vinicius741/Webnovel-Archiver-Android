@@ -950,7 +950,7 @@ class AppStorage(
         if (libraryIndex.exists()) return
         val legacy = File(context.filesDir.parentFile, "databases/RKStorage")
         if (!legacy.exists()) return
-        // React Native AsyncStorage's SQLite layout is intentionally not parsed here; JSON backups remain compatible.
+        // Any old AsyncStorage-style SQLite layout is intentionally not parsed here; JSON backups remain compatible.
         write(libraryIndex, emptyList<String>())
     }
 

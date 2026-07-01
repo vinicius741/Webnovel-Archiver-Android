@@ -175,8 +175,8 @@ internal fun ScreenHost.showAddStory() {
                     },
                 )
             }
-        // Paste button beside the field — mirrors the React Native app's content-paste affordance,
-        // reading the system clipboard in one tap instead of long-pressing the field.
+        // Paste button beside the field — a one-tap content-paste affordance that reads the system
+        // clipboard instead of long-pressing the field.
         val pasteButton =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL

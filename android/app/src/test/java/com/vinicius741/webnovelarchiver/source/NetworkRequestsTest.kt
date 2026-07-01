@@ -6,7 +6,7 @@ import org.junit.Test
 
 class NetworkRequestsTest {
     @Test
-    fun pageRequestMatchesReactNativeFetcherHeaders() {
+    fun pageRequestMatchesFetcherHeaders() {
         val request = NetworkRequests.pageRequest("https://example.com/story")
 
         assertEquals(NetworkRequests.USER_AGENT, request.header("User-Agent"))
@@ -15,7 +15,7 @@ class NetworkRequestsTest {
     }
 
     @Test
-    fun formRequestMatchesReactNativeFetcherHeadersAndBodyShape() {
+    fun formRequestMatchesFetcherHeadersAndBodyShape() {
         val request =
             NetworkRequests.formRequest(
                 "https://www.scribblehub.com/wp-admin/admin-ajax.php",

@@ -73,10 +73,9 @@ fun makeDivider(context: Context): View =
     }
 
 /**
- * A flat, navigational settings row in the style of react-native-paper's `List.Item`: a leading
- * icon tinted to the surface-variant color, a vertical column of title + optional description, and
- * a themed ripple across the whole row. No trailing chevron — matches the old RN settings screen,
- * which used leading icons only. Used for every non-Appearance entry on the Settings page.
+ * A flat, navigational settings row: a leading icon tinted to the surface-variant color, a vertical
+ * column of title + optional description, and a themed ripple across the whole row. No trailing
+ * chevron — leading icons only. Used for every non-Appearance entry on the Settings page.
  */
 fun makeSettingRow(
     context: Context,
