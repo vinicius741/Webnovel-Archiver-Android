@@ -38,6 +38,16 @@ import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
+/**
+ * Holds the built filter [view] plus a [rebuildChips] hook the screen calls whenever the active
+ * tab changes. The available tag/source chips follow the active tab (All = union, a specific tab =
+ * only that tab's labels), mirroring the legacy RN `useLibrary` `useMemo` keyed on `activeTabId`.
+ */
+internal class LibraryFiltersView(
+    val view: View,
+    val rebuildChips: (selectedTabId: String?, selectedTags: Set<String>) -> Unit,
+)
+
 internal fun ScreenHost.makeLibraryFilters(
     context: Context,
     search: EditText,
@@ -49,7 +59,7 @@ internal fun ScreenHost.makeLibraryFilters(
     sortAscending: Boolean,
     onSortChanged: (Pair<String, Boolean>) -> Unit,
     onTagToggled: (String) -> Unit,
-): View {
+): LibraryFiltersView {
     val filtersContainer =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -113,18 +123,36 @@ internal fun ScreenHost.makeLibraryFilters(
 
     // Tag chips — L4: render source filters (globe icon, filled) separately from genre tags so the
     // two filter kinds are visually distinguishable instead of one flat row of identical chips.
-    val (sourceLabels, tagLabels) = LibraryQuery.availableFilterGroups(stories, selectedTabId)
-    if (sourceLabels.isNotEmpty() || tagLabels.isNotEmpty()) {
-        val tagScroll =
-            HorizontalScrollView(context).apply {
-                isHorizontalScrollBarEnabled = false
-            }
-        val tagRow =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-        sourceLabels.take(4).forEach { (label, count) ->
-            val selected = selectedTags.contains(label)
+    // The chips follow the active tab (All = every label, a specific tab = only that tab's labels),
+    // so the scroll + row are allocated up front and [populateChips] rebuilds them whenever the tab
+    // changes. Allocated unconditionally so a refresh can show chips even if the entry tab had none.
+    val tagScroll =
+        HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+    val tagRow =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+    tagScroll.addView(tagRow)
+    filtersContainer.addView(
+        tagScroll,
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(Space.SM)
+        },
+    )
+
+    // Recompute the chip set for the active tab. Counts and labels derive from the tab's visible
+    // stories via [LibraryQuery.availableFilterGroups]; [selectedTags] only sets each chip's pressed
+    // state, it does not change which chips appear (the native filter set is tab-derived only).
+    val populateChips: (String?, Set<String>) -> Unit = { currentTabId, currentTags ->
+        val (sourceLabels, tagLabels) = LibraryQuery.availableFilterGroups(stories, currentTabId)
+        tagRow.removeAllViews()
+        // Render every available label as a chip — no artificial cap. `availableFilterGroups` already
+        // returns one entry per unique source/tag (sorted by frequency then name), and the row sits
+        // inside a HorizontalScrollView, so a large label set just scrolls instead of being truncated.
+        sourceLabels.forEach { (label, count) ->
+            val selected = currentTags.contains(label)
             val chip = makeSourceChip(context, label, count, selected) { onTagToggled(label) }
             tagRow.addView(
                 chip,
@@ -133,9 +161,9 @@ internal fun ScreenHost.makeLibraryFilters(
                 },
             )
         }
-        tagLabels.take(8).forEach { (label, count) ->
+        tagLabels.forEach { (label, count) ->
             val chipLabel = "$label ($count)"
-            val selected = selectedTags.contains(label)
+            val selected = currentTags.contains(label)
             val chip = makeChip(context, chipLabel, selected) { onTagToggled(label) }
             tagRow.addView(
                 chip,
@@ -144,16 +172,16 @@ internal fun ScreenHost.makeLibraryFilters(
                 },
             )
         }
-        tagScroll.addView(tagRow)
-        filtersContainer.addView(
-            tagScroll,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(Space.SM)
-            },
-        )
+        // Hide the row entirely when the active tab offers no chips, so the empty scroll view does
+        // not leave a stray gap below the search/sort row.
+        tagScroll.visibility = if (sourceLabels.isEmpty() && tagLabels.isEmpty()) View.GONE else View.VISIBLE
     }
+    populateChips(selectedTabId, selectedTags)
 
-    if (!hasCustomTabs) return filtersContainer.also { it.layoutParams = filterTopMargin }
+    if (!hasCustomTabs) {
+        filtersContainer.layoutParams = filterTopMargin
+        return LibraryFiltersView(filtersContainer, populateChips)
+    }
 
     // Collapsible wrapper when tabs exist
     val wrapper = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -230,7 +258,7 @@ internal fun ScreenHost.makeLibraryFilters(
             .start()
     }
     wrapper.layoutParams = filterTopMargin
-    return wrapper
+    return LibraryFiltersView(wrapper, populateChips)
 }
 
 private fun showSortDialog(

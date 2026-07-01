@@ -116,14 +116,7 @@ internal fun ScreenHost.showLibrary() {
         // one closure so search/sort/tag callbacks never have to know which mode is active.
         var applyFilters: () -> Unit = {}
 
-        val tabBar =
-            makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
-                selectedTabId = newTabId
-                persistTab(newTabId)
-                applyFilters()
-            }
-        addView(tabBar.view)
-        addView(
+        val filters =
             makeLibraryFilters(
                 context,
                 search,
@@ -142,8 +135,22 @@ internal fun ScreenHost.showLibrary() {
                     if (!selectedTags.add(tag)) selectedTags.remove(tag)
                     applyFilters()
                 },
-            ),
-        )
+            )
+        // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
+        // tab (All = union, a specific tab = only that tab's labels) — matching the legacy RN app.
+        // Declared before the tab bar so the bar's selection lambda can close over it.
+        val refreshFilters = filters.rebuildChips
+
+        val tabBar =
+            makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+                selectedTabId = newTabId
+                persistTab(newTabId)
+                refreshFilters(selectedTabId, selectedTags)
+                applyFilters()
+            }
+        // Tab bar renders above the filter row, matching the original layout.
+        addView(tabBar.view)
+        addView(filters.view)
 
         // `showLibrary` runs inside the receiver scope; make `search.text` resolve here.
         fun currentFilter(): String = search.text.toString()
@@ -187,7 +194,9 @@ internal fun ScreenHost.showLibrary() {
                             selectedTabId = newTabId
                             persistTab(newTabId)
                             tabBar.selectVisual(newTabId)
-                            // Re-filter so the newly visible page reflects the active search/tags/sort.
+                            // Refresh the chip set + re-filter so the newly visible page reflects the
+                            // active tab's tags/sources plus the active search/tags/sort.
+                            refreshFilters(selectedTabId, selectedTags)
                             applyFilters()
                         }
                     }

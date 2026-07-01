@@ -98,6 +98,27 @@ class LibraryQueryTest {
         assertEquals(listOf("RoyalRoad", "Scribble Hub", "Action", "Fantasy"), labels)
     }
 
+    @Test
+    fun availableFilterLabelsFollowTheActiveTab() {
+        // Two custom tabs hold disjoint sources/tags; "All" should surface the union, a specific
+        // tab only its own. Mirrors the legacy RN `matchesTab` gate on tag collection.
+        val stories =
+            listOf(
+                story("rr-action", "Royal Action", "https://www.royalroad.com/fiction/1/story", tags = mutableListOf("Action"), tabId = "tab-1"),
+                story("rr-fantasy", "Royal Fantasy", "https://www.royalroad.com/fiction/2/story", tags = mutableListOf("Fantasy"), tabId = "tab-1"),
+                story("sh-romance", "Hub Romance", "https://www.scribblehub.com/series/3/story", tags = mutableListOf("Romance"), tabId = "tab-2"),
+            )
+
+        val allLabels = LibraryQuery.availableFilterLabels(stories, "__all__")
+        assertEquals(listOf("RoyalRoad", "Scribble Hub", "Action", "Fantasy", "Romance"), allLabels)
+
+        val tab1Labels = LibraryQuery.availableFilterLabels(stories, "tab-1")
+        assertEquals(listOf("RoyalRoad", "Action", "Fantasy"), tab1Labels)
+
+        val tab2Labels = LibraryQuery.availableFilterLabels(stories, "tab-2")
+        assertEquals(listOf("Scribble Hub", "Romance"), tab2Labels)
+    }
+
     private fun story(
         id: String,
         title: String,
@@ -106,6 +127,7 @@ class LibraryQueryTest {
         score: String? = null,
         lastUpdated: Long? = null,
         dateAdded: Long? = null,
+        tabId: String? = null,
     ): Story =
         Story(
             id = id,
@@ -116,6 +138,7 @@ class LibraryQueryTest {
             score = score,
             lastUpdated = lastUpdated,
             dateAdded = dateAdded,
+            tabId = tabId,
         )
 
     private fun Story.withPatreonStats(
