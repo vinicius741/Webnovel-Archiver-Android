@@ -58,7 +58,8 @@ internal fun ScreenHost.showQueue() {
     lateinit var summarySlot: LinearLayout
     lateinit var emptySlot: FrameLayout
     lateinit var list: RecyclerView
-    screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions()) {
+    val initialGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(queue))
+    screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(initialGlobalActions)) {
         // Center everything in a width-capped column (920/1080dp by width class) so the queue doesn't
         // stretch edge-to-edge on tablets/the Fold inner display. On phone widths the cap is larger
         // than the screen so it has no effect.
@@ -103,7 +104,7 @@ internal fun ScreenHost.showQueue() {
         updateQueueContent(summarySlot, emptySlot, list, adapter, queue)
         addView(centeredShell, verticalFill())
     }
-    observeQueueUpdates(summarySlot, emptySlot, list, adapter)
+    observeQueueUpdates(summarySlot, emptySlot, list, adapter, initialGlobalActions)
 }
 
 private fun ScreenHost.observeQueueUpdates(
@@ -111,17 +112,27 @@ private fun ScreenHost.observeQueueUpdates(
     emptySlot: FrameLayout,
     list: RecyclerView,
     adapter: QueueGroupAdapter,
+    initialGlobalActions: List<GlobalQueueAction>,
 ) {
     if (frame.childCount == 0) return
     val root = frame.getChildAt(0)
     // Capture before launching so an event before collector registration is not dropped.
     var observedQueueVersion = repository.downloadState.value.queueVersion
+    var observedGlobalActions = initialGlobalActions
     screenObserver =
         scope.launch {
             repository.downloadState.collect { snapshot ->
                 if (snapshot.queueVersion == observedQueueVersion) return@collect
                 observedQueueVersion = snapshot.queueVersion
                 if (root.parent === frame) {
+                    val nextGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(snapshot.queue))
+                    if (nextGlobalActions != observedGlobalActions) {
+                        observedGlobalActions = nextGlobalActions
+                        frame.post {
+                            if (root.parent === frame) showQueue()
+                        }
+                        return@collect
+                    }
                     updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue)
                 }
             }
@@ -287,14 +298,8 @@ private fun ScreenHost.queueGroups(queue: List<DownloadJob>): List<QueueStoryGro
         }
 
 /** Global (whole-queue) actions rendered as a stable app-bar icon strip. */
-private fun ScreenHost.globalAppBarActions(): List<AppBarAction> =
-    listOf(
-        GlobalQueueAction.RESUME_ALL,
-        GlobalQueueAction.PAUSE_ALL,
-        GlobalQueueAction.RETRY_ALL,
-        GlobalQueueAction.CANCEL_ALL,
-        GlobalQueueAction.CLEAR_DONE,
-    ).map { action ->
+private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): List<AppBarAction> =
+    actions.map { action ->
         when (action) {
             GlobalQueueAction.RESUME_ALL ->
                 AppBarAction(R.drawable.wna_play, "Resume All") {
@@ -316,11 +321,11 @@ private fun ScreenHost.globalAppBarActions(): List<AppBarAction> =
                         downloadEngine.cancelAll()
                     }
                 }
-            GlobalQueueAction.CLEAR_DONE ->
-                AppBarAction(R.drawable.wna_check, "Clear Done") {
+            GlobalQueueAction.CLEAR_FINISHED ->
+                AppBarAction(R.drawable.wna_check, "Clear Finished") {
                     confirm(
-                        "Remove all completed, failed, and cancelled downloads from the list?",
-                        confirmLabel = "Clear Done",
+                        "Remove all finished downloads (completed, failed, and cancelled) from the list?",
+                        confirmLabel = "Clear Finished",
                     ) {
                         downloadEngine.clearFinished()
                     }

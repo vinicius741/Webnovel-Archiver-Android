@@ -45,7 +45,7 @@ data class QueueStatusCounts(
 enum class QueueAction { PAUSE, RESUME, RETRY, CANCEL, REMOVE }
 
 /** Global (whole-queue) actions surfaced as app-bar icons in the download manager. */
-enum class GlobalQueueAction { RESUME_ALL, PAUSE_ALL, RETRY_ALL, CANCEL_ALL, CLEAR_DONE }
+enum class GlobalQueueAction { RESUME_ALL, PAUSE_ALL, RETRY_ALL, CANCEL_ALL, CLEAR_FINISHED }
 
 object DownloadManagerPlanning {
     /** Returns the inline actions for a chapter job. Unknown/legacy statuses yield no actions. */
@@ -63,13 +63,16 @@ object DownloadManagerPlanning {
         }
 
     /** Story-header action group. While a story has active or paused work it shows the in-progress
-     *  group (pause/resume/cancel/retry-as-relevant); a story with only terminal failures shows a
+     *  group (pause-or-resume/cancel/retry-as-relevant); a story with only terminal failures shows a
      *  single retry; an all-completed story shows nothing. */
     fun storyHeaderActions(counts: QueueStatusCounts): List<QueueAction> {
         if (counts.hasActive || counts.hasPaused) {
             return buildList {
-                if (counts.hasActive) add(QueueAction.PAUSE)
-                if (counts.hasPaused) add(QueueAction.RESUME)
+                if (counts.hasActive) {
+                    add(QueueAction.PAUSE)
+                } else if (counts.hasPaused) {
+                    add(QueueAction.RESUME)
+                }
                 add(QueueAction.CANCEL)
                 if (counts.hasFailed) add(QueueAction.RETRY)
             }
@@ -80,11 +83,16 @@ object DownloadManagerPlanning {
 
     fun globalActions(counts: QueueStatusCounts): List<GlobalQueueAction> =
         buildList {
-            if (counts.hasPaused) add(GlobalQueueAction.RESUME_ALL)
-            if (counts.hasActive) add(GlobalQueueAction.PAUSE_ALL)
+            if (counts.hasActive) {
+                add(GlobalQueueAction.PAUSE_ALL)
+            } else if (counts.hasPaused) {
+                add(GlobalQueueAction.RESUME_ALL)
+            }
             if (counts.hasFailed) add(GlobalQueueAction.RETRY_ALL)
             if (counts.hasActive || counts.hasPaused) add(GlobalQueueAction.CANCEL_ALL)
-            if (counts.completed > 0) add(GlobalQueueAction.CLEAR_DONE)
+            if (!counts.hasActive && !counts.hasPaused && counts.completed + counts.failed + counts.cancelled > 0) {
+                add(GlobalQueueAction.CLEAR_FINISHED)
+            }
         }
 
     /** Single-line status summary for a story, e.g. "12/20 chapters • 3 downloading • 2 queued • 1 failed".

@@ -52,6 +52,15 @@ class DownloadManagerPlanningTest {
     }
 
     @Test
+    fun storyHeaderActionsShowPauseInsteadOfResumeWhenAnyWorkIsActive() {
+        val counts = QueueStatusCounts(downloading = 1, paused = 2, completed = 1)
+        assertEquals(
+            listOf(QueueAction.PAUSE, QueueAction.CANCEL),
+            DownloadManagerPlanning.storyHeaderActions(counts),
+        )
+    }
+
+    @Test
     fun storyHeaderActionsAppendsRetryWhenActiveAndFailed() {
         val counts = QueueStatusCounts(pending = 1, failed = 2)
         assertEquals(
@@ -73,7 +82,7 @@ class DownloadManagerPlanningTest {
     }
 
     @Test
-    fun globalActionsSurfaceEachBucketConditionally() {
+    fun globalActionsShowPauseInsteadOfResumeWhenAnyWorkIsActive() {
         val counts =
             QueueStatusCounts(
                 downloading = 1,
@@ -83,12 +92,19 @@ class DownloadManagerPlanningTest {
             )
         assertEquals(
             listOf(
-                GlobalQueueAction.RESUME_ALL,
                 GlobalQueueAction.PAUSE_ALL,
                 GlobalQueueAction.RETRY_ALL,
                 GlobalQueueAction.CANCEL_ALL,
-                GlobalQueueAction.CLEAR_DONE,
             ),
+            DownloadManagerPlanning.globalActions(counts),
+        )
+    }
+
+    @Test
+    fun globalActionsShowResumeWhenQueueIsOnlyPaused() {
+        val counts = QueueStatusCounts(paused = 2, completed = 1)
+        assertEquals(
+            listOf(GlobalQueueAction.RESUME_ALL, GlobalQueueAction.CANCEL_ALL),
             DownloadManagerPlanning.globalActions(counts),
         )
     }
@@ -97,15 +113,15 @@ class DownloadManagerPlanningTest {
     fun globalActionsHideCancelAllWhenQueueIsIdle() {
         val counts = QueueStatusCounts(completed = 2, failed = 1)
         assertEquals(
-            listOf(GlobalQueueAction.RETRY_ALL, GlobalQueueAction.CLEAR_DONE),
+            listOf(GlobalQueueAction.RETRY_ALL, GlobalQueueAction.CLEAR_FINISHED),
             DownloadManagerPlanning.globalActions(counts),
         )
     }
 
     @Test
-    fun globalActionsShowsClearDoneOnlyForAllCompleted() {
+    fun globalActionsShowsClearFinishedForAllCompleted() {
         assertEquals(
-            listOf(GlobalQueueAction.CLEAR_DONE),
+            listOf(GlobalQueueAction.CLEAR_FINISHED),
             DownloadManagerPlanning.globalActions(QueueStatusCounts(completed = 1)),
         )
     }
