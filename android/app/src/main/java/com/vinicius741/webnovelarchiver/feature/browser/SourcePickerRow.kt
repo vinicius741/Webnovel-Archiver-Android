@@ -6,8 +6,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceProvider
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -15,30 +13,23 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
- * Intermediate screen reached from the Library app-bar "Browser" action. Lists every registered
- * source (Royal Road, Scribble Hub, …) as a large pickable row; tapping one opens the existing
- * [showBrowser] Custom Tab at that source's [SourceProvider.baseUrl]. The rows are built generically
- * over [SourceRegistry.all], so adding a future source needs no change here — it only has to be
- * registered in [SourceRegistry], per the rule in `android/AGENTS.md`.
+ * Builds the list of registered source rows, ready to append into any screen body. Each row opens the
+ * existing [showBrowser] Custom Tab at that source's [SourceProvider.baseUrl]. The rows are built
+ * generically over [SourceRegistry.all], so adding a future source needs no change here — it only has
+ * to be registered in [SourceRegistry], per the rule in `android/AGENTS.md`.
+ *
+ * Reused from the legacy standalone "Browse Sources" picker; now embedded directly on the Add Story
+ * screen as the "Or browse a source" affordance.
  */
-internal fun ScreenHost.showSourcePicker() {
-    val sources = SourceRegistry.all()
-    screen(title = "Browse Sources", subtitle = "${sources.size} available", onBack = { showLibrary() }, scrollable = true) {
-        text(
-            "Pick a source to open it in your browser. Sign in there, then use Import to pull the story into your library.",
-            Type.BODY_MEDIUM,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        sources.forEach { provider -> addView(sourcePickerRow(provider) { showBrowser(provider.baseUrl) }) }
-    }
-}
+internal fun sourcePickerRows(
+    context: android.content.Context,
+    onOpen: (SourceProvider) -> Unit,
+): List<LinearLayout> = SourceRegistry.all().map { sourcePickerRow(context, it) { onOpen(it) } }
 
 /**
  * A large, tappable source row: a leading globe icon inside a tinted disc (echoing the empty-state
@@ -46,14 +37,14 @@ internal fun ScreenHost.showSourcePicker() {
  * forward arrow so the row reads as a navigation entry, not a static label. Whole-row ripple so the
  * tap target is the full card.
  */
-private fun ScreenHost.sourcePickerRow(
+private fun sourcePickerRow(
+    context: android.content.Context,
     provider: SourceProvider,
     onOpen: () -> Unit,
 ): LinearLayout {
     val t = ThemeManager.current
     val colors = t.colors
-    val radiusPx = app.dp(t.shapes.cardRadius).toFloat()
-    val context = app
+    val radiusPx = context.dp(t.shapes.cardRadius).toFloat()
     return LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL

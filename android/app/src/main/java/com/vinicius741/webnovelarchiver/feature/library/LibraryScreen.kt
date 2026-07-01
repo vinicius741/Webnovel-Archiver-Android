@@ -7,7 +7,6 @@ import android.widget.FrameLayout
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.browser.showSourcePicker
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
@@ -46,7 +45,6 @@ internal fun ScreenHost.showLibrary() {
         subtitle = if (stories.isEmpty()) null else "${stories.size} novel${if (stories.size == 1) "" else "s"}",
         actions =
             listOf(
-                AppBarAction(R.drawable.wna_globe, "Browser") { showSourcePicker() },
                 AppBarAction(R.drawable.wna_list, "Queue") { showQueue() },
                 AppBarAction(R.drawable.wna_check, "Select") { showLibrarySelection() },
                 AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },

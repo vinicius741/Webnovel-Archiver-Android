@@ -11,6 +11,8 @@ import android.widget.ProgressBar
 import android.widget.Spinner
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
+import com.vinicius741.webnovelarchiver.feature.browser.sourcePickerRows
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -270,8 +272,12 @@ internal fun ScreenHost.showAddStory() {
         status?.let { msg ->
             addView(makeAddStoryProgress(context, msg))
         }
-        // A3: the "Or browse" Royal Road / Scribble Hub buttons were removed — they open the same
-        // Browser screen the app-bar globe does, just with a preset URL. Use the Browser to browse.
+        // "Or browse a source": the source rows formerly behind the Library app-bar "Browser" action.
+        // Same rows that were on the standalone "Browse Sources" picker — each opens a Custom Tab at the
+        // source's baseUrl where the user can sign in, browse, and use the in-tab Import action.
+        section("Or browse a source")
+        sourcePickerRows(context) { provider -> showBrowser(provider.baseUrl) }
+            .forEach { addView(it) }
     }
 }
 
