@@ -551,6 +551,9 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     options += "EPUB Settings" to {
         if (isBusy) toast("Please wait for the current operation to finish") else showEpubConfigDialog(story)
     }
+    options += "Legacy EPUBs" to {
+        if (isBusy) toast("Please wait for the current operation to finish") else showLegacyEpubs(story.id)
+    }
     options += "Apply Text Cleanup" to {
         if (isBusy) toast("Please wait for the current operation to finish") else applyCleanup(story)
     }

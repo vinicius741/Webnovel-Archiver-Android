@@ -320,6 +320,44 @@ class AppStorage(
         return File(root, path).takeIf(File::exists)
     }
 
+    /**
+     * Lists every `.epub` file physically present for [storyId] under its per-story epub directory
+     * (`webnovel_archiver/epubs/<safeName(storyId)>/`), oldest first. This is the source of truth for
+     * the "Legacy EPUBs" screen: callers compare these absolute paths against [Story.epubPaths] to
+     * separate currently-referenced files from orphans left behind by write-only regeneration (see
+     * [com.vinicius741.webnovelarchiver.epub.EpubEngine.generate]). Returns an empty list when the
+     * directory does not exist (a story that never generated an EPUB), never throws.
+     */
+    fun listEpubs(storyId: String): List<File> =
+        File(epubRoot, safeName(storyId))
+            .takeIf(File::exists)
+            ?.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".epub", ignoreCase = true) }
+            ?.sortedBy(File::lastModified)
+            .orEmpty()
+
+    /**
+     * Deletes a single EPUB file for [storyId] located at [absolutePath]. Used by the Legacy EPUBs
+     * screen to reclaim disk space from leftover files. Safety-checked at the storage boundary:
+     * the target must be a real `.epub` file whose canonical parent is exactly this story's per-story
+     * epub directory, which also defeats path-traversal (the canonical path must start with
+     * [epubRoot]'s canonical path). Returns `true` only when the file was actually removed.
+     */
+    fun deleteEpubFile(
+        storyId: String,
+        absolutePath: String,
+    ): Boolean {
+        val file = File(absolutePath)
+        if (!file.isFile || !file.name.endsWith(".epub", ignoreCase = true)) return false
+        val storyEpubDir = File(epubRoot, safeName(storyId))
+        // Canonicalize before comparing so `..`/symlink tricks can't escape the per-story directory.
+        val canonicalParent = runCatching { file.parentFile?.canonicalPath }.getOrNull() ?: return false
+        val canonicalRoot = runCatching { epubRoot.canonicalPath }.getOrNull() ?: return false
+        val canonicalStoryDir = runCatching { storyEpubDir.canonicalPath }.getOrNull() ?: return false
+        if (canonicalParent != canonicalStoryDir || !canonicalStoryDir.startsWith(canonicalRoot)) return false
+        return file.delete()
+    }
+
     fun exportBackup(): File {
         val sourceLibrary = getLibrary()
         val library =
