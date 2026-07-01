@@ -91,7 +91,13 @@ internal fun ScreenHost.showQueue() {
                 itemAnimator = null
                 overScrollMode = View.OVER_SCROLL_NEVER
             }
-        centered.addView(summarySlot)
+        // Give the progress summary + status chips a bottom gap so they don't touch the chapter list.
+        centered.addView(
+            summarySlot,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = context.dp(Space.MD)
+            },
+        )
         centered.addView(emptySlot, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         centered.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         updateQueueContent(summarySlot, emptySlot, list, adapter, queue)
@@ -133,6 +139,9 @@ private fun ScreenHost.updateQueueContent(
     summarySlot.removeAllViews()
     emptySlot.removeAllViews()
     if (queue.isEmpty()) {
+        // No summary or list to show: collapse the summary block entirely (including its bottom gap)
+        // so the empty state sits flush at the top.
+        summarySlot.visibility = View.GONE
         list.visibility = View.GONE
         emptySlot.visibility = View.VISIBLE
         emptySlot.addView(
@@ -144,6 +153,7 @@ private fun ScreenHost.updateQueueContent(
             ),
         )
     } else {
+        summarySlot.visibility = View.VISIBLE
         list.visibility = View.VISIBLE
         emptySlot.visibility = View.GONE
         summarySlot.row {
