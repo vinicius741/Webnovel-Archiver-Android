@@ -22,6 +22,7 @@ import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
+import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.centerLoading
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -80,10 +81,15 @@ internal fun ScreenHost.queueDownload(
     }
 }
 
-@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler funnels any non-cancellation failure into onError; CancellationException is re-thrown first.
+@Suppress(
+    "TooGenericExceptionCaught",
+    "InstanceOfCheckForException",
+)
+// E1: route non-cancellation failures through the user-facing error path.
 internal fun ScreenHost.syncStory(
     url: String,
     tabId: String?,
+    mode: StorySyncMode = StorySyncMode.Default,
     onStatus: (String) -> Unit = { msg ->
         // Default: full-screen "Working" loader, used by the Browser import flow (no form to block).
         app.runOnUiThread { screen(title = "Working", onBack = null) { centerLoading(msg) } }
@@ -112,6 +118,7 @@ internal fun ScreenHost.syncStory(
                     syncEngine.fetchOrSync(
                         url,
                         tabId,
+                        mode,
                     ) { msg -> app.runOnUiThread { onStatus(msg) } }
                 }
             if (existingBeforeSync != null && !story.pendingNewChapterIds.isNullOrEmpty()) {
@@ -146,8 +153,15 @@ internal fun ScreenHost.syncStory(
  * navigates to a `screen(title = "Working")` — that full-screen flow is reserved for brand-new
  * fetches (Library "Fetch Story", Browser "Add") where no Details screen exists yet.
  */
-@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler surfaces any non-cancellation failure as a toast; CancellationException is re-thrown first.
-internal fun ScreenHost.syncStory(story: Story) {
+@Suppress(
+    "TooGenericExceptionCaught",
+    "InstanceOfCheckForException",
+)
+// E1: route non-cancellation failures through the user-facing error path.
+internal fun ScreenHost.syncStory(
+    story: Story,
+    mode: StorySyncMode = StorySyncMode.Default,
+) {
     if (!StoryActionGuards.canSync(story)) {
         toast(StoryActionGuards.archivedActionMessage("Sync"))
         return
@@ -168,7 +182,7 @@ internal fun ScreenHost.syncStory(story: Story) {
                 }
             val synced =
                 withContext(Dispatchers.IO) {
-                    syncEngine.fetchOrSync(story.sourceUrl, story.tabId) { msg ->
+                    syncEngine.fetchOrSync(story.sourceUrl, story.tabId, mode) { msg ->
                         app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
                     }
                 }
@@ -215,7 +229,11 @@ internal fun ScreenHost.applyCleanup(story: Story) {
     }
 }
 
-@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler surfaces any non-cancellation failure as a toast; CancellationException is re-thrown first.
+@Suppress(
+    "TooGenericExceptionCaught",
+    "InstanceOfCheckForException",
+)
+// E1: route non-cancellation failures through the user-facing error path.
 private fun ScreenHost.runCleanup(
     story: Story,
     downloaded: List<Chapter>,
@@ -311,7 +329,11 @@ internal fun ScreenHost.generateConfiguredEpub(
     }
 }
 
-@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E1: unified handler surfaces any non-cancellation failure as a toast; CancellationException is re-thrown first.
+@Suppress(
+    "TooGenericExceptionCaught",
+    "InstanceOfCheckForException",
+)
+// E1: route non-cancellation failures through the user-facing error path.
 internal fun ScreenHost.generateEpub(
     story: Story,
     chapters: List<Chapter>,

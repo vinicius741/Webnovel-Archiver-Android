@@ -189,6 +189,7 @@ object NetworkRequests {
 interface SourceProvider {
     val name: String
     val baseUrl: String
+    val supportsLatestChapterSync: Boolean get() = false
 
     fun isSource(url: String): Boolean
 
@@ -204,6 +205,13 @@ interface SourceProvider {
         network: NetworkClient,
         progress: (String) -> Unit = {},
     ): List<ChapterInfo>
+
+    suspend fun getLatestChapterList(
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit = {},
+    ): List<ChapterInfo>? = null
 
     fun parseChapterContent(html: String): String
 }
@@ -314,9 +322,11 @@ object RoyalRoadProvider : SourceProvider {
     }
 }
 
+@Suppress("TooManyFunctions")
 object ScribbleHubProvider : SourceProvider {
     override val name = "Scribble Hub"
     override val baseUrl = "https://www.scribblehub.com"
+    override val supportsLatestChapterSync = true
     private const val AJAX_URL = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
     private const val MAX_TOC_PAGE_SIZE = 50
     private val tocPageSizeHeaders = mapOf("Cookie" to "toc_show=$MAX_TOC_PAGE_SIZE")
@@ -388,24 +398,8 @@ object ScribbleHubProvider : SourceProvider {
         val chapters = parseToc(doc).toMutableList()
         val seen = chapters.map { it.url }.toMutableSet()
         if (!postId.isNullOrBlank() && chapters.size >= 15) {
-            suspend fun fetchPage(page: Int): List<ChapterInfo> {
-                val pageHtml =
-                    network
-                        .postForm(
-                            AJAX_URL,
-                            mapOf(
-                                "action" to "wi_getreleases_pagination",
-                                "pagenum" to page,
-                                "mypostid" to postId,
-                            ),
-                            tocPageSizeHeaders,
-                        ).replace(Regex("0\\s*$"), "")
-                        .trim()
-                return parseToc(Jsoup.parse(pageHtml, url))
-            }
-
             progress("Fetching chapter page 1...")
-            val firstPage = fetchPage(1)
+            val firstPage = fetchTocPage(network, url, postId, 1)
             if (firstPage.size >= chapters.size) {
                 chapters.clear()
                 chapters.addAll(firstPage)
@@ -414,7 +408,7 @@ object ScribbleHubProvider : SourceProvider {
             }
             for (page in 2..500) {
                 progress("Fetching chapter page $page...")
-                val pageChapters = fetchPage(page)
+                val pageChapters = fetchTocPage(network, url, postId, page)
                 if (pageChapters.isEmpty()) break
                 val newOnes = pageChapters.filter { seen.add(it.url) }
                 if (newOnes.isEmpty()) break
@@ -423,6 +417,25 @@ object ScribbleHubProvider : SourceProvider {
             }
         }
         return chapters.asReversed()
+    }
+
+    override suspend fun getLatestChapterList(
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit,
+    ): List<ChapterInfo>? {
+        val doc = Jsoup.parse(html, url)
+        val postId = doc.selectFirst("#mypostid")?.attr("value")
+        val chapters = parseToc(doc)
+        val latest =
+            if (!postId.isNullOrBlank() && chapters.size >= 15) {
+                progress("Fetching latest chapter page...")
+                fetchTocPage(network, url, postId, 1).ifEmpty { chapters }
+            } else {
+                chapters
+            }
+        return latest.asReversed()
     }
 
     override fun parseChapterContent(html: String): String {
@@ -440,6 +453,27 @@ object ScribbleHubProvider : SourceProvider {
             val href = link.absUrl("href").ifBlank { link.attr("href") }
             ChapterInfo(getChapterId(href), sanitizeTitle(link.text()).ifBlank { "Untitled Chapter" }, href)
         }
+
+    private suspend fun fetchTocPage(
+        network: NetworkClient,
+        url: String,
+        postId: String,
+        page: Int,
+    ): List<ChapterInfo> {
+        val pageHtml =
+            network
+                .postForm(
+                    AJAX_URL,
+                    mapOf(
+                        "action" to "wi_getreleases_pagination",
+                        "pagenum" to page,
+                        "mypostid" to postId,
+                    ),
+                    tocPageSizeHeaders,
+                ).replace(Regex("0\\s*$"), "")
+                .trim()
+        return parseToc(Jsoup.parse(pageHtml, url))
+    }
 
     private fun firstText(
         doc: Document,

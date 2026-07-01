@@ -54,6 +54,78 @@ object StorySyncPlanning {
         return ChapterMergeResult(chapters, newIds, removed, remappedLast)
     }
 
+    fun mergeLatestChapters(
+        existing: List<Chapter>,
+        incomingLatest: List<ChapterInfo>,
+        provider: SourceProvider,
+        lastRead: String?,
+    ): ChapterMergeResult? {
+        if (existing.isEmpty() || incomingLatest.isEmpty()) return null
+
+        val existingByStable = linkedMapOf<String, Chapter>()
+        val aliases = mutableMapOf<String, String>()
+        val existingStableOrder =
+            existing.mapNotNull { chapter ->
+                val stable = provider.getChapterId(chapter.url) ?: chapter.id.ifBlank { chapter.url }
+                if (stable.isBlank()) return@mapNotNull null
+                existingByStable.putIfAbsent(stable, chapter)
+                if (chapter.id.isNotBlank()) aliases[chapter.id] = stable
+                if (chapter.url.isNotBlank()) aliases[chapter.url] = stable
+                stable
+            }
+        if (existingStableOrder.isEmpty()) return null
+
+        val existingIndexByStable = existingStableOrder.withIndex().associate { it.value to it.index }
+        val incomingStable =
+            incomingLatest
+                .map { info ->
+                    val stable = provider.getChapterId(info.url) ?: info.id ?: info.url
+                    stable to info
+                }.filter { (stable, _) ->
+                    stable.isNotBlank()
+                }
+        val matchedExistingIndexes =
+            incomingStable.mapNotNull { (stable, _) -> existingIndexByStable[stable] }
+        if (matchedExistingIndexes.isEmpty()) return null
+        if (matchedExistingIndexes != matchedExistingIndexes.sorted()) return null
+
+        val firstCoveredExistingIndex = matchedExistingIndexes.minOrNull() ?: return null
+        val lastCoveredExistingIndex = matchedExistingIndexes.maxOrNull() ?: return null
+        val newIds = mutableListOf<String>()
+        val coveredChapters = mutableListOf<Chapter>()
+        var existingCursor = firstCoveredExistingIndex
+        incomingStable.forEach { (stable, info) ->
+            val matchedExistingIndex = existingIndexByStable[stable]
+            if (matchedExistingIndex != null) {
+                while (existingCursor < matchedExistingIndex) {
+                    coveredChapters.add(existing[existingCursor])
+                    existingCursor += 1
+                }
+                existingByStable[stable]?.let { found ->
+                    coveredChapters.add(found.copy(id = stable, title = sanitizeTitle(info.title), url = info.url))
+                }
+                existingCursor = matchedExistingIndex + 1
+            } else {
+                newIds.add(stable)
+                coveredChapters.add(Chapter(id = stable, title = sanitizeTitle(info.title), url = info.url, downloaded = false))
+            }
+        }
+        while (existingCursor <= lastCoveredExistingIndex) {
+            coveredChapters.add(existing[existingCursor])
+            existingCursor += 1
+        }
+        val chapters =
+            buildList {
+                addAll(existing.take(firstCoveredExistingIndex))
+                addAll(coveredChapters)
+                addAll(existing.drop(lastCoveredExistingIndex + 1))
+            }
+
+        var remappedLast = lastRead?.let { aliases[it] ?: it }
+        if (remappedLast != null && chapters.none { it.id == remappedLast }) remappedLast = null
+        return ChapterMergeResult(chapters, newIds, removedChapters = emptyList(), lastReadChapterId = remappedLast)
+    }
+
     fun buildPendingNewChapterIds(
         existingPending: List<String>?,
         chapterIdsToAdd: List<String>,

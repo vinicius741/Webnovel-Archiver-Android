@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.NetworkClient
 import com.vinicius741.webnovelarchiver.source.RoyalRoadProvider
+import com.vinicius741.webnovelarchiver.source.ScribbleHubProvider
 import com.vinicius741.webnovelarchiver.source.SourceProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -60,6 +61,136 @@ class StorySyncPlanningTest {
 
         assertEquals(listOf("c2"), merge.removedChapters.map { it.id })
         assertNull(merge.lastReadChapterId)
+    }
+
+    @Test
+    fun mergeLatestChaptersPreservesOlderChaptersAndAddsNewOnes() {
+        val existing =
+            listOf(
+                Chapter(
+                    id = "sh_100",
+                    title = "Old One",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/100/",
+                    downloaded = true,
+                    filePath = "/chapters/100.html",
+                ),
+                Chapter(
+                    id = "sh_200",
+                    title = "Old Two",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/200/",
+                    downloaded = true,
+                    filePath = "/chapters/200.html",
+                ),
+                Chapter(
+                    id = "sh_300",
+                    title = "Old Three",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/300/",
+                    downloaded = false,
+                ),
+            )
+        val latest =
+            listOf(
+                ChapterInfo(
+                    id = "sh_200",
+                    title = "Chapter 2 renamed",
+                    url = "https://www.scribblehub.com/read/1-story-new/chapter/200/",
+                ),
+                ChapterInfo(
+                    id = "sh_300",
+                    title = "Chapter 3 (2 hours ago)",
+                    url = "https://www.scribblehub.com/read/1-story-new/chapter/300/",
+                ),
+                ChapterInfo(
+                    id = "sh_400",
+                    title = "Chapter 4",
+                    url = "https://www.scribblehub.com/read/1-story-new/chapter/400/",
+                ),
+            )
+
+        val merge =
+            StorySyncPlanning.mergeLatestChapters(
+                existing,
+                latest,
+                ScribbleHubProvider,
+                lastRead = "sh_200",
+            )
+
+        requireNotNull(merge)
+        assertEquals(listOf("sh_100", "sh_200", "sh_300", "sh_400"), merge.chapters.map { it.id })
+        assertEquals(listOf("sh_400"), merge.newChapterIds)
+        assertEquals(emptyList<Chapter>(), merge.removedChapters)
+        assertEquals("Chapter 2 renamed", merge.chapters[1].title)
+        assertEquals("/chapters/200.html", merge.chapters[1].filePath)
+        assertTrue(merge.chapters[1].downloaded)
+        assertEquals("Chapter 3", merge.chapters[2].title)
+        assertFalse(merge.chapters[3].downloaded)
+        assertEquals("sh_200", merge.lastReadChapterId)
+    }
+
+    @Test
+    fun mergeLatestChaptersPreservesExistingGapsInsideLatestWindow() {
+        val existing =
+            listOf(
+                Chapter(id = "sh_100", title = "One", url = "https://www.scribblehub.com/read/1-story/chapter/100/"),
+                Chapter(id = "sh_200", title = "Two", url = "https://www.scribblehub.com/read/1-story/chapter/200/"),
+                Chapter(
+                    id = "sh_250",
+                    title = "Two Point Five",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/250/",
+                    downloaded = true,
+                    filePath = "/chapters/250.html",
+                ),
+                Chapter(id = "sh_300", title = "Three", url = "https://www.scribblehub.com/read/1-story/chapter/300/"),
+            )
+        val latest =
+            listOf(
+                ChapterInfo(id = "sh_200", title = "Two Updated", url = "https://www.scribblehub.com/read/1-story/chapter/200/"),
+                ChapterInfo(id = "sh_300", title = "Three Updated", url = "https://www.scribblehub.com/read/1-story/chapter/300/"),
+                ChapterInfo(id = "sh_400", title = "Four", url = "https://www.scribblehub.com/read/1-story/chapter/400/"),
+            )
+
+        val merge =
+            StorySyncPlanning.mergeLatestChapters(
+                existing,
+                latest,
+                ScribbleHubProvider,
+                lastRead = null,
+            )
+
+        requireNotNull(merge)
+        assertEquals(listOf("sh_100", "sh_200", "sh_250", "sh_300", "sh_400"), merge.chapters.map { it.id })
+        assertEquals("/chapters/250.html", merge.chapters[2].filePath)
+        assertTrue(merge.chapters[2].downloaded)
+        assertEquals(emptyList<Chapter>(), merge.removedChapters)
+    }
+
+    @Test
+    fun mergeLatestChaptersReturnsNullWhenThereIsNoOverlap() {
+        val existing =
+            listOf(
+                Chapter(
+                    id = "sh_100",
+                    title = "One",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/100/",
+                ),
+            )
+        val latest =
+            listOf(
+                ChapterInfo(
+                    id = "sh_200",
+                    title = "Two",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/200/",
+                ),
+            )
+
+        assertNull(
+            StorySyncPlanning.mergeLatestChapters(
+                existing,
+                latest,
+                ScribbleHubProvider,
+                lastRead = null,
+            ),
+        )
     }
 
     @Test

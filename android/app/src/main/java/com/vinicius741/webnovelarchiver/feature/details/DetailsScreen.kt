@@ -28,6 +28,8 @@ import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.DESCRIPTION_PREVIEW_LENGTH
@@ -542,6 +544,12 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     options += "Open Source" to {
         runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
             .onFailure { toast("No app available to open source") }
+    }
+    val provider = SourceRegistry.getProvider(story.sourceUrl)
+    if (StoryActionGuards.canSync(story) && provider?.supportsLatestChapterSync == true) {
+        options += "Full Sync" to {
+            if (isBusy) toast("Please wait for the current operation to finish") else syncStory(story, StorySyncMode.Full)
+        }
     }
     if (StoryActionGuards.canQueueDownloads(story)) {
         options += "Select Chapters" to {
