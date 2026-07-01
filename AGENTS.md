@@ -3,7 +3,6 @@
 ## Scope
 
 - Active development targets the native Kotlin app under `android/`.
-- `app/`, `src/`, and `modules/` are the legacy React Native/Expo implementation. Treat them as reference-only unless the user explicitly requests legacy work.
 - Follow any more-specific `AGENTS.md` found below this directory. Instructions closest to the files being changed take precedence.
 
 ## Git Workflow

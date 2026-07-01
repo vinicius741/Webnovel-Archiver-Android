@@ -1,63 +1,32 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
-node_modules/
-
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
+# Kotlin metadata cache (kept out of the android/ tree's own ignore scope)
 .kotlin/
+/android/.kotlin/
+
+# Debug keystore & secrets (release keystore matched by *.jks below)
+/android/app/debug.keystore
+
+# Signing credentials & secrets
 *.orig.*
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+*.pem
+/android/local.properties
 
 # macOS
 .DS_Store
-*.pem
 
 # local env files
 .env*.local
 
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-
-# Android native app build/local artifacts
-/android/.gradle/
-/android/build/
-/android/app/build/
-/android/app/debug.keystore
-/android/.kotlin/
-/android/local.properties
-/android/captures/
-
-# Android build artifacts
+# Built APKs / AABs and the local export directory
 *.apk
 *.aab
+/apk-output/
 
-# Jest
+# Test coverage
 coverage/
-
-# Quality reports
-quality-report/
-
-# Module build artifacts
-modules/tts-media-session/android/.gradle/
-modules/tts-media-session/android/build/

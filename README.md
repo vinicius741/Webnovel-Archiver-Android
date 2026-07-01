@@ -2,7 +2,7 @@
 
 A local-first Android app for downloading, archiving, and reading webnovels offline. Built with **native Kotlin**.
 
-> **Note:** This app was originally developed with React Native / Expo and has been fully rewritten in native Kotlin. The legacy React Native source (`app/`, `src/`, `modules/`) remains in the repository for reference. Active development targets the native app under `android/`.
+> **Note:** This app was originally developed with React Native / Expo and has since been fully rewritten in native Kotlin. The legacy React Native source has been removed; active development targets the native app under `android/`.
 
 ## Key Features
 
@@ -52,7 +52,7 @@ cd android
 
 Install the signed release APK from `apk-output/WebnovelArchiver-Native-release.apk`.
 
-The native Kotlin app installs as a separate app from the legacy React Native app. Its package ID is `com.vinicius741.webnovelarchiver.nativeapp`, and its launcher name is `Webnovel Archiver Native`.
+Its package ID is `com.vinicius741.webnovelarchiver.nativeapp`, and its launcher name is `Webnovel Archiver Native`.
 
 If Android shows only `App not installed`, first remove any previous install of `Webnovel Archiver Native` and try the generated APK again. Android will reject an update when an already-installed app has the same package ID but was signed with a different certificate, or when the installed app has a newer version code. With USB debugging enabled, the equivalent cleanup command is:
 
@@ -145,17 +145,8 @@ android/
     build.gradle
   build.gradle
   settings.gradle
-
-app/                  # Legacy React Native screens (reference only)
-src/                  # Legacy React Native services/hooks/components (reference only)
-modules/              # Legacy Expo native modules (reference only)
-documentation/        # Technical documentation
 ```
-
-## Legacy React Native Codebase
-
-The directories `app/`, `src/`, `modules/`, and the root config files (`package.json`, `tsconfig.json`, `metro.config.js`, etc.) belong to the original React Native / Expo implementation. They are preserved for reference but are **not actively maintained**. The `npm` scripts (`npm run check`, `npm start`, etc.) operate on this legacy code only.
 
 ## Contributing
 
-Contributions are welcome! Please read `AGENTS.md` and the `documentation/` folder before submitting a PR. All changes should target the native Kotlin app under `android/`.
+Contributions are welcome! Please read `AGENTS.md` before submitting a PR. All changes should target the native Kotlin app under `android/`.

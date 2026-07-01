@@ -528,8 +528,8 @@ private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
 
 /**
- * Window (ms) within which two taps on the description copy it to the clipboard, matching the legacy
- * RN StoryDescription's 300ms double-press → expo-clipboard behaviour.
+ * Window (ms) within which two taps on the description copy it to the clipboard (300ms
+ * double-press gesture).
  */
 private const val DESCRIPTION_DOUBLE_TAP_COPY_WINDOW_MS = 300L
 
