@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParseException
 import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
@@ -33,14 +34,13 @@ import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.text
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import com.google.gson.JsonParseException
-import timber.log.Timber
 
 /**
  * Low-level file-based persistence. All JSON documents are written through [DurableJson] (AtomicFile
@@ -76,6 +76,7 @@ class AppStorage(
     private val sentencesFile = File(root, "sentence_removal.json")
     private val regexFile = File(root, "regex_cleanup_rules.json")
     private val queueFile = File(root, "download_queue.json")
+    private val updateFollowedStoriesFile = File(root, "update_followed_story_ids.json")
     private val ttsFile = File(root, "tts_settings.json")
     private val sessionFile = File(root, "tts_session.json")
 
@@ -162,6 +163,10 @@ class AppStorage(
     fun getRegexRules(): MutableList<RegexCleanupRule> = TextCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
 
     fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, TextCleanup.sanitizeRegexRules(rules))
+
+    fun getUpdateFollowedStoryIds(): MutableList<String> = read(updateFollowedStoriesFile) ?: mutableListOf()
+
+    fun saveUpdateFollowedStoryIds(ids: List<String>) = write(updateFollowedStoriesFile, ids.filter { it.isNotBlank() }.distinct())
 
     fun getTtsSettings(): TtsSettings = PreferenceNormalization.ttsSettings(read(ttsFile) ?: TtsSettings())
 
@@ -431,6 +436,7 @@ class AppStorage(
                 "tabs" to getTabs(),
                 "sentenceRemovalList" to getSentenceRemovalList(),
                 "regexCleanupRules" to getRegexRules(),
+                "updateFollowedStoryIds" to getUpdateFollowedStoryIds(),
                 "ttsSettings" to getTtsSettings(),
                 "ttsSession" to getTtsSession(),
                 "foldLayoutMode" to getDisplayPreferences().foldLayoutMode,
@@ -819,6 +825,10 @@ class AppStorage(
         payload["regexCleanupRules"]?.let {
             val rules = normalizeConfig<List<RegexCleanupRule>>(it, object : TypeToken<MutableList<RegexCleanupRule>>() {}.type)
             writeStagedEnvelope(File(stagedRoot, "regex_cleanup_rules.json"), TextCleanup.sanitizeRegexRules(rules))
+        }
+        payload["updateFollowedStoryIds"]?.let {
+            val ids = normalizeConfig<List<String>>(it, object : TypeToken<MutableList<String>>() {}.type)
+            writeStagedEnvelope(File(stagedRoot, "update_followed_story_ids.json"), ids.filter { id -> id.isNotBlank() }.distinct())
         }
         payload["ttsSettings"]?.let {
             writeStagedEnvelope(

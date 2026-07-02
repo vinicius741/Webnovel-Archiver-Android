@@ -42,6 +42,45 @@ class AddStoryScreenState {
     var urlText: String? = null
 }
 
+class UpdateTrackerScreenState {
+    var syncing: Boolean = false
+    var completed: Int = 0
+    var total: Int = 0
+    var currentStoryId: String? = null
+    var currentStoryTitle: String? = null
+    var currentStatus: String? = null
+    val errors: MutableMap<String, String> = mutableMapOf()
+
+    fun reset(total: Int) {
+        syncing = true
+        completed = 0
+        this.total = total
+        currentStoryId = null
+        currentStoryTitle = null
+        currentStatus = "Starting..."
+        errors.clear()
+    }
+
+    fun finish() {
+        syncing = false
+        currentStoryId = null
+        currentStoryTitle = null
+        currentStatus = null
+    }
+}
+
+/**
+ * Transient UI state for the Follow Updates selection screen. `query` is the live search text and
+ * `showCovers` mirrors the persisted [com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences.showCoversOnUpdates]
+ * toggle. Both live here (rather than only in the EditText) so the screen can re-render the
+ * filtered list in place without losing the typed query, and so the toggle survives the
+ * navigation/re-render cycle that rebuilding the view tree performs.
+ */
+class UpdateFollowSelectionState {
+    var query: String = ""
+    var showCovers: Boolean = false
+}
+
 /**
  * The contract between [MainActivity] and the screen/action extension functions split across
  * the `screens/`, `actions/`, and `ui/` files. Exposes only the shared dependencies and the
@@ -76,6 +115,15 @@ interface ScreenHost {
      * [AddStoryScreenState]; lives here so it survives the screen's status-driven re-renders.
      */
     val addStoryScreenState: AddStoryScreenState
+
+    val updateTrackerScreenState: UpdateTrackerScreenState
+
+    /**
+     * Transient state for the Follow Updates selection screen's search field + show-covers toggle
+     * (see [UpdateFollowSelectionState]). Lives here so the typed query and toggle survive the
+     * screen's in-place list re-renders.
+     */
+    val updateFollowSelectionState: UpdateFollowSelectionState
 
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by

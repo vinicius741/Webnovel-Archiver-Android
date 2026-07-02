@@ -31,6 +31,8 @@ import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
+import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -70,6 +72,14 @@ class MainActivity :
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
+    override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
+    // Lazy: seeded from persisted DisplayPreferences, which are only available after `storage` is
+    // assigned in onCreate. First access happens during a screen render, well after that.
+    override val updateFollowSelectionState: UpdateFollowSelectionState by lazy {
+        UpdateFollowSelectionState().apply {
+            showCovers = storage.getDisplayPreferences().showCoversOnUpdates
+        }
+    }
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */

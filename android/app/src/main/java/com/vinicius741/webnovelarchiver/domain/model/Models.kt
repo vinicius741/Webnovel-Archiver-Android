@@ -152,6 +152,10 @@ data class DisplayPreferences(
     /** Persisted Library tab selection. Encoded form of the runtime id (see [LibraryTabSelection]);
      *  `null`/blank means "never set", which resolves to the All tab. Survives app restarts. */
     var libraryTabId: String? = null,
+    /** When true the Follow Updates list shows a cover thumbnail next to each novel. Survives app
+     *  restarts; defaults to false so persisted JSON written before this field exists keeps the
+     *  compact row look. */
+    var showCoversOnUpdates: Boolean = false,
 )
 
 data class RegexCleanupRule(
