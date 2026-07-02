@@ -4,6 +4,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import java.net.URI

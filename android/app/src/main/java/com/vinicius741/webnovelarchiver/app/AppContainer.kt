@@ -4,7 +4,7 @@ import android.content.Context
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
-import com.vinicius741.webnovelarchiver.source.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope

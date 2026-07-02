@@ -8,7 +8,7 @@ import timber.log.Timber
 /**
  * Application entry point. Owns the process-wide [AppContainer] (Maintainability M2) so that the
  * activity and the download/TTS foreground services share a single [com.vinicius741.webnovelarchiver.data.storage.AppStorage],
- * [com.vinicius741.webnovelarchiver.source.NetworkClient], and set of engines — preventing duplicate
+ * [com.vinicius741.webnovelarchiver.source.network.NetworkClient], and set of engines — preventing duplicate
  * engines from racing on the same JSON files.
  *
  * Observability (Tier 1, T1): plants a [Timber.DebugTree] in debug builds so diagnostics flow to

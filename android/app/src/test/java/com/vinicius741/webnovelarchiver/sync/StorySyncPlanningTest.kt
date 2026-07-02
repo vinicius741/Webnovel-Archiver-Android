@@ -5,7 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.source.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.RoyalRoadProvider
 import com.vinicius741.webnovelarchiver.source.ScribbleHubProvider
 import com.vinicius741.webnovelarchiver.source.SourceProvider

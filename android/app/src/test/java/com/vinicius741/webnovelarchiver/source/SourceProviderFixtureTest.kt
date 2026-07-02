@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.ui.size
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
