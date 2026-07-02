@@ -105,7 +105,11 @@ internal fun ScreenHost.showReaderSettingsPanel(
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(12), 0, dp(12))
             }
-        val sizeLabel = makeText(app, "${(display.readerFontScale * 100).roundToInt()}%", Type.BODY_LARGE, colors.onSurface)
+        val sizeLabel =
+            makeText(app, "${(display.readerFontScale * 100).roundToInt()}%", Type.BODY_LARGE, colors.onSurface).apply {
+                gravity = Gravity.CENTER
+                textAlignment = View.TEXT_ALIGNMENT_CENTER
+            }
 
         fun applyFont(delta: Float) {
             display.readerFontScale =
@@ -125,7 +129,6 @@ internal fun ScreenHost.showReaderSettingsPanel(
             sizeLabel,
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
                 gravity = Gravity.CENTER
-                textAlignment = View.TEXT_ALIGNMENT_CENTER
             },
         )
         fontRow.addView(
