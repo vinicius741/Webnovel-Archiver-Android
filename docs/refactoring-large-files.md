@@ -6,6 +6,11 @@ package layout is already healthy (`data/domain/feature/source/tts/ui` with well
 pure `*Planning.kt` siblings for testing); the bloat is concentrated in a handful of files,
 not spread across the tree.
 
+> **Status: complete (2026-07-02).** All four priority refactors below have been executed and
+> verified — each step built, passed `:app:ci` (unit tests + detekt + lint + assembleDebug),
+> and the affected screens/flows were smoke-tested on the `webnovel_api36` emulator. The
+> `[x]` items and per-section "Done" notes record what landed.
+
 ## Context
 
 - Total main-source Kotlin: ~18,900 lines. Only **one** file is near the 1,000-line mark;
@@ -47,13 +52,21 @@ not spread across the tree.
 **Plan.** Split into sibling files, matching the pattern already present in
 `source/PatreonStatsFetcher.kt` and `source/SourceUrlValidation.kt`:
 
-- [ ] `source/network/NetworkClient.kt` — `NetworkClient` + `NetworkRequests`.
-- [ ] `source/SourceProvider.kt` — interface + `SourceRegistry` + shared top-level helpers.
-- [ ] `source/RoyalRoadProvider.kt` — the object + its private parsing helpers.
-- [ ] `source/ScribbleHubProvider.kt` — the object + its private parsing helpers.
+- [x] `source/network/NetworkClient.kt` — `NetworkClient` + `NetworkRequests`.
+- [x] `source/SourceProvider.kt` — interface + `SourceRegistry` + shared top-level helpers.
+- [x] `source/RoyalRoadProvider.kt` — the object + its private parsing helpers.
+- [x] `source/ScribbleHubProvider.kt` — the object + its private parsing helpers.
 
 **Risk.** Mechanical move, package-private visibility unchanged. Each provider already
 implements the interface and owns its parsing helpers. Lowest-risk item on the list.
+
+**Done (2026-07-02).** `source/Sources.kt` (618) is gone; the four siblings above now own the
+code. `NetworkClient`/`NetworkRequests` moved to the new `source.network` subpackage, so their
+7 callers (AppContainer, DownloadEngine, StorySyncEngine, EpubEngine, PatreonStatsFetcher, plus
+the source-package tests) now import `source.network.NetworkClient`. The shared parsing helpers
+(`blockText`, `findPatreonUrl`, `sanitizeTitle`, `descriptionBlockTags`) widened from file-private
+to package-`internal` in `SourceProvider.kt` so the per-provider files can use them; `sanitizeTitle`
+stays `public` (its existing call surface). Resulting sizes: 176 / 152 / 104 / 204.
 
 ### 2. `data/storage/AppStorage.kt` (982) — highest leverage
 
@@ -69,10 +82,10 @@ implements the interface and owns its parsing helpers. Lowest-risk item on the l
 **Plan.** Extract the backup/restore cluster into a dedicated coordinator, keeping
 `AppStorage` focused on CRUD + path resolution:
 
-- [ ] `data/backup/BackupRestoreCoordinator.kt` (or `data/storage/BackupRestoreEngine.kt`)
-      — owns the staging / atomic-swap / rollback transaction. Takes a reference to
-      `AppStorage` (or just the resolved `File` roots).
-- [ ] `AppStorage.kt` drops to ~380 lines and keeps: library/story/chapter/epub CRUD,
+- [x] `data/storage/BackupRestoreCoordinator.kt` — owns the staging / atomic-swap / rollback
+      transaction. Takes a reference to `AppStorage` (held as an `internal` collaborator in the
+      same package, so it reaches the resolved `File` roots + path helpers).
+- [x] `AppStorage.kt` drops to ~380 lines and keeps: library/story/chapter/epub CRUD,
       path resolution (`storyFile`, `chapterFile`, `relativize`), and the JSON envelope
       read/write primitives.
 
@@ -81,6 +94,19 @@ load-bearing and the most safety-sensitive code in the app. It is also the code 
 densest reliability comments (R1 / R1.3 / R7). Keep the existing `data/backup/*Planning.kt`
 pure helpers in place and route the coordinator through them; this is the logic with the
 best unit-test payoff, so the extraction doubles as a testability win.
+
+**Done (2026-07-02).** `data/storage/BackupRestoreCoordinator.kt` (572) now owns all five
+public backup methods (`exportBackup`, `exportCleanupRules`, `exportFullBackup`,
+`importBackupUri`, `importFullBackupUri`) and every private restore helper (`restoreFromZip`,
+`extractZipWithLimits`, `verifyStagedTree`, `swapRoots`, `rollbackRootFromSnapshot`,
+`writeConfigTo`/`writeLibraryTo`/`writeStagedEnvelope`, `chapterFileIndex`,
+`collectFullBackupChapterFiles`). `AppStorage.kt` (982 → 467) keeps its public backup method
+signatures as one-line delegates to the lazily-constructed coordinator, so the 3 callers
+(SettingsScreen, MainActivity, CleanupScreen) are unchanged. The members the coordinator
+reaches (`root`, `storyDir`, `chapterRoot`, `epubRoot`, `backupRoot`, `restoreRoot`,
+`preRestoreSnapshotDir`, `gson`, `appVersion`, `context`, `safeName`, `relativize`,
+`resolveChapterPath`) widened from `private` to `internal`. All R1.2 / R7 / P3 / S5 / E3 / T1
+reliability comments were preserved verbatim.
 
 ### 3. `feature/details/DetailsScreen.kt` (674) — finish an in-progress decomposition
 
@@ -92,13 +118,24 @@ composable), plus `showDetailsOverflow`, `renderChapterList`, `renderFilterChips
 
 **Plan.** Break `showDetails` into sub-composables matching the existing siblings:
 
-- [ ] `feature/details/DetailsChapterList.kt` — chapter list + filter chips + overflow menu
-      (the `renderChapterList` / `renderFilterChips` / `showDetailsOverflow` content).
-- [ ] `DetailsScreen.kt` becomes the orchestrator: state wiring + layout selection
+- [x] `feature/details/DetailsChapterList.kt` — chapter list + filter chips + overflow menu
+      (the `renderChapterList` / `renderFilterChips` / `showDetailsOverflow` content), plus the
+      pure `filterDetailsChapters` helper and `toggleChapterBookmark`.
+- [x] `DetailsScreen.kt` becomes the orchestrator: state wiring + layout selection
       (single-pane vs two-pane). Target ~200–250 lines.
 
 **Pattern reference.** This mirrors the decomposition already proven by
 `LibraryScreen.kt` (300) + `LibraryStoryViews.kt` (227) + `LibraryFilters.kt` (418).
+
+**Done (2026-07-02).** The 430-line `showDetails` composable is gone. `DetailsScreen.kt`
+(674 → 304) is now the orchestrator: state setup, the `screen(...)` shell, chapter-controls
+wiring, single-pane vs two-pane layout selection, and the in-place download-refresh loop
+(extracted to `observeDetailsDownload` + the compact-list header to `buildCompactListHeader`).
+A new `feature/details/DetailsInfoPanel.kt` (315) owns the info-panel builder
+(`buildDetailsInfoPanel` + `addDetailsDescription` / `addDetailsTags` / `buildStaleEpubNotice`),
+returning the panel plus the two stable slots the refresh loop patches. `DetailsChapterList.kt`
+(171) owns the chapter-list concerns. `renderDetailsDownloadAction` and the two-pane layout
+constants stayed in `DetailsScreen.kt`. Resulting sizes: 304 / 315 / 171.
 
 ### 4. `cleanup/TextCleanup.kt` (510) — group by consumer
 
@@ -113,9 +150,20 @@ composable), plus `showDetailsOverflow`, `renderChapterList`, `renderFilterChips
 **Plan.** Split by consumer domain (lower priority — pure functions, no shared mutable
 state):
 
-- [ ] `cleanup/RegexRuleCleanup.kt` — the five regex-management functions.
-- [ ] `cleanup/HtmlCleanup.kt` — HTML-to-text transformation used by the download engine.
-- [ ] `tts/TtsTextPreparation.kt` (or keep under `cleanup/`) — the two TTS prep functions.
+- [x] `cleanup/RegexRuleCleanup.kt` — the five regex-management functions.
+- [x] `cleanup/HtmlCleanup.kt` — HTML-to-text transformation used by the download engine.
+- [x] `cleanup/TtsTextPreparation.kt` — the two TTS prep functions (kept under `cleanup/`
+      rather than `tts/` so it shares the package-private `TextCleanup.regexRunner` helper
+      with the rest of the cleanup domain).
+
+**Done (2026-07-02).** `TextCleanup.kt` (510 → 97) is now a thin facade that re-exposes every
+public method + nested type (`QuickPattern`, `RegexValidationResult`, `TtsAnnotatedHtml`) and
+owns the shared `internal` helpers (`regexOptions`, `regexRunner`) the siblings use. The
+implementation moved to three consumer-domain objects — `RegexRuleCleanup` (199),
+`HtmlCleanup` (151), `TtsTextPreparation` (161) — so the ~60 `TextCleanup.*` call sites (TtsEngine,
+DownloadEngine, ReaderScreen, CleanupScreen, AppStorage, BackupRestoreCoordinator, CleanupEngine,
+and the tests) are unchanged. `CleanupScreen`'s one nested-type reference was updated to
+`RegexRuleCleanup.QuickPattern` (its natural consumer-domain owner).
 
 ## Files to leave alone (for now)
 
@@ -127,20 +175,25 @@ touched, using the ~600-line soft ceiling as the trigger.
 
 ## Suggested execution order
 
-1. **`Sources.kt` split** — mechanical, zero-risk, immediate navigability win. Do first.
+1. **`Sources.kt` split** — mechanical, zero-risk, immediate navigability win. Do first. ✅ Done.
 2. **`AppStorage.kt` backup extraction** — biggest size reduction + isolates the riskiest
-   transactional code. Plan carefully; the restore transaction is load-bearing.
-3. **`DetailsScreen.kt` decomposition** — finish what its package already started.
-4. **`TextCleanup.kt` split** — optional cleanup; pure-function moves, low urgency.
+   transactional code. Plan carefully; the restore transaction is load-bearing. ✅ Done.
+3. **`DetailsScreen.kt` decomposition** — finish what its package already started. ✅ Done.
+4. **`TextCleanup.kt` split** — optional cleanup; pure-function moves, low urgency. ✅ Done.
 
 ## Verification per step
 
 After each extraction:
 
-- [ ] `android/gradlew -p android :app:assembleDebug` builds.
-- [ ] `android/gradlew -p android ci` (`testDebugUnitTest` + `detekt` + `lintDebug`) passes.
-- [ ] Smoke run on `webnovel_api36` (debug variant, `emulator-*` serial) — confirm the
-      affected screen/flow still loads and the library/queue/restore paths behave.
+- [x] `android/gradlew -p android :app:assembleDebug` builds.
+- [x] `android/gradlew -p android ci` (`testDebugUnitTest` + `detekt` + `lintDebug` +
+      `assembleDebug`) passes.
+- [x] Smoke run on `webnovel_api36` (debug variant, `emulator-5554` serial) — confirmed the
+      Library, Details (info panel + chapter list + overflow menu), and Settings/backup flows
+      still load with no crashes.
+
+All four extractions were verified incrementally with `:app:ci` after each step, then a final
+end-to-end smoke run on the emulator after the last extraction.
 
 ## Notes / gotchas
 
