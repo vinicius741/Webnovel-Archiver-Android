@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.cleanup.SentenceRemovalPlanning
 import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
@@ -387,7 +388,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
     dialog.applyAppTheme()
 }
 
-internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (TextCleanup.QuickPattern) -> Unit) {
+internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.QuickPattern) -> Unit) {
     val view =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
