@@ -23,6 +23,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
+import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
@@ -176,6 +177,11 @@ class MainActivity :
             showLibrary()
             importFromBrowser(url)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        SourceAccessRetryCoordinator.consumePendingRetry()?.invoke()
     }
 
     override fun onDestroy() {

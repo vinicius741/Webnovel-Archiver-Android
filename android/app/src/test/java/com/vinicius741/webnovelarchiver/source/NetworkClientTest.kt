@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -52,6 +53,57 @@ class NetworkClientTest {
                 assertTrue(error.message!!.contains("HTTP 404"))
             }
             assertTrue(threw)
+        }
+
+    @Test
+    fun fetchThrowsSourceBlockedForCloudflareChallenge() =
+        runBlocking {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(403)
+                    .setHeader("cf-mitigated", "challenge")
+                    .setBody("<html><head><title>Just a moment...</title></head></html>"),
+            )
+
+            val result = runCatching { client.fetch(server.url("/protected").toString()) }
+
+            assertTrue(result.exceptionOrNull() is SourceAccessBlockedException)
+        }
+
+    @Test
+    fun fetchDoesNotFlagChapterProseAsSourceBlocked() =
+        runBlocking {
+            // Regression guard: chapter prose containing the content-prone marker phrase must NOT
+            // be misclassified as a Cloudflare challenge (no Cloudflare header signal present).
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        "<html><body><p>Please enable javascript and cookies to continue " +
+                            "reading this wonderful story. It was a dark and stormy night...</p></body></html>",
+                    ),
+            )
+
+            val body = client.fetch(server.url("/chapter").toString())
+
+            assertTrue(body.contains("dark and stormy night"))
+        }
+
+    @Test
+    fun fetchFlagsCloudflareInterstitialOnSuccessStatus() =
+        runBlocking {
+            // A Cloudflare "Just a moment..." interstitial can return HTTP 200 with the challenge
+            // body; the corroboration (server: cloudflare + markers) must still flag it.
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(200)
+                    .setHeader("server", "cloudflare")
+                    .setBody("<html><head><title>Just a moment...</title></head></html>"),
+            )
+
+            val result = runCatching { client.fetch(server.url("/interstitial").toString()) }
+
+            assertTrue(result.exceptionOrNull() is SourceAccessBlockedException)
         }
 
     @Test

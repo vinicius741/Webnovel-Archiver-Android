@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
@@ -84,7 +85,12 @@ object ScribbleHubProvider : SourceProvider {
         val seen = chapters.map { it.url }.toMutableSet()
         if (!postId.isNullOrBlank() && chapters.size >= 15) {
             progress("Fetching chapter page 1...")
-            val firstPage = fetchTocPage(network, url, postId, 1)
+            val firstPage =
+                try {
+                    fetchTocPage(network, url, postId, 1)
+                } catch (_: SourceAccessBlockedException) {
+                    emptyList()
+                }
             if (firstPage.size >= chapters.size) {
                 chapters.clear()
                 chapters.addAll(firstPage)
@@ -93,7 +99,12 @@ object ScribbleHubProvider : SourceProvider {
             }
             for (page in 2..500) {
                 progress("Fetching chapter page $page...")
-                val pageChapters = fetchTocPage(network, url, postId, page)
+                val pageChapters =
+                    try {
+                        fetchTocPage(network, url, postId, page)
+                    } catch (_: SourceAccessBlockedException) {
+                        break
+                    }
                 if (pageChapters.isEmpty()) break
                 val newOnes = pageChapters.filter { seen.add(it.url) }
                 if (newOnes.isEmpty()) break
@@ -116,7 +127,11 @@ object ScribbleHubProvider : SourceProvider {
         val latest =
             if (!postId.isNullOrBlank() && chapters.size >= 15) {
                 progress("Fetching latest chapter page...")
-                fetchTocPage(network, url, postId, 1).ifEmpty { chapters }
+                try {
+                    fetchTocPage(network, url, postId, 1).ifEmpty { chapters }
+                } catch (_: SourceAccessBlockedException) {
+                    chapters
+                }
             } else {
                 chapters
             }

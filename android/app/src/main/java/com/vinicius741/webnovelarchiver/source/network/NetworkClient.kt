@@ -39,7 +39,13 @@ class NetworkClient(
     ): String {
         waitForRateLimit(url)
         val request = NetworkRequests.pageRequest(url)
-        return executeWithRetries(url, request, callTimeoutMillis) { it.body?.string().orEmpty() }
+        return executeWithRetries(url, request, callTimeoutMillis) { response ->
+            val body = response.body?.string().orEmpty()
+            if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
+                throw SourceAccessBlockedException(url)
+            }
+            body
+        }
     }
 
     suspend fun postForm(
@@ -49,7 +55,13 @@ class NetworkClient(
     ): String {
         waitForRateLimit(url)
         val request = NetworkRequests.formRequest(url, fields, headers)
-        return executeWithRetries(url, request) { it.body?.string().orEmpty() }
+        return executeWithRetries(url, request) { response ->
+            val body = response.body?.string().orEmpty()
+            if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
+                throw SourceAccessBlockedException(url)
+            }
+            body
+        }
     }
 
     /**
@@ -72,9 +84,13 @@ class NetworkClient(
                 val body = response.body ?: return@use null
                 val length = body.contentLength()
                 if (length > maxBytes) return@use null
-                val bytes = body.bytes()
-                if (bytes.size.toLong() > maxBytes) return@use null
-                bytes
+                // Cap at the source so a chunked/unknown-length response can't be buffered in full
+                // before the size check runs. Request one byte past the cap; if we get it, the body
+                // is too large.
+                val source = body.source()
+                source.request(maxBytes + 1)
+                if (source.buffer.size > maxBytes) return@use null
+                source.buffer.readByteArray()
             }
         }.getOrNull()
     }
@@ -92,6 +108,10 @@ class NetworkClient(
             val response = call.execute()
             response.use {
                 if (it.isSuccessful) return read(it)
+                val responseBody = it.body?.string().orEmpty()
+                if (SourceAccessBlockDetector.isChallengeResponse(it.headers, responseBody)) {
+                    throw SourceAccessBlockedException(url)
+                }
                 val host = runCatching { URL(url).host }.getOrNull()
                 val shouldRetry = host == "www.scribblehub.com" && (it.code == 403 || it.code == 429) && attempt < 3
                 if (!shouldRetry) throw IllegalStateException("HTTP ${it.code} for $url")

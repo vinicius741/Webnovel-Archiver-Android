@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserUrlPlanning
+import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -21,6 +22,7 @@ import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.alert
@@ -137,6 +139,13 @@ internal fun ScreenHost.syncStory(
             // (Activity destroyed / lifecycleScope cancelled) must propagate, not become an onError.
             if (error is CancellationException) throw error
             Timber.w(error, "Sync failed for %s", url)
+            if (error is SourceAccessBlockedException) {
+                showLibrary()
+                showSourceAccessBlockedDialog(url) {
+                    syncStory(url, tabId, mode, onStatus, onDone, onError)
+                }
+                return@launch
+            }
             onError(error)
         }
     }
@@ -203,6 +212,13 @@ internal fun ScreenHost.syncStory(
             if (error is CancellationException) throw error
             Timber.w(error, "In-place sync failed for %s", story.id)
             clearStoryOperation(story.id, StoryOperationKind.SYNC, rerender = false)
+            if (error is SourceAccessBlockedException) {
+                showDetails(story.id)
+                showSourceAccessBlockedDialog(story.sourceUrl) {
+                    syncStory(story, mode)
+                }
+                return@launch
+            }
             toast(error.message ?: "Sync failed")
             // Stay on Details (not the Library) so the user sees the result in context.
             showDetails(story.id)

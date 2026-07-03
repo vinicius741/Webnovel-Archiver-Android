@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.download
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.ui.size
 
 /**
@@ -87,6 +88,14 @@ object DownloadErrorClassifier {
     private const val RETRY_MAX_DELAY_MS = 60000L
 
     fun classify(error: Throwable): ClassifiedDownloadError {
+        if (error is SourceAccessBlockedException) {
+            return ClassifiedDownloadError(
+                error.message ?: "Source blocked automated access",
+                "source_blocked",
+                "SOURCE_BLOCKED",
+                false,
+            )
+        }
         val message = error.message ?: "Download failed"
         val lower = message.lowercase()
         val httpCode =

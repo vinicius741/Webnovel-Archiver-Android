@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -21,6 +22,15 @@ class DownloadErrorClassifierTest {
         val classified = DownloadErrorClassifier.classify(IllegalStateException("Unexpected parser failure"))
 
         assertEquals("unknown", classified.category)
+        assertFalse(classified.retryable)
+    }
+
+    @Test
+    fun classifiesSourceBlockedAsTerminal() {
+        val classified = DownloadErrorClassifier.classify(SourceAccessBlockedException("https://www.scribblehub.com/story"))
+
+        assertEquals("source_blocked", classified.category)
+        assertEquals("SOURCE_BLOCKED", classified.code)
         assertFalse(classified.retryable)
     }
 

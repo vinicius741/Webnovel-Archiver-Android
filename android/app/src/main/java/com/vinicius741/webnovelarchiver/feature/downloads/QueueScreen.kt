@@ -18,6 +18,7 @@ import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.download.QueueStatusCounts
+import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
@@ -312,6 +313,20 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
                 }
             GlobalQueueAction.RETRY_ALL ->
                 AppBarAction(R.drawable.wna_refresh, "Retry Failed", ThemeManager.colors.primary) {
+                    val blocked =
+                        repository
+                            .downloadState
+                            .value
+                            .queue
+                            .firstOrNull { it.errorCategory == "source_blocked" }
+                            ?: storage.getQueue().firstOrNull { it.errorCategory == "source_blocked" }
+                    if (blocked != null) {
+                        showSourceAccessBlockedDialog(blocked.chapter.url) {
+                            downloadEngine.retryFailed()
+                            DownloadForegroundService.start(app)
+                        }
+                        return@AppBarAction
+                    }
                     downloadEngine.retryFailed()
                     DownloadForegroundService.start(app)
                 }
@@ -468,6 +483,17 @@ private fun ScreenHost.storyActionButton(
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry story", 44) {
+                if (jobs.any { it.errorCategory == "source_blocked" }) {
+                    jobs
+                        .firstOrNull { it.errorCategory == "source_blocked" }
+                        ?.let {
+                            showSourceAccessBlockedDialog(it.chapter.url) {
+                                downloadEngine.retryFailedForStory(storyId)
+                                DownloadForegroundService.start(app)
+                            }
+                        }
+                    return@iconAction
+                }
                 downloadEngine.retryFailedForStory(storyId)
                 DownloadForegroundService.start(app)
             }
@@ -566,6 +592,13 @@ private fun ScreenHost.chapterActionButton(
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry", 36) {
+                if (job.errorCategory == "source_blocked") {
+                    showSourceAccessBlockedDialog(job.chapter.url) {
+                        downloadEngine.retryJob(job.id)
+                        DownloadForegroundService.start(app)
+                    }
+                    return@iconAction
+                }
                 downloadEngine.retryJob(job.id)
                 DownloadForegroundService.start(app)
             }
