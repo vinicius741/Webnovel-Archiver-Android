@@ -180,7 +180,7 @@ internal fun ScreenHost.showTtsVoiceDialog(
             results.addView(
                 voiceRow(
                     voice.name,
-                    "${TtsVoicePlanning.languageLabel(voice.language)} · ${voice.language}",
+                    "${TtsVoicePlanning.languageLabel(voice.language)} · ${voice.language} · ${TtsVoicePlanning.voiceMetadataLabel(voice)}",
                     voice.identifier == selectedIdentifier,
                 ) { onSelected(voice) },
             )

@@ -25,6 +25,24 @@
   <string name="tts_notif_paused">TTS paused</string>
   <string name="tts_notif_no_session">No saved TTS session</string>
   <string name="tts_notif_cannot_start">Could not start TTS</string>
+  <string name="tts_notif_chunk_progress">Chunk %1$d / %2$d</string>
+  <string name="tts_notif_buffering">Buffering</string>
+  <string name="tts_action_previous">Previous</string>
+  <string name="tts_action_play">Play</string>
+  <string name="tts_action_pause">Pause</string>
+  <string name="tts_action_next">Next</string>
+  <string name="tts_action_stop">Stop</string>
+  <string name="tts_metadata_reading">Reading</string>
+  <string name="tts_error_audio_focus_denied">Could not start TTS: another app has audio focus</string>
+  <string name="tts_error_init_failed">Could not start TTS: engine initialization failed</string>
+  <string name="tts_error_language_missing_data">TTS voice data is missing</string>
+  <string name="tts_error_language_not_supported">TTS language is not supported</string>
+  <string name="tts_error_voice_unavailable">Selected TTS voice is unavailable</string>
+  <string name="tts_error_voice_rejected">Selected TTS voice could not be used</string>
+  <string name="tts_error_speak_failed">TTS could not speak the current chunk</string>
+  <string name="tts_error_synthesis_failed">TTS synthesis failed</string>
+  <string name="tts_error_stalled">TTS playback stalled</string>
+  <string name="tts_error_unknown">TTS playback failed</string>
 
   <!-- Centralized user-facing error messages (Maintainability M6). -->
   <string name="error_no_file_selected">No file selected</string>

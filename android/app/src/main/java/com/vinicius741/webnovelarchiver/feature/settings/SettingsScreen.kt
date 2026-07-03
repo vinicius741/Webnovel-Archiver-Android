@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
+import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -313,7 +314,23 @@ internal fun ScreenHost.showTtsSettings() {
 internal fun ScreenHost.showTtsVoicePicker() {
     val voices = ttsEngine.availableVoices()
     if (voices.isEmpty()) {
-        toast("No local TTS voices available yet")
+        lateinit var listener: (List<VoiceInfo>) -> Unit
+        listener = { loadedVoices ->
+            ttsEngine.removeVoiceAvailabilityListener(listener)
+            app.runOnUiThread {
+                if (loadedVoices.isEmpty()) {
+                    toast("No local TTS voices available yet")
+                } else {
+                    showTtsVoiceDialog(loadedVoices, storage.getTtsSettings().voiceIdentifier) { voice ->
+                        val current = storage.getTtsSettings()
+                        storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
+                        showTtsSettings()
+                    }
+                }
+            }
+        }
+        ttsEngine.addVoiceAvailabilityListener(listener)
+        toast("Loading local TTS voices")
         return
     }
     showTtsVoiceDialog(voices, storage.getTtsSettings().voiceIdentifier) { voice ->

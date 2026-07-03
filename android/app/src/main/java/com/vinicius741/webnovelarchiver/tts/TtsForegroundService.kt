@@ -27,7 +27,10 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 
 class TtsForegroundService : Service() {
     private lateinit var engine: TtsEngine
+    private lateinit var audioFocus: TtsAudioFocusManager
     private var foregroundStarted = false
+    private var resumeAfterFocusGain = false
+    private var lastErrorText: String? = null
 
     /** Real Android MediaSession (parity gaps 1 & 2): owns the lock-screen / system media UI and
      *  receives headset-hook / Bluetooth media-button events. Its token drives the MediaStyle
@@ -39,17 +42,42 @@ class TtsForegroundService : Service() {
 
     /** The service's own listener reference, kept so [onDestroy] can detach exactly this one. */
     private val stateListener: (TtsPlaybackSnapshot?) -> Unit = { snapshot -> refreshMediaState(snapshot) }
+    private val errorListener: (TtsPlaybackError) -> Unit = { error -> showPlaybackError(error) }
 
     override fun onCreate() {
         super.onCreate()
         // Process-wide shared engine (M2): the same instance the activity's reader observes, so a
         // playback the service drives fires the reader's highlight/transport listener too.
         engine = appContainer.ttsEngine
+        audioFocus =
+            TtsAudioFocusManager(
+                this,
+                object : TtsAudioFocusManager.Callbacks {
+                    override fun onFocusGained() {
+                        if (!resumeAfterFocusGain) return
+                        resumeAfterFocusGain = false
+                        resumePlayback()
+                    }
+
+                    override fun onTransientFocusLoss() {
+                        if (lastSnapshot?.isPlaying == true) {
+                            resumeAfterFocusGain = true
+                            pausePlayback(abandonFocus = false)
+                        }
+                    }
+
+                    override fun onPermanentFocusLoss() {
+                        resumeAfterFocusGain = false
+                        stopPlayback()
+                    }
+                },
+            )
         createNotificationChannel()
         ensureMediaSession()
         // Single hook (R3): the engine emits a snapshot after every playback state change, so the
         // service refreshes the MediaSession + notification in one place instead of polling storage.
         engine.addStateListener(stateListener)
+        engine.addErrorListener(errorListener)
     }
 
     override fun onStartCommand(
@@ -67,29 +95,25 @@ class TtsForegroundService : Service() {
             ACTION_START -> startPlayback(intent)
             ACTION_RESUME_SESSION -> resumePlayback()
             ACTION_PAUSE -> {
-                engine.pause()
+                pausePlayback()
                 refreshMediaStateFromEngine()
             }
             ACTION_PLAY_PAUSE -> {
                 if (lastSnapshot?.isPaused == true || lastSnapshot?.isPlaying != true) {
                     resumePlayback()
                 } else {
-                    engine.pause()
+                    pausePlayback()
                     refreshMediaStateFromEngine()
                 }
             }
             ACTION_NEXT -> {
-                engine.next()
-                refreshMediaStateFromEngine()
+                skipNext()
             }
             ACTION_PREVIOUS -> {
-                engine.previous()
-                refreshMediaStateFromEngine()
+                skipPrevious()
             }
             ACTION_STOP -> {
-                engine.stop()
-                stopForegroundAndReset()
-                stopSelf()
+                stopPlayback()
             }
         }
         return START_STICKY
@@ -104,6 +128,8 @@ class TtsForegroundService : Service() {
         // the right state before stopSelf(), and a system-killed service should leave the persisted
         // session intact so playback can resume next launch.
         engine.removeStateListener(stateListener)
+        engine.removeErrorListener(errorListener)
+        audioFocus.abandon()
         mediaSession?.run {
             isActive = false
             release()
@@ -114,6 +140,7 @@ class TtsForegroundService : Service() {
 
     private fun startPlayback(intent: Intent?) {
         startForegroundIfNeeded(buildNotification(null))
+        if (!requestAudioFocusOrShowError()) return
         val storyId = intent?.getStringExtra(EXTRA_STORY_ID)
         val chapterId = intent?.getStringExtra(EXTRA_CHAPTER_ID)
         val chunkIndex = intent?.takeIf { it.hasExtra(EXTRA_CHUNK_INDEX) }?.getIntExtra(EXTRA_CHUNK_INDEX, 0)
@@ -132,10 +159,49 @@ class TtsForegroundService : Service() {
 
     private fun resumePlayback() {
         startForegroundIfNeeded(buildNotification(null))
+        if (!requestAudioFocusOrShowError()) return
         engine.resumePersistedSession()
         // The engine only emits state when it actually starts speaking; update the notification
         // surface regardless so "no session" / "buffering" is reflected immediately.
         refreshMediaStateFromEngine()
+    }
+
+    private fun pausePlayback(abandonFocus: Boolean = true) {
+        engine.pause()
+        if (abandonFocus) {
+            resumeAfterFocusGain = false
+            audioFocus.abandon()
+        }
+    }
+
+    private fun stopPlayback() {
+        engine.stop()
+        resumeAfterFocusGain = false
+        audioFocus.abandon()
+        stopForegroundAndReset()
+        stopSelf()
+    }
+
+    private fun skipNext() {
+        if (!requestAudioFocusOrShowError()) return
+        engine.next()
+        refreshMediaStateFromEngine()
+    }
+
+    private fun skipPrevious() {
+        if (!requestAudioFocusOrShowError()) return
+        engine.previous()
+        refreshMediaStateFromEngine()
+    }
+
+    private fun requestAudioFocusOrShowError(): Boolean {
+        if (audioFocus.request()) {
+            lastErrorText = null
+            return true
+        }
+        lastErrorText = getString(R.string.tts_error_audio_focus_denied)
+        refreshMediaState(lastSnapshot)
+        return false
     }
 
     private fun startForegroundIfNeeded(notification: Notification) {
@@ -167,10 +233,39 @@ class TtsForegroundService : Service() {
      */
     private fun refreshMediaState(snapshot: TtsPlaybackSnapshot?) {
         lastSnapshot = snapshot
+        if (snapshot?.isPlaying == true) lastErrorText = null
         updateMediaSessionPlaybackState()
         updateMediaSessionMetadata()
         updateNotification()
     }
+
+    private fun showPlaybackError(error: TtsPlaybackError) {
+        lastErrorText = stringForPlaybackError(error)
+        updateNotification()
+    }
+
+    private fun chunkProgressText(snapshot: TtsPlaybackSnapshot): String =
+        if (snapshot.totalChunks <= 0) {
+            getString(R.string.tts_notif_buffering)
+        } else {
+            getString(
+                R.string.tts_notif_chunk_progress,
+                (snapshot.chunkIndex + 1).coerceIn(1, snapshot.totalChunks),
+                snapshot.totalChunks,
+            )
+        }
+
+    private fun stringForPlaybackError(error: TtsPlaybackError): String =
+        when (error.kind) {
+            TtsPlaybackErrorKind.InitFailed -> getString(R.string.tts_error_init_failed)
+            TtsPlaybackErrorKind.LanguageMissingData -> getString(R.string.tts_error_language_missing_data)
+            TtsPlaybackErrorKind.LanguageNotSupported -> getString(R.string.tts_error_language_not_supported)
+            TtsPlaybackErrorKind.VoiceUnavailable -> getString(R.string.tts_error_voice_unavailable)
+            TtsPlaybackErrorKind.VoiceRejected -> getString(R.string.tts_error_voice_rejected)
+            TtsPlaybackErrorKind.SpeakFailed -> getString(R.string.tts_error_speak_failed)
+            TtsPlaybackErrorKind.SynthesisFailed -> getString(R.string.tts_error_synthesis_failed)
+            TtsPlaybackErrorKind.Stalled -> getString(R.string.tts_error_stalled)
+        }
 
     /** Rebuilds the snapshot from the persisted session (used by control actions that bypass the
      *  engine hook, e.g. PAUSE/NEXT arrive via the notification and the engine emits afterwards). */
@@ -223,11 +318,11 @@ class TtsForegroundService : Service() {
             )
 
         val isPaused = snapshot?.isPaused == true
-        val title = snapshot?.title ?: "Text to Speech"
+        val title = snapshot?.title ?: getString(R.string.tts_notif_title)
         val body =
-            snapshot
-                ?.let { TtsPlaybackState.chunkProgress(it.chunkIndex, it.totalChunks) }
-                ?: "TTS paused"
+            lastErrorText
+                ?: snapshot?.let { chunkProgressText(it) }
+                ?: getString(R.string.tts_notif_paused)
 
         val builder =
             NotificationCompat
@@ -245,7 +340,7 @@ class TtsForegroundService : Service() {
                 .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         TtsNotificationActions.actions(isPaused).forEachIndexed { index, action ->
-            builder.addAction(0, action.label, serviceAction(12 + index, action.action))
+            builder.addAction(0, getString(action.labelResId), serviceAction(12 + index, action.action))
         }
         // Gap 1: MediaStyle ties the notification to the MediaSession so the system renders the
         // standard media card (lock screen + quick-settings shade) with the transport controls.
@@ -281,24 +376,20 @@ class TtsForegroundService : Service() {
                         }
 
                         override fun onPause() {
-                            engine.pause()
+                            pausePlayback()
                             refreshMediaStateFromEngine()
                         }
 
                         override fun onStop() {
-                            engine.stop()
-                            stopForeground(STOP_FOREGROUND_REMOVE)
-                            stopSelf()
+                            stopPlayback()
                         }
 
                         override fun onSkipToNext() {
-                            engine.next()
-                            refreshMediaStateFromEngine()
+                            skipNext()
                         }
 
                         override fun onSkipToPrevious() {
-                            engine.previous()
-                            refreshMediaStateFromEngine()
+                            skipPrevious()
                         }
 
                         override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
@@ -314,18 +405,16 @@ class TtsForegroundService : Service() {
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                                    engine.pause()
+                                    pausePlayback()
                                     refreshMediaStateFromEngine()
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                                    engine.next()
-                                    refreshMediaStateFromEngine()
+                                    skipNext()
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                                    engine.previous()
-                                    refreshMediaStateFromEngine()
+                                    skipPrevious()
                                     return true
                                 }
                             }
@@ -342,7 +431,7 @@ class TtsForegroundService : Service() {
         if (lastSnapshot?.isPaused == true || lastSnapshot?.isPlaying != true) {
             resumePlayback()
         } else {
-            engine.pause()
+            pausePlayback()
             refreshMediaStateFromEngine()
         }
     }
@@ -379,9 +468,9 @@ class TtsForegroundService : Service() {
             MediaMetadataCompat
                 .Builder()
                 .apply {
-                    putString(MediaMetadataCompat.METADATA_KEY_TITLE, snapshot?.title ?: "Text to Speech")
-                    putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Webnovel Archiver")
-                    putString(MediaMetadataCompat.METADATA_KEY_ALBUM, snapshot?.title ?: "Reading")
+                    putString(MediaMetadataCompat.METADATA_KEY_TITLE, snapshot?.title ?: getString(R.string.tts_notif_title))
+                    putString(MediaMetadataCompat.METADATA_KEY_ARTIST, getString(R.string.app_name))
+                    putString(MediaMetadataCompat.METADATA_KEY_ALBUM, snapshot?.title ?: getString(R.string.tts_metadata_reading))
                     if (snapshot != null && snapshot.totalChunks > 0) {
                         putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, snapshot.chunkIndex.toLong() + 1L)
                         putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, snapshot.totalChunks.toLong())
@@ -393,8 +482,8 @@ class TtsForegroundService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val channel =
-            NotificationChannel(CHANNEL_ID, "Text to Speech", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "TTS playback controls"
+            NotificationChannel(CHANNEL_ID, getString(R.string.tts_channel_name), NotificationManager.IMPORTANCE_LOW).apply {
+                description = getString(R.string.tts_channel_desc)
             }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }

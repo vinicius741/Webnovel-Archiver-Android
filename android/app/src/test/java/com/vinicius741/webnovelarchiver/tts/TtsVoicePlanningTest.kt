@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.tts
 
-import com.vinicius741.webnovelarchiver.ui.size
+import android.speech.tts.Voice
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.util.Locale
@@ -22,5 +22,12 @@ class TtsVoicePlanningTest {
     fun filtersByLanguageAndHumanReadableSearchText() {
         assertEquals(2, TtsVoicePlanning.filter(voices, "English", "en", Locale.US).size)
         assertEquals(listOf("pt-br-local"), TtsVoicePlanning.filter(voices, "Brazil", null, Locale.US).map { it.identifier })
+    }
+
+    @Test
+    fun voiceMetadataLabelShowsQualityAndLatency() {
+        val voice = VoiceInfo("id", "name", "en-US", Voice.QUALITY_HIGH, Voice.LATENCY_LOW)
+
+        assertEquals("High quality · Low latency", TtsVoicePlanning.voiceMetadataLabel(voice))
     }
 }

@@ -38,6 +38,22 @@ object TtsSessionPlanning {
 
     fun restoredChunkSize(settings: TtsSettings): Int = settings.chunkSize.coerceAtLeast(100)
 
+    fun nextChunkRequestIndex(
+        currentPostIncrementIndex: Int,
+        chunkCount: Int,
+    ): Int {
+        if (chunkCount <= 0) return 0
+        return currentPostIncrementIndex.coerceIn(0, chunkCount - 1)
+    }
+
+    fun previousChunkRequestIndex(
+        currentPostIncrementIndex: Int,
+        chunkCount: Int,
+    ): Int {
+        if (chunkCount <= 0) return 0
+        return (currentPostIncrementIndex - 2).coerceIn(0, chunkCount - 1)
+    }
+
     fun nextChapterIndex(
         story: Story,
         currentChapterId: String,

@@ -35,6 +35,22 @@ class TtsSessionPlanningTest {
     }
 
     @Test
+    fun nextChunkRequestIndexUsesPostIncrementCursor() {
+        assertEquals(1, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = 1, chunkCount = 4))
+        assertEquals(3, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = 99, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = -1, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = 2, chunkCount = 0))
+    }
+
+    @Test
+    fun previousChunkRequestIndexStepsBackFromPostIncrementCursor() {
+        assertEquals(0, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = 1, chunkCount = 4))
+        assertEquals(2, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = 4, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = -1, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = 2, chunkCount = 0))
+    }
+
+    @Test
     fun readerResumeTargetRequiresEligibleSessionAndExistingStoryChapter() {
         val story = Story(id = "s1", chapters = mutableListOf(Chapter(id = "c1")))
 

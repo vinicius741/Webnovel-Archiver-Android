@@ -1,7 +1,10 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import androidx.annotation.StringRes
+import com.vinicius741.webnovelarchiver.R
+
 data class TtsNotificationAction(
-    val label: String,
+    @StringRes val labelResId: Int,
     val action: String,
 )
 
@@ -22,13 +25,13 @@ object TtsNotificationActions {
 
     fun actions(isPaused: Boolean): List<TtsNotificationAction> =
         listOf(
-            TtsNotificationAction("Previous", ACTION_PREVIOUS),
+            TtsNotificationAction(R.string.tts_action_previous, ACTION_PREVIOUS),
             if (isPaused) {
-                TtsNotificationAction("Play", ACTION_RESUME_SESSION)
+                TtsNotificationAction(R.string.tts_action_play, ACTION_RESUME_SESSION)
             } else {
-                TtsNotificationAction("Pause", ACTION_PAUSE)
+                TtsNotificationAction(R.string.tts_action_pause, ACTION_PAUSE)
             },
-            TtsNotificationAction("Next", ACTION_NEXT),
-            TtsNotificationAction("Stop", ACTION_STOP),
+            TtsNotificationAction(R.string.tts_action_next, ACTION_NEXT),
+            TtsNotificationAction(R.string.tts_action_stop, ACTION_STOP),
         )
 }
