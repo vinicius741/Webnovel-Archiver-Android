@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TTS Implementation Audit &amp; Recommendations</title>
+<style>
+  :root {
+    --bg: #0f1424;
+    --panel: #171d33;
+    --panel-2: #1d2540;
+    --ink: #e8ecff;
+    --ink-dim: #aab2d5;
+    --ink-mute: #6f78a3;
+    --accent: #7aa2ff;
+    --accent-2: #58e6c9;
+    --green: #5fe0a1;
+    --amber: #ffc857;
+    --red: #ff7a90;
+    --border: #2a3358;
+    --code-bg: #0b0f1e;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 700px at 80% -10%, #1b2247 0%, transparent 60%), var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 40px 24px 120px; }
+  header.hero {
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(122,162,255,0.10), rgba(122,162,255,0));
+    border-radius: 18px;
+    padding: 32px 32px 28px;
+    margin-bottom: 32px;
+  }
+  header.hero .eyebrow {
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  header.hero h1 {
+    font-size: 34px;
+    margin: 8px 0 6px;
+    line-height: 1.15;
+  }
+  header.hero p.lead { color: var(--ink-dim); margin: 0; max-width: 70ch; }
+  header.hero .meta { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .tag {
+    font-size: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--ink-dim);
+    padding: 5px 10px;
+    border-radius: 999px;
+  }
+
+  .toc {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin-bottom: 32px;
+  }
+  .toc h2 { margin: 0 0 10px; font-size: 15px; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.1em; }
+  .toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  section {
+    border: 1px solid var(--border);
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 26px 28px;
+    margin-bottom: 22px;
+  }
+  section > h2 {
+    margin: 0 0 4px;
+    font-size: 23px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section > h2 .num {
+    font-size: 14px;
+    color: var(--bg);
+    background: var(--accent);
+    border-radius: 8px;
+    padding: 2px 9px;
+    font-weight: 800;
+  }
+  section > p.kicker { color: var(--ink-mute); margin: 0 0 16px; font-size: 14px; }
+  h3 { font-size: 18px; margin: 24px 0 8px; color: var(--accent-2); }
+  h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink); }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  a { color: var(--accent); }
+  code {
+    font-family: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, monospace;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 13.5px;
+    color: var(--accent-2);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  pre code { background: none; border: none; padding: 0; color: var(--ink); }
+
+  .grid { display: grid; gap: 14px; }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 760px) { .grid.cols-2 { grid-template-columns: 1fr; } .toc ol { columns: 1; } }
+
+  .card { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--panel-2); }
+  .card h4 { margin-top: 0; }
+
+  .verdict {
+    border-radius: 12px;
+    padding: 10px 14px;
+    border-left: 4px solid var(--ink-mute);
+    background: var(--panel-2);
+    margin: 12px 0;
+  }
+  .verdict.good { border-left-color: var(--green); }
+  .verdict.warn { border-left-color: var(--amber); }
+  .verdict.bad  { border-left-color: var(--red); }
+  .verdict .label { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+  .verdict.good .label { color: var(--green); }
+  .verdict.warn .label { color: var(--amber); }
+  .verdict.bad  .label { color: var(--red); }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--ink-mute); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  tr:hover td { background: rgba(122,162,255,0.04); }
+
+  .pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pill.ok { background: rgba(95,224,161,0.14); color: var(--green); }
+  .pill.mid { background: rgba(255,200,87,0.14); color: var(--amber); }
+  .pill.no { background: rgba(255,122,144,0.14); color: var(--red); }
+
+  .priority-list { list-style: none; padding: 0; counter-reset: prio; }
+  .priority-list li {
+    counter-increment: prio;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    border-radius: 12px;
+    padding: 14px 16px 14px 56px;
+    position: relative;
+    margin-bottom: 10px;
+  }
+  .priority-list li::before {
+    content: counter(prio);
+    position: absolute;
+    left: 14px; top: 14px;
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 800;
+    display: grid; place-items: center;
+    font-size: 15px;
+  }
+  .priority-list .sev { float: right; }
+
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 12px 16px;
+    background: var(--panel-2);
+    margin: 14px 0;
+  }
+  .callout.warn { border-left-color: var(--amber); }
+  .callout.bad { border-left-color: var(--red); }
+  .callout strong { color: var(--ink); }
+
+  .file { color: var(--accent); font-family: "SF Mono", "JetBrains Mono", monospace; font-size: 13px; }
+  .arrow { color: var(--ink-mute); }
+  .sources { font-size: 13px; }
+  .sources li { margin: 6px 0; color: var(--ink-dim); }
+  footer { text-align: center; color: var(--ink-mute); font-size: 13px; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">Investigation · No app code changes</div>
+    <h1>TTS Implementation Audit &amp; Best-Practices Review</h1>
+    <p class="lead">
+      A read-only comparison of how the Webnovel Archiver Android app currently implements
+      Text‑To‑Speech against the recommended modern Android/Kotlin practices. This document captures
+      findings, gaps, and a prioritized set of recommendations for future work.
+    </p>
+    <div class="meta">
+      <span class="tag">Stack: Android <code>TextToSpeech</code> + Foreground Service + MediaSessionCompat</span>
+      <span class="tag">Scope: <code>android/</code> native app</span>
+      <span class="tag">Date: 2026‑07‑02</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#summary">Executive summary &amp; verdict</a></li>
+      <li><a href="#current">How TTS works today (architecture &amp; data flow)</a></li>
+      <li><a href="#benchmark">The modern Android benchmark</a></li>
+      <li><a href="#comparison">Comparison: current vs. best practice</a></li>
+      <li><a href="#strengths">What the implementation does well</a></li>
+      <li><a href="#gaps">Gaps &amp; risks (detailed)</a></li>
+      <li><a href="#recommendations">Recommendations (prioritized)</a></li>
+      <li><a href="#non-todo">Explicitly out of scope</a></li>
+      <li><a href="#sources">Sources</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============== SUMMARY ============== -->
+  <section id="summary">
+    <h2><span class="num">1</span> Executive summary &amp; verdict</h2>
+    <p class="kicker">The shortest version: the foundation is solid, but one critical correctness feature is missing and a few patterns are dated.</p>
+
+    <p>
+      The current TTS subsystem is one of the most carefully engineered features in the codebase. It
+      correctly uses a <strong>process‑wide singleton engine</strong>, a real
+      <strong>foreground service</strong> with the right <code>mediaPlayback</code> type, a
+      <strong>MediaSession</strong> for lock‑screen / Bluetooth controls, a well‑designed
+      <strong>chunking engine</strong>, and <strong>persistent resume</strong>. These are all the
+      hard architectural decisions, and they are made correctly.
+    </p>
+    <p>
+      However, measured against the current Android best‑practice benchmark, there are real gaps.
+      The most important is that <strong>audio focus is never requested</strong> — TTS does not
+      consistently participate in system focus behavior for phone calls, other media apps, or navigation prompts. The second tier of
+      issues concerns robustness (silent error swallowing, no watchdog), API currency
+      (<code>MediaSessionCompat</code> is legacy while <code>androidx.media3</code> is the modern
+      home), and i18n inconsistency (some TTS strings are declared but bypassed by hardcoded literals).
+    </p>
+
+    <div class="grid cols-2">
+      <div class="card">
+        <h4>Overall verdict</h4>
+        <div class="verdict warn">
+          <div class="label">Competent, with one must‑fix gap</div>
+          <p style="margin:8px 0 0">Architecture is sound and idiomatic; <strong>audio focus</strong> is the single missing piece that would otherwise make this a textbook TTS implementation.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Scorecard (key dimensions)</h4>
+        <table>
+          <tr><td>Architecture &amp; separation</td><td><span class="pill ok">Strong</span></td></tr>
+          <tr><td>Foreground service + type</td><td><span class="pill ok">Correct</span></td></tr>
+          <tr><td>MediaSession / lock screen</td><td><span class="pill ok">Present</span></td></tr>
+          <tr><td>Audio focus</td><td><span class="pill no">Missing</span></td></tr>
+          <tr><td>Error handling / robustness</td><td><span class="pill mid">Weak</span></td></tr>
+          <tr><td>Media stack currency</td><td><span class="pill mid">Legacy</span></td></tr>
+          <tr><td>i18n consistency</td><td><span class="pill mid">Inconsistent</span></td></tr>
+          <tr><td>Persistence &amp; resume</td><td><span class="pill ok">Strong</span></td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== CURRENT ============== -->
+  <section id="current">
+    <h2><span class="num">2</span> How TTS works today</h2>
+    <p class="kicker">An end‑to‑end map of the current implementation, traced through the code.</p>
+
+    <h3>2.1 File inventory &amp; responsibilities</h3>
+    <p>The TTS subsystem lives primarily in a dedicated <code>tts/</code> package, with chunking logic in <code>cleanup/</code> and integration points in the reader and settings features.</p>
+
+    <table>
+      <tr><th>File</th><th>Role</th></tr>
+      <tr><td><span class="file">tts/TtsEngine.kt</span></td><td><strong>The heart.</strong> Wraps <code>TextToSpeech</code>; owns the chunk list, playback cursor, session lifecycle, voice/pitch/rate application, chapter auto‑advance, and a multicast state‑listener registry.</td></tr>
+      <tr><td><span class="file">tts/TtsForegroundService.kt</span></td><td>Foreground service + MediaSession. Builds the <code>MediaStyle</code> notification, handles transport intents and headset/Bluetooth media buttons.</td></tr>
+      <tr><td><span class="file">tts/TtsPlaybackState.kt</span></td><td>Pure helpers: <code>TtsPlaybackSnapshot</code> data class + snapshot/progress/transition functions.</td></tr>
+      <tr><td><span class="file">tts/TtsSessionPlanning.kt</span></td><td>Pure domain logic: resume eligibility, chunk‑index clamping, next‑chapter index, restored chunk‑size floor.</td></tr>
+      <tr><td><span class="file">tts/TtsNotificationActions.kt</span></td><td>Notification action constants + action list and compact‑view indices.</td></tr>
+      <tr><td><span class="file">tts/TtsVoicePlanning.kt</span></td><td>Pure voice‑picker logic: language extraction, filter, locale labels.</td></tr>
+      <tr><td><span class="file">cleanup/TtsTextPreparation.kt</span></td><td><strong>Chunking engine.</strong> Produces both the flat spoken chunk list and the annotated reader HTML (with <code>data-tts-group</code>), guaranteed 1:1 aligned.</td></tr>
+      <tr><td><span class="file">domain/model/Models.kt</span></td><td><code>TtsSettings</code> + <code>TtsSession</code> data classes.</td></tr>
+      <tr><td><span class="file">data/storage/AppStorage.kt</span></td><td>Persists <code>tts_settings.json</code> and <code>tts_session.json</code> atomically (no DataStore/SharedPreferences).</td></tr>
+      <tr><td><span class="file">app/AppContainer.kt</span></td><td>Owns a single <code>TtsEngine</code> for the whole process, shared by activity + service.</td></tr>
+      <tr><td><span class="file">feature/reader/ReaderScreen.kt</span></td><td>UI integration: tap‑to‑start, in‑document highlight, floating transport.</td></tr>
+      <tr><td><span class="file">feature/reader/ReaderContentRenderer.kt</span></td><td>Injects the <code>WnaTts</code> JS (highlight + double‑tap‑to‑start) and <code>.tts-active</code> CSS.</td></tr>
+      <tr><td><span class="file">feature/settings/SettingsScreen.kt</span></td><td>TTS sub‑screen (pitch/rate/chunk‑size + saved‑session card) and voice picker.</td></tr>
+    </table>
+
+    <h3>2.2 End‑to‑end playback data flow</h3>
+    <pre><code>Chapter opened
+  └─ ReaderScreen.showReader()
+       ├─ storage.readChapter() → raw HTML
+       ├─ ChapterHtmlSanitizer.sanitize()
+       ├─ TextCleanup.prepareTtsAnnotatedHtml() → annotated HTML + aligned chunks
+       └─ WebView renders annotated HTML + injected WnaTts script
+
+User presses "Read aloud" (or double-taps a paragraph)
+  └─ TtsForegroundService.start(storyId, chapterId[, chunkIndex])
+       └─ context.startForegroundService(ACTION_START)
+            └─ onStartCommand → startPlayback()
+                 ├─ startForeground(mediaPlayback type)
+                 └─ engine.play(...) / engine.playFromChunk(...)
+                      ├─ applySettings(voice/pitch/rate)
+                      ├─ prepareTtsChunks()  [aligned with reader]
+                      ├─ startSession() → TtsSession
+                      └─ speakCurrent():
+                           ├─ tts.speak(chunk, QUEUE_FLUSH, id="chapter_chunk_N")
+                           ├─ storage.saveTtsSession(updated)
+                           ├─ emitState(isPlaying=true)
+                           └─ index++
+
+UtteranceProgressListener.onDone(chunk)            [may be off-main]
+  └─ scope.launch { stateMutex.withLock { handleChunkDone() } }
+       ├─ more chunks → speakCurrent() (repeat)
+       └─ else → handleChapterFinished():
+             ├─ update lastReadChapterId
+             ├─ load+chunk next chapter → speakCurrent()
+             └─ or finishPlayback() → clearTtsSession + notify(null)
+</code></pre>
+
+    <h3>2.3 Key design choices in the current code</h3>
+    <div class="grid cols-2">
+      <div class="card">
+        <h4>Threading model ("R8")</h4>
+        <p>A dedicated <code>CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)</code> plus a <code>Mutex</code> serialize state mutations triggered by the async <code>UtteranceProgressListener</code> callbacks.</p>
+        <div class="verdict warn">
+          <div class="label">Doc vs. reality mismatch</div>
+          <p style="margin:8px 0 0">The KDoc claims public control methods (<code>play/next/previous/pause/stop</code>) are routed through <code>stateMutex</code>, but only <code>onInit</code> and <code>onDone</code> actually acquire it. Works only because callers are currently on the main thread.</p>
+        </div>
+      </div>
+      <div class="card">
+        <h4>State propagation</h4>
+        <p>A hand‑rolled multicast observer registry (<code>stateListeners</code>) — no <code>StateFlow</code>/<code>LiveData</code>/<code>ViewModel</code>. Each state change fans out a <code>TtsPlaybackSnapshot</code> (or <code>null</code>).</p>
+      </div>
+      <div class="card">
+        <h4>Chunking &amp; highlight invariant</h4>
+        <p><code>prepareTtsChunks()</code> and <code>prepareTtsAnnotatedHtml()</code> walk the same elements with the same grouping rule, so the spoken chunks are <strong>byte‑for‑byte aligned</strong> with the highlighted DOM groups. This is the foundation of the highlight feature.</p>
+      </div>
+      <div class="card">
+        <h4>Persistence &amp; resume</h4>
+        <p>Atomic JSON files (<code>tts_settings.json</code>, <code>tts_session.json</code>) wrapped with <code>appVersion</code> envelopes. Resume is checked at app launch and from the notification, with chunk‑index clamping and a restored‑chunk‑size floor.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== BENCHMARK ============== -->
+  <section id="benchmark">
+    <h2><span class="num">3</span> The modern Android benchmark</h2>
+    <p class="kicker">What "best practice" looks like for a long‑form narration / TTS app on Android 15/16, drawn from current official Android documentation.</p>
+
+    <h3>3.1 Audio focus — mandatory for any app that produces sound</h3>
+    <p>
+      Per the official <em>Manage audio focus</em> guide, "only one app can hold audio focus at a
+      time. When your app needs to output audio, it should request audio focus, and only play sound
+      when it has it." For long‑form speech playback the correct request is
+      <code>AUDIOFOCUS_GAIN</code> (or <code>TRANSIENT_MAY_DUCK</code> for short bursts), with an
+      <code>OnAudioFocusChangeListener</code> that handles:
+    </p>
+    <ul>
+      <li><code>LOSS_TRANSIENT</code> → pause TTS, remember position</li>
+      <li><code>LOSS_TRANSIENT_CAN_DUCK</code> → for spoken content, usually pause rather than duck, using <code>setWillPauseWhenDucked(true)</code></li>
+      <li><code>LOSS</code> → stop playback entirely</li>
+      <li><code>GAIN</code> → resume from saved position</li>
+    </ul>
+    <p>
+      The <code>AudioAttributes</code> should declare <code>USAGE_MEDIA</code> with
+      <code>CONTENT_TYPE_SPEECH</code> for long‑form narration. Since this project targets SDK 36,
+      the Android 15+ focus rule also matters: focus requests can fail unless the app is the top app
+      or running a foreground service, so request focus from the foreground playback path and handle
+      <code>AUDIOFOCUS_REQUEST_FAILED</code>.
+    </p>
+
+    <h3>3.2 Foreground service — correct type &amp; timing</h3>
+    <ul>
+      <li>Declare a foreground service type — <code>mediaPlayback</code> is the right one for TTS (required since Android 14 / API 34).</li>
+      <li>Hold both <code>FOREGROUND_SERVICE</code> and the subtype permission <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code>.</li>
+      <li>Call <code>startForeground()</code> promptly after <code>startForegroundService()</code> (within the ANR window).</li>
+      <li>Keep the notification ongoing only while there is an active session.</li>
+    </ul>
+
+    <h3>3.3 MediaSession — prefer <code>androidx.media3</code></h3>
+    <p>
+      The legacy <code>MediaSessionCompat</code> (from <code>androidx.media:media</code>, which this
+      project uses at <code>1.7.0</code>) is now documented under Android's legacy media APIs. The
+      modern, actively developed home is <strong><code>androidx.media3</code> (1.10.1 stable as of
+      the 2026‑06‑24 AndroidX release notes, with 1.11.0 alpha in preview)</strong>, which offers
+      <code>media3-session</code>, <code>MediaSessionService</code>, <code>MediaController</code>, and
+      official View/Compose media UI artifacts. For <em>new</em> media apps Media3 is the
+      recommendation; for an existing working service, <code>MediaSessionCompat</code> remains
+      functional but is no longer where new Jetpack media investment is concentrated.
+    </p>
+
+    <h3>3.4 UtteranceProgressListener — error handling &amp; reliability</h3>
+    <ul>
+      <li>Set the listener via <code>setOnUtteranceProgressListener</code> <em>before</em> calling <code>speak()</code>.</li>
+      <li>Pass a unique <code>utteranceId</code> per chunk so callbacks fire correctly.</li>
+      <li>Override the <strong>API 21 <code>onError(utteranceId, errorCode)</code></strong> variant (the old single‑arg form is deprecated) and react to <code>ERROR_*</code> codes.</li>
+      <li>Separately check <code>setLanguage</code>/<code>setVoice</code> results and language availability; <code>LANG_MISSING_DATA</code> and <code>LANG_NOT_SUPPORTED</code> are language/voice setup outcomes, not <code>onError</code> error codes.</li>
+      <li>Guard against destroyed views in callbacks (they can arrive after <code>onDestroy</code>).</li>
+      <li>Consider a watchdog: if <code>onDone</code>/<code>onError</code> never arrives for a chunk, the engine can stall silently.</li>
+    </ul>
+
+    <h3>3.5 Memory &amp; streaming</h3>
+    <p>For long chapters, stream/chunk text into the TTS queue rather than synthesizing the whole document at once — which the current code already does well.</p>
+  </section>
+
+  <!-- ============== COMPARISON ============== -->
+  <section id="comparison">
+    <h2><span class="num">4</span> Comparison: current vs. best practice</h2>
+    <p class="kicker">A feature‑by‑feature scorecard.</p>
+
+    <table>
+      <tr>
+        <th>Concern</th>
+        <th>Best practice</th>
+        <th>Current implementation</th>
+        <th>Status</th>
+      </tr>
+      <tr>
+        <td>Audio focus</td>
+        <td>Request <code>AUDIOFOCUS_GAIN</code>; pause/resume on focus changes; usually pause speech on duck requests</td>
+        <td>Not requested at all (verified: zero <code>AudioManager</code>/<code>requestAudioFocus</code> references in <code>android/app/src/main</code>)</td>
+        <td><span class="pill no">Missing</span></td>
+      </tr>
+      <tr>
+        <td>Foreground service type</td>
+        <td><code>mediaPlayback</code> type + subtype permission (Android 14+)</td>
+        <td>Declared correctly with <code>FOREGROUND_SERVICE_MEDIA_PLAYBACK</code></td>
+        <td><span class="pill ok">Correct</span></td>
+      </tr>
+      <tr>
+        <td>MediaSession for controls</td>
+        <td>Expose play/pause/skip to lock screen, Bluetooth, Auto</td>
+        <td>Real <code>MediaSessionCompat</code> with full transport callbacks + media‑button handling</td>
+        <td><span class="pill ok">Present (legacy lib)</span></td>
+      </tr>
+      <tr>
+        <td>Media library currency</td>
+        <td><code>androidx.media3</code> (actively developed; 1.10.1 stable as of 2026‑06‑24)</td>
+        <td><code>androidx.media:media:1.7.0</code> (MediaSessionCompat, maintenance mode)</td>
+        <td><span class="pill mid">Legacy</span></td>
+      </tr>
+      <tr>
+        <td>Utterance error handling</td>
+        <td>Override API‑21 <code>onError(id, code)</code>; separately validate language/voice setup results</td>
+        <td><code>onError</code> is a no‑op; errors silently swallowed; only the deprecated single‑arg form is overridden; <code>setLanguage</code>/<code>setVoice</code> results are ignored</td>
+        <td><span class="pill no">Weak</span></td>
+      </tr>
+      <tr>
+        <td>Engine init timing</td>
+        <td>Lazy‑init on first use</td>
+        <td>Eager <code>TextToSpeech</code> construction in a field initializer at process start</td>
+        <td><span class="pill mid">Minor waste</span></td>
+      </tr>
+      <tr>
+        <td>Text chunking / streaming</td>
+        <td>Chunk large text; feed queue incrementally</td>
+        <td>Robust chunker with configurable size, element selection, cleanup pipeline</td>
+        <td><span class="pill ok">Strong</span></td>
+      </tr>
+      <tr>
+        <td>Resume / persistence</td>
+        <td>Survive process death; restore position</td>
+        <td>Atomic JSON session file + eligibility checks + chunk clamping; resume at launch &amp; from notification</td>
+        <td><span class="pill ok">Strong</span></td>
+      </tr>
+      <tr>
+        <td>State observation</td>
+        <td>Reactive (<code>StateFlow</code>/Compose), or well‑defined observer contract</td>
+        <td>Hand‑rolled multicast listener registry (works, but non‑idiomatic vs. modern Kotlin)</td>
+        <td><span class="pill mid">Acceptable</span></td>
+      </tr>
+      <tr>
+        <td>Localization (i18n)</td>
+        <td>All user‑visible strings via <code>strings.xml</code></td>
+        <td>TTS strings <em>declared</em> in <code>strings.xml</code> but <strong>bypassed</strong> by hardcoded English literals in notifications, action labels, and metadata fallbacks</td>
+        <td><span class="pill no">Inconsistent</span></td>
+      </tr>
+      <tr>
+        <td>Stall watchdog</td>
+        <td>Detect a chunk whose <code>onDone</code>/<code>onError</code> never fires</td>
+        <td>None — a missed callback stalls playback silently</td>
+        <td><span class="pill mid">Gap</span></td>
+      </tr>
+      <tr>
+        <td>Voice quality/latency surfacing</td>
+        <td>Show users voice quality/latency so they can choose</td>
+        <td>DTO carries <code>quality</code>/<code>latency</code> but the picker doesn't display them</td>
+        <td><span class="pill mid">Minor UX gap</span></td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- ============== STRENGTHS ============== -->
+  <section id="strengths">
+    <h2><span class="num">5</span> What the implementation does well</h2>
+    <p class="kicker">Worth preserving when any refactor happens.</p>
+    <div class="grid cols-2">
+      <div class="card">
+        <div class="verdict good"><div class="label">Architecture</div></div>
+        <ul>
+          <li>Clean separation of <strong>pure logic</strong> (<code>*Planning.kt</code>, <code>TtsPlaybackState</code>) — all unit‑tested — from Android‑bound code.</li>
+          <li>A single process‑wide <code>TtsEngine</code> via a manual service locator avoids the classic "activity and service each spin up a TextToSpeech" race.</li>
+          <li>The chunk‑list ↔ annotated‑HTML 1:1 alignment invariant is elegant and explicitly documented.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="verdict good"><div class="label">Correctness &amp; resilience</div></div>
+        <ul>
+          <li>Foreground promotion with the right <code>mediaPlayback</code> type and a flag to prevent redundant <code>startForeground</code> calls.</li>
+          <li><code>STOP_FOREGROUND_REMOVE</code> + flag reset so a later <code>ACTION_START</code> in the same process re‑enters foreground correctly.</li>
+          <li>Ongoing notification while a session exists (playing <em>or</em> paused); dismissable only on stop.</li>
+          <li>Idempotent, identity‑based <code>addStateListener</code>; defensive copy + <code>runCatching</code> around listener dispatch.</li>
+          <li>Double‑layer validation: clamping at input (<code>SettingsValidation</code>) <em>and</em> normalization at persistence (<code>PreferenceNormalization</code>).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== GAPS ============== -->
+  <section id="gaps">
+    <h2><span class="num">6</span> Gaps &amp; risks (detailed)</h2>
+    <p class="kicker">The specific deviations from best practice, with evidence and impact.</p>
+
+    <h3>Gap 1 — No audio focus management <span class="pill no">Critical</span></h3>
+    <div class="callout bad">
+      <p><strong>Evidence:</strong> <code>rg -n "AudioFocus|requestAudioFocus|AudioManager|AUDIOFOCUS|AudioAttributes" android/app/src/main</code> returns <strong>zero matches</strong>.</p>
+      <p><strong>Impact:</strong> TTS does not reliably pause, resume, or get system-muted for incoming calls, other media apps (Spotify, YouTube), or navigation prompts because Android's enforced focus behaviors depend on a successful focus request. On Android 15+ / target SDK 35+, focus requests also fail unless made while the app is topmost or running a foreground service. For a <code>mediaPlayback</code> foreground service this is non‑idiomatic and a real correctness/UX issue.</p>
+      <p><strong>Fix shape:</strong> Introduce an <code>AudioFocusRequest</code> with <code>AUDIOFOCUS_GAIN</code>, <code>setWillPauseWhenDucked(true)</code>, and <code>AudioAttributes</code> (<code>USAGE_MEDIA</code> + <code>CONTENT_TYPE_SPEECH</code>), requested from the foreground playback path before <code>speakCurrent()</code> and abandoned on <code>stop</code>/<code>finishPlayback</code>. Wire an <code>AudioManager.OnAudioFocusChangeListener</code> into pause/resume/stop, and do not call <code>speak()</code> if focus is denied.</p>
+    </div>
+
+    <h3>Gap 2 — Silent error swallowing <span class="pill no">High</span></h3>
+    <div class="callout bad">
+      <p><strong>Evidence:</strong> <span class="file">TtsEngine.kt:84</span> — <code>override fun onError(utteranceId: String?) = Unit</code>. The deprecated single‑arg form is overridden; the API‑21 <code>onError(String, Int)</code> with the error code is not. <code>onStart</code> is also a no‑op.</p>
+      <p><strong>Impact:</strong> Engine‑busy, language‑missing‑data, and synthesis failures are invisible. Playback simply stops advancing with no user feedback or telemetry. A user whose selected voice's language data isn't installed gets a dead feature with no explanation.</p>
+      <p><strong>Correction:</strong> <code>LANG_MISSING_DATA</code>/<code>LANG_NOT_SUPPORTED</code> should be handled from language/voice setup paths such as <code>setLanguage</code> and <code>setVoice</code>, while <code>onError(String, Int)</code> reports <code>TextToSpeech.ERROR_*</code> synthesis failures.</p>
+    </div>
+
+    <h3>Gap 3 — Mutex documentation overstates the guarantee <span class="pill mid">Medium</span></h3>
+    <div class="callout warn">
+      <p><strong>Evidence:</strong> The class KDoc (<span class="file">TtsEngine.kt:30‑35</span>) claims public control methods (<code>play/pause/next/...</code>) are routed through <code>stateMutex</code>, but none of them acquire it — only <code>onInit</code> (L76) and <code>onDone</code> (L89) do.</p>
+      <p><strong>Impact:</strong> Today it works because all callers are on the main thread and <code>Dispatchers.Main.immediate</code> keeps the <code>onDone</code> continuation on the same thread. It is a latent race the moment any caller invokes a control off‑main, and the comment misleads future maintainers.</p>
+    </div>
+
+    <h3>Gap 4 — No stall watchdog <span class="pill mid">Medium</span></h3>
+    <div class="callout warn">
+      <p><strong>Evidence:</strong> Advancement depends entirely on <code>onDone</code> firing. If the engine hiccups and neither <code>onDone</code> nor <code>onError</code> arrives for a chunk, playback stalls with no recovery and no signal to the user.</p>
+    </div>
+
+    <h3>Gap 5 — i18n strings declared but bypassed <span class="pill no">High</span></h3>
+    <div class="callout bad">
+      <p><strong>Evidence:</strong> <span class="file">strings.xml</span> defines <code>tts_channel_name</code>, <code>tts_notif_title</code>, <code>tts_notif_paused</code>, etc. (L21–27), but <span class="file">TtsForegroundService.buildNotification</span> (L226–230), <code>updateMediaSessionMetadata</code> (L382–384), and <code>createNotificationChannel</code> (L396) hardcode English literals (<code>"Text to Speech"</code>, <code>"TTS paused"</code>, <code>"Reading"</code>, …). <span class="file">TtsNotificationActions.kt</span> also hardcodes <code>"Previous"</code>, <code>"Play"</code>, <code>"Pause"</code>, <code>"Next"</code>, and <code>"Stop"</code>.</p>
+      <p><strong>Impact:</strong> The i18n plumbing exists but is incomplete for TTS; non‑English users see English notification text, action labels, and system media metadata fallbacks.</p>
+    </div>
+
+    <h3>Gap 6 — Legacy media stack <span class="pill mid">Medium</span></h3>
+    <div class="callout warn">
+      <p><strong>Evidence:</strong> The app depends on <code>androidx.media:media:1.7.0</code> (<code>MediaSessionCompat</code>). Android's current Media3 release notes list <code>androidx.media3</code> 1.10.1 stable as of 2026‑06‑24, and the official guides put compat APIs under "Legacy media APIs" while Media3 provides <code>media3-session</code>, <code>MediaSessionService</code>, and Compose media UI artifacts.</p>
+      <p><strong>Impact:</strong> No functional regression today, but the project is investing in a stack that is no longer receiving new features, and Compose‑based media UI (when the reader eventually moves to Compose) will be smoother on Media3.</p>
+    </div>
+
+    <h3>Gap 7 — Minor: eager init, dead fields, hidden voice metadata</h3>
+    <ul>
+      <li><strong>Eager engine construction</strong> (<span class="file">TtsEngine.kt:38</span>) binds the system TTS service at process start even if the user never uses TTS. Lazy init on first <code>play()</code> would save resources.</li>
+      <li><strong><code>sessionVersion</code></strong> on <code>TtsSession</code> is forward‑looking but currently unread — no migration logic consumes it.</li>
+      <li><strong><code>VoiceInfo.quality</code>/<code>latency</code></strong> are surfaced in the DTO but the picker UI doesn't display them — a missed UX cue (let users avoid low‑quality/network voices).</li>
+    </ul>
+  </section>
+
+  <!-- ============== RECOMMENDATIONS ============== -->
+  <section id="recommendations">
+    <h2><span class="num">7</span> Recommendations (prioritized)</h2>
+    <p class="kicker">Ordered by impact. Each item is a candidate for a future task — no application code is changed in this investigation.</p>
+
+    <ol class="priority-list">
+      <li>
+        <span class="sev pill no">Critical</span>
+        <strong>Add audio focus management.</strong>
+        <p>Introduce <code>AudioFocusRequest</code> (<code>AUDIOFOCUS_GAIN</code>) with speech‑oriented <code>AudioAttributes</code>, requested at playback start and abandoned at stop. Implement an <code>OnAudioFocusChangeListener</code> that pauses on transient loss, pauses rather than ducks for spoken-content duck requests, fully stops on permanent loss, and resumes on regain when appropriate. This is the single change that closes the biggest correctness gap and aligns with the official <em>Manage audio focus</em> guidance.</p>
+      </li>
+      <li>
+        <span class="sev pill no">High</span>
+        <strong>Implement real utterance error handling.</strong>
+        <p>Override the API‑21 <code>onError(utteranceId: String?, errorCode: Int)</code> form and surface <code>TextToSpeech.ERROR_*</code> failures to the user and/or logs. Separately check <code>setLanguage</code>/<code>setVoice</code> results and voice availability, and for <code>LANG_MISSING_DATA</code> offer to launch the voice‑data installer intent. Without this, the feature fails silently for a class of users.</p>
+      </li>
+      <li>
+        <span class="sev pill no">High</span>
+        <strong>Use the declared i18n strings in the notification.</strong>
+        <p>Replace the hardcoded literals in <code>buildNotification</code>, <code>updateMediaSessionMetadata</code>, <code>createNotificationChannel</code>, and <code>TtsNotificationActions</code> with <code>getString(R.string.tts_...)</code> or resource IDs resolved by the service. Some strings already exist; add the missing action-label and metadata-fallback strings in the same pass.</p>
+      </li>
+      <li>
+        <span class="sev pill mid">Medium</span>
+        <strong>Reconcile the <code>stateMutex</code> contract with the code.</strong>
+        <p>Either (a) actually wrap the public control methods in <code>scope.launch { stateMutex.withLock { ... } }</code> so the documented guarantee holds, or (b) document that callers <em>must</em> be on the main thread and drop the mutex claim. Option (a) is safer and removes a latent race.</p>
+      </li>
+      <li>
+        <span class="sev pill mid">Medium</span>
+        <strong>Add a playback‑stall watchdog.</strong>
+        <p>Schedule a coroutine that, if no <code>onDone</code>/<code>onError</code> arrives for the current chunk within a generous timeout (e.g. 2× expected duration), re‑issues <code>speakCurrent()</code> or surfaces an error. Prevents the "TTS silently stops mid‑chapter" failure mode.</p>
+      </li>
+      <li>
+        <span class="sev pill mid">Medium</span>
+        <strong>Evaluate migrating to <code>androidx.media3</code>.</strong>
+        <p>Not urgent — the current <code>MediaSessionCompat</code> setup works — but worth planning, especially if/when the reader moves to Compose (Media3's current stable line includes official Compose media‑UI artifacts). Treat as a deliberate, scoped migration, not a drive‑by change.</p>
+      </li>
+      <li>
+        <span class="sev pill mid">Low</span>
+        <strong>Lazy‑initialize the <code>TextToSpeech</code> engine.</strong>
+        <p>Move construction out of the field initializer into a <code>ensureEngine()</code> called on first <code>play()</code>/<code>playFromChunk()</code>/<code>resumePersistedSession()</code>, so the system TTS service only binds when the user actually uses TTS.</p>
+      </li>
+      <li>
+        <span class="sev pill mid">Low</span>
+        <strong>Surface voice quality/latency in the picker.</strong>
+        <p>The DTO already carries <code>quality</code>/<code>latency</code>; show them so users can avoid low‑quality or network‑dependent voices. Also refresh the voice list when the engine finishes initializing (currently the picker only toasts "No local TTS voices available yet" if opened too early).</p>
+      </li>
+      <li>
+        <span class="sev pill mid">Low</span>
+        <strong>Add coverage for chunk navigation &amp; error paths.</strong>
+        <p>Current unit tests cover only the pure <code>*Planning</code>/<code>TtsPlaybackState</code> helpers. Add tests for <code>next()</code>/<code>previous()</code> index arithmetic (subtle due to the post‑increment + clamps) and for the new error‑handling branches once implemented.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ============== OUT OF SCOPE ============== -->
+  <section id="non-todo">
+    <h2><span class="num">8</span> Explicitly out of scope</h2>
+    <p>As requested, <strong>no application source code was modified</strong> for this investigation. Everything above is findings and recommendations only. Any code changes would be separate, explicitly‑requested tasks.</p>
+    <p>The following were intentionally <em>not</em> pursued and would need their own investigation if desired:</p>
+    <ul>
+      <li>A cloud/remote TTS engine (e.g. a neural voice SDK) — the app is deliberately built on the on‑device Android <code>TextToSpeech</code> engine.</li>
+      <li>Per‑character / word‑level highlighting (the current highlight is per chunk/group).</li>
+      <li>SSML support (Android's <code>TextToSpeech</code> engine does not natively support SSML).</li>
+      <li>Android Auto / Automotive surface (the MediaSession is in place, but Auto‑specific metadata/branding was not reviewed).</li>
+    </ul>
+  </section>
+
+  <!-- ============== SOURCES ============== -->
+  <section id="sources">
+    <h2><span class="num">9</span> Sources</h2>
+    <ul class="sources">
+      <li><a href="https://developer.android.com/media/optimize/audio-focus" target="_blank" rel="noopener">Manage audio focus — Android Developers (official)</a></li>
+      <li><a href="https://developer.android.com/about/versions/14/changes/fgs-types-required" target="_blank" rel="noopener">Foreground service types are required — Android Developers</a></li>
+      <li><a href="https://developer.android.com/develop/background-work/services/fgs/service-types" target="_blank" rel="noopener">Foreground service types — Android Developers</a></li>
+      <li><a href="https://developer.android.com/reference/kotlin/android/speech/tts/UtteranceProgressListener" target="_blank" rel="noopener">UtteranceProgressListener — Kotlin API reference</a></li>
+      <li><a href="https://developer.android.com/reference/kotlin/android/speech/tts/TextToSpeech" target="_blank" rel="noopener">TextToSpeech — Kotlin API reference</a></li>
+      <li><a href="https://developer.android.com/jetpack/androidx/releases/media3" target="_blank" rel="noopener">Media3 release notes — Android Developers</a></li>
+      <li><a href="https://developer.android.com/media/media3/session/control-playback" target="_blank" rel="noopener">Control and advertise playback using a MediaSession — Android Developers</a></li>
+      <li><a href="https://developer.android.com/media/media3/session/background-playback" target="_blank" rel="noopener">Background playback with a MediaSessionService — Android Developers</a></li>
+      <li><a href="https://developer.android.com/media/legacy/video/mediasession" target="_blank" rel="noopener">Media session callbacks — Legacy media APIs — Android Developers</a></li>
+    </ul>
+  </section>
+
+  <footer>
+    Generated as a read‑only investigation. No application source files were modified.
+  </footer>
+
+</div>
+</body>
+</html>

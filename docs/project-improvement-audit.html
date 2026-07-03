@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project Improvement Audit — Webnovel Archiver (Android)</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --bg-elev: #161c24;
+    --bg-card: #1c242e;
+    --bg-card-hover: #222b36;
+    --border: #2a3441;
+    --border-strong: #3a4655;
+    --text: #e6edf3;
+    --text-dim: #9aa7b4;
+    --text-faint: #6b7785;
+    --accent: #5ea3ff;
+    --accent-soft: rgba(94, 163, 255, 0.12);
+    --green: #3fb950;
+    --green-soft: rgba(63, 185, 80, 0.12);
+    --amber: #d29922;
+    --amber-soft: rgba(210, 153, 34, 0.12);
+    --red: #f85149;
+    --red-soft: rgba(248, 81, 73, 0.12);
+    --purple: #bc8cff;
+    --purple-soft: rgba(188, 140, 255, 0.12);
+    --teal: #2dd4bf;
+    --teal-soft: rgba(45, 212, 191, 0.12);
+    --code-bg: #0d1117;
+    --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    font-synthesis: none;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+      Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- Layout ---------- */
+  .layout {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    max-width: 1280px;
+    margin: 0 auto;
+    gap: 0;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 32px 20px 32px 28px;
+    border-right: 1px solid var(--border);
+    background: var(--bg-elev);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .brand-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    flex-shrink: 0;
+  }
+  .brand-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .sidebar h1 {
+    font-size: 17px;
+    line-height: 1.3;
+    margin: 6px 0 4px;
+    color: var(--text);
+  }
+  .sidebar .subtitle {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-bottom: 24px;
+  }
+
+  .nav-group {
+    margin-bottom: 18px;
+  }
+  .nav-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 8px 0;
+  }
+  .nav-group ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .nav-group li {
+    margin: 0;
+  }
+  .nav-group a {
+    display: block;
+    padding: 5px 10px;
+    margin: 1px 0;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-size: 13.5px;
+    border-radius: 6px;
+    border-left: 2px solid transparent;
+    transition: background 0.12s, color 0.12s;
+  }
+  .nav-group a:hover {
+    background: var(--bg-card);
+    color: var(--text);
+  }
+  .nav-group a.active {
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-left-color: var(--accent);
+  }
+  .nav-group a .num {
+    display: inline-block;
+    width: 18px;
+    color: var(--text-faint);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+  .nav-group a.active .num { color: var(--accent); }
+
+  /* ---------- Main ---------- */
+  .main {
+    padding: 48px 56px 120px;
+    min-width: 0;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 5px 12px;
+    border-radius: 999px;
+    margin-bottom: 18px;
+  }
+  .hero h2 {
+    font-size: 38px;
+    line-height: 1.15;
+    margin: 0 0 16px;
+    letter-spacing: -0.02em;
+    font-weight: 800;
+  }
+  .hero p.lead {
+    font-size: 18px;
+    color: var(--text-dim);
+    margin: 0 0 24px;
+    max-width: 70ch;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    max-width: 720px;
+  }
+  .meta-cell {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .meta-cell .k {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 4px;
+  }
+  .meta-cell .v {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* ---------- At-a-glance stats ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
+    margin: 28px 0;
+  }
+  .stat {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    text-align: left;
+  }
+  .stat .stat-num {
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+  }
+  .stat .stat-label {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  /* ---------- Sections ---------- */
+  section.chapter {
+    margin-bottom: 56px;
+    scroll-margin-top: 16px;
+  }
+  section.chapter > h3 {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section.chapter > h3 .chap-tag {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-faint);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 3px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+  }
+  section.chapter > .chap-sub {
+    color: var(--text-dim);
+    margin: 0 0 24px;
+    font-size: 15px;
+    max-width: 72ch;
+  }
+
+  h4.sub {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 32px 0 12px;
+    color: var(--text);
+  }
+
+  p { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 16px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  strong { color: var(--text); font-weight: 700; }
+  em { color: var(--text); }
+
+  a.inline { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(94,163,255,0.3); }
+  a.inline:hover { border-bottom-color: var(--accent); }
+
+  code, .mono {
+    font-family: "SF Mono", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    color: var(--text);
+    padding: 2px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+  }
+  p code, li code { white-space: nowrap; }
+
+  /* ---------- Callout ---------- */
+  .callout {
+    display: flex;
+    gap: 14px;
+    padding: 16px 18px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin: 18px 0;
+    background: var(--bg-card);
+  }
+  .callout.ok    { border-color: rgba(63,185,80,0.35); background: var(--green-soft); }
+  .callout.warn  { border-color: rgba(210,153,34,0.35); background: var(--amber-soft); }
+  .callout.info  { border-color: rgba(94,163,255,0.35); background: var(--accent-soft); }
+  .callout .ico {
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 800;
+    border-radius: 50%;
+    margin-top: 1px;
+  }
+  .callout.ok   .ico { background: var(--green); color: #06120a; }
+  .callout.warn .ico { background: var(--amber); color: #1a1405; }
+  .callout.info .ico { background: var(--accent); color: #07111f; }
+  .callout .body { min-width: 0; }
+  .callout .body p { margin: 0; }
+  .callout .body p + p { margin-top: 8px; }
+
+  /* ---------- Badges ---------- */
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0 18px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    letter-spacing: 0.02em;
+  }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .badge.impact       { background: var(--bg-card); color: var(--text-dim); }
+  .badge.priority-high       { color: var(--red);    border-color: rgba(248,81,73,0.4);  background: var(--red-soft); }
+  .badge.priority-high .dot  { background: var(--red); }
+  .badge.priority-mh         { color: var(--amber);  border-color: rgba(210,153,34,0.4); background: var(--amber-soft); }
+  .badge.priority-mh .dot    { background: var(--amber); }
+  .badge.priority-med        { color: var(--accent); border-color: rgba(94,163,255,0.4); background: var(--accent-soft); }
+  .badge.priority-med .dot   { background: var(--accent); }
+  .badge.tag                 { color: var(--text-dim); background: var(--bg-card); }
+
+  /* ---------- Recommendation cards ---------- */
+  .rec {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--bg-card);
+    padding: 26px 28px;
+    margin: 18px 0;
+    box-shadow: var(--shadow);
+    transition: border-color 0.15s;
+  }
+  .rec:hover { border-color: var(--border-strong); }
+  .rec-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 6px;
+  }
+  .rec-num {
+    flex-shrink: 0;
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 800;
+    font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(94,163,255,0.3);
+  }
+  .rec-title {
+    font-size: 19px;
+    font-weight: 700;
+    margin: 4px 0 0;
+    line-height: 1.3;
+  }
+  .rec-body { color: var(--text-dim); margin-top: 8px; }
+  .rec-body p { margin-bottom: 12px; }
+  .rec h5 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 20px 0 8px;
+  }
+  .rec ul.tight { margin-bottom: 8px; }
+  .rec ul.tight li { margin-bottom: 4px; }
+
+  .rec .expected {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--bg-elev);
+    border-left: 3px solid var(--green);
+    font-size: 14px;
+  }
+  .rec .expected b { color: var(--green); }
+
+  /* ---------- Validation gap items ---------- */
+  .gap {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 14px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .gap:last-child { border-bottom: none; }
+  .gap .gap-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--purple-soft);
+    color: var(--purple);
+    border: 1px solid rgba(188,140,255,0.35);
+    font-weight: 700;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .gap .gap-body { min-width: 0; }
+  .gap .gap-body p { margin: 0 0 6px; }
+  .gap h6 {
+    font-size: 14.5px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: var(--text);
+  }
+
+  /* ---------- Strengths grid ---------- */
+  .strengths {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .strength {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    border-left: 3px solid var(--green);
+  }
+  .strength h6 {
+    margin: 0 0 6px;
+    font-size: 14.5px;
+    color: var(--text);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .strength h6::before {
+    content: "✓";
+    color: var(--green);
+    font-weight: 800;
+  }
+  .strength p { margin: 0; font-size: 14px; color: var(--text-dim); }
+
+  /* ---------- Execution order timeline ---------- */
+  .timeline {
+    position: relative;
+    margin: 24px 0 8px;
+    padding-left: 8px;
+  }
+  .timeline-item {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 16px;
+    padding: 12px 0;
+    position: relative;
+  }
+  .timeline-item:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 21px; top: 44px; bottom: -12px;
+    width: 2px;
+    background: var(--border);
+  }
+  .timeline-num {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--bg-elev);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-weight: 800;
+    font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1;
+  }
+  .timeline-content {
+    padding-top: 4px;
+  }
+  .timeline-content h6 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .timeline-content p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-dim);
+  }
+
+  /* ---------- Strategy table ---------- */
+  .strategy-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+  .strategy-table th, .strategy-table td {
+    text-align: left;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .strategy-table thead th {
+    background: var(--bg-elev);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    font-weight: 700;
+  }
+  .strategy-table tbody tr:last-child td { border-bottom: none; }
+  .strategy-table tbody tr:hover { background: var(--bg-card-hover); }
+  .strategy-table .change-type {
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .strategy-table code { font-size: 12.5px; }
+
+  /* ---------- Files over 400 lines ---------- */
+  .file-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .file-chip .warn { color: var(--amber); }
+
+  .footer-note {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 13px;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 960px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar {
+      position: relative;
+      height: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .main { padding: 32px 24px 80px; }
+    .hero h2 { font-size: 30px; }
+  }
+  @media (max-width: 560px) {
+    .main { padding: 24px 18px 60px; }
+    .hero h2 { font-size: 25px; }
+    .rec { padding: 20px; }
+    .rec-head { flex-direction: column; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-title">Webnovel Archiver</span>
+    </div>
+    <h1>Project Improvement Audit</h1>
+    <p class="subtitle">Native Kotlin app · Static review</p>
+
+    <nav>
+      <div class="nav-group">
+        <p class="nav-label">Overview</p>
+        <ul>
+          <li><a href="#overview"><span class="num">—</span>At a glance</a></li>
+          <li><a href="#strengths"><span class="num">—</span>Current strengths</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <p class="nav-label">Validation pass</p>
+        <ul>
+          <li><a href="#validation"><span class="num">—</span>Verification outcome</a></li>
+          <li><a href="#terminology"><span class="num">—</span>Terminology fixes</a></li>
+          <li><a href="#gaps"><span class="num">—</span>Gaps found (9)</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <p class="nav-label">Recommendations</p>
+        <ul>
+          <li><a href="#rec1"><span class="num">1</span>Repository as single read path</a></li>
+          <li><a href="#rec2"><span class="num">2</span>Move reader/TTS off main thread</a></li>
+          <li><a href="#rec3"><span class="num">3</span>Guard backup &amp; restore</a></li>
+          <li><a href="#rec4"><span class="num">4</span>Reduce queue re-parsing</a></li>
+          <li><a href="#rec5"><span class="num">5</span>Virtualize Updates screens</a></li>
+          <li><a href="#rec6"><span class="num">6</span>Typed network errors</a></li>
+          <li><a href="#rec7"><span class="num">7</span>Harden user regex</a></li>
+          <li><a href="#rec8"><span class="num">8</span>Tighten tooling gates</a></li>
+        </ul>
+      </div>
+
+      <div class="nav-group">
+        <p class="nav-label">Secondary &amp; next steps</p>
+        <ul>
+          <li><a href="#secondary"><span class="num">—</span>Secondary recommendations</a></li>
+          <li><a href="#order"><span class="num">—</span>Suggested execution order</a></li>
+          <li><a href="#strategy"><span class="num">—</span>Validation strategy</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <!-- HERO -->
+    <header class="hero" id="overview">
+      <span class="eyebrow">● Audit &amp; Validation Report</span>
+      <h2>Making the native Kotlin app faster, more reliable, and easier to maintain</h2>
+      <p class="lead">
+        This is a static review of the Webnovel Archiver Android app
+        (<code>android/</code>) — its production Kotlin tree, unit tests, Gradle tooling,
+        manifest, and existing docs. It focuses on three goals: <strong>speed</strong>,
+        <strong>reliability</strong>, and <strong>maintainability</strong>.
+        It did not include runtime profiling or emulator QA.
+      </p>
+
+      <div class="meta-grid">
+        <div class="meta-cell"><div class="k">Generated</div><div class="v">2026-07-02</div></div>
+        <div class="meta-cell"><div class="k">Scope</div><div class="v">Native Kotlin app</div></div>
+        <div class="meta-cell"><div class="k">Review type</div><div class="v">Static audit</div></div>
+        <div class="meta-cell"><div class="k">Validation</div><div class="v">Second pass done</div></div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat-num">8</div><div class="stat-label">High-impact recommendations</div></div>
+        <div class="stat"><div class="stat-num">9</div><div class="stat-label">Gaps found in validation</div></div>
+        <div class="stat"><div class="stat-num">4</div><div class="stat-label">Secondary recommendation areas</div></div>
+        <div class="stat"><div class="stat-num">8</div><div class="stat-label">Steps in execution order</div></div>
+      </div>
+
+      <div class="callout ok">
+        <div class="ico">✓</div>
+        <div class="body">
+          <p><strong>Validation result: every claim is accurate.</strong> A second pass re-checked
+          all strengths, problem statements, and current-state assertions against the source. No
+          problem description was wrong; the only corrections are terminology labels and nine
+          additional gaps the original audit didn't capture.</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============ STRENGTHS ============ -->
+    <section class="chapter" id="strengths">
+      <h3>Current strengths <span class="chap-tag">What's already healthy</span></h3>
+      <p class="chap-sub">Before the recommendations, the audit notes a solid foundation to build on.</p>
+
+      <div class="strengths">
+        <div class="strength">
+          <h6>Clean package structure</h6>
+          <p>Android lifecycle/wiring lives in <code>app/</code>, pure rules in <code>domain/</code> and
+          <code>*Planning.kt</code> files, persistence in <code>data/</code>, source-specific scraping in
+          <code>source/</code>, screens grouped under <code>feature/</code>.</p>
+        </div>
+        <div class="strength">
+          <h6>Meaningful unit coverage</h6>
+          <p>Focused tests for planning and parsing: backup planning, download scheduling, EPUB helpers,
+          source fixtures, cleanup, TTS session planning, layout planning, and settings normalization.</p>
+        </div>
+        <div class="strength">
+          <h6>Storage durability taken seriously</h6>
+          <p>JSON goes through <code>DurableJson</code>; chapter/EPUB writes use temp-file plus rename;
+          full restore uses staging plus rollback.</p>
+        </div>
+        <div class="strength">
+          <h6>Hot UI paths moving to RecyclerView</h6>
+          <p>Details chapter lists, chapter selection, legacy EPUBs, library pages, and the download
+          queue already have adapter-based surfaces.</p>
+        </div>
+        <div class="strength">
+          <h6>Right single-process architecture</h6>
+          <p>One process-wide <code>AppContainer</code>, one shared <code>NetworkClient</code>, and
+          repository state flows for library/queue snapshots — the right direction for a local-first app.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VALIDATION PASS ============ -->
+    <section class="chapter" id="validation">
+      <h3>Validation pass <span class="chap-tag">2026-07-02</span></h3>
+      <p class="chap-sub">
+        A second pass re-checked every claim below against the code and added items found during
+        verification. File paths are relative to the package root
+        (<code>android/app/src/main/java/com/vinicius741/webnovelarchiver/</code>).
+      </p>
+
+      <div class="callout ok">
+        <div class="ico">✓</div>
+        <div class="body">
+          <p><strong>Verification outcome.</strong> All strengths, problem statements, and current-state
+          assertions were checked against the source. <strong>Every claim is accurate</strong> — no
+          problem description was wrong.</p>
+          <p>The line counts in recommendation&nbsp;8 are <em>exact</em>: all 11 listed files are
+          genuinely over 400 lines, and the next-largest (<code>download/DownloadEngine.kt</code>) is 380.
+          The only items below are terminology refinements and gaps the original audit missed.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- TERMINOLOGY -->
+    <section class="chapter" id="terminology">
+      <h4 class="sub">Terminology refinements</h4>
+      <p>Two labels in the original audit were technically wrong, though the substance was correct.</p>
+
+      <div class="gap">
+        <div class="gap-num">A</div>
+        <div class="gap-body">
+          <h6>ReaderScreen is imperative View code, not @Composable</h6>
+          <p>Recommendation&nbsp;2's parenthetical "during screen construction (composable invocation)"
+          is mislabeled. <code>feature/reader/ReaderScreen.kt</code> contains <strong>no
+          <code>@Composable</code> functions</strong> — it is imperative Android View code
+          (<code>WebView</code>, <code>LinearLayout</code>, <code>TextView</code>). The substance
+          (synchronous main-thread work during the screen-building function) is fully correct; only
+          the "composable" label is wrong.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">B</div>
+        <div class="gap-body">
+          <h6>There is no CI of any kind — the work is to "introduce" it, not "adjust" it</h6>
+          <p>Recommendation&nbsp;8 says "Make CI run <code>:app:lintKotlin :app:ci</code>." There is
+          currently <strong>no CI</strong> in the repo (no <code>.github/workflows/</code>, no other
+          config). The <code>:app:ci</code> task exists (<code>app/build.gradle:86-89</code>, aggregating
+          <code>testDebugUnitTest</code>, <code>detekt</code>, <code>lintDebug</code>,
+          <code>assembleDebug</code>) but does not include <code>lintKotlin</code>, and nothing automates
+          running it.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- GAPS -->
+    <section class="chapter" id="gaps">
+      <h4 class="sub">Gaps &amp; additions found during validation</h4>
+      <p>These nine items extend or sharpen the recommendations and were not in the original audit.</p>
+
+      <div class="gap">
+        <div class="gap-num">1</div>
+        <div class="gap-body">
+          <h6><code>txMutex</code> is documented but never implemented</h6>
+          <p><code>AppStorage.kt</code> and <code>app/AppContainer.kt</code> reference a "repository's
+          transactional <code>txMutex</code>" as the owner for multi-document read-modify-write
+          atomicity, but the field is <strong>never defined anywhere</strong> in <code>app/src/main</code>.
+          Relevant to recommendation&nbsp;3: code comments assert a lock that doesn't exist. Either
+          implement it or remove the stale references.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">2</div>
+        <div class="gap-body">
+          <h6>JSON backup import has neither staging nor rollback</h6>
+          <p>Recommendation&nbsp;3 focuses on full restore racing writers, but the JSON import path
+          (<code>data/storage/BackupRestoreCoordinator.kt:177</code>) is worse: a plain
+          <code>getLibrary()</code> → merge-in-memory → <code>saveLibrary()</code> sequence with each
+          per-document <code>@Synchronized</code> block entered and exited independently, and no
+          snapshot to roll back to. A malformed or partial import can leave the library index in a mixed
+          state. Treat JSON import with at least the same atomicity as full restore.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">3</div>
+        <div class="gap-body">
+          <h6><code>DownloadJobStatus</code> already exists — "adopt," don't "build"</h6>
+          <p>The enum <strong>already exists</strong> (<code>domain/model/Models.kt:25-51</code>) with a
+          <code>wire: String</code> property and a <code>parse</code> companion that round-trips the
+          lowercase wire strings. The real gap is narrower: <code>DownloadJob.status</code> is still
+          typed <code>String</code> (<code>Models.kt:198</code>), so every planner and UI surface
+          reparses it. The work is to make the field carry the enum, not to invent the type.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">4</div>
+        <div class="gap-body">
+          <h6>Two extra <code>storage.getQueue()</code> hotspots in the download loop</h6>
+          <p>Recommendation&nbsp;4 enumerates the main re-reads; verification found two more that compound
+          the cost:</p>
+          <ul>
+            <li><code>isCancelled(id)</code> (<code>download/DownloadEngine.kt:359</code>) is called
+            <strong>twice per <code>processJob</code></strong> (lines 291 and 300), so each job triggers
+            two fresh queue parses just for cancellation checks.</li>
+            <li><code>cleanupUnsupportedSourceJobs()</code> reads the queue at
+            <code>DownloadEngine.kt:237</code> and runs at the <strong>top of every loop iteration</strong>
+            (<code>:175</code>).</li>
+          </ul>
+          <p>Both should reuse the in-memory queue snapshot recommendation&nbsp;4 introduces.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">5</div>
+        <div class="gap-body">
+          <h6>Regex cleanup split is intentional design, not an oversight</h6>
+          <p>Recommendation&nbsp;7 says "apply regex cleanup through <code>CleanupEngine</code>
+          consistently." The split is real (<code>CleanupEngine</code> caches compiled rules for the
+          download path; <code>TextCleanup.regexRunner</code> recompiles per call for TTS/reader/preview),
+          but it is <strong>explicitly called out as a design trade-off</strong> in
+          <code>cleanup/CleanupEngine.kt</code> and <code>cleanup/TextCleanup.kt</code>. Frame the work
+          as "revisit the documented trade-off and converge on one path." Separately, the validator
+          heuristic (<code>cleanup/RegexRuleCleanup.kt</code>) only inspects the literal pattern string
+          and is bypassable; rules restored from backup are re-sanitized, but patterns the heuristics
+          miss still match with no timeout.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">6</div>
+        <div class="gap-body">
+          <h6>Existing network test coverage — avoid duplicate work</h6>
+          <p><code>NetworkClientTest.kt</code> (MockWebServer) already covers: happy path, non-retryable
+          404, per-call timeout, 429 no-retry on a non-ScribbleHub host, image content type, non-image
+          rejection, 500 → null, and socket failure.</p>
+          <p>Not yet covered (still worth adding): <strong>403</strong>, the <strong>ScribbleHub
+          403/429 retry branch</strong> (currently untestable because the host is hard-coded to
+          <code>www.scribblehub.com</code>), <strong><code>Retry-After</code></strong> (not read
+          anywhere), and <strong>oversize image</strong> (<code>MAX_IMAGE_BYTES</code>). Note the
+          ScribbleHub branch is untestable until the host check moves behind a source policy — fixing
+          recommendation&nbsp;6 unblocks the test.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">7</div>
+        <div class="gap-body">
+          <h6><code>kotlinx-coroutines-test</code> is already a dependency</h6>
+          <p>(<code>app/build.gradle:122</code>). Recommendation&nbsp;2's "add tests for TTS state
+          transitions using <code>kotlinx-coroutines-test</code>" needs no new dependency — only the
+          tests, which don't yet exist. The <code>tts</code> test package covers only pure helpers;
+          <code>TtsEngine</code> itself (with its <code>TextToSpeech</code> dependency and
+          <code>Dispatchers.Main.immediate</code> scope) is untested.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">8</div>
+        <div class="gap-body">
+          <h6>Untested EPUB generation path</h6>
+          <p>The <code>epub</code> test package covers helper classes (<code>EpubContent</code>,
+          <code>EpubMetadata</code>, <code>EpubFilename</code>, <code>EpubSelection</code>) but
+          <strong>never instantiates <code>EpubEngine</code></strong> or exercises <code>generate</code>
+          / the multi-volume <code>chunked</code> path. The secondary EPUB suggestion to add a
+          multi-volume regression test is confirmed necessary.</p>
+        </div>
+      </div>
+
+      <div class="gap">
+        <div class="gap-num">9</div>
+        <div class="gap-body">
+          <h6>Foreground services have no tests — size the TTS service, leave download alone</h6>
+          <p>Neither <code>Service</code> subclass has unit tests.
+          <code>tts/TtsForegroundService.kt</code> is 459 lines (large, stateful — the "large" label
+          fits), but <code>download/DownloadForegroundService.kt</code> is 220 lines (moderate). If a
+          file-size gate is added under recommendation&nbsp;8, size the TTS service for splitting but
+          leave the download service's inline notification/command handling alone unless it grows.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RECOMMENDATIONS ============ -->
+    <section class="chapter" id="recommendations">
+      <h3>Highest-impact recommendations <span class="chap-tag">8 items</span></h3>
+      <p class="chap-sub">Ordered by leverage. Each carries an impact profile and a priority.</p>
+
+      <!-- REC 1 -->
+      <div class="rec" id="rec1">
+        <div class="rec-head">
+          <div class="rec-num">1</div>
+          <div>
+            <div class="rec-title">Make repository state the single read path for UI and engines</div>
+            <div class="badges">
+              <span class="badge priority-high"><span class="dot"></span>Priority: high</span>
+              <span class="badge impact">Impact: speed · reliability · maintainability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>The repository already exposes cached flows in <code>data/repository/AppRepository.kt</code>,
+          but many screens and engines still read <code>AppStorage</code> directly:</p>
+          <ul class="tight">
+            <li><code>feature/updates/UpdatesScreen.kt</code> reads the whole library on entry and before syncing.</li>
+            <li><code>feature/library/LibraryScreen.kt</code> seeds from <code>storage.getLibrary()</code>.</li>
+            <li><code>feature/details/DetailsScreen.kt</code> and <code>DetailsScreenDownload.kt</code> mix direct queue reads with repository snapshots.</li>
+            <li><code>download/DownloadEngine.kt</code> re-reads <code>download_queue.json</code> for progress, cancellation checks, process-loop selection, and state publication.</li>
+            <li><code>reader/ReaderScreen.kt</code> reads chapter HTML and settings while rendering on the main thread.</li>
+          </ul>
+          <p>This works for small libraries, but the file-backed model makes <code>getLibrary()</code>
+          an <strong>O(number of stories)</strong> parse of the library index plus every story JSON
+          file. As the library grows, direct reads during render become the main scalability limit.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Treat <code>AppRepository.downloadState</code>, <code>libraryFlow</code>, and <code>queueFlow</code> as the default read path for screens.</li>
+            <li>Add fast repository helpers backed by in-memory maps, e.g. <code>storyById(id)</code> and <code>queueForStory(id)</code>, instead of repeated list scans and JSON reads.</li>
+            <li>Keep <code>AppStorage</code> as the persistence boundary only. UI should not need to know whether state is file-backed.</li>
+            <li>After backup import or full restore, call <code>repository.refresh()</code> before navigating or showing toast-driven success — current import paths navigate without refreshing cached flows.</li>
+            <li>Add a regression test around repository refresh after import/restore once storage is testable without Android framework dependencies.</li>
+          </ul>
+
+          <div class="expected">
+            <b>Expected result:</b> fewer disk reads on render, fewer stale-flow edge cases after imports,
+            and a clearer ownership boundary between storage and presentation.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 2 -->
+      <div class="rec" id="rec2">
+        <div class="rec-head">
+          <div class="rec-num">2</div>
+          <div>
+            <div class="rec-title">Move disk-heavy reader and TTS work off the main thread</div>
+            <div class="badges">
+              <span class="badge priority-high"><span class="dot"></span>Priority: high</span>
+              <span class="badge impact">Impact: speed · reliability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>Several user-visible paths perform file I/O or expensive parsing on the main thread:</p>
+          <ul class="tight">
+            <li><code>feature/reader/ReaderScreen.kt</code> reads chapter HTML, sanitizes it, prepares annotated TTS HTML, formats copy text, and builds the WebView document during screen construction.</li>
+            <li><code>tts/TtsEngine.kt</code> uses a main-dispatcher scope and writes <code>tts_session.json</code> in <code>speakCurrent()</code> for every chunk. Public methods (<code>play</code>, <code>pause</code>, <code>next</code>, <code>stop</code>) mutate state directly rather than going through the documented mutex path.</li>
+            <li><code>storage.saveTtsSession()</code> uses durable JSON writes, so every chunk can trigger synchronous JSON serialization plus <code>AtomicFile</code> writes on the calling dispatcher.</li>
+          </ul>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Introduce a reader preparation step on <code>Dispatchers.IO</code> or <code>Default</code>, returning a <code>ReaderDocument</code> (sanitized HTML, annotated chunks, formatted text, display metadata).</li>
+            <li>Render a lightweight loading state for very large chapters, then load the prepared document into the WebView on the main thread.</li>
+            <li>Route all TTS public controls through the engine scope and <code>stateMutex</code>, matching the class comment and listener callback behavior.</li>
+            <li>Persist TTS sessions from an IO dispatcher; debounce chunk-position writes, but write immediately on pause, stop, chapter transition, and service destruction.</li>
+            <li>Add tests for TTS state transitions using <code>kotlinx-coroutines-test</code>, especially concurrent <code>pause</code>/<code>next</code>/utterance-complete cases.</li>
+          </ul>
+
+          <div class="expected">
+            <b>Expected result:</b> fewer UI stalls when opening or speaking long chapters, and a TTS
+            state model that matches its documented thread-safety contract.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 3 -->
+      <div class="rec" id="rec3">
+        <div class="rec-head">
+          <div class="rec-num">3</div>
+          <div>
+            <div class="rec-title">Guard backup and restore against concurrent writers</div>
+            <div class="badges">
+              <span class="badge priority-high"><span class="dot"></span>Priority: high</span>
+              <span class="badge impact">Impact: reliability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p><code>BackupRestoreCoordinator</code> has strong internal staging and rollback, but its
+          public import/export methods are <strong>not a global app transaction</strong>. Full restore
+          can swap the app data root while the download service, TTS engine, update sync, or screen
+          actions are writing story, queue, or session files. JSON import also performs a multi-step
+          read/merge/save sequence without owning a broader app-level operation lock.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Add an app-level "maintenance transaction" around import and full restore: pause/stop downloads, prevent new enqueue/sync/EPUB/TTS writes, run restore, refresh repository flows, then resume only if appropriate.</li>
+            <li>At minimum, synchronize import/restore public methods on the storage monitor and ensure callers stop the foreground download loop before restore.</li>
+            <li>Publish a <code>MaintenanceState</code> to disable destructive or write-heavy UI actions while restore is in progress.</li>
+            <li>Add integration-style tests for failed restore rollback, stale repository refresh, and "restore while queue has active jobs" behavior. If Android <code>Context</code> makes direct tests hard, extract a filesystem-backed storage core with a temp-root constructor.</li>
+          </ul>
+
+          <div class="callout warn" style="margin-top:16px;">
+            <div class="ico">!</div>
+            <div class="body">
+              <p>Validation extended this recommendation: see gaps <strong>#1</strong>
+              (<code>txMutex</code> referenced but never implemented) and <strong>#2</strong>
+              (JSON import has no staging/rollback). The concurrency contract in code comments is
+              currently not honest.</p>
+            </div>
+          </div>
+
+          <div class="expected">
+            <b>Expected result:</b> restore remains safe even when background services are active, not
+            only when the app is idle.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 4 -->
+      <div class="rec" id="rec4">
+        <div class="rec-head">
+          <div class="rec-num">4</div>
+          <div>
+            <div class="rec-title">Reduce repeated queue parsing and progress recomputation in downloads</div>
+            <div class="badges">
+              <span class="badge priority-high"><span class="dot"></span>Priority: high</span>
+              <span class="badge impact">Impact: speed · battery · maintainability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p><code>download/DownloadEngine.kt</code> repeatedly calls <code>storage.getQueue()</code>
+          during the process loop, progress emission, cancellation checks, and after each job update.
+          Each call parses the queue JSON. For large batches, progress notifications and status changes
+          become a steady stream of disk reads and writes.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Keep an in-memory queue snapshot inside <code>DownloadEngine</code> for the current process loop iteration.</li>
+            <li>Change <code>emitProgress()</code> and <code>buildProgress()</code> to accept a queue snapshot instead of reading storage every time.</li>
+            <li>Collapse status writes when a batch completes close together — update all completed jobs from one storage transaction where possible.</li>
+            <li>Refresh settings inside the loop or subscribe to settings changes if running downloads should respect updated concurrency and delay without a service restart.</li>
+            <li>Add a fake-storage/fake-network unit test for the engine that asserts queue read/write counts for a multi-chapter batch.</li>
+          </ul>
+
+          <div class="callout warn" style="margin-top:16px;">
+            <div class="ico">!</div>
+            <div class="body">
+              <p>Validation found two <em>extra</em> <code>storage.getQueue()</code> hotspots (gap
+              <strong>#4</strong>): <code>isCancelled(id)</code> is called twice per
+              <code>processJob</code>, and <code>cleanupUnsupportedSourceJobs()</code> reads the queue at
+              the top of every loop iteration. Both compound the cost and should reuse the snapshot.</p>
+            </div>
+          </div>
+
+          <div class="expected">
+            <b>Expected result:</b> lower disk churn during large downloads and clearer separation
+            between scheduling, progress, and persistence.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 5 -->
+      <div class="rec" id="rec5">
+        <div class="rec-head">
+          <div class="rec-num">5</div>
+          <div>
+            <div class="rec-title">Virtualize the Updates screens</div>
+            <div class="badges">
+              <span class="badge priority-mh"><span class="dot"></span>Priority: medium-high</span>
+              <span class="badge impact">Impact: speed · maintainability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p><code>feature/updates/UpdatesScreen.kt</code> renders followed stories and follow-selection
+          rows into scrollable <code>LinearLayout</code>s. The follow-selection screen rebuilds the entire
+          visible list on every search text change, and selecting covers can add image views for every
+          row at once.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Replace follow selection with a <code>RecyclerView</code> adapter using stable IDs and <code>DiffUtil</code>.</li>
+            <li>Split <code>UpdatesScreen.kt</code> into smaller files:
+              <code>UpdatesScreen.kt</code> (route wiring), <code>UpdateFollowSelectionScreen.kt</code>,
+              <code>UpdatedStoryViews.kt</code>, <code>UpdateSyncActions.kt</code>.</li>
+            <li>Keep <code>UpdateTrackerPlanning.kt</code> as the pure decision layer; add adapter-facing tests for row models if a presenter is introduced.</li>
+            <li>For update sync, consider a bounded-concurrency worker with per-source limits once the network layer exposes typed rate-limit errors. Sequential sync is safer today, but slow for many followed stories.</li>
+          </ul>
+
+          <div class="expected">
+            <b>Expected result:</b> smooth search and selection in large libraries, plus a screen file
+            that's easier to reason about.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 6 -->
+      <div class="rec" id="rec6">
+        <div class="rec-head">
+          <div class="rec-num">6</div>
+          <div>
+            <div class="rec-title">Introduce typed network errors and richer retry policy</div>
+            <div class="badges">
+              <span class="badge priority-mh"><span class="dot"></span>Priority: medium-high</span>
+              <span class="badge impact">Impact: reliability · maintainability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p><code>NetworkClient</code> throws generic <code>IllegalStateException("HTTP ...")</code>, and
+          <code>DownloadErrorClassifier</code> re-parses the message to determine retry behavior.
+          <code>fetchBytes()</code> swallows all failures with <code>runCatching { ... }.getOrNull()</code>,
+          which makes cover failures non-fatal but hard to diagnose. Only Scribble Hub 403/429 responses
+          are retried in the low-level client.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Add sealed network errors: <code>HttpError(code, url)</code>, <code>RateLimited(retryAfter)</code>, <code>Timeout(url)</code>, <code>NetworkUnavailable</code>, <code>ParseRejected</code>.</li>
+            <li>Parse <code>Retry-After</code> for 429/503 and pass it into download retry scheduling.</li>
+            <li>Use the same retry and timeout policy for binary fetches, but keep cover failures non-fatal at the EPUB layer.</li>
+            <li>Add per-source network policy in <code>SourceProvider</code> or a <code>SourceNetworkPolicy</code> registry instead of hard-coding Scribble Hub behavior inside <code>NetworkClient</code>.</li>
+            <li>Add tests around HTTP 403, 429 with <code>Retry-After</code>, 5xx, timeout, invalid content type, and oversize image responses.</li>
+          </ul>
+
+          <div class="callout info" style="margin-top:16px;">
+            <div class="ico">i</div>
+            <div class="body">
+              <p>Validation note (gap <strong>#6</strong>): the ScribbleHub 403/429 branch is currently
+              <em>untestable</em> against MockWebServer because the host is hard-coded. Moving the host
+              check behind a source policy unblocks this test — fixing this recommendation unblocks the
+              test.</p>
+            </div>
+          </div>
+
+          <div class="expected">
+            <b>Expected result:</b> less stringly-typed error handling, better user-facing retry
+            behavior, and easier support for new sources.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 7 -->
+      <div class="rec" id="rec7">
+        <div class="rec-head">
+          <div class="rec-num">7</div>
+          <div>
+            <div class="rec-title">Harden user regex execution</div>
+            <div class="badges">
+              <span class="badge priority-med"><span class="dot"></span>Priority: medium</span>
+              <span class="badge impact">Impact: reliability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>Regex rule validation rejects some risky nested patterns, but Kotlin/JVM regex matching has
+          <strong>no execution timeout</strong>. A crafted pattern can still cause catastrophic
+          backtracking during download cleanup, TTS preparation, preview, or reader preparation.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Consider <strong>RE2/J</strong> for user-provided cleanup regexes if feature parity is acceptable.</li>
+            <li>If staying with JVM regex, keep the current validation but add stricter pattern limits and a "disable rule after repeated slow/failing application" mechanism.</li>
+            <li>Apply regex cleanup through <code>CleanupEngine</code> consistently so rules compile once and failures can be observed in one place.</li>
+            <li>Add tests for known pathological patterns and imported malformed rules.</li>
+          </ul>
+
+          <div class="callout info" style="margin-top:16px;">
+            <div class="ico">i</div>
+            <div class="body">
+              <p>Validation note (gap <strong>#5</strong>): the cleanup split is a <em>documented,
+              intentional design trade-off</em>, not an accidental inconsistency — frame the work as
+              "revisit the trade-off and converge." Also, the validator heuristic only inspects the
+              literal pattern string and is bypassable.</p>
+            </div>
+          </div>
+
+          <div class="expected">
+            <b>Expected result:</b> cleanup rules remain powerful without allowing a single rule to hang
+            a download or reader open.
+          </div>
+        </div>
+      </div>
+
+      <!-- REC 8 -->
+      <div class="rec" id="rec8">
+        <div class="rec-head">
+          <div class="rec-num">8</div>
+          <div>
+            <div class="rec-title">Tighten tooling gates now that the codebase is cleaner</div>
+            <div class="badges">
+              <span class="badge priority-med"><span class="dot"></span>Priority: medium</span>
+              <span class="badge impact">Impact: maintainability · reliability</span>
+            </div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p><code>android/app/detekt.yml</code> still uses <code>build.maxIssues: 1000</code>,
+          explicitly marked as permissive during adoption. That made sense while refactoring, but it
+          means complexity regressions can accumulate.</p>
+
+          <h5>Recommended work</h5>
+          <ul class="tight">
+            <li>Run <code>android/gradlew -p android :app:detekt</code> and record the current issue count.</li>
+            <li>Fix or baseline remaining issues, then lower <code>maxIssues</code> toward 0.</li>
+            <li>Add a file-length or class-size rule reflecting the repo's soft ceiling. Files currently above 400 lines:</li>
+          </ul>
+
+          <div class="file-list">
+            <span class="file-chip"><span class="warn">⚠</span> QueueScreen</span>
+            <span class="file-chip"><span class="warn">⚠</span> UpdatesScreen</span>
+            <span class="file-chip"><span class="warn">⚠</span> BackupRestoreCoordinator</span>
+            <span class="file-chip"><span class="warn">⚠</span> StoryActions</span>
+            <span class="file-chip"><span class="warn">⚠</span> CleanupScreen</span>
+            <span class="file-chip"><span class="warn">⚠</span> SettingsScreen</span>
+            <span class="file-chip"><span class="warn">⚠</span> ReaderScreen</span>
+            <span class="file-chip"><span class="warn">⚠</span> AppStorage</span>
+            <span class="file-chip"><span class="warn">⚠</span> TtsForegroundService</span>
+            <span class="file-chip"><span class="warn">⚠</span> ChapterListAdapter</span>
+            <span class="file-chip"><span class="warn">⚠</span> LibraryFilters</span>
+          </div>
+
+          <ul class="tight">
+            <li>Make CI run <code>:app:lintKotlin :app:ci</code> rather than relying on contributors to remember both.</li>
+          </ul>
+
+          <div class="callout warn" style="margin-top:16px;">
+            <div class="ico">!</div>
+            <div class="body">
+              <p>Validation note (gap <strong>#9</strong> / terminology <strong>B</strong>): if a size
+              gate is added, size <code>TtsForegroundService.kt</code> (459 lines) for splitting, but
+              leave <code>DownloadForegroundService.kt</code> (220, moderate) alone unless it grows.
+              And remember: there is <strong>no CI at all yet</strong> — the work is to introduce it.</p>
+            </div>
+          </div>
+
+          <div class="expected">
+            <b>Expected result:</b> future large-file and complexity issues are caught before they
+            require another large audit.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SECONDARY ============ -->
+    <section class="chapter" id="secondary">
+      <h3>Secondary recommendations <span class="chap-tag">Longer-term direction</span></h3>
+      <p class="chap-sub">Lower-urgency areas with suggested evolution paths.</p>
+
+      <div class="rec">
+        <div class="rec-head">
+          <div class="rec-num" style="background: var(--teal-soft); color: var(--teal); border-color: rgba(45,212,191,0.3);">S</div>
+          <div>
+            <div class="rec-title">Storage model evolution</div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>The file-per-story design is simple and durable, but it has scaling costs:
+          <code>library_index.json</code> plus one story JSON per story makes whole-library reads
+          expensive; story models contain mutable lists/fields, forcing defensive version counters in
+          flows; <code>DownloadJob.status</code> remains a <code>String</code>.</p>
+          <h5>Suggested direction</h5>
+          <ul class="tight">
+            <li><strong>Short term:</strong> keep files, add a lightweight summary index for library list rows and a repository map cache for details lookup.</li>
+            <li><strong>Medium term:</strong> make domain mutation copy-on-write where practical. Start with <code>DownloadJobStatus</code> serialization so callers can use the enum while preserving lowercase wire strings.</li>
+            <li><strong>Long term:</strong> if libraries grow into thousands of stories / tens of thousands of chapters, consider moving metadata to SQLite/Room while keeping chapter HTML and EPUBs as files.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-head">
+          <div class="rec-num" style="background: var(--teal-soft); color: var(--teal); border-color: rgba(45,212,191,0.3);">S</div>
+          <div>
+            <div class="rec-title">Source-provider maintainability</div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>Royal Road and Scribble Hub parsing is cleanly split, but provider additions still require
+          manual registry edits and fixture discipline.</p>
+          <h5>Suggested direction</h5>
+          <ul class="tight">
+            <li>Add a provider test template: metadata fixture, chapter-list fixture, chapter-content fixture, URL validation, and story/chapter ID extraction.</li>
+            <li>Make <code>SourceRegistry</code> test that every provider has at least one importable story URL and one chapter URL fixture.</li>
+            <li>Move source-specific constants (page-size cookies, rate-limit gaps) into source policies.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-head">
+          <div class="rec-num" style="background: var(--teal-soft); color: var(--teal); border-color: rgba(45,212,191,0.3);">S</div>
+          <div>
+            <div class="rec-title">EPUB generation</div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>EPUB generation streams ZIP output, which is good. Remaining speed work is mostly around
+          repeated chapter reads and cover metadata.</p>
+          <h5>Suggested direction</h5>
+          <ul class="tight">
+            <li>Cache chapter HTML for the selected EPUB chunk before writing entries, so availability checks and <code>writeEpub()</code> do not read the same chapter twice.</li>
+            <li>Use content type from <code>fetchBytes()</code> when available instead of inferring cover media type from URL.</li>
+            <li>Add a regression test for multi-volume generation with missing cover, oversized cover, and mixed filePath/content chapters.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-head">
+          <div class="rec-num" style="background: var(--teal-soft); color: var(--teal); border-color: rgba(45,212,191,0.3);">S</div>
+          <div>
+            <div class="rec-title">Foreground services</div>
+          </div>
+        </div>
+        <div class="rec-body">
+          <p>The foreground services are intentionally stateful and large. They're reasonable to leave
+          intact until touched, but future changes should isolate notification building and command handling.</p>
+          <h5>Suggested direction</h5>
+          <ul class="tight">
+            <li>Split <code>TtsForegroundService.kt</code> into service lifecycle, notification/media-session builder, and command dispatch if it grows further.</li>
+            <li>Add service-level tests around action-to-engine-command planning where Android framework calls can be kept out of the pure layer.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ EXECUTION ORDER ============ -->
+    <section class="chapter" id="order">
+      <h3>Suggested execution order <span class="chap-tag">Recommended sequence</span></h3>
+      <p class="chap-sub">A pragmatic ordering that front-loads the highest-leverage, lowest-risk wins.</p>
+
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-num">1</div>
+          <div class="timeline-content">
+            <h6>Refresh repository state after imports &amp; restore</h6>
+            <p>Add a small regression test around stale repository flows if feasible.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">2</div>
+          <div class="timeline-content">
+            <h6>Move reader prep &amp; TTS session persistence off the main thread</h6>
+            <p>Directly addresses the most user-visible jank.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">3</div>
+          <div class="timeline-content">
+            <h6>Use queue snapshots instead of repeated JSON reads</h6>
+            <p>In download progress and cancellation paths.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">4</div>
+          <div class="timeline-content">
+            <h6>Add an app-level maintenance lock for restore &amp; import</h6>
+            <p>Honest up the concurrency contract; implement or remove <code>txMutex</code>.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">5</div>
+          <div class="timeline-content">
+            <h6>Convert Updates follow-selection to RecyclerView &amp; split the file</h6>
+            <p>Virtualize the hottest Updates surface.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">6</div>
+          <div class="timeline-content">
+            <h6>Introduce typed network errors &amp; source network policies</h6>
+            <p>Unblocks the ScribbleHub retry-branch test.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">7</div>
+          <div class="timeline-content">
+            <h6>Harden regex execution &amp; centralize rule application</h6>
+            <p>Revisit the documented cleanup trade-off; converge on one path.</p>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-num">8</div>
+          <div class="timeline-content">
+            <h6>Tighten Detekt &amp; file-size gates</h6>
+            <p>Introduce CI (none exists yet) running <code>lintKotlin</code> + <code>:app:ci</code>.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ VALIDATION STRATEGY ============ -->
+    <section class="chapter" id="strategy">
+      <h3>Validation strategy for future changes <span class="chap-tag">Per change type</span></h3>
+      <p class="chap-sub">How to verify work depending on which part of the app it touches.</p>
+
+      <table class="strategy-table">
+        <thead>
+          <tr>
+            <th>Change type</th>
+            <th>What to run</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="change-type">Documentation-only</td>
+            <td>No Gradle build required.</td>
+          </tr>
+          <tr>
+            <td class="change-type">Storage / repository</td>
+            <td>Run targeted storage/repository tests first, then
+            <code>android/gradlew -p android :app:ci</code>.</td>
+          </tr>
+          <tr>
+            <td class="change-type">Reader / TTS</td>
+            <td>Run TTS and reader unit tests, <code>:app:lintKotlin</code>, <code>:app:detekt</code>,
+            and emulator smoke tests for: opening a long chapter, changing reader settings, starting TTS,
+            pausing, skipping, and leaving the reader.</td>
+          </tr>
+          <tr>
+            <td class="change-type">Download</td>
+            <td>Run download unit tests, add fake-engine tests where needed, then build and smoke test
+            the debug variant on <code>webnovel_api36</code>.</td>
+          </tr>
+          <tr>
+            <td class="change-type">Source / network</td>
+            <td>Run source fixture tests and MockWebServer tests before any emulator work.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="footer-note">
+        Source: <code>docs/project-improvement-audit.md</code> · Generated 2026-07-02 ·
+        This page is a faithful HTML rendering of the audit for easier reading and navigation.
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // Active-section highlighting in the sidebar.
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.nav-group a'));
+    var byId = {};
+    links.forEach(function (a) {
+      var id = a.getAttribute('href').slice(1);
+      if (id) byId[id] = a;
+    });
+    var targets = Object.keys(byId)
+      .map(function (id) { return document.getElementById(id); })
+      .filter(Boolean);
+
+    if (!('IntersectionObserver' in window) || targets.length === 0) return;
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var id = entry.target.id;
+        var link = byId[id];
+        if (!link) return;
+        if (entry.isIntersecting) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+
+    targets.forEach(function (t) { observer.observe(t); });
+  })();
+</script>
+
+</body>
+</html>
