@@ -58,6 +58,34 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 - Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`
 - Redeploy is a cold restart. Persisted `AppStorage` state survives; in-memory state does not.
 
+### Dev launch screen (agent testing)
+
+The debug variant cold-starts directly into a chosen screen via an `am start --es dev_start_screen <token>` intent extra, so you can test a feature in place (e.g. TTS in the reader, the download manager) without navigating there by hand. The feature is gated on `BuildConfig.DEBUG` and is a complete no-op in the release variant — it never affects phone releases.
+
+**This is the required way to reach a screen for agent QA.** When you have built/installed the debug app and need to verify a change that lives on a screen (reader transport, settings, queue, etc.), cold-start onto that screen via the `dev-launch-screen` skill or the commands below — do NOT launch the app and tap through the UI by hand to get there. Tap/swipe only for interactions *after* you've landed on the target screen. Manual navigation wastes a session and is error-prone (you can end up on the wrong chapter, the wrong story, or fumbling the overflow menu). Skill triggering is heuristic; if the skill isn't auto-loaded for a post-build verification step, invoke it explicitly or run the cold-start command here directly.
+
+Tokens: `library`, `queue` (download manager), `settings`, `updates`, `reader`, `details`, `addstory`.
+
+- No-arg screens (`library`, `queue`, `settings`, `updates`, `addstory`) need nothing else.
+- `reader` and `details` auto-pick the first story in the persisted library (and the first chapter for `reader`); supply `--es dev_start_story <id>` and (reader only) `--es dev_start_chapter <id>` to target a specific one. If the library is empty or the ids don't resolve, the app falls back to the normal library start rather than rendering a blank screen.
+- The dev target takes precedence over browser-import and TTS-resume, so it reliably lands where asked.
+
+Shorthand — `scripts/redeploy.sh <token>` rebuilds and relaunches straight into the screen:
+
+```bash
+scripts/redeploy.sh reader   # rebuild + cold-start in the reader
+scripts/redeploy.sh queue    # rebuild + cold-start in the download manager
+```
+
+Cold-start without rebuild (app already installed):
+
+```bash
+adb -s <emulator-serial> shell am force-stop com.vinicius741.webnovelarchiver.nativeapp.debug
+adb -s <emulator-serial> shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.app.MainActivity --es dev_start_screen reader
+```
+
+For the full launch command set (reader with explicit story/chapter, library-id discovery), use the `dev-launch-screen` skill. Planning logic lives in `app/DevLaunchPlanning.kt` with unit tests under `app/src/test/.../app/`.
+
 ## Completion Expectations
 
 - Report the validation commands actually run and any checks not run.

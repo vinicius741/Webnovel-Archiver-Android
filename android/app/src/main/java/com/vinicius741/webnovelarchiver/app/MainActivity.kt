@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
@@ -25,15 +26,19 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
+import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
+import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
+import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
-import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
+import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -74,6 +79,7 @@ class MainActivity :
     override var storyOperation: StoryOperationState? = null
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
+
     // Lazy: seeded from persisted DisplayPreferences, which are only available after `storage` is
     // assigned in onCreate. First access happens during a screen render, well after that.
     override val updateFollowSelectionState: UpdateFollowSelectionState by lazy {
@@ -160,7 +166,33 @@ class MainActivity :
             TtsSessionPlanning.readerResumeTarget(storage.getTtsSession()) { storyId ->
                 storage.getStory(storyId)
             }
-        if (browserImportUrl != null) {
+        // Dev-only "launch straight into a screen" override (agent QA). Gated on BuildConfig.DEBUG so
+        // it is dead in release; see DevLaunchPlanning. Highest precedence: a valid dev_start_screen
+        // extra wins over browser import and TTS resume so the agent reliably lands where it asked.
+        val devTarget =
+            if (BuildConfig.DEBUG) {
+                DevLaunchPlanning.resolve(
+                    screenName = intent.getStringExtra(DevLaunchPlanning.EXTRA_DEV_START_SCREEN),
+                    storyOverride = intent.getStringExtra(DevLaunchPlanning.EXTRA_DEV_START_STORY),
+                    chapterOverride = intent.getStringExtra(DevLaunchPlanning.EXTRA_DEV_START_CHAPTER),
+                    // Lazy: only read the library for reader/details targets.
+                    libraryProvider = { storage.getLibrary() },
+                )
+            } else {
+                null
+            }
+        if (devTarget != null) {
+            when (devTarget) {
+                DevLaunchPlanning.DevStartTarget.Library -> showLibrary()
+                DevLaunchPlanning.DevStartTarget.Queue -> showQueue()
+                DevLaunchPlanning.DevStartTarget.Settings -> showSettings()
+                DevLaunchPlanning.DevStartTarget.Updates -> showUpdates()
+                DevLaunchPlanning.DevStartTarget.AddStory -> showAddStory()
+                is DevLaunchPlanning.DevStartTarget.Reader ->
+                    showReader(devTarget.storyId, devTarget.chapterId)
+                is DevLaunchPlanning.DevStartTarget.Details -> showDetails(devTarget.storyId)
+            }
+        } else if (browserImportUrl != null) {
             showLibrary()
             importFromBrowser(browserImportUrl)
         } else if (resumeTarget != null) {
