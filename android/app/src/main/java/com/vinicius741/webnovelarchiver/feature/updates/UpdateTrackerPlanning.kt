@@ -31,15 +31,24 @@ object UpdateTrackerPlanning {
         followedIds: List<String>,
     ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canSync)
 
-    fun updatedChapters(story: Story): List<UpdatedChapter> {
-        val pending = story.pendingNewChapterIds.orEmpty().toSet()
+    fun updatedChapters(
+        story: Story,
+        chapterIds: List<String>? = null,
+    ): List<UpdatedChapter> {
+        val pending = (chapterIds ?: story.pendingNewChapterIds).orEmpty().toSet()
         if (pending.isEmpty()) return emptyList()
         return story.chapters.mapIndexedNotNull { index, chapter ->
             if (chapter.id in pending) UpdatedChapter(index, chapter) else null
         }
     }
 
-    fun updatedStoryCount(stories: List<Story>): Int = stories.count { updatedChapters(it).isNotEmpty() }
+    fun updatedStoryCount(
+        stories: List<Story>,
+        chapterIdsByStoryId: Map<String, List<String>> = emptyMap(),
+    ): Int = stories.count { updatedChapters(it, chapterIdsByStoryId[it.id]).isNotEmpty() }
 
-    fun updatedChapterCount(stories: List<Story>): Int = stories.sumOf { updatedChapters(it).size }
+    fun updatedChapterCount(
+        stories: List<Story>,
+        chapterIdsByStoryId: Map<String, List<String>> = emptyMap(),
+    ): Int = stories.sumOf { updatedChapters(it, chapterIdsByStoryId[it.id]).size }
 }

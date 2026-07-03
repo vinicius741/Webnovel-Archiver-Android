@@ -50,6 +50,7 @@ class UpdateTrackerScreenState {
     var currentStoryTitle: String? = null
     var currentStatus: String? = null
     val errors: MutableMap<String, String> = mutableMapOf()
+    val syncedUpdatedChapterIds: MutableMap<String, List<String>> = mutableMapOf()
 
     fun reset(total: Int) {
         syncing = true
@@ -59,6 +60,7 @@ class UpdateTrackerScreenState {
         currentStoryTitle = null
         currentStatus = "Starting..."
         errors.clear()
+        syncedUpdatedChapterIds.clear()
     }
 
     fun finish() {

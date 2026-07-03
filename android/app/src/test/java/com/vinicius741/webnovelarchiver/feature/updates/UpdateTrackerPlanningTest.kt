@@ -44,6 +44,38 @@ class UpdateTrackerPlanningTest {
         assertEquals(listOf("One", "Three"), updates.map { it.chapter.title })
     }
 
+    @Test
+    fun updatedChaptersCanUseSyncResultIdsAfterPendingIdsAreCleared() {
+        val story =
+            story(
+                "story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1", title = "One", downloaded = true),
+                        Chapter(id = "c2", title = "Two", downloaded = true),
+                    ),
+                pending = null,
+            )
+
+        val updates = UpdateTrackerPlanning.updatedChapters(story, chapterIds = listOf("c2"))
+
+        assertEquals(listOf(1), updates.map { it.index })
+        assertEquals(listOf("Two"), updates.map { it.chapter.title })
+    }
+
+    @Test
+    fun updatedCountsUseSyncResultIdsWhenAvailable() {
+        val stories =
+            listOf(
+                story("a", chapters = mutableListOf(Chapter(id = "a1"))),
+                story("b", chapters = mutableListOf(Chapter(id = "b1")), pending = mutableListOf("b1")),
+            )
+
+        val count = UpdateTrackerPlanning.updatedChapterCount(stories, mapOf("a" to listOf("a1")))
+
+        assertEquals(2, count)
+    }
+
     private fun story(
         id: String,
         title: String = id,

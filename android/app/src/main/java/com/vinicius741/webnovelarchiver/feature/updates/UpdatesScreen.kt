@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.feature.updates
 
-import android.content.Context
 import android.content.res.ColorStateList
 import android.text.Editable
 import android.text.TextUtils
@@ -9,7 +8,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -64,8 +62,9 @@ internal fun ScreenHost.showUpdates() {
     val followedIds = UpdateTrackerPlanning.normalizeFollowedIds(stories, storage.getUpdateFollowedStoryIds())
     if (followedIds != storage.getUpdateFollowedStoryIds()) storage.saveUpdateFollowedStoryIds(followedIds)
     val followedStories = UpdateTrackerPlanning.followedStories(stories, followedIds)
-    val updatedStoryCount = UpdateTrackerPlanning.updatedStoryCount(followedStories)
-    val updatedChapterCount = UpdateTrackerPlanning.updatedChapterCount(followedStories)
+    val syncedUpdatedChapterIds = updateTrackerScreenState.syncedUpdatedChapterIds
+    val updatedStoryCount = UpdateTrackerPlanning.updatedStoryCount(followedStories, syncedUpdatedChapterIds)
+    val updatedChapterCount = UpdateTrackerPlanning.updatedChapterCount(followedStories, syncedUpdatedChapterIds)
 
     screen(
         title = "Updates",
@@ -187,9 +186,9 @@ internal fun ScreenHost.showUpdates() {
         } else {
             section("Updated Chapters")
             followedStories
-                .filter { UpdateTrackerPlanning.updatedChapters(it).isNotEmpty() }
+                .filter { UpdateTrackerPlanning.updatedChapters(it, syncedUpdatedChapterIds[it.id]).isNotEmpty() }
                 .forEach { story ->
-                    addView(makeUpdatedStoryCard(story))
+                    addView(makeUpdatedStoryCard(story, syncedUpdatedChapterIds[story.id]))
                 }
         }
     }
@@ -285,9 +284,19 @@ internal fun ScreenHost.showUpdateFollowSelection() {
                 setText(followState.query)
                 addTextChangedListener(
                     object : TextWatcher {
-                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                        override fun beforeTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            count: Int,
+                            after: Int,
+                        ) = Unit
 
-                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                        override fun onTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            before: Int,
+                            count: Int,
+                        ) {
                             followState.query = s?.toString().orEmpty()
                             renderList()
                         }
@@ -305,7 +314,10 @@ internal fun ScreenHost.showUpdateFollowSelection() {
     }
 }
 
-private fun ScreenHost.makeUpdatedStoryCard(story: Story): LinearLayout =
+private fun ScreenHost.makeUpdatedStoryCard(
+    story: Story,
+    chapterIds: List<String>?,
+): LinearLayout =
     makeCard(app).apply {
         layoutParams =
             LinearLayout
@@ -330,7 +342,7 @@ private fun ScreenHost.makeUpdatedStoryCard(story: Story): LinearLayout =
             addView(titleColumn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             button("Open", Btn.TEXT) { showDetails(story.id) }
         }
-        UpdateTrackerPlanning.updatedChapters(story).forEach { update ->
+        UpdateTrackerPlanning.updatedChapters(story, chapterIds).forEach { update ->
             addView(makeUpdatedChapterRow(story, update.index, update.chapter))
         }
     }
@@ -436,6 +448,7 @@ private fun ScreenHost.syncFollowedUpdates(onProgress: () -> Unit) {
                         }
                     }
                 repository.publishDownloadState(libraryChanged = true, queueChanged = false)
+                state.syncedUpdatedChapterIds[story.id] = synced.pendingNewChapterIds.orEmpty().distinct()
                 queuePendingNewDownloads(existingBeforeSync, synced)
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
