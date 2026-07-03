@@ -11,8 +11,8 @@ import org.jsoup.safety.Safelist
  * first cleaned through a strict Jsoup [Safelist]: scripts, event handlers (`on*`), inline styles
  * that can carry payloads, `<iframe>`/`<object>`/`<embed>`, and other active content are stripped,
  * while the prose-bearing tags the reader needs (`p`, headings, `blockquote`, `li`, tables, `img`,
- * `a`, `br`, `span`, `div`) are preserved. `data-tts-group` and `class` are explicitly allowed so
- * the TTS annotation pass can tag chunks the highlight script reads back.
+ * `a`, `br`, `span`, `div`) are preserved. `data-tts-group`, `data-tts-groups`, and `class` are
+ * explicitly allowed so the TTS annotation pass can tag chunks the highlight script reads back.
  *
  * This is a net hardening over the prior JS-off-but-unsanitized render: even with JS off, unsanitized
  * HTML could carry misleading markup; with sanitization, the only script that ever runs in the reader
@@ -26,6 +26,7 @@ object ChapterHtmlSanitizer {
             .addAttributes(":all", "class")
             // TTS chunk grouping attribute set by [TextCleanup.prepareTtsAnnotatedHtml].
             .addAttributes(":all", "data-tts-group")
+            .addAttributes(":all", "data-tts-groups")
             // `dir`/`lang` keep RTL/translated prose readable; both are inert attributes.
             .addAttributes(":all", "dir")
             .addAttributes(":all", "lang")

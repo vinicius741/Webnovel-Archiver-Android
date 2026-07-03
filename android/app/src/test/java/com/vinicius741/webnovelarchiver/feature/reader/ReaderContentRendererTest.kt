@@ -61,7 +61,7 @@ class ReaderContentRendererTest {
     @Test
     fun ttsHighlightCssUsesConfiguredAccent() {
         // Gap 3: when the document is rendered with a highlight accent, the .tts-active rule must
-        // carry that accent (background tinted 33 + solid left border).
+        // carry that accent as a translucent background tint.
         val html =
             ReaderContentRenderer.document(
                 "T",
@@ -77,7 +77,7 @@ class ReaderContentRendererTest {
             )
 
         assertTrue(html.contains("#7C4DFF33"))
-        assertTrue(html.contains("border-left: 3px solid #7C4DFF"))
+        assertFalse(html.contains("border-left"))
     }
 
     @Test
@@ -104,5 +104,25 @@ class ReaderContentRendererTest {
         assertTrue(withScript.contains("AndroidBridge"))
         assertTrue(withScript.contains("data-tts-group"))
         assertFalse(withoutScript.contains("WnaTts"))
+    }
+
+    @Test
+    fun tapToStartScriptResolvesThePluralDataTtsGroupsAttribute() {
+        // Regression: the TTS annotation pass emits `data-tts-groups="0 1 …"` (no singular
+        // `data-tts-group`) on multi-sentence elements whose TTS-only cleanup changed the sentence
+        // count. The highlight selector matches the plural attribute, so the tap-to-start read-back
+        // path must too — otherwise tap silently no-ops on those paragraphs.
+        val html =
+            ReaderContentRenderer.document(
+                "T",
+                "<p>x</p>",
+                1.0f,
+                ReaderContentRenderer.ReaderDocumentColors("#000000", "#FFFFFF"),
+                includeTtsScript = true,
+            )
+
+        // findTtsGroup must fall back to the plural attribute and return its first token.
+        assertTrue(html.contains("node.dataset.ttsGroups"))
+        assertTrue(html.contains("tokens[0]"))
     }
 }

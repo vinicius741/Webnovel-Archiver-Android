@@ -9,7 +9,7 @@ object ReaderContentRenderer {
     data class ReaderDocumentColors(
         val background: String,
         val foreground: String,
-        /** Accent color (CSS hex, e.g. "#7C4DFF") for the TTS highlight + left border. Defaults to a
+        /** Accent color (CSS hex, e.g. "#7C4DFF") for the TTS highlight background. Defaults to a
          *  neutral purple so the highlight is visible on both light + dark reader backgrounds when no
          *  theme accent is supplied. */
         val ttsHighlight: String = "#7C4DFF",
@@ -52,7 +52,7 @@ object ReaderContentRenderer {
      * `AndroidBridge.onTtsStart(index)` JavascriptInterface (attached by [ReaderScreen]).
      *
      * The CSS `.tts-active` rule mirrors the legacy RN reader's highlight: a translucent accent
-     * background + a solid accent left border.
+     * background.
      */
     fun document(
         title: String,
@@ -94,8 +94,6 @@ object ReaderContentRenderer {
                     }
                     .tts-active {
                         background-color: ${highlight}33 !important;
-                        border-left: 3px solid $highlight;
-                        padding-left: 4px;
                     }
                 </style>
             </head>
@@ -129,7 +127,7 @@ object ReaderContentRenderer {
                         }
                         activeGroup = (index === null || index === undefined) ? null : String(index);
                         if (activeGroup === null) return;
-                        var nodes = document.querySelectorAll('[data-tts-group="' + activeGroup + '"]');
+                        var nodes = document.querySelectorAll('[data-tts-group="' + activeGroup + '"], [data-tts-groups~="' + activeGroup + '"]');
                         nodes.forEach(function(node) { node.classList.add('tts-active'); });
                         if (nodes.length > 0) {
                             nodes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -139,7 +137,19 @@ object ReaderContentRenderer {
                 function findTtsGroup(target) {
                     var node = target;
                     while (node && node !== document.body) {
-                        if (node.dataset && node.dataset.ttsGroup) return node.dataset.ttsGroup;
+                        if (node.dataset) {
+                            // Single-token tag (set on single-sentence elements, rebuilt per-sentence
+                            // spans, and fallback spans): tap resolves to that exact chunk.
+                            if (node.dataset.ttsGroup) return node.dataset.ttsGroup;
+                            // Multi-token tag (data-tts-groups="0 1 …") is set on multi-sentence
+                            // elements whose TTS-only cleanup changed the sentence structure, where
+                            // no per-sentence child span exists. Resolve to the first token so the
+                            // tap still starts at this element rather than silently no-op'ing.
+                            if (node.dataset.ttsGroups) {
+                                var tokens = node.dataset.ttsGroups.trim().split(/\s+/);
+                                if (tokens.length) return tokens[0];
+                            }
+                        }
                         node = node.parentElement;
                     }
                     return null;

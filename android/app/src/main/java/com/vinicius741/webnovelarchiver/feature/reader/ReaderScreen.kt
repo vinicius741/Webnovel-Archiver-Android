@@ -168,15 +168,14 @@ internal fun ScreenHost.showReader(
 
     // Gap 3 + 4: the engine emits a snapshot after every playback state change. We subscribe while
     // this reader screen is alive to (a) move the in-document highlight to the speaking chunk and
-    // (b) refresh the floating transport's "Chunk X / Y" label + play/pause icon. Only snapshots
-    // for *this* chapter are acted on, so navigating between chapters never cross-talks.
+    // (b) refresh the floating transport's play/pause icon. Only snapshots for *this* chapter are
+    // acted on, so navigating between chapters never cross-talks.
     //
     // The engine's listeners are multicast, and this single-activity app shows at most one reader
     // at a time, so we hold the active reader listener in a file-scope slot and swap it out on each
     // showReader() (remove old → add new). This avoids both clobbering the service's listener and
     // leaking a fresh listener per re-render (fold/rotate/settings).
     var transportSnapshot: TtsPlaybackSnapshot? = currentReaderSnapshot(story.id, chapter.id, annotated.chunks.size)
-    var transportLabel: TextView? = null
     var transportPlayPause: ImageView? = null
     var transportBar: LinearLayout? = null
     activeReaderTtsListener?.let { ttsEngine.removeStateListener(it) }
@@ -197,7 +196,6 @@ internal fun ScreenHost.showReader(
             // reader was built (the common case: open chapter → tap "Read aloud") reveals the bar
             // without needing a full screen rebuild.
             transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
-            transportLabel?.text = readerTransportLabel(relevant)
             transportPlayPause?.let { button ->
                 val isPaused = relevant?.isPaused != false
                 button.setImageDrawable(
@@ -315,7 +313,6 @@ internal fun ScreenHost.showReader(
         val transport =
             readerTtsTransport(
                 snapshot = transportSnapshot,
-                onLabel = { transportLabel = it },
                 onPlayPause = { transportPlayPause = it },
                 onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
                 onPlayPauseTap = {
@@ -375,16 +372,6 @@ private fun ScreenHost.currentReaderSnapshot(
     )
 }
 
-/** Transport label for the floating TTS bar: "Chunk X / Y", "Buffering", or "Ready". */
-private fun readerTransportLabel(snapshot: TtsPlaybackSnapshot?): String =
-    if (snapshot == null) {
-        "Ready"
-    } else if (snapshot.totalChunks <= 0) {
-        "Buffering"
-    } else {
-        TtsPlaybackState.chunkProgress(snapshot.chunkIndex, snapshot.totalChunks)
-    }
-
 /**
  * Drives the in-document highlight (gap 3) by evaluating the reader script's `WnaTts.setActive(i)`.
  * `chunkIndex == null` clears the highlight (playback stopped / different chapter). Cheap and
@@ -404,14 +391,14 @@ private fun applyHighlight(
 }
 
 /**
- * Gap 4 floating TTS transport (mirrors the legacy RN `TTSController`). A slim bar with a chunk-
- * progress label and Prev / Play-Pause / Next / Stop buttons. The label + play-pause icon are
- * exposed via callbacks so [showReader]'s state listener can swap them in place without rebuilding
- * the screen on every chunk advance.
+ * Gap 4 floating TTS transport (mirrors the legacy RN `TTSController`). A slim bar with Prev /
+ * Play-Pause / Next buttons grouped on the left, a flexible spacer, and a Stop button on the far
+ * right — the standard media-player layout where "end" is visually separated from the transport.
+ * The play-pause icon is exposed via [onPlayPause] so [showReader]'s state listener can swap it in
+ * place without rebuilding the screen on every chunk advance.
  */
 private fun ScreenHost.readerTtsTransport(
     snapshot: TtsPlaybackSnapshot?,
-    onLabel: (TextView) -> Unit,
     onPlayPause: (ImageView) -> Unit,
     onPrev: () -> Unit,
     onPlayPauseTap: () -> Unit,
@@ -446,14 +433,6 @@ private fun ScreenHost.readerTtsTransport(
             }
     }
     bar.addView(transportIcon("Previous chunk", R.drawable.wna_skip_prev, onPrev))
-    val label =
-        makeText(app, readerTransportLabel(snapshot), Type.LABEL_MEDIUM, colors.onSurface).apply {
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-    onLabel(label)
-    bar.addView(label)
     val isPaused = snapshot?.isPaused != false
     val playPause =
         transportIcon(
@@ -464,6 +443,13 @@ private fun ScreenHost.readerTtsTransport(
     onPlayPause(playPause)
     bar.addView(playPause)
     bar.addView(transportIcon("Next chunk", R.drawable.wna_skip_next, onNext))
+    // Flexible spacer that pushes Stop to the far right, separating the transport group from the
+    // destructive "end playback" action.
+    bar.addView(
+        android.view.View(app).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+        },
+    )
     bar.addView(transportIcon("Stop TTS", R.drawable.wna_stop, onStop))
     return bar
 }

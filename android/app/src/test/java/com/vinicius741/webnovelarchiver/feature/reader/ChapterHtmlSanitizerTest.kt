@@ -45,12 +45,13 @@ class ChapterHtmlSanitizerTest {
     }
 
     @Test
-    fun preservesDataTtsGroupAndClassAttributes() {
+    fun preservesDataTtsGroupAttributesAndClassAttributes() {
         // The TTS annotation pass sets these on prose elements; the sanitizer must keep them so the
         // reader's highlight script can read them back.
-        val html = "<p data-tts-group=\"0\" class=\"tts-chunk\">Highlighted chunk</p>"
+        val html = "<p data-tts-group=\"0\" data-tts-groups=\"0 1\" class=\"tts-chunk\">Highlighted chunk</p>"
         val cleaned = ChapterHtmlSanitizer.sanitize(html)
         assertTrue(cleaned.contains("data-tts-group=\"0\""))
+        assertTrue(cleaned.contains("data-tts-groups=\"0 1\""))
         assertTrue(cleaned.contains("tts-chunk"))
     }
 

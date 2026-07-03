@@ -76,18 +76,29 @@ class TextCleanupTest {
                 chunkSize = 500,
             )
 
-        assertEquals(listOf("Keep this phrase. Remove this ."), chunks)
+        assertEquals(listOf("Keep this phrase.", "Remove this ."), chunks)
     }
 
     @Test
-    fun prepareTtsChunksSplitsOnConfiguredChunkSize() {
-        val first = "Alpha ".repeat(25).trim()
-        val second = "Delta ".repeat(25).trim()
+    fun prepareTtsChunksSplitLongTextOnNaturalSentenceBoundaries() {
+        val first = "${"Alpha ".repeat(55).trim()}."
+        val second = "${"Delta ".repeat(55).trim()}."
         val html = "<p>$first</p><p>$second</p>"
 
         val chunks = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 120)
 
         assertEquals(listOf(first, second), chunks)
+    }
+
+    @Test
+    fun prepareTtsChunksEmitOneChunkPerSentence() {
+        // One sentence per chunk: even very short sentences are never merged, so the reader can
+        // highlight exactly the sentence being spoken.
+        val html = "<p>Yes. No. Maybe. Fine.</p>"
+
+        val chunks = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 120)
+
+        assertEquals(listOf("Yes.", "No.", "Maybe.", "Fine."), chunks)
     }
 
     @Test
@@ -219,11 +230,11 @@ class TextCleanupTest {
 
         val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 500)
 
-        // All three paragraphs fit in one chunk (well under 500 chars), so all share group 0 and the
-        // chunk list collapses to a single entry.
-        assertEquals(1, annotated.chunks.size)
-        assertEquals("One Two Three", annotated.chunks[0])
-        assertTrue(annotated.annotatedHtml.contains("data-tts-group=\"0\""))
+        // One sentence per chunk: each single-sentence paragraph is its own chunk tagged directly.
+        assertEquals(listOf("One", "Two", "Three"), annotated.chunks)
+        annotated.chunks.indices.forEach { i ->
+            assertTrue("missing group $i", annotated.annotatedHtml.contains("data-tts-group=\"$i\""))
+        }
         assertTrue(annotated.annotatedHtml.contains("tts-chunk"))
     }
 
@@ -232,11 +243,9 @@ class TextCleanupTest {
         // The annotated HTML's group indices must map 1:1 to the chunk list, AND that chunk list
         // must equal what prepareTtsChunks returns for the same input — this is the invariant the
         // reader highlight + the engine's chunk index rely on.
-        val html =
-            """
-            <p>${"Alpha ".repeat(25).trim()}</p>
-            <p>${"Delta ".repeat(25).trim()}</p>
-            """.trimIndent()
+        val first = "${"Alpha ".repeat(55).trim()}."
+        val second = "${"Delta ".repeat(55).trim()}."
+        val html = "<p>$first</p><p>$second</p>"
 
         val plain = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 100)
         val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 100)
@@ -250,7 +259,7 @@ class TextCleanupTest {
 
     @Test
     fun prepareTtsAnnotatedHtmlFallbackReturnsTaggedElementsForEveryChunk() {
-        val html = "Alpha ".repeat(45).trim()
+        val html = "Alpha ".repeat(180).trim()
 
         val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 10)
 
@@ -260,6 +269,44 @@ class TextCleanupTest {
             assertTrue("missing fallback group $i", annotated.annotatedHtml.contains("data-tts-group=\"$i\""))
         }
         assertTrue(annotated.annotatedHtml.contains("tts-chunk"))
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlSplitsMultiSentenceParagraphIntoPerSentenceSpans() {
+        // A paragraph holding more than one sentence is rebuilt as one <span data-tts-group> per
+        // sentence so the reader can highlight each sentence independently.
+        val first = "${"Alpha ".repeat(55).trim()}."
+        val second = "${"Delta ".repeat(55).trim()}."
+        val html = "<p>$first $second</p>"
+
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 500)
+
+        assertEquals(listOf(first, second), annotated.chunks)
+        // Each sentence is its own tagged span (no element carries both groups).
+        assertTrue(annotated.annotatedHtml.contains("data-tts-group=\"0\""))
+        assertTrue(annotated.annotatedHtml.contains("data-tts-group=\"1\""))
+        assertFalse(annotated.annotatedHtml.contains("data-tts-groups=\"0 1\""))
+        // The rebuilt spans carry the plain sentence text.
+        assertTrue(annotated.annotatedHtml.contains(first))
+        assertTrue(annotated.annotatedHtml.contains(second))
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlTagsEveryContributingSentenceEvenInNestedContainers() {
+        // Regression: a container (`blockquote`/`li`/`div`) that holds block children must NOT itself
+        // contribute — otherwise its multi-sentence rebuild would `empty()` the container and detach
+        // the inner nodes, leaving their chunk indices with no data-tts-group in the rendered HTML.
+        val first = "${"Alpha ".repeat(55).trim()}."
+        val second = "${"Delta ".repeat(55).trim()}."
+        val html = "<blockquote><p>$first</p><p>$second</p></blockquote>"
+
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 500)
+
+        // The two inner <p>s each carry one sentence; the container is skipped (no duplicated chunk).
+        assertEquals(listOf(first, second), annotated.chunks)
+        annotated.chunks.indices.forEach { i ->
+            assertTrue("missing group $i", annotated.annotatedHtml.contains("data-tts-group=\"$i\""))
+        }
     }
 
     @Test
@@ -281,8 +328,30 @@ class TextCleanupTest {
         val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, rules, chunkSize = 500)
 
         // Matches prepareTtsChunks behavior: display rule runs on display text, tts rule on the
-        // spoken text, so "spoken note" disappears from the chunks.
-        assertEquals(listOf("Keep this phrase. Remove this ."), annotated.chunks)
+        // spoken text, so "spoken note" disappears from the chunks. One sentence per chunk.
+        assertEquals(listOf("Keep this phrase.", "Remove this ."), annotated.chunks)
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlKeepsTtsOnlyCleanupOutOfVisibleReaderText() {
+        val html = "<p>Keep this sentence. Remove this spoken note.</p>"
+        val rules =
+            listOf(
+                RegexCleanupRule(
+                    id = "tts",
+                    name = "tts",
+                    pattern = "spoken note",
+                    flags = "g",
+                    enabled = true,
+                    appliesTo = "tts",
+                ),
+            )
+
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, rules, chunkSize = 500)
+
+        assertEquals(listOf("Keep this sentence.", "Remove this ."), annotated.chunks)
+        assertTrue(annotated.annotatedHtml.contains("Keep this sentence."))
+        assertTrue(annotated.annotatedHtml.contains("Remove this spoken note."))
     }
 
     @Test

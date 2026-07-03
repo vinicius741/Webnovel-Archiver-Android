@@ -121,7 +121,7 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_globe, "Source Overrides", "Per-source concurrency and delay") { showSourceOverrides() }
         divider()
         section("Text To Speech")
-        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, chunk size, and voice") { showTtsSettings() }
+        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
         divider()
         section("Library Organization")
         settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
@@ -255,7 +255,7 @@ internal fun ScreenHost.showSourceOverrides() {
     }
 }
 
-/** TTS sub-screen (pitch / rate / chunk size / voice + optional saved-session card), reached from Settings. */
+/** TTS sub-screen (pitch / rate / voice + optional saved-session card), reached from Settings. */
 internal fun ScreenHost.showTtsSettings() {
     val ttsSettings = storage.getTtsSettings()
     screen(title = "Voice & Speech", onBack = { showSettings() }, scrollable = true) {
@@ -282,7 +282,6 @@ internal fun ScreenHost.showTtsSettings() {
         }
         val pitch = labeledField("Pitch", ttsSettings.pitch.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
         val rate = labeledField("Rate", ttsSettings.rate.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        val chunkSize = labeledField("Chunk size", ttsSettings.chunkSize.toString(), InputType.TYPE_CLASS_NUMBER)
         // S4: the voice label is itself the control — tap it to open the picker.
         val voiceLabel = ttsSettings.voiceIdentifier ?: "System default"
         row {
@@ -303,7 +302,6 @@ internal fun ScreenHost.showTtsSettings() {
                 ttsSettings.copy(
                     pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
                     rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
-                    chunkSize = SettingsValidation.ttsChunkSize(chunkSize.text.toString(), ttsSettings.chunkSize),
                 ),
             )
             toast("TTS settings saved")
