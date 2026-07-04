@@ -35,12 +35,13 @@ class AppContainer(
 ) {
     /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    val network: NetworkClient = NetworkClient()
+    private val appContext = context.applicationContext
+    val network: NetworkClient = NetworkClient(client = NetworkClient.buildDefault(appContext))
     val storage: AppStorage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)
     val syncEngine: StorySyncEngine = StorySyncEngine(storage, network)
     val epubEngine: EpubEngine = EpubEngine(storage, network)
-    val ttsEngine: TtsEngine = TtsEngine(context.applicationContext, storage)
+    val ttsEngine: TtsEngine = TtsEngine(appContext, storage)
 
     /** Refreshes the repository's cached state flows; call from [Application.onCreate]. */
     fun init() {

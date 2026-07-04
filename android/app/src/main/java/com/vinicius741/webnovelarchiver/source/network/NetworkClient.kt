@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source.network
 
+import android.content.Context
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -12,7 +13,11 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class NetworkClient(
-    /** Shared OkHttp client (R6). Cover/image fetches go through the same client as page fetches. */
+    /**
+     * Shared OkHttp client (R6). Cover/image fetches go through the same client as page fetches.
+     * Built by [buildDefault] with the [AndroidCookieJar] (and, in Phase 2, the Cloudflare
+     * interceptor) attached, so cookies earned in an in-app WebView are replayed here automatically.
+     */
     val client: OkHttpClient = defaultClient,
 ) {
     /**
@@ -139,17 +144,43 @@ class NetworkClient(
         /** Maximum bytes accepted for a cover/image download (R6 size cap). */
         const val MAX_IMAGE_BYTES = 8_000_000L
 
-        val defaultClient: OkHttpClient =
+        /**
+         * Legacy fallback built without a [Context]. Kept for the parameter default only — the real
+         * client used in production is built by [buildDefault], which attaches the shared
+         * [AndroidCookieJar] and the Cloudflare bypass interceptor. This has no cookie jar and must
+         * never be the process-wide client (Cloudflare clearance would be dropped on every response).
+         */
+        private val defaultClient: OkHttpClient =
             OkHttpClient
                 .Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(45, TimeUnit.SECONDS)
                 .build()
+
+        /**
+         * Builds the production OkHttp client: same timeouts as the legacy builder, plus the
+         * [AndroidCookieJar] (so `Set-Cookie` responses persist and WebViews share the store) and
+         * the [CloudflareBypassInterceptor] (so a detected challenge is solved by a background
+         * WebView before the response reaches [executeWithRetries]).
+         */
+        fun buildDefault(context: Context): OkHttpClient =
+            OkHttpClient
+                .Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
+                .cookieJar(AndroidCookieJar())
+                .addInterceptor(CloudflareBypassInterceptor(context.applicationContext))
+                .build()
     }
 }
 
 object NetworkRequests {
-    const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36"
+    /**
+     * The User-Agent sent on every OkHttp request. Reads [SourceUserAgent.resolved] so it stays
+     * byte-identical to the UA the solving WebView used to mint `cf_clearance` (Cloudflare binds
+     * the clearance cookie to the exact UA). Resolved once at Application startup.
+     */
+    val USER_AGENT: String get() = SourceUserAgent.resolved
     const val DEFAULT_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
     const val FORM_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
     const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=UTF-8"

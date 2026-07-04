@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.ui
 
+import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
 import com.vinicius741.webnovelarchiver.app.MainActivity
@@ -52,7 +53,12 @@ object WebViewSafety {
         s.javaScriptEnabled = true
         s.domStorageEnabled = true
         s.javaScriptCanOpenWindowsAutomatically = false
+        s.setSupportMultipleWindows(true)
+        s.setSupportZoom(true)
+        s.builtInZoomControls = true
+        s.displayZoomControls = false
         lockDownAccess(s)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
         enableSafeBrowsing(web)
     }
 

@@ -65,6 +65,11 @@
       </intent-filter>
     </receiver>
     <activity
+      android:name=".feature.browser.CloudflareSolveActivity"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize"
+      android:exported="false"
+      android:label="Verify source access" />
+    <activity
       android:name=".app.MainActivity"
       android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize"
       android:exported="true">

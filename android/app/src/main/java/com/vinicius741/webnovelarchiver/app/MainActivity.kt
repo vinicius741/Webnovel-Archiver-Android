@@ -213,7 +213,7 @@ class MainActivity :
 
     override fun onResume() {
         super.onResume()
-        SourceAccessRetryCoordinator.consumePendingRetry()?.invoke()
+        SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
     }
 
     override fun onDestroy() {

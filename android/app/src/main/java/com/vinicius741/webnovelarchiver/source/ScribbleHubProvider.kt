@@ -15,7 +15,6 @@ object ScribbleHubProvider : SourceProvider {
     override val supportsLatestChapterSync = true
     private const val AJAX_URL = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
     private const val MAX_TOC_PAGE_SIZE = 50
-    private val tocPageSizeHeaders = mapOf("Cookie" to "toc_show=$MAX_TOC_PAGE_SIZE")
 
     override fun isSource(url: String) =
         Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
@@ -160,6 +159,9 @@ object ScribbleHubProvider : SourceProvider {
         postId: String,
         page: Int,
     ): List<ChapterInfo> {
+        // toc_show=50 is seeded into CookieManager at app startup and carried by the shared
+        // AndroidCookieJar; no manual Cookie header here (it would be overwritten by OkHttp's
+        // BridgeInterceptor once a cf_clearance cookie is also in the jar).
         val pageHtml =
             network
                 .postForm(
@@ -169,7 +171,6 @@ object ScribbleHubProvider : SourceProvider {
                         "pagenum" to page,
                         "mypostid" to postId,
                     ),
-                    tocPageSizeHeaders,
                 ).replace(Regex("0\\s*$"), "")
                 .trim()
         return parseToc(Jsoup.parse(pageHtml, url))

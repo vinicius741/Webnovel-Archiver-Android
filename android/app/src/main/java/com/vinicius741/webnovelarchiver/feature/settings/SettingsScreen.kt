@@ -128,6 +128,14 @@ internal fun ScreenHost.showSettings() {
         divider()
         section("Data")
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
+        settingRow(R.drawable.wna_globe, "Clear Source Cookies", "Drop Cloudflare clearance and site cookies for Scribble Hub") {
+            confirm("Clear all Scribble Hub cookies? The next sync will re-solve Cloudflare.", confirmLabel = "Clear") {
+                com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
+                    .removeAllFor("https://www.scribblehub.com/") { cleared ->
+                        toast(if (cleared) "Source cookies cleared" else "No clearance cookie was present")
+                    }
+            }
+        }
         settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {
             confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") {
                 storage.clearAll()

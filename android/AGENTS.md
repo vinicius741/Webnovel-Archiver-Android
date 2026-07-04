@@ -7,7 +7,7 @@ These instructions apply to the active Kotlin application under `android/`. Comm
 All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarchiver/`.
 
 - `app/` owns Android lifecycle and process-wide dependency wiring; `navigation/` defines the `ScreenHost` contract.
-- `feature/browser/` launches third-party sites in a browser-powered Custom Tab and receives import URLs through `MainActivity`; do not move third-party OAuth back into a WebView.
+- `feature/browser/` launches third-party sites in a browser-powered Custom Tab and receives import URLs through `MainActivity`; do not move third-party OAuth back into a WebView. It also hosts `CloudflareSolveActivity`, a narrow in-app WebView that solves Cloudflare challenges so the earned `cf_clearance` lands in the shared `android.webkit.CookieManager` (bridged to OkHttp by `source/network/AndroidCookieJar.kt`). That CF solver is a distinct concern from OAuth — third-party login/credential flows still go through Custom Tabs, never the in-app WebView.
 - `feature/` groups browser, cleanup, details, downloads, library, reader, settings, and shared story-action UI by user-facing flow.
 - "The download screen" is ambiguous: `feature/downloads/QueueScreen.kt` (`showQueue`) is the global queue across all stories; `feature/details/DetailsScreenDownload.kt` is the per-story download banner on the details page. The top-level `download/` package is the engine/planning layer (`DownloadEngine`, `DownloadForegroundService`, scheduler) and contains no screen — confirm which surface a change targets before editing.
 - `domain/model/` contains persisted/application models; `domain/archive/` and `domain/story/` contain pure domain rules.
