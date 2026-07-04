@@ -46,9 +46,10 @@ class UpdateTrackerScreenState {
     var syncing: Boolean = false
     var completed: Int = 0
     var total: Int = 0
-    var currentStoryId: String? = null
-    var currentStoryTitle: String? = null
-    var currentStatus: String? = null
+    // One entry per story currently being synced. Bulk sync runs several stories concurrently, so a
+    // single "current story" slot would be clobbered; this map tracks each in-flight story instead.
+    // Insertion-ordered so progress text can show a stable representative story.
+    val inFlight: MutableMap<String, InFlightStorySync> = linkedMapOf()
     val errors: MutableMap<String, String> = mutableMapOf()
     val syncedUpdatedChapterIds: MutableMap<String, List<String>> = mutableMapOf()
 
@@ -56,19 +57,20 @@ class UpdateTrackerScreenState {
         syncing = true
         completed = 0
         this.total = total
-        currentStoryId = null
-        currentStoryTitle = null
-        currentStatus = "Starting..."
+        inFlight.clear()
         errors.clear()
         syncedUpdatedChapterIds.clear()
     }
 
     fun finish() {
         syncing = false
-        currentStoryId = null
-        currentStoryTitle = null
-        currentStatus = null
+        inFlight.clear()
     }
+}
+
+/** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */
+class InFlightStorySync(val title: String) {
+    var status: String = "Starting..."
 }
 
 /**

@@ -31,6 +31,11 @@ object UpdateTrackerPlanning {
         followedIds: List<String>,
     ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canSync)
 
+    fun syncBatches(
+        stories: List<Story>,
+        maxConcurrent: Int,
+    ): List<List<Story>> = stories.chunked(maxConcurrent.coerceAtLeast(1))
+
     fun updatedChapters(
         story: Story,
         chapterIds: List<String>? = null,

@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
+import com.vinicius741.webnovelarchiver.navigation.InFlightStorySync
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
@@ -50,9 +51,13 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+
+private const val UPDATE_SYNC_CONCURRENCY = 3
 
 internal fun ScreenHost.showUpdates() {
     activeStory = null
@@ -431,32 +436,14 @@ private fun ScreenHost.syncFollowedUpdates(onProgress: () -> Unit) {
     onProgress()
     val renderedRoot = frame.getChildAt(0)
     scope.launch {
-        toSync.forEach { story ->
-            try {
-                state.currentStoryId = story.id
-                state.currentStoryTitle = story.title
-                state.currentStatus = "Starting..."
-                app.runOnUiThread { if (renderedRoot.parent === frame) onProgress() }
-                val existingBeforeSync = withContext(Dispatchers.IO) { storage.getStory(story.id) }
-                val synced =
-                    withContext(Dispatchers.IO) {
-                        syncEngine.fetchOrSync(story.sourceUrl, story.tabId) { message ->
-                            app.runOnUiThread {
-                                state.currentStatus = message
-                                if (renderedRoot.parent === frame) onProgress()
-                            }
+        UpdateTrackerPlanning.syncBatches(toSync, UPDATE_SYNC_CONCURRENCY).forEach { batch ->
+            coroutineScope {
+                batch
+                    .map { story ->
+                        launch {
+                            syncFollowedUpdateStory(story, state, renderedRoot, onProgress)
                         }
-                    }
-                repository.publishDownloadState(libraryChanged = true, queueChanged = false)
-                state.syncedUpdatedChapterIds[story.id] = synced.pendingNewChapterIds.orEmpty().distinct()
-                queuePendingNewDownloads(existingBeforeSync, synced)
-            } catch (error: Throwable) {
-                if (error is CancellationException) throw error
-                Timber.w(error, "Batch update sync failed for %s", story.id)
-                state.errors[story.id] = error.message ?: "Sync failed"
-            } finally {
-                state.completed += 1
-                app.runOnUiThread { if (renderedRoot.parent === frame) onProgress() }
+                    }.joinAll()
             }
         }
         withContext(Dispatchers.Main) {
@@ -464,6 +451,44 @@ private fun ScreenHost.syncFollowedUpdates(onProgress: () -> Unit) {
             repository.publishDownloadState(libraryChanged = true, queueChanged = true)
             if (renderedRoot.parent === frame) showUpdates()
         }
+    }
+}
+
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
+private suspend fun ScreenHost.syncFollowedUpdateStory(
+    story: Story,
+    state: UpdateTrackerScreenState,
+    renderedRoot: View,
+    onProgress: () -> Unit,
+) {
+    state.inFlight[story.id] = InFlightStorySync(story.title)
+    try {
+        if (renderedRoot.parent === frame) onProgress()
+        val existingBeforeSync = withContext(Dispatchers.IO) { storage.getStory(story.id) }
+        val synced =
+            withContext(Dispatchers.IO) {
+                syncEngine.fetchOrSync(
+                    story.sourceUrl,
+                    story.tabId,
+                    refreshPatreonStats = false,
+                ) { message ->
+                    app.runOnUiThread {
+                        state.inFlight[story.id]?.status = message
+                        if (renderedRoot.parent === frame) onProgress()
+                    }
+                }
+            }
+        repository.publishDownloadState(libraryChanged = true, queueChanged = false)
+        state.syncedUpdatedChapterIds[story.id] = synced.pendingNewChapterIds.orEmpty().distinct()
+        queuePendingNewDownloads(existingBeforeSync, synced)
+    } catch (error: Throwable) {
+        if (error is CancellationException) throw error
+        Timber.w(error, "Batch update sync failed for %s", story.id)
+        state.errors[story.id] = error.message ?: "Sync failed"
+    } finally {
+        state.inFlight.remove(story.id)
+        state.completed += 1
+        if (renderedRoot.parent === frame) onProgress()
     }
 }
 
@@ -482,9 +507,16 @@ private fun ScreenHost.queuePendingNewDownloads(
 
 private fun UpdateTrackerScreenState.progressText(): String {
     if (!syncing) return "Ready to check followed novels."
-    val title = currentStoryTitle ?: "Preparing"
-    val status = currentStatus ?: "Syncing..."
-    return "Syncing ${completed + 1}/$total: $title · $status"
+    // completed + inFlight.size can momentarily exceed total near the end (a story finishes and
+    // increments completed before its inFlight entry is removed); clamp so the label never shows a
+    // number greater than total.
+    val active = (completed + inFlight.size).coerceAtMost(total)
+    val current = inFlight.values.firstOrNull()
+    return if (current == null) {
+        "Syncing $active/$total..."
+    } else {
+        "Syncing $active/$total: ${current.title} · ${current.status}"
+    }
 }
 
 private fun plural(count: Int): String = if (count == 1) "" else "s"

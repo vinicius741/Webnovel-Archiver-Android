@@ -76,6 +76,30 @@ class UpdateTrackerPlanningTest {
         assertEquals(2, count)
     }
 
+    @Test
+    fun syncBatchesCapConcurrentStoryGroups() {
+        val stories = listOf(story("a"), story("b"), story("c"), story("d"), story("e"))
+
+        val batches = UpdateTrackerPlanning.syncBatches(stories, maxConcurrent = 2)
+
+        assertEquals(
+            listOf(listOf("a", "b"), listOf("c", "d"), listOf("e")),
+            batches.map { batch -> batch.map { it.id } },
+        )
+    }
+
+    @Test
+    fun syncBatchesTreatInvalidConcurrencyAsSingleWorker() {
+        val stories = listOf(story("a"), story("b"))
+
+        val batches = UpdateTrackerPlanning.syncBatches(stories, maxConcurrent = 0)
+
+        assertEquals(
+            listOf(listOf("a"), listOf("b")),
+            batches.map { batch -> batch.map { it.id } },
+        )
+    }
+
     private fun story(
         id: String,
         title: String = id,

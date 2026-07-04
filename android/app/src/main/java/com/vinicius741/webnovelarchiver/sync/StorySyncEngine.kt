@@ -4,10 +4,10 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
+import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.ui.size
 
 enum class StorySyncMode {
@@ -27,6 +27,7 @@ class StorySyncEngine(
         url: String,
         tabId: String? = null,
         mode: StorySyncMode = StorySyncMode.Default,
+        refreshPatreonStats: Boolean = true,
         status: (String) -> Unit = {},
     ): Story {
         val provider = SourceRegistry.getProvider(url) ?: error("Unsupported source URL")
@@ -64,9 +65,13 @@ class StorySyncEngine(
         if (incoming.isEmpty()) error("Source returned no chapters")
         val patreonUrl = metadata.patreonUrl
         val refreshedPatreonStats =
-            patreonUrl?.let { creatorUrl ->
-                status("Refreshing Patreon statistics...")
-                runCatching { PatreonStatsFetcher(network).fetch(creatorUrl) }.getOrNull()
+            if (refreshPatreonStats) {
+                patreonUrl?.let { creatorUrl ->
+                    status("Refreshing Patreon statistics...")
+                    runCatching { PatreonStatsFetcher(network).fetch(creatorUrl) }.getOrNull()
+                }
+            } else {
+                null
             }
         val merge =
             latestMerge

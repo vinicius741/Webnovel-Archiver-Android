@@ -25,7 +25,9 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - Keep file-based JSON storage compatible with existing data. Treat migrations, backup formats, chapter paths, and archive IDs as compatibility-sensitive.
 - New novel sites implement `SourceProvider` and must be registered in `SourceRegistry`. Source
   metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes and persists public or
-  tier-estimated Patreon statistics on every story sync without creator-specific mappings.
+  tier-estimated Patreon statistics by default without creator-specific mappings. Bulk update
+  tracking can skip the Patreon refresh to keep followed-novel checks fast while preserving existing
+  saved stats.
 - Archived snapshots remain read-only for sync and download.
 
 ## Build and Validation
