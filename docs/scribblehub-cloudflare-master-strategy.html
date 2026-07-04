@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ScribbleHub Cloudflare Bypass Strategy — Master Architectural Plan</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #5f6c7b;
+      --line: #d8dee8;
+      --accent: #1d6f8f;
+      --accent-soft: #e4f4f7;
+      --warn: #8a5a00;
+      --warn-soft: #fff3cf;
+      --bad: #9d1c1c;
+      --bad-soft: #ffe6e6;
+      --good: #136f46;
+      --good-soft: #e5f6ee;
+      --code: #eef2f6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12171d;
+        --panel: #19212a;
+        --text: #e8edf2;
+        --muted: #a8b3c2;
+        --line: #2f3b49;
+        --accent: #6bbbd0;
+        --accent-soft: #17333b;
+        --warn: #ffd166;
+        --warn-soft: #3a2c12;
+        --bad: #ff9b9b;
+        --bad-soft: #3a1d1d;
+        --good: #84d8ad;
+        --good-soft: #143324;
+        --code: #202a34;
+      }
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1150px;
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+    }
+
+    h1, h2, h3, h4 {
+      line-height: 1.25;
+      letter-spacing: -0.01em;
+      margin: 0 0 14px;
+      scroll-margin-top: 20px;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-top: 36px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    h3 {
+      font-size: 19px;
+      margin-top: 22px;
+    }
+
+    h4 {
+      font-size: 16px;
+      margin-top: 18px;
+      color: var(--muted);
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code {
+      font-family: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: var(--code);
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      margin: 16px 0;
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.85em;
+      line-height: 1.5;
+    }
+
+    ul, ol {
+      padding-left: 24px;
+      margin: 0 0 16px;
+    }
+    li {
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 16px;
+      margin-bottom: 28px;
+    }
+
+    .callout {
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid;
+    }
+    .callout-good { background: var(--good-soft); border-color: var(--good); }
+    .callout-warn { background: var(--warn-soft); border-color: var(--warn); }
+    .callout-bad  { background: var(--bad-soft);  border-color: var(--bad); }
+    .callout-info { background: var(--accent-soft); border-color: var(--accent); }
+    .callout p:last-child { margin-bottom: 0; }
+    .callout-title { font-weight: 700; margin-bottom: 6px; display: block; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      font-size: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      background: var(--code);
+      font-weight: 650;
+    }
+    tr:last-child td { border-bottom: none; }
+    td.center, th.center { text-align: center; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-good { background: var(--good-soft); color: var(--good); }
+    .badge-warn { background: var(--warn-soft); color: var(--warn); }
+    .badge-bad  { background: var(--bad-soft);  color: var(--bad); }
+    .badge-info { background: var(--accent-soft); color: var(--accent); }
+
+    .toc {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px 24px 20px 42px;
+      margin: 24px 0 32px;
+      column-count: 2;
+      column-gap: 36px;
+    }
+    .toc ul { list-style: decimal; padding-left: 0; }
+    .toc a { border: none; color: var(--text); }
+    .toc a:hover { color: var(--accent); }
+
+    .plan-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 24px;
+      margin: 20px 0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.03);
+    }
+    .plan-card-recommended {
+      border-color: var(--good);
+      box-shadow: 0 0 0 2px var(--good-soft);
+    }
+
+    .plan-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .plan-header h3 { margin: 0; }
+
+    .meta-line {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 4px 0 14px;
+    }
+
+    .sources {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .sources ul { columns: 2; column-gap: 32px; }
+    .sources li { break-inside: avoid; }
+
+    @media (max-width: 760px) {
+      .toc { column-count: 1; }
+      .sources ul { columns: 1; }
+      main { padding: 24px 14px 40px; }
+      h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+
+  <h1>ScribbleHub Cloudflare Bypass Strategy — Master Architectural Plan</h1>
+  <p class="subtitle">
+    Synthesis of research findings, codebase audit, Cloudflare 2026 mechanics, and Mihon reference architecture.<br>
+    Target: <code>Webnovel-Archiver-Android</code> (Native Kotlin). Date: 2026-07-04.
+  </p>
+
+  <div class="callout callout-good">
+    <span class="callout-title">Master Executive Summary</span>
+    <p>
+      ScribbleHub requests fail in OkHttp because Cloudflare blocks the request at multiple layers: TLS/JA4 fingerprinting, missing JS challenge execution, a stale User-Agent (<code>Chrome/114</code>), and no cookie persistence. The existing "Open in Browser" fallback uses a <strong>Chrome Custom Tab</strong>, which operates in Chrome's process and isolates its cookies—meaning the app's OkHttp client <em>never</em> receives the earned <code>cf_clearance</code> cookie.
+    </p>
+    <p>
+      <strong>The Definitive Solution (The Mihon Pattern):</strong> Bridge OkHttp and Android's native <code>android.webkit.CookieManager</code> via a custom <code>AndroidCookieJar</code>. When a Cloudflare challenge is encountered, solve it using an <strong>in-app WebView</strong> (via a background transient solver interceptor or an interactive <code>SourceAccessActivity</code>), capture the <code>cf_clearance</code> cookie directly from <code>CookieManager</code>, and replay it on OkHttp requests with an <strong>identical User-Agent</strong>.
+    </p>
+  </div>
+
+  <div class="toc">
+    <ul>
+      <li><a href="#root-cause">1. Detailed Root Cause Analysis</a></li>
+      <li><a href="#cf-mechanics">2. Cloudflare 2026 Threat Model</a></li>
+      <li><a href="#survey">3. Bypass Method Evaluation &amp; Matrix</a></li>
+      <li><a href="#mihon-arch">4. Mihon Reference Architecture</a></li>
+      <li><a href="#codebase-audit">5. Codebase Integration Audit</a></li>
+      <li><a href="#code-specs">6. Kotlin Technical Specifications</a></li>
+      <li><a href="#execution-plan">7. Step-by-Step Implementation Roadmap</a></li>
+      <li><a href="#verification">8. Testing &amp; QA Protocol</a></li>
+      <li><a href="#legal">9. Compliance &amp; Security Boundary</a></li>
+      <li><a href="#sources">10. Citations &amp; References</a></li>
+    </ul>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="root-cause">1. Detailed Root Cause Analysis</h2>
+
+  <p>
+    ScribbleHub novel metadata fetching, chapter downloads, and table-of-contents AJAX calls are currently failing when Cloudflare presents a challenge. A thorough audit of the codebase reveals two core architectural flaws causing this failure:
+  </p>
+
+  <h3>A. Why the OkHttp Client is Rejected</h3>
+  <ul>
+    <li><strong>TLS Fingerprint (JA3/JA4):</strong> OkHttp uses Android's Conscrypt/BoringSSL TLS stack. Cloudflare evaluates the cipher suite order and extension fingerprint in the initial <code>ClientHello</code> packet before any HTTP headers are read. OkHttp's fingerprint immediately identifies it as automated non-browser traffic.</li>
+    <li><strong>HTTP/2 Settings &amp; Frame Ordering:</strong> HTTP/2 frame sizes, window updates, and stream priorities differ between standard OkHttp and desktop/mobile Chrome.</li>
+    <li><strong>Lack of JS Execution:</strong> Cloudflare challenges deliver a JavaScript payload from <code>/cdn-cgi/challenge-platform/...</code>. OkHttp cannot execute JS, so it returns the raw challenge HTML page instead of the content.</li>
+    <li><strong>No Cookie Persistence:</strong> <code>NetworkClient.defaultClient</code> in <code>source/network/NetworkClient.kt</code> is constructed without a <code>CookieJar</code>. Even if a response returns a <code>Set-Cookie</code> header, OkHttp drops it immediately.</li>
+    <li><strong>Stale User-Agent String:</strong> <code>NetworkRequests.kt</code> hardcodes <code>Chrome/114.0.0.0</code>. Modern Cloudflare security rules score outdated browser UAs as high risk.</li>
+  </ul>
+
+  <h3>B. The Chrome Custom Tab Trap</h3>
+  <div class="callout callout-bad">
+    <span class="callout-title">Why the current fallback fails</span>
+    <p>
+      In <code>feature/browser/SourceAccessActions.kt</code>, when a challenge is detected, the app calls <code>showBrowser()</code> to launch a <strong>Chrome Custom Tab</strong>. Custom Tabs run inside Chrome's separate process and write cookies exclusively to Chrome's private app data sandbox. There is no Android API for third-party apps to extract cookies from Chrome Custom Tabs. When the user returns to the app, OkHttp retries the request with an empty cookie jar and is blocked again immediately.
+    </p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="cf-mechanics">2. Cloudflare 2026 Threat Model</h2>
+
+  <p>
+    Cloudflare evaluates incoming requests through a multi-tiered security pipeline. Understanding these layers dictates why on-device WebView cookie capture is required:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Layer</th>
+        <th>Mechanism</th>
+        <th>OkHttp Behavior</th>
+        <th>WebView Behavior</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1. IP &amp; ASN Reputation</td>
+        <td>Evaluates IP subnet (datacenter vs mobile/residential).</td>
+        <td>Depends on user's connection.</td>
+        <td>Uses user's native mobile/Wi-Fi IP (<span class="badge badge-good">High Trust</span>).</td>
+      </tr>
+      <tr>
+        <td>2. TLS (JA4) Fingerprint</td>
+        <td>Hashes <code>ClientHello</code> ciphers &amp; extensions.</td>
+        <td>Identified as Java/OkHttp (<span class="badge badge-bad">Blocked</span>).</td>
+        <td>Matches Chromium native TLS (<span class="badge badge-good">Passes</span>).</td>
+      </tr>
+      <tr>
+        <td>3. HTTP/2 Fingerprint</td>
+        <td>Inspects HTTP/2 frames and window parameters.</td>
+        <td>Non-browser pattern (<span class="badge badge-bad">Blocked</span>).</td>
+        <td>Native Chromium H2 (<span class="badge badge-good">Passes</span>).</td>
+      </tr>
+      <tr>
+        <td>4. JS Challenge / Turnstile</td>
+        <td>Executes browser environment checks (canvas, WebGL, timing).</td>
+        <td>Cannot run JS (<span class="badge badge-bad">Blocked</span>).</td>
+        <td>Executes full Chromium JS environment (<span class="badge badge-good">Passes</span>).</td>
+      </tr>
+      <tr>
+        <td>5. Session Binding</td>
+        <td>Binds <code>cf_clearance</code> to (IP + User-Agent + JA4).</td>
+        <td>No cookie jar to store (<span class="badge badge-bad">Lost</span>).</td>
+        <td>Stored in <code>CookieManager</code> (<span class="badge badge-good">Persisted</span>).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===================================================================== -->
+  <h2 id="survey">3. Bypass Method Evaluation &amp; Matrix</h2>
+
+  <p>
+    A comprehensive evaluation of all candidate bypass techniques surveyed across both research documents:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th>Cloudflare 2026 Viability</th>
+        <th>On-Device / Native</th>
+        <th>Maintenance Cost</th>
+        <th>Recommendation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>1. In-App WebView Cookie Capture</strong></td>
+        <td><span class="badge badge-good">High (Passes JS &amp; Turnstile)</span></td>
+        <td><span class="badge badge-good">Yes</span></td>
+        <td>Low</td>
+        <td><span class="badge badge-good">PRIMARY CHOICE (Plan A)</span></td>
+      </tr>
+      <tr>
+        <td><strong>2. Chrome Custom Tabs</strong></td>
+        <td><span class="badge badge-bad">Failed (No Cookie Access)</span></td>
+        <td><span class="badge badge-good">Yes</span></td>
+        <td>N/A</td>
+        <td><span class="badge badge-bad">REJECT for downloads</span></td>
+      </tr>
+      <tr>
+        <td><strong>3. FlareSolverr / Docker</strong></td>
+        <td><span class="badge badge-bad">Broken (CF detected)</span></td>
+        <td><span class="badge badge-bad">No (Requires Server)</span></td>
+        <td>High</td>
+        <td><span class="badge badge-bad">REJECT</span></td>
+      </tr>
+      <tr>
+        <td><strong>4. pure HTTP / cloudscraper</strong></td>
+        <td><span class="badge badge-bad">Dead (v1 JS deprecated)</span></td>
+        <td><span class="badge badge-good">Yes</span></td>
+        <td>N/A</td>
+        <td><span class="badge badge-bad">REJECT</span></td>
+      </tr>
+      <tr>
+        <td><strong>5. TLS Spoofing (uTLS / curl-cffi)</strong></td>
+        <td><span class="badge badge-warn">Partial (Fails JS challenge)</span></td>
+        <td><span class="badge badge-bad">No Kotlin Library</span></td>
+        <td>High</td>
+        <td><span class="badge badge-warn">REJECT for Android</span></td>
+      </tr>
+      <tr>
+        <td><strong>6. Server Stealth (nodriver / Camoufox)</strong></td>
+        <td><span class="badge badge-good">High</span></td>
+        <td><span class="badge badge-bad">No (Requires Server)</span></td>
+        <td>Medium</td>
+        <td><span class="badge badge-warn">OPTIONAL FALLBACK (Plan C)</span></td>
+      </tr>
+      <tr>
+        <td><strong>7. Paid CAPTCHA Solvers (2Captcha)</strong></td>
+        <td><span class="badge badge-warn">Partial (IP/Session bound)</span></td>
+        <td><span class="badge badge-info">API based</span></td>
+        <td>Medium ($$)</td>
+        <td><span class="badge badge-bad">REJECT</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===================================================================== -->
+  <h2 id="mihon-arch">4. Mihon Reference Architecture</h2>
+
+  <p>
+    The maintained manga reader <a href="https://github.com/mihonapp/mihon">Mihon (formerly Tachiyomi)</a> represents the gold standard for Cloudflare bypass on Android. Its architecture relies on four pillars:
+  </p>
+
+  <ol>
+    <li>
+      <strong>Unified Cookie Bridge (<code>AndroidCookieJar</code>):</strong> Implements OkHttp's <code>CookieJar</code> interface by delegating directly to <code>android.webkit.CookieManager.getInstance()</code>. Any cookie set in a WebView is immediately available to OkHttp calls without explicit copy operations.
+    </li>
+    <li>
+      <strong>Transient Background Interceptor (<code>CloudflareInterceptor</code>):</strong> When an HTTP response returns status 403/503 with Cloudflare challenge markers, the interceptor clears any existing stale <code>cf_clearance</code> cookie, instantiates an off-screen WebView on the main thread, loads the URL, and waits up to 30 seconds for a fresh <code>cf_clearance</code> cookie to appear in <code>CookieManager</code>.
+    </li>
+    <li>
+      <strong>Strict User-Agent Synchronization:</strong> The interceptor sets the WebView's <code>User-Agent</code> to match the exact UA header sent by OkHttp. Cloudflare rejects clearance cookies if the request UA does not match the solving UA.
+    </li>
+    <li>
+      <strong>Interactive UI Fallback:</strong> If the background WebView cannot solve the challenge (e.g. an interactive Turnstile CAPTCHA is presented), the app prompts the user to open an in-app <code>WebViewActivity</code> to solve it manually.
+    </li>
+  </ol>
+
+  <!-- ===================================================================== -->
+  <h2 id="codebase-audit">5. Codebase Integration Audit</h2>
+
+  <p>
+    Current codebase files in <code>Webnovel-Archiver-Android</code> and the required modifications:
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>File Path</th>
+        <th>Current State</th>
+        <th>Target Architecture Modification</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>source/network/NetworkClient.kt</code></td>
+        <td>Constructs un-customized OkHttpClient without CookieJar or custom interceptors.</td>
+        <td>Attach <code>AndroidCookieJar</code> and <code>CloudflareBypassInterceptor</code> to <code>defaultClient</code> in <code>AppContainer</code>.</td>
+      </tr>
+      <tr>
+        <td><code>source/network/AndroidCookieJar.kt</code></td>
+        <td><em>Non-existent</em></td>
+        <td><span class="badge badge-good">[NEW]</span> Create custom <code>CookieJar</code> backed by <code>CookieManager.getInstance()</code>.</td>
+      </tr>
+      <tr>
+        <td><code>source/network/CloudflareBypassInterceptor.kt</code></td>
+        <td><em>Non-existent</em></td>
+        <td><span class="badge badge-good">[NEW]</span> Create OkHttp interceptor for off-screen background WebView solving.</td>
+      </tr>
+      <tr>
+        <td><code>source/network/SourceAccessBlock.kt</code></td>
+        <td>Detects CF 403 challenge HTML and throws <code>SourceAccessBlockedException</code>.</td>
+        <td>Keep detection logic; update exception throwing so it only fires after background interceptor retry fails.</td>
+      </tr>
+      <tr>
+        <td><code>source/network/NetworkRequests.kt</code></td>
+        <td>Contains hardcoded stale <code>Chrome/114.0.0.0</code> User-Agent.</td>
+        <td>Update default User-Agent to match standard Android WebView Chrome version dynamically.</td>
+      </tr>
+      <tr>
+        <td><code>feature/browser/SourceAccessActions.kt</code></td>
+        <td>Launches Chrome Custom Tabs on block detection.</td>
+        <td>Repoint dialog action to launch in-app <code>CloudflareSolveActivity</code> instead of Custom Tab.</td>
+      </tr>
+      <tr>
+        <td><code>feature/browser/CloudflareSolveActivity.kt</code></td>
+        <td><em>Non-existent</em></td>
+        <td><span class="badge badge-good">[NEW]</span> Interactive Compose/WebView Activity for manual challenge solving &amp; cookie flushing.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===================================================================== -->
+  <h2 id="code-specs">6. Kotlin Technical Specifications</h2>
+
+  <p>
+    Below are the production-grade Kotlin implementation specifications tailored for this project:
+  </p>
+
+  <h3>A. <code>AndroidCookieJar.kt</code></h3>
+<pre><code>package com.vinicius741.webnovelarchiver.source.network
+
+import android.webkit.CookieManager
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+
+class AndroidCookieJar : CookieJar {
+    private val cookieManager: CookieManager by lazy { CookieManager.getInstance() }
+
+    override fun saveFromResponse(url: HttpUrl, cookies: List&lt;Cookie&gt;) {
+        val urlString = url.toString()
+        for (cookie in cookies) {
+            cookieManager.setCookie(urlString, cookie.toString())
+        }
+        cookieManager.flush()
+    }
+
+    override fun loadForRequest(url: HttpUrl): List&lt;Cookie&gt; {
+        val cookieString = cookieManager.getCookie(url.toString()) ?: return emptyList()
+        if (cookieString.isBlank()) return emptyList()
+
+        return cookieString.split(";").mapNotNull { pair -&gt;
+            Cookie.parse(url, pair.trim())
+        }
+    }
+}</code></pre>
+
+  <h3>B. <code>CloudflareBypassInterceptor.kt</code></h3>
+<pre><code>package com.vinicius741.webnovelarchiver.source.network
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import okhttp3.Interceptor
+import okhttp3.Request
+import okhttp3.Response
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+class CloudflareBypassInterceptor(
+    private val context: Context,
+    private val defaultUserAgent: String
+) : Interceptor {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val response = chain.proceed(request)
+
+        // Check if response is a Cloudflare challenge
+        if (response.code in listOf(403, 503) &amp;&amp; isChallengeResponse(response)) {
+            response.close() // Close initial failed response body
+
+            val solved = resolveWithWebView(request)
+            if (solved) {
+                // Retry request with newly acquired cf_clearance cookie
+                return chain.proceed(request)
+            }
+        }
+        return response
+    }
+
+    private fun isChallengeResponse(response: Response): Boolean {
+        val serverHeader = response.header("Server") ?: ""
+        val cfMitigated = response.header("cf-mitigated") ?: ""
+        if (cfMitigated.equals("challenge", ignoreCase = true)) return true
+        if (serverHeader.contains("cloudflare", ignoreCase = true)) {
+            val peekBody = response.peekBody(1024 * 64).string()
+            return peekBody.contains("cf-challenge") || peekBody.contains("just a moment", ignoreCase = true)
+        }
+        return false
+    }
+
+    private fun resolveWithWebView(request: Request): Boolean {
+        val latch = CountDownLatch(1)
+        var isSuccess = false
+        val url = request.url.toString()
+        val cookieManager = CookieManager.getInstance()
+
+        mainHandler.post {
+            val webView = WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.userAgentString = request.header("User-Agent") ?: defaultUserAgent
+                
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        val cookies = cookieManager.getCookie(url) ?: ""
+                        if (cookies.contains("cf_clearance")) {
+                            isSuccess = true
+                            latch.countDown()
+                        }
+                    }
+                }
+            }
+            webView.loadUrl(url)
+
+            // Destroy WebView after timeout
+            mainHandler.postDelayed({
+                webView.stopLoading()
+                webView.destroy()
+                latch.countDown()
+            }, 30000)
+        }
+
+        latch.await(30, TimeUnit.SECONDS)
+        return isSuccess
+    }
+}</code></pre>
+
+  <!-- ===================================================================== -->
+  <h2 id="execution-plan">7. Step-by-Step Implementation Roadmap</h2>
+
+  <div class="plan-card plan-card-recommended">
+    <div class="plan-header">
+      <h3>Phase 1: Foundation — Shared Cookie Jar</h3>
+      <span class="badge badge-good">Step 1</span>
+    </div>
+    <p>
+      Create <code>AndroidCookieJar.kt</code> in <code>source/network/</code>. In <code>AppContainer.kt</code>, instantiate <code>AndroidCookieJar</code> and wire it to <code>NetworkClient.defaultClient</code> via <code>.cookieJar(...)</code>. Enable <code>CookieManager.getInstance().setAcceptCookie(true)</code> on app startup.
+    </p>
+  </div>
+
+  <div class="plan-card plan-card-recommended">
+    <div class="plan-header">
+      <h3>Phase 2: User-Agent Synchronization &amp; Interceptor Wiring</h3>
+      <span class="badge badge-good">Step 2</span>
+    </div>
+    <p>
+      Update <code>NetworkRequests.kt</code> to infer modern Chrome UA from <code>WebSettings.getDefaultUserAgent(context)</code>. Add <code>CloudflareBypassInterceptor</code> to <code>NetworkClient.defaultClient</code>. Ensure OkHttp UA and WebView UA are 100% identical.
+    </p>
+  </div>
+
+  <div class="plan-card plan-card-recommended">
+    <div class="plan-header">
+      <h3>Phase 3: Interactive In-App WebView Screen</h3>
+      <span class="badge badge-good">Step 3</span>
+    </div>
+    <p>
+      Create <code>CloudflareSolveActivity.kt</code> under <code>feature/browser/</code>. Replace Chrome Custom Tab invocation in <code>SourceAccessActions.kt</code> with <code>CloudflareSolveActivity</code>. When opened, it loads ScribbleHub, detects when <code>cf_clearance</code> is present in <code>CookieManager</code>, flushes cookies, and finishes with a successful result code.
+    </p>
+  </div>
+
+  <div class="plan-card plan-card-recommended">
+    <div class="plan-header">
+      <h3>Phase 4: Defensive Throttling &amp; RSS Payload Optimization</h3>
+      <span class="badge badge-good">Step 4</span>
+    </div>
+    <p>
+      Add source rate-limiting in <code>ScribbleHubProvider.kt</code> (minimum 1.5s–3s gap between requests). For novel update checks, switch to polling <code>rssfeed.php</code> under the active <code>cf_clearance</code> cookie to reduce HTML crawl overhead.
+    </p>
+  </div>
+
+  <div class="plan-card plan-card-recommended">
+    <div class="plan-header">
+      <h3>Phase 5: Diagnostics &amp; Cookie Management Settings</h3>
+      <span class="badge badge-good">Step 5</span>
+    </div>
+    <p>
+      Add "Clear ScribbleHub Cookies" and "WebView System Info" options in Settings so users can clear stale clearance tokens or verify their installed WebView package version if issues arise.
+    </p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="verification">8. Testing &amp; QA Protocol</h2>
+
+  <ul>
+    <li><strong>Emulator Target:</strong> Use the <code>webnovel_api36</code> Android emulator exclusively for QA builds.</li>
+    <li><strong>Build Variant:</strong> Build and install the <strong>debug</strong> variant (<code>com.vinicius741.webnovelarchiver.nativeapp.debug</code>).</li>
+    <li><strong>Unit Tests:</strong> Create unit tests for <code>AndroidCookieJar</code> (mocking <code>CookieManager</code>), <code>SourceAccessBlockDetector</code> challenge HTML regexes, and rate-limiting throttling logic.</li>
+    <li><strong>Manual QA Flow:</strong>
+      <ol>
+        <li>Trigger ScribbleHub sync while Cloudflare challenge is active.</li>
+        <li>Verify <code>CloudflareBypassInterceptor</code> attempts off-screen solve.</li>
+        <li>If interactive Turnstile appears, verify <code>CloudflareSolveActivity</code> opens.</li>
+        <li>Solve challenge in WebView; verify <code>cf_clearance</code> is stored in <code>CookieManager</code>.</li>
+        <li>Confirm subsequent OkHttp chapter downloads succeed seamlessly without further prompts.</li>
+      </ol>
+    </li>
+  </ul>
+
+  <!-- ===================================================================== -->
+  <h2 id="legal">9. Compliance &amp; Security Boundary</h2>
+
+  <div class="callout callout-info">
+    <span class="callout-title">Legal &amp; Ethical Posture</span>
+    <p>
+      This strategy strictly adheres to user-mediated first-party session management. It does <strong>not</strong> reverse-engineer security algorithms, use third-party CAPTCHA solving services, or deploy proxy rotation networks. The user authenticates and solves challenges on their own device inside a standard Android Chromium WebView context to read their personal novel library.
+    </p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="sources">10. Citations &amp; References</h2>
+
+  <div class="sources">
+    <ul>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt">Mihon CloudflareInterceptor.kt Source Code</a></li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt">Mihon AndroidCookieJar.kt Source Code</a></li>
+      <li><a href="https://developers.cloudflare.com/cloudflare-challenges/">Cloudflare Challenges Documentation</a></li>
+      <li><a href="https://developer.android.com/reference/android/webkit/CookieManager">Android CookieManager API Reference</a></li>
+      <li><a href="https://square.github.io/okhttp/5.x/okhttp-java-net-cookiejar/okhttp3.java.net.cookiejar/-java-net-cookie-jar/index.html">OkHttp CookieJar Specification</a></li>
+    </ul>
+  </div>
+
+</main>
+</body>
+</html>

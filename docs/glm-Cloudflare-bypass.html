@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cloudflare Bypass Strategy — ScribbleHub on Android (GLM Research)</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #5f6c7b;
+      --line: #d8dee8;
+      --accent: #1d6f8f;
+      --accent-soft: #e4f4f7;
+      --warn: #8a5a00;
+      --warn-soft: #fff3cf;
+      --bad: #9d1c1c;
+      --bad-soft: #ffe6e6;
+      --good: #136f46;
+      --good-soft: #e5f6ee;
+      --code: #eef2f6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12171d;
+        --panel: #19212a;
+        --text: #e8edf2;
+        --muted: #a8b3c2;
+        --line: #2f3b49;
+        --accent: #6bbbd0;
+        --accent-soft: #17333b;
+        --warn: #ffd166;
+        --warn-soft: #3a2c12;
+        --bad: #ff9b9b;
+        --bad-soft: #3a1d1d;
+        --good: #84d8ad;
+        --good-soft: #143324;
+        --code: #202a34;
+      }
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+    }
+
+    h1, h2, h3, h4 {
+      line-height: 1.2;
+      letter-spacing: 0;
+      margin: 0 0 14px;
+      scroll-margin-top: 20px;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-top: 34px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    h3 {
+      font-size: 19px;
+      margin-top: 22px;
+    }
+
+    h4 {
+      font-size: 16px;
+      margin-top: 18px;
+      color: var(--muted);
+      text-transform: none;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+    }
+    a:hover {
+      border-bottom-color: var(--accent);
+    }
+
+    code {
+      font-family: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+      font-size: 0.88em;
+      background: var(--code);
+      padding: 2px 5px;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: var(--code);
+      padding: 14px 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+    }
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.84em;
+      line-height: 1.5;
+    }
+
+    ul, ol {
+      padding-left: 22px;
+      margin: 0 0 12px;
+    }
+    li {
+      margin-bottom: 5px;
+    }
+    li > ul, li > ol { margin-top: 6px; }
+
+    .muted { color: var(--muted); }
+    .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 24px; }
+
+    .callout {
+      padding: 14px 18px;
+      border-radius: 8px;
+      margin: 16px 0;
+      border-left: 4px solid;
+    }
+    .callout-good { background: var(--good-soft); border-color: var(--good); }
+    .callout-warn { background: var(--warn-soft); border-color: var(--warn); }
+    .callout-bad  { background: var(--bad-soft);  border-color: var(--bad); }
+    .callout-info { background: var(--accent-soft); border-color: var(--accent); }
+    .callout p:last-child { margin-bottom: 0; }
+    .callout-title { font-weight: 600; margin-bottom: 6px; display: block; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 9px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      background: var(--code);
+      font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+    td.center, th.center { text-align: center; }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+    .badge-good { background: var(--good-soft); color: var(--good); }
+    .badge-warn { background: var(--warn-soft); color: var(--warn); }
+    .badge-bad  { background: var(--bad-soft);  color: var(--bad); }
+    .badge-info { background: var(--accent-soft); color: var(--accent); }
+
+    .toc {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 22px 16px 40px;
+      margin: 20px 0 30px;
+      column-count: 2;
+      column-gap: 32px;
+    }
+    .toc ul { list-style: decimal; padding-left: 0; }
+    .toc a { border: none; color: var(--text); }
+    .toc a:hover { color: var(--accent); }
+
+    .plan {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 22px 26px;
+      margin: 18px 0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .plan h3 { margin-top: 0; }
+    .plan-recommended {
+      border-color: var(--good);
+      box-shadow: 0 0 0 2px var(--good-soft);
+    }
+
+    .plan-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .plan-header h3 { margin: 0; }
+
+    .score-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 10px 0;
+    }
+
+    .meta-line {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 2px 0 12px;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--line);
+      margin: 30px 0;
+    }
+
+    .sources {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .sources ul { columns: 2; column-gap: 28px; }
+    .sources li { break-inside: avoid; }
+
+    @media (max-width: 760px) {
+      .toc { column-count: 1; }
+      .sources ul { columns: 1; }
+      main { padding: 28px 14px 40px; }
+      h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+
+  <h1>Cloudflare Bypass Strategy for ScribbleHub on Android</h1>
+  <p class="subtitle">
+    GLM research — codebase audit, Mihon deep-dive, and a survey of bypass methods (mid-2026).
+    Target: <code>Webnovel-Archiver-Android</code>. Compiled 2026-07-04.
+  </p>
+
+  <div class="callout callout-info">
+    <span class="callout-title">Bottom line up front</span>
+    <p>
+      The app's OkHttp client is blocked because it has the wrong TLS/HTTP/JS fingerprint, no
+      <code>cf_clearance</code> cookie, and no cookie jar at all. The current "browser bypass"
+      (a Chrome Custom Tab) <strong>cannot</strong> work — Custom Tabs never expose cookies to the
+      host app. The proven fix, used by every Tachiyomi/Mihon fork, is to solve the challenge in an
+      <strong>in-app WebView</strong>, read the <code>cf_clearance</code> cookie back out of
+      <code>android.webkit.CookieManager</code>, and replay it on OkHttp with a matching User-Agent.
+      Five candidate plans are detailed in <a href="#plans">§ Plans</a>; this document intentionally
+      presents more than one approach.
+    </p>
+  </div>
+
+  <div class="toc">
+    <ul>
+      <li><a href="#problem">1. The problem, exactly</a></li>
+      <li><a href="#codebase">2. Current codebase state</a></li>
+      <li><a href="#how-cf-works">3. How Cloudflare blocks in 2026</a></li>
+      <li><a href="#mihon">4. How Mihon does it (deep dive)</a></li>
+      <li><a href="#methods">5. All methods surveyed</a></li>
+      <li><a href="#matrix">6. Comparison matrix</a></li>
+      <li><a href="#plans">7. Recommended plans (multiple)</a></li>
+      <li><a href="#legal">8. Legal &amp; ToS notes</a></li>
+      <li><a href="#sources">9. Sources</a></li>
+    </ul>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="problem">1. The problem, exactly</h2>
+
+  <p>
+    Syncing and downloads from <code>www.scribblehub.com</code> fail because Cloudflare is
+    challenging every request the app makes. The user reported that even the existing "open in
+    browser" fallback no longer works. This section explains <em>why</em> before the doc proposes
+    fixes.
+  </p>
+
+  <h3>Why the OkHttp client is blocked</h3>
+  <p>
+    Cloudflare does not trust the request because of a stack of fingerprints that the OkHttp client
+    cannot match to a real browser:
+  </p>
+  <ul>
+    <li><strong>TLS fingerprint (JA3/JA4).</strong> OkHttp on Android uses Conscrypt/BoringSSL, whose <code>ClientHello</code> is recognisably "Android OkHttp" — not Chrome. Cloudflare computes this <em>before</em> any header arrives, so the <code>User-Agent</code> string is irrelevant.</li>
+    <li><strong>HTTP/2 fingerprint.</strong> Frame ordering and window sizes also betray the client library.</li>
+    <li><strong>No JavaScript challenge solving.</strong> A real browser receives a JS payload from <code>/cdn-cgi/challenge-platform/...</code>, executes it, and posts back a token. OkHttp cannot run JS, so the challenge page is returned as HTML instead of the real content.</li>
+    <li><strong>No <code>cf_clearance</code> cookie.</strong> Even if the user somehow solved the challenge, the app's OkHttp client has no cookie jar, so the clearance cookie would be discarded on the very next response.</li>
+    <li><strong>Stale User-Agent.</strong> The hardcoded UA in <code>NetworkRequests.kt</code> is <code>Chrome/114</code>, which is multiple major versions behind current Chrome. Outdated UAs are scored higher-threat.</li>
+  </ul>
+
+  <h3>Why the "Open Browser" fallback does not work</h3>
+  <div class="callout callout-bad">
+    <span class="callout-title">The Custom Tab trap</span>
+    <p>
+      <code>feature/browser/BrowserScreen.kt</code> launches a <strong>Chrome Custom Tab</strong>.
+      Custom Tabs run inside Chrome's process and share <em>Chrome's</em> cookie jar — the host app
+      <strong>cannot read those cookies</strong>. There is no API to do so on a non-rooted device.
+      So even when the user solves the Cloudflare challenge in the Custom Tab and earns a
+      <code>cf_clearance</code>, the next OkHttp retry still has no clearance cookie and is blocked
+      again. The retry-on-resume logic in <code>SourceAccessRetryCoordinator</code> only re-runs the
+      original action with <em>no new credentials</em>. This is the architectural gap that must be
+      closed.
+    </p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="codebase">2. Current codebase state</h2>
+
+  <p>Findings from a full read of the networking and source-provider code:</p>
+
+  <h3>HTTP client — <code>source/network/NetworkClient.kt</code></h3>
+  <ul>
+    <li>Single OkHttp client, process-wide via <code>AppContainer</code>. No Ktor, no Retrofit.</li>
+    <li><strong>No <code>cookieJar</code> set</strong> — OkHttp uses its default in-memory jar that accepts no cookies. Every <code>Set-Cookie</code> response is silently dropped.</li>
+    <li>ScribbleHub gets a 1.5&nbsp;s per-request throttle and up to 3 retries on 403/429 — pure politeness heuristics. A real Cloudflare challenge returns 403 and just exhausts these retries.</li>
+    <li>Hardcoded UA: <code>Mozilla/5.0 (Linux; Android 10; K) ... Chrome/114.0.0.0 Mobile Safari/537.36</code> (stale).</li>
+  </ul>
+<pre><code>val defaultClient: OkHttpClient =
+    OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .build()   // ← no cookieJar(...), no interceptors</code></pre>
+
+  <h3>Challenge detection — <code>source/network/SourceAccessBlock.kt</code></h3>
+  <p>
+    Detection is solid and conservative. <code>isChallengeResponse</code> fires only on
+    <code>cf-mitigated: challenge</code> or on a Cloudflare <code>server</code> header corroborated
+    by structural challenge HTML (<code>cf_chl</code>, <code>challenge-platform</code>,
+    <code>&lt;title&gt;just a moment...&lt;/title&gt;</code>). It throws
+    <code>SourceAccessBlockedException</code>, which the download pipeline marks
+    <code>SOURCE_BLOCKED</code> / <code>retryable=false</code>.
+  </p>
+<pre><code>fun isChallengeResponse(headers: Headers, body: String): Boolean {
+    if (headers["cf-mitigated"].equals("challenge", ignoreCase = true)) return true
+    if (!headers["server"].equals("cloudflare", ignoreCase = true)) return false
+    return isChallengeHtml(body)
+}</code></pre>
+
+  <h3>ScribbleHub provider — <code>source/ScribbleHubProvider.kt</code></h3>
+  <ul>
+    <li>Jsoup-based parsing of metadata + chapters; no headless browser.</li>
+    <li>TOC pagination hits <code>wp-admin/admin-ajax.php</code> with a hardcoded <code>Cookie: toc_show=50</code> header — the only cookie usage anywhere in the codebase.</li>
+    <li>Wraps TOC fetches in <code>SourceAccessBlockedException</code> handling so a mid-pagination block degrades gracefully.</li>
+  </ul>
+
+  <h3>Browser surface — <code>feature/browser/</code></h3>
+  <ul>
+    <li><code>BrowserScreen.kt</code> opens a Custom Tab. Receives only a URL back via the Import action — <strong>no cookies</strong>.</li>
+    <li><code>SourceAccessActions.kt</code> shows the "blocked" dialog and arms a one-shot retry on <code>onResume()</code>.</li>
+    <li>In-app WebViews (<code>ui/WebViewSafety.kt</code>) exist only for the Reader and the import surface; none has a <code>WebViewClient</code> or any <code>CookieManager.getInstance()</code> call.</li>
+  </ul>
+
+  <div class="callout callout-warn">
+    <span class="callout-title">Note on <code>android/AGENTS.md</code></span>
+    <p>
+      The android-level instructions explicitly warn: <em>"do not move third-party OAuth back into a
+      WebView."</em> A Cloudflare-solving WebView is a narrower concern than OAuth, but anyone
+      implementing Plan A should reconcile this with the existing rule. The CookieManager-based
+      cookie jar is the clean way to keep one shared store.
+    </p>
+  </div>
+
+  <h3>Build dependencies</h3>
+<pre><code>implementation 'androidx.browser:browser:1.9.0'        // Chrome Custom Tabs
+implementation 'com.squareup.okhttp3:okhttp:4.12.0'     // HTTP client
+implementation 'org.jsoup:jsoup:1.21.2'                 // HTML parsing
+testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'</code></pre>
+
+  <!-- ===================================================================== -->
+  <h2 id="how-cf-works">3. How Cloudflare blocks in 2026</h2>
+
+  <p>
+    Understanding the layers matters because every bypass method attacks a specific layer and most
+    fail because they miss one. Ranked from cheapest to hardest for the attacker to fake:
+  </p>
+
+  <ol>
+    <li><strong>IP reputation / ASN.</strong> Datacenter IPs (AWS, GCP, Hetzner, DO) and known VPN egresses get a high threat score before any bytes are exchanged. Residential and mobile-carrier ASNs score lowest. <em>Your phone has the highest-trust category by default.</em></li>
+    <li><strong>TLS fingerprint (JA3 → JA4).</strong> Hash of the <code>ClientHello</code> (cipher suites, extensions, curves, ordering). Computed before any HTTP header. An OkHttp ClientHello does not match a Chrome ClientHello.</li>
+    <li><strong>HTTP/2 fingerprint.</strong> Frame ordering and <code>SETTINGS</code> window sizes betray the client library.</li>
+    <li><strong>JavaScript challenge.</strong> A JS payload probes <code>navigator</code>, canvas, WebGL, timing, etc. The old arithmetic challenge is deprecated; current challenges are heavier and often culminate in Turnstile.</li>
+    <li><strong>Turnstile.</strong> Cloudflare's CAPTCHA replacement — invisible/managed, non-interactive, or interactive. Produces a token bound to the solving session.</li>
+    <li><strong>Session binding.</strong> The <code>cf_clearance</code> cookie is pinned to (UA + IP + fingerprint + a time window). Reuse from a mismatched client/IP and Cloudflare re-challenges.</li>
+  </ol>
+
+  <div class="callout callout-info">
+    <span class="callout-title">Key consequence</span>
+    <p>
+      A method that fixes only one layer (e.g. <code>curl-cffi</code> fixes TLS+HTTP/2 but not JS)
+      will pass on <em>low</em>-protected sites and fail on sites with JS challenges or Turnstile.
+      ScribbleHub runs a JS/Turnstile-grade challenge, so a <strong>real browser engine is
+      effectively required</strong> — which is exactly why the WebView approach wins.
+    </p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="mihon">4. How Mihon does it (deep dive)</h2>
+
+  <p>
+    <a href="https://github.com/mihonapp/mihon">mihonapp/mihon</a> (the maintained successor to
+    Tachiyomi) is the reference implementation of Cloudflare handling for Android novel/manga
+    readers. The design is <em>WebView-as-an-oracle</em> layered on top of the normal OkHttp stack.
+  </p>
+
+  <h3>The four moving parts</h3>
+  <table>
+    <tr><th>Component</th><th>File (branch <code>main</code>)</th><th>Role</th></tr>
+    <tr><td><code>NetworkHelper</code></td><td><code>core/common/.../network/NetworkHelper.kt</code></td><td>Builds the shared OkHttp client, wires interceptors, owns the cookie jar.</td></tr>
+    <tr><td><code>CloudflareInterceptor</code></td><td><code>core/common/.../network/interceptor/CloudflareInterceptor.kt</code></td><td>Detects a CF challenge, spins up a background WebView to solve it, retries.</td></tr>
+    <tr><td><code>AndroidCookieJar</code></td><td><code>core/common/.../network/AndroidCookieJar.kt</code></td><td>OkHttp <code>CookieJar</code> backed by <code>android.webkit.CookieManager</code>.</td></tr>
+    <tr><td><code>WebViewActivity</code></td><td><code>app/.../ui/webview/WebViewActivity.kt</code></td><td>Manual fallback: interactive WebView if the auto-solve fails.</td></tr>
+  </table>
+
+  <h3>The key insight: <em>one shared cookie store</em></h3>
+  <p>
+    <code>AndroidCookieJar</code> implements OkHttp's <code>CookieJar</code> directly against
+    <code>android.webkit.CookieManager.getInstance()</code>. Because WebViews also read/write that
+    same <code>CookieManager</code>, the moment the WebView earns a <code>cf_clearance</code> cookie,
+    it is instantly visible to OkHttp — <strong>no explicit copy step required</strong>. Persistence
+    across app restarts is free, because <code>CookieManager</code> writes to disk in the WebView
+    data directory.
+  </p>
+<pre><code>class AndroidCookieJar : CookieJar {
+    private val manager = CookieManager.getInstance()  // android.webkit.CookieManager
+
+    override fun saveFromResponse(url: HttpUrl, cookies: List&lt;Cookie&gt;) {
+        cookies.forEach { manager.setCookie(url.toString(), it.toString()) }
+    }
+
+    override fun loadForRequest(url: HttpUrl): List&lt;Cookie&gt; {
+        val cookies = manager.getCookie(url.toString()) ?: return emptyList()
+        return cookies.split(";").mapNotNull { Cookie.parse(url, it) }
+    }
+}</code></pre>
+
+  <h3>Detection (<code>shouldIntercept</code>)</h3>
+<pre><code>private val ERROR_CODES = listOf(403, 503)
+private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
+
+override fun shouldIntercept(response: Response): Boolean {
+    return if (response.code in ERROR_CODES &&
+        response.header("Server") in SERVER_CHECK) {
+        val document = Jsoup.parse(response.peekBody(Long.MAX_VALUE).string(), ...)
+        // only fire on a real challenge, NOT on a geo block
+        document.getElementById("challenge-error-title") != null ||
+            document.getElementById("challenge-error-text") != null
+    } else false
+}</code></pre>
+  <p>
+    Compare to the Webnovel-Archiver <code>SourceAccessBlockDetector</code> — already in the same
+    shape, but it throws instead of triggering a solve. That is exactly the seam a bypass plugs
+    into.
+  </p>
+
+  <h3>The background solve (<code>resolveWithWebView</code>)</h3>
+  <p>
+    This is the "helper WebView" you asked about. Mihon creates a transient, off-screen
+    <code>WebView</code> on the main thread, loads the blocked URL, lets the system WebView solve
+    the JS challenge, waits for the <code>cf_clearance</code> cookie to appear, then destroys the
+    WebView. It is never attached to any view hierarchy and the user never sees it.
+  </p>
+<pre><code>private fun resolveWithWebView(originalRequest: Request, oldCookie: Cookie?) {
+    val latch = CountDownLatch(1)
+    var webview: WebView? = null
+    var cloudflareBypassed = false
+
+    executor.execute {  // main thread — WebViews must be touched on the main thread
+        webview = createWebView(originalRequest)
+        webview!!.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView, url: String) {
+                val newCookie = cookieManager.get(origRequestUrl.toHttpUrl())
+                    .firstOrNull { it.name == "cf_clearance" }
+                // ★ success criterion: a cf_clearance that differs from the one before the solve
+                if (newCookie != null && newCookie != oldCookie) {
+                    cloudflareBypassed = true
+                    latch.countDown()
+                }
+            }
+        }
+        webview!!.loadUrl(origRequestUrl, headers)
+    }
+
+    latch.awaitFor30Seconds()   // hard 30-second cap
+    executor.execute { webview?.run { stopLoading(); destroy() } }
+    if (!cloudflareBypassed) throw CloudflareBypassException()
+}</code></pre>
+  <p>
+    <strong>Success criterion</strong> (the part you specifically asked about): Mihon does not poll,
+    does not detect a redirect, and does not check for the absence of the challenge page. It checks,
+    in <code>onPageFinished</code>, whether a <code>cf_clearance</code> cookie now exists that is
+    <em>different from the one captured before the solve</em>. The interceptor deletes the old
+    cookie first, so any <code>cf_clearance</code> present after the page load must be freshly
+    granted.
+  </p>
+
+  <h3>User-Agent matching — the one rule you cannot break</h3>
+  <p>
+    Cloudflare binds <code>cf_clearance</code> to (at minimum) the client IP <em>and</em> the
+    User-Agent. Mihon enforces consistency by construction:
+  </p>
+  <ul>
+    <li><code>WebViewInterceptor.createWebView</code> sets <code>settings.userAgentString</code> to the request's UA header.</li>
+    <li><code>HttpSource.headersBuilder()</code> adds the shared default UA to every request.</li>
+    <li>The default UA is a normalised Chrome-on-Android string (device model masked as <code>Android 10; K</code>, the <code>Version/</code> token stripped) so it does not leak device fingerprint.</li>
+  </ul>
+<pre><code>// WebViewUtil.getInferredUserAgent normalises the WebView UA:
+//   "...; Android 13; Pixel 7 Build/...; wv) ... Version/4.0 Chrome/116..."
+// becomes
+//   "...; Android 10; K) ... Chrome/116..."
+.defaultUserAgentString()
+    .replace("; Android .*?\\)".toRegex(), "; Android 10; K)")
+    .replace("Version/.* Chrome/".toRegex(), "Chrome/")</code></pre>
+
+  <h3>End-to-end flow</h3>
+<pre><code>extension source → client.newCall(req)            // client == network.client (the protected one)
+   │
+   ▼
+OkHttp pipeline
+   ├─ UserAgentInterceptor  fills UA if missing
+   ├─ chain.proceed(req)    shares AndroidCookieJar (== WebView CookieManager)
+   │
+   ▼  403/503 + Server: cloudflare + challenge DOM ?
+CloudflareInterceptor.shouldIntercept ─── no ──► return response
+   │ yes
+   ▼
+1. cookieJar.remove(url, ["cf_clearance"])        // purge stale
+2. oldCookie = current cf_clearance
+3. resolveWithWebView(req, oldCookie)             // system WebView solves JS challenge
+4. chain.proceed(req) again                       // cf_clearance now in shared jar
+   │
+   ▼
+200 OK → returns to source</code></pre>
+
+  <h3>What Mihon does <em>not</em> handle</h3>
+  <table>
+    <tr><th>Challenge type</th><th>Handled?</th><th>Why</th></tr>
+    <tr><td>JS challenge ("Just a moment…")</td><td><span class="badge badge-good">Auto</span></td><td>System WebView runs the JS; cookie detected.</td></tr>
+    <tr><td>"Under Attack" interstitial</td><td><span class="badge badge-good">Usually</span></td><td>Same mechanism; tighter cookie TTL → more re-solves.</td></tr>
+    <tr><td>Turnstile (non-interactive / managed)</td><td><span class="badge badge-warn">Mostly</span></td><td>Real WebView satisfies it; managed mode can still escalate.</td></tr>
+    <tr><td>Turnstile interactive / hCaptcha / reCAPTCHA</td><td><span class="badge badge-bad">Manual only</span></td><td>Falls back to the user-facing <code>WebViewActivity</code>.</td></tr>
+    <tr><td>DataDome / HUMAN / Kasada / Akamai</td><td><span class="badge badge-bad">No</span></td><td>Detection only matches Cloudflare's <code>Server</code> header.</td></tr>
+    <tr><td>Geo-block (CF 403/503 w/o challenge)</td><td><span class="badge badge-bad">No</span></td><td>Deliberately skipped — no cookie will help.</td></tr>
+    <tr><td>Outdated system WebView (&lt; v118)</td><td><span class="badge badge-bad">Hard fail</span></td><td><code>MINIMUM_WEBVIEW_VERSION = 118</code>; toast fires.</td></tr>
+  </table>
+
+  <p>
+    Direct source links are listed in <a href="#sources">§ Sources</a>.
+  </p>
+
+  <!-- ===================================================================== -->
+  <h2 id="methods">5. All methods surveyed</h2>
+
+  <p>For each method: how it works, whether it still works against current CF, and fit for this app.</p>
+
+  <h3>1. In-app WebView cookie capture <span class="badge badge-good">recommended</span></h3>
+  <p>
+    The Mihon/Tachiyomi pattern (§4). Open the protected URL in an <code>android.webkit.WebView</code>;
+    the system Chromium solves the challenge for real; read <code>cf_clearance</code> + UA out of
+    <code>CookieManager</code>; replay on OkHttp with a matching UA. The WebView is a genuine
+    browser, so TLS/JA4, HTTP/2, JS, and fingerprint checks all pass natively.
+  </p>
+  <p class="meta-line">
+    Effectiveness: high · Android effort: low–medium · Maintenance: low · Server: no · ToS: lowest.
+  </p>
+
+  <h3>2. Chrome Custom Tabs / system browser <span class="badge badge-bad">not viable</span></h3>
+  <p>
+    Launching the URL in the system Chrome would solve the challenge, but there is
+    <strong>no API to read cookies</strong> from Custom Tabs or system Chrome on a non-rooted
+    device. The cookie jar belongs to Chrome's process and lives in Chrome's sandboxed storage.
+    This is the design property that makes Custom Tabs "more secure" — and exactly why our current
+    fallback fails. Trusted Web Activity (TWA) + Digital Asset Links does not change this.
+  </p>
+  <p class="meta-line">Effectiveness: N/A (no cookie access) · This is what the app does today.</p>
+
+  <h3>3. FlareSolverr <span class="badge badge-bad">officially broken</span></h3>
+  <p>
+    A Docker'd proxy that runs a headless Chromium (historically <code>undetected-chromedriver</code>)
+    and exposes a JSON API: <code>{"cmd":"request.get","url":"..."}</code> → returns
+    <code>solution.cookies</code> + <code>solution.userAgent</code> + HTML.
+    <a href="https://trash-guides.info/Prowlarr/prowlarr-setup-flaresolverr/">TRaSH Guides states
+    bluntly</a>: "FlareSolverr is currently non-functional. It is also being monitored by the
+    Cloudflare team, so it is unlikely to ever be fixed." The <em>pattern</em> (self-hosted solver)
+    remains valid — see method 7 — but FlareSolverr itself is dead against current CF.
+  </p>
+  <p class="meta-line">
+    Effectiveness: low · Server: required · Maintenance: high. Also has an IP-binding problem: the
+    <code>cf_clearance</code> is minted from the server's IP, so the phone would have to route its
+    HTTP through the same server to reuse it.
+  </p>
+
+  <h3>4. undetected-chromedriver / selenium-driverless / Playwright-stealth / Puppeteer-stealth <span class="badge badge-bad">mostly obsolete</span></h3>
+  <p>
+    The 2020–2023 generation of "stealth" automation. Modern CF catches them on
+    CDP/WebDriver signals; they leak enough tells that the arms race has moved on. None run on
+    Android — they are server-side only.
+    <a href="https://ianlpaterson.com/blog/anti-detect-browser-benchmark-patchright-nodriver-curl-cffi/">The
+    2026 benchmark</a> shows them well behind the newer tools in §7.
+  </p>
+  <p class="meta-line">Effectiveness: low–medium and declining · Server: required · Maintenance: high.</p>
+
+  <h3>5. cloudscraper / cffi / cf_clearance libraries (pure HTTP) <span class="badge badge-bad">dead</span></h3>
+  <p>
+    cloudscraper parsed Cloudflare's old arithmetic JS challenge (v1). The v1 challenge is
+    <strong>deprecated</strong> and cloudscraper's solver is flagged deprecated on PyPI. There is no
+    maintained JVM port, and against a Turnstile-grade site like ScribbleHub it will not get in. The
+    "cf_clearance libraries" that <em>do</em> work are misnamed — they wrap a real browser, so they
+    are really method 1 or 7 in a trenchcoat.
+  </p>
+  <p class="meta-line">Effectiveness: none against ScribbleHub-class CF. Do not spend time here.</p>
+
+  <h3>6. TLS fingerprint spoofing (uTLS / CycleTLS / curl-cffi / tls-client) <span class="badge badge-warn">necessary, not sufficient</span></h3>
+  <p>
+    These spoof the TLS <code>ClientHello</code> to look like Chrome/Firefox byte-for-byte, fixing
+    layer 2. They defeat the TLS gate on low-protection sites but <strong>do not solve the JS
+    challenge</strong> — you still get the challenge page back as HTML. And there is
+    <strong>no production-grade Kotlin/JVM uTLS equivalent</strong>: OkHttp on Android uses
+    Conscrypt, whose ClientHello is recognisably "Android OkHttp." On-device, let the WebView handle
+    TLS for you (the cookie is what matters). Server-side, <code>curl-cffi</code> is the most
+    popular and best-maintained option.
+  </p>
+  <p class="meta-line">Effectiveness: medium alone, essential as a component · Kotlin: high effort · Server: only for pure-HTTP spoofing.</p>
+
+  <h3>7. Modern stealth browsers: nodriver / Patchright / Camoufox / DrissionPage / puppeteer-real-browser <span class="badge badge-good">best-in-class (server-side)</span></h3>
+  <p>
+    The 2024–2026 successors. <a href="https://github.com/ultrafunkamsterdam/nodriver"><code>nodriver</code></a>
+    drives Chrome over raw CDP with no Selenium/Playwright/WebDriver footprint at all, and passed
+    every Cloudflare gate cleanly in the benchmark. <code>Camoufox</code> is a custom Firefox with
+    C++-level fingerprint injection. <code>Patchright</code> is a patched Playwright that fixes CDP
+    leaks. All are server-side Python/Node tools — none run on Android. They are the right answer if
+    you ever need to replace FlareSolverr with a self-hosted solver: a tiny FastAPI wrapper around
+    <code>nodriver</code> that returns <code>{cf_clearance, userAgent, html}</code>.
+  </p>
+  <p class="meta-line">Effectiveness: high (nodriver/Camoufox/Patchright) · Server: required · Maintenance: medium.</p>
+
+  <h3>8. Residential / mobile proxies <span class="badge badge-info">mostly free for this app</span></h3>
+  <p>
+    IP reputation matters a lot — datacenter ASNs are penalised. But the app's users are already on
+    residential/mobile-carrier IPs, the highest-trust category, and the WebView approach (§1) solves
+    from that same clean IP. Paid proxies only enter the picture for a server-side deployment that
+    needs clean residential egress. <strong>Note:</strong> <code>cf_clearance</code> is bound to the
+    IP that solved the challenge — pin the IP for the lifetime of the cookie; rotate only on re-solve.
+  </p>
+  <p class="meta-line">Effectiveness: enabler, not a solution · Cost: high if paid · Usually unnecessary on-device.</p>
+
+  <h3>9. Cloudflare Turnstile solving services <span class="badge badge-warn">token-replay limits</span></h3>
+  <p>
+    A real browser (incl. Android WebView) auto-passes invisible/managed Turnstile. For interactive
+    Turnstile you can call a CAPTCHA-solving service (2Captcha, CapSolver, AntiCaptcha): POST the
+    sitekey + page URL, get a <code>cf-turnstile-response</code> token back (~$1–3 / 1000 solves).
+    The catch: the token is bound to the solving session/IP/TLS, so pure token replay from a
+    mismatched client often fails verification. For this app you almost certainly do not need to
+    handle Turnstile explicitly — WebView renders it and it auto-solves on a clean mobile IP.
+  </p>
+  <p class="meta-line">Effectiveness: medium (token-replay limits) · Android: low via WebView · Maintenance: medium if used.</p>
+
+  <h3>10. Official API / RSS / alternate endpoints <span class="badge badge-warn">also CF-protected</span></h3>
+  <p>
+    ScribbleHub exposes RSS at <code>/rssfeed.php?type=...</code>. The ScribbleHub forum itself has
+    a thread titled <a href="https://www.scribblehubforum.com/threads/rss-feeds-getting-caught-in-cloudflare-again.8677/">"RSS
+    feeds getting caught in Cloudflare again."</a> A live probe (2026-07-04) returned
+    <strong>HTTP 403</strong> for <code>rssfeed.php</code>, <code>/rssfeed.php?type=main</code>, and
+    <code>/feed/</code> — i.e. RSS is behind the same wall. There is no public REST API and no
+    <code>api.scribblehub.com</code>; the site is WordPress-based.
+  </p>
+  <p>
+    <strong>Useful optimisation, not a bypass:</strong> once you have solved CF via WebView and hold
+    a valid <code>cf_clearance</code>, polling <code>rssfeed.php</code> for chapter updates is far
+    cheaper than scraping HTML — lower bandwidth, lower re-challenge risk. Use it as a payload
+    optimisation <em>after</em> the bypass, not a way around it.
+  </p>
+
+  <!-- ===================================================================== -->
+  <h2 id="matrix">6. Comparison matrix</h2>
+
+  <table>
+    <tr>
+      <th>#</th><th>Method</th><th>Beats current CF?</th><th class="center">On-device?</th>
+      <th class="center">Server?</th><th>Effort</th><th>Maintenance</th>
+    </tr>
+    <tr><td>1</td><td><strong>WebView cookie capture</strong></td><td><span class="badge badge-good">Yes</span></td><td class="center"><span class="badge badge-good">Yes</span></td><td class="center">—</td><td>Low–Med</td><td>Low</td></tr>
+    <tr><td>2</td><td>Chrome Custom Tabs</td><td><span class="badge badge-bad">No</span> (no cookie access)</td><td class="center">—</td><td class="center">—</td><td>—</td><td>—</td></tr>
+    <tr><td>3</td><td>FlareSolverr</td><td><span class="badge badge-bad">Broken</span></td><td class="center">—</td><td class="center"><span class="badge badge-good">Yes</span></td><td>Med</td><td>High</td></tr>
+    <tr><td>4</td><td>UC / driverless / stealth</td><td><span class="badge badge-warn">Declining</span></td><td class="center">—</td><td class="center"><span class="badge badge-good">Yes</span></td><td>Med</td><td>High</td></tr>
+    <tr><td>5</td><td>cloudscraper / pure-HTTP</td><td><span class="badge badge-bad">Dead</span></td><td class="center">—</td><td class="center"><span class="badge badge-good">Yes</span></td><td>—</td><td>—</td></tr>
+    <tr><td>6</td><td>TLS spoof (uTLS/curl-cffi)</td><td><span class="badge badge-warn">Partial</span></td><td class="center"><span class="badge badge-bad">No JVM lib</span></td><td class="center"><span class="badge badge-good">Yes</span></td><td>High (Kotlin)</td><td>Med</td></tr>
+    <tr><td>7</td><td>nodriver / Camoufox / Patchright</td><td><span class="badge badge-good">Yes</span></td><td class="center">—</td><td class="center"><span class="badge badge-good">Yes</span></td><td>Med</td><td>Med</td></tr>
+    <tr><td>8</td><td>Residential / mobile proxies</td><td>Enabler only</td><td class="center">—</td><td class="center">Optional</td><td>—</td><td>—</td></tr>
+    <tr><td>9</td><td>Turnstile CAPTCHA service</td><td><span class="badge badge-warn">Partial</span></td><td class="center">API</td><td class="center">Paid</td><td>Med</td><td>Med</td></tr>
+    <tr><td>10</td><td>RSS / alt endpoints</td><td><span class="badge badge-bad">No</span> (also CF'd)</td><td class="center"><span class="badge badge-good">Yes</span></td><td class="center">—</td><td>Low</td><td>Low</td></tr>
+  </table>
+
+  <!-- ===================================================================== -->
+  <h2 id="plans">7. Recommended plans (multiple)</h2>
+
+  <p>
+    As requested, this is not a single recommendation. Each plan is a complete, buildable approach
+    with its integration points in <em>this</em> codebase. Plan A is the recommended primary; the
+    others are alternatives if Plan A proves insufficient or you want a different posture.
+  </p>
+
+  <!-- PLAN A -->
+  <div class="plan plan-recommended">
+    <div class="plan-header">
+      <h3>Plan A — In-app WebView cookie capture (the Mihon pattern)</h3>
+      <span class="badge badge-good">Recommended</span>
+      <span class="badge badge-info">Lowest risk</span>
+    </div>
+    <p class="meta-line">
+      On-device · No server · Lowest ToS exposure · Battle-tested by every Tachiyomi/Mihon fork.
+    </p>
+
+    <p><strong>What it does.</strong> Replaces the Custom Tab fallback with an in-app WebView that
+    solves Cloudflare, and adds a persistent OkHttp cookie jar so the earned <code>cf_clearance</code>
+    is reused on every subsequent request.</p>
+
+    <h4>New / changed files</h4>
+    <ul>
+      <li><code>source/network/AndroidCookieJar.kt</code> <em>(new)</em> — OkHttp <code>CookieJar</code> backed by <code>CookieManager.getInstance()</code>. ≈ 30 lines, modelled on Mihon's.</li>
+      <li><code>source/network/CloudflareBypassInterceptor.kt</code> <em>(new)</em> — OkHttp <code>Interceptor</code>. On a detected challenge, launches a hidden WebView, waits up to 30 s for a <em>new</em> <code>cf_clearance</code>, then retries <code>chain.proceed(request)</code>.</li>
+      <li><code>feature/browser/CloudflareSolveActivity.kt</code> <em>(new, optional)</em> — interactive fallback WebView the user can solve by hand if the background solve times out.</li>
+      <li><code>source/network/NetworkClient.kt</code> — attach <code>.cookieJar(AppContainer.cookieJar)</code> and <code>.addInterceptor(CloudflareBypassInterceptor(...))</code> on <code>defaultClient</code>.</li>
+      <li><code>source/network/NetworkRequests.kt</code> — bump the UA to a current Chrome major (e.g. Chrome/141), and make it the <em>same</em> string the WebView uses.</li>
+      <li><code>feature/browser/SourceAccessActions.kt</code> — repoint the "Open Browser" button at the in-app <code>CloudflareSolveActivity</code> instead of a Custom Tab.</li>
+    </ul>
+
+    <h4>Build sequence</h4>
+    <ol>
+      <li>Add the cookie jar on <code>AppContainer</code>; wire it into <code>NetworkClient.defaultClient</code>. Verify existing tests still pass (no behaviour change yet for non-CF sites).</li>
+      <li>Add <code>CloudflareBypassInterceptor</code> with the background-WebView solver. Key invariants: WebView UA = OkHttp UA; delete old <code>cf_clearance</code> before solving; success = a new cookie appears in <code>onPageFinished</code>; 30 s hard timeout.</li>
+      <li>Make <code>SourceAccessBlockDetector</code> throw → interceptor, not the UI. Today the detector throws on first sight; with the interceptor upstream, the throw only fires if the solve <em>also</em> fails.</li>
+      <li>Add the interactive fallback activity and repoint the dialog button.</li>
+      <li>Refresh <code>NetworkRequests.USER_AGENT</code>; add a unit test that asserts OkHttp UA equals the WebView UA used by the solver.</li>
+    </ol>
+
+    <div class="score-row">
+      <span class="badge badge-good">Beats current CF</span>
+      <span class="badge badge-good">No server</span>
+      <span class="badge badge-good">Low maintenance</span>
+      <span class="badge badge-warn">Needs ≥ WebView 118</span>
+      <span class="badge badge-warn">Cookie tied to UA+IP</span>
+    </div>
+  </div>
+
+  <!-- PLAN B -->
+  <div class="plan">
+    <div class="plan-header">
+      <h3>Plan B — Hybrid: WebView solve + RSS polling</h3>
+      <span class="badge badge-info">Plan A + payload optimisation</span>
+    </div>
+    <p class="meta-line">
+      On-device · No server · Lower bandwidth and re-challenge risk for follow-up syncs.
+    </p>
+
+    <p><strong>What it does.</strong> Plan A exactly, plus: once a <code>cf_clearance</code> is held,
+    poll <code>https://www.scribblehub.com/rssfeed.php?...</code> with the cookie for incremental
+    chapter updates instead of scraping every novel's HTML TOC. RSS is far lighter and keeps the
+    clearance cookie "warm" with lower request volume.</p>
+
+    <h4>Why this is worth the extra work</h4>
+    <ul>
+      <li>The full sync currently walks many TOC pages per novel; each fetch is a chance for Cloudflare to re-challenge. RSS collapses a per-novel crawl into a single feed read.</li>
+      <li>Lower bandwidth, faster syncs, friendlier to the source.</li>
+    </ul>
+
+    <h4>Caveat</h4>
+    <p>
+      RSS is also behind Cloudflare (verified 403 today), so it is <em>not</em> a way to avoid
+      solving CF — it is an optimisation layered on top of Plan A. If RSS format changes or stops
+      being useful, fall back to HTML scraping under the same cookie.
+    </p>
+
+    <div class="score-row">
+      <span class="badge badge-good">Beats current CF</span>
+      <span class="badge badge-good">No server</span>
+      <span class="badge badge-good">Lower bandwidth</span>
+      <span class="badge badge-warn">RSS is fragile</span>
+    </div>
+  </div>
+
+  <!-- PLAN C -->
+  <div class="plan">
+    <div class="plan-header">
+      <h3>Plan C — Self-hosted solver microservice (nodriver)</h3>
+      <span class="badge badge-warn">Server-side</span>
+    </div>
+    <p class="meta-line">
+      Requires the user to run a small service on a home PC / NAS · Modern FlareSolverr replacement.
+    </p>
+
+    <p><strong>What it does.</strong> A tiny FastAPI wrapper around
+    <a href="https://github.com/ultrafunkamsterdam/nodriver"><code>nodriver</code></a> running on the
+    user's own machine. The Android app POSTs the blocked URL; the service solves CF in a real
+    headless Chrome and returns <code>{cf_clearance, userAgent, html}</code>; the app replays the
+    cookie on OkHttp.</p>
+
+    <h4>Why you might pick this</h4>
+    <ul>
+      <li>Works even on devices where the system WebView is outdated or unavailable.</li>
+      <li>Solves once and shares the cookie across devices on the same home network.</li>
+      <li>sidesteps interactive challenges the on-device WebView cannot solve unattended.</li>
+    </ul>
+
+    <h4>Why it is not the primary plan</h4>
+    <div class="callout callout-warn">
+      <span class="callout-title">IP-binding trap</span>
+      <p>
+        <code>cf_clearance</code> is bound to the IP that solved it. If the solver runs on the home
+        server but the phone is on cellular, the cookie is rejected. For this to work the phone must
+        either be on the same network as the solver <em>or</em> route its HTTP through the solver
+        (making the solver a forwarding proxy). That doubles the build complexity.
+      </p>
+    </div>
+    <ul>
+      <li>Requires the user to install and run software off-device — a major UX regression for a personal reader app.</li>
+      <li>Extra maintenance: track Chrome versions, keep the service running.</li>
+    </ul>
+
+    <h4>When to reach for it</h4>
+    <p>Only if Plan A proves unable to solve a specific ScribbleHub challenge on a meaningful share of devices.</p>
+
+    <div class="score-row">
+      <span class="badge badge-good">Beats current CF</span>
+      <span class="badge badge-warn">Server required</span>
+      <span class="badge badge-warn">IP-binding</span>
+      <span class="badge badge-bad">UX cost</span>
+    </div>
+  </div>
+
+  <!-- PLAN D -->
+  <div class="plan">
+    <div class="plan-header">
+      <h3>Plan D — Minimal fix: persistent cookie jar + Custom-Tab-as-solver prompt</h3>
+      <span class="badge badge-info">Smallest change</span>
+    </div>
+    <p class="meta-line">
+      On-device · No server · Works only because the user solves manually · Fragile.
+    </p>
+
+    <p><strong>What it does.</strong> The smallest possible delta from today. Add a persistent
+    <code>AndroidCookieJar</code> to OkHttp (the same one as Plan A) but <em>do not</em> build the
+    in-app solver. Instead, when a block is detected, prompt the user to solve in the system
+    browser, then read the resulting cookie out of <code>CookieManager</code>.</p>
+
+    <div class="callout callout-bad">
+      <span class="callout-title">This does not actually work</span>
+      <p>
+        Chrome Custom Tabs / system Chrome do <strong>not</strong> write their cookies into the app's
+        <code>CookieManager</code> — they write into Chrome's own store. So after the user solves in
+        the browser, <code>CookieManager.getInstance().getCookie("www.scribblehub.com")</code> still
+        returns <code>null</code>. This plan is listed only to document why "just add a cookie jar"
+        is <em>not</em> enough on its own: you need the WebView (Plan A) for the cookie to land in
+        the right jar.
+      </p>
+    </div>
+
+    <div class="score-row">
+      <span class="badge badge-bad">Does not bypass CF</span>
+      <span class="badge badge-good">Tiny change</span>
+      <span class="badge badge-bad">Fragile / manual</span>
+    </div>
+  </div>
+
+  <!-- PLAN E -->
+  <div class="plan">
+    <div class="plan-header">
+      <h3>Plan E — Turnstile CAPTCHA-solving service integration</h3>
+      <span class="badge badge-warn">Paid third party</span>
+    </div>
+    <p class="meta-line">
+      On-device · Recurring cost · Only relevant if ScribbleHub forces interactive Turnstile.
+    </p>
+
+    <p><strong>What it does.</strong> Integrate a CAPTCHA-solving service (2Captcha, CapSolver,
+    AntiCaptcha). When an interactive Turnstile is detected, POST the sitekey + page URL; the
+    service returns a <code>cf-turnstile-response</code> token; submit it. ~$1–3 per 1000 solves.</p>
+
+    <h4>Why this is last-resort only</h4>
+    <ul>
+      <li>Cloudflare's managed/invisible Turnstile auto-passes in a real WebView, so Plan A handles it for free. This plan is only needed if ScribbleHub escalates to <em>forced interactive</em> Turnstile.</li>
+      <li>Tokens are bound to the solving session/IP/TLS — pure token replay from a mismatched client often fails verification. So this typically still needs a WebView context to submit, which puts you back in Plan A's territory anyway.</li>
+      <li>Recurring cost, additional ToS surface, dependency on a third party.</li>
+    </ul>
+
+    <div class="score-row">
+      <span class="badge badge-warn">Conditional need</span>
+      <span class="badge badge-bad">Recurring cost</span>
+      <span class="badge badge-warn">Token-replay limits</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <h3>Recommendation summary</h3>
+  <div class="callout callout-good">
+    <span class="callout-title">Primary: Plan A</span>
+    <p>
+      Ship the in-app <strong>WebView → <code>CookieManager.getCookie()</code> → OkHttp-with-matching-UA</strong>
+      flow. It is the only approach that is on-device, low-maintenance, legitimately defensible, and
+      proven by the entire Tachiyomi/Mihon ecosystem. The cookie-jar + interceptor architecture maps
+      cleanly onto the existing <code>SourceAccessBlockDetector</code> seam and the
+      <code>AppContainer</code> singleton.
+    </p>
+  </div>
+  <div class="callout callout-info">
+    <span class="callout-title">Recommended enhancement: Plan B (after A is stable)</span>
+    <p>
+      Add RSS polling for incremental chapter updates once the CF cookie is held. Lighter, faster,
+      and reduces re-challenge risk.
+    </p>
+  </div>
+  <div class="callout callout-warn">
+    <span class="callout-title">Fallback only: Plans C / E</span>
+    <p>
+      Reserve the server-side <code>nodriver</code> service (Plan C) and the paid Turnstile service
+      (Plan E) for the case where Plan A demonstrably cannot solve a specific challenge on a real
+      share of user devices. Plan D is documented only to explain why the naive "just add a cookie
+      jar" idea fails.
+    </p>
+  </div>
+  <div class="callout callout-bad">
+    <span class="callout-title">Do not spend time on</span>
+    <p>
+      cloudscraper (dead v1 solver), FlareSolverr (officially broken), Chrome Custom Tabs cookie
+      extraction (no API), reimplementing uTLS in Kotlin (no library, enormous effort), or buying
+      residential proxies (users already have ideal mobile IPs).
+    </p>
+  </div>
+
+  <!-- ===================================================================== -->
+  <h2 id="legal">8. Legal &amp; ToS notes</h2>
+  <ul>
+    <li><strong>Cloudflare ToS.</strong> Restricts circumventing their security services in commercial/abusive contexts. The legal weight against an individual scraping their <em>own</em> user account for personal use is negligible; no clear US case law criminalises solving a JS challenge to access data the user is authorised to see.</li>
+    <li><strong>ScribbleHub ToS.</strong> Check the site ToS for scraping clauses. Scraping a user's own followed-list for personal, non-redistributive use (a reader app) is low-risk and squarely within how Tachiyomi/Mihon extensions have operated for years for similar sites.</li>
+    <li><strong>CFAA (US) / Computer Misuse Act (UK).</strong> The dominant risk factor is accessing data you are <em>not</em> authorised to. The user is logged into their own account and fetching their own readlist — authorisation is present. Avoid redistributing scraped text content publicly.</li>
+    <li><strong>Cleanest posture.</strong> The WebView approach (Plan A) is a real browser, driven by the real user on their real device, accessing their own account. It is the least "circumvention-y" option available — strongly preferable on both technical and legal grounds to CAPTCHA-solving services (Plan E) or proxies.</li>
+  </ul>
+
+  <!-- ===================================================================== -->
+  <h2 id="sources">9. Sources</h2>
+
+  <div class="sources">
+    <h4>Mihon source (branch <code>main</code>) — direct citations</h4>
+    <ul>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt">CloudflareInterceptor.kt</a> — challenge detection + background WebView solver</li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/WebViewInterceptor.kt">WebViewInterceptor.kt</a> — abstract base: WebView creation, UA plumbing, header sanitisation</li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt">AndroidCookieJar.kt</a> — OkHttp <code>CookieJar</code> over <code>android.webkit.CookieManager</code></li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/NetworkHelper.kt">NetworkHelper.kt</a> — client assembly, interceptor wiring</li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/core/common/src/main/kotlin/eu/kanade/tachiyomi/util/system/WebViewUtil.kt">WebViewUtil.kt</a> — UA inference, version check, default WebView settings</li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/app/src/main/java/eu/kanade/tachiyomi/ui/webview/WebViewActivity.kt">WebViewActivity.kt</a> — manual fallback entry point</li>
+      <li><a href="https://github.com/mihonapp/mihon/blob/main/source-api/src/commonMain/kotlin/eu/kanade/tachiyomi/source/online/HttpSource.kt">HttpSource.kt</a> — extension base class; bypass is opt-out, not opt-in</li>
+    </ul>
+
+    <h4>Cloudflare mechanism &amp; references</h4>
+    <ul>
+      <li><a href="https://blog.cloudflare.com/ja4-signals/">Cloudflare Blog: JA4 fingerprints and inter-request signals</a></li>
+      <li><a href="https://developers.cloudflare.com/bots/additional-configurations/ja3-ja4-fingerprint/">Cloudflare docs: JA3/JA4 fingerprint</a></li>
+      <li><a href="https://developers.cloudflare.com/fundamentals/reference/policies-compliances/cloudflare-cookies/">Cloudflare cookies reference (<code>cf_clearance</code> TTL)</a></li>
+      <li><a href="https://www.cloudflare.com/products/turnstile/">Cloudflare Turnstile product</a></li>
+      <li><a href="https://mihon.app/docs/guides/troubleshooting/">Mihon troubleshooting guide (Cloudflare)</a></li>
+    </ul>
+
+    <h4>Bypass-method surveys &amp; benchmarks</h4>
+    <ul>
+      <li><a href="https://ianlpaterson.com/blog/anti-detect-browser-benchmark-patchright-nodriver-curl-cffi/">Anti-detect browser benchmark 2026 — 7 tools × 31 CF targets</a></li>
+      <li><a href="https://trash-guides.info/Prowlarr/prowlarr-setup-flaresolverr/">TRaSH Guides: FlareSolverr is non-functional</a></li>
+      <li><a href="https://github.com/Flaresolverr/Flaresolverr">FlareSolverr GitHub</a></li>
+      <li><a href="https://github.com/ultrafunkamsterdam/nodriver">nodriver GitHub</a></li>
+      <li><a href="https://camoufox.com/stealth/">Camoufox stealth overview</a></li>
+      <li><a href="https://curl-cffi.readthedocs.io/">curl-cffi docs</a></li>
+      <li><a href="https://github.com/Danny-Dasilva/CycleTLS">CycleTLS GitHub</a></li>
+      <li><a href="https://pypi.org/project/cloudscraper/">cloudscraper PyPI (v1 deprecated)</a></li>
+      <li><a href="https://github.com/Xewdy444/CF-Clearance-Scraper">CF-Clearance-Scraper (UA/IP binding rules)</a></li>
+      <li><a href="https://webclaw.io/blog/cloudflare-turnstile-2026-guide">Webclaw: what actually bypasses Turnstile in 2026</a></li>
+      <li><a href="https://webclaw.io/blog/tls-fingerprint-vs-browser-cloudflare">Webclaw: TLS fingerprint vs browser on Cloudflare</a></li>
+      <li><a href="https://blog.castle.io/from-puppeteer-stealth-to-nodriver-how-anti-detect-frameworks-evolved-to-evade-bot-detection/">Castle.io: evolution of stealth frameworks</a></li>
+      <li><a href="https://humanbrowser.cloud/blog/bypass-cloudflare-playwright-2026/">HumanBrowser: what stopped working in Playwright (2026)</a></li>
+    </ul>
+
+    <h4>Android / Custom Tabs</h4>
+    <ul>
+      <li><a href="https://steamclock.com/blog/2025/05/android-chrome-custom-tabs/">Steamclock: Android login issues with Chrome Custom Tabs (cookie problem)</a></li>
+      <li><a href="https://plaid.com/blog/securing-webviews-with-chrome-custom-tabs/">Plaid: securing WebViews with Chrome Custom Tabs</a></li>
+    </ul>
+
+    <h4>ScribbleHub-specific</h4>
+    <ul>
+      <li><a href="https://www.scribblehubforum.com/threads/rss-feeds-getting-caught-in-cloudflare-again.8677/">ScribbleHub forum: RSS feeds caught in Cloudflare again</a></li>
+      <li>Live probe 2026-07-04: <code>rssfeed.php</code>, <code>/rssfeed.php?type=main</code>, <code>/feed/</code> → HTTP 403 (Cloudflare).</li>
+    </ul>
+
+    <h4>Proxies &amp; IP reputation</h4>
+    <ul>
+      <li><a href="https://evomi.com/blog/cloudflare-bypass-2025">Evomi: Cloudflare bypass 2025 (proxy strategies)</a></li>
+      <li><a href="https://www.proxies.sx/blog/why-cloudflare-blocks-residential-proxies-mobile-ips-difference">proxies.sx: why Cloudflare blocks residential/mobile IPs</a></li>
+      <li><a href="https://www.coronium.io/blog/residential-datacenter-mobile-proxies-explained">Coronium: residential vs datacenter vs mobile proxies</a></li>
+    </ul>
+  </div>
+
+</main>
+</body>
+</html>

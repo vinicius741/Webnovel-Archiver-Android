@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scribble Hub Cloudflare Access Options</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --text: #1f2933;
+      --muted: #5f6c7b;
+      --line: #d8dee8;
+      --accent: #1d6f8f;
+      --accent-soft: #e4f4f7;
+      --warn: #8a5a00;
+      --warn-soft: #fff3cf;
+      --bad: #9d1c1c;
+      --bad-soft: #ffe6e6;
+      --good: #136f46;
+      --good-soft: #e5f6ee;
+      --code: #eef2f6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12171d;
+        --panel: #19212a;
+        --text: #e8edf2;
+        --muted: #a8b3c2;
+        --line: #2f3b49;
+        --accent: #6bbbd0;
+        --accent-soft: #17333b;
+        --warn: #ffd166;
+        --warn-soft: #3a2c12;
+        --bad: #ff9b9b;
+        --bad-soft: #3a1d1d;
+        --good: #84d8ad;
+        --good-soft: #143324;
+        --code: #202a34;
+      }
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+    }
+
+    h1, h2, h3 {
+      line-height: 1.2;
+      letter-spacing: 0;
+      margin: 0 0 14px;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      font-size: 24px;
+      margin-top: 34px;
+      padding-top: 4px;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin-top: 20px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    ul, ol {
+      margin: 8px 0 18px 22px;
+      padding: 0;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--accent-soft);
+      font-weight: 650;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .summary {
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 900px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      margin: 18px 0;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 14px 16px;
+      margin: 18px 0;
+    }
+
+    .good {
+      border-left-color: var(--good);
+      background: var(--good-soft);
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .bad {
+      border-left-color: var(--bad);
+      background: var(--bad-soft);
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 9px;
+      margin-right: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      background: var(--panel);
+      white-space: nowrap;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Scribble Hub Cloudflare Access Options</h1>
+  <p class="summary">
+    Investigation and implementation recommendations for making Scribble Hub sync and downloads work
+    when Cloudflare presents a browser challenge. Written for the native Kotlin Android app in this
+    repository.
+  </p>
+  <p class="small">Prepared: 2026-07-04</p>
+
+  <div class="callout warn">
+    <strong>Compliance boundary.</strong>
+    This document focuses on user-mediated access: detect Cloudflare challenges, let the user complete
+    the challenge in a real Android browser context, then reuse the resulting first-party session cookie
+    inside the app. It does not recommend CAPTCHA solving services, proxy rotation, headless browser
+    automation, challenge reverse engineering, fingerprint spoofing libraries, or other traffic-evasion
+    techniques. Those are brittle, likely to violate site expectations, and can create user and project risk.
+  </div>
+
+  <h2>Executive Summary</h2>
+  <div class="panel">
+    <p>
+      The current workaround cannot fix downloads because the app opens Scribble Hub in a Custom Tab or
+      external browser, but the downloader uses a separate OkHttp client with no shared cookie jar. Even if
+      the user passes Cloudflare in Chrome, the OkHttp requests made by
+      <code>NetworkClient</code> do not receive that browser's <code>cf_clearance</code> cookie.
+    </p>
+    <p>
+      Mihon's successful pattern is different: OkHttp and WebView share Android's
+      <code>android.webkit.CookieManager</code>. When a challenge is detected, Mihon opens a WebView using
+      the same request headers, waits for a fresh <code>cf_clearance</code> cookie, and retries the OkHttp
+      request. Mihon also exposes a manual WebView screen and WebView data/cookie reset tools.
+    </p>
+    <p>
+      Recommended plan: implement a shared WebView/OkHttp cookie store first, add an in-app "Source access"
+      WebView flow for Scribble Hub, then add a carefully bounded Mihon-style automatic retry only after
+      the user initiates access. Add source-specific throttling and diagnostics so the app avoids triggering
+      challenges in the first place.
+    </p>
+  </div>
+
+  <h2>Current App Findings</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Area</th>
+        <th>Current behavior</th>
+        <th>Why it fails</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Challenge detection</td>
+        <td>
+          <code>SourceAccessBlockDetector</code> checks <code>cf-mitigated: challenge</code>, or
+          <code>server: cloudflare</code> plus strong challenge HTML markers.
+        </td>
+        <td>
+          This is directionally correct and matches Cloudflare's documented <code>cf-mitigated</code>
+          signal. Detection is not the main problem.
+        </td>
+      </tr>
+      <tr>
+        <td>Browser workaround</td>
+        <td>
+          <code>showSourceAccessBlockedDialog()</code> sends the user to <code>showBrowser()</code>,
+          which launches an Android Custom Tab and falls back to <code>ACTION_VIEW</code>.
+        </td>
+        <td>
+          Custom Tabs share the user's browser state, not this app's OkHttp cookie store. The downloaded
+          chapters still come from OkHttp and remain unauthenticated from Cloudflare's perspective.
+        </td>
+      </tr>
+      <tr>
+        <td>OkHttp client</td>
+        <td>
+          <code>NetworkClient.defaultClient</code> sets timeouts only. It has no <code>CookieJar</code>.
+        </td>
+        <td>
+          OkHttp will not persist <code>Set-Cookie</code> values or send stored WebView cookies unless a
+          cookie jar is provided.
+        </td>
+      </tr>
+      <tr>
+        <td>Scribble Hub source</td>
+        <td>
+          Metadata and chapter fetches are direct HTTP requests. The table-of-contents AJAX request adds a
+          <code>toc_show=50</code> cookie manually, but there is no general site cookie store.
+        </td>
+        <td>
+          The source can parse real pages, but it cannot carry a Cloudflare browser clearance session.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>What Cloudflare Expects</h2>
+  <p>
+    Cloudflare Challenges are designed to verify that a visitor is a real human and not automated traffic.
+    Official docs say challenge responses include <code>cf-mitigated: challenge</code>, and the response
+    content type is <code>text/html</code> regardless of the requested resource type.
+  </p>
+  <p>
+    When a visitor solves a challenge, Cloudflare sets a <code>cf_clearance</code> cookie. That cookie is
+    tied to the visitor and device and is evaluated on later requests until it expires. Cloudflare's default
+    challenge passage is 30 minutes, and its docs recommend 15 to 45 minutes. This means the app should
+    treat clearance as temporary, per-device, and non-portable.
+  </p>
+  <p>
+    Cloudflare officially supports current major desktop and mobile browsers, with limited support for
+    custom browser engines, WebViews, and embedded browsers. It explicitly does not support command-line
+    tools, headless browsers, or automation frameworks for challenge solving. This is why direct OkHttp
+    cannot "solve" a challenge by itself.
+  </p>
+
+  <h2>How Mihon Handles It</h2>
+  <div class="panel">
+    <h3>Core architecture</h3>
+    <ul>
+      <li>
+        Mihon's <code>NetworkHelper</code> builds one OkHttp client with an
+        <code>AndroidCookieJar</code> and a <code>CloudflareInterceptor</code>.
+      </li>
+      <li>
+        <code>AndroidCookieJar</code> implements OkHttp <code>CookieJar</code> by delegating to
+        <code>android.webkit.CookieManager.getInstance()</code>. WebView and OkHttp therefore read and
+        write the same Android WebView cookie store.
+      </li>
+      <li>
+        Its Cloudflare interceptor detects a 403/503 response from Cloudflare, removes the old
+        <code>cf_clearance</code>, creates a WebView on the main thread, loads the original URL with safe
+        request headers, waits up to 30 seconds for a new <code>cf_clearance</code>, destroys the WebView,
+        and retries the original OkHttp request.
+      </li>
+    </ul>
+
+    <h3>Supporting pieces</h3>
+    <ul>
+      <li>
+        WebViews are configured with JavaScript, DOM storage, multiple-window support, zoom controls, and
+        third-party cookie acceptance.
+      </li>
+      <li>
+        Mihon derives a realistic Android Chrome-style default user agent from the installed WebView and
+        lets users override/reset the default user agent in Advanced settings.
+      </li>
+      <li>
+        Mihon exposes "Open in WebView", "Clear cookies", and "Clear WebView data" flows. Its manual
+        WebView screen also detects Cloudflare challenge markers and links to troubleshooting help.
+      </li>
+      <li>
+        Mihon has patched WebView's <code>X-Requested-With</code> package-name behavior in recent releases
+        because some sources block identifiable embedded-browser requests. This is a compatibility hack,
+        not the first thing this project should copy.
+      </li>
+    </ul>
+  </div>
+
+  <h2>Approach Options</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Option</th>
+        <th>How it works</th>
+        <th>Pros</th>
+        <th>Cons and risk</th>
+        <th>Recommendation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <strong>A. Shared WebView/OkHttp cookie jar</strong><br>
+          <span class="tag">Mihon-like</span><span class="tag">High value</span>
+        </td>
+        <td>
+          Add an app-level <code>AndroidCookieJar</code> backed by <code>CookieManager</code>, pass it to
+          <code>OkHttpClient.Builder.cookieJar()</code>, and make all source fetches use that client.
+          Create a Scribble Hub source-access WebView that the user can open when challenged.
+        </td>
+        <td>
+          Fixes the current architecture gap. Lets user-solved first-party cookies apply to sync, chapter
+          downloads, cover downloads, and AJAX table-of-contents requests.
+        </td>
+        <td>
+          WebView challenge solve is not guaranteed on all devices. Cookies expire. Needs privacy-conscious
+          settings and clear cookie controls.
+        </td>
+        <td><strong>Do first.</strong> This is the foundation for every legitimate path.</td>
+      </tr>
+      <tr>
+        <td>
+          <strong>B. Explicit in-app Source Access screen</strong><br>
+          <span class="tag">User mediated</span><span class="tag">Transparent</span>
+        </td>
+        <td>
+          Replace the Custom Tab retry path with an in-app WebView screen for Scribble Hub. The screen
+          shows the real page, waits until the page is no longer a challenge and/or a <code>cf_clearance</code>
+          cookie is visible, then returns to retry the blocked action.
+        </td>
+        <td>
+          Keeps the human challenge in front of the user. Easier to debug than a hidden WebView. Gives the
+          app access to the same cookie store used by OkHttp.
+        </td>
+        <td>
+          More UI work than the current dialog. Some challenges may have limited WebView support.
+        </td>
+        <td><strong>Do with Option A.</strong> Prefer this before hidden automatic solving.</td>
+      </tr>
+      <tr>
+        <td>
+          <strong>C. Mihon-style interceptor retry</strong><br>
+          <span class="tag">Convenient</span><span class="tag">Needs guardrails</span>
+        </td>
+        <td>
+          When OkHttp receives a Cloudflare challenge, open a temporary WebView on the main thread, load
+          the original URL using safe headers and the request user agent, wait for a new
+          <code>cf_clearance</code>, then retry once.
+        </td>
+        <td>
+          Reduces friction after a user has already allowed source access. Handles background sync/download
+          challenges without forcing every request through the visible browser.
+        </td>
+        <td>
+          Blocking an interceptor for up to 30 seconds is fragile. Hidden WebViews can look more automated.
+          Must avoid loops and must not run indefinitely from background services.
+        </td>
+        <td>
+          <strong>Second phase.</strong> Use only after Option A/B exist. Limit to one attempt per host,
+          short timeout, foreground/user-initiated actions first, and clear failure UI.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>D. WebView content fallback</strong><br>
+          <span class="tag">Fallback</span><span class="tag">Heavy</span>
+        </td>
+        <td>
+          For Scribble Hub only, load story/chapter pages in an in-app WebView after user clearance, then
+          extract the final DOM HTML with <code>evaluateJavascript</code> and feed existing Jsoup parsers.
+        </td>
+        <td>
+          Works when the site requires JavaScript before content is available. Can reuse current parsers
+          after DOM extraction.
+        </td>
+        <td>
+          Slow, memory-heavy, main-thread sensitive, hard to run safely for bulk downloads. Requires careful
+          lifecycle handling and cancellation.
+        </td>
+        <td>
+          <strong>Fallback only.</strong> Useful for "download this one chapter now", not a default bulk
+          sync engine.
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <strong>E. Avoid triggering challenges</strong><br>
+          <span class="tag">Preventive</span><span class="tag">Low risk</span>
+        </td>
+        <td>
+          Add per-source policies: lower concurrency for Scribble Hub, larger request gaps, honor
+          <code>Retry-After</code>, cache metadata/table-of-contents pages, stagger queued downloads, and
+          stop hammering after the first challenge.
+        </td>
+        <td>
+          Reduces challenge frequency and protects the user's IP reputation. Improves reliability even
+          without Cloudflare.
+        </td>
+        <td>
+          Does not solve an active challenge by itself. Slower downloads.
+        </td>
+        <td><strong>Do in parallel.</strong> This should be part of the production-quality fix.</td>
+      </tr>
+      <tr>
+        <td>
+          <strong>F. Custom Tab only</strong><br>
+          <span class="tag">Current path</span>
+        </td>
+        <td>
+          Open Scribble Hub in Chrome Custom Tabs or an external browser and ask the user to return.
+        </td>
+        <td>
+          Uses a fully supported browser. Good for import URL browsing.
+        </td>
+        <td>
+          Does not share cookies with app-owned OkHttp. Cannot fix sync/download unless the app switches
+          networking to the browser context, which Android does not expose for arbitrary HTTP clients.
+        </td>
+        <td><strong>Do not rely on this for downloads.</strong> Keep it for "open in browser".</td>
+      </tr>
+      <tr>
+        <td>
+          <strong>G. Anti-detect/proxy/CAPTCHA-service bypass</strong><br>
+          <span class="tag">Do not implement</span>
+        </td>
+        <td>
+          Rotate residential proxies, emulate browser fingerprints, use headless automation, outsource
+          challenges, or reverse engineer challenge scripts.
+        </td>
+        <td>
+          None appropriate for this project.
+        </td>
+        <td>
+          Likely violates site expectations, breaks often, can harm users, and conflicts with Cloudflare's
+          stated unsupported environments.
+        </td>
+        <td><strong>Reject.</strong> Do not add these paths.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Recommended Implementation Plan</h2>
+  <ol>
+    <li>
+      <strong>Create a process-wide source network module.</strong> Move <code>NetworkClient.defaultClient</code>
+      construction into <code>AppContainer</code> and provide one shared OkHttp client for pages, AJAX, and
+      binary downloads.
+    </li>
+    <li>
+      <strong>Add an Android WebView cookie jar.</strong> Implement a small <code>CookieJar</code> that reads
+      and writes <code>CookieManager.getInstance()</code>, following Mihon's shape. Make sure
+      <code>CookieManager.setAcceptCookie(true)</code> is enabled, use <code>setCookie()</code> for response
+      cookies, parse <code>getCookie()</code> for request cookies, and call <code>flush()</code> after important
+      source-access completions.
+    </li>
+    <li>
+      <strong>Replace the blocked-source dialog action.</strong> For Scribble Hub challenges, open an in-app
+      "Source access" WebView instead of a Custom Tab. Enable JavaScript and DOM storage, keep file/content
+      access disabled, and use a user agent consistent with the OkHttp requests.
+    </li>
+    <li>
+      <strong>Detect success explicitly.</strong> Treat access as passed when <code>CookieManager.getCookie()</code>
+      for <code>https://www.scribblehub.com/</code> includes <code>cf_clearance=</code> and the loaded page no
+      longer looks like a Cloudflare challenge. Then retry the original sync/download once.
+    </li>
+    <li>
+      <strong>Add settings and diagnostics.</strong> Add "Clear Scribble Hub cookies", "Clear WebView data",
+      current WebView version display, and better error text when WebView is missing or outdated. Include the
+      blocked URL and whether the response had <code>cf-mitigated</code>.
+    </li>
+    <li>
+      <strong>Add source throttling.</strong> Replace hard-coded Scribble Hub checks inside
+      <code>NetworkClient</code> with a source network policy. Start conservative: one request at a time,
+      3-5 seconds between Scribble Hub requests, honor <code>Retry-After</code>, and pause a queue immediately
+      after a challenge.
+    </li>
+    <li>
+      <strong>Consider hidden WebView retry only after manual access works.</strong> If we copy the Mihon-style
+      interceptor, constrain it: one attempt, 20-30 second timeout, no infinite retry, foreground notification
+      for background downloads, and a fallback to the visible Source Access screen.
+    </li>
+    <li>
+      <strong>Keep Custom Tabs as a separate browser feature.</strong> Use Custom Tabs for importing URLs and
+      "open externally", not as the Cloudflare fix for app-managed downloads.
+    </li>
+  </ol>
+
+  <h2>Design Notes for This Codebase</h2>
+  <ul>
+    <li>
+      Keep deterministic decisions in pure planning helpers. For example, challenge detection, retry eligibility,
+      and source-policy timing can have focused unit tests.
+    </li>
+    <li>
+      Put WebView lifecycle work under <code>feature/browser/</code> or a small <code>source/access/</code>
+      package, but keep source parsing inside <code>source/ScribbleHubProvider.kt</code>.
+    </li>
+    <li>
+      Do not reuse the reader WebView settings blindly. The source-access WebView loads untrusted remote pages
+      and needs stricter file/content access boundaries than the sanitized reader.
+    </li>
+    <li>
+      Use the emulator debug variant for QA. Cloudflare may behave differently on an emulator than on a real
+      device, so avoid claiming physical-device reliability unless explicitly tested with current permission.
+    </li>
+  </ul>
+
+  <h2>Acceptance Criteria</h2>
+  <ul>
+    <li>
+      When a Scribble Hub request returns <code>cf-mitigated: challenge</code>, the app opens a visible
+      in-app WebView source-access flow.
+    </li>
+    <li>
+      After the user passes the challenge, <code>CookieManager.getCookie("https://www.scribblehub.com/")</code>
+      exposes a <code>cf_clearance</code> cookie and the next OkHttp request sends it automatically.
+    </li>
+    <li>
+      Retrying story sync succeeds without reinstalling the app or switching to the release package.
+    </li>
+    <li>
+      Download queue jobs pause on challenge instead of repeatedly hammering Scribble Hub.
+    </li>
+    <li>
+      The user can clear Scribble Hub cookies/WebView data from settings or the source-access screen.
+    </li>
+    <li>
+      Unit tests cover challenge detection, retry eligibility, cookie-header parsing, and source throttling
+      decisions. Instrumented/emulator QA covers the visible WebView flow.
+    </li>
+  </ul>
+
+  <h2>Sources</h2>
+  <ul>
+    <li>
+      Cloudflare Docs:
+      <a href="https://developers.cloudflare.com/cloudflare-challenges/">Challenges overview</a>,
+      <a href="https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/">challenge response detection</a>,
+      <a href="https://developers.cloudflare.com/cloudflare-challenges/concepts/clearance/">clearance cookies</a>,
+      <a href="https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/challenge-passage/">challenge passage</a>,
+      <a href="https://developers.cloudflare.com/cloudflare-challenges/reference/supported-browsers/">supported browsers</a>.
+    </li>
+    <li>
+      Android Developers:
+      <a href="https://developer.android.com/reference/android/webkit/CookieManager">CookieManager API reference</a>.
+    </li>
+    <li>
+      OkHttp:
+      <a href="https://square.github.io/okhttp/5.x/okhttp-java-net-cookiejar/okhttp3.java.net.cookiejar/-java-net-cookie-jar/index.html">JavaNetCookieJar documentation</a>
+      as a reference for CookieJar delegation patterns.
+    </li>
+    <li>
+      Mihon source at commit <code>94b3b5eaa2688aed0b1fcc29f92ee06110bdd73a</code>:
+      <a href="https://github.com/mihonapp/mihon/blob/94b3b5eaa2688aed0b1fcc29f92ee06110bdd73a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/interceptor/CloudflareInterceptor.kt">CloudflareInterceptor.kt</a>,
+      <a href="https://github.com/mihonapp/mihon/blob/94b3b5eaa2688aed0b1fcc29f92ee06110bdd73a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/AndroidCookieJar.kt">AndroidCookieJar.kt</a>,
+      <a href="https://github.com/mihonapp/mihon/blob/94b3b5eaa2688aed0b1fcc29f92ee06110bdd73a/core/common/src/main/kotlin/eu/kanade/tachiyomi/network/NetworkHelper.kt">NetworkHelper.kt</a>,
+      <a href="https://github.com/mihonapp/mihon/blob/94b3b5eaa2688aed0b1fcc29f92ee06110bdd73a/core/common/src/main/kotlin/eu/kanade/tachiyomi/util/system/WebViewUtil.kt">WebViewUtil.kt</a>,
+      <a href="https://github.com/mihonapp/mihon/blob/94b3b5eaa2688aed0b1fcc29f92ee06110bdd73a/app/src/main/java/eu/kanade/presentation/webview/WebViewScreenContent.kt">WebViewScreenContent.kt</a>.
+    </li>
+    <li>
+      Mihon issue context:
+      <a href="https://github.com/mihonapp/mihon/issues/1659">WebView X-Requested-With issue</a>,
+      <a href="https://github.com/mihonapp/mihon/issues/718">Cloudflare/WebView failure example</a>,
+      <a href="https://github.com/mihonapp/mihon/issues/3177">WebView header customization request</a>.
+    </li>
+    <li>
+      Local app files reviewed:
+      <code>android/app/src/main/java/com/vinicius741/webnovelarchiver/source/network/NetworkClient.kt</code>,
+      <code>android/app/src/main/java/com/vinicius741/webnovelarchiver/source/network/SourceAccessBlock.kt</code>,
+      <code>android/app/src/main/java/com/vinicius741/webnovelarchiver/feature/browser/SourceAccessActions.kt</code>,
+      <code>android/app/src/main/java/com/vinicius741/webnovelarchiver/feature/browser/BrowserScreen.kt</code>,
+      <code>android/app/src/main/java/com/vinicius741/webnovelarchiver/source/ScribbleHubProvider.kt</code>.
+    </li>
+  </ul>
+</main>
+</body>
+</html>
