@@ -88,6 +88,7 @@ internal fun ScreenHost.screen(
         }
     column.addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
     frame.addView(column, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    column.installKeyboardAwareBottomPadding(scrollable)
     frame.tag = screenKey
     fab?.let { onClick ->
         val fabView = makeFab(app) { onClick() }
