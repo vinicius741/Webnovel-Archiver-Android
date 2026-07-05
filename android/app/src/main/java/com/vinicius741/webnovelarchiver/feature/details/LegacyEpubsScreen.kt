@@ -30,6 +30,10 @@ import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.confirm
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Surfaces every `.epub` file physically stored for a story, so files abandoned by write-only
@@ -58,7 +62,10 @@ internal fun ScreenHost.showLegacyEpubs(storyId: String) {
             .mapNotNull { storage.resolveAbsolutePath(it)?.absolutePath }
             .toSet()
     val current = onDisk.filter { it.absolutePath in referenced }
-    val leftover = onDisk.filter { it.absolutePath !in referenced }
+    // Leftovers are shown newest-first (inverse of listEpubs' oldest-first order) so the most
+    // recently abandoned files — usually the ones a user just regenerated past — surface at the top
+    // for cleanup. Current EPUBs keep oldest-first to match the "Read EPUB" reading order.
+    val leftover = onDisk.filter { it.absolutePath !in referenced }.asReversed()
 
     screen(title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
         if (onDisk.isEmpty()) {
@@ -198,6 +205,17 @@ internal class LegacyEpubsAdapter(
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
             }
+        // Dedicated line for the file's created/modified timestamp (same source listEpubs sorts by),
+        // kept on its own row so the Active/Leftover · size subtitle never has to truncate it on
+        // narrow screens.
+        val created =
+            TextView(context).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
+                setTextColor(ThemeManager.colors.onSurfaceVariant)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                includeFontPadding = false
+            }
         // See is always available (both referenced and leftover files can be opened). Delete is added
         // per-row in bind() for leftovers only — referenced files must not be deletable here.
         val seeButton =
@@ -224,6 +242,12 @@ internal class LegacyEpubsAdapter(
                 },
             )
             addView(
+                created,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = context.dp(Space.XS)
+                },
+            )
+            addView(
                 LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.END
@@ -239,13 +263,14 @@ internal class LegacyEpubsAdapter(
                     topMargin = context.dp(Space.XS)
                 },
             )
-            tag = FileHolderTags(title, subtitle, seeButton, deleteButton)
+            tag = FileHolderTags(title, subtitle, created, seeButton, deleteButton)
         }
     }
 
     private class FileHolderTags(
         val title: TextView,
         val subtitle: TextView,
+        val created: TextView,
         val seeButton: android.widget.Button,
         val deleteButton: android.widget.Button,
     )
@@ -285,6 +310,7 @@ internal class LegacyEpubsAdapter(
             tags.title.text = EpubSelection.displayNameForPath(file.absolutePath)
             val badge = if (item.isReferenced) "Active" else "Leftover"
             tags.subtitle.text = "$badge · ${formatBytes(file.length())}"
+            tags.created.text = "Created ${formatEpubDate(file.lastModified())}"
             // Referenced files keep the neutral card; leftovers get an outlined surface so they read
             // as actionable clean-up candidates (mirrors ChapterSelectionAdapter's selected stroke).
             root.background =
@@ -318,4 +344,16 @@ private fun formatBytes(bytes: Long): String {
         kb >= 1 -> String.format("%d KB", kb.toInt())
         else -> "$bytes B"
     }
+}
+
+/**
+ * Formats the EPUB's last-modified timestamp as "MMM d, yyyy · h:mm a" (e.g. "Jul 4, 2026 · 3:45 PM")
+ * for the row. Uses the same [DateTimeFormatter]/system-zone approach as [formatPatreonDate].
+ * File-local helper.
+ */
+private fun formatEpubDate(timestampMillis: Long): String {
+    val instant = Instant.ofEpochMilli(timestampMillis)
+    val datePart = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).format(instant.atZone(ZoneId.systemDefault()))
+    val timePart = DateTimeFormatter.ofPattern("h:mm a", Locale.US).format(instant.atZone(ZoneId.systemDefault()))
+    return "$datePart · $timePart"
 }
