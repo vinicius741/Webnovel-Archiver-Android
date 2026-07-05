@@ -17,6 +17,8 @@ class SettingsValidationTest {
         assertEquals(500L, SettingsValidation.delay(""))
         assertEquals(0L, SettingsValidation.delay("-50"))
         assertEquals(1200L, SettingsValidation.delay("1200"))
+        assertEquals(800L to 1200L, SettingsValidation.delayRange("800", "1200"))
+        assertEquals(1200L to 1200L, SettingsValidation.delayRange("1200", "800"))
     }
 
     @Test

@@ -126,12 +126,14 @@ data class Tab(
 data class AppSettings(
     val downloadConcurrency: Int = 1,
     val downloadDelay: Long = 500,
+    val downloadDelayMax: Long = 500,
     val maxChaptersPerEpub: Int = 150,
 )
 
 data class SourceDownloadSettings(
     val concurrency: Int = 1,
     val delay: Long = 500,
+    val delayMax: Long = 500,
 )
 
 data class ChapterFilterSettings(

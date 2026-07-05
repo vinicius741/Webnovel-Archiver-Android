@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.ui.size
+import kotlin.random.Random
 
 /**
  * Download scheduling + error classification + progress (Maintainability M1: split out of Engines.kt).
@@ -15,14 +16,13 @@ object DownloadScheduler {
     fun selectEligibleJobs(
         jobs: List<DownloadJob>,
         now: Long,
-        globalConcurrency: Int,
-        globalDelay: Long,
+        globalSettings: SourceDownloadSettings,
         sourceSettings: Map<String, SourceDownloadSettings>,
         activeCounts: Map<String, Int>,
         nextAllowedAt: Map<String, Long>,
         providerNameForJob: (DownloadJob) -> String?,
     ): List<DownloadJob> {
-        val availableGlobalSlots = globalConcurrency.coerceAtLeast(1) - activeCounts.values.sum()
+        val availableGlobalSlots = globalSettings.concurrency.coerceAtLeast(1) - activeCounts.values.sum()
         if (availableGlobalSlots <= 0) return emptyList()
 
         val selected = mutableListOf<DownloadJob>()
@@ -33,7 +33,12 @@ object DownloadScheduler {
             if (job.nextRetryAt != null && job.nextRetryAt!! > now) continue
 
             val providerName = providerNameForJob(job) ?: continue
-            val sourceLimit = settingsFor(providerName, globalConcurrency, globalDelay, sourceSettings).concurrency.coerceAtLeast(1)
+            val sourceLimit =
+                settingsFor(
+                    providerName,
+                    globalSettings,
+                    sourceSettings,
+                ).concurrency.coerceAtLeast(1)
             val activeForSource = activeCounts[providerName] ?: 0
             val selectedForSource = selectedBySource[providerName] ?: 0
             if (activeForSource + selectedForSource >= sourceLimit) continue
@@ -64,15 +69,33 @@ object DownloadScheduler {
 
     fun settingsFor(
         providerName: String,
-        globalConcurrency: Int,
-        globalDelay: Long,
+        globalSettings: SourceDownloadSettings,
         sourceSettings: Map<String, SourceDownloadSettings>,
     ): SourceDownloadSettings {
         val override = sourceSettings[providerName]
+        val minDelay = (override?.delay ?: globalSettings.delay).coerceAtLeast(0)
+        val maxDelay = override?.delayMax ?: globalSettings.delayMax
         return SourceDownloadSettings(
-            concurrency = override?.concurrency ?: globalConcurrency.coerceAtLeast(1),
-            delay = override?.delay ?: globalDelay.coerceAtLeast(0),
+            concurrency = override?.concurrency ?: globalSettings.concurrency.coerceAtLeast(1),
+            delay = minDelay,
+            delayMax = maxDelay.coerceAtLeast(minDelay),
         )
+    }
+
+    fun randomDelayMillis(
+        settings: SourceDownloadSettings,
+        random: Random = Random.Default,
+    ): Long {
+        val minDelay = settings.delay.coerceAtLeast(0)
+        val maxDelay = settings.delayMax.coerceAtLeast(minDelay)
+        if (minDelay == maxDelay) return minDelay
+
+        val exclusiveUpperBound = maxDelay + 1
+        return if (exclusiveUpperBound > maxDelay) {
+            random.nextLong(minDelay, exclusiveUpperBound)
+        } else {
+            minDelay + random.nextLong(maxDelay - minDelay)
+        }
     }
 }
 

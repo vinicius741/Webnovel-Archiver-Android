@@ -7,9 +7,10 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.ui.size
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -17,8 +18,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -32,11 +34,20 @@ import java.util.concurrent.atomic.AtomicBoolean
  * foreground service both hold a [DownloadEngine] over the *one* [AppStorage] from [AppContainer], so
  * they can't interleave read-modify-writes on `download_queue.json` — without ever blocking the main
  * thread on a coroutine mutex (the earlier [runBlocking] path was an ANR risk from UI button handlers).
- * The process loop itself ([start]) runs only in whichever component calls it (the foreground service).
+ *
+ * Single process loop: exactly one engine in the process owns the loop — the foreground service, which
+ * constructs with [ownsProcessLoop] = true. The activity constructs with false, so its engine is a
+ * control/enqueue handle only: [queue] / [resumeAll] / [retryFailed] / etc. mutate the shared queue but
+ * never run a loop. Without this, both engines would each launch up to `downloadConcurrency` jobs per
+ * pass against the one queue (the `running` guard is per-instance, not shared), so setting concurrency
+ * to 1 still produced ~2× concurrent downloads and per-source delays weren't honored across instances.
+ * The activity instead hands work to the service via `DownloadForegroundService.start`, whose single
+ * loop reads the resumed/retried jobs from shared storage.
  */
 class DownloadEngine(
     private val repository: AppRepository,
     private val network: NetworkClient,
+    private val ownsProcessLoop: Boolean = true,
 ) {
     private val storage: AppStorage = repository.storage
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -45,6 +56,18 @@ class DownloadEngine(
     private var worker: Job? = null
     var onChanged: (() -> Unit)? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
+
+    private companion object {
+        /**
+         * One wake signal for the single process-wide download loop. Activity-owned engines are
+         * control handles only, so their resume/retry mutations must wake the service-owned loop.
+         */
+        val processLoopWakeSignals = Channel<Unit>(Channel.CONFLATED)
+
+        fun wakeProcessLoop() {
+            processLoopWakeSignals.trySend(Unit)
+        }
+    }
 
     /**
      * Enqueues chapters for download. The queue plan + the story's status/lastUpdated are persisted
@@ -73,7 +96,13 @@ class DownloadEngine(
                 readStory = storage::getStory,
                 persist = storage::saveEnqueue,
             )
-        if (startNow && plan.hasRunnableWork) start()
+        if (plan.hasRunnableWork) {
+            if (startNow) {
+                start()
+            } else {
+                wakeProcessLoop()
+            }
+        }
         repository.publishDownloadState(libraryChanged = true, queueChanged = true)
         onChanged?.invoke()
     }
@@ -137,9 +166,24 @@ class DownloadEngine(
     /**
      * Explicit lifecycle (Reliability R3). [start] launches the download process loop; [pause] and
      * [stopAndCancel] halt it without losing queued work; [close] tears down the engine scope.
+     *
+     * Single process loop: only the owner engine (the foreground service) may start the loop. The
+     * activity's engine is a control/enqueue handle — control methods ([resumeAll], [retryFailed], …)
+     * mutate the shared queue and the activity separately starts the service, whose loop picks the
+     * work up. A no-op here on non-owners prevents a second loop from running concurrently against
+     * the one queue, which would otherwise ignore the configured concurrency cap (see class doc).
      */
     fun start() {
-        if (!running.compareAndSet(false, true)) return
+        // Single process loop: a non-owner engine must not launch the loop. Control mutations made by
+        // the activity are already picked up by the service's loop via shared storage.
+        if (!ownsProcessLoop) {
+            wakeProcessLoop()
+            return
+        }
+        if (!running.compareAndSet(false, true)) {
+            wakeProcessLoop()
+            return
+        }
         worker =
             scope.launch {
                 try {
@@ -170,10 +214,16 @@ class DownloadEngine(
     }
 
     private suspend fun processLoop() {
-        val settings = storage.getSettings()
         while (true) {
+            val settings = storage.getSettings()
             cleanupUnsupportedSourceJobs()
             val sourceSettings = storage.getSourceDownloadSettings()
+            val globalDownloadSettings =
+                SourceDownloadSettings(
+                    concurrency = settings.downloadConcurrency,
+                    delay = settings.downloadDelay,
+                    delayMax = settings.downloadDelayMax,
+                )
             lateinit var queue: MutableList<DownloadJob>
             lateinit var pending: List<DownloadJob>
             synchronized(storage) {
@@ -182,8 +232,7 @@ class DownloadEngine(
                     DownloadScheduler.selectEligibleJobs(
                         jobs = queue,
                         now = System.currentTimeMillis(),
-                        globalConcurrency = settings.downloadConcurrency,
-                        globalDelay = settings.downloadDelay,
+                        globalSettings = globalDownloadSettings,
                         sourceSettings = sourceSettings,
                         activeCounts = emptyMap(),
                         nextAllowedAt = nextAllowedJobAtBySource,
@@ -207,7 +256,7 @@ class DownloadEngine(
                         providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
                     )
                 if (sleepUntil != null) {
-                    delay((sleepUntil - System.currentTimeMillis()).coerceAtLeast(200))
+                    sleepUntilWakeOrTimeout(sleepUntil)
                     continue
                 }
                 break
@@ -222,12 +271,18 @@ class DownloadEngine(
                         DownloadScheduler
                             .settingsFor(
                                 providerName,
-                                settings.downloadConcurrency,
-                                settings.downloadDelay,
+                                globalDownloadSettings,
                                 sourceSettings,
-                            ).delay
+                            ).let(DownloadScheduler::randomDelayMillis)
                     if (sourceDelay > 0) nextAllowedJobAtBySource[providerName] = now + sourceDelay
                 }
+        }
+    }
+
+    private suspend fun sleepUntilWakeOrTimeout(sleepUntil: Long) {
+        val sleepMs = (sleepUntil - System.currentTimeMillis()).coerceAtLeast(200)
+        withTimeoutOrNull(sleepMs) {
+            processLoopWakeSignals.receive()
         }
     }
 
@@ -332,7 +387,14 @@ class DownloadEngine(
         val classified = DownloadErrorClassifier.classify(error)
         // T1: error classification decisions are otherwise invisible; log them with the cause so a
         // "Download failed" report is diagnosable. (downloadErrorCategory/code map to classified.*)
-        Timber.w(error, "Download job %s failed (category=%s, code=%s, retry=%s)", job.id, classified.category, classified.code, job.retryCount)
+        Timber.w(
+            error,
+            "Download job %s failed (category=%s, code=%s, retry=%s)",
+            job.id,
+            classified.category,
+            classified.code,
+            job.retryCount,
+        )
         lateinit var queue: List<DownloadJob>
         storage.mutateQueueInPlace { current ->
             current.find { it.id == job.id }?.let {

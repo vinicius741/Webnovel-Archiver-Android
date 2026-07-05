@@ -20,6 +20,17 @@ object SettingsValidation {
         fallback: Long = 500L,
     ): Long = (value.toLongOrNull() ?: fallback).coerceAtLeast(DELAY_MIN)
 
+    fun delayRange(
+        minValue: String,
+        maxValue: String,
+        minFallback: Long = 500L,
+        maxFallback: Long = minFallback,
+    ): Pair<Long, Long> {
+        val min = delay(minValue, minFallback)
+        val max = delay(maxValue, maxFallback).coerceAtLeast(min)
+        return min to max
+    }
+
     fun maxChaptersPerEpub(
         value: String,
         fallback: Int = 150,

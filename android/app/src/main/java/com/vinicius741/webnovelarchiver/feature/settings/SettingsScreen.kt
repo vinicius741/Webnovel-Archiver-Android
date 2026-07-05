@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.settings
 import android.app.AlertDialog
 import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
@@ -54,6 +55,13 @@ import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import java.util.UUID
+
+private data class SourceDownloadInputs(
+    val enabled: CheckBox,
+    val concurrency: EditText,
+    val delayMin: EditText,
+    val delayMax: EditText,
+)
 
 internal fun ScreenHost.showSettings() {
     val displayPreferences = storage.getDisplayPreferences()
@@ -117,8 +125,7 @@ internal fun ScreenHost.showSettings() {
         divider()
         section("Downloads")
         settingRow(R.drawable.wna_list, "Download Manager", "View and manage active downloads") { showQueue() }
-        settingRow(R.drawable.wna_download, "Download Settings", "Concurrency, delay, and EPUB volume size") { showDownloadSettings() }
-        settingRow(R.drawable.wna_globe, "Source Overrides", "Per-source concurrency and delay") { showSourceOverrides() }
+        settingRow(R.drawable.wna_download, "Download Settings", "Global defaults and per-source overrides") { showDownloadSettings() }
         divider()
         section("Text To Speech")
         settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
@@ -177,88 +184,156 @@ internal fun ScreenHost.showSettings() {
     }
 }
 
-/** Download tuning sub-screen (concurrency / delay / max chapters per EPUB), reached from Settings. */
+/** Download settings sub-screen: global defaults plus per-source overrides, reached from Settings. */
 internal fun ScreenHost.showDownloadSettings() {
     val settings = storage.getSettings()
-    screen(title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
-        val concurrency = labeledField("Concurrency", settings.downloadConcurrency.toString(), InputType.TYPE_CLASS_NUMBER)
-        val delay = labeledField("Delay (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
-        val maxChapters = labeledField("Max chapters per EPUB", settings.maxChaptersPerEpub.toString(), InputType.TYPE_CLASS_NUMBER)
-        fullButton("Save Downloads", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.SM) {
-            storage.saveSettings(
-                settings.copy(
-                    downloadConcurrency = SettingsValidation.concurrency(concurrency.text.toString(), settings.downloadConcurrency),
-                    downloadDelay = SettingsValidation.delay(delay.text.toString(), settings.downloadDelay),
-                    maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters.text.toString(), settings.maxChaptersPerEpub),
-                ),
-            )
-            toast("Download settings saved")
-        }
-    }
-}
-
-/** Per-source override sub-screen (one card per registered provider), reached from Settings. */
-internal fun ScreenHost.showSourceOverrides() {
-    val settings = storage.getSettings()
     val sourceSettings = storage.getSourceDownloadSettings()
-    screen(title = "Source Overrides", onBack = { showSettings() }, scrollable = true) {
+    screen(title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
+        // --- Global defaults (apply to any source that isn't overridden below) ---
+        section("Defaults")
+        text(
+            "Used for every source that doesn't have its own override.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
+        spacer(Space.XS)
+        // Group the three number fields in one card so they read as a unit and don't sit bare on the
+        // background next to the carded source overrides below. `labeledField` adds itself to the card
+        // receiver and returns the EditText; capture via nullable vars (same pattern as the source cards).
+        var concurrency: EditText? = null
+        var delayMin: EditText? = null
+        var delayMax: EditText? = null
+        var maxChapters: EditText? = null
+        addView(
+            card {
+                concurrency = labeledField("Concurrency", settings.downloadConcurrency.toString(), InputType.TYPE_CLASS_NUMBER)
+                spacer(Space.SM)
+                delayMin = labeledField("Delay min (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
+                spacer(Space.SM)
+                delayMax = labeledField("Delay max (ms)", settings.downloadDelayMax.toString(), InputType.TYPE_CLASS_NUMBER)
+                spacer(Space.SM)
+                maxChapters = labeledField("Max chapters per EPUB", settings.maxChaptersPerEpub.toString(), InputType.TYPE_CLASS_NUMBER)
+            },
+        )
+
+        // --- Per-source overrides (each card mirrors the runtime fallback in DownloadScheduler.settingsFor) ---
+        section("Source Overrides")
+        text(
+            "Replace the defaults for a specific source. Fields appear when you enable an override.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
+        spacer(Space.XS)
         val sourceInputs =
             SourceRegistry.all().associate { provider ->
                 val override = sourceSettings[provider.name]
-                val sourceEnabled =
-                    CheckBox(context).apply {
-                        text = "Override"
-                        isChecked = override != null
-                    }
+                var toggle: CheckBox? = null
                 var sourceConcurrency: EditText? = null
-                var sourceDelay: EditText? = null
+                var sourceDelayMin: EditText? = null
+                var sourceDelayMax: EditText? = null
+                // Build the whole card in one block so the row + fields end up as children of the card,
+                // not the screen content. The DSL `row`/`labeledField` helpers add themselves to whatever
+                // ViewGroup is the receiver, so they must be called inside `card { }`.
                 addView(
                     card {
-                        text(provider.name, Type.TITLE_SMALL)
-                        styledCheckBox(sourceEnabled)
-                        addView(sourceEnabled)
-                        // S3: the card is already titled with the provider name, so the inner labels repeat it.
-                        sourceConcurrency =
-                            labeledField(
-                                "Concurrency",
-                                (override?.concurrency ?: settings.downloadConcurrency).toString(),
-                                InputType.TYPE_CLASS_NUMBER,
+                        row {
+                            addView(
+                                makeText(context, provider.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface),
+                                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                             )
-                        sourceDelay =
-                            labeledField("Delay (ms)", (override?.delay ?: settings.downloadDelay).toString(), InputType.TYPE_CLASS_NUMBER)
-                        flow {
-                            button("Reset", Btn.TEXT, R.drawable.wna_refresh) {
-                                val updated = storage.getSourceDownloadSettings().toMutableMap()
-                                updated.remove(provider.name)
-                                storage.saveSourceDownloadSettings(updated)
-                                showSourceOverrides()
+                            // SwitchMaterial would be nicer, but the app has no switch component — reuse the
+                            // themed checkbox as the per-source toggle, with no label (the card title covers it).
+                            val cb =
+                                CheckBox(context).apply {
+                                    text = ""
+                                    isChecked = override != null
+                                }
+                            styledCheckBox(cb)
+                            addView(cb)
+                            toggle = cb
+                        }
+                        // Holds the per-source fields; hidden unless the override checkbox is ticked, so an
+                        // off override is a compact one-line card instead of four redundant rows.
+                        val fieldsContainer =
+                            LinearLayout(context).apply {
+                                orientation = LinearLayout.VERTICAL
+                                visibility = if (override != null) View.VISIBLE else View.GONE
                             }
+                        fieldsContainer.apply {
+                            sourceConcurrency =
+                                labeledField(
+                                    "Concurrency",
+                                    (override?.concurrency ?: settings.downloadConcurrency).toString(),
+                                    InputType.TYPE_CLASS_NUMBER,
+                                )
+                            sourceDelayMin =
+                                labeledField(
+                                    "Delay min (ms)",
+                                    (override?.delay ?: settings.downloadDelay).toString(),
+                                    InputType.TYPE_CLASS_NUMBER,
+                                )
+                            sourceDelayMax =
+                                labeledField(
+                                    "Delay max (ms)",
+                                    (override?.delayMax ?: settings.downloadDelayMax).toString(),
+                                    InputType.TYPE_CLASS_NUMBER,
+                                )
+                        }
+                        addView(fieldsContainer)
+                        // Toggling just reveals/hides the fields without re-rendering, so values the user
+                        // typed are preserved while the box is checked.
+                        toggle!!.setOnCheckedChangeListener { _, isChecked ->
+                            fieldsContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                         }
                     },
                 )
-                provider.name to Triple(sourceEnabled, sourceConcurrency!!, sourceDelay!!)
+                provider.name to SourceDownloadInputs(toggle!!, sourceConcurrency!!, sourceDelayMin!!, sourceDelayMax!!)
             }
-        // S1: Source Overrides save independently of Downloads / TTS.
-        fullButton("Save Overrides", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
+
+        // Single Save persists both the global defaults and any checked overrides.
+        fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.SM) {
+            val delayRange =
+                SettingsValidation.delayRange(
+                    delayMin!!.text.toString(),
+                    delayMax!!.text.toString(),
+                    settings.downloadDelay,
+                    settings.downloadDelayMax,
+                )
+            storage.saveSettings(
+                settings.copy(
+                    downloadConcurrency = SettingsValidation.concurrency(concurrency!!.text.toString(), settings.downloadConcurrency),
+                    downloadDelay = delayRange.first,
+                    downloadDelayMax = delayRange.second,
+                    maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters!!.text.toString(), settings.maxChaptersPerEpub),
+                ),
+            )
             storage.saveSourceDownloadSettings(
                 sourceInputs
                     .mapNotNull { (name, inputs) ->
-                        if (!inputs.first.isChecked) {
+                        if (!inputs.enabled.isChecked) {
                             null
                         } else {
+                            val sourceDelayRange =
+                                SettingsValidation.delayRange(
+                                    inputs.delayMin.text.toString(),
+                                    inputs.delayMax.text.toString(),
+                                    settings.downloadDelay,
+                                    settings.downloadDelayMax,
+                                )
                             name to
                                 SourceDownloadSettings(
                                     concurrency =
                                         SettingsValidation.concurrency(
-                                            inputs.second.text.toString(),
+                                            inputs.concurrency.text.toString(),
                                             settings.downloadConcurrency,
                                         ),
-                                    delay = SettingsValidation.delay(inputs.third.text.toString(), settings.downloadDelay),
+                                    delay = sourceDelayRange.first,
+                                    delayMax = sourceDelayRange.second,
                                 )
                         }
                     }.toMap(),
             )
-            toast("Source overrides saved")
+            toast("Download settings saved")
         }
     }
 }

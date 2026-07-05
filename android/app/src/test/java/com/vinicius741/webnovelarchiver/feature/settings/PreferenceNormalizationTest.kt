@@ -13,10 +13,14 @@ class PreferenceNormalizationTest {
     fun appSettingsFillInvalidLegacyValuesWithDefaults() {
         val settings =
             PreferenceNormalization.appSettings(
-                AppSettings(downloadConcurrency = 0, downloadDelay = -1, maxChaptersPerEpub = 0),
+                AppSettings(downloadConcurrency = 0, downloadDelay = -1, downloadDelayMax = -1, maxChaptersPerEpub = 0),
             )
 
-        assertEquals(AppSettings(downloadConcurrency = 1, downloadDelay = 500, maxChaptersPerEpub = 10), settings)
+        assertEquals(AppSettings(downloadConcurrency = 1, downloadDelay = 500, downloadDelayMax = 500, maxChaptersPerEpub = 10), settings)
+        assertEquals(
+            AppSettings(downloadDelay = 1200, downloadDelayMax = 1200),
+            PreferenceNormalization.appSettings(AppSettings(downloadDelay = 1200, downloadDelayMax = 0)),
+        )
         assertEquals(
             10,
             PreferenceNormalization.appSettings(AppSettings(downloadConcurrency = 500)).downloadConcurrency,
@@ -32,13 +36,15 @@ class PreferenceNormalizationTest {
         val settings =
             PreferenceNormalization.sourceDownloadSettings(
                 mapOf(
-                    "RoyalRoad" to SourceDownloadSettings(concurrency = 0, delay = -100),
-                    "ScribbleHub" to SourceDownloadSettings(concurrency = 500, delay = 20),
+                    "RoyalRoad" to SourceDownloadSettings(concurrency = 0, delay = -100, delayMax = -1),
+                    "ScribbleHub" to SourceDownloadSettings(concurrency = 500, delay = 20, delayMax = 40),
+                    "Legacy" to SourceDownloadSettings(concurrency = 1, delay = 1200, delayMax = 0),
                 ),
             )
 
-        assertEquals(SourceDownloadSettings(concurrency = 1, delay = 500), settings["RoyalRoad"])
-        assertEquals(SourceDownloadSettings(concurrency = 10, delay = 20), settings["ScribbleHub"])
+        assertEquals(SourceDownloadSettings(concurrency = 1, delay = 500, delayMax = 500), settings["RoyalRoad"])
+        assertEquals(SourceDownloadSettings(concurrency = 10, delay = 20, delayMax = 40), settings["ScribbleHub"])
+        assertEquals(SourceDownloadSettings(concurrency = 1, delay = 1200, delayMax = 1200), settings["Legacy"])
     }
 
     @Test

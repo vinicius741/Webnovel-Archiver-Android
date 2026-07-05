@@ -13,31 +13,38 @@ object PreferenceNormalization {
     const val READER_FONT_SCALE_MIN = 0.8f
     const val READER_FONT_SCALE_MAX = 1.6f
 
-    fun appSettings(settings: AppSettings): AppSettings =
-        settings.copy(
+    fun appSettings(settings: AppSettings): AppSettings {
+        val minDelay = settings.downloadDelay.takeIf { it >= 0 } ?: AppSettings().downloadDelay
+        val maxDelay = settings.downloadDelayMax.takeIf { it >= minDelay } ?: minDelay
+        return settings.copy(
             downloadConcurrency =
                 settings.downloadConcurrency.coerceIn(
                     SettingsValidation.CONCURRENCY_MIN,
                     SettingsValidation.CONCURRENCY_MAX,
                 ),
-            downloadDelay = settings.downloadDelay.takeIf { it >= 0 } ?: AppSettings().downloadDelay,
+            downloadDelay = minDelay,
+            downloadDelayMax = maxDelay,
             maxChaptersPerEpub =
                 settings.maxChaptersPerEpub.coerceIn(
                     SettingsValidation.MAX_CHAPTERS_PER_EPUB_MIN,
                     SettingsValidation.MAX_CHAPTERS_PER_EPUB_MAX,
                 ),
         )
+    }
 
     fun sourceDownloadSettings(settings: Map<String, SourceDownloadSettings>): MutableMap<String, SourceDownloadSettings> =
         settings
             .mapValues { (_, value) ->
+                val minDelay = value.delay.takeIf { it >= 0 } ?: SourceDownloadSettings().delay
+                val maxDelay = value.delayMax.takeIf { it >= minDelay } ?: minDelay
                 value.copy(
                     concurrency =
                         value.concurrency.coerceIn(
                             SettingsValidation.CONCURRENCY_MIN,
                             SettingsValidation.CONCURRENCY_MAX,
                         ),
-                    delay = value.delay.takeIf { it >= 0 } ?: SourceDownloadSettings().delay,
+                    delay = minDelay,
+                    delayMax = maxDelay,
                 )
             }.toMutableMap()
 
