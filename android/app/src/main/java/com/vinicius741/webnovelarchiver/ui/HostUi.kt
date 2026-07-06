@@ -15,7 +15,6 @@ import android.widget.ScrollView
 import android.widget.Toast
 import androidx.window.layout.WindowMetricsCalculator
 import coil.load
-import java.util.Locale
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
@@ -25,6 +24,7 @@ import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayout
 import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutMode
 import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
+import java.util.Locale
 
 /** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)
@@ -166,7 +166,10 @@ internal fun formatScore(score: String): String {
     return String.format(Locale.US, "%.2f / 5", value)
 }
 
-internal fun ScreenHost.scoreRow(score: String, iconSizeDp: Int = 16): View =
+internal fun ScreenHost.scoreRow(
+    score: String,
+    iconSizeDp: Int = 16,
+): View =
     LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
