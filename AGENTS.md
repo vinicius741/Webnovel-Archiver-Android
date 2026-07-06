@@ -25,6 +25,12 @@ The native app ships as two distinct application IDs — each is a separate app 
 - **Simulator / emulator:** always the **debug** variant — `com.vinicius741.webnovelarchiver.nativeapp.debug` (APK: `android/app/build/outputs/apk/debug/app-debug.apk`). This is where the user's in-progress library and test data live; the release variant on the emulator starts empty.
 - **Owner's phone:** always the **release** variant — `com.vinicius741.webnovelarchiver.nativeapp` (APK: `android/app/build/outputs/apk/release/app-release.apk`), and only when phone use is explicitly authorized for the current message.
 
+## Documentation
+
+- Long-form documentation lives under `docs/`, grouped by subject — one folder per topic (e.g. `docs/cloudflare/`, `docs/tts/`, `docs/architecture/`).
+- When adding a document, place it in the folder for its subject. Create a new subject folder only if no existing folder covers the topic; otherwise reuse the existing one.
+- Keep `docs/README.md` current: it is the index of subjects and the documents each folder contains. Update it in the same change whenever documents are added, moved, or removed.
+
 ## Repository Boundaries
 
 - Do not expose signing credentials, keystores, `local.properties`, or other secrets.
