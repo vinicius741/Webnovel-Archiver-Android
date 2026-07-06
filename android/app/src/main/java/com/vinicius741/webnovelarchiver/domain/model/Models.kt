@@ -17,6 +17,12 @@ enum class DownloadStatus {
     partial,
 }
 
+enum class PublicationStatus {
+    unknown,
+    ongoing,
+    completed,
+}
+
 /**
  * Typed lifecycle state for a [DownloadJob] (Reliability R4). The [wire] string preserves the
  * lowercase on-disk/JSON form used historically, so existing `download_queue.json` files and JSON
@@ -98,6 +104,7 @@ data class Story(
     var archiveReason: String? = null,
     var patreonUrl: String? = null,
     var patreonStats: PatreonStats? = null,
+    var publicationStatus: PublicationStatus = PublicationStatus.unknown,
 )
 
 data class PatreonStats(
@@ -216,6 +223,7 @@ data class NovelMetadata(
     val score: String? = null,
     val canonicalUrl: String? = null,
     val patreonUrl: String? = null,
+    val publicationStatus: PublicationStatus = PublicationStatus.unknown,
 )
 
 data class ChapterInfo(

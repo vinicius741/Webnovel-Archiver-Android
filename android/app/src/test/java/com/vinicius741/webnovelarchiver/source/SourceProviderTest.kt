@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -22,6 +23,7 @@ class SourceProviderTest {
                   <div id="comments"><a href="https://www.patreon.com/commenter">Commenter's Patreon</a></div>
                   <div class="author-profile"><a href="https://www.patreon.com/example-author?utm_source=royalroad">Support on Patreon</a></div>
                   <div class="description"><p>First paragraph.</p><p>Second paragraph.</p></div>
+                  <div class="fiction-info"><div class="margin-bottom-10"><span class="label">Original</span><span class="label">COMPLETED</span></div></div>
                   <div class="tags"><a>Fantasy</a><a>Adventure</a></div>
                   <div class="chapter-row"><a href="/fiction/123/story/chapter/456/one">Chapter One (2 hours ago)</a></div>
                   <div class="chapter-inner"><p>Body</p><script>bad()</script><div class="portlet">ad</div></div>
@@ -36,6 +38,7 @@ class SourceProviderTest {
             assertEquals("First paragraph.\n\nSecond paragraph.", metadata.description)
             assertEquals("Author Name", metadata.author)
             assertEquals("https://www.patreon.com/example-author", metadata.patreonUrl)
+            assertEquals(PublicationStatus.completed, metadata.publicationStatus)
             assertEquals("456", chapters.single().id)
             assertEquals("Chapter One", chapters.single().title)
             assertTrue(chapters.single().url.contains("/chapter/456/"))
@@ -90,6 +93,21 @@ class SourceProviderTest {
     }
 
     @Test
+    fun royalRoadMapsNonCompletedLifecycleLabelsToOngoing() {
+        val metadata =
+            RoyalRoadProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1>Story</h1>
+                  <div class="fiction-info"><div class="margin-bottom-10"><span class="label">HIATUS</span></div></div>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals(PublicationStatus.ongoing, metadata.publicationStatus)
+    }
+
+    @Test
     fun scribbleHubParsesMetadataChaptersAndContent() =
         runBlocking {
             val html =
@@ -99,6 +117,7 @@ class SourceProviderTest {
                   <div class="auth_name_fic"><a>SH Author</a></div>
                   <a href="https://patreon.com/sh-author/posts">Patreon</a>
                   <div class="wi_fic_desc"><p>SH one.</p><p>SH two.</p></div>
+                  <span class="wi_fic_status">Completed</span>
                   <div class="wi_fic_tags"><a>LitRPG</a></div>
                   <ol class="toc_ol"><li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A</a></li></ol>
                   <div id="chp_raw"><p>Chapter body</p><div class="wi_authornotes">note</div><script>bad()</script></div>
@@ -113,6 +132,7 @@ class SourceProviderTest {
             assertEquals("SH one.\n\nSH two.", metadata.description)
             assertEquals("SH Author", metadata.author)
             assertEquals("https://patreon.com/sh-author/posts", metadata.patreonUrl)
+            assertEquals(PublicationStatus.completed, metadata.publicationStatus)
             assertEquals("sh_1000", chapters.single().id)
             assertEquals("<p>Chapter body</p>", content.trim())
         }
@@ -137,6 +157,22 @@ class SourceProviderTest {
 
         assertEquals("DarkTechnomancer", metadata.author)
         assertEquals("4.8", metadata.score)
+    }
+
+    @Test
+    fun scribbleHubMapsSidebarLifecycleTextToOngoing() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">System Lost</h1>
+                  <span class="auth_name_fic">DarkTechnomancer</span>
+                  <div>All Rights Reserved Ongoing Similar Series</div>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals(PublicationStatus.ongoing, metadata.publicationStatus)
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.sync
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -119,6 +120,10 @@ class StorySyncEngine(
                 lastUpdated = System.currentTimeMillis(),
                 patreonUrl = patreonUrl,
                 patreonStats = refreshedPatreonStats ?: existing?.patreonStats?.takeIf { existing.patreonUrl == patreonUrl },
+                publicationStatus =
+                    metadata.publicationStatus.takeUnless { it == PublicationStatus.unknown }
+                        ?: existing?.publicationStatus
+                        ?: PublicationStatus.unknown,
             )
         storage.addOrUpdateStory(story)
         return story

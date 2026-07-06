@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -120,6 +121,17 @@ private fun patreonLinkPriority(link: Element): Int {
         "support" in context || "patreon" in link.text().lowercase() -> 2
         "description" in context || "fiction" in context || "profile" in context -> 1
         else -> 0
+    }
+}
+
+internal fun publicationStatusFromSourceText(text: String?): PublicationStatus? {
+    if (text.isNullOrBlank()) return null
+    val normalized = text.lowercase()
+    return when {
+        Regex("""\b(completed|complete)\b""").containsMatchIn(normalized) -> PublicationStatus.completed
+        Regex("""\b(ongoing|active|hiatus|hiatused|dropped|cancelled|canceled)\b""").containsMatchIn(normalized) ->
+            PublicationStatus.ongoing
+        else -> null
     }
 }
 

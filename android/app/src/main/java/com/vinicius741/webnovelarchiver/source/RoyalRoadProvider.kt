@@ -2,8 +2,10 @@ package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 
 object RoyalRoadProvider : SourceProvider {
     override val name = "RoyalRoad"
@@ -73,7 +75,8 @@ object RoyalRoadProvider : SourceProvider {
                 ?.attr("data-content")
         val canonical = doc.selectFirst("link[rel=canonical]")?.absUrl("href") ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
         val patreonUrl = findPatreonUrl(doc)
-        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl)
+        val publicationStatus = royalRoadPublicationStatus(doc)
+        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl, publicationStatus)
     }
 
     override suspend fun getChapterList(
@@ -100,5 +103,15 @@ object RoyalRoadProvider : SourceProvider {
         val content = doc.selectFirst(".chapter-inner") ?: error("Chapter content not found on page")
         content.select("div.portlet, script, .bold.uppercase.text-center").remove()
         return content.html()
+    }
+
+    private fun royalRoadPublicationStatus(doc: Document): PublicationStatus {
+        val labels =
+            doc
+                .select(".fiction-info .margin-bottom-10 > span.label, .fiction-info .label")
+                .map { it.text().trim() }
+                .filter { it.isNotBlank() }
+        return labels.firstNotNullOfOrNull(::publicationStatusFromSourceText)
+            ?: PublicationStatus.unknown
     }
 }

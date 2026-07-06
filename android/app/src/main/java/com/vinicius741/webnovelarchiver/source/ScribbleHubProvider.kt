@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import org.jsoup.Jsoup
@@ -68,7 +69,8 @@ object ScribbleHubProvider : SourceProvider {
                 .toMutableList()
         val score = scribbleHubScore(doc)
         val patreonUrl = findPatreonUrl(doc)
-        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl)
+        val publicationStatus = scribbleHubPublicationStatus(doc)
+        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl, publicationStatus)
     }
 
     override suspend fun getChapterList(
@@ -217,4 +219,23 @@ object ScribbleHubProvider : SourceProvider {
                 .selectFirst("#ratefic_user")
                 ?.text()
                 ?.let { Regex("""\d+(?:\.\d+)?(?=\s*\()""").find(it)?.value }
+
+    private fun scribbleHubPublicationStatus(doc: Document): PublicationStatus {
+        val explicit =
+            doc
+                .select(
+                    ".wi_fic_status, .fic_status, .fic_status_info, .fic_status_label, " +
+                        ".series-status, .story-status, .post-status",
+                ).map { it.text().trim() }
+                .firstNotNullOfOrNull(::publicationStatusFromSourceText)
+        if (explicit != null) return explicit
+
+        val rightsSidebarStatus =
+            Regex("""(?i)\bAll\s+Rights\s+Reserved\b\s+(Completed|Complete|Ongoing|Hiatus|Hiatused|Dropped|Cancelled|Canceled)""")
+                .find(doc.body()?.text().orEmpty())
+                ?.groupValues
+                ?.getOrNull(1)
+        return publicationStatusFromSourceText(rightsSidebarStatus)
+            ?: PublicationStatus.unknown
+    }
 }

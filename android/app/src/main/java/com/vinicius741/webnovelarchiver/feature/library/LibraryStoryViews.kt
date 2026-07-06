@@ -25,6 +25,7 @@ import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
@@ -160,10 +161,31 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
                     setPadding(0, dp(Space.XS), 0, 0)
                 },
             )
-            SourceRegistry.getProvider(story.sourceUrl)?.let {
+            val provider = SourceRegistry.getProvider(story.sourceUrl)
+            val publicationStatusBadge = publicationStatusBadge(story.publicationStatus)
+            if (provider != null || publicationStatusBadge != null) {
                 addView(
-                    makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary).apply {
+                    LinearLayout(app).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
                         setPadding(0, dp(Space.XS), 0, 0)
+                        provider?.let {
+                            addView(makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary))
+                        }
+                        publicationStatusBadge?.let {
+                            val badgeLayoutParams =
+                                LinearLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                                )
+                            if (provider != null) {
+                                badgeLayoutParams.marginStart = dp(Space.SM)
+                            }
+                            addView(
+                                it,
+                                badgeLayoutParams,
+                            )
+                        }
                     },
                 )
             }

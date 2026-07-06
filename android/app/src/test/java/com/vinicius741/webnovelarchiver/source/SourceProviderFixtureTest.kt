@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.ui.size
 import kotlinx.coroutines.runBlocking
@@ -27,6 +28,7 @@ class SourceProviderFixtureTest {
         assertEquals("IpsumWriter", meta.author)
         assertEquals("https://www.royalroad.com/fiction/12345/the-lorem-chronicle", meta.canonicalUrl)
         assertEquals("https://www.royalroad.com/covers/12345.jpg", meta.coverUrl)
+        assertEquals(PublicationStatus.completed, meta.publicationStatus)
         // "tags" label is filtered out; Fantasy + Adventure remain, distinct.
         val tags = meta.tags.orEmpty()
         assertTrue(tags.contains("Fantasy"))
@@ -65,6 +67,7 @@ class SourceProviderFixtureTest {
         assertEquals("ScribeAuthor", meta.author)
         assertEquals("https://www.scribblehub.com/series/98765/the-scribbled-saga", meta.canonicalUrl)
         assertEquals("4.5", meta.score)
+        assertEquals(PublicationStatus.completed, meta.publicationStatus)
         assertTrue(meta.tags.orEmpty().contains("Slowburn"))
     }
 

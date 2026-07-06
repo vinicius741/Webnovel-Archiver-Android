@@ -15,8 +15,8 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.scoreRow
-import com.vinicius741.webnovelarchiver.ui.spacer
 
 /** Centered story header — cover, title, author, source/archived chips, an optional score row, and
  *  a compact "Saved / Chapters" progress summary. Mirrors the RN `StoryHeader`; D5 collapsed the
@@ -50,24 +50,32 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
         },
     )
     val provider = SourceRegistry.getProvider(story.sourceUrl)
-    if (provider != null || story.isArchived == true) {
+    val publicationStatusBadge = publicationStatusBadge(story.publicationStatus)
+    if (provider != null || publicationStatusBadge != null || story.isArchived == true) {
         val badgeRow =
             LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-        provider?.let {
-            badgeRow.addView(makeBadge(app, it.name, ThemeManager.colors.secondaryContainer, ThemeManager.colors.onSecondaryContainer))
-        }
-        if (story.isArchived == true) {
-            if (provider != null) {
-                val spacer =
+
+        fun addBadgeWithGap(view: View) {
+            if (badgeRow.childCount > 0) {
+                badgeRow.addView(
                     View(app).apply {
                         layoutParams = LinearLayout.LayoutParams(dp(Space.SM), 0)
-                    }
-                badgeRow.addView(spacer)
+                    },
+                )
             }
-            badgeRow.addView(makeBadge(app, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
+            badgeRow.addView(view)
+        }
+        provider?.let {
+            addBadgeWithGap(makeBadge(app, it.name, ThemeManager.colors.secondaryContainer, ThemeManager.colors.onSecondaryContainer))
+        }
+        publicationStatusBadge?.let {
+            addBadgeWithGap(it)
+        }
+        if (story.isArchived == true) {
+            addBadgeWithGap(makeBadge(app, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
         }
         col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }

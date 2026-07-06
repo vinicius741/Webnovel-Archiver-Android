@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.ui.size
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -100,5 +102,20 @@ class DurableJsonTest {
         val target = File(File(dir, "nested/deep"), "out.dat")
         AtomicFileWrites.writeText(target, "ok")
         assertEquals("ok", target.readText())
+    }
+
+    /**
+     * `Story` has all-default params, so Kotlin synthesizes a no-arg constructor that Gson prefers
+     * over `Unsafe.allocateInstance`. As a result a field with a default initializer (here
+     * `Story.publicationStatus = PublicationStatus.unknown`) keeps that default when the JSON predates
+     * it — Gson does not null it out. This guards against regressing that assumption; if it ever
+     * stops holding, [AppStorage]'s read path would need to coerce the field back to `unknown`.
+     */
+    @Test
+    fun storyPreservesDefaultPublicationStatusWhenJsonPredatesIt() {
+        val legacyJson = """{"id":"abc","title":"Legacy","chapters":[]}"""
+        val story = gson.fromJson(legacyJson, Story::class.java)
+        assertEquals("abc", story.id)
+        assertEquals(PublicationStatus.unknown, story.publicationStatus)
     }
 }
