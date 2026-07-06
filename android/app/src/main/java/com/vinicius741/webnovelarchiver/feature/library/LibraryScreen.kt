@@ -153,6 +153,32 @@ internal fun ScreenHost.showLibrary() {
         // `showLibrary` runs inside the receiver scope; make `search.text` resolve here.
         fun currentFilter(): String = search.text.toString()
 
+        // One watcher drives BOTH the single-grid and pager paths through the shared `applyFilters`
+        // closure, so a keystroke re-filters whichever surface is showing. Previously this was wired
+        // only inside the single-tab branch, which left the swipeable multi-tab pager unfiltered on
+        // typing — `applyFilters` was reachable only via tag/sort callbacks and page swipes.
+        search.addTextChangedListener(
+            object : TextWatcher {
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int,
+                ) = Unit
+
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int,
+                ) {
+                    applyFilters()
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
+            },
+        )
+
         if (pageTabs.size >= 2) {
             // Swipe-between-tabs (Gap #6 parity with the legacy RN PagerView). Each page owns its own
             // scrolling grid mirroring the single-grid shell below, so a swipe switches tabs exactly as
@@ -248,37 +274,6 @@ internal fun ScreenHost.showLibrary() {
                     )
                 }
             addView(scroll(gridShell), verticalFill().apply { topMargin = dp(Space.LG) })
-
-            search.addTextChangedListener(
-                object : TextWatcher {
-                    override fun beforeTextChanged(
-                        s: CharSequence?,
-                        start: Int,
-                        count: Int,
-                        after: Int,
-                    ) = Unit
-
-                    override fun onTextChanged(
-                        s: CharSequence?,
-                        start: Int,
-                        before: Int,
-                        count: Int,
-                    ) {
-                        renderTabGrid(
-                            stories,
-                            list,
-                            layoutResult,
-                            s?.toString().orEmpty(),
-                            selectedTabId,
-                            selectedTags,
-                            sortOption,
-                            sortAscending,
-                        )
-                    }
-
-                    override fun afterTextChanged(s: Editable?) = Unit
-                },
-            )
             applyFilters()
         }
     }
