@@ -54,6 +54,7 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 ## Emulator Workflow
 
 - Reuse a running `webnovel_api36` emulator; do not start another unnecessarily.
+- When starting `webnovel_api36` manually, include `-dns-server 8.8.8.8,1.1.1.1` so the emulator does not inherit stale host DNS.
 - Use `scripts/redeploy.sh` for a one-shot debug rebuild/install/relaunch and `scripts/watch-redeploy.sh` for iterative UI work.
 - Both scripts must target an `emulator-` serial explicitly and fail closed rather than selecting a physical device.
 - Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`

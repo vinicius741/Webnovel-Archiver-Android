@@ -15,6 +15,7 @@ Use this workflow for simulator-based development and QA of the native Kotlin ap
 - Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`
 - Main activity: `com.vinicius741.webnovelarchiver.MainActivity`
 - Emulator tmux session: `webnovel-emulator`
+- Emulator DNS override: `8.8.8.8,1.1.1.1`
 - Expected SDK root on this machine: `/opt/homebrew/share/android-commandlinetools`
 
 Use `$ANDROID_HOME` when it is set. If emulator tools are missing from `PATH`, call them by full path under `$ANDROID_HOME`.
@@ -103,7 +104,7 @@ Prefer tmux so the emulator survives the agent command session:
 
 ```bash
 tmux new-session -d -s webnovel-emulator \
-  "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full"
+  "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1"
 ```
 
 Wait for Android boot completion:
@@ -182,7 +183,7 @@ If the emulator is wedged, stop the tmux session and restart:
 ```bash
 tmux kill-session -t webnovel-emulator
 tmux new-session -d -s webnovel-emulator \
-  "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full"
+  "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1"
 ```
 
 If install fails because no device is connected, run the boot wait command again before retrying `:app:installDebug`.
