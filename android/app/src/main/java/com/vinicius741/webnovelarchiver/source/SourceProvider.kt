@@ -8,6 +8,16 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.format.DateTimeParseException
+import java.util.Locale
 
 interface SourceProvider {
     val name: String
@@ -129,11 +139,176 @@ internal fun publicationStatusFromSourceText(text: String?): PublicationStatus? 
     val normalized = text.lowercase()
     return when {
         Regex("""\b(completed|complete)\b""").containsMatchIn(normalized) -> PublicationStatus.completed
-        Regex("""\b(ongoing|active|hiatus|hiatused|dropped|cancelled|canceled)\b""").containsMatchIn(normalized) ->
-            PublicationStatus.ongoing
+        Regex("""\b(hiatus|hiatused|dropped|cancelled|canceled)\b""").containsMatchIn(normalized) -> PublicationStatus.hiatus
+        Regex("""\b(ongoing|active)\b""").containsMatchIn(normalized) -> PublicationStatus.ongoing
         else -> null
     }
 }
+
+internal fun Element.chapterPublishedAt(now: Long = System.currentTimeMillis()): Long? {
+    val candidates = mutableListOf<String>()
+    val time = if (tagName().equals("time", ignoreCase = true)) this else selectFirst("time")
+    time?.let { node ->
+        listOf("unixtime", "data-time", "data-timestamp", "datetime", "title").forEach { attr ->
+            node.attr(attr).takeIf { it.isNotBlank() }?.let(candidates::add)
+        }
+        node.text().takeIf { it.isNotBlank() }?.let(candidates::add)
+    }
+    listOf("data-time", "data-timestamp", "title").forEach { attr ->
+        attr(attr).takeIf { it.isNotBlank() }?.let(candidates::add)
+    }
+    select("*")
+        .asSequence()
+        .filterNot { it.tagName().equals("a", ignoreCase = true) || it.tagName().equals("time", ignoreCase = true) }
+        .map { it.ownText().trim() }
+        .filter { it.isNotBlank() }
+        .forEach(candidates::add)
+    text().takeIf { it.isNotBlank() }?.let(candidates::add)
+    return candidates.firstNotNullOfOrNull { parseChapterPublishedAt(it, now) }
+}
+
+private fun parseChapterPublishedAt(
+    value: String,
+    now: Long,
+): Long? {
+    val normalized =
+        value
+            .replace(Regex("""\b(\d{1,2})(st|nd|rd|th)\b""", RegexOption.IGNORE_CASE), "$1")
+            .replace(Regex("""^\s*[A-Za-z]+,\s+"""), "")
+            .trim()
+    if (normalized.isBlank()) return null
+
+    parseEpochMillis(normalized)?.let { return it }
+    parseRelativeTime(normalized, now)?.let { return it }
+    parseInstantMillis(normalized)?.let { return it }
+    parseLocalDateTimeMillis(normalized)?.let { return it }
+    parseLocalDateMillis(normalized)?.let { return it }
+    return parseEmbeddedDateMillis(normalized, now)
+}
+
+private fun parseEpochMillis(value: String): Long? {
+    val numeric = Regex("""^\d{10,13}$""").find(value)?.value ?: return null
+    val raw = numeric.toLongOrNull() ?: return null
+    return if (numeric.length <= 10) raw * 1000L else raw
+}
+
+private fun parseRelativeTime(
+    value: String,
+    now: Long,
+): Long? {
+    val match =
+        Regex("""(?i)\b(an?|one|\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago\b""")
+            .find(value)
+            ?: return null
+    val amount =
+        when (val raw = match.groupValues[1].lowercase()) {
+            "a", "an", "one" -> 1L
+            else -> raw.toLongOrNull() ?: return null
+        }
+    val unit = match.groupValues[2].lowercase()
+    val millis =
+        when (unit) {
+            "second" -> amount * 1000L
+            "minute" -> amount * 60L * 1000L
+            "hour" -> amount * 60L * 60L * 1000L
+            "day" -> amount * 24L * 60L * 60L * 1000L
+            "week" -> amount * 7L * 24L * 60L * 60L * 1000L
+            "month" -> amount * 30L * 24L * 60L * 60L * 1000L
+            "year" -> amount * 365L * 24L * 60L * 60L * 1000L
+            else -> return null
+        }
+    return now - millis
+}
+
+private fun parseInstantMillis(value: String): Long? {
+    listOf<(String) -> Long?>(
+        { Instant.parse(it).toEpochMilli() },
+        { OffsetDateTime.parse(it).toInstant().toEpochMilli() },
+        { ZonedDateTime.parse(it).toInstant().toEpochMilli() },
+        { ZonedDateTime.parse(it, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() },
+    ).forEach { parser ->
+        try {
+            return parser(value)
+        } catch (_: DateTimeParseException) {
+        }
+    }
+    return null
+}
+
+private fun parseLocalDateTimeMillis(value: String): Long? =
+    localDateTimeFormatters.firstNotNullOfOrNull { formatter ->
+        try {
+            LocalDateTime
+                .parse(value, formatter)
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        } catch (_: DateTimeParseException) {
+            null
+        }
+    }
+
+private fun parseLocalDateMillis(value: String): Long? =
+    localDateFormatters.firstNotNullOfOrNull { formatter ->
+        try {
+            LocalDate
+                .parse(value, formatter)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        } catch (_: DateTimeParseException) {
+            null
+        }
+    }
+
+private fun parseEmbeddedDateMillis(
+    value: String,
+    now: Long,
+): Long? {
+    val patterns =
+        listOf(
+            Regex(
+                """(?i)\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b""",
+            ),
+            Regex(
+                """(?i)\b\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b""",
+            ),
+        )
+    return patterns.firstNotNullOfOrNull { pattern ->
+        pattern
+            .find(value)
+            ?.value
+            ?.takeIf { it != value }
+            ?.let { parseChapterPublishedAt(it, now) }
+    }
+}
+
+private val localDateTimeFormatters =
+    listOf(
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "MMM d, yyyy h:mm a",
+        "MMMM d, yyyy h:mm a",
+        "MMM d yyyy h:mm a",
+        "MMMM d yyyy h:mm a",
+    ).map(::sourceDateFormatter)
+
+private val localDateFormatters =
+    listOf(
+        "yyyy-MM-dd",
+        "MMM d, yyyy",
+        "MMMM d, yyyy",
+        "MMM d yyyy",
+        "MMMM d yyyy",
+        "d MMM yyyy",
+        "d MMMM yyyy",
+    ).map(::sourceDateFormatter)
+
+private fun sourceDateFormatter(pattern: String): DateTimeFormatter =
+    DateTimeFormatterBuilder()
+        .parseCaseInsensitive()
+        .appendPattern(pattern)
+        .toFormatter(Locale.US)
 
 fun sanitizeTitle(value: String): String {
     if (value.isBlank()) return "Untitled"

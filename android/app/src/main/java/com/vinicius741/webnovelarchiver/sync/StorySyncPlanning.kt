@@ -3,7 +3,9 @@ package com.vinicius741.webnovelarchiver.sync
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.PublicationStatusPlanning
 import com.vinicius741.webnovelarchiver.source.SourceProvider
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.size
@@ -41,10 +43,21 @@ object StorySyncPlanning {
                 val found = existingById[stable]
                 if (found != null) {
                     remaining.remove(stable)
-                    found.copy(id = stable, title = sanitizeTitle(info.title), url = info.url)
+                    found.copy(
+                        id = stable,
+                        title = sanitizeTitle(info.title),
+                        url = info.url,
+                        publishedAt = info.publishedAt ?: found.publishedAt,
+                    )
                 } else {
                     newIds.add(stable)
-                    Chapter(id = stable, title = sanitizeTitle(info.title), url = info.url, downloaded = false)
+                    Chapter(
+                        id = stable,
+                        title = sanitizeTitle(info.title),
+                        url = info.url,
+                        downloaded = false,
+                        publishedAt = info.publishedAt,
+                    )
                 }
             }
 
@@ -102,12 +115,27 @@ object StorySyncPlanning {
                     existingCursor += 1
                 }
                 existingByStable[stable]?.let { found ->
-                    coveredChapters.add(found.copy(id = stable, title = sanitizeTitle(info.title), url = info.url))
+                    coveredChapters.add(
+                        found.copy(
+                            id = stable,
+                            title = sanitizeTitle(info.title),
+                            url = info.url,
+                            publishedAt = info.publishedAt ?: found.publishedAt,
+                        ),
+                    )
                 }
                 existingCursor = matchedExistingIndex + 1
             } else {
                 newIds.add(stable)
-                coveredChapters.add(Chapter(id = stable, title = sanitizeTitle(info.title), url = info.url, downloaded = false))
+                coveredChapters.add(
+                    Chapter(
+                        id = stable,
+                        title = sanitizeTitle(info.title),
+                        url = info.url,
+                        downloaded = false,
+                        publishedAt = info.publishedAt,
+                    ),
+                )
             }
         }
         while (existingCursor <= lastCoveredExistingIndex) {
@@ -173,4 +201,29 @@ object StorySyncPlanning {
         val hasEpub = existing.epubPath != null || !existing.epubPaths.isNullOrEmpty()
         return hasEpub && existing.chapters.size != nextChapterCount
     }
+
+    fun latestPublishedAt(chapters: List<ChapterInfo>): Long? = chapters.mapNotNull { it.publishedAt }.maxOrNull()
+
+    fun publicationStatusAfterSync(
+        sourceStatus: PublicationStatus,
+        latestChapterPublishedAt: Long?,
+        syncedAt: Long,
+    ): PublicationStatus = PublicationStatusPlanning.afterSync(sourceStatus, latestChapterPublishedAt, syncedAt)
+
+    /**
+     * Resolves the source-declared status when the current sync's metadata is silent (`unknown`).
+     * Falls back to the previously stored status, but only if it is one a source can actually
+     * declare (`ongoing`/`completed`). A stored `hiatus` may have been derived by the age heuristic
+     * in [publicationStatusAfterSync] rather than declared by the source, so carrying it forward
+     * here would make hiatus permanent even after the story resumes posting.
+     */
+    fun sourceDeclaredStatus(
+        metadataStatus: PublicationStatus,
+        previousStatus: PublicationStatus?,
+    ): PublicationStatus =
+        metadataStatus.takeUnless { it == PublicationStatus.unknown }
+            ?: previousStatus?.takeIf {
+                it == PublicationStatus.ongoing || it == PublicationStatus.completed
+            }
+            ?: PublicationStatus.unknown
 }

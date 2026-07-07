@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
+import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.RoyalRoadProvider
@@ -263,6 +264,40 @@ class StorySyncPlanningTest {
         assertTrue(StorySyncPlanning.shouldMarkEpubStale(existing, nextChapterCount = 5))
         assertFalse(StorySyncPlanning.shouldMarkEpubStale(existing, nextChapterCount = 4))
         assertFalse(StorySyncPlanning.shouldMarkEpubStale(storyWithChapters(4), nextChapterCount = 5))
+    }
+
+    @Test
+    fun sourceDeclaredStatusDoesNotCarryForwardAgeDerivedHiatus() {
+        // A previously stored `hiatus` may have been produced by the age heuristic rather than
+        // declared by the source, so it must not be carried forward when the source stays silent.
+        assertEquals(
+            PublicationStatus.unknown,
+            StorySyncPlanning.sourceDeclaredStatus(PublicationStatus.unknown, PublicationStatus.hiatus),
+        )
+    }
+
+    @Test
+    fun sourceDeclaredStatusCarriesForwardOngoingAndCompletedWhenSourceIsSilent() {
+        assertEquals(
+            PublicationStatus.ongoing,
+            StorySyncPlanning.sourceDeclaredStatus(PublicationStatus.unknown, PublicationStatus.ongoing),
+        )
+        assertEquals(
+            PublicationStatus.completed,
+            StorySyncPlanning.sourceDeclaredStatus(PublicationStatus.unknown, PublicationStatus.completed),
+        )
+    }
+
+    @Test
+    fun sourceDeclaredStatusPrefersFreshMetadataOverStoredStatus() {
+        assertEquals(
+            PublicationStatus.ongoing,
+            StorySyncPlanning.sourceDeclaredStatus(PublicationStatus.ongoing, PublicationStatus.completed),
+        )
+        assertEquals(
+            PublicationStatus.unknown,
+            StorySyncPlanning.sourceDeclaredStatus(PublicationStatus.unknown, null),
+        )
     }
 
     private fun storyWithChapters(count: Int): Story =

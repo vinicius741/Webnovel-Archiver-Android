@@ -162,7 +162,7 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
                 },
             )
             val provider = SourceRegistry.getProvider(story.sourceUrl)
-            val publicationStatusBadge = publicationStatusBadge(story.publicationStatus)
+            val publicationStatusBadge = publicationStatusBadge(story)
             if (provider != null || publicationStatusBadge != null) {
                 addView(
                     LinearLayout(app).apply {

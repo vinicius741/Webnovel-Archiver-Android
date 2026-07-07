@@ -90,7 +90,7 @@ object RoyalRoadProvider : SourceProvider {
         return doc.select(".chapter-row").mapNotNull { row ->
             val link = row.selectFirst("a[href*=/fiction/]") ?: return@mapNotNull null
             val href = link.absUrl("href").ifBlank { link.attr("href") }
-            ChapterInfo(getChapterId(href), sanitizeTitle(link.text()), href)
+            ChapterInfo(getChapterId(href), sanitizeTitle(link.text()), href, publishedAt = row.chapterPublishedAt())
         }
     }
 

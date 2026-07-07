@@ -64,6 +64,9 @@ class StorySyncEngine(
                 latestIncoming
             }
         if (incoming.isEmpty()) error("Source returned no chapters")
+        val syncedAt = System.currentTimeMillis()
+        val sourcePublicationStatus =
+            StorySyncPlanning.sourceDeclaredStatus(metadata.publicationStatus, existing?.publicationStatus)
         val patreonUrl = metadata.patreonUrl
         val refreshedPatreonStats =
             if (refreshPatreonStats) {
@@ -117,13 +120,16 @@ class StorySyncEngine(
                 epubConfig = StorySyncPlanning.updateEpubConfigForSync(existing, merge.chapters.size),
                 pendingNewChapterIds = pendingNewChapterIds,
                 tabId = tabId ?: existing?.tabId,
-                lastUpdated = System.currentTimeMillis(),
+                lastUpdated = syncedAt,
+                lastChapterSyncAt = syncedAt,
                 patreonUrl = patreonUrl,
                 patreonStats = refreshedPatreonStats ?: existing?.patreonStats?.takeIf { existing.patreonUrl == patreonUrl },
                 publicationStatus =
-                    metadata.publicationStatus.takeUnless { it == PublicationStatus.unknown }
-                        ?: existing?.publicationStatus
-                        ?: PublicationStatus.unknown,
+                    StorySyncPlanning.publicationStatusAfterSync(
+                        sourcePublicationStatus,
+                        StorySyncPlanning.latestPublishedAt(incoming),
+                        syncedAt,
+                    ),
             )
         storage.addOrUpdateStory(story)
         return story

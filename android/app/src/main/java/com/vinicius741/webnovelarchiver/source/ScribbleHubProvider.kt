@@ -152,7 +152,14 @@ object ScribbleHubProvider : SourceProvider {
         doc.select(".toc_ol li").mapNotNull { li ->
             val link = li.selectFirst("a[href*=/read/][href*=/chapter/]") ?: return@mapNotNull null
             val href = link.absUrl("href").ifBlank { link.attr("href") }
-            ChapterInfo(getChapterId(href), sanitizeTitle(link.text()).ifBlank { "Untitled Chapter" }, href)
+            ChapterInfo(
+                getChapterId(href),
+                sanitizeTitle(link.text()).ifBlank {
+                    "Untitled Chapter"
+                },
+                href,
+                publishedAt = li.chapterPublishedAt(),
+            )
         }
 
     private suspend fun fetchTocPage(
@@ -230,12 +237,24 @@ object ScribbleHubProvider : SourceProvider {
                 .firstNotNullOfOrNull(::publicationStatusFromSourceText)
         if (explicit != null) return explicit
 
-        val rightsSidebarStatus =
-            Regex("""(?i)\bAll\s+Rights\s+Reserved\b\s+(Completed|Complete|Ongoing|Hiatus|Hiatused|Dropped|Cancelled|Canceled)""")
-                .find(doc.body()?.text().orEmpty())
+        val bodyText = doc.body()?.text().orEmpty()
+        val updatedLineStatus =
+            Regex("""(?i)\b(Completed|Complete|Ongoing|Hiatus|Hiatused|Dropped|Cancelled|Canceled)\b\s*[-–—]\s*Updated\b""")
+                .find(bodyText)
                 ?.groupValues
                 ?.getOrNull(1)
-        return publicationStatusFromSourceText(rightsSidebarStatus)
+        val rightsStatusPattern =
+            Regex(
+                """(?i)\bAll\s+Rights\s+Reserved\b[\s;·•|,.-]{0,40}""" +
+                    """(Completed|Complete|Ongoing|Hiatus|Hiatused|Dropped|Cancelled|Canceled)\b""",
+            )
+        val rightsSidebarStatus =
+            rightsStatusPattern
+                .find(bodyText)
+                ?.groupValues
+                ?.getOrNull(1)
+        return publicationStatusFromSourceText(updatedLineStatus)
+            ?: publicationStatusFromSourceText(rightsSidebarStatus)
             ?: PublicationStatus.unknown
     }
 }

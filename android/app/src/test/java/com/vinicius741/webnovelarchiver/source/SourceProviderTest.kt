@@ -4,9 +4,12 @@ import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import java.time.LocalDate
+import java.time.ZoneId
 
 class SourceProviderTest {
     @Test
@@ -25,7 +28,7 @@ class SourceProviderTest {
                   <div class="description"><p>First paragraph.</p><p>Second paragraph.</p></div>
                   <div class="fiction-info"><div class="margin-bottom-10"><span class="label">Original</span><span class="label">COMPLETED</span></div></div>
                   <div class="tags"><a>Fantasy</a><a>Adventure</a></div>
-                  <div class="chapter-row"><a href="/fiction/123/story/chapter/456/one">Chapter One (2 hours ago)</a></div>
+                  <div class="chapter-row"><a href="/fiction/123/story/chapter/456/one">Chapter One (2 hours ago)</a><time datetime="2024-05-12T10:15:30Z"></time></div>
                   <div class="chapter-inner"><p>Body</p><script>bad()</script><div class="portlet">ad</div></div>
                 </body></html>
                 """.trimIndent()
@@ -42,6 +45,7 @@ class SourceProviderTest {
             assertEquals("456", chapters.single().id)
             assertEquals("Chapter One", chapters.single().title)
             assertTrue(chapters.single().url.contains("/chapter/456/"))
+            assertEquals(1_715_508_930_000L, chapters.single().publishedAt)
             assertEquals("<p>Body</p>", content.trim())
         }
 
@@ -93,7 +97,7 @@ class SourceProviderTest {
     }
 
     @Test
-    fun royalRoadMapsNonCompletedLifecycleLabelsToOngoing() {
+    fun royalRoadMapsSourceHiatusLabelToHiatus() {
         val metadata =
             RoyalRoadProvider.parseMetadata(
                 """
@@ -104,7 +108,7 @@ class SourceProviderTest {
                 """.trimIndent(),
             )
 
-        assertEquals(PublicationStatus.ongoing, metadata.publicationStatus)
+        assertEquals(PublicationStatus.hiatus, metadata.publicationStatus)
     }
 
     @Test
@@ -119,7 +123,7 @@ class SourceProviderTest {
                   <div class="wi_fic_desc"><p>SH one.</p><p>SH two.</p></div>
                   <span class="wi_fic_status">Completed</span>
                   <div class="wi_fic_tags"><a>LitRPG</a></div>
-                  <ol class="toc_ol"><li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A</a></li></ol>
+                  <ol class="toc_ol"><li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A</a><span>May 12, 2024</span></li></ol>
                   <div id="chp_raw"><p>Chapter body</p><div class="wi_authornotes">note</div><script>bad()</script></div>
                 </body></html>
                 """.trimIndent()
@@ -134,6 +138,13 @@ class SourceProviderTest {
             assertEquals("https://patreon.com/sh-author/posts", metadata.patreonUrl)
             assertEquals(PublicationStatus.completed, metadata.publicationStatus)
             assertEquals("sh_1000", chapters.single().id)
+            assertEquals(
+                LocalDate.of(2024, 5, 12)
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli(),
+                chapters.single().publishedAt,
+            )
             assertEquals("<p>Chapter body</p>", content.trim())
         }
 
@@ -176,6 +187,50 @@ class SourceProviderTest {
     }
 
     @Test
+    fun scribbleHubMapsUpdatedLifecycleLineAfterContentWarnings() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">Getting Warhammered [40k Fanfic]</h1>
+                  <span class="auth_name_fic">QuietValerie</span>
+                  <section id="reviews">
+                    <p>Status: 41 - Aftershock</p>
+                    <p>Status: c144</p>
+                  </section>
+                  <aside>
+                    <ul>
+                      <li>Content Warning</li>
+                      <li>Gore</li>
+                      <li>Sexual Content</li>
+                      <li>Strong Language</li>
+                      <li>Ongoing - Updated Jun 3, 2026</li>
+                    </ul>
+                  </aside>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals(PublicationStatus.ongoing, metadata.publicationStatus)
+    }
+
+    @Test
+    fun scribbleHubMapsRightsSidebarLifecycleTextWithPunctuation() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">System Lost</h1>
+                  <span class="auth_name_fic">DarkTechnomancer</span>
+                  <div>All Rights Reserved; Completed - Updated Jul 4, 2026</div>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals(PublicationStatus.completed, metadata.publicationStatus)
+    }
+
+    @Test
     fun scribbleHubParsesRatingBlockWhenJsonLdIsMissing() {
         val metadata =
             ScribbleHubProvider.parseMetadata(
@@ -210,6 +265,29 @@ class SourceProviderTest {
         assertEquals("Chapter 5", sanitizeTitle("Chapter 5 - 25 Nov 2025"))
         assertEquals("Untitled", sanitizeTitle("..."))
     }
+
+    @Test
+    fun scribbleHubParsesRelativeChapterDate() =
+        runBlocking {
+            val before = System.currentTimeMillis()
+            val chapters =
+                ScribbleHubProvider.getChapterList(
+                    """
+                    <html><body>
+                      <ol class="toc_ol">
+                        <li><a href="https://www.scribblehub.com/read/99-story/chapter/1000/">Chapter A - 2 days ago</a></li>
+                      </ol>
+                    </body></html>
+                    """.trimIndent(),
+                    "https://www.scribblehub.com/series/99/story/",
+                    NetworkClient(),
+                )
+            val after = System.currentTimeMillis()
+
+            val publishedAt = chapters.single().publishedAt
+            assertNotNull(publishedAt)
+            assertTrue(publishedAt!! in (before - 2L * 24L * 60L * 60L * 1000L)..(after - 2L * 24L * 60L * 60L * 1000L))
+        }
 
     @Test
     fun royalRoadThrowsWhenChapterContentMissing() {

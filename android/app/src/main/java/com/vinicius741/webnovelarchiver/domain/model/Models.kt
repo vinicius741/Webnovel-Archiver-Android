@@ -21,6 +21,8 @@ enum class PublicationStatus {
     unknown,
     ongoing,
     completed,
+    outdated,
+    hiatus,
 }
 
 /**
@@ -63,6 +65,7 @@ data class Chapter(
     var content: String? = null,
     var filePath: String? = null,
     var downloaded: Boolean = false,
+    var publishedAt: Long? = null,
 )
 
 data class EpubConfig(
@@ -105,6 +108,7 @@ data class Story(
     var patreonUrl: String? = null,
     var patreonStats: PatreonStats? = null,
     var publicationStatus: PublicationStatus = PublicationStatus.unknown,
+    var lastChapterSyncAt: Long? = null,
 )
 
 data class PatreonStats(
@@ -231,6 +235,7 @@ data class ChapterInfo(
     val title: String = "",
     val url: String = "",
     val chapterNumber: Int? = null,
+    val publishedAt: Long? = null,
 )
 
 data class EpubResult(
