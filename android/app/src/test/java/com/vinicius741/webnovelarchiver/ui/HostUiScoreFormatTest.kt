@@ -5,19 +5,19 @@ import org.junit.Test
 
 /**
  * Covers [formatScore], which normalizes provider score strings to a single canonical
- * "X.XX / 5" form so Royal Road and Scribble Hub cards/details render identically (QA F1).
+ * two-decimal form ("X.XX") so Royal Road and Scribble Hub cards/details render identically (QA F1).
  */
 class HostUiScoreFormatTest {
     @Test
     fun royalRoadFormatIsPreservedAsCanonical() {
-        // Royal Road already stores "4.84 / 5"; only the precision is re-normalized.
-        assertEquals("4.84 / 5", formatScore("4.84 / 5"))
+        // Royal Road stores "4.84 / 5"; only the leading number is kept and re-normalized.
+        assertEquals("4.84", formatScore("4.84 / 5"))
     }
 
     @Test
-    fun scribbleHubBareDecimalIsZeroPaddedAndAnnotated() {
-        assertEquals("4.80 / 5", formatScore("4.8"))
-        assertEquals("4.90 / 5", formatScore("4.9"))
+    fun scribbleHubBareDecimalIsZeroPadded() {
+        assertEquals("4.80", formatScore("4.8"))
+        assertEquals("4.90", formatScore("4.9"))
     }
 
     @Test
@@ -28,12 +28,12 @@ class HostUiScoreFormatTest {
 
     @Test
     fun roundsHalfUpToTwoDecimals() {
-        assertEquals("4.57 / 5", formatScore("4.565"))
+        assertEquals("4.57", formatScore("4.565"))
     }
 
     @Test
-    fun wholeNumberScoreGetsDecimalAndAnnotation() {
-        assertEquals("4.00 / 5", formatScore("4"))
+    fun wholeNumberScoreGetsDecimal() {
+        assertEquals("4.00", formatScore("4"))
     }
 
     @Test

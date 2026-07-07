@@ -147,11 +147,13 @@ internal fun ScreenHost.styledDialogField(
             }
     }
 
-// Renders a story score in a single canonical form ("X.XX / 5") regardless of which provider
-// produced it. Royal Road already stores "4.84 / 5", while Scribble Hub stores a bare "4.8", so
-// without normalization the two sources display inconsistently on cards and the details header
-// (see QA F1). We pull the leading number out of whatever string the provider saved, reformat it
-// to two decimals on a US locale (so the separator is always "."), and append " / 5".
+// Renders a story score in a single canonical two-decimal form ("X.XX") regardless of which
+// provider produced it. Royal Road already stores "4.84 / 5", while Scribble Hub stores a bare
+// "4.8", so without normalization the two sources display inconsistently on cards and the details
+// header (see QA F1). We pull the leading number out of whatever string the provider saved and
+// reformat it to two decimals on a US locale (so the separator is always "."). The trailing
+// " / 5" is dropped because the score always renders next to a star glyph that already conveys
+// "out of 5", and repeating it on every card/row was visual noise.
 // LibraryQuery.parseScore does the same numeric extraction for sorting, so the canonical value is
 // recoverable from any stored form. Normalize here rather than at the provider layer so already-
 // stored stories pick up the new format without a re-sync.
@@ -163,7 +165,7 @@ internal fun formatScore(score: String): String {
             ?.get(1)
             ?.toDoubleOrNull()
             ?: return score.trim()
-    return String.format(Locale.US, "%.2f / 5", value)
+    return String.format(Locale.US, "%.2f", value)
 }
 
 internal fun ScreenHost.scoreRow(
