@@ -5,6 +5,31 @@ Generated 2026-07-02; refreshed 2026-07-08. Static audit of the native Kotlin ap
 Kotlin tree, unit-test tree, Gradle/tooling configuration, manifest, and existing documentation. It
 did not include runtime profiling or emulator QA.
 
+## Implementation status (2026-07-08)
+
+A first implementation pass addressed the highest-priority reliability recommendations. Each item
+below is marked **[IMPLEMENTED]** with a short note; the rest remain open for a later phase.
+
+- **Rec 1 — [IMPLEMENTED]** `repository.refresh()` now runs after both JSON and full-backup import
+  (`MainActivity`), and the Details/Updates screens seed from `repository.story()`/`repository.queue()`/`repository.library()` cached accessors instead of re-parsing JSON. Full Updates reactivity (Rec 5) and reader off-main-thread (Rec 2) remain open.
+- **Rec 3 + gaps 1, 2 — [IMPLEMENTED]** JSON import (`importBackupUri`) now runs the whole
+  read-merge-write under one `storage` monitor with a pre-import snapshot and rollback; the full-restore swap holds the same monitor so concurrent writers cannot land mid-swap; and the stale `txMutex` comment in `AppStorage` is corrected to describe the real JVM-monitor serialization point.
+- **Gap 10 — [IMPLEMENTED]** `StorySyncEngine.fetchOrSync` now re-reads the on-disk story under the
+  `storage` monitor after its network window and folds concurrent changes (downloads, bookmarks) onto the synced story via the new pure `StorySyncMergePlanning` helper before writing, so a same-story download completing during sync is no longer a lost update.
+- **Rec 7 — [IMPLEMENTED (JVM path)]** A `RegexCircuitBreaker` disables a user cleanup regex after
+  repeated slow/failing applications, wired into both the cached `CleanupEngine` download path and the stateless `TextCleanup.regexRunner` (TTS/reader) path. This is a disable-after-the-fact safety net, not a hard per-call timeout; RE2/J was not adopted (regex-compatibility preserved).
+- **Rec 4 — [IMPLEMENTED]** `DownloadEngine` now threads an in-memory queue snapshot through
+  `buildProgress`/`emitProgress`/`isCancelled` instead of re-parsing `download_queue.json` on every progress emission and cancellation check.
+- **Rec 8 (partial) — [IMPLEMENTED]** `detekt.yml` `maxIssues` lowered from 1000 to the current 53
+  as a ratchet (new findings fail the build); no CI workflow was added. A first-party detekt file-length rule does not exist, so no hard file-size gate was introduced.
+
+**Still open:** Rec 2 (reader/TTS off-main-thread), Rec 5 (Updates RecyclerView rewrite + file
+split), Rec 6 (typed network errors + source policies), the full `MaintenanceState` UI, a CI
+workflow, a hard file-size gate, and all secondary recommendations (storage evolution,
+source-provider tests, EPUB caching, service splits). Gap 10's cross-component story+queue enqueue
+coordination also remains (the sync write itself is now safe).
+
+
 ## Validation pass (2026-07-08)
 
 A fresh pass re-checked every claim below against the current code and added items found during
