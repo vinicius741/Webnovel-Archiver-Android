@@ -15,8 +15,7 @@ import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 object TextCleanup {
     // ── Regex rule management (cleanup UI) → RegexRuleCleanup ──────────────────────────────
 
-    fun sanitizeRegexRules(rules: List<RegexCleanupRule>): MutableList<RegexCleanupRule> =
-        RegexRuleCleanup.sanitizeRegexRules(rules)
+    fun sanitizeRegexRules(rules: List<RegexCleanupRule>): MutableList<RegexCleanupRule> = RegexRuleCleanup.sanitizeRegexRules(rules)
 
     fun hasSimilarRegexRule(
         rules: List<RegexCleanupRule>,
@@ -72,19 +71,36 @@ object TextCleanup {
 
     // ── Shared internal regex helpers (used by the three siblings + CleanupEngine) ─────────
 
+    @Suppress("TooGenericExceptionCaught") // Rec 7: a user regex can throw on a pathological input; we catch broadly to circuit-break the rule instead of aborting TTS/reader preparation.
     internal fun regexRunner(
         rules: List<RegexCleanupRule>,
         target: String,
     ): (String) -> String {
+        // Audit Rec 7: skip circuit-broken rules and time each application so a pathological pattern
+        // is disabled for the session after repeated slow/failing runs. This is the TTS/reader path;
+        // CleanupEngine.applyDownloadWithStats instruments the download path through the same breaker.
         val compiled =
             rules
-                .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == target) }
+                .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == target) && !RegexCircuitBreaker.isDisabled(it) }
                 .mapNotNull { rule ->
                     runCatching {
                         Regex(rule.pattern, regexOptions(rule.flags))
-                    }.getOrNull()
+                    }.getOrNull()?.let { it to rule }
                 }
-        return { input -> compiled.fold(input) { text, regex -> regex.replace(text, "") } }
+        return { input ->
+            compiled.fold(input) { text, (regex, rule) ->
+                val start = System.nanoTime()
+                val result =
+                    try {
+                        regex.replace(text, "")
+                    } catch (_: Throwable) {
+                        RegexCircuitBreaker.report(rule, System.nanoTime() - start, failed = true)
+                        return@fold text
+                    }
+                RegexCircuitBreaker.report(rule, System.nanoTime() - start)
+                result
+            }
+        }
     }
 
     internal fun regexOptions(flags: String): Set<RegexOption> {
