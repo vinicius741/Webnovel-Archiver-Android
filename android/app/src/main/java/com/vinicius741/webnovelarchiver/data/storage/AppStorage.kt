@@ -21,6 +21,24 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
 import java.io.File
+import timber.log.Timber
+
+/**
+ * Captured pre-import state of the library index, story files, and tabs for rolling back a failed
+ * JSON backup import (audit gap 2). Created by [AppStorage.snapshotLibraryAndTabs] and consumed by
+ * [AppStorage.restoreJsonImportSnapshot] / [AppStorage.discardJsonImportSnapshot].
+ */
+internal data class JsonImportSnapshot(
+    val index: File,
+    val tabs: File,
+    val storyDir: File,
+    val hadIndex: Boolean,
+    val hadTabs: Boolean,
+    val preImportStoryIds: List<String>,
+) {
+    /** The temporary directory holding all snapshot files; deleted once the import commits. */
+    val root: File get() = index.parentFile ?: storyDir.parentFile ?: index
+}
 
 /**
  * Low-level file-based persistence. All JSON documents are written through [DurableJson] (AtomicFile
@@ -205,12 +223,104 @@ class AppStorage(
     fun saveQueue(jobs: List<DownloadJob>) = write(queueFile, jobs)
 
     /**
+     * Snapshots the library index, every story file, and the tabs file into [dest], returning a
+     * [JsonImportSnapshot] that [restoreJsonImportSnapshot] can use to roll a failed JSON import
+     * back to its pre-import state. Intended for [BackupRestoreCoordinator.importBackupUri] (audit
+     * gap 2): the JSON import path previously had no rollback, so a malformed or partial merge could
+     * leave the library in a mixed state. The caller wraps read+merge+write in the same `storage`
+     * monitor and only restores on failure.
+     */
+    @Synchronized
+    internal fun snapshotLibraryAndTabs(dest: File): JsonImportSnapshot {
+        dest.deleteRecursively()
+        dest.mkdirs()
+        val indexSnap = File(dest, "library_index.json")
+        val tabsSnap = File(dest, "tabs.json")
+        val storySnapDir = File(dest, "stories").apply { mkdirs() }
+        var hadIndex = false
+        if (libraryIndex.exists()) {
+            libraryIndex.copyTo(indexSnap, overwrite = true)
+            hadIndex = true
+        }
+        var hadTabs = false
+        if (tabsFile.exists()) {
+            tabsFile.copyTo(tabsSnap, overwrite = true)
+            hadTabs = true
+        }
+        val storyIds: List<String> = read(libraryIndex) ?: emptyList()
+        storyIds.forEach { id ->
+            val file = storyFile(id)
+            if (file.exists()) file.copyTo(File(storySnapDir, file.name), overwrite = true)
+        }
+        return JsonImportSnapshot(indexSnap, tabsSnap, storySnapDir, hadIndex, hadTabs, storyIds)
+    }
+
+    /**
+     * Restores the library index, story files, and tabs captured by [snapshotLibraryAndTabs] back
+     * to their pre-import state. Only files that existed at snapshot time are restored; story files
+     * created by the failed import are removed so the library does not retain orphaned entries.
+     */
+    @Synchronized
+    internal fun restoreJsonImportSnapshot(snapshot: JsonImportSnapshot) {
+        val currentIds: List<String> = read(libraryIndex) ?: emptyList()
+        // Copy each snapshot file to a sibling temp then rename onto the live path, so a failure
+        // mid-copy (e.g. disk full) never destroys the live file the way delete-then-copy would.
+        // Any restore error is logged rather than swallowed so a failed rollback is observable;
+        // the caller still reports the import failure to the user.
+        runCatching {
+            if (snapshot.hadIndex) {
+                replaceAtomically(snapshot.index, libraryIndex)
+            } else {
+                libraryIndex.delete()
+            }
+            if (snapshot.hadTabs) {
+                replaceAtomically(snapshot.tabs, tabsFile)
+            } else {
+                tabsFile.delete()
+            }
+            // Remove stories created by the failed import, then restore pre-import story files.
+            currentIds.filterNot { it in snapshot.preImportStoryIds }.forEach { id ->
+                storyFile(id).delete()
+            }
+            snapshot.preImportStoryIds.forEach { id ->
+                val snap = File(snapshot.storyDir, storyFile(id).name)
+                if (snap.exists()) replaceAtomically(snap, storyFile(id))
+            }
+        }.onFailure { Timber.e(it, "JSON import rollback failed; library may be in a mixed state") }
+    }
+
+    /**
+     * Copies [source] onto [target] without first deleting [target]: writes to a sibling temp file,
+     * then renames it over [target] (a near-atomic replace on the same filesystem). The live [target]
+     * is only clobbered once the new bytes are fully on disk, so a mid-copy failure preserves it.
+     */
+    private fun replaceAtomically(source: File, target: File) {
+        val tmp = File(target.parentFile, "${target.name}.restoring")
+        try {
+            source.copyTo(tmp, overwrite = true)
+            if (!tmp.renameTo(target)) {
+                // renameTo can fail across filesystems; fall back to a plain overwrite copy.
+                tmp.copyTo(target, overwrite = true)
+            }
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /** Removes a temporary import snapshot directory once the import has committed successfully. */
+    internal fun discardJsonImportSnapshot(snapshot: JsonImportSnapshot) {
+        snapshot.root.deleteRecursively()
+    }
+
+    /**
      * Atomic read-modify-write of the queue: [transform] runs under the storage monitor so the read
      * and the write cannot be interleaved by another queue writer (e.g. the download process loop).
      * Non-suspending and fast (one small JSON file), so callers on the main thread don't block on a
-     * coroutine mutex the way the repository's [txMutex] path would. The repository's transactional
-     * [txMutex] is still the owner for *multi-document* RMW (story + queue together); for the
-     * single-document queue transforms the download engine needs, this monitor-atomic path is enough.
+     * coroutine mutex. [AppRepository] uses this same `storage` monitor for its multi-document RMW
+     * (story + queue together) via `synchronized(storage)`, so this method, the repository, and the
+     * download engine all share one serialization point — there is no separate transaction mutex.
+     * (Audit gap 1: a previous version of this comment referenced a `txMutex` field that did not
+     * exist; the JVM monitor on this [AppStorage] instance is the real lock.)
      */
     @Synchronized
     fun mutateQueueInPlace(transform: (MutableList<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> {

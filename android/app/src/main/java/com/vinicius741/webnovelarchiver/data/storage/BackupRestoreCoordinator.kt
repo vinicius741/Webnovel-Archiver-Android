@@ -174,6 +174,7 @@ class BackupRestoreCoordinator(
         return file
     }
 
+    @Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException") // E3: rollback dispatches by exception type; CancellationException + VM Errors re-throw after rollback.
     fun importBackupUri(uri: Uri): String {
         val text =
             context.contentResolver
@@ -191,35 +192,63 @@ class BackupRestoreCoordinator(
             runCatching {
                 gson.fromJson<MutableList<Story>>(storiesJson, object : TypeToken<MutableList<Story>>() {}.type)
             }.getOrNull() ?: return "Invalid backup file: malformed story data"
-        val existing = storage.getLibrary()
-        var added = 0
-        var updated = 0
-        stories.forEach { incoming ->
-            val index = existing.indexOfFirst { it.id == incoming.id }
-            if (index >= 0) {
-                existing[index] = BackupMergePlanning.mergeJsonBackupStory(incoming, existing[index])
-                updated++
-            } else {
-                existing.add(BackupMergePlanning.mergeJsonBackupStory(incoming, null))
-                added++
-            }
-        }
-        storage.saveLibrary(existing)
-        var importedTabs = 0
-        (payload["tabs"] as? List<*>)?.let {
-            val incomingTabs: MutableList<Tab> = gson.fromJson(gson.toJson(it), object : TypeToken<MutableList<Tab>>() {}.type)
-            val currentTabs = storage.getTabs()
-            val existingIds = currentTabs.map { tab -> tab.id }.toMutableSet()
-            incomingTabs.forEach { tab ->
-                if (existingIds.add(tab.id)) {
-                    currentTabs.add(tab)
-                    importedTabs += 1
+
+        // Audit gap 2 / Rec 3: the JSON import previously ran getLibrary → merge → saveLibrary →
+        // getTabs → saveTabs with each @Synchronized call serializing independently, so a concurrent
+        // writer (download engine, sync, repository) could interleave between the read and the write
+        // and its changes would be lost — and a failure mid-save could leave a half-written library.
+        // The whole snapshot + read-merge-write + rollback/commit cleanup now runs under one
+        // `storage` monitor acquisition (the same lock AppRepository/DownloadEngine use), so no
+        // concurrent writer can land between the snapshot and import or between a failure and rollback.
+        return synchronized(storage) {
+            val snapshotDir = File(storage.restoreRoot, "json_import_${System.currentTimeMillis()}")
+            val snapshot = storage.snapshotLibraryAndTabs(snapshotDir)
+            try {
+                val existing = storage.getLibrary()
+                var added = 0
+                var updated = 0
+                stories.forEach { incoming ->
+                    val index = existing.indexOfFirst { it.id == incoming.id }
+                    if (index >= 0) {
+                        existing[index] = BackupMergePlanning.mergeJsonBackupStory(incoming, existing[index])
+                        updated++
+                    } else {
+                        existing.add(BackupMergePlanning.mergeJsonBackupStory(incoming, null))
+                        added++
+                    }
                 }
+                storage.saveLibrary(existing)
+                var importedTabs = 0
+                (payload["tabs"] as? List<*>)?.let {
+                    val incomingTabs: MutableList<Tab> = gson.fromJson(gson.toJson(it), object : TypeToken<MutableList<Tab>>() {}.type)
+                    val currentTabs = storage.getTabs()
+                    val existingIds = currentTabs.map { tab -> tab.id }.toMutableSet()
+                    incomingTabs.forEach { tab ->
+                        if (existingIds.add(tab.id)) {
+                            currentTabs.add(tab)
+                            importedTabs += 1
+                        }
+                    }
+                    currentTabs.forEachIndexed { index, tab -> currentTabs[index] = tab.copy(order = index) }
+                    storage.saveTabs(currentTabs)
+                }
+                // Commit: the import succeeded, so the pre-import snapshot is no longer needed.
+                storage.discardJsonImportSnapshot(snapshot)
+                "Imported ${added + updated} novels ($added new, $updated updated) and $importedTabs tabs"
+            } catch (error: Throwable) {
+                // Roll back to the pre-import library so a malformed/partial merge never leaves a mixed
+                // state, then discard the snapshot dir on every path (otherwise each failed import leaks
+                // a full library copy under restoreRoot — there is no startup reaper for json_import_*).
+                // CancellationException/VM errors propagate after rollback (see restoreFromZip).
+                runCatching { storage.restoreJsonImportSnapshot(snapshot) }
+                runCatching { storage.discardJsonImportSnapshot(snapshot) }
+                if (error is InterruptedException || error is kotlinx.coroutines.CancellationException || error is VirtualMachineError) {
+                    throw error
+                }
+                Timber.e(error, "JSON backup import failed; library rolled back to pre-import state")
+                "Import failed: ${error.message ?: "invalid backup"}. Your library was not changed."
             }
-            currentTabs.forEachIndexed { index, tab -> currentTabs[index] = tab.copy(order = index) }
-            storage.saveTabs(currentTabs)
         }
-        return "Imported ${added + updated} novels ($added new, $updated updated) and $importedTabs tabs"
     }
 
     /**
@@ -292,8 +321,17 @@ class BackupRestoreCoordinator(
             if (verifyError != null) return verifyError
 
             // 4. Atomic swap: snapshot current root, replace with staged, keep snapshot until success.
+            // Rec 3 / audit gap: hold the shared `storage` monitor across the *rename* so a concurrent
+            // writer (download engine, sync, repository transaction) cannot land a JSON write against
+            // the old root just as it is being renamed away. The slow cross-filesystem copy (when
+            // staged and root live on different filesystems) runs BEFORE the monitor so it does not
+            // block every @Synchronized storage call (download loop, UI getLibrary/getQueue) for the
+            // whole copy — only the cheap renames are serialized.
             val summary = FullBackupRestorePlanning.restoreSummary(stories)
-            swapRoots(staged)
+            val swapSource = stageForSwap(staged)
+            synchronized(storage) {
+                swapRoots(swapSource)
+            }
             cleanupRestoreArtifacts(restoreDir)
             return summary
         } catch (error: Throwable) {
@@ -404,21 +442,27 @@ class BackupRestoreCoordinator(
     }
 
     /**
-     * Snapshot the current [root] to the cache, then move [staged] into its place (P3 atomicity).
+     * Snapshot the current [root] to the cache, then move [source] into its place (P3 atomicity).
      *
-     * The snapshot is kept until the swap is verified complete and is **only** deleted here on the
-     * success path. On any failure the caller's catch block invokes [rollbackRootFromSnapshot] to
-     * restore the previous data — so a half-completed cross-filesystem copy cannot leave a broken
-     * library behind after what the user was told was a safe restore.
+     * [source] is expected to already sit on the same filesystem as [root] (see [stageForSwap]) so the
+     * replacement is a cheap rename; any slow cross-filesystem copy was done before the monitor was
+     * taken. The snapshot is kept until the swap is verified complete and is **only** deleted here on
+     * the success path. On any failure the caller's catch block invokes [rollbackRootFromSnapshot] to
+     * restore the previous data — so a half-completed copy cannot leave a broken library behind after
+     * what the user was told was a safe restore.
+     *
+     * When [source] is the [stageForSwap] colocated temp it is consumed by the rename; the original
+     * staged dir is cleaned by [cleanupRestoreArtifacts] in the caller.
      */
-    private fun swapRoots(staged: File) {
+    private fun swapRoots(source: File) {
         storage.preRestoreSnapshotDir.deleteRecursively()
         if (storage.root.exists()) storage.root.renameTo(storage.preRestoreSnapshotDir)
-        if (!staged.renameTo(storage.root)) {
-            // Cross-filesystem fallback: copy then delete. If this throws midway, the caller rolls
+        if (!source.renameTo(storage.root)) {
+            // Defensive fallback: source was staged alongside root so this should always be a same-FS
+            // rename, but if it still fails, copy then delete. If this throws midway, the caller rolls
             // root back from preRestoreSnapshotDir; we never get here with the snapshot discarded.
-            staged.copyRecursively(storage.root, overwrite = true)
-            staged.deleteRecursively()
+            source.copyRecursively(storage.root, overwrite = true)
+            source.deleteRecursively()
         }
         storage.root.mkdirs()
         storage.storyDir.mkdirs()
@@ -427,6 +471,41 @@ class BackupRestoreCoordinator(
         storage.backupRoot.mkdirs()
         // Restore succeeded; the snapshot can now be discarded.
         storage.preRestoreSnapshotDir.deleteRecursively()
+    }
+
+    /**
+     * If [staged] is on a different filesystem than [root], copy it to a temp directory alongside
+     * [root] (same filesystem) so [swapRoots] can do a cheap rename under the monitor instead of a
+     * slow cross-filesystem copy. Returns [staged] itself when the two are already co-located (no
+     * copy needed). The caller passes the result to [swapRoots] and lets it clean up the temp.
+     *
+     * Runs OUTSIDE the storage monitor so the heavy copy does not block other storage callers.
+     */
+    private fun stageForSwap(staged: File): File {
+        val root = storage.root
+        if (sameFilesystem(staged, root)) return staged
+        // Co-locate with root so the later rename is same-FS and near-atomic.
+        val colocated = File(root.parentFile, "webnovel_restore_swap_${System.currentTimeMillis()}")
+        var completed = false
+        try {
+            staged.copyRecursively(colocated, overwrite = true)
+            completed = true
+            return colocated
+        } finally {
+            // If the copy threw midway, delete the partial colocated tree so it isn't orphaned; the
+            // exception propagates and the caller rolls back from the pre-restore snapshot.
+            if (!completed) colocated.deleteRecursively()
+        }
+    }
+
+    /** True when [a] and [b] share a parent directory on the same filesystem (rename is then atomic). */
+    private fun sameFilesystem(a: File, b: File): Boolean {
+        // Canonicalize to resolve symlinks (e.g. emulated storage), then compare parent paths. This is
+        // a heuristic: when it wrongly says "same", swapRoots' renameTo-fallback still handles the rare
+        // real cross-FS case. It just decides whether to pre-copy; correctness is not at stake.
+        val ap = runCatching { a.canonicalFile.parentFile?.absolutePath }.getOrNull() ?: return true
+        val bp = runCatching { b.canonicalFile.parentFile?.absolutePath }.getOrNull() ?: return true
+        return ap == bp
     }
 
     /**
@@ -549,7 +628,8 @@ class BackupRestoreCoordinator(
         library.flatMap { story ->
             story.chapters.mapIndexedNotNull { index, chapter ->
                 if (!chapter.downloaded) return@mapIndexedNotNull null
-                val source = storage.resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return@mapIndexedNotNull null
+                val source =
+                    storage.resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return@mapIndexedNotNull null
                 FullBackupChapterFile(
                     storyId = story.id,
                     chapterId = chapter.id,
