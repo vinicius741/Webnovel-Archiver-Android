@@ -37,3 +37,11 @@ Audits and evaluations of the Text-to-Speech subsystem.
 |------|-------------|
 | `tts-audit.html` | Read-only audit of the current TTS implementation against modern Android best practices, with a prioritized recommendation list. |
 | `tts-media3-migration-evaluation.md` | Short evaluation recommending against a Media3 migration in the same change as the audio-focus/robustness fixes. |
+
+### `qa/`
+
+Emulator-based functional QA reports for the native Android app.
+
+| File | Description |
+|------|-------------|
+| `native-app-emulator-qa-2026-07-09.html` | Debug-APK emulator QA covering local library, reader, TTS, settings, EPUB, and empty-state flows; records one P2 reader-settings navigation issue. |

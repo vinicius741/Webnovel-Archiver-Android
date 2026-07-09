@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Native Android emulator QA — 2026-07-09</title>
+  <style>
+    :root { color-scheme: light dark; --ink: #20201d; --paper: #fbfaf7; --line: #d8d3c8; --accent: #8a6612; --pass: #176b43; --issue: #a33922; --muted: #625f59; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #f1eee8; --paper: #171713; --line: #4a4842; --accent: #e4be50; --pass: #7dd4a2; --issue: #ff9b7e; --muted: #c5c0b7; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 28px 72px; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.2rem); }
+    h2 { margin-top: 42px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h3 { margin-bottom: 6px; }
+    p, li { max-width: 78ch; }
+    .lede, .meta { color: var(--muted); }
+    .lede { font-size: 1.16rem; margin-top: 0; }
+    .summary { border-left: 5px solid var(--issue); background: color-mix(in srgb, var(--issue) 8%, transparent); padding: 16px 20px; margin: 24px 0; }
+    .summary strong { color: var(--issue); }
+    code { background: color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 4px; padding: 0.12em 0.32em; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0 28px; }
+    th, td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--line); }
+    th { font-size: .88rem; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+    .pass { color: var(--pass); font-weight: 700; }
+    .issue { color: var(--issue); font-weight: 700; }
+    .not-run { color: var(--muted); font-weight: 700; }
+    .finding { border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+    .finding p { margin: 8px 0; }
+    footer { color: var(--muted); font-size: .92rem; margin-top: 40px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Native Android emulator QA</h1>
+  <p class="lede">Debug build exercised on 9 July 2026. The app is stable across the tested local flows; one reproducible reader-settings navigation defect was found.</p>
+  <p class="meta">Target: <code>com.vinicius741.webnovelarchiver.nativeapp.debug</code> · Device: <code>webnovel_api36</code> (Pixel 8, Android API 36) · Test library: 9 pre-existing novels</p>
+
+  <section class="summary" aria-label="Outcome summary">
+    <strong>Outcome: 1 P2 issue found.</strong> The build, unit tests, all debug launch targets, reading, TTS playback/stop, and EPUB regeneration completed without an app crash. Remote-site operations were intentionally not run because they depend on live third-party services and would change the emulator library.
+  </section>
+
+  <h2>Validation performed</h2>
+  <ul>
+    <li><code>android/gradlew -p android :app:assembleDebug --console=plain</code> — passed.</li>
+    <li><code>android/gradlew -p android :app:testDebugUnitTest --console=plain</code> — passed.</li>
+    <li>Installed the freshly assembled debug APK to the explicitly selected <code>emulator-5554</code> and launched the debug package successfully.</li>
+    <li>Captured UI hierarchy and screenshots for the launch targets; checked application logs for fatal exceptions. The only crash-record entry belonged to the emulator's Bluetooth system package, not this app.</li>
+  </ul>
+
+  <h2>Functional coverage</h2>
+  <table>
+    <thead><tr><th>Area</th><th>What was exercised</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Library</td><td>Populated nine-novel list, custom-tab layout, filters, selection mode and bulk-action surface.</td><td class="pass">Pass</td></tr>
+      <tr><td>Updates</td><td>Updates overview and the “Choose novels” selector (two followed novels selected).</td><td class="pass">Pass</td></tr>
+      <tr><td>Settings</td><td>Main settings page, Download Manager navigation, Download Settings form, and Voice &amp; Speech screen.</td><td class="pass">Pass</td></tr>
+      <tr><td>Downloads</td><td>Empty global queue state and its return navigation.</td><td class="pass">Pass</td></tr>
+      <tr><td>Add Story</td><td>Add-story form and empty-URL validation; the app presented the “Enter a URL” message without leaving the form.</td><td class="pass">Pass</td></tr>
+      <tr><td>Story details</td><td>Details rendering, cover, action menu, chapter sync/EPUB controls, and local EPUB regeneration.</td><td class="pass">Pass — EPUB regenerated; stale-EPUB marker cleared</td></tr>
+      <tr><td>Reader</td><td>Downloaded chapter rendering, bookmark state, chapter navigation controls, reader-settings panel, and TTS transport.</td><td class="issue">One navigation issue below</td></tr>
+      <tr><td>Text-to-speech</td><td>Started Android system TTS, confirmed the visible Previous/Pause/Next/Stop transport and Google TTS synthesis, then stopped playback and confirmed the transport was removed.</td><td class="pass">Pass</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Finding</h2>
+  <article class="finding">
+    <h3><span class="issue">P2</span> — “Voice settings” appears to do nothing from Reader Settings</h3>
+    <p><strong>User impact:</strong> Tapping <em>Voice settings</em> in the reader’s settings panel leaves the panel on screen. The Voice &amp; Speech screen has rendered behind it, but is invisible until the user manually presses <em>Cancel</em>. This looks like a failed tap and makes the destination difficult to discover.</p>
+    <p><strong>Reproduction:</strong> Open a downloaded chapter → overflow → Reader settings → Voice settings. The modal remains. Press Cancel and the Voice &amp; Speech page is then visible.</p>
+    <p><strong>Evidence:</strong> The panel row calls <code>showTtsSettings()</code> but does not dismiss its <code>AlertDialog</code>. The dialog is created and only the Cancel button dismisses it in <code>android/app/src/main/java/com/vinicius741/webnovelarchiver/ui/ReaderPanels.kt</code>.</p>
+    <p><strong>Suggested fix:</strong> Give the panel-row callback a way to dismiss the dialog before changing screens, or make “Voice settings” close the panel explicitly and then invoke <code>showTtsSettings()</code>. Add a UI-level regression test or manual QA case that asserts the destination is immediately visible after the tap.</p>
+  </article>
+
+  <h2>Usability observations</h2>
+  <ul>
+    <li>The library, details, and reader surfaces were visually coherent at the Pixel 8 portrait size: no clipped app-bar content, broken cover rendering, or contrast problem was observed.</li>
+    <li>The reader’s fixed chapter-navigation bar can temporarily cover the lowest visible line of the WebView while reading. The text can be scrolled clear, so this is recorded as a minor polish opportunity rather than a confirmed loss-of-content bug. Consider adding enough bottom document padding to keep the last visible line above the bar.</li>
+    <li>The compact empty states for the download queue and updates page were clear and gave an actionable next step.</li>
+  </ul>
+
+  <h2>Not exercised in this session</h2>
+  <ul>
+    <li>Live Royal Road/Scribble Hub import and sync, including Cloudflare handling: these depend on current third-party behavior and can add or modify stories.</li>
+    <li>Downloading new chapters from a remote source and queue pause/resume/error recovery: the existing queue was empty, and starting downloads would modify the emulator’s library.</li>
+    <li>Opening the generated EPUB in an external reader and backup/restore/file-picker workflows.</li>
+    <li>Landscape, folded/unfolded, accessibility screen-reader, and network-loss scenarios.</li>
+  </ul>
+
+  <h2>Recommended next steps</h2>
+  <ol>
+    <li>Fix the reader-settings modal dismissal before navigation (P2).</li>
+    <li>Run a separate network-enabled regression pass for source import, sync, downloads, and Cloudflare challenge recovery using disposable test stories.</li>
+    <li>Run posture and accessibility checks after the navigation fix, especially for reader controls and long details pages.</li>
+  </ol>
+
+  <footer>Prepared from a clean worktree against the locally assembled debug APK. This report describes the state observed during this emulator session, not the release variant or a physical phone.</footer>
+</main>
+</body>
+</html>
