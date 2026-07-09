@@ -119,6 +119,12 @@ class MainActivity :
             uri ?: return@registerForActivityResult
             scope.launch {
                 toast(withContext(Dispatchers.IO) { storage.importBackupUri(uri) })
+                // Refresh the repository's cached flows before navigating: import writes go straight
+                // to disk, so without this the library/downloadState flows hold the pre-import state
+                // until some other engine happens to publish. (Audit Rec 1.) On Dispatchers.IO because
+                // refresh() re-parses every story JSON via storage.getLibrary(), which must not run on
+                // the main thread (the continuation otherwise resumes on Dispatchers.Main.immediate).
+                withContext(Dispatchers.IO) { repository.refresh() }
                 showSettings()
             }
         }
@@ -128,6 +134,10 @@ class MainActivity :
             uri ?: return@registerForActivityResult
             scope.launch {
                 toast(withContext(Dispatchers.IO) { storage.importFullBackupUri(uri) })
+                // Full restore swaps the entire data root; the cached flows reference the old tree
+                // until refreshed. (Audit Rec 1.) On Dispatchers.IO: refresh() re-parses the whole
+                // library and must not run on the main thread.
+                withContext(Dispatchers.IO) { repository.refresh() }
                 showLibrary()
             }
         }

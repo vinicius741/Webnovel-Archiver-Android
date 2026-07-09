@@ -63,7 +63,10 @@ internal fun ScreenHost.showUpdates() {
     activeStory = null
     rerender = { showUpdates() }
 
-    val stories = storage.getLibrary()
+    // Seed from the repository's cached library rather than re-parsing every story JSON on each
+    // render (Audit Rec 1). The full Updates reactivity refactor is Rec 5 (deferred); this only
+    // swaps the initial seed to the in-memory snapshot.
+    val stories = repository.library()
     val followedIds = UpdateTrackerPlanning.normalizeFollowedIds(stories, storage.getUpdateFollowedStoryIds())
     if (followedIds != storage.getUpdateFollowedStoryIds()) storage.saveUpdateFollowedStoryIds(followedIds)
     val followedStories = UpdateTrackerPlanning.followedStories(stories, followedIds)
@@ -202,7 +205,7 @@ internal fun ScreenHost.showUpdates() {
 internal fun ScreenHost.showUpdateFollowSelection() {
     activeStory = null
     rerender = { showUpdateFollowSelection() }
-    val stories = storage.getLibrary().sortedBy { it.title.lowercase() }
+    val stories = repository.library().sortedBy { it.title.lowercase() }
     val selected = storage.getUpdateFollowedStoryIds().toMutableSet()
     selected.retainAll(stories.map { it.id }.toSet())
     storage.saveUpdateFollowedStoryIds(selected.toList())
@@ -429,7 +432,7 @@ private fun ScreenHost.toggleUpdatedChapterBookmark(
 private fun ScreenHost.syncFollowedUpdates(onProgress: () -> Unit) {
     val state = updateTrackerScreenState
     if (state.syncing) return toast("Sync already running")
-    val stories = storage.getLibrary()
+    val stories = repository.library()
     val toSync = UpdateTrackerPlanning.syncableFollowedStories(stories, storage.getUpdateFollowedStoryIds())
     if (toSync.isEmpty()) return toast("Choose at least one syncable novel")
     state.reset(toSync.size)

@@ -35,7 +35,9 @@ import kotlinx.coroutines.launch
  * live in [DetailsInfoPanel.kt] and [DetailsChapterList.kt].
  */
 internal fun ScreenHost.showDetails(storyId: String) {
-    val story = storage.getStory(storyId) ?: return showLibrary()
+    // Seed from the repository's cached library rather than re-parsing the story JSON on each
+    // render (Audit Rec 1). The downloaded-flow observer below patches this in place afterward.
+    val story = repository.story(storyId) ?: return showLibrary()
     val screenKey = "${story.title}|by ${story.author}"
     val previousListState =
         if (frame.tag == screenKey) {
@@ -49,9 +51,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
     val layout = currentScreenLayout()
     val operation = storyOperation?.takeIf { it.storyId == story.id }
     val isBusy = operation != null
-    // Live download feedback: reduce this story's queue jobs once for the initial render. Later
-    // repository events patch the banner and chapter rows in place below.
-    val jobsForStory = storage.getQueue().filter { it.storyId == story.id }
+    // Live download feedback: reduce this story's queue jobs once for the initial render from the
+    // cached queue. Later repository events patch the banner and chapter rows in place below.
+    val jobsForStory = repository.queue().filter { it.storyId == story.id }
     val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
     // Stable references captured into the refresh closure below so the loop patches the banner
