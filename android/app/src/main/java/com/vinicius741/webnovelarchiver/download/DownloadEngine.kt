@@ -246,7 +246,7 @@ class DownloadEngine(
             if (pending.isNotEmpty()) {
                 repository.publishDownloadState(libraryChanged = false, queueChanged = true)
             }
-            emitProgress(null)
+            emitProgress(null, queue)
             if (pending.isEmpty()) {
                 val sleepUntil =
                     DownloadScheduler.nextWakeUpAt(
@@ -312,8 +312,11 @@ class DownloadEngine(
 
     @Suppress("TooGenericExceptionCaught") // E2: DownloadErrorClassifier.classify needs a broad input; CancellationException is caught+rethrown first.
     private suspend fun processJob(job: DownloadJob) {
+        // Audit Rec 4: snapshot the queue once for the job-start progress emission instead of letting
+        // buildProgress re-parse download_queue.json. The cancellation check below re-reads after
+        // network I/O (a user can cancel during the fetch), but only once rather than twice.
+        emitProgress(job, storage.getQueue())
         try {
-            emitProgress(job)
             storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
             val html = network.fetch(job.chapter.url)
@@ -343,7 +346,9 @@ class DownloadEngine(
                 story.lastUpdated = System.currentTimeMillis()
                 storage.addOrUpdateStory(story)
             }
-            if (!isCancelled(job.id)) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
+            // Re-read the queue once after network I/O so a user cancellation issued during the fetch
+            // is observed (gap 4: this previously triggered two fresh getQueue() parses).
+            if (!isCancelled(job.id, storage.getQueue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: CancellationException) {
             // E2: a genuine scope/job cancellation must always propagate. A *user* pause does not
             // cancel this coroutine (pauseJob/pauseAll only flip queue status), so any
@@ -352,7 +357,7 @@ class DownloadEngine(
             throw error
         } catch (error: Exception) {
             // E2: catch Exception (not Throwable) so OutOfMemoryError/StackOverflowError propagate.
-            if (!isCancelled(job.id)) handleJobError(job, error)
+            if (!isCancelled(job.id, storage.getQueue())) handleJobError(job, error)
         }
     }
 
@@ -375,7 +380,7 @@ class DownloadEngine(
             queue = current
             current
         }
-        emitProgress(queue.find { it.id == id })
+        emitProgress(queue.find { it.id == id }, queue)
         repository.publishDownloadState(libraryChanged = true, queueChanged = true)
         onChanged?.invoke()
     }
@@ -413,21 +418,30 @@ class DownloadEngine(
             queue = current
             current
         }
-        emitProgress(queue.find { it.id == job.id })
+        emitProgress(queue.find { it.id == job.id }, queue)
         repository.publishDownloadState(libraryChanged = false, queueChanged = true)
         onChanged?.invoke()
     }
 
-    private fun isCancelled(id: String): Boolean = storage.getQueue().any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
+    private fun isCancelled(
+        id: String,
+        queue: List<DownloadJob>,
+    ): Boolean = queue.any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
 
-    fun currentProgress(): DownloadProgress = buildProgress(null)
+    fun currentProgress(): DownloadProgress = buildProgress(null, storage.getQueue())
 
-    private fun emitProgress(activeJob: DownloadJob?) {
-        onProgress?.invoke(buildProgress(activeJob))
+    private fun emitProgress(
+        activeJob: DownloadJob?,
+        queue: List<DownloadJob>,
+    ) {
+        onProgress?.invoke(buildProgress(activeJob, queue))
     }
 
-    private fun buildProgress(activeJob: DownloadJob?): DownloadProgress {
-        val jobs = storage.getQueue()
+    private fun buildProgress(
+        activeJob: DownloadJob?,
+        queue: List<DownloadJob>,
+    ): DownloadProgress {
+        val jobs = queue
         return DownloadProgress(
             pending = jobs.count { it.status == DownloadJobStatus.Pending.wire },
             active = jobs.count { it.status == DownloadJobStatus.Downloading.wire },
