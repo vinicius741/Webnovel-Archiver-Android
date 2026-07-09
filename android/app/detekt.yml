@@ -1,8 +1,11 @@
-# Detekt configuration (Tooling recommendations). Starts permissive — reports issues without
-# failing the build — so the existing codebase can adopt the tooling incrementally. Tighten the
-# thresholds over time as the codebase converges on the rules.
+# Detekt configuration (Tooling recommendations).
+#
+# The ceiling below is a ratchet: it sits at the current finding count (53 as of 2026-07-08) so the
+# build fails on any *new* finding without forcing the 53 existing ones to be fixed in one pass.
+# Lower it toward 0 as findings are addressed; never raise it without a deliberate decision. (Audit
+# Rec 8.)
 build:
-  maxIssues: 1000  # permissive during adoption; tighten toward 0 as the codebase converges
+  maxIssues: 53  # ratchet baseline — lower as existing findings are fixed; do not raise
 
 config:
   validation: true
