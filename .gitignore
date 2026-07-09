@@ -30,3 +30,6 @@
 
 # Test coverage
 coverage/
+
+# ZCode session scratch (e.g. plan-sess_*.md); commands/skills under .zcode/ are tracked
+.zcode/plans/
