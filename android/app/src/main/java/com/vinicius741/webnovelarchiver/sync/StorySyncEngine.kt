@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.sync
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
-import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -131,8 +130,21 @@ class StorySyncEngine(
                         syncedAt,
                     ),
             )
-        storage.addOrUpdateStory(story)
-        return story
+        // Audit gap 10 / Rec 3: re-read the on-disk story under the shared storage monitor and fold
+        // any concurrent changes onto the synced story before writing. The network window above can
+        // span seconds; a download that completed for a chapter in that window, or a bookmark the user
+        // set, would otherwise be clobbered by a wholesale addOrUpdateStory. The fold preserves the
+        // synced metadata/chapter list while re-applying per-chapter download state + reading position.
+        // (Same monitor the download engine and repository use, so this write cannot interleave with
+        // DownloadEngine.processJob's own read-modify-write of the same story.)
+        val persisted =
+            synchronized(storage) {
+                val current = storage.getStory(storyId)
+                val merged = StorySyncMergePlanning.foldConcurrentChanges(story, current, provider)
+                storage.addOrUpdateStory(merged)
+                merged
+            }
+        return persisted
     }
 
     private fun createArchive(source: Story) {
