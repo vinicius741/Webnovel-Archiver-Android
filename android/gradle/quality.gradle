@@ -1,0 +1,61 @@
+def kotlinFileSizeBaseline = rootProject.file('config/kotlin-file-size-baseline.txt')
+def newKotlinFileLineLimit = 400
+
+tasks.register('checkKotlinFileSize') {
+    group = 'verification'
+    description = 'Prevents new or existing production Kotlin files from exceeding their line budget.'
+
+    def productionKotlin = fileTree('src/main/java') {
+        include '**/*.kt'
+    }
+    inputs.files(productionKotlin)
+    inputs.file(kotlinFileSizeBaseline)
+
+    doLast {
+        def configuredLimits = [:]
+        kotlinFileSizeBaseline.eachLine('UTF-8') { rawLine ->
+            def line = rawLine.trim()
+            if (!line || line.startsWith('#')) {
+                return
+            }
+
+            def parts = line.split('=', 2)
+            if (parts.length != 2 || !parts[1].trim().isInteger()) {
+                throw new GradleException("Invalid Kotlin file-size baseline entry: '${rawLine}'")
+            }
+
+            def relativePath = parts[0].trim()
+            def limit = parts[1].trim().toInteger()
+            if (!relativePath.startsWith('src/main/java/') || !relativePath.endsWith('.kt') || limit <= 0) {
+                throw new GradleException("Invalid Kotlin file-size baseline entry: '${rawLine}'")
+            }
+            if (configuredLimits.put(relativePath, limit) != null) {
+                throw new GradleException("Duplicate Kotlin file-size baseline entry: '${relativePath}'")
+            }
+        }
+
+        def currentPaths = [] as Set
+        def violations = []
+        productionKotlin.files.sort { left, right -> left.path <=> right.path }.each { sourceFile ->
+            def relativePath = projectDir.toPath().relativize(sourceFile.toPath()).toString().replace(File.separator, '/')
+            currentPaths.add(relativePath)
+            def lineCount = sourceFile.readLines('UTF-8').size()
+            def limit = configuredLimits.getOrDefault(relativePath, newKotlinFileLineLimit)
+            if (lineCount > limit) {
+                violations.add("${relativePath}: ${lineCount} lines (limit ${limit})")
+            }
+        }
+
+        def staleEntries = configuredLimits.keySet().findAll { !currentPaths.contains(it) }.sort()
+        if (!staleEntries.isEmpty()) {
+            logger.warn("Remove stale Kotlin file-size baseline entries:\n  ${staleEntries.join('\n  ')}")
+        }
+
+        if (!violations.isEmpty()) {
+            throw new GradleException(
+                "Kotlin file-size budget exceeded. Split the file or deliberately update " +
+                    "config/kotlin-file-size-baseline.txt:\n  ${violations.join('\n  ')}",
+            )
+        }
+    }
+}
