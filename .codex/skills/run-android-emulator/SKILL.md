@@ -13,7 +13,7 @@ Use this workflow for simulator-based development and QA of the native Kotlin ap
 - System image: `system-images;android-36;google_apis;arm64-v8a`
 - Hardware profile: `pixel_8`
 - Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`
-- Main activity: `com.vinicius741.webnovelarchiver.MainActivity`
+- Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`
 - Emulator tmux session: `webnovel-emulator`
 - Emulator DNS override: `8.8.8.8,1.1.1.1`
 - Expected SDK root on this machine: `/opt/homebrew/share/android-commandlinetools`
@@ -50,22 +50,29 @@ android/gradlew -p android :app:assembleDebug --console=plain
 adb -s "$EMULATOR_SERIAL" install -r -d android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Launch the app:
+Launch the app (prefer debug cold-start tokens from the `dev-launch-screen` skill when targeting a screen):
 
 ```bash
-adb -s "$EMULATOR_SERIAL" shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity
+PKG=com.vinicius741.webnovelarchiver.nativeapp.debug
+ACT=com.vinicius741.webnovelarchiver.app.MainActivity
+adb -s "$EMULATOR_SERIAL" shell am force-stop "$PKG"
+adb -s "$EMULATOR_SERIAL" shell am start -n "$PKG/$ACT"
+# or: am start -n "$PKG/$ACT" --es dev_start_screen reader
 ```
 
 Verify it is foregrounded:
 
 ```bash
 adb -s "$EMULATOR_SERIAL" shell dumpsys window | rg -i 'mCurrentFocus|mFocusedApp|webnovel'
-adb -s "$EMULATOR_SERIAL" exec-out uiautomator dump /dev/tty
+adb -s "$EMULATOR_SERIAL" shell uiautomator dump /sdcard/ui.xml
+adb -s "$EMULATOR_SERIAL" exec-out cat /sdcard/ui.xml
 ```
 
-Capture a screenshot when visual confirmation matters:
+Capture a screenshot when visual confirmation matters — **only after the UI has settled**.
+A fixed short sleep is not enough for the reader (`Preparing chapter…` still shows for several seconds). Prefer dump-based readiness (no `Preparing chapter`, app bar shows `Chapter …`) before `screencap`. For a full multi-screen QA pass, use the `emulator-qa` skill.
 
 ```bash
+# after settle:
 adb -s "$EMULATOR_SERIAL" exec-out screencap -p > /tmp/webnovel-emulator.png
 ```
 
@@ -166,7 +173,7 @@ Reinstall after code changes:
 ```bash
 android/gradlew -p android :app:assembleDebug --console=plain
 adb -s "$EMULATOR_SERIAL" install -r -d android/app/build/outputs/apk/debug/app-debug.apk
-adb -s "$EMULATOR_SERIAL" shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.MainActivity
+adb -s "$EMULATOR_SERIAL" shell am start -n com.vinicius741.webnovelarchiver.nativeapp.debug/com.vinicius741.webnovelarchiver.app.MainActivity
 ```
 
 ## Recovery

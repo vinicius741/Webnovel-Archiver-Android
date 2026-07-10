@@ -68,12 +68,38 @@ You just built/installed the debug APK (`assembleDebug` / `build-and-install-apk
    ACT=com.vinicius741.webnovelarchiver.app.MainActivity
    adb -s "$SERIAL" shell am force-stop "$PKG"
    adb -s "$SERIAL" shell am start -n "$PKG/$ACT" --es dev_start_screen reader
-   sleep 2  # let the screen render before screenshotting
    ```
 
-4. Screenshot / `android_ui_describe` to confirm, then drive further interaction by taps if needed.
+4. **Settle, then screenshot.** Do not capture on a fixed short sleep alone — that is how agents keep screenshotting spinners and filing false bugs.
 
-If you're rebuilding *and* relaunching in one shot, `scripts/redeploy.sh <token>` does build → install → force-stop → `am start --es dev_start_screen <token>` for you. That script fails closed on a physical device, so it's emulator-safe.
+   | Token | Typical settle | Ready signal | Still loading if |
+   |-------|----------------|--------------|------------------|
+   | Most (`library`, `queue`, `settings`, `updates`, `addstory`) | 1.5–2s | Correct app-bar title + primary content | blank / wrong title |
+   | `details` | 2–3s | Story title + cover or action buttons | empty body |
+   | **`reader`** | **4–5s minimum, poll** | App bar `Chapter …` **and** body text / TTS controls | Title is `Reader` + `Preparing chapter…`, spinner only |
+
+   Reader poll (required before any reader screenshot):
+
+   ```bash
+   for i in 1 2 3 4 5 6 7 8; do
+     sleep 1
+     adb -s "$SERIAL" shell uiautomator dump /sdcard/ui.xml >/dev/null
+     adb -s "$SERIAL" exec-out cat /sdcard/ui.xml > /tmp/reader_probe.xml
+     if ! grep -q 'Preparing chapter' /tmp/reader_probe.xml \
+        && grep -qE 'Chapter [0-9]|Read aloud|Next chapter' /tmp/reader_probe.xml; then
+       break
+     fi
+   done
+   adb -s "$SERIAL" exec-out screencap -p > /tmp/reader.png
+   ```
+
+   After every screenshot, **look at the image** (or re-check the dump). If it is still loading, wait and recapture once. Tiny all-black PNGs (~40KB) are almost always a loading frame.
+
+5. Drive further interaction by dump-derived taps only after the settled capture.
+
+If you're rebuilding *and* relaunching in one shot, `scripts/redeploy.sh <token>` does build → install → force-stop → `am start --es dev_start_screen <token>` for you. That script fails closed on a physical device, so it's emulator-safe. You still must **settle** before screenshotting after redeploy.
+
+For a multi-screen product QA pass (not one feature), use the `emulator-qa` skill instead.
 
 ## Launch into a screen (cold start, no rebuild)
 
@@ -88,25 +114,30 @@ ACTIVITY=com.vinicius741.webnovelarchiver.app.MainActivity
 adb -s "$SERIAL" shell am force-stop "$PKG"
 adb -s "$SERIAL" shell am start -n "$PKG/$ACTIVITY" --es dev_start_screen reader
 # other tokens: queue, settings, updates, details, addstory, library
+# then settle (see table above) before screenshot / interaction
 ```
 
-Switch screens instantly by re-running the last two lines with a different token — no rebuild needed.
+Switch screens instantly by re-running the force-stop + start lines with a different token — no rebuild needed. Always force-stop first; a bare `am start` while the app is foreground keeps the old screen and ignores the extra.
 
 ## Reader with a specific story/chapter
 
 By default `reader` opens the first story's first chapter. Override with the story/chapter ids (both must exist in the persisted library, or the app ignores the dev target and falls back to its normal launch flow):
 
 ```bash
+adb -s "$SERIAL" shell am force-stop "$PKG"
 adb -s "$SERIAL" shell am start -n "$PKG/$ACTIVITY" \
   --es dev_start_screen reader \
   --es dev_start_story <storyId> \
   --es dev_start_chapter <chapterId>
+# settle with the reader poll above before screenshotting
 ```
 
-To discover ids, read the library JSON on the emulator:
+To discover ids, list story JSON on the emulator (there is **no** `files/library_index.json`):
 
 ```bash
-adb -s "$SERIAL" shell run-as "$PKG" cat files/library_index.json
+adb -s "$SERIAL" shell run-as "$PKG" ls files/webnovel_archiver/stories/
+# each file is { appVersion, payload, schemaVersion }; ids/titles live under payload
+adb -s "$SERIAL" shell run-as "$PKG" cat files/webnovel_archiver/stories/<id>.json
 ```
 
 ## Rebuild + relaunch straight into a screen

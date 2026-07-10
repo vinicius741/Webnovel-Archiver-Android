@@ -143,4 +143,9 @@ adb -s RQCY8040ZHH install -r app/build/outputs/apk/release/app-release.apk
 adb -s RQCY8040ZHH shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|lastUpdateTime'
 ```
 
-For emulator instead of phone: target serial starts with `emulator-` (resolve from `adb devices -l`), same install commands. No per-message authorization needed for the emulator.
+For emulator instead of phone: target serial starts with `emulator-` (resolve from `adb devices -l`), same install commands. No per-message authorization needed for the emulator. Debug package ID ends in `.debug`; install the **debug** APK for emulator QA.
+
+### After install — verification / QA
+
+- **One feature / one screen:** use the `dev-launch-screen` skill (`am start --es dev_start_screen <token>`). Force-stop first, then **settle** before screenshotting — the reader especially needs a poll until `Preparing chapter…` is gone (do not capture on a fixed 1–2s sleep).
+- **Full walkthrough / product QA:** use the `emulator-qa` skill (build → install → all major screens → interactions → severity report).
