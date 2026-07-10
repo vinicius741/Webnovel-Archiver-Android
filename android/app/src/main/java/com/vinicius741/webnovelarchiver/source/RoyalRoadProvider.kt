@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 
@@ -100,7 +101,7 @@ object RoyalRoadProvider : SourceProvider {
         // chapter body and baked into the EPUB. Throwing routes the failure through DownloadEngine →
         // DownloadErrorClassifier, where it shows up on the download job (retryable parse error) and
         // never pollutes the generated book.
-        val content = doc.selectFirst(".chapter-inner") ?: error("Chapter content not found on page")
+        val content = doc.selectFirst(".chapter-inner") ?: throw NetworkParseException("Chapter content not found on page")
         content.select("div.portlet, script, .bold.uppercase.text-center").remove()
         return content.html()
     }

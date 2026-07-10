@@ -19,24 +19,23 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.story.StoryNormalization
 import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
-import java.io.File
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
+import java.io.File
 
-/**
- * Captured pre-import state of the library index, story files, and tabs for rolling back a failed
- * JSON backup import (audit gap 2). Created by [AppStorage.snapshotLibraryAndTabs] and consumed by
- * [AppStorage.restoreJsonImportSnapshot] / [AppStorage.discardJsonImportSnapshot].
- */
+/** Pre-import library/index snapshot used to roll back a failed JSON backup merge. */
 internal data class JsonImportSnapshot(
     val index: File,
     val tabs: File,
     val storyDir: File,
     val hadIndex: Boolean,
     val hadTabs: Boolean,
-    val preImportStoryIds: List<String>,
+    val preImportStoryFiles: Set<String>,
 ) {
-    /** The temporary directory holding all snapshot files; deleted once the import commits. */
     val root: File get() = index.parentFile ?: storyDir.parentFile ?: index
 }
 
@@ -63,7 +62,14 @@ class AppStorage(
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
     internal val restoreRoot = File(this.context.cacheDir, "webnovel_restore").apply { mkdirs() }
-    internal val preRestoreSnapshotDir = File(this.context.cacheDir, "webnovel_restore_snapshot").apply { mkdirs() }
+
+    internal val preRestoreSnapshotDir = File(this.context.cacheDir, "webnovel_restore_snapshot")
+
+    internal val maintenanceCoordinator = MaintenanceCoordinator()
+    val maintenanceState: StateFlow<MaintenanceState> = maintenanceCoordinator.state
+
+    private val _storageHealth = MutableStateFlow(StorageHealthSnapshot())
+    val storageHealth: StateFlow<StorageHealthSnapshot> = _storageHealth.asStateFlow()
 
     /** Backup/restore engine (Reliability R1.2 + R7). Delegated lazily to avoid constructing it for CRUD-only use. */
     private val backupRestore: BackupRestoreCoordinator by lazy { BackupRestoreCoordinator(this) }
@@ -84,22 +90,27 @@ class AppStorage(
     @Synchronized
     fun getLibrary(): MutableList<Story> {
         migrateLegacyAsyncStorageIfPresent()
-        val ids: List<String> = read(libraryIndex) ?: emptyList()
-        return ids.mapNotNull { id -> read<Story>(storyFile(id))?.let(::migrateChapterPaths) }.toMutableList()
+        val ids = readLibraryIdsWithRecovery()
+        return ids.mapNotNull { id -> readStory(storyFile(id)) }.toMutableList()
     }
 
     @Synchronized
     fun saveLibrary(stories: List<Story>) {
+        readLibraryIdsWithRecovery()
+        ensureHealthyForWrite(libraryIndex)
+        stories.forEach { ensureHealthyForWrite(storyFile(it.id)) }
         stories.forEach { saveStoryOnly(it) }
         write(libraryIndex, stories.map { it.id })
     }
 
     @Synchronized
-    fun getStory(id: String): Story? = read<Story>(storyFile(id))?.let(::migrateChapterPaths)
+    fun getStory(id: String): Story? = readStory(storyFile(id))
 
     @Synchronized
     fun addOrUpdateStory(story: Story) {
-        val ids = (read<List<String>>(libraryIndex) ?: emptyList()).toMutableList()
+        val ids = readLibraryIdsWithRecovery().toMutableList()
+        ensureHealthyForWrite(libraryIndex)
+        ensureHealthyForWrite(storyFile(story.id))
         if (!ids.contains(story.id)) {
             ids.add(story.id)
             story.dateAdded = story.dateAdded ?: System.currentTimeMillis()
@@ -113,7 +124,9 @@ class AppStorage(
 
     @Synchronized
     fun deleteStory(id: String) {
-        val ids = (read<List<String>>(libraryIndex) ?: emptyList()).filterNot { it == id }
+        val ids = readLibraryIdsWithRecovery().filterNot { it == id }
+        ensureHealthyForWrite(libraryIndex)
+        ensureHealthyForWrite(storyFile(id))
         write(libraryIndex, ids)
         storyFile(id).delete()
         File(chapterRoot, safeName(id)).deleteRecursively()
@@ -129,6 +142,8 @@ class AppStorage(
         chapterRoot.mkdirs()
         epubRoot.mkdirs()
         backupRoot.mkdirs()
+        // Health fences are process-local; wipe them so recreated same-named documents can write again.
+        _storageHealth.value = StorageHealthSnapshot()
     }
 
     fun getSettings(): AppSettings = PreferenceNormalization.appSettings(read(settingsFile) ?: AppSettings())
@@ -177,7 +192,7 @@ class AppStorage(
 
     fun saveTtsSession(session: TtsSession) = write(sessionFile, session)
 
-    fun clearTtsSession() = sessionFile.delete()
+    fun clearTtsSession() = maintenanceCoordinator.withStorageAccess(this) { sessionFile.delete() }
 
     @Synchronized
     fun getQueue(): MutableList<DownloadJob> = read(queueFile) ?: mutableListOf()
@@ -211,11 +226,14 @@ class AppStorage(
      */
     @Synchronized
     fun migrateChapterPathsToRelative() {
-        val ids: List<String> = read(libraryIndex) ?: return
+        val ids = readLibraryIdsWithRecovery()
         ids.forEach { id ->
+            // Coerce Gson nulls + migrate paths; re-save when either changed so legacy documents
+            // pick up new fields (e.g. publicationStatus) on disk once.
             val raw = read<Story>(storyFile(id)) ?: return@forEach
-            val migrated = migrateChapterPaths(raw)
-            if (migrated !== raw) saveStoryOnly(migrated)
+            val coerced = StoryNormalization.coerceDefaults(raw)
+            val migrated = migrateChapterPaths(coerced.story)
+            if (coerced.changed || migrated !== coerced.story) saveStoryOnly(migrated)
         }
     }
 
@@ -232,8 +250,8 @@ class AppStorage(
      */
     @Synchronized
     internal fun snapshotLibraryAndTabs(dest: File): JsonImportSnapshot {
-        dest.deleteRecursively()
-        dest.mkdirs()
+        check(!dest.exists() || dest.deleteRecursively()) { "Could not clear stale JSON import snapshot" }
+        check(dest.mkdirs() || dest.isDirectory) { "Could not create JSON import snapshot" }
         val indexSnap = File(dest, "library_index.json")
         val tabsSnap = File(dest, "tabs.json")
         val storySnapDir = File(dest, "stories").apply { mkdirs() }
@@ -247,12 +265,18 @@ class AppStorage(
             tabsFile.copyTo(tabsSnap, overwrite = true)
             hadTabs = true
         }
-        val storyIds: List<String> = read(libraryIndex) ?: emptyList()
-        storyIds.forEach { id ->
-            val file = storyFile(id)
-            if (file.exists()) file.copyTo(File(storySnapDir, file.name), overwrite = true)
+        val storyFiles = storyDir.listFiles().orEmpty().filter(File::isFile)
+        storyFiles.forEach { file ->
+            file.copyTo(File(storySnapDir, file.name), overwrite = true)
         }
-        return JsonImportSnapshot(indexSnap, tabsSnap, storySnapDir, hadIndex, hadTabs, storyIds)
+        return JsonImportSnapshot(
+            index = indexSnap,
+            tabs = tabsSnap,
+            storyDir = storySnapDir,
+            hadIndex = hadIndex,
+            hadTabs = hadTabs,
+            preImportStoryFiles = storyFiles.mapTo(linkedSetOf(), File::getName),
+        )
     }
 
     /**
@@ -261,32 +285,31 @@ class AppStorage(
      * created by the failed import are removed so the library does not retain orphaned entries.
      */
     @Synchronized
-    internal fun restoreJsonImportSnapshot(snapshot: JsonImportSnapshot) {
-        val currentIds: List<String> = read(libraryIndex) ?: emptyList()
-        // Copy each snapshot file to a sibling temp then rename onto the live path, so a failure
-        // mid-copy (e.g. disk full) never destroys the live file the way delete-then-copy would.
-        // Any restore error is logged rather than swallowed so a failed rollback is observable;
-        // the caller still reports the import failure to the user.
-        runCatching {
+    internal fun restoreJsonImportSnapshot(snapshot: JsonImportSnapshot): Boolean {
+        // Atomic replacement keeps the current live document intact if rollback copying fails.
+        return runCatching {
             if (snapshot.hadIndex) {
                 replaceAtomically(snapshot.index, libraryIndex)
             } else {
-                libraryIndex.delete()
+                check(!libraryIndex.exists() || libraryIndex.delete()) { "Could not remove imported library index" }
             }
             if (snapshot.hadTabs) {
                 replaceAtomically(snapshot.tabs, tabsFile)
             } else {
-                tabsFile.delete()
+                check(!tabsFile.exists() || tabsFile.delete()) { "Could not remove imported tabs" }
             }
-            // Remove stories created by the failed import, then restore pre-import story files.
-            currentIds.filterNot { it in snapshot.preImportStoryIds }.forEach { id ->
-                storyFile(id).delete()
+            // Restore old artifacts before removing import-created files.
+            snapshot.storyDir.listFiles().orEmpty().filter(File::isFile).forEach { snap ->
+                replaceAtomically(snap, File(storyDir, snap.name))
             }
-            snapshot.preImportStoryIds.forEach { id ->
-                val snap = File(snapshot.storyDir, storyFile(id).name)
-                if (snap.exists()) replaceAtomically(snap, storyFile(id))
+            storyDir.listFiles().orEmpty().filter(File::isFile).forEach { current ->
+                if (current.name !in snapshot.preImportStoryFiles) {
+                    check(current.delete()) { "Could not remove imported story file ${current.name}" }
+                }
             }
-        }.onFailure { Timber.e(it, "JSON import rollback failed; library may be in a mixed state") }
+        }.onFailure {
+            Timber.e(it, "JSON import rollback failed; snapshot was preserved for recovery")
+        }.isSuccess
     }
 
     /**
@@ -294,17 +317,14 @@ class AppStorage(
      * then renames it over [target] (a near-atomic replace on the same filesystem). The live [target]
      * is only clobbered once the new bytes are fully on disk, so a mid-copy failure preserves it.
      */
-    private fun replaceAtomically(source: File, target: File) {
-        val tmp = File(target.parentFile, "${target.name}.restoring")
-        try {
-            source.copyTo(tmp, overwrite = true)
-            if (!tmp.renameTo(target)) {
-                // renameTo can fail across filesystems; fall back to a plain overwrite copy.
-                tmp.copyTo(target, overwrite = true)
-            }
-        } finally {
-            tmp.delete()
+    private fun replaceAtomically(
+        source: File,
+        target: File,
+    ) {
+        AtomicFileWrites.stream(target) { output ->
+            source.inputStream().use { input -> input.copyTo(output) }
         }
+        check(target.exists()) { "Could not restore ${target.name}" }
     }
 
     /** Removes a temporary import snapshot directory once the import has committed successfully. */
@@ -346,6 +366,7 @@ class AppStorage(
         write(queueFile, jobs)
     }
 
+    @Synchronized
     fun saveChapter(
         storyId: String,
         index: Int,
@@ -357,6 +378,7 @@ class AppStorage(
         return relativize(file)
     }
 
+    @Synchronized
     fun copyChapterToStory(
         storyId: String,
         index: Int,
@@ -368,12 +390,14 @@ class AppStorage(
         return relativize(destination)
     }
 
+    @Synchronized
     fun readChapter(chapter: Chapter): String? {
         chapter.content?.let { return it }
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
 
     /** Replaces an existing downloaded chapter while honoring portable relative storage paths. */
+    @Synchronized
     fun overwriteChapter(
         chapter: Chapter,
         html: String,
@@ -383,6 +407,7 @@ class AppStorage(
         return true
     }
 
+    @Synchronized
     fun saveEpub(
         storyId: String,
         filename: String,
@@ -399,6 +424,7 @@ class AppStorage(
      * file, which is fsync'd and renamed into place on success. Lets EpubEngine stream the ZIP
      * chapter-by-chapter instead of building one big [ByteArrayOutputStream] in memory.
      */
+    @Synchronized
     fun saveEpubStreamed(
         storyId: String,
         filename: String,
@@ -426,6 +452,7 @@ class AppStorage(
      * [com.vinicius741.webnovelarchiver.epub.EpubEngine.generate]). Returns an empty list when the
      * directory does not exist (a story that never generated an EPUB), never throws.
      */
+    @Synchronized
     fun listEpubs(storyId: String): List<File> =
         File(epubRoot, safeName(storyId))
             .takeIf(File::exists)
@@ -441,6 +468,7 @@ class AppStorage(
      * epub directory, which also defeats path-traversal (the canonical path must start with
      * [epubRoot]'s canonical path). Returns `true` only when the file was actually removed.
      */
+    @Synchronized
     fun deleteEpubFile(
         storyId: String,
         absolutePath: String,
@@ -547,15 +575,169 @@ class AppStorage(
         return if (!changed) story else story.copy(chapters = chapters, epubPaths = epubPaths, epubPath = epubPath)
     }
 
+    /** Read + coerce Gson defaults + relative-path migration for a story document. */
+    private fun readStory(file: File): Story? {
+        val raw = read<Story>(file) ?: return null
+        return migrateChapterPaths(StoryNormalization.coerceDefaults(raw).story)
+    }
+
     internal fun relativize(file: File): String = file.toRelativeString(root)
 
-    private inline fun <reified T> read(file: File): T? = DurableJson.readAtomic<T>(file, gson)
+    private inline fun <reified T> read(file: File): T? =
+        maintenanceCoordinator.withStorageAccess(this) {
+            when (val result = DurableJson.readAtomicResult<T>(file, gson)) {
+                is DurableReadResult.Present -> {
+                    // A successful decode means the document is readable again; drop sticky fences.
+                    clearStorageIssues(file)
+                    result.value
+                }
+                DurableReadResult.Absent -> null
+                is DurableReadResult.Corrupt -> {
+                    recordStorageIssue(
+                        file,
+                        StorageHealthKind.Corrupt,
+                        "Document was quarantined after malformed JSON was detected",
+                    )
+                    null
+                }
+                is DurableReadResult.UnsupportedSchema -> {
+                    recordStorageIssue(
+                        file,
+                        StorageHealthKind.UnsupportedSchema,
+                        "Schema ${result.foundVersion} is not supported by schema ${result.supportedVersion}",
+                    )
+                    null
+                }
+                is DurableReadResult.IoFailure -> {
+                    recordStorageIssue(file, StorageHealthKind.IoFailure, result.cause.message ?: "I/O failure")
+                    null
+                }
+            }
+        }
 
     private fun write(
         file: File,
         value: Any,
     ) {
-        DurableJson.writeAtomic(file, gson, DurableJson.envelope(value, appVersion))
+        maintenanceCoordinator.withStorageAccess(this) {
+            ensureHealthyForWrite(file)
+            DurableJson.writeAtomic(file, gson, DurableJson.envelope(value, appVersion))
+            clearStorageIssues(file)
+        }
+    }
+
+    private fun ensureHealthyForWrite(file: File) {
+        val blockedIssue =
+            _storageHealth.value.issues.firstOrNull {
+                it.document == file.name &&
+                    it.kind in setOf(StorageHealthKind.UnsupportedSchema, StorageHealthKind.IoFailure)
+            }
+        check(blockedIssue == null) {
+            "Refusing to overwrite unhealthy ${file.name}: ${blockedIssue?.detail}"
+        }
+    }
+
+    @Synchronized
+    private fun readLibraryIdsWithRecovery(): List<String> {
+        val result = DurableJson.readAtomicResult<List<String>>(libraryIndex, gson)
+        if (result is DurableReadResult.Present) {
+            clearStorageIssues(libraryIndex)
+            return result.value.filter { it.isNotBlank() }.distinct()
+        }
+
+        when (result) {
+            is DurableReadResult.Corrupt ->
+                recordStorageIssue(libraryIndex, StorageHealthKind.Corrupt, "Library index was corrupt and quarantined")
+            is DurableReadResult.UnsupportedSchema ->
+                recordStorageIssue(
+                    libraryIndex,
+                    StorageHealthKind.UnsupportedSchema,
+                    "Library index schema ${result.foundVersion} is unsupported",
+                )
+            is DurableReadResult.IoFailure ->
+                recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, result.cause.message ?: "I/O failure")
+            DurableReadResult.Absent -> Unit
+            is DurableReadResult.Present -> Unit
+        }
+
+        val storyFiles = storyDir.listFiles()?.toList().orEmpty()
+        if (storyFiles.none { it.isFile && it.name.endsWith(".json") }) return emptyList()
+        val recovery =
+            LibraryIndexRecovery.scan(
+                files = storyFiles,
+                safeName = ::safeName,
+                readStory = { file ->
+                    DurableJson.readAtomicResult<Story>(file, gson, quarantineOnCorruption = false).also { storyResult ->
+                        when (storyResult) {
+                            is DurableReadResult.Corrupt ->
+                                recordStorageIssue(file, StorageHealthKind.Corrupt, "Story document is corrupt and was left untouched")
+                            is DurableReadResult.UnsupportedSchema ->
+                                recordStorageIssue(file, StorageHealthKind.UnsupportedSchema, "Story schema is unsupported")
+                            is DurableReadResult.IoFailure ->
+                                recordStorageIssue(file, StorageHealthKind.IoFailure, storyResult.cause.message ?: "I/O failure")
+                            is DurableReadResult.Present -> clearStorageIssues(file)
+                            DurableReadResult.Absent -> Unit
+                        }
+                    }
+                },
+            )
+        val recoveredIds = recovery.stories.map { it.id }
+        // Persist a rebuilt index for recoverable cases so cold starts stop re-scanning. Leave an
+        // UnsupportedSchema index untouched so a downgrade cannot clobber a newer on-disk shape.
+        if (result !is DurableReadResult.UnsupportedSchema) {
+            persistRecoveredLibraryIndex(recoveredIds)
+        } else {
+            recordStorageIssue(
+                libraryIndex,
+                StorageHealthKind.LibraryIndexRecovered,
+                "Reconstructed an in-memory library index from valid story documents; unsupported index was not rewritten",
+                recovery.stories.size,
+            )
+        }
+        return recoveredIds
+    }
+
+    private fun persistRecoveredLibraryIndex(ids: List<String>) {
+        // Drop sticky IoFailure/Corrupt fences for the index so intentional recovery can rewrite it.
+        clearStorageIssues(libraryIndex)
+        runCatching {
+            maintenanceCoordinator.withStorageAccess(this) {
+                DurableJson.writeAtomic(libraryIndex, gson, DurableJson.envelope(ids, appVersion))
+            }
+            recordStorageIssue(
+                libraryIndex,
+                StorageHealthKind.LibraryIndexRecovered,
+                "Reconstructed and persisted library index from valid story documents",
+                ids.size,
+            )
+        }.onFailure { error ->
+            Timber.e(error, "Could not persist recovered library index")
+            recordStorageIssue(
+                libraryIndex,
+                StorageHealthKind.LibraryIndexRecovered,
+                "Reconstructed an in-memory library index from valid story documents; persistence failed",
+                ids.size,
+            )
+            recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, error.message ?: "I/O failure")
+        }
+    }
+
+    private fun recordStorageIssue(
+        file: File,
+        kind: StorageHealthKind,
+        detail: String,
+        recoveredStoryCount: Int = 0,
+    ) {
+        val issue = StorageHealthIssue(file.name, kind, detail, recoveredStoryCount)
+        val retained = _storageHealth.value.issues.filterNot { it.document == issue.document && it.kind == issue.kind }
+        _storageHealth.value = StorageHealthSnapshot(retained + issue)
+    }
+
+    private fun clearStorageIssues(file: File) {
+        val retained = _storageHealth.value.issues.filterNot { it.document == file.name }
+        if (retained.size != _storageHealth.value.issues.size) {
+            _storageHealth.value = StorageHealthSnapshot(retained)
+        }
     }
 
     internal fun safeName(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)

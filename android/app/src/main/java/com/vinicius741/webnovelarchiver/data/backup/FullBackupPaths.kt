@@ -12,20 +12,7 @@ object FullBackupPaths {
             value.encodeToByteArray().forEach { byte ->
                 val unsigned = byte.toInt() and 0xff
                 val char = unsigned.toChar()
-                if (
-                    char in 'A'..'Z' ||
-                    char in 'a'..'z' ||
-                    char in '0'..'9' ||
-                    char == '-' ||
-                    char == '_' ||
-                    char == '.' ||
-                    char == '!' ||
-                    char == '~' ||
-                    char == '*' ||
-                    char == '\'' ||
-                    char == '(' ||
-                    char == ')'
-                ) {
+                if (char in UNESCAPED_CHARACTERS) {
                     append(char)
                 } else {
                     append('%')
@@ -33,4 +20,7 @@ object FullBackupPaths {
                 }
             }
         }
+
+    private val UNESCAPED_CHARACTERS: Set<Char> =
+        (('A'..'Z') + ('a'..'z') + ('0'..'9') + listOf('-', '_', '.', '!', '~', '*', '\'', '(', ')')).toSet()
 }

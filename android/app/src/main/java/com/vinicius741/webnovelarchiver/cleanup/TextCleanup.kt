@@ -71,7 +71,9 @@ object TextCleanup {
 
     // ── Shared internal regex helpers (used by the three siblings + CleanupEngine) ─────────
 
-    @Suppress("TooGenericExceptionCaught") // Rec 7: a user regex can throw on a pathological input; we catch broadly to circuit-break the rule instead of aborting TTS/reader preparation.
+    /** Rec 7: a user regex can throw on a pathological input; catch broadly to circuit-break the
+     *  rule instead of aborting TTS/reader preparation. */
+    @Suppress("TooGenericExceptionCaught")
     internal fun regexRunner(
         rules: List<RegexCleanupRule>,
         target: String,

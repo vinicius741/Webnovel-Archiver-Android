@@ -1,16 +1,29 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import java.net.URL
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.math.min
+import kotlin.random.Random
 
 class NetworkClient(
     /**
@@ -19,7 +32,25 @@ class NetworkClient(
      * interceptor) attached, so cookies earned in an in-app WebView are replayed here automatically.
      */
     val client: OkHttpClient = defaultClient,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val policyResolver: NetworkPolicyResolver = DefaultNetworkPolicyResolver,
+    private val sleep: suspend (Long) -> Unit = { delay(it) },
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val jitterMillis: (Long) -> Long = { maximum ->
+        if (maximum <= 0L) 0L else Random.nextLong(maximum + 1L)
+    },
 ) {
+    private sealed interface AttemptResult<out T> {
+        data class Success<T>(
+            val value: T,
+        ) : AttemptResult<T>
+
+        data class HttpFailure(
+            val statusCode: Int,
+            val retryAfterHeader: String?,
+        ) : AttemptResult<Nothing>
+    }
+
     /**
      * Per-host rate-limit gates (R6). Each host has its own [Mutex]; the Scribble Hub gap is enforced
      * inside the lock so concurrent downloads from the activity + foreground service cannot bypass it.
@@ -42,9 +73,10 @@ class NetworkClient(
         url: String,
         callTimeoutMillis: Long? = null,
     ): String {
-        waitForRateLimit(url)
         val request = NetworkRequests.pageRequest(url)
-        return executeWithRetries(url, request, callTimeoutMillis) { response ->
+        val policy = policyResolver.policyFor(request.url)
+        waitForRateLimit(request.url.host, policy)
+        return executeWithRetries(url, request, policy, callTimeoutMillis) { response ->
             val body = response.body?.string().orEmpty()
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
                 throw SourceAccessBlockedException(url)
@@ -58,9 +90,10 @@ class NetworkClient(
         fields: Map<String, Any>,
         headers: Map<String, String> = emptyMap(),
     ): String {
-        waitForRateLimit(url)
         val request = NetworkRequests.formRequest(url, fields, headers)
-        return executeWithRetries(url, request) { response ->
+        val policy = policyResolver.policyFor(request.url)
+        waitForRateLimit(request.url.host, policy)
+        return executeWithRetries(url, request, policy) { response ->
             val body = response.body?.string().orEmpty()
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
                 throw SourceAccessBlockedException(url)
@@ -79,65 +112,164 @@ class NetworkClient(
         url: String,
         maxBytes: Long = MAX_IMAGE_BYTES,
     ): ByteArray? {
-        waitForRateLimit(url)
         val request = NetworkRequests.binaryRequest(url)
-        return runCatching {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                val contentType = response.header("Content-Type").orEmpty()
-                if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@use null
-                val body = response.body ?: return@use null
-                val length = body.contentLength()
-                if (length > maxBytes) return@use null
-                // Cap at the source so a chunked/unknown-length response can't be buffered in full
-                // before the size check runs. Request one byte past the cap; if we get it, the body
-                // is too large.
-                val source = body.source()
-                source.request(maxBytes + 1)
-                if (source.buffer.size > maxBytes) return@use null
-                source.buffer.readByteArray()
+        val policy = policyResolver.policyFor(request.url)
+        waitForRateLimit(request.url.host, policy)
+        return try {
+            withContext(ioDispatcher) {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val contentType = response.header("Content-Type").orEmpty()
+                    if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@use null
+                    val body = response.body ?: return@use null
+                    val length = body.contentLength()
+                    if (length > maxBytes) return@use null
+                    // Cap at the source so a chunked/unknown-length response can't be buffered in full
+                    // before the size check runs. Request one byte past the cap; if we get it, the body
+                    // is too large.
+                    val source = body.source()
+                    source.request(maxBytes + 1)
+                    if (source.buffer.size > maxBytes) return@use null
+                    source.buffer.readByteArray()
+                }
             }
-        }.getOrNull()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private suspend fun <T> executeWithRetries(
         url: String,
         request: Request,
+        policy: SourceNetworkPolicy,
         callTimeoutMillis: Long? = null,
         read: (Response) -> T,
     ): T {
         var attempt = 1
-        while (attempt <= 3) {
-            val call = client.newCall(request)
-            callTimeoutMillis?.let { timeout -> call.timeout().timeout(timeout, TimeUnit.MILLISECONDS) }
-            val response = call.execute()
-            response.use {
-                if (it.isSuccessful) return read(it)
-                val responseBody = it.body?.string().orEmpty()
-                if (SourceAccessBlockDetector.isChallengeResponse(it.headers, responseBody)) {
-                    throw SourceAccessBlockedException(url)
+        val maximumAttempts = policy.maximumAttempts.coerceAtLeast(1)
+        while (attempt <= maximumAttempts) {
+            val result = executeAttempt(url, request, callTimeoutMillis, read)
+            when (result) {
+                is AttemptResult.Success -> return result.value
+                is AttemptResult.HttpFailure -> {
+                    val isRateLimited = result.statusCode in policy.retryableStatusCodes
+                    if (!isRateLimited || attempt >= maximumAttempts) {
+                        if (isRateLimited) {
+                            throw RateLimitNetworkException(
+                                requestedUrl = url,
+                                statusCode = result.statusCode,
+                                retryAfterMillis = retryAfterMillis(result.retryAfterHeader, policy),
+                            )
+                        }
+                        throw HttpNetworkException(url, result.statusCode)
+                    }
+                    sleep(retryDelayMillis(attempt, result.retryAfterHeader, policy))
+                    attempt += 1
                 }
-                val host = runCatching { URL(url).host }.getOrNull()
-                val shouldRetry = host == "www.scribblehub.com" && (it.code == 403 || it.code == 429) && attempt < 3
-                if (!shouldRetry) throw IllegalStateException("HTTP ${it.code} for $url")
             }
-            delay(2500L * attempt)
-            attempt += 1
         }
-        error("Failed to fetch $url")
+        throw NetworkTransportException(url, IllegalStateException("Failed to fetch $url"))
     }
 
-    private suspend fun waitForRateLimit(url: String) {
-        val host = runCatching { URL(url).host }.getOrNull() ?: return
-        val gap = if (host == "www.scribblehub.com") 1500L else 0L
+    private suspend fun <T> executeAttempt(
+        url: String,
+        request: Request,
+        callTimeoutMillis: Long?,
+        read: (Response) -> T,
+    ): AttemptResult<T> =
+        try {
+            withContext(ioDispatcher) {
+                val call = client.newCall(request)
+                callTimeoutMillis?.let { timeout -> call.timeout().timeout(timeout, TimeUnit.MILLISECONDS) }
+                call.execute().use { response ->
+                    if (response.isSuccessful) return@withContext AttemptResult.Success(read(response))
+                    val responseBody = response.body?.string().orEmpty()
+                    if (SourceAccessBlockDetector.isChallengeResponse(response.headers, responseBody)) {
+                        throw SourceAccessBlockedException(url)
+                    }
+                    AttemptResult.HttpFailure(response.code, response.header("Retry-After"))
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: SourceAccessBlockedException) {
+            throw error
+        } catch (error: SocketTimeoutException) {
+            throw NetworkTimeoutException(url, error)
+        } catch (error: InterruptedIOException) {
+            throw NetworkTimeoutException(url, error)
+        } catch (error: UnknownHostException) {
+            throw NetworkOfflineException(url, error)
+        } catch (error: NoRouteToHostException) {
+            throw NetworkOfflineException(url, error)
+        } catch (error: ConnectException) {
+            throw NetworkOfflineException(url, error)
+        } catch (error: IOException) {
+            throw NetworkTransportException(url, error)
+        }
+
+    private suspend fun waitForRateLimit(
+        host: String,
+        policy: SourceNetworkPolicy,
+    ) {
+        val gap = policy.minimumRequestGapMillis.coerceAtLeast(0L)
         if (gap <= 0) return
         val gate = gateFor(host)
-        gate.mutex.withLock {
-            val now = System.currentTimeMillis()
-            val next = gate.nextAllowedAt
-            if (next > now) delay(next - now)
-            gate.nextAllowedAt = System.currentTimeMillis() + gap
+        // Claim or measure wait under the lock, then sleep outside it so concurrent callers for the
+        // same host can schedule their own waits instead of serializing behind one sleeper.
+        while (true) {
+            val waitMillis =
+                gate.mutex.withLock {
+                    val now = nowMillis()
+                    val next = gate.nextAllowedAt
+                    if (next > now) {
+                        next - now
+                    } else {
+                        gate.nextAllowedAt = now + gap
+                        0L
+                    }
+                }
+            if (waitMillis <= 0L) return
+            sleep(waitMillis)
         }
+    }
+
+    private fun retryDelayMillis(
+        attempt: Int,
+        retryAfterHeader: String?,
+        policy: SourceNetworkPolicy,
+    ): Long {
+        val requested =
+            retryAfterMillis(retryAfterHeader, policy)
+                ?: (policy.baseRetryDelayMillis.coerceAtLeast(0L) * attempt)
+                    .coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
+        val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), requested / 5L)
+        val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
+        return (requested + jitter).coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
+    }
+
+    private fun retryAfterMillis(
+        header: String?,
+        policy: SourceNetworkPolicy,
+    ): Long? {
+        if (header.isNullOrBlank()) return null
+        val rawMillis =
+            header.trim().toLongOrNull()?.let { seconds ->
+                seconds
+                    .coerceIn(0L, Long.MAX_VALUE / 1_000L)
+                    .times(1_000L)
+            }
+                ?: runCatching {
+                    ZonedDateTime
+                        .parse(header.trim(), DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toInstant()
+                        .toEpochMilli()
+                        .minus(nowMillis())
+                        .coerceAtLeast(0L)
+                }.getOrNull()
+        return rawMillis?.coerceAtMost(policy.maximumRetryAfterMillis.coerceAtLeast(0L))
     }
 
     companion object {

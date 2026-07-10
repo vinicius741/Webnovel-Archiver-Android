@@ -104,9 +104,27 @@ class LibraryQueryTest {
         // tab only its own. Mirrors the legacy RN `matchesTab` gate on tag collection.
         val stories =
             listOf(
-                story("rr-action", "Royal Action", "https://www.royalroad.com/fiction/1/story", tags = mutableListOf("Action"), tabId = "tab-1"),
-                story("rr-fantasy", "Royal Fantasy", "https://www.royalroad.com/fiction/2/story", tags = mutableListOf("Fantasy"), tabId = "tab-1"),
-                story("sh-romance", "Hub Romance", "https://www.scribblehub.com/series/3/story", tags = mutableListOf("Romance"), tabId = "tab-2"),
+                story(
+                    "rr-action",
+                    "Royal Action",
+                    "https://www.royalroad.com/fiction/1/story",
+                    tags = mutableListOf("Action"),
+                    tabId = "tab-1",
+                ),
+                story(
+                    "rr-fantasy",
+                    "Royal Fantasy",
+                    "https://www.royalroad.com/fiction/2/story",
+                    tags = mutableListOf("Fantasy"),
+                    tabId = "tab-1",
+                ),
+                story(
+                    "sh-romance",
+                    "Hub Romance",
+                    "https://www.scribblehub.com/series/3/story",
+                    tags = mutableListOf("Romance"),
+                    tabId = "tab-2",
+                ),
             )
 
         val allLabels = LibraryQuery.availableFilterLabels(stories, "__all__")

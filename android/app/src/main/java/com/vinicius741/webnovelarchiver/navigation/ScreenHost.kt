@@ -5,7 +5,6 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
-import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -46,6 +45,7 @@ class UpdateTrackerScreenState {
     var syncing: Boolean = false
     var completed: Int = 0
     var total: Int = 0
+
     // One entry per story currently being synced. Bulk sync runs several stories concurrently, so a
     // single "current story" slot would be clobbered; this map tracks each in-flight story instead.
     // Insertion-ordered so progress text can show a stable representative story.
@@ -69,7 +69,9 @@ class UpdateTrackerScreenState {
 }
 
 /** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */
-class InFlightStorySync(val title: String) {
+class InFlightStorySync(
+    val title: String,
+) {
     var status: String = "Starting..."
 }
 
@@ -99,12 +101,11 @@ class UpdateFollowSelectionState {
 interface ScreenHost {
     val app: AppCompatActivity
     val scope: CoroutineScope
-    val storage: AppStorage
 
     /**
      * Single-owner repository (R2). Screens read observable/cached state (library, queue, settings)
-     * through this rather than re-reading JSON from [storage] on every render (Speed S3 — disk reads
-     * off the render path).
+     * through this rather than re-reading JSON on every render (Speed S3 — disk reads off the render
+     * path).
      */
     val repository: AppRepository
     val syncEngine: StorySyncEngine
@@ -113,6 +114,17 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
     var storyOperation: StoryOperationState?
+    val navigator: AppNavigator
+
+    /** Scroll offsets keyed by [AppRoute.stableKey], never by mutable app-bar copy. */
+    val routeScrollPositions: MutableMap<String, Int>
+
+    /** Renders an already-selected route, used by back navigation and saved-state restoration. */
+    fun renderRoute(route: AppRoute)
+
+    fun navigateBack() {
+        navigator.back()?.let(::renderRoute)
+    }
 
     /**
      * Transient state for the Add Story screen's inline fetch flow (status line + URL draft). See

@@ -75,7 +75,9 @@ object ReaderContentRenderer {
                         background-color: ${colors.background};
                         color: ${colors.foreground};
                         font-family: sans-serif;
-                        padding: 12px;
+                        /* Extra bottom padding keeps the last line clear of the docked chapter
+                           nav bar (~56dp) when scrolled to the end of the chapter. */
+                        padding: 12px 12px 72px 12px;
                         line-height: 1.6;
                         font-size: ${fontSize}px;
                         box-sizing: border-box;

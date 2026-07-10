@@ -54,6 +54,53 @@ class FullBackupManifestValidationTest {
         )
     }
 
+    @Test
+    fun rejectsUnsupportedVersionsAndDuplicateStoryIds() {
+        assertEquals(
+            "Invalid full backup: unsupported version 2",
+            FullBackupManifestValidation.validate(validManifest("version" to 2)),
+        )
+        assertEquals(
+            "Invalid full backup: duplicate story IDs",
+            FullBackupManifestValidation.validate(
+                validManifest("library" to listOf(mapOf("id" to "same"), mapOf("id" to "same"))),
+            ),
+        )
+        assertEquals(
+            "Invalid full backup: missing version",
+            FullBackupManifestValidation.validate(validManifest("version" to 1.5)),
+        )
+    }
+
+    @Test
+    fun rejectsMalformedAndDuplicateChapterFileEntries() {
+        assertEquals(
+            "Invalid full backup: malformed chapter file index",
+            FullBackupManifestValidation.validate(
+                validManifest(
+                    "chapterFiles" to
+                        listOf(
+                            mapOf(
+                                "storyId" to "missing-story",
+                                "chapterId" to "chapter-1",
+                                "path" to "novels/story-1/chapter-1.html",
+                            ),
+                        ),
+                ),
+            ),
+        )
+        val entry =
+            mapOf(
+                "storyId" to "story-1",
+                "chapterId" to "chapter-1",
+                "path" to "novels/story-1/chapter-1.html",
+            )
+        assertEquals(
+            "Invalid full backup: duplicate chapter paths",
+            FullBackupManifestValidation.validate(validManifest("chapterFiles" to listOf(entry, entry))),
+        )
+    }
+
     private fun validManifest(vararg replacements: Pair<String, Any>): Map<String, Any> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",

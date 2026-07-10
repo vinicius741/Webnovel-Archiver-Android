@@ -38,6 +38,9 @@ object CloudflareWebViewSolver {
         headers: Map<String, String> = emptyMap(),
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
     ): Boolean {
+        CloudflareSolverThreadGuard.requireBackgroundThread(
+            Looper.myLooper() == Looper.getMainLooper(),
+        )
         val mainHandler = Handler(Looper.getMainLooper())
         val latch = CountDownLatch(1)
         // Written on the main thread, read on the calling background thread — including the timeout
@@ -115,4 +118,13 @@ object CloudflareWebViewSolver {
 
     private const val DEFAULT_TIMEOUT_MS = 20_000L
     private const val SCRIBBLE_HUB_BASE_URL = "https://www.scribblehub.com/"
+}
+
+/** Pure guard kept separately so the main-thread fail-fast behavior has a JVM test. */
+internal object CloudflareSolverThreadGuard {
+    fun requireBackgroundThread(isMainThread: Boolean) {
+        check(!isMainThread) {
+            "The hidden Cloudflare WebView solver cannot block the main thread"
+        }
+    }
 }

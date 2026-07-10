@@ -4,7 +4,7 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Text-to-speech playback engine (Maintainability M1: split out of Engines.kt). See the class doc in
@@ -29,6 +30,8 @@ import java.util.Locale
 class TtsEngine(
     private val context: Context,
     private val storage: AppStorage,
+    private val repository: AppRepository? = null,
+    private val awaitRepositoryReady: suspend () -> Unit = {},
     /**
      * Coroutine scope that owns all TTS state mutations (R8). UtteranceProgressListener callbacks
      * and the public control methods (play/pause/next/...) are routed through [stateMutex] on this
@@ -37,6 +40,13 @@ class TtsEngine(
      */
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) : TextToSpeech.OnInitListener {
+    private val preparer =
+        if (repository != null) {
+            TtsPlaybackPreparer(repository, storage)
+        } else {
+            TtsPlaybackPreparer(storage)
+        }
+    private val sessionStore = TtsSessionStore(storage)
     private var tts: TextToSpeech? = null
     private var ttsInitialized = false
     private var pendingSpeakOnInit = false
@@ -50,6 +60,9 @@ class TtsEngine(
     private var stallWatchdogJob: Job? = null
     private var watchdogChunkIndex = -1
     private var watchdogRetryCount = 0
+    private var activeSettings: TtsSettings? = null
+    private val commandVersion = AtomicLong(0L)
+    private val listeners = TtsEventListeners()
 
     /**
      * Multicast state-change hook. The foreground service (MediaSession + notification, parity gaps 1
@@ -60,52 +73,50 @@ class TtsEngine(
      *
      * Multicast (rather than a single callback) because the engine is a process-wide singleton shared
      * by the activity and the service, and both may need to observe the same playback simultaneously.
+     *
+     * [addStateListener] is idempotent: re-adding the same listener instance is a no-op, so a
+     * component may call it defensively on each lifecycle entry.
      */
-    private val stateListeners = mutableListOf<(TtsPlaybackSnapshot?) -> Unit>()
-    private val errorListeners = mutableListOf<(TtsPlaybackError) -> Unit>()
-    private val voiceAvailabilityListeners = mutableListOf<(List<VoiceInfo>) -> Unit>()
 
-    /** Registers an observer invoked on every TTS state change. Idempotent: re-adding the same
-     *  listener instance is a no-op, so a component may call it defensively on each lifecycle entry. */
     fun addStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) {
-        if (stateListeners.none { it === listener }) stateListeners.add(listener)
+        listeners.addState(listener)
     }
 
     /** Detaches a previously-registered observer; safe to call with an unregistered listener. */
     fun removeStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) {
-        stateListeners.removeAll { it === listener }
+        listeners.removeState(listener)
     }
 
     fun addErrorListener(listener: (TtsPlaybackError) -> Unit) {
-        if (errorListeners.none { it === listener }) errorListeners.add(listener)
+        listeners.addError(listener)
     }
 
     fun removeErrorListener(listener: (TtsPlaybackError) -> Unit) {
-        errorListeners.removeAll { it === listener }
+        listeners.removeError(listener)
     }
 
     fun addVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) {
-        if (voiceAvailabilityListeners.none { it === listener }) voiceAvailabilityListeners.add(listener)
+        listeners.addVoices(listener)
         if (ttsInitialized) listener(availableVoices())
     }
 
     fun removeVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) {
-        voiceAvailabilityListeners.removeAll { it === listener }
+        listeners.removeVoices(listener)
     }
 
     /** Notifies every registered listener. Defensive copy so listeners may [removeStateListener] mid-dispatch. */
     private fun notifyStateListeners(snapshot: TtsPlaybackSnapshot?) {
-        stateListeners.toList().forEach { runCatching { it(snapshot) } }
+        listeners.dispatchState(snapshot)
     }
 
     private fun notifyErrorListeners(error: TtsPlaybackError) {
         Timber.w(TtsErrorPlanning.logMessage(error))
-        errorListeners.toList().forEach { runCatching { it(error) } }
+        listeners.dispatchError(error)
     }
 
     private fun notifyVoiceAvailabilityListeners() {
         val voices = availableVoices()
-        voiceAvailabilityListeners.toList().forEach { runCatching { it(voices) } }
+        listeners.dispatchVoices(voices)
     }
 
     override fun onInit(status: Int) {
@@ -140,7 +151,7 @@ class TtsEngine(
                         }
                     },
                 )
-                val settingsApplied = applySettingsLocked(storage.getTtsSettings())
+                val settingsApplied = activeSettings?.let(::applySettingsLocked) ?: true
                 notifyVoiceAvailabilityListeners()
                 if (settingsApplied && pendingSpeakOnInit && playbackActive) {
                     pendingSpeakOnInit = false
@@ -154,78 +165,71 @@ class TtsEngine(
         story: Story,
         chapter: Chapter,
     ) {
-        scope.launch { stateMutex.withLock { playLocked(story, chapter) } }
+        play(story.id, chapter.id)
     }
 
-    private fun playLocked(
-        story: Story,
-        chapter: Chapter,
+    fun play(
+        storyId: String,
+        chapterId: String,
+        chunkIndex: Int = 0,
     ) {
-        val settings = storage.getTtsSettings()
-        ensureEngineLocked()
-        if (!applySettingsLocked(settings) && ttsInitialized) return
-        val html = storage.readChapter(chapter) ?: chapter.content ?: ""
-        chunks = TextCleanup.prepareTtsChunks(html, storage.getRegexRules(), settings.chunkSize)
-        if (chunks.isEmpty()) return
-        startSession(story, chapter, settings, 0)
-        playbackActive = true
-        speakCurrentLocked()
+        val request = commandVersion.incrementAndGet()
+        scope.launch {
+            val prepared =
+                runCatching {
+                    awaitRepositoryReady()
+                    preparer.prepare(storyId, chapterId, chunkIndex)
+                }.onFailure { Timber.e(it, "TTS playback preparation failed") }
+                    .getOrNull() ?: return@launch
+            stateMutex.withLock {
+                if (request != commandVersion.get()) return@withLock
+                startPreparedPlaybackLocked(prepared)
+            }
+        }
     }
 
     /**
      * Begin narration at a specific chunk index — used by the reader's tap-to-start-from-paragraph
      * (parity gap 3). [chunkIndex] maps 1:1 to a `data-tts-group` in the annotated reader HTML, and
-     * the chunk list produced here is byte-for-byte aligned with [TextCleanup.prepareTtsAnnotatedHtml]
-     * (both reuse the same grouping logic). Out-of-range indices are clamped.
+     * the chunk list produced here is byte-for-byte aligned with the Reader annotation preparation
+     * path (both reuse the same grouping logic). Out-of-range indices are clamped.
      */
     fun playFromChunk(
         story: Story,
         chapter: Chapter,
         chunkIndex: Int,
     ) {
-        scope.launch { stateMutex.withLock { playFromChunkLocked(story, chapter, chunkIndex) } }
-    }
-
-    private fun playFromChunkLocked(
-        story: Story,
-        chapter: Chapter,
-        chunkIndex: Int,
-    ) {
-        val settings = storage.getTtsSettings()
-        ensureEngineLocked()
-        if (!applySettingsLocked(settings) && ttsInitialized) return
-        val html = storage.readChapter(chapter) ?: chapter.content ?: ""
-        chunks = TextCleanup.prepareTtsChunks(html, storage.getRegexRules(), settings.chunkSize)
-        if (chunks.isEmpty()) return
-        val clamped = chunkIndex.coerceIn(0, chunks.lastIndex)
-        startSession(story, chapter, settings, clamped)
-        playbackActive = true
-        speakCurrentLocked()
+        play(story.id, chapter.id, chunkIndex)
     }
 
     fun resumePersistedSession() {
-        scope.launch { stateMutex.withLock { resumePersistedSessionLocked() } }
+        val request = commandVersion.incrementAndGet()
+        scope.launch {
+            val prepared =
+                runCatching {
+                    awaitRepositoryReady()
+                    preparer.resume()
+                }.onFailure { Timber.e(it, "TTS session restore failed") }
+                    .getOrNull() ?: return@launch
+            stateMutex.withLock {
+                if (request != commandVersion.get()) return@withLock
+                startPreparedPlaybackLocked(prepared)
+            }
+        }
     }
 
-    private fun resumePersistedSessionLocked(): Boolean {
-        val persisted = storage.getTtsSession() ?: return false
-        if (!TtsSessionPlanning.isResumeEligible(persisted)) return false
-        val story = storage.getStory(persisted.storyId) ?: return false
-        val chapter = story.chapters.firstOrNull { it.id == persisted.chapterId } ?: return false
-        val settings = storage.getTtsSettings()
+    private fun startPreparedPlaybackLocked(prepared: PreparedTtsPlayback) {
+        activeSettings = prepared.settings
         ensureEngineLocked()
-        if (!applySettingsLocked(settings) && ttsInitialized) return false
-        val html = storage.readChapter(chapter) ?: chapter.content ?: return false
-        chunks = TextCleanup.prepareTtsChunks(html, storage.getRegexRules(), TtsSessionPlanning.restoredChunkSize(settings))
-        if (chunks.isEmpty()) return false
-        val startIndex = TtsSessionPlanning.boundedChunkIndex(persisted, chunks.size)
-        startSession(story, chapter, settings, startIndex)
+        if (!applySettingsLocked(prepared.settings) && ttsInitialized) return
+        chunks = prepared.chunks
+        startSession(prepared.story, prepared.chapter, prepared.settings, prepared.startIndex)
         playbackActive = true
         speakCurrentLocked()
-        return true
     }
 
     fun next() {
+        commandVersion.incrementAndGet()
         scope.launch { stateMutex.withLock { nextLocked() } }
     }
 
@@ -239,6 +243,7 @@ class TtsEngine(
     }
 
     fun previous() {
+        commandVersion.incrementAndGet()
         scope.launch { stateMutex.withLock { previousLocked() } }
     }
 
@@ -252,25 +257,39 @@ class TtsEngine(
     }
 
     fun pause() {
-        scope.launch { stateMutex.withLock { pauseLocked() } }
+        commandVersion.incrementAndGet()
+        scope.launch {
+            val paused = stateMutex.withLock { pauseLocked() }
+            paused?.let { session ->
+                runCatching { sessionStore.flush(session) }
+                    .onFailure { Timber.e(it, "TTS pause flush failed") }
+            }
+        }
     }
 
-    private fun pauseLocked() {
+    private fun pauseLocked(): TtsSession? {
         playbackActive = false
         pendingSpeakOnInit = false
         cancelStallWatchdog()
         tts?.stop()
-        session?.let {
-            it.isPaused = true
-            it.wasPlaying = false
-            it.currentChunkIndex = (index - 1).coerceAtLeast(0)
-            storage.saveTtsSession(it)
-        }
+        val paused =
+            session?.copy(
+                isPaused = true,
+                wasPlaying = false,
+                currentChunkIndex = (index - 1).coerceAtLeast(0),
+                updatedAt = System.currentTimeMillis(),
+            )
+        session = paused
         emitState(isPlaying = false)
+        return paused
     }
 
     fun stop() {
-        scope.launch { stateMutex.withLock { stopLocked() } }
+        commandVersion.incrementAndGet()
+        scope.launch {
+            stateMutex.withLock { stopLocked() }
+            runCatching { sessionStore.clear() }.onFailure { Timber.e(it, "TTS stop clear failed") }
+        }
     }
 
     private fun stopLocked() {
@@ -279,13 +298,18 @@ class TtsEngine(
         currentUtteranceId = null
         cancelStallWatchdog()
         tts?.stop()
-        storage.clearTtsSession()
+        session = null
+        chunks = emptyList()
         // Playback has ended — signal observers to clear MediaSession state + hide the transport.
         notifyStateListeners(null)
     }
 
     /** Live chunk count of the currently loaded chapter (0 when nothing is loaded). */
     fun currentChunkCount(): Int = chunks.size
+
+    /** In-memory snapshot for notification refreshes; never decodes the session JSON on main. */
+    fun currentSnapshot(isPlaying: Boolean): TtsPlaybackSnapshot? =
+        TtsPlaybackState.snapshotForSession(session, chunks.size, isPlaying && session?.isPaused != true)
 
     private fun ensureEngineLocked(): TextToSpeech? {
         if (tts == null) {
@@ -403,7 +427,7 @@ class TtsEngine(
                     updatedAt = System.currentTimeMillis(),
                 )
             session = updated
-            storage.saveTtsSession(updated)
+            sessionStore.schedule(updated)
         }
         val utteranceId = "chapter_chunk_${index}_${utteranceSequence++}"
         if (index != watchdogChunkIndex) {
@@ -472,7 +496,7 @@ class TtsEngine(
         text: String,
     ) {
         cancelStallWatchdog()
-        val rate = session?.rate ?: storage.getTtsSettings().rate
+        val rate = session?.rate ?: 1f
         val timeoutMs = TtsWatchdogPlanning.timeoutMs(text.length, rate)
         stallWatchdogJob =
             scope.launch {
@@ -514,7 +538,7 @@ class TtsEngine(
                     updatedAt = System.currentTimeMillis(),
                 )
             session = updated
-            storage.saveTtsSession(updated)
+            sessionStore.schedule(updated)
             emitState(isPlaying = false)
         } ?: notifyStateListeners(null)
         notifyErrorListeners(error)
@@ -535,34 +559,22 @@ class TtsEngine(
                 finishPlaybackLocked()
                 return
             }
-        val story =
-            storage.getStory(currentSession.storyId) ?: run {
-                finishPlaybackLocked()
-                return
+        playbackActive = false
+        val request = commandVersion.incrementAndGet()
+        scope.launch {
+            val prepared =
+                runCatching { preparer.nextChapter(currentSession) }
+                    .onFailure { Timber.e(it, "TTS next-chapter preparation failed") }
+                    .getOrNull()
+            stateMutex.withLock {
+                if (request != commandVersion.get()) return@withLock
+                if (prepared == null) {
+                    finishPlaybackLocked()
+                } else {
+                    startPreparedPlaybackLocked(prepared)
+                }
             }
-        story.lastReadChapterId = currentSession.chapterId
-        storage.addOrUpdateStory(story)
-
-        val nextIndex =
-            TtsSessionPlanning.nextChapterIndex(story, currentSession.chapterId) ?: run {
-                finishPlaybackLocked()
-                return
-            }
-        val nextChapter = story.chapters[nextIndex]
-        val settings = storage.getTtsSettings()
-        if (!applySettingsLocked(settings) && ttsInitialized) {
-            return
         }
-        val html = storage.readChapter(nextChapter) ?: nextChapter.content
-        val nextChunks = html?.let { TextCleanup.prepareTtsChunks(it, storage.getRegexRules(), settings.chunkSize) }.orEmpty()
-        if (nextChunks.isEmpty()) {
-            finishPlaybackLocked()
-            return
-        }
-        chunks = nextChunks
-        startSession(story, nextChapter, settings, 0)
-        playbackActive = true
-        speakCurrentLocked()
     }
 
     private fun finishPlaybackLocked() {
@@ -570,7 +582,12 @@ class TtsEngine(
         pendingSpeakOnInit = false
         currentUtteranceId = null
         cancelStallWatchdog()
-        storage.clearTtsSession()
+        session = null
+        chunks = emptyList()
+        scope.launch {
+            runCatching { sessionStore.clear() }
+                .onFailure { Timber.e(it, "TTS completion clear failed") }
+        }
         notifyStateListeners(null)
     }
 

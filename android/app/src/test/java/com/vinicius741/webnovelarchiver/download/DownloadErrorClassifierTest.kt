@@ -1,11 +1,18 @@
 package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
+import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
+import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
+import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
+import com.vinicius741.webnovelarchiver.source.network.NetworkTimeoutException
+import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 class DownloadErrorClassifierTest {
     @Test
@@ -61,5 +68,36 @@ class DownloadErrorClassifierTest {
         assertEquals("parse", classified.category)
         assertEquals("CONTENT_TOO_SHORT", classified.code)
         assertTrue(classified.retryable)
+    }
+
+    @Test
+    fun typedHttpAndRateLimitErrorsRemainDistinct() {
+        val forbidden = DownloadErrorClassifier.classify(HttpNetworkException("https://example.test", 403))
+        val limited = DownloadErrorClassifier.classify(RateLimitNetworkException("https://example.test", 403, 1_000L))
+
+        assertEquals("network", forbidden.category)
+        assertFalse(forbidden.retryable)
+        assertEquals("rate_limit", limited.category)
+        assertTrue(limited.retryable)
+    }
+
+    @Test
+    fun typedTimeoutOfflineAndParseErrorsAreRetryable() {
+        val timeout =
+            DownloadErrorClassifier.classify(
+                NetworkTimeoutException("https://example.test", SocketTimeoutException("timeout")),
+            )
+        val offline =
+            DownloadErrorClassifier.classify(
+                NetworkOfflineException("https://example.test", UnknownHostException("offline")),
+            )
+        val parse = DownloadErrorClassifier.classify(NetworkParseException("Chapter content not found on page"))
+
+        assertEquals("TIMEOUT", timeout.code)
+        assertEquals("OFFLINE", offline.code)
+        assertEquals("parse", parse.category)
+        assertTrue(timeout.retryable)
+        assertTrue(offline.retryable)
+        assertTrue(parse.retryable)
     }
 }

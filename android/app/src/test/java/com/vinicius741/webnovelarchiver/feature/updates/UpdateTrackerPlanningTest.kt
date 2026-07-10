@@ -7,12 +7,51 @@ import org.junit.Test
 
 class UpdateTrackerPlanningTest {
     @Test
+    fun filterStoriesMatchesTitleOrAuthorWithoutChangingOrder() {
+        val stories =
+            listOf(
+                story("b", title = "Second", author = "Matching Author"),
+                story("a", title = "Matching Title", author = "Someone"),
+                story("c", title = "Third", author = "Else"),
+            )
+
+        val filtered = UpdateTrackerPlanning.filterStories(stories, " matching ")
+
+        assertEquals(listOf("b", "a"), filtered.map { it.id })
+    }
+
+    @Test
     fun normalizeFollowedIdsDropsMissingAndDuplicates() {
         val stories = listOf(story("a"), story("b"))
 
         val normalized = UpdateTrackerPlanning.normalizeFollowedIds(stories, listOf("missing", "b", "a", "b"))
 
         assertEquals(listOf("b", "a"), normalized)
+    }
+
+    @Test
+    fun followableStoriesExcludeArchivedSnapshots() {
+        val stories =
+            listOf(
+                story("live", title = "Live"),
+                story("arch", title = "Live", archived = true),
+            )
+
+        assertEquals(listOf("live"), UpdateTrackerPlanning.followableStories(stories).map { it.id })
+    }
+
+    @Test
+    fun normalizeFollowedIdsDropsArchivedStoryIds() {
+        val stories =
+            listOf(
+                story("live"),
+                story("arch", archived = true),
+            )
+
+        val normalized =
+            UpdateTrackerPlanning.normalizeFollowedIds(stories, listOf("live", "arch", "missing"))
+
+        assertEquals(listOf("live"), normalized)
     }
 
     @Test
@@ -103,14 +142,18 @@ class UpdateTrackerPlanningTest {
     private fun story(
         id: String,
         title: String = id,
+        author: String = "",
         chapters: MutableList<Chapter> = mutableListOf(),
         pending: MutableList<String>? = null,
+        archived: Boolean = false,
     ): Story =
         Story(
             id = id,
             title = title,
+            author = author,
             sourceUrl = "https://example.com/$id",
             chapters = chapters,
             pendingNewChapterIds = pending,
+            isArchived = archived.takeIf { it },
         )
 }

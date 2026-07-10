@@ -144,14 +144,8 @@ class TtsForegroundService : Service() {
         val storyId = intent?.getStringExtra(EXTRA_STORY_ID)
         val chapterId = intent?.getStringExtra(EXTRA_CHAPTER_ID)
         val chunkIndex = intent?.takeIf { it.hasExtra(EXTRA_CHUNK_INDEX) }?.getIntExtra(EXTRA_CHUNK_INDEX, 0)
-        val story = storyId?.let { appContainer.storage.getStory(it) }
-        val chapter = chapterId?.let { id -> story?.chapters?.firstOrNull { it.id == id } }
-        if (story != null && chapter != null) {
-            if (chunkIndex != null) {
-                engine.playFromChunk(story, chapter, chunkIndex)
-            } else {
-                engine.play(story, chapter)
-            }
+        if (storyId != null && chapterId != null) {
+            engine.play(storyId, chapterId, chunkIndex ?: 0)
         } else {
             refreshMediaStateFromEngine()
         }
@@ -267,19 +261,9 @@ class TtsForegroundService : Service() {
             TtsPlaybackErrorKind.Stalled -> getString(R.string.tts_error_stalled)
         }
 
-    /** Rebuilds the snapshot from the persisted session (used by control actions that bypass the
-     *  engine hook, e.g. PAUSE/NEXT arrive via the notification and the engine emits afterwards). */
+    /** Rebuilds the snapshot from engine memory without decoding session JSON on the main thread. */
     private fun refreshMediaStateFromEngine() {
-        // Read the persisted session once (it's a file-backed JSON decode, so avoid the duplicate
-        // read the previous form did).
-        val session = appContainer.storage.getTtsSession()
-        val snapshot =
-            TtsPlaybackState.snapshotForSession(
-                session = session,
-                totalChunks = engine.currentChunkCount(),
-                isPlaying = lastSnapshot?.isPlaying == true && session?.isPaused != true,
-            )
-        refreshMediaState(snapshot)
+        refreshMediaState(engine.currentSnapshot(lastSnapshot?.isPlaying == true))
     }
 
     private fun updateNotification() {

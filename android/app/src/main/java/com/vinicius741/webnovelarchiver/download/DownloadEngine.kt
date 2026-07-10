@@ -6,7 +6,6 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
-import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -52,6 +51,7 @@ class DownloadEngine(
     private val storage: AppStorage = repository.storage
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
+    private val acceptsWorkerResults = AtomicBoolean(true)
     private val nextAllowedJobAtBySource = mutableMapOf<String, Long>()
     private var worker: Job? = null
     var onChanged: (() -> Unit)? = null
@@ -103,7 +103,7 @@ class DownloadEngine(
                 wakeProcessLoop()
             }
         }
-        repository.publishDownloadState(libraryChanged = true, queueChanged = true)
+        repository.publishDownloadState(changedStoryIds = setOf(story.id), queueChanged = true)
         onChanged?.invoke()
     }
 
@@ -159,7 +159,7 @@ class DownloadEngine(
      */
     private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
         storage.mutateQueueInPlace { transform(it) }
-        repository.publishDownloadState(libraryChanged = false, queueChanged = true)
+        repository.publishDownloadState(queueChanged = true)
         onChanged?.invoke()
     }
 
@@ -180,6 +180,7 @@ class DownloadEngine(
             wakeProcessLoop()
             return
         }
+        if (!acceptsWorkerResults.get()) return
         if (!running.compareAndSet(false, true)) {
             wakeProcessLoop()
             return
@@ -206,6 +207,17 @@ class DownloadEngine(
     fun stopAndCancel() {
         pause()
         scope.coroutineContext[Job]?.cancelChildren()
+    }
+
+    /**
+     * Synchronously makes the durable queue resumable before Android terminates a timed-out
+     * data-sync foreground service. Rejecting worker results first prevents a late network response
+     * from overwriting the recovered pending state after the timeout callback returns.
+     */
+    internal fun recoverAfterForegroundServiceTimeout() {
+        acceptsWorkerResults.set(false)
+        stopAndCancel()
+        mutateQueue(DownloadForegroundServiceTimeoutPlanning::recoverQueue)
     }
 
     /** Releases the engine's coroutine scope. Call from the owning service's onDestroy. */
@@ -244,7 +256,7 @@ class DownloadEngine(
                 }
             }
             if (pending.isNotEmpty()) {
-                repository.publishDownloadState(libraryChanged = false, queueChanged = true)
+                repository.publishDownloadState(queueChanged = true)
             }
             emitProgress(null, queue)
             if (pending.isEmpty()) {
@@ -288,6 +300,7 @@ class DownloadEngine(
 
     private fun cleanupUnsupportedSourceJobs() {
         var cleaned = false
+        var changedStoryIds: Set<String> = emptySet()
         synchronized(storage) {
             val queue = storage.getQueue()
             val cleanup =
@@ -302,15 +315,17 @@ class DownloadEngine(
                     storage.addOrUpdateStory(story)
                 }
             }
+            changedStoryIds = cleanup.affectedStoryIds.toSet()
             cleaned = true
         }
         if (cleaned) {
-            repository.publishDownloadState(libraryChanged = true, queueChanged = true)
+            repository.publishDownloadState(changedStoryIds = changedStoryIds, queueChanged = true)
             onChanged?.invoke()
         }
     }
 
-    @Suppress("TooGenericExceptionCaught") // E2: DownloadErrorClassifier.classify needs a broad input; CancellationException is caught+rethrown first.
+    // E2: classifier input must be broad; cancellation is caught and rethrown first.
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun processJob(job: DownloadJob) {
         // Audit Rec 4: snapshot the queue once for the job-start progress emission instead of letting
         // buildProgress re-parse download_queue.json. The cancellation check below re-reads after
@@ -328,24 +343,17 @@ class DownloadEngine(
                     storage.getSentenceRemovalList(),
                     storage.getRegexRules(),
                 )
+            if (!acceptsWorkerResults.get()) return
             val path = storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean)
-            synchronized(storage) {
-                // Re-read after network I/O so sync/enqueue changes made while fetching are retained.
-                val story = storage.getStory(job.storyId) ?: error("Story not found")
-                val chapter = story.chapters.getOrNull(job.chapterIndex) ?: error("Chapter not found")
-                chapter.filePath = path
-                chapter.downloaded = true
-                story.downloadedChapters = story.chapters.count { it.downloaded }
-                story.status = if (story.downloadedChapters == story.chapters.size) DownloadStatus.completed else DownloadStatus.partial
-                story.epubStale = true
-                story.pendingNewChapterIds =
-                    story.pendingNewChapterIds
-                        ?.filterNot { it == chapter.id }
-                        ?.toMutableList()
-                        ?.ifEmpty { null }
-                story.lastUpdated = System.currentTimeMillis()
-                storage.addOrUpdateStory(story)
-            }
+            if (!acceptsWorkerResults.get()) return
+            check(
+                repository.markChapterDownloaded(
+                    storyId = job.storyId,
+                    chapterId = job.chapter.id,
+                    path = path,
+                    completedAt = System.currentTimeMillis(),
+                ) != null,
+            ) { "Chapter not found" }
             // Re-read the queue once after network I/O so a user cancellation issued during the fetch
             // is observed (gap 4: this previously triggered two fresh getQueue() parses).
             if (!isCancelled(job.id, storage.getQueue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
@@ -366,8 +374,12 @@ class DownloadEngine(
         status: String,
         error: String?,
     ) {
+        if (!acceptsWorkerResults.get()) return
         lateinit var queue: List<DownloadJob>
+        var accepted = false
         storage.mutateQueueInPlace { current ->
+            queue = current
+            if (!acceptsWorkerResults.get()) return@mutateQueueInPlace current
             current.find { it.id == id }?.let {
                 it.status = status
                 it.error = error
@@ -377,11 +389,12 @@ class DownloadEngine(
                     it.nextRetryAt = null
                 }
             }
-            queue = current
+            accepted = true
             current
         }
+        if (!accepted) return
         emitProgress(queue.find { it.id == id }, queue)
-        repository.publishDownloadState(libraryChanged = true, queueChanged = true)
+        repository.publishDownloadState(queueChanged = true)
         onChanged?.invoke()
     }
 
@@ -389,6 +402,7 @@ class DownloadEngine(
         job: DownloadJob,
         error: Throwable,
     ) {
+        if (!acceptsWorkerResults.get()) return
         val classified = DownloadErrorClassifier.classify(error)
         // T1: error classification decisions are otherwise invisible; log them with the cause so a
         // "Download failed" report is diagnosable. (downloadErrorCategory/code map to classified.*)
@@ -401,7 +415,10 @@ class DownloadEngine(
             job.retryCount,
         )
         lateinit var queue: List<DownloadJob>
+        var accepted = false
         storage.mutateQueueInPlace { current ->
+            queue = current
+            if (!acceptsWorkerResults.get()) return@mutateQueueInPlace current
             current.find { it.id == job.id }?.let {
                 it.retryCount += 1
                 it.error = classified.message
@@ -415,11 +432,12 @@ class DownloadEngine(
                     it.nextRetryAt = null
                 }
             }
-            queue = current
+            accepted = true
             current
         }
+        if (!accepted) return
         emitProgress(queue.find { it.id == job.id }, queue)
-        repository.publishDownloadState(libraryChanged = false, queueChanged = true)
+        repository.publishDownloadState(queueChanged = true)
         onChanged?.invoke()
     }
 

@@ -105,11 +105,10 @@ class DurableJsonTest {
     }
 
     /**
-     * `Story` has all-default params, so Kotlin synthesizes a no-arg constructor that Gson prefers
-     * over `Unsafe.allocateInstance`. As a result a field with a default initializer (here
-     * `Story.publicationStatus = PublicationStatus.unknown`) keeps that default when the JSON predates
-     * it — Gson does not null it out. This guards against regressing that assumption; if it ever
-     * stops holding, [AppStorage]'s read path would need to coerce the field back to `unknown`.
+     * When the no-arg constructor is present (debug/unit tests), Gson applies Kotlin defaults for
+     * fields missing from legacy JSON. Release builds also keep those constructors via ProGuard
+     * (see proguard-rules.pro); [com.vinicius741.webnovelarchiver.domain.story.StoryNormalization]
+     * additionally coerces nulls if Unsafe allocation ever leaves them unset.
      */
     @Test
     fun storyPreservesDefaultPublicationStatusWhenJsonPredatesIt() {

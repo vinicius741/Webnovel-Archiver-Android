@@ -91,8 +91,13 @@ class CleanupEngine {
         rules: List<RegexCleanupRule>,
     ): String = applyDownloadWithStats(html, sentences, rules).html
 
-    /** Applies download cleanup and reports sentence-blocklist matches removed for UI feedback. */
-    @Suppress("TooGenericExceptionCaught") // Rec 7: a user regex can throw StackOverflowError/etc. on a pathological input; we catch broadly to circuit-break the rule rather than abort cleanup.
+    /**
+     * Applies download cleanup and reports sentence-blocklist matches removed for UI feedback.
+     *
+     * Rec 7: a user regex can throw StackOverflowError/etc. on a pathological input; catch broadly
+     * to circuit-break the rule rather than abort cleanup.
+     */
+    @Suppress("TooGenericExceptionCaught")
     fun applyDownloadWithStats(
         html: String,
         sentences: List<String>,

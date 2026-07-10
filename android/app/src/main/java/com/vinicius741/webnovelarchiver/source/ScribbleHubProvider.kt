@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -143,7 +144,7 @@ object ScribbleHubProvider : SourceProvider {
         val doc = Jsoup.parse(html)
         // See RoyalRoadProvider.parseChapterContent: throw instead of returning a placeholder so the
         // failure surfaces as a download-job error rather than getting embedded in the EPUB.
-        val content = doc.selectFirst("#chp_raw") ?: error("Chapter content not found on page")
+        val content = doc.selectFirst("#chp_raw") ?: throw NetworkParseException("Chapter content not found on page")
         content.select("script, style, .wi_authornotes, .sharedaddy, .code-block").remove()
         return content.html().trim()
     }

@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
 import com.vinicius741.webnovelarchiver.feature.browser.sourcePickerRows
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -42,11 +43,12 @@ import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = emptySet()) {
-    val stories = storage.getLibrary()
+    val stories = repository.getLibrary()
     val selectedIds = initialSelectedIds.toMutableSet()
-    screen(title = "Select Novels", onBack = { showLibrary() }) {
+    screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Select Novels", onBack = { showLibrary() }) {
         var refreshBulkActions: () -> Unit = {}
         // X3: select-all / deselect-all affordance.
         flow {
@@ -66,11 +68,18 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                     orientation = LinearLayout.VERTICAL
                     // X1: card-style rows with title/author instead of bare CheckBoxes.
                     stories.forEach { story ->
+                        // Archives share the live title; label them so bulk move/delete is not ambiguous.
+                        val subtitle =
+                            if (story.isArchived == true) {
+                                listOfNotNull(story.author.takeIf { it.isNotBlank() }, "Archived").joinToString(" · ")
+                            } else {
+                                story.author
+                            }
                         addView(
                             makeSelectableCardRow(
                                 context,
                                 title = story.title,
-                                subtitle = story.author,
+                                subtitle = subtitle,
                                 selected = selectedIds.contains(story.id),
                             ) { checked ->
                                 if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
@@ -95,8 +104,10 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                     toast("No novels selected")
                 } else {
                     confirm("Delete ${selectedIds.size} selected novels?", confirmLabel = "Delete") {
-                        selectedIds.forEach { storage.deleteStory(it) }
-                        showLibrary()
+                        scope.launch {
+                            selectedIds.forEach { repository.deleteStory(it) }
+                            showLibrary()
+                        }
                     }
                 }
             }
@@ -109,18 +120,21 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
 }
 
 internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
-    val tabs = storage.getTabs().sortedBy { it.order }
+    val tabs = repository.getTabs().sortedBy { it.order }
     val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
     val options =
         tabOptions.map { (tabId, label) ->
             label to {
-                storyIds.forEach { id ->
-                    storage.getStory(id)?.let { story ->
-                        story.tabId = tabId
-                        storage.addOrUpdateStory(story)
+                scope.launch {
+                    storyIds.forEach { id ->
+                        repository.getStory(id)?.let { story ->
+                            story.tabId = tabId
+                            repository.addOrUpdateStory(story)
+                        }
                     }
+                    showLibrary()
                 }
-                showLibrary()
+                Unit
             }
         }
     val novelLabel = if (storyIds.size == 1) "Novel" else "Novels"
@@ -128,7 +142,7 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 }
 
 internal fun ScreenHost.showAddStory() {
-    val tabs = storage.getTabs().sortedBy { it.order }
+    val tabs = repository.getTabs().sortedBy { it.order }
     // Re-renderable state: the URL the user typed and the current fetch status, captured by the
     // screen closure so they survive the re-renders we trigger as the sync progresses. Keeping the
     // flow on this screen (instead of navigating to a separate "Working" page) means the user stays
@@ -141,7 +155,13 @@ internal fun ScreenHost.showAddStory() {
         addStoryUrlText = ""
     }
     val status = addStoryStatus
-    screen(title = "Add Story", subtitle = "Paste a story URL to import", onBack = { showLibrary() }, scrollable = true) {
+    screen(
+        route = AppRoute.AddStory,
+        title = "Add Story",
+        subtitle = "Paste a story URL to import",
+        onBack = { showLibrary() },
+        scrollable = true,
+    ) {
         rerender = { showAddStory() }
         val url =
             makeField(
@@ -329,14 +349,17 @@ private fun makeAddStoryProgress(
     }
 
 internal fun ScreenHost.showMoveStoryDialog(story: Story) {
-    val tabs = storage.getTabs().sortedBy { it.order }
+    val tabs = repository.getTabs().sortedBy { it.order }
     val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
     val options =
         tabOptions.map { (tabId, label) ->
             label to {
                 story.tabId = tabId
-                storage.addOrUpdateStory(story)
-                showLibrary()
+                scope.launch {
+                    repository.addOrUpdateStory(story)
+                    showLibrary()
+                }
+                Unit
             }
         }
     showStyledOptionsDialog("Move Novel", options)

@@ -11,12 +11,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
+import timber.log.Timber
 
 class DownloadForegroundService : Service() {
     private lateinit var engine: DownloadEngine
@@ -86,6 +88,30 @@ class DownloadForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /**
+     * Android 15+ limits data-sync foreground services while the app is in the background. Persist
+     * a resumable queue and relinquish foreground state synchronously during the callback's short
+     * grace period so the system does not terminate the process with a timeout exception.
+     */
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    override fun onTimeout(
+        startId: Int,
+        fgsType: Int,
+    ) {
+        Timber.w("Download foreground service timed out (startId=%s, type=%s)", startId, fgsType)
+        DownloadForegroundServiceTimeoutHandler.handle(
+            recoverQueue = engine::recoverAfterForegroundServiceTimeout,
+            stopForeground = {
+                foregroundStarted = false
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            },
+            stopService = { stopSelf() },
+            onRecoveryFailure = { error ->
+                Timber.e(error, "Failed to persist download queue during foreground-service timeout")
+            },
+        )
+    }
 
     private fun startForegroundIfNeeded(progress: DownloadProgress) {
         if (foregroundStarted) return

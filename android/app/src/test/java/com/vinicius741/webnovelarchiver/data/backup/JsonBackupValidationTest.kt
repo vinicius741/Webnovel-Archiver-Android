@@ -37,4 +37,25 @@ class JsonBackupValidationTest {
             ),
         )
     }
+
+    @Test
+    fun rejectsUnsupportedVersionsAndDuplicateStoryIds() {
+        assertEquals(
+            "Invalid backup file: unsupported version 99",
+            JsonBackupValidation.validate(mapOf("version" to 99, "library" to emptyList<Any>())),
+        )
+        assertEquals(
+            "Invalid backup file: duplicate story IDs",
+            JsonBackupValidation.validate(
+                mapOf(
+                    "version" to 2,
+                    "library" to listOf(mapOf("id" to "same"), mapOf("id" to "same")),
+                ),
+            ),
+        )
+        assertEquals(
+            "Invalid backup file: missing version",
+            JsonBackupValidation.validate(mapOf("version" to 2.5, "library" to emptyList<Any>())),
+        )
+    }
 }

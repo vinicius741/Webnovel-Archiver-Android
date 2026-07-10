@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Lightweight process-wide dependency container (Maintainability M2). Attached to
@@ -40,13 +41,31 @@ class AppContainer(
     val storage: AppStorage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)
     val syncEngine: StorySyncEngine = StorySyncEngine(storage, network)
-    val epubEngine: EpubEngine = EpubEngine(storage, network)
-    val ttsEngine: TtsEngine = TtsEngine(appContext, storage)
+    val epubEngine: EpubEngine = EpubEngine(repository, network)
+    private val repositoryStartup =
+        RepositoryStartup {
+            // One storage monitor covers the complete migration/recovery/hydration transaction.
+            // Services that reach file APIs concurrently wait on the same monitor rather than
+            // observing a partially migrated queue or library.
+            synchronized(storage) {
+                storage.migrateChapterPathsToRelative()
+                storage.recoverInterruptedDownloads()
+                repository.refresh()
+            }
+        }
+    val repositoryReadiness: StateFlow<RepositoryReadiness> = repositoryStartup.readiness
+    val ttsEngine: TtsEngine =
+        TtsEngine(
+            context = appContext,
+            storage = storage,
+            repository = repository,
+            awaitRepositoryReady = repositoryStartup::awaitReady,
+        )
 
-    /** Refreshes the repository's cached state flows; call from [Application.onCreate]. */
+    /** Starts migration/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
-        storage.migrateChapterPathsToRelative()
-        storage.recoverInterruptedDownloads()
-        repository.refresh()
+        repositoryStartup.start(applicationScope)
     }
+
+    suspend fun awaitRepositoryReady() = repositoryStartup.awaitReady()
 }

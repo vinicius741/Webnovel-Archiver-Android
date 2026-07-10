@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.GridLayout
@@ -36,11 +37,12 @@ internal fun ScreenHost.showLibrary() {
     // setting toggles, so the column count reflows 1 → 2 → 3 live.
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
-    var stories: List<Story> = storage.getLibrary()
+    var stories: List<Story> = repository.getLibrary()
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
-    val tabs = storage.getTabs().sortedBy { it.order }
+    val tabs = repository.getTabs().sortedBy { it.order }
     screen(
+        route = AppRoute.Library,
         title = "Library",
         subtitle = if (stories.isEmpty()) null else "${stories.size} novel${if (stories.size == 1) "" else "s"}",
         actions =
@@ -56,16 +58,16 @@ internal fun ScreenHost.showLibrary() {
         val hasUnassigned = stories.any { it.tabId == null }
         var selectedTabId: String? =
             LibraryTabSelection.resolve(
-                storage.getDisplayPreferences().libraryTabId,
+                repository.getDisplayPreferences().libraryTabId,
                 tabs,
                 hasUnassigned,
             )
 
         fun persistTab(id: String?) {
             val encoded = LibraryTabSelection.encode(id)
-            val display = storage.getDisplayPreferences()
+            val display = repository.getDisplayPreferences()
             if (display.libraryTabId != encoded) {
-                storage.saveDisplayPreferences(display.copy(libraryTabId = encoded))
+                scope.launch { repository.saveDisplayPreferences(display.copy(libraryTabId = encoded)) }
             }
         }
 

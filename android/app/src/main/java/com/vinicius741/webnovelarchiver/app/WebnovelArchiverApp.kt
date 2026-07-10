@@ -2,8 +2,10 @@ package com.vinicius741.webnovelarchiver.app
 
 import android.app.Application
 import android.content.Context
+import android.os.StrictMode
 import android.webkit.CookieManager
 import com.vinicius741.webnovelarchiver.BuildConfig
+import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnosticTree
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,8 @@ class WebnovelArchiverApp : Application() {
                 Timber.plant(ReleaseLogTree())
             }
         }
+        Timber.plant(LocalDiagnosticTree())
+        if (BuildConfig.DEBUG) enableDebugStrictMode()
         // Resolve the shared User-Agent asynchronously. WebSettings.getDefaultUserAgent lazily loads
         // the WebView provider, which is expensive — calling it synchronously on the main thread
         // here caused a startup ANR (the process failed to complete startup within the system's
@@ -50,6 +54,25 @@ class WebnovelArchiverApp : Application() {
         // calls CookieManager lazily per-request, so by the time any request actually runs (after the
         // user navigates) the provider is loaded and the seeded toc_show cookie is in place.
         startupScope.launch { enableAndSeedCookies() }
+    }
+
+    private fun enableDebugStrictMode() {
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy
+                .Builder()
+                .detectDiskReads()
+                .detectDiskWrites()
+                .detectNetwork()
+                .penaltyLog()
+                .build(),
+        )
+        StrictMode.setVmPolicy(
+            StrictMode.VmPolicy
+                .Builder()
+                .detectLeakedClosableObjects()
+                .penaltyLog()
+                .build(),
+        )
     }
 
     private fun enableAndSeedCookies() {

@@ -5,15 +5,14 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
+import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
 import com.vinicius741.webnovelarchiver.feature.story.openEpubForStory
-import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
@@ -24,11 +23,10 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
-import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.disableButton
+import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
@@ -124,7 +122,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         ) {
             val config =
                 story.epubConfig ?: EpubConfig(
-                    maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
+                    maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
                     rangeStart = 1,
                     rangeEnd = story.chapters.size,
                     startAtBookmark = false,
@@ -291,7 +289,7 @@ private fun ScreenHost.buildStaleEpubNotice(
             makeButton(app, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
                 val config =
                     story.epubConfig ?: EpubConfig(
-                        maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
+                        maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
                         rangeStart = 1,
                         rangeEnd = story.chapters.size,
                         startAtBookmark = false,

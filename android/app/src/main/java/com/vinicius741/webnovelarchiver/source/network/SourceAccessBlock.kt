@@ -5,7 +5,7 @@ import okhttp3.Headers
 class SourceAccessBlockedException(
     val blockedUrl: String,
     message: String = "Cloudflare is blocking automated access. Open the source in the browser, pass the check, then retry.",
-) : IllegalStateException(message)
+) : NetworkException(message)
 
 object SourceAccessBlockDetector {
     /**

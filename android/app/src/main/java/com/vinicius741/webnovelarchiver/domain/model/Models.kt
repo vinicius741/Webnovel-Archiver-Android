@@ -153,10 +153,14 @@ data class ChapterFilterSettings(
 
 data class DisplayPreferences(
     var activeThemeId: String = "obsidian",
+    /**
+     * Legacy field kept for backup/restore compatibility. Previously labeled "EPUB Volume Folding"
+     * in Settings with Cover/Inner chips, but no EPUB path consumed it. Not exposed in the UI;
+     * volume size is controlled via max-chapters-per-EPUB instead.
+     */
     var foldLayoutMode: String = "auto",
     /** User override for how the app treats the screen size/fold: "auto" (detect), "cover" (force
-     *  phone/1-column), or "inner" (force tablet/multi-column). Fed into [resolveScreenLayout].
-     *  NOTE: unrelated to [foldLayoutMode], which only governs EPUB volume nesting. */
+     *  phone/1-column), or "inner" (force tablet/multi-column). Fed into [resolveScreenLayout]. */
     var screenLayoutMode: String = "auto",
     /** Multiplier applied to the reader WebView base font-size (1.0 = 18px). Clamped to 0.8–1.6. */
     var readerFontScale: Float = 1.0f,

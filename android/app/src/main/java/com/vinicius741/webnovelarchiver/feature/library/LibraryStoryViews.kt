@@ -33,6 +33,7 @@ import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.updateProgressSummary
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToLong
@@ -99,7 +100,7 @@ internal fun ScreenHost.renderTabGrid(
                 content.setOnLongClickListener {
                     // Progress is patched without rebuilding this card, so resolve the latest story
                     // before an action that may persist it; never act on the pre-download snapshot.
-                    storage.getStory(story.id)?.let(::showStoryActionsDialog)
+                    repository.getStory(story.id)?.let(::showStoryActionsDialog)
                     true
                 }
                 addView(content)
@@ -241,8 +242,10 @@ private fun ScreenHost.showStoryActionsDialog(story: Story) {
     options += "Move" to { showMoveStoryDialog(story) }
     options += "Delete" to {
         confirm("Delete ${story.title}?") {
-            storage.deleteStory(story.id)
-            showLibrary()
+            scope.launch {
+                repository.deleteStory(story.id)
+                showLibrary()
+            }
         }
     }
     showStyledOptionsDialog(story.title, options)

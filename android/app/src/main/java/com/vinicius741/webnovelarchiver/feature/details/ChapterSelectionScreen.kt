@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.details.ChapterSelectionPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -30,7 +31,7 @@ internal fun ScreenHost.showChapterSelection(
     storyId: String,
     initialSelectedIds: Set<String> = emptySet(),
 ) {
-    val story = storage.getStory(storyId) ?: return showLibrary()
+    val story = repository.getStory(storyId) ?: return showLibrary()
     if (!StoryActionGuards.canQueueDownloads(story)) {
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return showDetails(story.id)
@@ -43,7 +44,12 @@ internal fun ScreenHost.showChapterSelection(
     val orderedIds = items.map { it.chapter.id }
     val selectedIds = initialSelectedIds.filterTo(mutableSetOf()) { it in orderedIds }
 
-    screen(title = "Select Chapters", subtitle = story.title, onBack = { showDetails(story.id) }) {
+    screen(
+        route = AppRoute.ChapterSelection(story.id, initialSelectedIds),
+        title = "Select Chapters",
+        subtitle = story.title,
+        onBack = { showDetails(story.id) },
+    ) {
         if (items.isEmpty()) {
             addView(
                 makeEmptyState(

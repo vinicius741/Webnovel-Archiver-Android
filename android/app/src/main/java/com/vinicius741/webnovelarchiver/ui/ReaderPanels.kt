@@ -9,17 +9,20 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
-import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
  * Styled panel surface matching [showStyledOptionsDialog]: rounded surface, transparent window
  * background, title, and a Cancel button.
+ *
+ * [block] receives a [dismiss] callback so rows that navigate away (e.g. Voice settings) can close
+ * the dialog first — otherwise the destination screen renders behind the still-visible panel.
  */
 private fun ScreenHost.styledPanelSurface(
     title: String,
-    block: LinearLayout.() -> Unit,
+    block: LinearLayout.(dismiss: () -> Unit) -> Unit,
 ) {
     val colors = ThemeManager.colors
     val radiusPx = app.dp(ThemeManager.shapes.dialogRadius).toFloat()
@@ -38,9 +41,12 @@ private fun ScreenHost.styledPanelSurface(
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(16))
         },
     )
-    dialogView.block()
 
-    val cancelButton = makeButton(app, "Cancel", Btn.TEXT) { /* replaced below */ }
+    var dialogRef: AlertDialog? = null
+    val dismiss: () -> Unit = { dialogRef?.dismiss() }
+    dialogView.block(dismiss)
+
+    val cancelButton = makeButton(app, "Cancel", Btn.TEXT) { dismiss() }
     dialogView.addView(
         LinearLayout(app).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -52,7 +58,7 @@ private fun ScreenHost.styledPanelSurface(
 
     val dialog = AlertDialog.Builder(app).setView(dialogView).create()
     dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-    cancelButton.setOnClickListener { dialog.dismiss() }
+    dialogRef = dialog
     dialog.show()
 }
 
@@ -89,14 +95,18 @@ private fun LinearLayout.panelRow(
  * Reader settings panel: font-size stepper, dark-reader toggle, voice settings, and Copy chapter.
  * Display controls mutate [display], persist it, and re-render the WebView via [onRerender] so
  * changes preview live behind the dialog.
+ *
+ * [onOpenVoiceSettings] is invoked after the panel dismisses so the Voice & Speech screen is not
+ * buried under the dialog. Callers should return to the reader on TTS Back.
  */
 internal fun ScreenHost.showReaderSettingsPanel(
     display: DisplayPreferences,
     onRerender: () -> Unit,
     onCopy: () -> Unit,
+    onOpenVoiceSettings: () -> Unit,
 ) {
     val colors = ThemeManager.colors
-    styledPanelSurface("Reader Settings") {
+    styledPanelSurface("Reader Settings") { dismiss ->
         // Font size: A− / label / A+ in a single row. The label updates in place so the stepper
         // reflects the new size without dismissing the panel.
         val fontRow =
@@ -117,7 +127,7 @@ internal fun ScreenHost.showReaderSettingsPanel(
                     PreferenceNormalization.READER_FONT_SCALE_MIN,
                     PreferenceNormalization.READER_FONT_SCALE_MAX,
                 )
-            storage.saveDisplayPreferences(display)
+            scope.launch { repository.saveDisplayPreferences(display.copy()) }
             onRerender()
             sizeLabel.text = "${(display.readerFontScale * 100).roundToInt()}%"
         }
@@ -141,7 +151,7 @@ internal fun ScreenHost.showReaderSettingsPanel(
         val darkState = makeText(app, if (display.readerDark) "On" else "Off", Type.LABEL_LARGE, colors.onSurfaceVariant)
         panelRow("Dark reader", this@showReaderSettingsPanel, darkState) {
             display.readerDark = !display.readerDark
-            storage.saveDisplayPreferences(display)
+            scope.launch { repository.saveDisplayPreferences(display.copy()) }
             onRerender()
             darkState.text = if (display.readerDark) "On" else "Off"
         }
@@ -151,7 +161,13 @@ internal fun ScreenHost.showReaderSettingsPanel(
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(8))
             },
         )
-        panelRow("Voice settings", this@showReaderSettingsPanel) { showTtsSettings() }
-        panelRow("Copy chapter text", this@showReaderSettingsPanel) { onCopy() }
+        panelRow("Voice settings", this@showReaderSettingsPanel) {
+            dismiss()
+            onOpenVoiceSettings()
+        }
+        panelRow("Copy chapter text", this@showReaderSettingsPanel) {
+            dismiss()
+            onCopy()
+        }
     }
 }

@@ -4,26 +4,23 @@ import android.content.Intent
 import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
-import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
-import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
+import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.applyCleanup
 import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
-import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
-import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.confirm
+import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.launch
 
-/**
+/*
  * Chapter-list rendering for the Details screen (Maintainability M1: split out of DetailsScreen.kt).
  * Holds the chapter list adapter wiring, the filter-chip group, the pure chapter filter, the
  * per-row bookmark toggle, and the app-bar overflow menu — the chapter-list concerns — so
@@ -67,8 +64,10 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
             toast("Please wait for the current operation to finish")
         } else {
             confirm("Delete \"${story.title}\"? This action cannot be undone.") {
-                storage.deleteStory(story.id)
-                showLibrary()
+                scope.launch {
+                    repository.deleteStory(story.id)
+                    showLibrary()
+                }
             }
         }
     }
@@ -144,9 +143,10 @@ internal fun ScreenHost.toggleChapterBookmark(
     query: String,
     filter: String,
 ) {
-    val updated = StoryBookmarkPlanning.withBookmark(story, chapter.id, toggleExisting = true)
-    storage.addOrUpdateStory(updated)
-    renderChapterList(updated, list, query, filter)
+    scope.launch {
+        val updated = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
+        renderChapterList(updated, list, query, filter)
+    }
 }
 
 /**

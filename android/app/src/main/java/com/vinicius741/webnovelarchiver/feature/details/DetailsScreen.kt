@@ -10,9 +10,9 @@ import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -23,8 +23,8 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
-import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.screen
+import com.vinicius741.webnovelarchiver.ui.scroll
 import kotlinx.coroutines.launch
 
 /**
@@ -38,7 +38,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // Seed from the repository's cached library rather than re-parsing the story JSON on each
     // render (Audit Rec 1). The downloaded-flow observer below patches this in place afterward.
     val story = repository.story(storyId) ?: return showLibrary()
-    val screenKey = "${story.title}|by ${story.author}"
+    val screenKey = AppRoute.Details(story.id).stableKey
     val previousListState =
         if (frame.tag == screenKey) {
             findDetailsChapterList(frame)?.layoutManager?.onSaveInstanceState()
@@ -62,6 +62,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     var bannerSlot: ViewGroup? = null
     var downloadActionSlot: LinearLayout? = null
     screen(
+        route = AppRoute.Details(story.id),
         title = story.title,
         subtitle = "by ${story.author}",
         onBack = { showLibrary() },
@@ -107,7 +108,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             }
 
         val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
-        var chapterFilter = storage.getChapterFilterSettings().filterMode
+        var chapterFilter = repository.getChapterFilterSettings().filterMode
         var chapterQuery = ""
 
         // Chips are rebuilt on every pick so the active one re-highlights (the original bug was
@@ -115,7 +116,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         var pick: (String) -> Unit = {}
         pick = { mode ->
             chapterFilter = mode
-            storage.saveChapterFilterSettings(ChapterFilterSettings(mode))
+            scope.launch { repository.saveChapterFilterSettings(ChapterFilterSettings(mode)) }
             renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
             renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
         }
@@ -279,7 +280,13 @@ internal fun ScreenHost.renderDetailsDownloadAction(
 ) {
     slot.removeAllViews()
     val remainingChapters = story.chapters.count { !it.downloaded }
-    if (remainingChapters == 0 || !com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards.canQueueDownloads(story)) return
+    if (
+        remainingChapters == 0 ||
+        !com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+            .canQueueDownloads(story)
+    ) {
+        return
+    }
     val label = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
     slot.addView(
         makeFullWidthButton(
@@ -290,7 +297,7 @@ internal fun ScreenHost.renderDetailsDownloadAction(
             dp(Space.SM + 2),
             enabled = !isBusy && !summary.isActive,
         ) {
-            val latest = storage.getStory(story.id) ?: return@makeFullWidthButton
+            val latest = repository.getStory(story.id) ?: return@makeFullWidthButton
             queueDownload(
                 latest,
                 latest.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null },

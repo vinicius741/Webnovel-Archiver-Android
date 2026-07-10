@@ -7,7 +7,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
@@ -20,6 +19,7 @@ import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.download.QueueStatusCounts
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
@@ -51,7 +51,7 @@ internal fun ScreenHost.showQueue() {
     val host = this
     val queue =
         repository.downloadState.value.queue
-            .ifEmpty { storage.getQueue() }
+            .ifEmpty { repository.getQueue() }
     // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
     rerender = { showQueue() }
     val layout = currentScreenLayout()
@@ -60,7 +60,7 @@ internal fun ScreenHost.showQueue() {
     lateinit var emptySlot: FrameLayout
     lateinit var list: RecyclerView
     val initialGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(queue))
-    screen(title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(initialGlobalActions)) {
+    screen(route = AppRoute.Queue, title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(initialGlobalActions)) {
         // Center everything in a width-capped column (920/1080dp by width class) so the queue doesn't
         // stretch edge-to-edge on tablets/the Fold inner display. On phone widths the cap is larger
         // than the screen so it has no effect.
@@ -182,122 +182,6 @@ private fun ScreenHost.updateQueueContent(
     adapter.submitQueue(queue)
 }
 
-private data class QueueStoryGroup(
-    val storyId: String,
-    val jobs: List<DownloadJob>,
-    val signature: String,
-)
-
-private class QueueGroupAdapter(
-    private val host: ScreenHost,
-    private val onExpansionChanged: () -> Unit,
-) : RecyclerView.Adapter<QueueGroupAdapter.GroupHolder>() {
-    private var groups: List<QueueStoryGroup> = emptyList()
-
-    init {
-        setHasStableIds(true)
-    }
-
-    override fun getItemId(position: Int): Long = groups[position].storyId.hashCode().toLong()
-
-    override fun getItemCount(): Int = groups.size
-
-    override fun onCreateViewHolder(
-        parent: ViewGroup,
-        viewType: Int,
-    ): GroupHolder =
-        GroupHolder(
-            FrameLayout(parent.context).apply {
-                layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            },
-        )
-
-    override fun onBindViewHolder(
-        holder: GroupHolder,
-        position: Int,
-    ) {
-        // U2: the holder now owns a persistent QueueGroupCard (built once, recycled). It is created
-        // lazily on first bind and replaced into the container only when missing, so each rebind
-        // repopulates the existing card's header + job rows instead of rebuilding the whole subtree.
-        val group = groups[position]
-        val card = holder.card ?: host.createQueueGroupCard().also { holder.card = it }
-        if (card.view.parent !== holder.container) {
-            holder.container.removeAllViews()
-            holder.container.addView(card.view)
-        }
-        card.bind(group.jobs, onExpansionChanged)
-    }
-
-    fun submitQueue(queue: List<DownloadJob>) {
-        val previous = groups
-        val next = host.queueGroups(queue)
-        groups = next
-        DiffUtil
-            .calculateDiff(
-                object : DiffUtil.Callback() {
-                    override fun getOldListSize(): Int = previous.size
-
-                    override fun getNewListSize(): Int = next.size
-
-                    override fun areItemsTheSame(
-                        oldItemPosition: Int,
-                        newItemPosition: Int,
-                    ): Boolean = previous[oldItemPosition].storyId == next[newItemPosition].storyId
-
-                    override fun areContentsTheSame(
-                        oldItemPosition: Int,
-                        newItemPosition: Int,
-                    ): Boolean = previous[oldItemPosition].signature == next[newItemPosition].signature
-                },
-            ).dispatchUpdatesTo(this)
-    }
-
-    class GroupHolder(
-        val container: FrameLayout,
-    ) : RecyclerView.ViewHolder(container) {
-        // U2: the recycled card shell persists across binds; only its contents are repopulated.
-        var card: QueueGroupCard? = null
-    }
-}
-
-private fun ScreenHost.queueGroups(queue: List<DownloadJob>): List<QueueStoryGroup> =
-    queue
-        .groupBy { it.storyId }
-        .values
-        .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
-        .map { jobs ->
-            val counts = QueueStatusCounts.from(jobs)
-            val expanded = storyExpandOverride[jobs.first().storyId] ?: (counts.hasActive || counts.hasFailed)
-            QueueStoryGroup(
-                storyId = jobs.first().storyId,
-                jobs = jobs,
-                signature =
-                    buildString {
-                        append(expanded)
-                        jobs.sortedBy { it.chapterIndex }.forEach { job ->
-                            append('|')
-                            append(job.id)
-                            append(':')
-                            append(job.chapterIndex)
-                            append(':')
-                            append(job.chapter.title)
-                            append(':')
-                            append(job.status)
-                            append(':')
-                            append(job.retryCount)
-                            append(':')
-                            append(job.error.orEmpty())
-                            append(':')
-                            append(job.errorCategory.orEmpty())
-                            append(':')
-                            append(job.errorCode.orEmpty())
-                            append(':')
-                            append(job.nextRetryAt ?: 0L)
-                        }
-                    },
-            )
-        }
-
 /** Global (whole-queue) actions rendered as a stable app-bar icon strip. */
 private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): List<AppBarAction> =
     actions.map { action ->
@@ -319,7 +203,7 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
                             .value
                             .queue
                             .firstOrNull { it.errorCategory == "source_blocked" }
-                            ?: storage.getQueue().firstOrNull { it.errorCategory == "source_blocked" }
+                            ?: repository.getQueue().firstOrNull { it.errorCategory == "source_blocked" }
                     if (blocked != null) {
                         showSourceAccessBlockedDialog(blocked.chapter.url) {
                             downloadEngine.retryFailed()
@@ -356,7 +240,7 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
  * rebuild (`removeAllViews()` + `addStoryGroup(...)`), so recycling now actually reuses the heavy card
  * instead of reconstructing it on every bind.
  */
-private class QueueGroupCard(
+internal class QueueGroupCard(
     val view: LinearLayout,
     private val host: ScreenHost,
     private val header: LinearLayout,
@@ -404,7 +288,7 @@ private class QueueGroupCard(
 }
 
 /** Build the persistent skeleton for a [QueueGroupCard] (built once per recycled holder). */
-private fun ScreenHost.createQueueGroupCard(): QueueGroupCard {
+internal fun ScreenHost.createQueueGroupCard(): QueueGroupCard {
     val chevron = chevronIcon(expanded = true) // rotation is set in bind
     val title =
         makeText(app, "", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {

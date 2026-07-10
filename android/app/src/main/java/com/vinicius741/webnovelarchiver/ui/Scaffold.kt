@@ -14,6 +14,7 @@ import android.widget.Space
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 
 internal data class AppBarAction(
@@ -32,7 +33,9 @@ internal enum class ScreenChrome {
     IMMERSIVE,
 }
 
+@Suppress("LongParameterList") // Programmatic-View scaffold DSL; call sites use named arguments.
 internal fun ScreenHost.screen(
+    route: AppRoute,
     title: String,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
@@ -44,19 +47,21 @@ internal fun ScreenHost.screen(
 ) {
     screenObserver?.cancel()
     screenObserver = null
-    // Capture the outgoing ScrollView's position before the tree is torn down, so a re-render of the
-    // same screen (e.g. download-progress ticks, which re-run showDetails → screen(...)) doesn't snap
-    // back to the top. scrollTo clamps to the valid range, so this is safe if the new content differs.
-    val screenKey = "$title|${subtitle.orEmpty()}"
+    navigator.navigate(route)
+    val screenKey = navigator.current.stableKey
     val previousScreenKey = frame.tag as? String
-    val savedScrollY = if (scrollable && previousScreenKey == screenKey) findScrollView(frame)?.scrollY ?: 0 else 0
+    if (previousScreenKey != null) {
+        findScrollView(frame)?.let { routeScrollPositions[previousScreenKey] = it.scrollY }
+    }
+    val savedScrollY = if (scrollable) routeScrollPositions[screenKey] ?: 0 else 0
     // R9: destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
     disposeWebViews(frame)
     frame.removeAllViews()
     // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
     // hardware/gesture back navigation so the OS default (exit) applies.
-    backHandler = onBack
+    val effectiveBack = if (onBack != null && navigator.canGoBack) ({ navigateBack() }) else onBack
+    backHandler = effectiveBack
     val column =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -65,7 +70,7 @@ internal fun ScreenHost.screen(
             // content stays clear of it whether the body scrolls or not.
             setPadding(0, 0, 0, systemBarBottom())
         }
-    if (chrome == ScreenChrome.STANDARD) column.addView(appBar(title, subtitle, onBack, actions))
+    if (chrome == ScreenChrome.STANDARD) column.addView(appBar(title, subtitle, effectiveBack, actions))
     val content =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL

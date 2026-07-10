@@ -6,15 +6,12 @@ import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
+import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
-import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
-import com.vinicius741.webnovelarchiver.feature.reader.ChapterHtmlSanitizer
-import com.vinicius741.webnovelarchiver.feature.reader.ReaderContentRenderer
-import com.vinicius741.webnovelarchiver.feature.reader.ReaderContentRenderer.ReaderDocumentColors
+import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
@@ -37,9 +34,9 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showReaderSettingsPanel
 import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.launch
 
 /**
  * File-scope slot holding the reader screen's TTS state listener, so successive `showReader()`
@@ -61,27 +58,38 @@ internal fun ScreenHost.showReader(
     storyId: String,
     chapterId: String,
 ) {
-    val story = storage.getStory(storyId) ?: return
-    val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return
-    val currentIndex = story.chapters.indexOfFirst { it.id == chapter.id }
-    // Re-render on fold/unfold/rotation so the reading column + side padding can reflow.
-    rerender = { showReader(story.id, chapter.id) }
-    val layout = currentScreenLayout()
-
-    // Gap 3: sanitize the chapter HTML (strips scripts/on* handlers/active content) and produce the
-    // TTS-annotated variant whose `data-tts-group` indices are byte-for-byte aligned with the chunk
-    // list the TTS engine speaks. The sanitized annotated HTML is what the reader renders; the chunk
-    // list is fed to the floating transport's progress label.
-    val rawContent = ReaderContentRenderer.contentOrUndownloadedMessage(storage.readChapter(chapter) ?: chapter.content)
-    val settings = storage.getTtsSettings()
-    val annotated =
-        TextCleanup.prepareTtsAnnotatedHtml(
-            ChapterHtmlSanitizer.sanitize(rawContent),
-            storage.getRegexRules(),
-            settings.chunkSize,
+    detachReaderTtsListener()
+    rerender = { showReader(storyId, chapterId) }
+    val palette = ReaderDocumentPalette(normal = readerDocumentColors(false), forcedDark = readerDocumentColors(true))
+    screen(
+        route = AppRoute.Reader(storyId, chapterId),
+        title = "Reader",
+        subtitle = "Preparing chapter…",
+        onBack = { showDetails(storyId) },
+    ) {
+        addView(
+            ProgressBar(context),
+            LinearLayout
+                .LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { gravity = Gravity.CENTER_HORIZONTAL },
         )
-    val formattedText = TextCleanup.htmlToFormattedText(rawContent)
-    val display = storage.getDisplayPreferences()
+    }
+    screenObserver =
+        scope.launch {
+            ReaderDocumentPreparer(repository).prepare(storyId, chapterId, palette)?.let(::renderPreparedReader)
+        }
+}
+
+private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
+    val story = document.story
+    val chapter = document.chapter
+    val currentIndex = document.chapterIndex
+    val annotated = document.annotated
+    val formattedText = document.formattedText
+    val display = document.display
+    val layout = currentScreenLayout()
     val reader =
         WebView(app).apply {
             // R9 + gap 3: JS is enabled ONLY because the HTML was just sanitized; file/content access
@@ -102,7 +110,7 @@ internal fun ScreenHost.showReader(
             // Defensive: clamp + ignore taps when the index is out of the annotated chunk range.
             val clamped = index.coerceAtLeast(0)
             app.runOnUiThread {
-                val latest = storage.getStory(story.id) ?: return@runOnUiThread
+                val latest = repository.story(story.id) ?: story
                 val currentChapter = latest.chapters.firstOrNull { it.id == chapter.id } ?: return@runOnUiThread
                 TtsForegroundService.start(app, latest.id, currentChapter.id, clamped)
             }
@@ -111,23 +119,17 @@ internal fun ScreenHost.showReader(
     reader.addJavascriptInterface(ReaderTtsBridge(), "AndroidBridge")
 
     fun renderReader() {
-        val readerColors = readerDocumentColors(display.readerDark)
+        val readerColors = document.colors
         reader.setBackgroundColor(cssColorToInt(readerColors.background))
         reader.loadDataWithBaseURL(
             null,
-            ReaderContentRenderer.document(
-                chapter.title,
-                annotated.annotatedHtml,
-                display.readerFontScale,
-                readerColors,
-                includeTtsScript = true,
-            ),
+            document.webViewHtml,
             "text/html",
             "utf-8",
             null,
         )
         // After a re-render, re-apply the live highlight so the speaking chunk stays marked.
-        val liveSession = storage.getTtsSession()
+        val liveSession = document.persistedSession
         if (liveSession != null && liveSession.storyId == story.id && liveSession.chapterId == chapter.id) {
             applyHighlight(reader, liveSession.currentChunkIndex, annotated.chunks.size)
         }
@@ -143,11 +145,11 @@ internal fun ScreenHost.showReader(
                 label = if (bookmarkActive) "Clear bookmark" else "Bookmark",
                 tint = ThemeManager.colors.primary.takeIf { bookmarkActive },
             ) {
-                val latest = storage.getStory(story.id) ?: story
-                val wasActive = latest.lastReadChapterId == chapter.id
-                storage.addOrUpdateStory(StoryBookmarkPlanning.withBookmark(latest, chapter.id, toggleExisting = true))
-                toast(if (wasActive) "Bookmark cleared" else "Bookmarked")
-                rebuild()
+                scope.launch {
+                    val updated = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
+                    toast(if (updated.lastReadChapterId == chapter.id) "Bookmarked" else "Bookmark cleared")
+                    rebuild()
+                }
             },
             AppBarAction(R.drawable.wna_speaker, "Read aloud") {
                 TtsForegroundService.start(app, story.id, chapter.id)
@@ -155,12 +157,16 @@ internal fun ScreenHost.showReader(
             AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
                 // The panel mutates the shared `display` and calls back into `renderReader`, so
                 // font-size / dark-reader changes preview live on the WebView behind the dialog.
+                // Voice settings dismisses the panel first and returns here on Back (not Settings).
                 showReaderSettingsPanel(
                     display = display,
-                    onRerender = { renderReader() },
+                    onRerender = { showReader(story.id, chapter.id) },
                     onCopy = {
                         copyToClipboard("Chapter text", formattedText)
                         toast("Chapter copied")
+                    },
+                    onOpenVoiceSettings = {
+                        showTtsSettings(onBack = { showReader(story.id, chapter.id) })
                     },
                 )
             },
@@ -175,7 +181,8 @@ internal fun ScreenHost.showReader(
     // at a time, so we hold the active reader listener in a file-scope slot and swap it out on each
     // showReader() (remove old → add new). This avoids both clobbering the service's listener and
     // leaking a fresh listener per re-render (fold/rotate/settings).
-    var transportSnapshot: TtsPlaybackSnapshot? = currentReaderSnapshot(story.id, chapter.id, annotated.chunks.size)
+    var transportSnapshot: TtsPlaybackSnapshot? =
+        currentReaderSnapshot(document.persistedSession, story.id, chapter.id, annotated.chunks.size)
     var transportPlayPause: ImageView? = null
     var transportBar: LinearLayout? = null
     activeReaderTtsListener?.let { ttsEngine.removeStateListener(it) }
@@ -215,6 +222,7 @@ internal fun ScreenHost.showReader(
     ttsEngine.addStateListener(readerListener)
 
     screen(
+        route = AppRoute.Reader(story.id, chapter.id),
         title = sanitizeTitle(chapter.title),
         subtitle = "${currentIndex + 1} / ${story.chapters.size}",
         onBack = {
@@ -331,125 +339,4 @@ internal fun ScreenHost.showReader(
         transportBar = transport
         addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
-}
-
-private fun readerDocumentColors(forceDark: Boolean): ReaderDocumentColors {
-    val theme = ThemeManager.current
-    val accent = ThemeManager.colors.primary.toCssHex()
-    return if (forceDark && !theme.isDark) {
-        ReaderDocumentColors(background = "#121212", foreground = "#e6e6e6", ttsHighlight = accent)
-    } else {
-        ReaderDocumentColors(
-            background = theme.colors.background.toCssHex(),
-            foreground = theme.colors.onBackground.toCssHex(),
-            ttsHighlight = accent,
-        )
-    }
-}
-
-private fun Int.toCssHex(): String = "#%06X".format(this and 0xFFFFFF)
-
-private fun cssColorToInt(cssColor: String): Int = android.graphics.Color.parseColor(cssColor)
-
-/**
- * Builds the initial transport snapshot for [showReader] from any persisted TTS session, so the
- * floating transport + highlight reflect "already playing this chapter" on entry. Returns null when
- * there is no session or it targets a different chapter.
- */
-private fun ScreenHost.currentReaderSnapshot(
-    storyId: String,
-    chapterId: String,
-    chunkCount: Int,
-): TtsPlaybackSnapshot? {
-    val session = storage.getTtsSession() ?: return null
-    if (session.storyId != storyId || session.chapterId != chapterId) return null
-    return TtsPlaybackState.snapshotForSession(
-        session = session,
-        // On entry we don't know the engine's live chunk count for the persisted session, so fall back
-        // to the rendered chapter's chunk count; the first state-change callback corrects it.
-        totalChunks = chunkCount,
-        isPlaying = !session.isPaused,
-    )
-}
-
-/**
- * Drives the in-document highlight (gap 3) by evaluating the reader script's `WnaTts.setActive(i)`.
- * `chunkIndex == null` clears the highlight (playback stopped / different chapter). Cheap and
- * non-reloading: evaluateJavascript does not re-render the WebView, so there's no page flash.
- */
-private fun applyHighlight(
-    reader: WebView,
-    chunkIndex: Int?,
-    totalChunks: Int,
-) {
-    if (totalChunks <= 0 && chunkIndex == null) {
-        reader.evaluateJavascript("if(window.WnaTts){WnaTts.setActive(null);}", null)
-        return
-    }
-    val safeIndex = chunkIndex ?: return
-    reader.evaluateJavascript("if(window.WnaTts){WnaTts.setActive($safeIndex);}", null)
-}
-
-/**
- * Gap 4 floating TTS transport (mirrors the legacy RN `TTSController`). A slim bar with Prev /
- * Play-Pause / Next buttons grouped on the left, a flexible spacer, and a Stop button on the far
- * right — the standard media-player layout where "end" is visually separated from the transport.
- * The play-pause icon is exposed via [onPlayPause] so [showReader]'s state listener can swap it in
- * place without rebuilding the screen on every chunk advance.
- */
-private fun ScreenHost.readerTtsTransport(
-    snapshot: TtsPlaybackSnapshot?,
-    onPlayPause: (ImageView) -> Unit,
-    onPrev: () -> Unit,
-    onPlayPauseTap: () -> Unit,
-    onNext: () -> Unit,
-    onStop: () -> Unit,
-): LinearLayout {
-    val colors = ThemeManager.colors
-    val bar =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(colors.elevation1)
-            setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
-        }
-
-    fun transportIcon(
-        desc: String,
-        icon: Int,
-        action: () -> Unit,
-    ) = ImageView(app).apply {
-        contentDescription = desc
-        setImageDrawable(app.tintedIcon(icon, colors.primary))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        val pad = dp(Spacing.SM)
-        setPadding(pad, pad, pad, pad)
-        background = selectableRipple(colors.onSurface)
-        setOnClickListener { action() }
-        layoutParams =
-            LinearLayout.LayoutParams(dp(44), dp(44)).apply {
-                marginStart = dp(Spacing.XS)
-                marginEnd = dp(Spacing.XS)
-            }
-    }
-    bar.addView(transportIcon("Previous chunk", R.drawable.wna_skip_prev, onPrev))
-    val isPaused = snapshot?.isPaused != false
-    val playPause =
-        transportIcon(
-            if (isPaused) "Play TTS" else "Pause TTS",
-            if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
-            onPlayPauseTap,
-        )
-    onPlayPause(playPause)
-    bar.addView(playPause)
-    bar.addView(transportIcon("Next chunk", R.drawable.wna_skip_next, onNext))
-    // Flexible spacer that pushes Stop to the far right, separating the transport group from the
-    // destructive "end playback" action.
-    bar.addView(
-        android.view.View(app).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
-        },
-    )
-    bar.addView(transportIcon("Stop TTS", R.drawable.wna_stop, onStop))
-    return bar
 }

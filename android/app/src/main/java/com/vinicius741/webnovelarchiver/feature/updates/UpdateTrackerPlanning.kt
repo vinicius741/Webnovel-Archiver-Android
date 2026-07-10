@@ -10,12 +10,28 @@ data class UpdatedChapter(
 )
 
 object UpdateTrackerPlanning {
+    /** Stories that can participate in update following (archives are read-only snapshots). */
+    fun followableStories(stories: List<Story>): List<Story> = stories.filter { StoryActionGuards.canSync(it) }
+
+    fun filterStories(
+        stories: List<Story>,
+        query: String,
+    ): List<Story> {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return stories
+        return stories.filter { story ->
+            story.title.contains(trimmed, ignoreCase = true) ||
+                story.author.contains(trimmed, ignoreCase = true)
+        }
+    }
+
     fun normalizeFollowedIds(
         stories: List<Story>,
         followedIds: List<String>,
     ): List<String> {
-        val liveIds = stories.map { it.id }.toSet()
-        return followedIds.filter { it in liveIds }.distinct()
+        // Drop missing ids and archived snapshots — following an archive cannot sync.
+        val followableIds = followableStories(stories).map { it.id }.toSet()
+        return followedIds.filter { it in followableIds }.distinct()
     }
 
     fun followedStories(

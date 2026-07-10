@@ -3,6 +3,12 @@ package com.vinicius741.webnovelarchiver.download
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
+import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
+import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
+import com.vinicius741.webnovelarchiver.source.network.NetworkTimeoutException
+import com.vinicius741.webnovelarchiver.source.network.NetworkTransportException
+import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.ui.size
 import kotlin.random.Random
@@ -118,6 +124,25 @@ object DownloadErrorClassifier {
                 "SOURCE_BLOCKED",
                 false,
             )
+        }
+        if (error is RateLimitNetworkException) {
+            return ClassifiedDownloadError("HTTP ${error.statusCode}", "rate_limit", error.statusCode.toString(), true)
+        }
+        if (error is HttpNetworkException) {
+            val retryable = error.statusCode in setOf(408, 500, 502, 503, 504)
+            return ClassifiedDownloadError("HTTP ${error.statusCode}", "network", error.statusCode.toString(), retryable)
+        }
+        if (error is NetworkTimeoutException) {
+            return ClassifiedDownloadError(error.message ?: "Network timeout", "network", "TIMEOUT", true)
+        }
+        if (error is NetworkOfflineException) {
+            return ClassifiedDownloadError(error.message ?: "Network unavailable", "network", "OFFLINE", true)
+        }
+        if (error is NetworkTransportException) {
+            return ClassifiedDownloadError(error.message ?: "Network error", "network", "NETWORK_ERROR", true)
+        }
+        if (error is NetworkParseException) {
+            return ClassifiedDownloadError(error.message ?: "Content parse failed", "parse", "CONTENT_TOO_SHORT", true)
         }
         val message = error.message ?: "Download failed"
         val lower = message.lowercase()

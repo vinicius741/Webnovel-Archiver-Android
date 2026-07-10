@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -139,7 +140,8 @@ class SourceProviderTest {
             assertEquals(PublicationStatus.completed, metadata.publicationStatus)
             assertEquals("sh_1000", chapters.single().id)
             assertEquals(
-                LocalDate.of(2024, 5, 12)
+                LocalDate
+                    .of(2024, 5, 12)
                     .atStartOfDay(ZoneId.systemDefault())
                     .toInstant()
                     .toEpochMilli(),
@@ -297,8 +299,8 @@ class SourceProviderTest {
         val noContent = "<html><body><p>no chapter-inner here</p></body></html>"
         try {
             RoyalRoadProvider.parseChapterContent(noContent)
-            fail("Expected IllegalStateException when chapter content selector is missing")
-        } catch (expected: IllegalStateException) {
+            fail("Expected NetworkParseException when chapter content selector is missing")
+        } catch (expected: NetworkParseException) {
             assertTrue(expected.message!!.contains("content not found", ignoreCase = true))
         }
     }
@@ -308,8 +310,8 @@ class SourceProviderTest {
         val noContent = "<html><body><p>no chp_raw here</p></body></html>"
         try {
             ScribbleHubProvider.parseChapterContent(noContent)
-            fail("Expected IllegalStateException when chapter content selector is missing")
-        } catch (expected: IllegalStateException) {
+            fail("Expected NetworkParseException when chapter content selector is missing")
+        } catch (expected: NetworkParseException) {
             assertTrue(expected.message!!.contains("content not found", ignoreCase = true))
         }
     }

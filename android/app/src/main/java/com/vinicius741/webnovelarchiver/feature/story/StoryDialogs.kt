@@ -40,17 +40,18 @@ import com.vinicius741.webnovelarchiver.ui.styledDialogField
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     // The details screen captures `story` once and never refreshes it, so a bookmark toggled from the
     // chapter list (which persists a fresh Story.copy) wouldn't be reflected here — leaving the
     // "Start at the bookmark" checkbox disabled even though a bookmark exists. Re-read the latest
     // persisted story so the dialog always matches on-disk state.
-    val story = storage.getStory(story.id) ?: story
+    val story = repository.getStory(story.id) ?: story
     if (story.chapters.isEmpty()) return toast("No chapters available")
     val current =
         story.epubConfig ?: EpubConfig(
-            maxChaptersPerEpub = storage.getSettings().maxChaptersPerEpub,
+            maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
             rangeStart = 1,
             rangeEnd = story.chapters.size,
             startAtBookmark = false,
@@ -138,10 +139,11 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
                         rangeEnd = end,
                         startAtBookmark = startAtBookmark.isChecked && hasBookmark,
                     )
-                story.epubConfig = config
-                storage.addOrUpdateStory(story)
-                toast("EPUB settings saved")
-                showDetails(story.id)
+                scope.launch {
+                    repository.setEpubConfig(story.id, config)
+                    toast("EPUB settings saved")
+                    showDetails(story.id)
+                }
             }.setNegativeButton("Cancel", null)
             .create()
     dialog.show()

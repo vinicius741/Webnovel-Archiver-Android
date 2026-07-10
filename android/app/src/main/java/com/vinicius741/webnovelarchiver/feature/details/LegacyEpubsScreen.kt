@@ -13,22 +13,23 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.openFile
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.toast
-import com.vinicius741.webnovelarchiver.ui.confirm
+import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -42,16 +43,36 @@ import java.util.Locale
  *  - **Current EPUBs** — still referenced by [com.vinicius741.webnovelarchiver.domain.model.Story.epubPaths],
  *    i.e. what the "Read EPUB" button opens. These may be viewed but not deleted here (deleting a
  *    referenced file would dangle the active EPUB; deleting is blocked at both the UI and
- *    [com.vinicius741.webnovelarchiver.data.storage.AppStorage.deleteEpubFile] boundaries).
+ *    [com.vinicius741.webnovelarchiver.data.repository.AppRepository.deleteEpubFile] boundary).
  *  - **Leftover files** — present on disk but no longer referenced. These are safe to delete.
  *
  * Every row offers **See** (opens the EPUB via the existing FileProvider path) and, for leftovers,
  * **Delete** (confirm then remove from disk).
  */
 internal fun ScreenHost.showLegacyEpubs(storyId: String) {
-    val story = storage.getStory(storyId) ?: return showLibrary()
+    val story = repository.getStory(storyId) ?: return showLibrary()
+    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
+        addView(
+            makeEmptyState(
+                context,
+                title = "Loading EPUB files",
+                message = "Checking saved files…",
+                iconRes = R.drawable.wna_book_open,
+            ),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f),
+        )
+    }
+    val loadingRoot = frame.getChildAt(0)
+    scope.launch {
+        val onDisk = repository.listEpubs(storyId)
+        if (loadingRoot.parent === frame) renderLegacyEpubs(story, onDisk)
+    }
+}
 
-    val onDisk = storage.listEpubs(storyId)
+private fun ScreenHost.renderLegacyEpubs(
+    story: com.vinicius741.webnovelarchiver.domain.model.Story,
+    onDisk: List<File>,
+) {
     // story.epubPaths may hold absolute OR relative paths (relative is the on-disk norm after
     // migrateChapterPaths relativizes them). Resolve each to an absolute File via the storage layer
     // so the comparison against on-disk absolute paths is apples-to-apples — otherwise a stored
@@ -59,7 +80,7 @@ internal fun ScreenHost.showLegacyEpubs(storyId: String) {
     // as a leftover.
     val referenced =
         (story.epubPaths?.filter { it.isNotBlank() } ?: listOfNotNull(story.epubPath))
-            .mapNotNull { storage.resolveAbsolutePath(it)?.absolutePath }
+            .mapNotNull { repository.resolveAbsolutePath(it)?.absolutePath }
             .toSet()
     val current = onDisk.filter { it.absolutePath in referenced }
     // Leftovers are shown newest-first (inverse of listEpubs' oldest-first order) so the most
@@ -67,7 +88,7 @@ internal fun ScreenHost.showLegacyEpubs(storyId: String) {
     // for cleanup. Current EPUBs keep oldest-first to match the "Read EPUB" reading order.
     val leftover = onDisk.filter { it.absolutePath !in referenced }.asReversed()
 
-    screen(title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
+    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
         if (onDisk.isEmpty()) {
             addView(
                 makeEmptyState(
@@ -88,7 +109,13 @@ internal fun ScreenHost.showLegacyEpubs(storyId: String) {
                 clipToPadding = false
                 setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM))
             }
-        list.adapter = LegacyEpubsAdapter(current, leftover, onSee = { openFile(it.absolutePath) }, onDelete = { file -> deleteEpub(storyId, file) })
+        list.adapter =
+            LegacyEpubsAdapter(
+                current,
+                leftover,
+                onSee = { openFile(it.absolutePath) },
+                onDelete = { file -> deleteEpub(story.id, file) },
+            )
         addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
     }
 }
@@ -103,12 +130,14 @@ private fun ScreenHost.deleteEpub(
         message = "Delete \"$name\"? This leftover file will be removed permanently.",
         confirmLabel = "Delete",
     ) {
-        if (storage.deleteEpubFile(storyId, file.absolutePath)) {
-            toast("Deleted")
-        } else {
-            toast("Could not delete file")
+        scope.launch {
+            if (repository.deleteEpubFile(storyId, file.absolutePath)) {
+                toast("Deleted")
+            } else {
+                toast("Could not delete file")
+            }
+            showLegacyEpubs(storyId)
         }
-        showLegacyEpubs(storyId)
     }
 }
 
@@ -147,7 +176,9 @@ internal class LegacyEpubsAdapter(
             val count: Int,
         ) : Row
 
-        data class File(val item: LegacyEpubItem) : Row
+        data class File(
+            val item: LegacyEpubItem,
+        ) : Row
     }
 
     override fun getItemViewType(position: Int): Int =
@@ -275,7 +306,9 @@ internal class LegacyEpubsAdapter(
         val deleteButton: android.widget.Button,
     )
 
-    internal class SectionHolder(val root: LinearLayout) : RecyclerView.ViewHolder(root) {
+    internal class SectionHolder(
+        val root: LinearLayout,
+    ) : RecyclerView.ViewHolder(root) {
         fun bind(
             title: String,
             count: Int,
@@ -294,7 +327,9 @@ internal class LegacyEpubsAdapter(
         }
     }
 
-    internal class FileHolder(val root: LinearLayout) : RecyclerView.ViewHolder(root) {
+    internal class FileHolder(
+        val root: LinearLayout,
+    ) : RecyclerView.ViewHolder(root) {
         @Suppress("UNCHECKED_CAST")
         private val tags: FileHolderTags get() = root.tag as FileHolderTags
 
@@ -340,8 +375,8 @@ private fun formatBytes(bytes: Long): String {
     val kb = bytes / 1024.0
     val mb = kb / 1024.0
     return when {
-        mb >= 1 -> String.format("%.1f MB", mb)
-        kb >= 1 -> String.format("%d KB", kb.toInt())
+        mb >= 1 -> String.format(Locale.getDefault(), "%.1f MB", mb)
+        kb >= 1 -> String.format(Locale.getDefault(), "%d KB", kb.toInt())
         else -> "$bytes B"
     }
 }

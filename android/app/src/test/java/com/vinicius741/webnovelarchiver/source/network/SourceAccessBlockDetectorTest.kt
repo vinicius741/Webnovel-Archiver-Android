@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import okhttp3.Headers.Companion.headersOf
-import okhttp3.Headers
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

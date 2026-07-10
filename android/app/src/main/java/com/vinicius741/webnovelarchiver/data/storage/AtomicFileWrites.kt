@@ -144,7 +144,7 @@ object AtomicFileWrites {
      * unit-test classpath `android.system.Os` is absent and referencing it throws
      * `NoClassDefFoundError`; this is best-effort defense-in-depth and must never abort the write.
      */
-    @Suppress("TooGenericExceptionCaught", "SwallowedException") // best-effort dir fsync; must tolerate NoClassDefFoundError on JVM tests and swallow fsync failures
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private fun fsyncDir(dir: File?) {
         if (dir == null) return
         val fd =

@@ -8,6 +8,27 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 class AndroidManifestIntegrationTest {
     @Test
+    fun downloadForegroundServiceIsPrivateAndDeclaresDataSyncType() {
+        val manifest = xml("src/main/AndroidManifest.xml")
+        val services = manifest.getElementsByTagName("service")
+        val downloadService =
+            (0 until services.length)
+                .map { services.item(it) as Element }
+                .single {
+                    it.getAttribute("android:name") == ".download.DownloadForegroundService"
+                }
+
+        assertTrue(
+            "DownloadForegroundService must not be exported",
+            downloadService.getAttribute("android:exported") == "false",
+        )
+        assertTrue(
+            "DownloadForegroundService must retain its dataSync foreground-service type",
+            downloadService.getAttribute("android:foregroundServiceType") == "dataSync",
+        )
+    }
+
+    @Test
     fun manifestDeclaresPackageVisibilityForBrowserEpubAndShareTargets() {
         val manifest = xml("src/main/AndroidManifest.xml")
         val queries = manifest.getElementsByTagName("queries").item(0) as Element

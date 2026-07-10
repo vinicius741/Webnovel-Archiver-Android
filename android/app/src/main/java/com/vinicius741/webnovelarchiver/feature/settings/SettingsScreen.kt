@@ -1,13 +1,10 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
-import android.app.AlertDialog
 import android.text.InputType
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatDelegate
 import com.vinicius741.webnovelarchiver.R
@@ -16,19 +13,15 @@ import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
-import com.vinicius741.webnovelarchiver.feature.settings.TabPlanning
 import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
-import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Themes
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.applyAppTheme
-import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.chip
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -39,22 +32,17 @@ import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.labeledField
 import com.vinicius741.webnovelarchiver.ui.layout.settingsMaxWidth
-import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.makeField
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
-import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.settingRow
-import com.vinicius741.webnovelarchiver.ui.showTtsVoiceDialog
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.text
-import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
-import java.util.UUID
+import kotlinx.coroutines.launch
 
 private data class SourceDownloadInputs(
     val enabled: CheckBox,
@@ -64,11 +52,11 @@ private data class SourceDownloadInputs(
 )
 
 internal fun ScreenHost.showSettings() {
-    val displayPreferences = storage.getDisplayPreferences()
+    val displayPreferences = repository.getDisplayPreferences()
     // Re-render so toggling "Large Screen Layout" / width changes re-centers the capped content live.
     rerender = { showSettings() }
     val layout = currentScreenLayout()
-    screen(title = "Settings", onBack = { showLibrary() }, scrollable = true) {
+    screen(route = AppRoute.Settings, title = "Settings", onBack = { showLibrary() }, scrollable = true) {
         section("Appearance")
         text("Theme", Type.TITLE_SMALL)
         spacer(Space.XS)
@@ -90,38 +78,27 @@ internal fun ScreenHost.showSettings() {
         spacer(Space.XS)
         flow(spacing = Space.MD) {
             chip("Auto", displayPreferences.screenLayoutMode == "auto") {
-                storage.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "auto"))
-                showSettings()
+                scope.launch {
+                    repository.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "auto"))
+                    showSettings()
+                }
             }
             chip("Cover", displayPreferences.screenLayoutMode == "cover") {
-                storage.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "cover"))
-                showSettings()
+                scope.launch {
+                    repository.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "cover"))
+                    showSettings()
+                }
             }
             chip("Inner", displayPreferences.screenLayoutMode == "inner") {
-                storage.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "inner"))
-                showSettings()
+                scope.launch {
+                    repository.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "inner"))
+                    showSettings()
+                }
             }
         }
-        spacer(Space.MD)
-        text("EPUB Volume Folding", Type.TITLE_SMALL)
-        // S6: explain what EPUB volume folding controls. Renamed from "Fold Layout" to avoid confusion
-        // with the screen-fold "Large Screen Layout" setting above — this one is about EPUB structure.
-        text("How chapters fold inside EPUB volumes. Auto picks based on length.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-        spacer(Space.XS)
-        flow(spacing = Space.MD) {
-            chip("Auto", displayPreferences.foldLayoutMode == "auto") {
-                storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "auto"))
-                showSettings()
-            }
-            chip("Cover", displayPreferences.foldLayoutMode == "cover") {
-                storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "cover"))
-                showSettings()
-            }
-            chip("Inner", displayPreferences.foldLayoutMode == "inner") {
-                storage.saveDisplayPreferences(displayPreferences.copy(foldLayoutMode = "inner"))
-                showSettings()
-            }
-        }
+        // EPUB volume splitting is controlled per-story / Download Settings ("Max chapters per EPUB"),
+        // not a global Cover/Inner toggle. foldLayoutMode remains in DisplayPreferences for backup
+        // compatibility but is intentionally not exposed here — nothing in the EPUB engine reads it.
         divider()
         section("Downloads")
         settingRow(R.drawable.wna_list, "Download Manager", "View and manage active downloads") { showQueue() }
@@ -134,6 +111,16 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
         divider()
         section("Data")
+        val storageHealth = repository.getStorageHealth()
+        if (storageHealth.requiresUserAttention) {
+            settingRow(
+                R.drawable.wna_archive,
+                "Storage recovery notice",
+                "${storageHealth.issues.size} storage issue(s) detected; preserved data was not overwritten",
+            ) {
+                toast(storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
+            }
+        }
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
         settingRow(R.drawable.wna_globe, "Clear Source Cookies", "Drop Cloudflare clearance and site cookies for Scribble Hub") {
             confirm("Clear all Scribble Hub cookies? The next sync will re-solve Cloudflare.", confirmLabel = "Clear") {
@@ -145,20 +132,22 @@ internal fun ScreenHost.showSettings() {
         }
         settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {
             confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") {
-                storage.clearAll()
-                showLibrary()
+                scope.launch {
+                    repository.clearAll()
+                    showLibrary()
+                }
             }
         }
         divider()
         section("Backup")
         settingRow(R.drawable.wna_share, "Export Backup", "Export library metadata and tabs to a JSON file") {
-            exportAndShare { storage.exportBackup() }
+            exportAndShare { repository.exportBackup() }
         }
         settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") {
             importBackupLauncher.launch(arrayOf("application/json", "text/*"))
         }
         settingRow(R.drawable.wna_archive, "Create Full Backup", "Save settings, tabs, library, and chapters to a local ZIP file") {
-            exportAndShare { storage.exportFullBackup() }
+            exportAndShare { repository.exportFullBackup() }
         }
         settingRow(R.drawable.wna_archive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
             importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
@@ -186,9 +175,9 @@ internal fun ScreenHost.showSettings() {
 
 /** Download settings sub-screen: global defaults plus per-source overrides, reached from Settings. */
 internal fun ScreenHost.showDownloadSettings() {
-    val settings = storage.getSettings()
-    val sourceSettings = storage.getSourceDownloadSettings()
-    screen(title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
+    val settings = repository.getSettings()
+    val sourceSettings = repository.getSourceDownloadSettings()
+    screen(route = AppRoute.DownloadSettings, title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
         // --- Global defaults (apply to any source that isn't overridden below) ---
         section("Defaults")
         text(
@@ -299,15 +288,14 @@ internal fun ScreenHost.showDownloadSettings() {
                     settings.downloadDelay,
                     settings.downloadDelayMax,
                 )
-            storage.saveSettings(
+            val updatedSettings =
                 settings.copy(
                     downloadConcurrency = SettingsValidation.concurrency(concurrency!!.text.toString(), settings.downloadConcurrency),
                     downloadDelay = delayRange.first,
                     downloadDelayMax = delayRange.second,
                     maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters!!.text.toString(), settings.maxChaptersPerEpub),
-                ),
-            )
-            storage.saveSourceDownloadSettings(
+                )
+            val updatedSourceSettings =
                 sourceInputs
                     .mapNotNull { (name, inputs) ->
                         if (!inputs.enabled.isChecked) {
@@ -331,101 +319,23 @@ internal fun ScreenHost.showDownloadSettings() {
                                     delayMax = sourceDelayRange.second,
                                 )
                         }
-                    }.toMap(),
-            )
-            toast("Download settings saved")
-        }
-    }
-}
-
-/** TTS sub-screen (pitch / rate / voice + optional saved-session card), reached from Settings. */
-internal fun ScreenHost.showTtsSettings() {
-    val ttsSettings = storage.getTtsSettings()
-    screen(title = "Voice & Speech", onBack = { showSettings() }, scrollable = true) {
-        storage.getTtsSession()?.let { session ->
-            addView(
-                card {
-                    text("Saved TTS session", Type.TITLE_SMALL)
-                    text(
-                        "${session.chapterTitle} (chunk ${session.currentChunkIndex + 1})",
-                        Type.BODY_SMALL,
-                        ThemeManager.colors.onSurfaceVariant,
-                    )
-                    flow {
-                        button("Resume TTS", Btn.TONAL, R.drawable.wna_play) {
-                            TtsForegroundService.command(app, TtsForegroundService.ACTION_RESUME_SESSION)
-                        }
-                        button("Clear Session", Btn.TEXT, R.drawable.wna_delete) {
-                            storage.clearTtsSession()
-                            showTtsSettings()
-                        }
-                    }
-                },
-            )
-        }
-        val pitch = labeledField("Pitch", ttsSettings.pitch.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        val rate = labeledField("Rate", ttsSettings.rate.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        // S4: the voice label is itself the control — tap it to open the picker.
-        val voiceLabel = ttsSettings.voiceIdentifier ?: "System default"
-        row {
-            addView(
-                makeText(context, "Voice", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant),
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-            )
-            val voiceBtn = makeButton(context, voiceLabel, Btn.TEXT, R.drawable.wna_speaker) { showTtsVoicePicker() }
-            addView(
-                voiceBtn,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = dp(Space.MD)
-                },
-            )
-        }
-        fullButton("Save TTS", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
-            storage.saveTtsSettings(
-                ttsSettings.copy(
-                    pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
-                    rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
-                ),
-            )
-            toast("TTS settings saved")
-        }
-    }
-}
-
-internal fun ScreenHost.showTtsVoicePicker() {
-    val voices = ttsEngine.availableVoices()
-    if (voices.isEmpty()) {
-        lateinit var listener: (List<VoiceInfo>) -> Unit
-        listener = { loadedVoices ->
-            ttsEngine.removeVoiceAvailabilityListener(listener)
-            app.runOnUiThread {
-                if (loadedVoices.isEmpty()) {
-                    toast("No local TTS voices available yet")
-                } else {
-                    showTtsVoiceDialog(loadedVoices, storage.getTtsSettings().voiceIdentifier) { voice ->
-                        val current = storage.getTtsSettings()
-                        storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-                        showTtsSettings()
-                    }
-                }
+                    }.toMap()
+            scope.launch {
+                repository.saveSettings(updatedSettings)
+                repository.saveSourceDownloadSettings(updatedSourceSettings)
+                toast("Download settings saved")
             }
         }
-        ttsEngine.addVoiceAvailabilityListener(listener)
-        toast("Loading local TTS voices")
-        return
-    }
-    showTtsVoiceDialog(voices, storage.getTtsSettings().voiceIdentifier) { voice ->
-        val current = storage.getTtsSettings()
-        storage.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-        showTtsSettings()
     }
 }
 
 internal fun ScreenHost.saveThemePreference(themeId: String) {
-    val current = storage.getDisplayPreferences()
-    storage.saveDisplayPreferences(current.copy(activeThemeId = themeId))
-    applyThemePreference(themeId)
-    app.recreate()
+    val current = repository.getDisplayPreferences()
+    scope.launch {
+        repository.saveDisplayPreferences(current.copy(activeThemeId = themeId))
+        applyThemePreference(themeId)
+        app.recreate()
+    }
 }
 
 internal fun ScreenHost.applyThemePreference(themeId: String) {
@@ -436,144 +346,4 @@ internal fun ScreenHost.applyThemePreference(themeId: String) {
             else -> AppCompatDelegate.MODE_NIGHT_YES
         }
     AppCompatDelegate.setDefaultNightMode(nightMode)
-}
-
-internal fun ScreenHost.showTabs() {
-    screen(title = "Manage Tabs", onBack = { showSettings() }, scrollable = true) {
-        val tabs = TabPlanning.normalizeOrders(storage.getTabs())
-        // T1: explain what tabs are so the empty/first-run state isn't a bare input.
-        text(
-            "Tabs group novels on the Library screen. Create one (e.g. \"Reading\", \"Finished\") and assign novels to it.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
-        row {
-            val name = makeField(context, "", "New tab name", InputType.TYPE_CLASS_TEXT)
-            addView(name, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            button("Add", Btn.TONAL, R.drawable.wna_add) {
-                val next =
-                    TabPlanning.create(
-                        tabs,
-                        name.text.toString(),
-                        "tab_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(4)}",
-                        System.currentTimeMillis(),
-                    )
-                if (next.size > tabs.size) {
-                    storage.saveTabs(next)
-                    showTabs()
-                }
-            }
-        }
-        tabs.forEachIndexed { index, tab ->
-            val novelCount = storage.getLibrary().count { it.tabId == tab.id }
-            addView(
-                card {
-                    row {
-                        addView(
-                            ImageView(context).apply {
-                                setImageDrawable(context.tintedIcon(R.drawable.wna_tab, ThemeManager.colors.primary))
-                                layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
-                            },
-                        )
-                        addView(
-                            makeText(context, tab.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
-                                setPadding(dp(10), 0, 0, 0)
-                            },
-                            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                        )
-                        // T3: add a noun so the bare count reads as a count, not a stray number.
-                        val novelLabel = if (novelCount == 1) "novel" else "novels"
-                        addView(makeText(context, "$novelCount $novelLabel", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
-                    }
-                    row(gravity = Gravity.END) {
-                        tabActionButton(R.drawable.wna_up, "Move ${tab.name} up", enabled = index > 0) {
-                            if (index > 0) {
-                                storage.saveTabs(TabPlanning.move(tabs, index, index - 1))
-                                showTabs()
-                            }
-                        }
-                        tabActionButton(R.drawable.wna_down, "Move ${tab.name} down", enabled = index < tabs.lastIndex) {
-                            if (index < tabs.lastIndex) {
-                                storage.saveTabs(TabPlanning.move(tabs, index, index + 1))
-                                showTabs()
-                            }
-                        }
-                        tabActionButton(R.drawable.wna_edit, "Rename ${tab.name}") {
-                            showRenameTabPrompt(tab.name) {
-                                storage.saveTabs(TabPlanning.rename(tabs, tab.id, it))
-                                showTabs()
-                            }
-                        }
-                        tabActionButton(
-                            R.drawable.wna_delete,
-                            "Delete ${tab.name}",
-                            tint = ThemeManager.colors.error,
-                        ) {
-                            confirm("Delete tab \"${tab.name}\" and move its novels to Unassigned?", confirmLabel = "Delete") {
-                                storage.getLibrary().forEach { story ->
-                                    if (story.tabId == tab.id) {
-                                        story.tabId = null
-                                        storage.addOrUpdateStory(story)
-                                    }
-                                }
-                                storage.saveTabs(TabPlanning.delete(tabs, tab.id))
-                                showTabs()
-                            }
-                        }
-                    }
-                },
-            )
-        }
-    }
-}
-
-private fun ScreenHost.showRenameTabPrompt(
-    tabName: String,
-    onSave: (String) -> Unit,
-) {
-    val input = makeField(app, tabName, "Rename Tab", InputType.TYPE_CLASS_TEXT)
-    val content =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(app.dp(Space.XL), app.dp(Space.MD), app.dp(Space.XL), 0)
-            addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-    val dialog =
-        AlertDialog
-            .Builder(app)
-            .setTitle("Rename Tab")
-            .setView(content)
-            .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
-            .setNegativeButton("Cancel", null)
-            .create()
-    dialog.show()
-    dialog.applyAppTheme()
-}
-
-private fun LinearLayout.tabActionButton(
-    iconRes: Int,
-    description: String,
-    tint: Int = ThemeManager.colors.primary,
-    enabled: Boolean = true,
-    action: () -> Unit,
-) {
-    val size = context.dp(44)
-    addView(
-        ImageView(context).apply {
-            contentDescription = description
-            setImageDrawable(context.tintedIcon(iconRes, tint))
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2), context.dp(Space.SM + 2))
-            background = selectableRipple(tint)
-            isEnabled = enabled
-            isClickable = enabled
-            isFocusable = enabled
-            alpha = if (enabled) 1f else 0.35f
-            if (enabled) setOnClickListener { action() }
-        },
-        LinearLayout.LayoutParams(size, size).apply {
-            if (childCount > 0) marginStart = context.dp(Space.SM)
-        },
-    )
 }

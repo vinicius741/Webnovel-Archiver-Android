@@ -39,7 +39,7 @@ internal fun ScreenHost.screenMetrics(): ScreenLayout {
     val density = app.resources.displayMetrics.density
     val widthDp = ((bounds.width().toFloat()) / density.coerceAtLeast(0.001f)).toInt().coerceAtLeast(0)
     val heightDp = ((bounds.height().toFloat()) / density.coerceAtLeast(0.001f)).toInt().coerceAtLeast(0)
-    val prefs: DisplayPreferences = storage.getDisplayPreferences()
+    val prefs: DisplayPreferences = repository.getDisplayPreferences()
     return ScreenLayout(
         widthDp = widthDp,
         heightDp = heightDp,

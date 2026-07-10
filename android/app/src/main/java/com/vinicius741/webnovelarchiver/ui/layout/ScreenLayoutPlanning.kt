@@ -11,8 +11,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
  * [resolveScreenLayout], so the breakpoints can be exhaustively unit-tested without a device.
  *
  * `screenLayoutMode` is the user-facing override ("auto" | "cover" | "inner") persisted in
- * [DisplayPreferences.screenLayoutMode]. It is the screen-fold analogue of the app's `FoldLayoutMode`
- * (unrelated to [DisplayPreferences.foldLayoutMode], which only governs EPUB volume nesting).
+ * [DisplayPreferences.screenLayoutMode] for foldable/large-screen layout forcing.
  */
 object ScreenLayoutPlanning {
     const val SCREEN_LAYOUT_MODE_AUTO = "auto"
