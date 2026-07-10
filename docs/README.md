@@ -14,6 +14,7 @@ under `android/`.
 
 | File | Description |
 |------|-------------|
+| `product-architecture-review-2026-07-09.html` | Current product-wide architecture review covering stability, maintainability, runtime validation, prioritized findings, and an implementation roadmap. |
 | `project-improvement-audit.md` | Current static audit of speed, reliability, and maintainability gaps with prioritized recommendations (Markdown source, refreshed 2026-07-08). |
 | `project-improvement-audit.html` | Legacy HTML rendering of the original audit for easier reading and navigation; use the Markdown source for the refreshed current version. |
 | `refactoring-large-files.md` | Record of the large-file decomposition (Sources, AppStorage, DetailsScreen, TextCleanup), marked complete. |

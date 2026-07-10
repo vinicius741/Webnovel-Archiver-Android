@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webnovel Archiver — Product Architecture Review</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0d0f12;
+      --panel: #15191e;
+      --panel-2: #1c2229;
+      --text: #e8edf2;
+      --muted: #aab4bf;
+      --line: #303945;
+      --gold: #ddb84c;
+      --green: #62c58c;
+      --red: #ff7b72;
+      --orange: #f0a45d;
+      --blue: #70b7ff;
+      --code: #0a0c0f;
+      --max: 1180px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 80% -10%, rgba(221,184,76,.12), transparent 30rem),
+        var(--bg);
+      color: var(--text);
+      font: 16px/1.62 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--blue); }
+    code {
+      padding: .08rem .3rem;
+      border: 1px solid var(--line);
+      border-radius: .35rem;
+      background: var(--code);
+      font: .9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(13,15,18,.92);
+    }
+    .hero, main, footer { width: min(calc(100% - 2rem), var(--max)); margin: 0 auto; }
+    .hero { padding: 4.5rem 0 3rem; }
+    .eyebrow { color: var(--gold); font-weight: 750; letter-spacing: .11em; text-transform: uppercase; }
+    h1 { max-width: 850px; margin: .45rem 0 .7rem; font-size: clamp(2.2rem, 5vw, 4.5rem); line-height: 1.04; }
+    h2 { margin-top: 3rem; padding-top: 1rem; font-size: 1.9rem; line-height: 1.2; }
+    h3 { margin: 0 0 .6rem; font-size: 1.25rem; line-height: 1.3; }
+    h4 { margin: 1.1rem 0 .25rem; }
+    p { margin: .6rem 0 1rem; }
+    .lede { max-width: 850px; color: var(--muted); font-size: 1.18rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: .7rem 1.5rem; color: var(--muted); }
+    .pill, .priority {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: .16rem .58rem;
+      font-size: .78rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .p1 { color: #ffd8d4; background: rgba(255,123,114,.14); border-color: rgba(255,123,114,.4); }
+    .p2 { color: #ffe0bf; background: rgba(240,164,93,.13); border-color: rgba(240,164,93,.4); }
+    .p3 { color: #cce6ff; background: rgba(112,183,255,.12); border-color: rgba(112,183,255,.4); }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      border-bottom: 1px solid var(--line);
+      background: rgba(13,15,18,.94);
+      backdrop-filter: blur(12px);
+    }
+    nav .inner {
+      width: min(calc(100% - 2rem), var(--max));
+      margin: auto;
+      display: flex;
+      gap: 1.2rem;
+      overflow-x: auto;
+      padding: .8rem 0;
+      white-space: nowrap;
+    }
+    nav a { color: var(--muted); text-decoration: none; font-size: .9rem; }
+    nav a:hover { color: var(--text); }
+    main { padding: 1rem 0 4rem; }
+    .summary, .grid { display: grid; gap: 1rem; }
+    .summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card, .finding, .callout, .diagram {
+      border: 1px solid var(--line);
+      border-radius: .9rem;
+      background: linear-gradient(145deg, var(--panel), var(--panel-2));
+    }
+    .card { padding: 1.15rem; }
+    .metric { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+    .metric-label { color: var(--muted); font-size: .9rem; }
+    .finding { margin: 1rem 0; padding: 1.25rem; scroll-margin-top: 4.5rem; }
+    .finding-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+    .finding p:last-child, .card p:last-child { margin-bottom: 0; }
+    .impact { color: var(--muted); font-size: .92rem; }
+    .evidence { border-left: 3px solid var(--gold); padding-left: 1rem; }
+    .recommendation { border-left: 3px solid var(--green); padding-left: 1rem; }
+    .callout { padding: 1rem 1.15rem; }
+    .callout.good { border-color: rgba(98,197,140,.45); }
+    .callout.warn { border-color: rgba(240,164,93,.48); }
+    .callout.status { margin: 1rem 0; border-color: rgba(98,197,140,.6); }
+    ul, ol { padding-left: 1.25rem; }
+    li + li { margin-top: .35rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94rem; }
+    th, td { padding: .65rem .7rem; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--panel-2); }
+    .diagram { padding: 1.2rem; overflow-x: auto; }
+    .flow { display: flex; align-items: stretch; gap: .7rem; min-width: 850px; }
+    .flow .node { flex: 1; border: 1px solid var(--line); border-radius: .7rem; padding: .85rem; background: var(--panel); }
+    .flow .arrow { align-self: center; color: var(--gold); font-size: 1.5rem; }
+    .flow small { display: block; color: var(--muted); margin-top: .3rem; }
+    .roadmap { counter-reset: step; }
+    .roadmap .phase { position: relative; margin: 1rem 0; padding: 1rem 1rem 1rem 4rem; border-left: 2px solid var(--line); }
+    .roadmap .phase::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 1rem;
+      width: 2rem;
+      height: 2rem;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #111;
+      background: var(--gold);
+      font-weight: 900;
+    }
+    .check { color: var(--green); font-weight: 700; }
+    .fail { color: var(--red); font-weight: 700; }
+    .muted { color: var(--muted); }
+    footer { border-top: 1px solid var(--line); padding: 2rem 0 4rem; color: var(--muted); }
+    @media (max-width: 850px) {
+      .summary, .grid.two { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .summary, .grid.two { grid-template-columns: 1fr; }
+      .hero { padding-top: 3rem; }
+      .finding-head { display: block; }
+      .priority { margin-top: .35rem; }
+    }
+    @media print {
+      :root { color-scheme: light; --bg:#fff; --panel:#fff; --panel-2:#f5f5f5; --text:#111; --muted:#444; --line:#bbb; --code:#f3f3f3; }
+      nav { display:none; }
+      .hero { padding: 1.5rem 0; }
+      .finding { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header id="top">
+    <div class="hero">
+      <div class="eyebrow">Architecture review · Native Android</div>
+      <h1>Stability and maintainability review</h1>
+      <p class="lede">A code-and-runtime review of the Webnovel Archiver Kotlin app, focused on the failure modes most likely to lose state, stall the UI, break long-running work, or make future changes increasingly expensive.</p>
+      <div class="meta">
+        <span>Review date: 9 July 2026</span>
+        <span>Scope: <code>android/</code></span>
+        <span>Target: Android API 36</span>
+        <span>Review type: static architecture + emulator walkthrough</span>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="Report sections">
+    <div class="inner">
+      <a href="#verdict">Verdict</a>
+      <a href="#architecture">Current architecture</a>
+      <a href="#findings">Findings</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#validation">Validation</a>
+      <a href="#strengths">Strengths</a>
+      <a href="#appendix">Appendix</a>
+    </div>
+  </nav>
+
+  <main>
+    <section id="verdict">
+      <h2>Executive verdict</h2>
+      <div class="callout good">
+        <strong>Implementation update:</strong> the Phase 1–4 remediation work described in this review has been completed for the identified P1/P2 findings. The app now has conflict-safe story patches, asynchronous repository readiness, a repository-owned feature boundary, coordinated maintenance/restore, typed storage and network recovery paths, typed navigation, and orchestration coverage in CI.
+      </div>
+      <p>The app should not be rewritten. The staged consolidation has addressed the immediate failure modes; the remaining strategic work is a Room migration, a UIDT-backed transfer scheduler, release smoke coverage, and further decomposition/localization. The UI and domain packages remain serviceable, while future work should focus on those strategic migrations rather than reopening the completed boundaries.</p>
+
+      <div class="summary" aria-label="Review summary metrics">
+        <div class="card"><div class="metric">0</div><div class="metric-label">open priority-one findings from this review</div></div>
+        <div class="card"><div class="metric">22,516</div><div class="metric-label">production Kotlin lines</div></div>
+        <div class="card"><div class="metric">377</div><div class="metric-label">JUnit test methods</div></div>
+        <div class="card"><div class="metric">9</div><div class="metric-label">passing instrumentation tests</div></div>
+      </div>
+
+      <h3>Top decisions</h3>
+      <ol>
+        <li><strong>Download timeout safety is implemented.</strong> <code>DownloadForegroundService.onTimeout()</code> safely returns active jobs to pending and stops the service; shortened-timeout coverage passes.</li>
+        <li><strong>Conflict-safe Story patches are implemented.</strong> <code>StoryMutations.kt</code> preserves concurrent bookmark, sync, download, cleanup, and EPUB changes.</li>
+        <li><strong>Startup, Reader, and TTS preparation are off-main.</strong> <code>RepositoryStartup.kt</code>, reader document preparation, TTS session preparation, and debug StrictMode cover the main-thread I/O remediation.</li>
+        <li><strong>The repository is the feature state boundary.</strong> <code>AppStorage</code> is no longer exposed from <code>ScreenHost</code> or feature packages, and snapshots update incrementally.</li>
+      </ol>
+    </section>
+
+    <section id="architecture">
+      <h2>Current architecture</h2>
+      <p>The package boundaries are sensible, but runtime ownership crosses those boundaries. <code>AppContainer</code> creates process-wide services, <code>ScreenHost</code> exposes both repository and raw storage to UI extensions, and file-backed models are passed as mutable objects between screens and engines.</p>
+      <div class="diagram" aria-label="Current architecture flow">
+        <div class="flow">
+          <div class="node"><strong>MainActivity + ScreenHost</strong><small>Imperative screens, mutable route state, direct storage and repository access</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><strong>Repository + engines</strong><small>StateFlow snapshots, sync, download, EPUB, TTS; mixed transactional ownership</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><strong>AppStorage</strong><small>Atomic JSON documents, story files, queue, settings, backup coordination</small></div>
+          <div class="arrow">↔</div>
+          <div class="node"><strong>Files + network</strong><small>JSON index/story documents, chapter HTML, EPUB ZIPs, OkHttp and WebView cookies</small></div>
+        </div>
+      </div>
+
+      <h3>Target ownership model</h3>
+      <div class="diagram" aria-label="Recommended architecture flow">
+        <div class="flow">
+          <div class="node"><strong>Typed routes + screen state</strong><small>ViewModel/SavedState-backed state; UI issues commands and renders immutable snapshots</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><strong>Application services</strong><small>Story commands, download coordinator, maintenance coordinator, reader preparation</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><strong>Repository transaction boundary</strong><small>Conflict-safe patches, incremental cache updates, storage health and migrations</small></div>
+          <div class="arrow">→</div>
+          <div class="node"><strong>Room metadata + files</strong><small>Transactional metadata/queue; chapter bodies and EPUBs remain streamed files</small></div>
+        </div>
+      </div>
+      <p class="muted">Room is a medium-term destination, not the first step. The immediate gains come from one mutation boundary, immutable snapshots, and removing blocking I/O from the main thread.</p>
+    </section>
+
+    <section id="findings">
+      <h2>Prioritized findings</h2>
+      <p class="muted">The Evidence and Recommendation blocks preserve the original 9 July review record. The implementation status callout and “Done when” line on each finding are the current status and supersede that historical record.</p>
+
+      <article class="finding" id="f1">
+        <div class="finding-head"><h3>1. Long download queues can hit the Android foreground-service timeout</h3><span class="priority p1">P1 · Stability</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> <code>DownloadForegroundService.onTimeout()</code> now recovers downloading jobs to pending, publishes state, stops foreground work, and stops itself. Shortened-timeout coverage passes.</div>
+        <p class="impact">Risk: platform-terminated service or failure to start another download service after the quota is exhausted.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li>The manifest declares <code>DownloadForegroundService</code> as <code>dataSync</code>, and the app targets API 36.</li>
+            <li>The service has no <code>onTimeout(int, int)</code> implementation and always returns <code>START_STICKY</code>.</li>
+            <li>Android permits <code>dataSync</code> foreground services a shared total of six background hours per 24 hours for apps targeting Android 15+, then calls <code>onTimeout()</code>; failing to stop promptly causes a platform exception. See the official <a href="https://developer.android.com/develop/background-work/services/fgs/timeout">foreground-service timeout documentation</a>.</li>
+            <li>Large webnovel queues, source delays, retries, and thousands of chapters make this reachable even if normal queues finish much sooner.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ol>
+            <li>Implement <code>onTimeout()</code> now: atomically move downloading jobs back to pending, publish state, stop foreground, and call <code>stopSelf()</code> within seconds.</li>
+            <li>Add an emulator test with the documented shortened timeout device-config setting.</li>
+            <li>Introduce a scheduler abstraction. On API 34+, evaluate a user-initiated data transfer job for user-started long queues; it is the platform API intended for extended downloads. See <a href="https://developer.android.com/develop/background-work/background-tasks/uidt">UIDT jobs</a>. Keep a tested fallback for API 26–33.</li>
+            <li>Keep the durable queue as the source of resumability regardless of scheduler.</li>
+          </ol>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — a forced short timeout pauses safely without an app crash, preserves pending queue work, and permits the next user start to resume it.</p>
+      </article>
+
+      <article class="finding" id="f2">
+        <div class="finding-head"><h3>2. Whole-object saves still allow lost updates</h3><span class="priority p1">P1 · Data integrity</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> Conflict-safe semantic story patches are centralized in <code>data/repository/StoryMutations.kt</code>; the concurrency regressions for EPUB/bookmark, cleanup/download completion, and sync/bookmark pass.</div>
+        <p class="impact">Risk: a download, bookmark, sync result, EPUB pointer, or cleanup flag silently reverts when another operation saves an older in-memory story.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li><code>EpubEngine.generate()</code> receives a <code>Story</code>, performs long I/O, mutates that same object, then calls <code>addOrUpdateStory()</code>.</li>
+            <li>Cleanup does the same after rewriting every downloaded chapter.</li>
+            <li>Several bookmark and details actions save a screen snapshot instead of applying a narrow change to the latest persisted story.</li>
+            <li>The sync engine recently gained a correct re-read-and-fold step, but that protection is local to sync rather than a system-wide invariant.</li>
+            <li>Domain models contain 68 mutable <code>var</code> fields, and cached StateFlow lists can hold objects that are modified in place.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ul>
+            <li>Make <code>updateStory(id) { latest -&gt; latest.copy(...) }</code> the only legal metadata mutation. Run it on the repository I/O dispatcher.</li>
+            <li>Replace operation-final whole saves with semantic patches: <code>markEpubGenerated</code>, <code>markCleanupApplied</code>, <code>setBookmark</code>, and <code>markChapterDownloaded</code>.</li>
+            <li>Add a monotonically increasing revision to stories or use database transactions so stale writes can be detected rather than silently accepted.</li>
+            <li>Move models toward immutable fields/lists; publish fresh snapshots rather than relying on version counters to compensate for in-place mutation.</li>
+          </ul>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — concurrency tests prove that EPUB generation + bookmark, cleanup + download completion, and sync + bookmark preserve both changes.</p>
+      </article>
+
+      <article class="finding" id="f3">
+        <div class="finding-head"><h3>3. Startup, Reader, and TTS still perform blocking file/parse work on the main thread</h3><span class="priority p1">P1 · Responsiveness</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> Repository hydration is asynchronous via <code>app/RepositoryStartup.kt</code>; Reader document and TTS preparation/session storage are off-main, with debug StrictMode guarding regressions.</div>
+        <p class="impact">Risk: cold-start ANRs and visible stalls scale with library and chapter size.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li><code>Application.onCreate()</code> calls <code>AppContainer.init()</code> synchronously. It migrates all story paths, recovers the queue, parses the full library, and reads settings before any activity or service can proceed.</li>
+            <li><code>AppRepository</code> also reads settings during construction.</li>
+            <li><code>showReader()</code> reads chapter HTML and settings, sanitizes HTML, builds TTS annotations, formats copy text, and creates the full WebView document synchronously.</li>
+            <li><code>TtsEngine</code> is deliberately serialized on <code>Dispatchers.Main.immediate</code>, but preparation and durable session JSON writes occur inside that main-dispatcher path on every chunk.</li>
+            <li>API-36 emulator cold launches with a nine-story library ranged from about 1.1 to 1.8 seconds. This is acceptable for the test data, but it is not evidence that larger libraries are safe.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ul>
+            <li>Create an explicit <code>RepositoryReadiness</code> state. Construct lightweight dependencies in <code>Application.onCreate()</code>, hydrate/migrate on <code>Dispatchers.IO</code>, and render a minimal startup state until ready.</li>
+            <li>Build a <code>ReaderDocument</code> off-main containing sanitized HTML, TTS groups, copy text, and metadata; only attach/load the WebView on main.</li>
+            <li>Split TTS into a main-thread Android TTS bridge and an I/O/default preparation/session store. Debounce position persistence, but flush on pause, stop, chapter transition, and teardown.</li>
+            <li>Enable debug <code>StrictMode</code> disk-read/write detection to prevent regressions.</li>
+          </ul>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented for the reviewed flows</span> — startup and Reader/TTS preparation run through the asynchronous path with debug StrictMode enabled. Synthetic large-library performance budgets remain a future measurement task.</p>
+      </article>
+
+      <article class="finding" id="f4">
+        <div class="finding-head"><h3>4. The repository is not yet the state boundary</h3><span class="priority p1">P1 · Stability &amp; scale</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> <code>AppStorage</code> has been removed from <code>ScreenHost</code> and feature packages. The repository publishes incremental snapshots instead of reparsing the full library for ordinary mutations.</div>
+        <p class="impact">Risk: inconsistent state publication, repeated full-library parsing, and unclear transaction ownership.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li>Feature packages contain at least 114 direct <code>storage.get/save/addOrUpdate…</code> calls.</li>
+            <li><code>ScreenHost</code> exposes both raw <code>AppStorage</code> and <code>AppRepository</code> to every screen.</li>
+            <li>The repository already has transactional mutation methods, but production callers do not use them; callers instead write storage directly and sometimes manually call <code>publishDownloadState()</code>.</li>
+            <li><code>publishDownloadState(libraryChanged=true)</code> reparses the library index and every story JSON. A completed chapter can therefore cause a full-library parse, and concurrent completions serialize this work behind the storage monitor.</li>
+            <li><code>AppStorage.addOrUpdateStory()</code> rewrites the library index even for an existing story, adding durable-write churn to every chapter completion.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ol>
+            <li>Remove raw <code>AppStorage</code> from <code>ScreenHost</code>. Expose focused interfaces such as <code>StoryRepository</code>, <code>SettingsRepository</code>, and <code>ChapterContentStore</code>.</li>
+            <li>Maintain immutable maps keyed by story/job ID and update the cache incrementally from transaction results.</li>
+            <li>Separate “update existing story document” from “insert new story and update index” so normal mutations do not rewrite the index.</li>
+            <li>Move all repository I/O behind an injected dispatcher; a <code>suspend</code> modifier alone does not move blocking file calls off main.</li>
+          </ol>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — UI packages cannot import <code>AppStorage</code>, and ordinary chapter completion uses the affected story/queue state with incremental publication.</p>
+      </article>
+
+      <article class="finding" id="f5">
+        <div class="finding-head"><h3>5. Backup/restore durability is strong locally but not coordinated application-wide</h3><span class="priority p2">P2 · Data integrity</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> <code>data/storage/MaintenanceCoordinator.kt</code> coordinates maintenance work; restore cleanup is in <code>finally</code>, and live-root replacement uses transactional swap/rollback helpers.</div>
+        <p class="impact">Risk: in-flight engines write against restored state, exports mix revisions, rejected imports leak cache space, or a rare failed root snapshot weakens rollback.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li>JSON import now snapshots and rolls back under the storage monitor; full restore stages and verifies before swapping. These are meaningful strengths.</li>
+            <li>There is no application-wide maintenance state that pauses downloads, TTS writes, sync, cleanup, and EPUB generation before import/export/restore.</li>
+            <li>Full-backup export reads library/config/chapter files sequentially without one coherent snapshot.</li>
+            <li>Validation failures at the “missing manifest,” invalid manifest, or staged-tree verification returns exit before <code>cleanupRestoreArtifacts()</code>, leaving extracted cache data behind.</li>
+            <li><code>swapRoots()</code> ignores the boolean result when renaming the live root to its rollback snapshot, then continues with replacement.</li>
+            <li>JSON import reads the whole stream before enforcing a size/count budget. ZIP limits allow up to 2 GB extracted without checking available space, and extracted entries are not allowlisted to the backup format.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ul>
+            <li>Add a <code>MaintenanceCoordinator</code> with an exclusive operation lock and observable state. Quiesce background writers, run the operation, refresh caches, then resume deliberately.</li>
+            <li>Put restore cleanup in <code>finally</code>; require a successful live-root snapshot before replacement.</li>
+            <li>Extract only allowlisted paths into a raw extraction directory separate from the staged app root.</li>
+            <li>Stream JSON with input limits, validate story counts/duplicate IDs, compare ZIP expansion budget with available cache space, and reject unsupported backup versions.</li>
+            <li>Add filesystem integration tests using temporary roots and fault injection at every swap/rollback step.</li>
+          </ul>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — coordinated maintenance, cleanup, and root-swap rollback are covered by filesystem-focused tests.</p>
+      </article>
+
+      <article class="finding" id="f6">
+        <div class="finding-head"><h3>6. Corrupt-file handling preserves evidence but can make valid data disappear</h3><span class="priority p2">P2 · Recovery</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> Typed storage-health outcomes distinguish absence, corruption, unsupported data, and I/O failure. <code>LibraryIndexRecovery.kt</code> reconstructs a corrupt index non-destructively, and diagnostics use a bounded ring.</div>
+        <p class="impact">Risk: a corrupt index makes the library look empty; a subsequent save can create a new index while valid story documents remain orphaned.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li><code>DurableJson</code> correctly quarantines unreadable files instead of crashing startup.</li>
+            <li>Callers usually interpret the returned <code>null</code> as normal absence and silently fall back to empty/default data.</li>
+            <li>There is no storage-health state, user-visible recovery message, automatic index reconstruction, or diagnostics export.</li>
+            <li>Schema version is written into envelopes but is not validated or routed through a migration registry.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ul>
+            <li>Return typed read results: present, absent, corrupt, unsupported schema, and I/O failure.</li>
+            <li>Rebuild a corrupt library index by scanning and validating story files; surface a non-destructive recovery banner before allowing writes.</li>
+            <li>Add a versioned migration registry and golden backup fixtures for every supported schema.</li>
+            <li>Offer a privacy-preserving “Export diagnostics” bundle containing app version, storage health, queue summary, and recent warning/error logs—never story content or cookies.</li>
+          </ul>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — corrupt indexes can be reconstructed from valid story documents without destructive replacement, with typed health and diagnostic signals available.</p>
+      </article>
+
+      <article class="finding" id="f7">
+        <div class="finding-head"><h3>7. Network behavior is centralized but policies and execution are still brittle</h3><span class="priority p2">P2 · Reliability</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> <code>source/network/NetworkErrors.kt</code> provides typed failures, <code>SourceNetworkPolicy.kt</code> owns source policy, the client enforces I/O dispatching, and the Cloudflare solver rejects main-thread entry.</div>
+        <p class="impact">Risk: wrong retry decisions, untestable host rules, blocking dispatcher misuse, or a main-thread deadlock in the hidden Cloudflare solver.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li><code>NetworkClient</code> is a suspend API around blocking <code>Call.execute()</code> but does not enforce <code>Dispatchers.IO</code>; correctness depends on every caller choosing the right dispatcher.</li>
+            <li>HTTP failures are flattened to <code>IllegalStateException</code>; retry policy hardcodes the Scribble Hub hostname and ignores <code>Retry-After</code>.</li>
+            <li>The Cloudflare interceptor blocks an OkHttp thread on a main-thread WebView solve. Its “must be entered from a background thread” precondition is documented but not enforced; a future main-thread call would post to main and then wait for main.</li>
+            <li>Provider fixtures are good, but live-site DOM drift is only discovered after user failure.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ul>
+            <li>Use an asynchronous OkHttp <code>await</code> adapter or enforce an injected I/O dispatcher inside the network boundary.</li>
+            <li>Introduce typed errors (<code>Http</code>, <code>RateLimited</code>, <code>AccessBlocked</code>, <code>Parse</code>, <code>Timeout</code>, <code>Offline</code>) and provider-owned retry/rate policies.</li>
+            <li>Honor bounded <code>Retry-After</code>, add jitter, and make retry decisions directly unit-testable with MockWebServer hosts.</li>
+            <li>Assert that the background WebView solver is never invoked from main; keep the visible solver as the interactive fallback.</li>
+            <li>Run scheduled parser canaries against saved/live public fixtures outside the app release path.</li>
+          </ul>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — typed errors and source policies drive retry decisions, while the Cloudflare main-thread guard is covered by tests.</p>
+      </article>
+
+      <article class="finding" id="f8">
+        <div class="finding-head"><h3>8. Screen navigation and transient state are too tightly coupled to one Activity</h3><span class="priority p2">P2 · Maintainability</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> <code>navigation/AppRoute.kt</code> and <code>AppNavigator.kt</code> provide typed routes and a single back stack. The current route survives Activity recreation.</div>
+        <p class="impact">Risk: process/activity recreation loses route and operation state; full-tree rebuilds make lifecycle bugs and UI tests harder.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li><code>ScreenHost</code> is a broad service-locator contract containing dependencies, mutable route state, observers, re-render callbacks, and backup launchers.</li>
+            <li>The manifest opts the activity into handling nearly every configuration change itself. Screens re-run <code>showXxx()</code> and rebuild the full view tree.</li>
+            <li>Current-screen identity and scroll preservation depend on a string composed from title/subtitle.</li>
+            <li>Long UI operations use the Activity lifecycle scope, so an Activity teardown cancels them unless they were specially moved to application/service scope.</li>
+            <li>Detekt flags <code>showReader()</code> at cyclomatic complexity 38 and multiple UI files exceed 500–600 lines.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ul>
+            <li>Introduce a sealed, typed <code>AppRoute</code> and a single navigator/back stack; persist the current route in <code>SavedStateHandle</code>.</li>
+            <li>Move screen state and operations into feature-scoped ViewModels/controllers exposing immutable state, without requiring a Compose rewrite.</li>
+            <li>Give each screen a stable route key rather than deriving identity from presentation strings.</li>
+            <li>Split large files by route/controller/adapter/view factory, and virtualize Updates/Follow rows with RecyclerView + DiffUtil.</li>
+          </ul>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — typed route identity is retained across recreation and is covered by instrumentation and manual emulator verification.</p>
+      </article>
+
+      <article class="finding" id="f9">
+        <div class="finding-head"><h3>9. Tests are deep in pure logic but shallow at orchestration boundaries</h3><span class="priority p2">P2 · Change safety</span></div>
+        <div class="callout good status"><strong>✅ Implemented.</strong> The project now has an <code>app/src/androidTest</code> instrumentation suite, <code>.github/workflows/android-ci.yml</code>, dependency locking, and a file-size ratchet. All nine instrumentation tests pass.</div>
+        <p class="impact">Risk: the code most likely to fail under lifecycle, concurrency, or filesystem pressure is the least directly tested.</p>
+        <div class="evidence">
+          <h4>Evidence</h4>
+          <ul>
+            <li>There are 62 JVM test files and 377 test methods—excellent coverage of planning, parsing, sanitization, cleanup, source fixtures, and backup validation helpers.</li>
+            <li>There are no <code>androidTest</code> files and no direct tests constructing <code>AppRepository</code>, <code>DownloadEngine</code>, <code>TtsEngine</code>, either foreground service, <code>BackupRestoreCoordinator</code>, or <code>StorySyncEngine</code>.</li>
+            <li>No CI workflow exists. <code>:app:ci</code> passes locally, but it omits Kotlin formatting.</li>
+            <li>The documented full local gate currently fails Kotlin formatting with many import, unused-symbol, wrapping, and line-length violations.</li>
+            <li>Detekt is ratcheted at 53 existing findings; Android lint reports 113 warnings, including 38 hard-coded-text warnings and two <code>notifyDataSetChanged</code> warnings.</li>
+          </ul>
+        </div>
+        <div class="recommendation">
+          <h4>Recommendation</h4>
+          <ol>
+            <li>Make the repository/engines depend on small interfaces and injected dispatchers/clocks so orchestration is JVM-testable.</li>
+            <li>Add concurrency tests for story patches, engine queue reads/writes, TTS command races, and maintenance locking.</li>
+            <li>Add a small instrumentation suite: startup recovery, each typed route, service timeout, process-death restore, and backup round-trip.</li>
+            <li>Add CI running <code>:app:lintKotlin :app:ci</code> on every change. Keep it green before lowering the detekt and Android-lint baselines.</li>
+            <li>Add a file-size/complexity budget for new code rather than allowing more 500+ line coordinators.</li>
+          </ol>
+        </div>
+        <p><strong>Done when:</strong> <span class="check">✅ Implemented</span> — CI runs the canonical gate, formatting passes, and instrumentation covers startup, routes, Reader/Details fallbacks, and Activity recreation.</p>
+      </article>
+
+      <article class="finding" id="f10">
+        <div class="finding-head"><h3>10. Secondary maintainability and storage-pressure debt</h3><span class="priority p3">P3 · Planned debt</span></div>
+        <div class="callout warn"><strong>Partially implemented.</strong> The diagnostics ring, <code>epub/EpubRetentionPolicy.kt</code>, release minification, and decomposition of Updates, Settings, Cleanup, StoryActions, and TTS are complete. The remaining strategic debt is intentionally still open.</div>
+        <ul>
+          <li><strong>Completed:</strong> diagnostics ring, EPUB retention policy, release minification, and the large-file splits for Updates, Settings, Cleanup, StoryActions, and TTS.</li>
+          <li><strong>Still open:</strong> <code>TtsEngine</code>/<code>TtsForegroundService</code> and the Queue screen remain large; continue separating engine/service and screen responsibilities.</li>
+          <li><strong>Still open:</strong> Room metadata migration and a UIDT-backed durable transfer scheduler have not been implemented.</li>
+          <li><strong>Still open:</strong> release smoke coverage is required before treating release optimization as fully verified.</li>
+          <li><strong>Still open:</strong> programmatic visible strings have not yet moved comprehensively into string resources.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section id="roadmap">
+      <h2>Implementation roadmap — current status</h2>
+      <div class="roadmap">
+        <div class="phase">
+          <h3>Phase 1 — Stop known failure modes <span class="check">✅ Complete</span></h3>
+          <ul>
+            <li><span class="check">✅</span> Download-service <code>onTimeout()</code> and shortened-timeout coverage.</li>
+            <li><span class="check">✅</span> Conflict-safe patches for EPUB, cleanup, bookmarks, and chapter completion.</li>
+            <li><span class="check">✅</span> Restore cleanup/root-swap hardening and exclusive maintenance coordination.</li>
+            <li><span class="check">✅</span> Off-main repository startup, Reader/TTS preparation, and debug StrictMode.</li>
+            <li><span class="check">✅</span> Kotlin formatting, CI workflow, dependency locking, and canonical gate.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 2 — Consolidate ownership <span class="check">✅ Complete</span></h3>
+          <ul>
+            <li><span class="check">✅</span> <code>AppStorage</code> removal from feature/UI contracts and incremental repository snapshots.</li>
+            <li><span class="check">✅</span> Download/TTS/network planning boundaries with injected dispatching and typed network policy/errors.</li>
+            <li><span class="check">✅</span> Repository, engine, maintenance, timeout, recovery, and restore fault-injection tests.</li>
+            <li><span class="check">✅</span> Typed routes, a single navigator/back stack, and recreation-safe screen state.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 3 — Modernize durable work and storage <span class="check">✅ Implemented scope</span></h3>
+          <ul>
+            <li><span class="check">✅</span> Storage health, non-destructive index recovery, diagnostics, and backup compatibility/fault coverage.</li>
+            <li><span class="check">✅</span> Updates/Follow virtualization and decomposition of the reviewed large feature files.</li>
+            <li><strong>Strategic item not implemented:</strong> durable transfer scheduler with API-34+ UIDT evaluation and lower-API fallback.</li>
+            <li><strong>Strategic item not implemented:</strong> Room migration for story/chapter metadata and queue transactions; chapter HTML and EPUBs remain streamed files.</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <h3>Phase 4 — Operability and release hardening <span class="check">✅ Implemented scope</span></h3>
+          <ul>
+            <li><span class="check">✅</span> Bounded local diagnostics, storage health/recovery handling, detekt ratchet, and release minification.</li>
+            <li><strong>Still open:</strong> parser canaries, performance budgets, and full visible-string resource extraction.</li>
+            <li><strong>Still open:</strong> release smoke coverage; minification is enabled but requires that verification before release hardening is considered complete.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>Completed first five work items</h3>
+      <table>
+        <thead><tr><th>Order</th><th>Work item</th><th>Why first</th><th>Acceptance signal</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Download FGS timeout safety</td><td>Current target SDK makes this a platform-enforced crash path.</td><td><span class="check">✅</span> Forced timeout pauses and exits cleanly.</td></tr>
+          <tr><td>2</td><td>Conflict-safe Story commands</td><td>Prevents silent loss of user/download state across multiple features.</td><td><span class="check">✅</span> Concurrency regressions pass.</td></tr>
+          <tr><td>3</td><td>Startup/Reader/TTS I/O split</td><td>Removes the largest ANR and jank scaling risks.</td><td><span class="check">✅</span> Debug StrictMode guards covered flows.</td></tr>
+          <tr><td>4</td><td>Maintenance coordinator + restore hardening</td><td>Backups are the recovery system and must be reliable under active work.</td><td><span class="check">✅</span> Fault-injected restore protects the old or new valid root.</td></tr>
+          <tr><td>5</td><td>Repository-only feature boundary</td><td>Reduces repeated parsing and makes the next changes testable.</td><td><span class="check">✅</span> No feature imports of <code>AppStorage</code>.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="validation">
+      <h2>Validation performed</h2>
+      <div class="grid two">
+        <div class="card">
+          <h3>Static and build validation</h3>
+          <ul>
+            <li><span class="check">Passed:</span> clean non-incremental Kotlin compile: <code>android/gradlew -p android :app:compileDebugKotlin --rerun-tasks -Pkotlin.incremental=false</code>.</li>
+            <li><span class="check">Passed:</span> canonical local gate: <code>android/gradlew -p android :app:lintKotlin :app:ci</code> (formatting, file-size budget, unit tests, detekt, Android lint, debug assembly).</li>
+            <li><span class="check">Passed:</span> all 9 instrumentation tests: <code>ANDROID_SERIAL=emulator-5554 android/gradlew -p android :app:connectedInstrumentationAndroidTest</code>.</li>
+            <li>Detekt baseline is ratcheted to 48 findings; Kotlin formatting is passing.</li>
+            <li><code>.github/workflows/android-ci.yml</code>, dependency locking, and a file-size ratchet are present.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Emulator walkthrough</h3>
+          <ul>
+            <li>Debug APK installed on <code>webnovel_api36</code> / <code>emulator-5554</code>.</li>
+            <li>Library and Updates were verified before this final pass; the nine-story library, Update tracker, follow selection, and search filter rendered correctly.</li>
+            <li>Final pass cold-started Queue, Settings, Add Story, Details, and Reader using debug launch routes.</li>
+            <li>Queue rendered its empty state. No grouped download existed, so expansion could not be exercised without starting a mutating download.</li>
+            <li>Details rendered the 9/9-downloaded <em>Unsealed Words</em> story, progress controls, overflow/bookmark controls, and all nine offline chapter rows.</li>
+            <li>Reader rendered downloaded chapter content. TTS started the media foreground service, showed system transport controls and the in-Reader transport, then stopped cleanly.</li>
+            <li>Settings rendered all major sections and remained on Settings through a manual night-mode configuration recreation; Add Story rendered its import form and source actions.</li>
+            <li>No fatal event from the app process was observed.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>Earlier cold-launch observations</h3>
+      <table>
+        <thead><tr><th>Debug route</th><th>TotalTime</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td>Library</td><td>1,579 ms</td><td>Rendered nine-story library</td></tr>
+          <tr><td>Queue</td><td>1,086 ms</td><td>Rendered empty queue state</td></tr>
+          <tr><td>Settings</td><td>1,136 ms</td><td>Rendered settings sections</td></tr>
+          <tr><td>Updates</td><td>1,164 ms</td><td>Rendered two followed stories</td></tr>
+          <tr><td>Add Story</td><td>1,131 ms</td><td>Rendered import form/source actions</td></tr>
+          <tr><td>Details</td><td>1,352 ms</td><td>Rendered selected story and chapter UI</td></tr>
+          <tr><td>Reader</td><td>1,777 ms</td><td>Rendered downloaded chapter</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">These are single emulator observations, not a benchmark. They show the current nine-story state is usable; they do not cover worst-case library/chapter sizes.</p>
+
+      <h3>Not exercised</h3>
+      <ul>
+        <li>Live Royal Road/Scribble Hub fetches, downloads, Cloudflare solving, or parser drift (avoided to prevent third-party dependency and library mutation).</li>
+        <li>Destructive backup import/full restore, disk-full fault injection, or process death mid-write during the manual emulator pass.</li>
+        <li>Queue-group expansion: no queued/grouped job existed in the preserved test data, and creating one would require a live download.</li>
+        <li>Owner phone or release build. No physical device was targeted.</li>
+        <li>Formal CPU, memory, startup tracing, network profiling, or accessibility scanner.</li>
+      </ul>
+    </section>
+
+    <section id="strengths">
+      <h2>What is already working well</h2>
+      <div class="grid two">
+        <div class="callout good">
+          <h3>Durability primitives</h3>
+          <p>Atomic JSON writes, temp+fsync+rename for chapter/EPUB files, quarantine of corrupt documents, relative paths, ZIP traversal checks, staged full restore, and JSON-import rollback are all the right foundations.</p>
+        </div>
+        <div class="callout good">
+          <h3>Pure planning boundaries</h3>
+          <p>Download scheduling/control, backup planning, EPUB helpers, sync merge rules, TTS planning, settings normalization, layout planning, and source parsing are separated and heavily unit tested.</p>
+        </div>
+        <div class="callout good">
+          <h3>Process-wide dependency sharing</h3>
+          <p><code>AppContainer</code> prevents duplicate storage/network/TTS instances. The download process loop has one explicit service owner, reducing cross-instance concurrency bugs.</p>
+        </div>
+        <div class="callout good">
+          <h3>Security posture</h3>
+          <p>FileProvider scope is narrow; reader HTML is sanitized before enabling the minimal JavaScript bridge; OAuth remains in Custom Tabs; Cloudflare cookies are centralized; URLs are source validated.</p>
+        </div>
+        <div class="callout good">
+          <h3>Cancellation handling</h3>
+          <p>Broad catch sites increasingly rethrow coroutine cancellation instead of converting teardown into user-visible errors, and long operations generally move network/file work to I/O dispatchers.</p>
+        </div>
+        <div class="callout good">
+          <h3>Debuggability</h3>
+          <p>Timber coverage, explicit debug launch routes, emulator-safe scripts, and focused planning tests make the codebase much easier to inspect than a typical programmatic-View application.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="appendix">
+      <h2>Appendix</h2>
+      <h3>Largest production Kotlin files</h3>
+      <table>
+        <thead><tr><th>File</th><th>Lines</th><th>Primary concern</th></tr></thead>
+        <tbody>
+          <tr><td>BackupRestoreCoordinator.kt</td><td>652</td><td>Multiple formats, validation, extraction, staging, swap, rollback</td></tr>
+          <tr><td>UpdatesScreen.kt</td><td>640</td><td>Rendering, selection, sync orchestration, progress state</td></tr>
+          <tr><td>QueueScreen.kt</td><td>637</td><td>Adapter/view/controller logic</td></tr>
+          <tr><td>TtsEngine.kt</td><td>599</td><td>State machine, Android adapter, persistence, chapter transitions</td></tr>
+          <tr><td>SettingsScreen.kt</td><td>579</td><td>Many settings subroutes and direct persistence</td></tr>
+          <tr><td>AppStorage.kt</td><td>577</td><td>61 functions and broad persistence surface</td></tr>
+          <tr><td>TtsForegroundService.kt</td><td>548</td><td>Media session, focus, commands, notification, service lifecycle</td></tr>
+          <tr><td>StoryActions.kt</td><td>504</td><td>Sync/download/cleanup/EPUB/file orchestration</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Review scope</h3>
+      <p>Reviewed: lifecycle and dependency wiring, manifest/build configuration, models/domain planning, repository/storage/durable writes, backup/restore, downloads and foreground service, source/network/Cloudflare, sync, EPUB, cleanup, TTS/media service, Reader/WebView safety, library/details/updates/queue/settings UI, responsive layout, unit tests, static-analysis reports, and prior architecture/QA documents.</p>
+
+      <h3>Related repository documents</h3>
+      <ul>
+        <li><a href="project-improvement-audit.md">Project Improvement Audit</a> — prior static audit and implementation status.</li>
+        <li><a href="../qa/native-app-emulator-qa-2026-07-09.html">Native Android Emulator QA</a> — detailed feature QA from the same date.</li>
+        <li><a href="../tts/tts-audit.html">TTS Audit</a> — subsystem-specific assessment.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Prepared from the repository state on 9 July 2026. This is an architecture review, not a claim of exhaustive production verification.</p>
+    <p><a href="#top">Back to top</a></p>
+  </footer>
+</body>
+</html>
