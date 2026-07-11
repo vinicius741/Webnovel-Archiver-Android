@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
 import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -37,6 +38,7 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.settingRow
+import com.vinicius741.webnovelarchiver.ui.settingRowWithLoading
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
@@ -140,16 +142,44 @@ internal fun ScreenHost.showSettings() {
         }
         divider()
         section("Backup")
-        settingRow(R.drawable.wna_share, "Export Backup", "Export library metadata and tabs to a JSON file") {
-            exportAndShare { repository.exportBackup() }
-        }
+        // The host-owned state prevents concurrent exports and survives configuration re-renders.
+        // Each controller is captured via a nullable holder so the click lambda can update its row.
+        var exportController: com.vinicius741.webnovelarchiver.ui.SettingRowLoadingController? = null
+        settingRowWithLoading(
+            R.drawable.wna_share,
+            "Export Backup",
+            "Export library metadata and tabs to a JSON file",
+            loading = backupExportState.activeKind == BackupExportKind.JSON,
+        ) {
+            if (backupExportState.activeKind == null) {
+                backupExportState.activeKind = BackupExportKind.JSON
+                exportController?.setLoading(true)
+                exportAndShare({ repository.exportBackup() }) {
+                    backupExportState.activeKind = null
+                    if (navigator.current == AppRoute.Settings) showSettings()
+                }
+            }
+        }.also { exportController = it.second }
         settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") {
             importBackupLauncher.launch(arrayOf("application/json", "text/*"))
         }
-        settingRow(R.drawable.wna_archive, "Create Full Backup", "Save settings, tabs, library, and chapters to a local ZIP file") {
-            exportAndShare { repository.exportFullBackup() }
-        }
-        settingRow(R.drawable.wna_archive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
+        var fullBackupController: com.vinicius741.webnovelarchiver.ui.SettingRowLoadingController? = null
+        settingRowWithLoading(
+            R.drawable.wna_archive,
+            "Create Full Backup",
+            "Save settings, tabs, library, and chapters to a local ZIP file",
+            loading = backupExportState.activeKind == BackupExportKind.FULL,
+        ) {
+            if (backupExportState.activeKind == null) {
+                backupExportState.activeKind = BackupExportKind.FULL
+                fullBackupController?.setLoading(true)
+                exportAndShare({ repository.exportFullBackup() }) {
+                    backupExportState.activeKind = null
+                    if (navigator.current == AppRoute.Settings) showSettings()
+                }
+            }
+        }.also { fullBackupController = it.second }
+        settingRow(R.drawable.wna_unarchive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
             importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
         }
         // Width cap: on large screens, constrain this content LinearLayout and center it within the

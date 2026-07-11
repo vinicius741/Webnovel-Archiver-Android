@@ -68,6 +68,16 @@ class UpdateTrackerScreenState {
     }
 }
 
+enum class BackupExportKind {
+    JSON,
+    FULL,
+}
+
+/** In-flight settings export state, retained across configuration-driven screen rebuilds. */
+class BackupExportState {
+    var activeKind: BackupExportKind? = null
+}
+
 /** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */
 class InFlightStorySync(
     val title: String,
@@ -133,6 +143,8 @@ interface ScreenHost {
     val addStoryScreenState: AddStoryScreenState
 
     val updateTrackerScreenState: UpdateTrackerScreenState
+
+    val backupExportState: BackupExportState
 
     /**
      * Transient state for the Follow Updates selection screen's search field + show-covers toggle

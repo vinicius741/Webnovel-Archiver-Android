@@ -77,10 +77,17 @@ internal fun ScreenHost.share(file: File) {
     app.startActivity(Intent.createChooser(intent, "Share ${file.name}"))
 }
 
-internal fun ScreenHost.exportAndShare(exporter: suspend () -> File) {
+internal fun ScreenHost.exportAndShare(
+    exporter: suspend () -> File,
+    onFinally: (() -> Unit)? = null,
+) {
     scope.launch {
-        runCatching { share(exporter()) }
-            .onFailure { toast(it.message ?: "Export failed") }
+        try {
+            runCatching { share(exporter()) }
+                .onFailure { toast(it.message ?: "Export failed") }
+        } finally {
+            onFinally?.invoke()
+        }
     }
 }
 

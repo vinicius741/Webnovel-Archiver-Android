@@ -206,3 +206,17 @@ internal fun ViewGroup.settingRow(
 ) {
     addView(makeSettingRow(context, iconRes, title, description, onClick))
 }
+
+/** Like [settingRow] but with an inline spinner-in-icon-slot + dim while [loading] is true.
+ *  Returns the row and a [SettingRowLoadingController] to flip the state without rebuilding. */
+internal fun ViewGroup.settingRowWithLoading(
+    iconRes: Int,
+    title: String,
+    description: String? = null,
+    loading: Boolean = false,
+    onClick: () -> Unit,
+): Pair<LinearLayout, SettingRowLoadingController> {
+    val (row, controller) = makeSettingRowWithLoading(context, iconRes, title, description, onClick, loading)
+    addView(row)
+    return row to controller
+}

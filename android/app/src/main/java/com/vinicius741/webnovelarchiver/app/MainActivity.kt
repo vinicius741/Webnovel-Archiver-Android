@@ -46,6 +46,7 @@ import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.BackupExportState
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
@@ -90,6 +91,7 @@ class MainActivity :
     override val routeScrollPositions: MutableMap<String, Int> = mutableMapOf()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
+    override val backupExportState: BackupExportState = BackupExportState()
 
     // Lazy: seeded from cached DisplayPreferences after repository startup hydration.
     override val updateFollowSelectionState: UpdateFollowSelectionState by lazy {
