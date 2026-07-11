@@ -98,8 +98,10 @@ object LibraryQuery {
             "patreonMonthly" -> stories.sortedBy { it.patreonStats?.monthlyUsdCents ?: 0L }
             "patreonMembers" -> stories.sortedBy { it.patreonStats?.paidMembers ?: 0 }
             "progress" -> stories.sortedBy { progressRatio(it) }
-            "default" -> stories.sortedBy { smartSortTimestamp(it) }
-            else -> stories.sortedBy { smartSortTimestamp(it) }
+            // Smart is intentionally equivalent to Last Updated. A successful chapter sync updates
+            // this timestamp, which promotes the synced story to the top in the default descending view.
+            "default" -> stories.sortedBy { it.lastUpdated ?: 0L }
+            else -> stories.sortedBy { it.lastUpdated ?: 0L }
         }
 
     private fun progressRatio(story: Story): Double =
@@ -108,6 +110,4 @@ object LibraryQuery {
         } else {
             story.downloadedChapters.toDouble() / story.totalChapters.toDouble()
         }
-
-    private fun smartSortTimestamp(story: Story): Long = maxOf(story.lastUpdated ?: 0L, story.dateAdded ?: 0L)
 }

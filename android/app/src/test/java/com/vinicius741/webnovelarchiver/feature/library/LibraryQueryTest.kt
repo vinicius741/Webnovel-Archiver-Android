@@ -29,17 +29,17 @@ class LibraryQueryTest {
     }
 
     @Test
-    fun defaultSortUsesMostRecentOfLastUpdatedAndDateAddedDescending() {
+    fun defaultSortUsesLastUpdatedDescendingSoASyncedStoryRisesToTheTop() {
         val stories =
             listOf(
-                story("old", "Old", lastUpdated = 100, dateAdded = 500),
-                story("new-update", "New Update", lastUpdated = 900, dateAdded = 100),
-                story("new-add", "New Add", lastUpdated = null, dateAdded = 700),
+                story("added-recently", "Added Recently", lastUpdated = 100, dateAdded = 10_000),
+                story("synced-now", "Synced Now", lastUpdated = 900, dateAdded = 100),
+                story("never-synced", "Never Synced", lastUpdated = null, dateAdded = 700),
             )
 
         val sorted = LibraryQuery.filterAndSort(stories, "", "__all__", emptySet(), "default", sortAscending = false)
 
-        assertEquals(listOf("new-update", "new-add", "old"), sorted.map { it.id })
+        assertEquals(listOf("synced-now", "added-recently", "never-synced"), sorted.map { it.id })
     }
 
     @Test

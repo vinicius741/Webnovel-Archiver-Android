@@ -40,7 +40,7 @@ internal class LibraryPagesAdapter(
         val sortAscending: Boolean,
     )
 
-    private var filterSnapshot: FilterSnapshot = FilterSnapshot("", emptySet(), "updated", false)
+    private var filterSnapshot: FilterSnapshot = FilterSnapshot("", emptySet(), "lastUpdated", false)
 
     init {
         // ViewPager2 plays nicely with stable item ids when set before the adapter is attached.

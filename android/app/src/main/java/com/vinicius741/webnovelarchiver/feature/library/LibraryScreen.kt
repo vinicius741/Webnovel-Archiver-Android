@@ -108,7 +108,8 @@ internal fun ScreenHost.showLibrary() {
             }
 
         val selectedTags = mutableSetOf<String>()
-        var sortOption = "updated"
+        // Canonical key matches the Sort dialog option list ("lastUpdated", not the legacy "updated").
+        var sortOption = "lastUpdated"
         var sortAscending = false
 
         // Apply the current filter snapshot to whichever grid surface is showing: the single shared

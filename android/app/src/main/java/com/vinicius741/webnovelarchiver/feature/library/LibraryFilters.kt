@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.library
 import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
@@ -77,13 +78,44 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     searchRow.addView(search, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-    val sortIcon = if (sortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
+    // Live sort state for this filter bar. The function parameters above are only the *initial*
+    // snapshot; without mutable locals the sort-chip click listener and its label would keep
+    // replaying the values from first construction, so picking "Default (Smart)" looked like a
+    // dead click (dialog reopened still on Last Updated, chip never updated).
+    var currentSortOption = normalizeSortOption(sortOption)
+    var currentSortAscending = sortAscending
+
+    fun sortChipLabel(): String = sortOptionLabel(currentSortOption) + if (currentSortAscending) " ↑" else " ↓"
+
+    fun sortChipIconRes(): Int =
+        if (currentSortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
+
     // L2: a labeled chip communicates the active sort + direction instead of a bare, stateless icon.
-    val sortLabel = sortOptionLabel(sortOption) + if (sortAscending) " ↑" else " ↓"
+    val sortIconView =
+        ImageView(context).apply {
+            setImageDrawable(context.tintedIcon(sortChipIconRes(), ThemeManager.colors.onSurfaceVariant))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            layoutParams =
+                LinearLayout.LayoutParams(dp(Space.SM + Space.XS + 2), dp(Space.SM + Space.XS + 2)).apply {
+                    rightMargin = dp(Space.XS + 2)
+                }
+        }
+    val sortLabelView = makeText(context, sortChipLabel(), Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+
+    fun refreshSortChip() {
+        sortIconView.setImageDrawable(
+            context.tintedIcon(sortChipIconRes(), ThemeManager.colors.onSurfaceVariant),
+        )
+        sortLabelView.text = sortChipLabel()
+    }
+
     val sortButton =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            // Match the search field's 48dp minimum height so the two filter controls form one
+            // visually aligned row instead of the sort chip shrinking to its content height.
+            minimumHeight = context.dp(48)
             setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
             background =
                 ripple(
@@ -98,19 +130,16 @@ internal fun ScreenHost.makeLibraryFilters(
                 )
             isClickable = true
             isFocusable = true
-            setOnClickListener { showSortDialog(context, sortOption, sortAscending, onSortChanged) }
-            addView(
-                ImageView(context).apply {
-                    setImageDrawable(context.tintedIcon(sortIcon, ThemeManager.colors.onSurfaceVariant))
-                    scaleType = ImageView.ScaleType.CENTER_INSIDE
-                    layoutParams =
-                        LinearLayout.LayoutParams(dp(Space.SM + Space.XS + 2), dp(Space.SM + Space.XS + 2)).apply {
-                            rightMargin =
-                                dp(Space.XS + 2)
-                        }
-                },
-            )
-            addView(makeText(context, sortLabel, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant))
+            setOnClickListener {
+                showSortDialog(context, currentSortOption, currentSortAscending) { newSort ->
+                    currentSortOption = normalizeSortOption(newSort.first)
+                    currentSortAscending = newSort.second
+                    refreshSortChip()
+                    onSortChanged(currentSortOption to currentSortAscending)
+                }
+            }
+            addView(sortIconView)
+            addView(sortLabelView)
         }
     searchRow.addView(
         sortButton,
@@ -279,9 +308,13 @@ private fun showSortDialog(
             "patreonMembers" to "Patreon Paid Members",
         )
 
+    // Canonicalize legacy aliases (e.g. "updated" → "lastUpdated") so the active row always
+    // matches an option key and the check/highlight can actually appear.
+    val normalizedCurrent = normalizeSortOption(currentOption)
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
     val radiusPx = context.dp(shapes.dialogRadius).toFloat()
+    val chipRadius = context.dp(shapes.chipRadius).toFloat()
 
     val dialogView =
         LinearLayout(context).apply {
@@ -302,26 +335,44 @@ private fun showSortDialog(
     var dialogRef: AlertDialog? = null
 
     options.forEach { (key, label) ->
-        val isSelected = key == currentOption
+        val isSelected = key == normalizedCurrent
         val row =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, context.dp(12), 0, context.dp(12))
+                // Horizontal padding so the selected-row highlight does not kiss the dialog edge.
+                setPadding(context.dp(12), context.dp(12), context.dp(12), context.dp(12))
                 isClickable = true
                 isFocusable = true
-                background = selectableRipple(colors.onSurface)
+                // Selected: soft primaryContainer fill + primary check/text. Unselected: plain ripple.
+                background =
+                    if (isSelected) {
+                        ripple(roundedBg(colors.primaryContainer, chipRadius), chipRadius, colors.onSurface)
+                    } else {
+                        selectableRipple(colors.onSurface)
+                    }
             }
         val check =
             ImageView(context).apply {
                 layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
+                contentDescription = if (isSelected) "Selected" else null
                 if (isSelected) setImageDrawable(checkIcon)
             }
-        val text = makeText(context, label, Type.BODY_LARGE, colors.onSurface)
+        val text =
+            makeText(
+                context,
+                label,
+                Type.BODY_LARGE,
+                // onPrimaryContainer pairs with the primaryContainer fill for readable contrast
+                // across all themes; unselected rows stay plain onSurface.
+                if (isSelected) colors.onPrimaryContainer else colors.onSurface,
+            ).apply {
+                if (isSelected) typeface = Typeface.create(typeface, Typeface.BOLD)
+            }
         row.addView(check)
         row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row.setOnClickListener {
-            val newAscending = if (key == currentOption) !ascending else defaultDirectionFor(key)
+            val newAscending = if (key == normalizedCurrent) !ascending else defaultDirectionFor(key)
             onChanged(key to newAscending)
             dialogRef?.dismiss()
         }
@@ -334,7 +385,7 @@ private fun showSortDialog(
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, context.dp(12), 0, context.dp(12))
+            setPadding(context.dp(12), context.dp(12), context.dp(12), context.dp(12))
             isClickable = true
             isFocusable = true
             background = selectableRipple(colors.onSurface)
@@ -349,11 +400,19 @@ private fun showSortDialog(
             layoutParams = LinearLayout.LayoutParams(context.dp(24), context.dp(24)).apply { rightMargin = context.dp(16) }
             setImageDrawable(directionIcon)
         }
-    val directionText = makeText(context, if (ascending) "Ascending" else "Descending", Type.BODY_LARGE, colors.onSurface)
+    val directionText =
+        makeText(
+            context,
+            if (ascending) "Ascending" else "Descending",
+            Type.BODY_LARGE,
+            colors.primary,
+        ).apply {
+            typeface = Typeface.create(typeface, Typeface.BOLD)
+        }
     directionRow.addView(directionImage)
     directionRow.addView(directionText)
     directionRow.setOnClickListener {
-        onChanged(currentOption to !ascending)
+        onChanged(normalizedCurrent to !ascending)
         dialogRef?.dismiss()
     }
     dialogView.addView(directionRow)
@@ -383,9 +442,20 @@ private fun defaultDirectionFor(option: String): Boolean =
         else -> false
     }
 
+/**
+ * Maps legacy sort keys onto the dialog's option keys. LibraryScreen historically defaulted to
+ * `"updated"` while the dialog lists `"lastUpdated"`; without this, no row ever matched and the
+ * selected check/highlight never appeared.
+ */
+private fun normalizeSortOption(option: String): String =
+    when (option) {
+        "updated" -> "lastUpdated"
+        else -> option
+    }
+
 /** Short human label for a sort option key, shown on the Library sort chip. */
 private fun sortOptionLabel(option: String): String =
-    when (option) {
+    when (normalizeSortOption(option)) {
         "title" -> "Title"
         "lastUpdated" -> "Updated"
         "dateAdded" -> "Added"
@@ -393,6 +463,7 @@ private fun sortOptionLabel(option: String): String =
         "score" -> "Score"
         "patreonMonthly" -> "Patreon ${'$'}"
         "patreonMembers" -> "Patrons"
+        "default" -> "Default"
         else -> "Default"
     }
 
