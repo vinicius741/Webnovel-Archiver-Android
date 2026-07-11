@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.updates
 
+import android.content.Context
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
@@ -22,33 +23,28 @@ import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.ripple
+import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-private sealed interface UpdatedListItem {
-    val stableKey: String
-
-    data class StoryHeader(
-        val story: Story,
-    ) : UpdatedListItem {
-        override val stableKey = "story:${story.id}"
-    }
-
-    data class ChapterRow(
-        val story: Story,
-        val index: Int,
-        val chapter: Chapter,
-    ) : UpdatedListItem {
-        override val stableKey = "chapter:${story.id}:${chapter.id}"
-    }
+/**
+ * One list item per novel that has updates: the novel header and its chapter rows live in a single
+ * outer card so chapters read as nested under the novel rather than as siblings of it.
+ */
+private data class UpdatedStoryGroup(
+    val story: Story,
+    val chapters: List<UpdatedChapter>,
+) {
+    val stableKey: String get() = "group:${story.id}"
 }
 
 internal class UpdatedItemsAdapter(
     private val host: ScreenHost,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-    private var items = emptyList<UpdatedListItem>()
+    private var items = emptyList<UpdatedStoryGroup>()
 
     init {
         setHasStableIds(true)
@@ -58,32 +54,23 @@ internal class UpdatedItemsAdapter(
 
     override fun getItemId(position: Int) = items[position].stableKey.hashCode().toLong()
 
-    override fun getItemViewType(position: Int) =
-        when (items[position]) {
-            is UpdatedListItem.StoryHeader -> TYPE_STORY
-            is UpdatedListItem.ChapterRow -> TYPE_CHAPTER
-        }
-
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
-    ): RecyclerView.ViewHolder = if (viewType == TYPE_STORY) createStoryHolder(parent) else createChapterHolder(parent)
+    ): RecyclerView.ViewHolder = createGroupHolder(parent)
 
     override fun onBindViewHolder(
         holder: RecyclerView.ViewHolder,
         position: Int,
     ) {
-        when (val item = items[position]) {
-            is UpdatedListItem.StoryHeader -> (holder as StoryHolder).bind(item.story)
-            is UpdatedListItem.ChapterRow -> (holder as ChapterHolder).bind(item)
-        }
+        (holder as GroupHolder).bind(items[position])
     }
 
     fun submit(
         stories: List<Story>,
         chapterIdsByStoryId: Map<String, List<String>>,
     ) {
-        val next = buildUpdatedList(stories, chapterIdsByStoryId)
+        val next = buildUpdatedGroups(stories, chapterIdsByStoryId)
         val previous = items
         items = next
         DiffUtil
@@ -106,136 +93,162 @@ internal class UpdatedItemsAdapter(
             ).dispatchUpdatesTo(this)
     }
 
-    private fun createStoryHolder(parent: ViewGroup): StoryHolder {
+    private fun createGroupHolder(parent: ViewGroup): GroupHolder {
+        val context = parent.context
         val title =
-            makeText(parent.context, "", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
+            makeText(context, "", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
             }
-        val author = makeText(parent.context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+        val author = makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         val labels =
-            LinearLayout(parent.context).apply {
+            LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(title)
                 addView(author)
             }
         lateinit var open: TextView
-        val actionSlot =
-            LinearLayout(parent.context).apply {
+        val header =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                // `button` is a ViewGroup DSL that attaches itself; do not addView again.
                 open = button("Open", Btn.TEXT) {}
             }
-        val card =
-            makeCard(parent.context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(actionSlot)
-                layoutParams =
-                    RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = parent.context.dp(Space.MD)
-                    }
-            }
-        return StoryHolder(card, title, author, open)
-    }
-
-    private fun createChapterHolder(parent: ViewGroup): ChapterHolder {
-        val title =
-            makeText(parent.context, "", Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
-                maxLines = 2
-                ellipsize = TextUtils.TruncateAt.END
-            }
-        val number = makeText(parent.context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-        val labels =
-            LinearLayout(parent.context).apply {
+        // Inner stack holds chapter rows; elevated one step above the outer card so they sit
+        // visually "inside" the novel group rather than flush with the header surface.
+        val chaptersContainer =
+            LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(title)
-                addView(number)
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = context.dp(Space.MD) }
             }
-        val bookmark =
-            ImageView(parent.context).apply {
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPadding(
-                    parent.context.dp(Space.SM),
-                    parent.context.dp(Space.SM),
-                    parent.context.dp(Space.SM),
-                    parent.context.dp(Space.SM),
-                )
-                background = selectableRipple(ThemeManager.colors.onSurface)
-                isClickable = true
-                isFocusable = true
+        val card =
+            makeCard(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(header)
+                addView(chaptersContainer)
+                layoutParams =
+                    RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { topMargin = context.dp(Space.MD) }
             }
-        val row =
-            LinearLayout(parent.context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                isClickable = true
-                isFocusable = true
-                background = selectableRipple(ThemeManager.colors.onSurface)
-                setPadding(
-                    parent.context.dp(Space.MD),
-                    parent.context.dp(Space.SM),
-                    parent.context.dp(Space.SM),
-                    parent.context.dp(Space.SM),
-                )
-                addView(labels, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(bookmark, LinearLayout.LayoutParams(parent.context.dp(44), parent.context.dp(44)))
-            }
-        return ChapterHolder(row, title, number, bookmark)
+        return GroupHolder(card, title, author, open, chaptersContainer)
     }
 
-    private inner class StoryHolder(
+    private inner class GroupHolder(
         itemView: LinearLayout,
         private val title: TextView,
         private val author: TextView,
         private val open: TextView,
+        private val chaptersContainer: LinearLayout,
     ) : RecyclerView.ViewHolder(itemView) {
-        fun bind(story: Story) {
-            title.text = story.title
-            author.text = "by ${story.author}"
-            open.setOnClickListener { host.showDetails(story.id) }
+        fun bind(group: UpdatedStoryGroup) {
+            val context = itemView.context
+            title.text = group.story.title
+            author.text = "by ${group.story.author}"
+            open.setOnClickListener { host.showDetails(group.story.id) }
+            chaptersContainer.removeAllViews()
+            group.chapters.forEachIndexed { i, updated ->
+                chaptersContainer.addView(
+                    buildChapterRow(context, group.story, updated).apply {
+                        if (i > 0) {
+                            (layoutParams as LinearLayout.LayoutParams).topMargin = context.dp(Space.XS + 2)
+                        }
+                    },
+                )
+            }
         }
     }
 
-    private inner class ChapterHolder(
-        itemView: LinearLayout,
-        private val title: TextView,
-        private val number: TextView,
-        private val bookmark: ImageView,
-    ) : RecyclerView.ViewHolder(itemView) {
-        fun bind(item: UpdatedListItem.ChapterRow) {
-            val bookmarked = item.story.lastReadChapterId == item.chapter.id
-            title.text = item.chapter.title
-            number.text = "Chapter ${item.index + 1}"
-            itemView.setOnClickListener { host.showReader(item.story.id, item.chapter.id) }
-            bookmark.contentDescription = if (bookmarked) "Clear bookmark" else "Bookmark chapter"
-            bookmark.setImageDrawable(
-                host.app.tintedIcon(
-                    if (bookmarked) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
-                    if (bookmarked) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant,
-                ),
+    private fun buildChapterRow(
+        context: Context,
+        story: Story,
+        updated: UpdatedChapter,
+    ): LinearLayout {
+        val radiusPx = context.dp(Space.SM).toFloat()
+        val title =
+            makeText(context, updated.chapter.title, Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+            }
+        val number =
+            makeText(context, "Chapter ${updated.index + 1}", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                setPadding(0, context.dp(2), 0, 0)
+            }
+        val labels =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addView(title)
+                addView(number)
+            }
+        val bookmarked = story.lastReadChapterId == updated.chapter.id
+        val bookmark =
+            ImageView(context).apply {
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(
+                    context.dp(Space.SM + 2),
+                    context.dp(Space.SM + 2),
+                    context.dp(Space.SM + 2),
+                    context.dp(Space.SM + 2),
+                )
+                background = selectableRipple(ThemeManager.colors.onSurface)
+                isClickable = true
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(context.dp(44), context.dp(44))
+                contentDescription = if (bookmarked) "Clear bookmark" else "Bookmark chapter"
+                setImageDrawable(
+                    host.app.tintedIcon(
+                        if (bookmarked) R.drawable.wna_bookmark else R.drawable.wna_bookmark_outline,
+                        if (bookmarked) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant,
+                    ),
+                )
+                setOnClickListener { host.toggleUpdatedChapterBookmark(story.id, updated.chapter.id) }
+            }
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            // Nested surface: one elevation step above the outer novel card so chapters read as
+            // contained content, not peer cards on the page.
+            background =
+                ripple(
+                    roundedBg(ThemeManager.colors.elevation2, radiusPx),
+                    radiusPx,
+                    ThemeManager.colors.onSurface,
+                )
+            setPadding(
+                context.dp(Space.MD),
+                context.dp(Space.SM + 2),
+                context.dp(Space.XS + 2),
+                context.dp(Space.SM + 2),
             )
-            bookmark.setOnClickListener { host.toggleUpdatedChapterBookmark(item.story.id, item.chapter.id) }
+            layoutParams =
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            addView(labels)
+            addView(bookmark)
+            setOnClickListener { host.showReader(story.id, updated.chapter.id) }
         }
-    }
-
-    companion object {
-        private const val TYPE_STORY = 0
-        private const val TYPE_CHAPTER = 1
     }
 }
 
-private fun buildUpdatedList(
+private fun buildUpdatedGroups(
     stories: List<Story>,
     chapterIdsByStoryId: Map<String, List<String>>,
-): List<UpdatedListItem> =
-    buildList {
-        stories.forEach { story ->
-            val chapters = UpdateTrackerPlanning.updatedChapters(story, chapterIdsByStoryId[story.id])
-            if (chapters.isNotEmpty()) {
-                add(UpdatedListItem.StoryHeader(story))
-                chapters.forEach { add(UpdatedListItem.ChapterRow(story, it.index, it.chapter)) }
-            }
-        }
+): List<UpdatedStoryGroup> =
+    stories.mapNotNull { story ->
+        val chapters = UpdateTrackerPlanning.updatedChapters(story, chapterIdsByStoryId[story.id])
+        if (chapters.isEmpty()) null else UpdatedStoryGroup(story, chapters)
     }
 
 private fun ScreenHost.toggleUpdatedChapterBookmark(
