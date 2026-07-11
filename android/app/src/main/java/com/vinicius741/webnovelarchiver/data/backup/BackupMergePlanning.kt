@@ -21,12 +21,14 @@ object BackupMergePlanning {
                             content = null,
                             filePath = null,
                             downloaded = false,
+                            downloadedAt = null,
                         )
                     } else {
                         chapter.copy(
                             content = existingChapter.content,
                             filePath = existingChapter.filePath,
                             downloaded = existingChapter.downloaded,
+                            downloadedAt = existingChapter.downloadedAt,
                         )
                     }
                 }.toMutableList()
@@ -60,6 +62,7 @@ object BackupMergePlanning {
                         content = null,
                         filePath = null,
                         downloaded = false,
+                        downloadedAt = null,
                     )
                 }.toMutableList()
         return incoming.copy(

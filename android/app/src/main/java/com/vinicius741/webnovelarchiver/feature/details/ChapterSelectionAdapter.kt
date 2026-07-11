@@ -16,7 +16,6 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
-import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -24,11 +23,8 @@ import com.vinicius741.webnovelarchiver.ui.applyCheckBoxTint
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.row
-import com.vinicius741.webnovelarchiver.ui.sanitizeTitle
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.strokeBg
-import com.vinicius741.webnovelarchiver.ui.text
 
 internal data class SelectableChapter(
     val originalIndex: Int,
@@ -45,8 +41,14 @@ internal class ChapterSelectionAdapter(
     internal class Holder(
         val row: LinearLayout,
         val checkbox: CheckBox,
+        val index: TextView,
         val title: TextView,
     ) : RecyclerView.ViewHolder(row)
+
+    private val indexDigits: Int =
+        ChapterRowPlanning.indexDigitCount(
+            items.maxOfOrNull { it.originalIndex + 1 } ?: items.size,
+        )
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
@@ -56,6 +58,16 @@ internal class ChapterSelectionAdapter(
         val checkbox =
             CheckBox(context).apply {
                 applyCheckBoxTint()
+            }
+        val index =
+            TextView(context).apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
+                typeface = Typeface.create(typeface, Typeface.BOLD)
+                setTextColor(ThemeManager.colors.onSurfaceVariant)
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                minEms = indexDigits
+                maxLines = 1
+                includeFontPadding = false
             }
         val title =
             TextView(context).apply {
@@ -80,13 +92,18 @@ internal class ChapterSelectionAdapter(
                     }
                 addView(checkbox)
                 addView(
-                    title,
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        marginStart = context.dp(Space.MD)
+                    index,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        marginStart = context.dp(Space.SM)
+                        marginEnd = context.dp(Space.SM)
                     },
                 )
+                addView(
+                    title,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
             }
-        return Holder(row, checkbox, title)
+        return Holder(row, checkbox, index, title)
     }
 
     override fun onBindViewHolder(
@@ -113,10 +130,13 @@ internal class ChapterSelectionAdapter(
         holder.checkbox.setOnCheckedChangeListener { _, _ ->
             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let(onTap)
         }
-        holder.title.text = "${item.originalIndex + 1}. ${sanitizeTitle(item.chapter.title)}"
+        val indexLabel = ChapterRowPlanning.indexLabel(item.originalIndex)
+        val titleLabel = ChapterRowPlanning.displayTitle(item.chapter.title)
+        holder.index.text = indexLabel
+        holder.title.text = titleLabel
         holder.row.background = ripple(background, radius, colors.onSurface)
         holder.row.contentDescription =
-            "Chapter ${item.originalIndex + 1}, ${if (selected) "selected" else "not selected"}"
+            "Chapter $indexLabel, $titleLabel, ${if (selected) "selected" else "not selected"}"
         holder.row.setOnClickListener {
             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }?.let(onTap)
         }

@@ -32,7 +32,8 @@ class StorySyncMergePlanningTest {
             syncedStory(
                 chapters =
                     listOf(
-                        chapter("10", downloaded = true, filePath = "/chapters/10.html", content = "<p>html</p>"),
+                        chapter("10", downloaded = true, filePath = "/chapters/10.html", content = "<p>html</p>")
+                            .copy(downloadedAt = 1_700_000_000_000L),
                     ),
             )
 
@@ -42,6 +43,7 @@ class StorySyncMergePlanningTest {
         assertTrue("downloaded state must survive the sync write", merged.downloaded)
         assertEquals("/chapters/10.html", merged.filePath)
         assertEquals("<p>html</p>", merged.content)
+        assertEquals(1_700_000_000_000L, merged.downloadedAt)
         assertEquals(1, folded.downloadedChapters)
         assertEquals(DownloadStatus.completed, folded.status)
     }

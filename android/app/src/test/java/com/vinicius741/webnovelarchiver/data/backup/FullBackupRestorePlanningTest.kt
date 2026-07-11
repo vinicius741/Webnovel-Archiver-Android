@@ -27,6 +27,7 @@ class FullBackupRestorePlanningTest {
                                 content = "<p>cached</p>",
                                 filePath = "/old/chapter.html",
                                 downloaded = true,
+                                downloadedAt = 1_700_000_000_000L,
                             ),
                             Chapter(id = "c2", title = "Two"),
                         ),
@@ -44,6 +45,7 @@ class FullBackupRestorePlanningTest {
         assertNull(story.chapters[0].content)
         assertNull(story.chapters[0].filePath)
         assertFalse(story.chapters[0].downloaded)
+        assertEquals(1_700_000_000_000L, story.chapters[0].downloadedAt)
     }
 
     @Test
@@ -55,8 +57,8 @@ class FullBackupRestorePlanningTest {
                     downloadedChapters = 0,
                     chapters =
                         mutableListOf(
-                            Chapter(id = "c1", title = "One"),
-                            Chapter(id = "c2", title = "Two"),
+                            Chapter(id = "c1", title = "One", downloadedAt = 1_700_000_000_000L),
+                            Chapter(id = "c2", title = "Two", downloadedAt = 1_600_000_000_000L),
                         ),
                 ),
             )
@@ -74,8 +76,10 @@ class FullBackupRestorePlanningTest {
         val story = stories.single()
         assertTrue(story.chapters[0].downloaded)
         assertEquals("/restored/novels/s1/0000_c1.html", story.chapters[0].filePath)
+        assertEquals(1_700_000_000_000L, story.chapters[0].downloadedAt)
         assertFalse(story.chapters[1].downloaded)
         assertNull(story.chapters[1].filePath)
+        assertNull(story.chapters[1].downloadedAt)
         assertEquals(2, story.totalChapters)
         assertEquals(1, story.downloadedChapters)
     }

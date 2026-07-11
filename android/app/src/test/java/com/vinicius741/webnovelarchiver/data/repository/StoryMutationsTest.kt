@@ -51,8 +51,10 @@ class StoryMutationsTest {
 
         val committed = StoryMutations.markCleanupApplied(afterDownload)
 
-        assertTrue(committed.chapters.single { it.id == "c2" }.downloaded)
-        assertEquals("novels/s/c2.html", committed.chapters.single { it.id == "c2" }.filePath)
+        val c2 = committed.chapters.single { it.id == "c2" }
+        assertTrue(c2.downloaded)
+        assertEquals("novels/s/c2.html", c2.filePath)
+        assertEquals(200L, c2.downloadedAt)
         assertEquals(2, committed.downloadedChapters)
         assertEquals(DownloadStatus.completed, committed.status)
         assertTrue(committed.epubStale!!)

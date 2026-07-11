@@ -110,7 +110,7 @@ internal class BackupExporter(
             epubPaths = null,
             chapters =
                 story.chapters
-                    .map { it.copy(content = null, filePath = null, downloaded = false) }
+                    .map { it.copy(content = null, filePath = null, downloaded = false, downloadedAt = null) }
                     .toMutableList(),
         )
 

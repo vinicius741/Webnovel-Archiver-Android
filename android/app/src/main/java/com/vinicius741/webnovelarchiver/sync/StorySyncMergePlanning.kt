@@ -57,6 +57,7 @@ object StorySyncMergePlanning {
                             downloaded = true,
                             filePath = current.filePath,
                             content = current.content ?: chapter.content,
+                            downloadedAt = current.downloadedAt ?: chapter.downloadedAt,
                         )
                     } else {
                         chapter

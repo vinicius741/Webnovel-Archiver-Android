@@ -65,6 +65,8 @@ data class Chapter(
     var content: String? = null,
     var filePath: String? = null,
     var downloaded: Boolean = false,
+    /** Epoch millis when this chapter finished downloading; null for never-downloaded or legacy rows. */
+    var downloadedAt: Long? = null,
     var publishedAt: Long? = null,
 )
 

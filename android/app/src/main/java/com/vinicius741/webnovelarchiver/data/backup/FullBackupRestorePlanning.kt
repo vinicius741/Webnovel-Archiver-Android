@@ -43,6 +43,7 @@ object FullBackupRestorePlanning {
                 chapter.filePath = absolutePath
                 chapter.downloaded = true
             }
+            story.chapters.filterNot { it.downloaded }.forEach { it.downloadedAt = null }
             story.totalChapters = story.chapters.size
             story.downloadedChapters = story.chapters.count { it.downloaded }
         }

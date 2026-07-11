@@ -68,7 +68,12 @@ internal object StoryMutations {
         val chapterIndex = latest.chapters.indexOfFirst { it.id == chapterId }
         if (chapterIndex < 0) return null
         val chapters = latest.chapters.map { it.copy() }.toMutableList()
-        chapters[chapterIndex] = chapters[chapterIndex].copy(filePath = path, downloaded = true)
+        chapters[chapterIndex] =
+            chapters[chapterIndex].copy(
+                filePath = path,
+                downloaded = true,
+                downloadedAt = completedAt,
+            )
         val downloadedCount = chapters.count { it.downloaded }
         return latest.copy(
             chapters = chapters,
