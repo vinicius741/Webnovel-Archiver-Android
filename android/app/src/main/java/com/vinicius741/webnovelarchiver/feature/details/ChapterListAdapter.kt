@@ -36,9 +36,10 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
  * `LinearLayout.addView` loop with view recycling, so novels with hundreds/thousands of chapters
  * no longer inflate one row each on every render/filter tick.
  *
- * Row layout: status leading · fixed index column · title + subtitle · bookmark. The index lives in
- * its own muted column so chapter titles that themselves start with numbers (e.g. "13.11 …") stay
- * readable. Subtitles show live queue state or a quiet "Downloaded MMM d, yyyy" when known.
+ * Row layout: status leading · title + compact index/state metadata · bookmark. Removing the
+ * separate index column gives numeric source titles (e.g. "13.11 …") one clear visual anchor, while
+ * the explicitly labeled index preserves the chapter's position in the full list. Metadata also
+ * carries the live queue state or a quiet "Downloaded MMM d, yyyy" when known.
  *
  * [chapterStatuses] carries live per-chapter download state from the queue (see
  * [com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning.chapterJobStatuses]) so a row can
@@ -68,15 +69,11 @@ class ChapterListAdapter(
     private val typeEmpty = 0
     private val typeChapter = 1
 
-    /** Digit width for the index column so multi-digit numbers stay right-aligned as the list grows. */
-    private var indexDigits: Int = ChapterRowPlanning.indexDigitCount(story.totalChapters.coerceAtLeast(chapters.size))
-
     /** Holder for the normal chapter row. Holds the static skeleton built once in onCreateViewHolder;
      *  onBindViewHolder only mutates contents (index, title, status, subtitle, bookmark). */
     class RowHolder(
         val row: LinearLayout,
         val statusSlot: FrameLayout,
-        val index: TextView,
         val title: TextView,
         val subtitleSlot: LinearLayout,
         val bookmark: ImageView,
@@ -106,13 +103,10 @@ class ChapterListAdapter(
         this.query = query
         this.filter = filter
         this.chapterStatuses = chapterStatuses
-        val nextIndexDigits = ChapterRowPlanning.indexDigitCount(story.totalChapters.coerceAtLeast(chapters.size))
-        val indexDigitsChanged = nextIndexDigits != indexDigits
-        indexDigits = nextIndexDigits
         // U1: prefer a DiffUtil pass keyed by chapter id so insertions/removals/reorders animate and
         // only changed rows rebind. When the empty-state toggles, the whole tree changes shape, so
         // fall back to a full notifyDataSetChanged in that one transition.
-        if (previousEmpty != isEmptyState || indexDigitsChanged) {
+        if (previousEmpty != isEmptyState) {
             notifyDataSetChanged()
             return
         }
@@ -213,35 +207,25 @@ class ChapterListAdapter(
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(context.dp(Space.MD), context.dp(Space.SM + 2), context.dp(Space.XS + 2), context.dp(Space.SM + 2))
+                minimumHeight = context.dp(64)
+                setPadding(context.dp(Space.LG), context.dp(Space.SM), context.dp(Space.SM), context.dp(Space.SM))
                 layoutParams =
                     LinearLayout
                         .LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ).apply { bottomMargin = context.dp(Space.XS + 2) }
+                        ).apply { bottomMargin = context.dp(Space.XS) }
             }
         // U1: build the row skeleton ONCE here. The status slot is a fixed FrameLayout whose child
-        // is swapped in bind; the index column is a fixed muted number; the title column carries the
-        // title + a subtitle slot that gets a single cheap TextView in bind; the bookmark icon is
+        // is swapped in bind; the title column carries the title + a compact metadata line; the
+        // bookmark icon is
         // reused and only re-tinted in bind.
         val statusSlot = chapterStatusSlot(context, host.dot(ThemeManager.colors.outlineVariant))
-        val index =
-            makeText(context, "", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-                gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                // minEms keeps multi-digit indexes right-aligned so titles share a common left edge.
-                minEms = indexDigits
-                maxLines = 1
-                includeFontPadding = false
-                layoutParams =
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        marginEnd = context.dp(Space.SM)
-                    }
-            }
         val title =
             makeText(context, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
+                includeFontPadding = false
             }
         val subtitleSlot =
             LinearLayout(context).apply {
@@ -251,6 +235,7 @@ class ChapterListAdapter(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                setPadding(context.dp(Space.XS), 0, context.dp(Space.XS), 0)
                 addView(title)
                 addView(subtitleSlot)
             }
@@ -264,10 +249,9 @@ class ChapterListAdapter(
                 layoutParams = LinearLayout.LayoutParams(context.dp(44), context.dp(44))
             }
         row.addView(statusSlot)
-        row.addView(index)
         row.addView(titleColumn)
         row.addView(bookmark)
-        return RowHolder(row, statusSlot, index, title, subtitleSlot, bookmark)
+        return RowHolder(row, statusSlot, title, subtitleSlot, bookmark)
     }
 
     override fun onBindViewHolder(
@@ -312,11 +296,6 @@ class ChapterListAdapter(
         val liveStatus = chapterStatuses[chapter.id]
         // U1: swap only the leading child of the fixed status slot instead of rebuilding the row.
         setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, context)
-        // Index lives in its own column (muted, right-aligned) so it never runs into titles that
-        // already start with numbers from the source site.
-        holder.index.minEms = indexDigits
-        holder.index.text = ChapterRowPlanning.indexLabel(index)
-        holder.index.setTextColor(ThemeManager.colors.onSurfaceVariant)
         holder.title.text = ChapterRowPlanning.displayTitle(chapter.title)
         // Dim the title when the chapter can't be opened so the row reads as disabled, matching the
         // faint status dot used for non-downloaded chapters.
@@ -325,9 +304,9 @@ class ChapterListAdapter(
             "Chapter ${ChapterRowPlanning.indexLabel(index)}, ${ChapterRowPlanning.displayTitle(chapter.title)}"
         // U1: rebuild only the single subtitle TextView (cheap) inside the reused subtitle slot.
         holder.subtitleSlot.removeAllViews()
-        subtitleText(liveStatus, chapter.downloaded, chapter.downloadedAt, context)?.let {
-            holder.subtitleSlot.addView(it)
-        }
+        holder.subtitleSlot.addView(
+            subtitleText(index, liveStatus, chapter.downloaded, chapter.downloadedAt, context),
+        )
         // One-tap bookmark (replaces the per-chapter three-dot overflow): empty outline by default,
         // filled + primary-tinted when this chapter is the novel's bookmark. Tapping toggles it.
         val isBookmarked = story.lastReadChapterId == chapter.id
@@ -373,12 +352,13 @@ class ChapterListAdapter(
     }
 
     private fun subtitleText(
+        index: Int,
         liveStatus: DownloadJobStatus?,
         downloaded: Boolean,
         downloadedAt: Long?,
         context: Context,
-    ): TextView? {
-        val label = ChapterRowPlanning.subtitle(liveStatus, downloaded, downloadedAt) ?: return null
+    ): TextView {
+        val label = ChapterRowPlanning.metadataLabel(index, liveStatus, downloaded, downloadedAt)
         val color =
             when (liveStatus) {
                 DownloadJobStatus.Downloading -> ThemeManager.colors.primary
@@ -387,7 +367,8 @@ class ChapterListAdapter(
                 else -> ThemeManager.colors.onSurfaceVariant
             }
         return makeText(context, label, Type.CAPTION, color).apply {
-            setPadding(0, context.dp(2), 0, 0)
+            includeFontPadding = false
+            setPadding(0, context.dp(Space.XS), 0, 0)
         }
     }
 
@@ -413,7 +394,7 @@ private fun chapterStatusSlot(
     status: View,
 ): FrameLayout =
     FrameLayout(context).apply {
-        layoutParams = LinearLayout.LayoutParams(context.dp(20), context.dp(18))
+        layoutParams = LinearLayout.LayoutParams(context.dp(18), context.dp(18))
         val isSpinner = status is ProgressBar
         addView(
             status,

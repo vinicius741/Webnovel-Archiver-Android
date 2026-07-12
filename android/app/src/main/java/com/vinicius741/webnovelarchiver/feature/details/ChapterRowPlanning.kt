@@ -39,8 +39,24 @@ object ChapterRowPlanning {
                 when {
                     !downloaded -> null
                     downloadedAt != null -> "Downloaded ${formatDownloadDate(downloadedAt)}"
-                    else -> "Available Offline"
+                    else -> "Available offline"
                 }
+        }
+
+    /** Compact second line that distinguishes the list position from the source's chapter title. */
+    fun metadataLabel(
+        zeroBasedIndex: Int,
+        liveStatus: DownloadJobStatus?,
+        downloaded: Boolean,
+        downloadedAt: Long?,
+    ): String =
+        buildString {
+            append("Index ")
+            append(indexLabel(zeroBasedIndex))
+            subtitle(liveStatus, downloaded, downloadedAt)?.let {
+                append("  •  ")
+                append(it)
+            }
         }
 
     fun formatDownloadDate(timestampMillis: Long): String =

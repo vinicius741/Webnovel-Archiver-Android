@@ -57,10 +57,22 @@ class ChapterRowPlanningTest {
     @Test
     fun subtitleFallsBackToOfflineCueForLegacyDownloadsWithoutTimestamp() {
         assertEquals(
-            "Available Offline",
+            "Available offline",
             ChapterRowPlanning.subtitle(null, downloaded = true, downloadedAt = null),
         )
         assertNull(ChapterRowPlanning.subtitle(null, downloaded = false, downloadedAt = null))
+    }
+
+    @Test
+    fun metadataLabelsListPositionAsIndex() {
+        assertEquals(
+            "Index 7  •  Available offline",
+            ChapterRowPlanning.metadataLabel(6, null, downloaded = true, downloadedAt = null),
+        )
+        assertEquals(
+            "Index 7",
+            ChapterRowPlanning.metadataLabel(6, null, downloaded = false, downloadedAt = null),
+        )
     }
 
     @Test
