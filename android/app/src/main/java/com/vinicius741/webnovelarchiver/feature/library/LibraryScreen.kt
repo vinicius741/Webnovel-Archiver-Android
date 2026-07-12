@@ -108,9 +108,24 @@ internal fun ScreenHost.showLibrary() {
             }
 
         val selectedTags = mutableSetOf<String>()
+        // Restore the last-selected sort from persisted prefs (survives navigating away AND app
+        // restarts). Mirrors the persisted tab handling above; the normalization layer maps the
+        // legacy "updated" key onto the canonical "lastUpdated" and clamps unknown values.
+        val persistedSort = repository.getDisplayPreferences()
         // Canonical key matches the Sort dialog option list ("lastUpdated", not the legacy "updated").
-        var sortOption = "lastUpdated"
-        var sortAscending = false
+        var sortOption = persistedSort.librarySortOption.ifBlank { "lastUpdated" }
+        var sortAscending = persistedSort.librarySortAscending
+
+        fun persistSort(option: String, ascending: Boolean) {
+            val display = repository.getDisplayPreferences()
+            if (display.librarySortOption != option || display.librarySortAscending != ascending) {
+                scope.launch {
+                    repository.saveDisplayPreferences(
+                        display.copy(librarySortOption = option, librarySortAscending = ascending),
+                    )
+                }
+            }
+        }
 
         // Apply the current filter snapshot to whichever grid surface is showing: the single shared
         // [GridLayout] in single-tab mode, or every page's grid via the adapter in pager mode. Kept as
@@ -130,6 +145,7 @@ internal fun ScreenHost.showLibrary() {
                 { newSort ->
                     sortOption = newSort.first
                     sortAscending = newSort.second
+                    persistSort(sortOption, sortAscending)
                     applyFilters()
                 },
                 { tag ->

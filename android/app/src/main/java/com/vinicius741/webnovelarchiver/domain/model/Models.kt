@@ -171,6 +171,14 @@ data class DisplayPreferences(
     /** Persisted Library tab selection. Encoded form of the runtime id (see [LibraryTabSelection]);
      *  `null`/blank means "never set", which resolves to the All tab. Survives app restarts. */
     var libraryTabId: String? = null,
+    /** Persisted Library sort option key (e.g. "lastUpdated", "title"). Survives app restarts;
+     *  defaults to "lastUpdated" so persisted JSON written before this field exists keeps the prior
+     *  behaviour. See [com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization]
+     *  for the allowed keys and legacy normalization. */
+    var librarySortOption: String = "lastUpdated",
+    /** Persisted Library sort direction: true = ascending, false = descending. Survives app restarts;
+     *  defaults to false (descending) to match the pre-persistence default. */
+    var librarySortAscending: Boolean = false,
     /** When true the Follow Updates list shows a cover thumbnail next to each novel. Survives app
      *  restarts; defaults to false so persisted JSON written before this field exists keeps the
      *  compact row look. */

@@ -10,6 +10,20 @@ import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutPlanning
 object PreferenceNormalization {
     private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark")
     private val foldLayoutModes = setOf("auto", "cover", "inner")
+    /** Allowed Library sort option keys — mirrors the Sort dialog option list in LibraryFilters.
+     *  Includes the legacy "updated" alias so old persisted values normalize to "lastUpdated". */
+    private val librarySortOptions =
+        setOf(
+            "default",
+            "title",
+            "lastUpdated",
+            "updated",
+            "dateAdded",
+            "totalChapters",
+            "score",
+            "patreonMonthly",
+            "patreonMembers",
+        )
     const val READER_FONT_SCALE_MIN = 0.8f
     const val READER_FONT_SCALE_MAX = 1.6f
 
@@ -64,6 +78,13 @@ object PreferenceNormalization {
             // A blank persisted value means "never set" (resolves to All on render); normalize all
             // whitespace to that same state rather than carrying it through.
             libraryTabId = preferences.libraryTabId?.takeIf { it.isNotBlank() },
+            // Map the legacy "updated" key onto the canonical "lastUpdated"; fall back to the default
+            // for any unknown/blank value so a corrupted or hand-edited pref can't break the Library.
+            librarySortOption =
+                preferences.librarySortOption
+                    .takeIf { it.isNotBlank() && it in librarySortOptions }
+                    ?.let { if (it == "updated") "lastUpdated" else it }
+                    ?: DisplayPreferences().librarySortOption,
         )
 
     fun ttsSettings(settings: TtsSettings): TtsSettings =
