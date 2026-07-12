@@ -51,6 +51,21 @@ class AppRepositoryTest {
             assertEquals(0, store.libraryReadCount)
         }
 
+    @Test
+    fun publishingExternallyPersistedStoryRefreshesSingleStoryCache() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.getStory("story")!!)
+            val syncedAt = 1_750_000_000_000L
+
+            store.stories["story"] = store.getStory("story")!!.copy(lastChapterSyncAt = syncedAt)
+            repository.publishDownloadState(setOf("story"), queueChanged = false)
+
+            assertEquals(syncedAt, repository.getStory("story")!!.lastChapterSyncAt)
+            assertEquals(0, store.libraryReadCount)
+        }
+
     private class FakeRepositoryStoryStore(
         vararg initial: Story,
     ) : RepositoryStoryStore {

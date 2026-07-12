@@ -107,6 +107,7 @@ internal fun ScreenHost.syncStory(
                         mode,
                     ) { msg -> app.runOnUiThread { onStatus(msg) } }
                 }
+            repository.publishDownloadState(setOf(story.id), queueChanged = false)
             if (existingBeforeSync != null && !story.pendingNewChapterIds.isNullOrEmpty()) {
                 val pending = story.pendingNewChapterIds.orEmpty().toSet()
                 val indexes =
@@ -179,6 +180,7 @@ internal fun ScreenHost.syncStory(
                         app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
                     }
                 }
+            repository.publishDownloadState(setOf(synced.id), queueChanged = false)
             if (existingBeforeSync != null && !synced.pendingNewChapterIds.isNullOrEmpty()) {
                 val pending = synced.pendingNewChapterIds.orEmpty().toSet()
                 val indexes =
