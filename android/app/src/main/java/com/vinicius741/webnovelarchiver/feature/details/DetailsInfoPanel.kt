@@ -53,9 +53,11 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     val infoPanel = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     infoPanel.addView(buildDetailsHeader(story))
 
-    // Mutable slots the caller patches after download progress events; non-null only when rendered.
+    // Mutable slots the caller patches after download / story-operation progress events; non-null
+    // only when rendered.
     var bannerSlot: LinearLayout? = null
     var downloadActionSlot: LinearLayout? = null
+    var operationSlot: LinearLayout? = null
 
     if (story.isArchived == true) {
         infoPanel.addView(
@@ -83,7 +85,8 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         )
     }
     if (operation?.kind == StoryOperationKind.SYNC) {
-        infoPanel.addView(makeStoryOperationProgress(app, operation, indeterminate = true))
+        operationSlot = makeStoryOperationSlot(app, operation)
+        infoPanel.addView(operationSlot!!)
     }
     if (StoryActionGuards.canQueueDownloads(story)) {
         downloadActionSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
@@ -104,7 +107,10 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         infoPanel.addView(bannerSlot!!)
     }
     if (operation?.kind == StoryOperationKind.CLEANUP) {
-        infoPanel.addView(makeStoryOperationProgress(app, operation, indeterminate = true))
+        // Stable slot: cleanup progress ticks update message/bar in place rather than calling
+        // showDetails() per chapter (which rebuilt the whole tree and flickered).
+        operationSlot = makeStoryOperationSlot(app, operation)
+        infoPanel.addView(operationSlot!!)
     }
     val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
     // D2: Generate EPUB is the primary action — promote it to a full-width button so its visual
@@ -131,7 +137,8 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         },
     )
     if (operation?.kind == StoryOperationKind.EPUB) {
-        infoPanel.addView(makeStoryOperationProgress(app, operation, indeterminate = operation.progress == null))
+        operationSlot = makeStoryOperationSlot(app, operation)
+        infoPanel.addView(operationSlot!!)
     }
     // Read EPUB is now a full-width outlined button so it aligns with the other primary actions.
     infoPanel.addView(
@@ -162,8 +169,22 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     addDetailsDescription(infoPanel, story)
     addDetailsTags(infoPanel, story)
 
-    return DetailsInfoPanel(infoPanel, bannerSlot, downloadActionSlot)
+    return DetailsInfoPanel(infoPanel, bannerSlot, downloadActionSlot, operationSlot)
 }
+
+/**
+ * Stable container for an in-flight story-operation progress block. Children are swapped by
+ * [renderStoryOperationProgress] on subsequent ticks without tearing down Details.
+ */
+private fun makeStoryOperationSlot(
+    context: android.content.Context,
+    operation: StoryOperationState,
+): LinearLayout =
+    LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        renderStoryOperationProgress(this, operation)
+    }
 
 /** Result of [buildDetailsInfoPanel]: the panel plus the stable slots the refresh loop patches. */
 internal data class DetailsInfoPanel(
@@ -172,6 +193,12 @@ internal data class DetailsInfoPanel(
     val bannerSlot: LinearLayout?,
     /** "Download Remaining" action slot, non-null only when downloads can be queued. */
     val downloadActionSlot: LinearLayout?,
+    /**
+     * In-flight story-operation progress slot (sync / cleanup / EPUB). Non-null only while an
+     * operation for this story is active. Held as a direct reference so progress ticks can patch
+     * the message/bar without rebuilding Details (see [renderStoryOperationProgress]).
+     */
+    val operationSlot: LinearLayout?,
 )
 
 /**

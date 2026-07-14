@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -104,6 +105,35 @@ internal fun findDetailsChapterList(root: View): androidx.recyclerview.widget.Re
         }
     }
     return null
+}
+
+/**
+ * Whether a story-operation progress block should show an indeterminate spinner. Sync never has a
+ * fraction; cleanup/EPUB go determinate once [StoryOperationState.progress] is set.
+ */
+internal fun storyOperationIndeterminate(operation: StoryOperationState): Boolean =
+    when (operation.kind) {
+        StoryOperationKind.SYNC -> true
+        StoryOperationKind.CLEANUP, StoryOperationKind.EPUB -> operation.progress == null
+    }
+
+/**
+ * Swaps the contents of a Details operation-progress slot in place. Used for subsequent cleanup /
+ * EPUB / sync message ticks so the whole Details tree is not rebuilt (that full rebuild caused a
+ * visible flicker once per chapter during text cleanup).
+ */
+internal fun renderStoryOperationProgress(
+    slot: ViewGroup,
+    operation: StoryOperationState,
+) {
+    slot.removeAllViews()
+    slot.addView(
+        makeStoryOperationProgress(
+            slot.context,
+            operation,
+            indeterminate = storyOperationIndeterminate(operation),
+        ),
+    )
 }
 
 internal fun makeStoryOperationProgress(

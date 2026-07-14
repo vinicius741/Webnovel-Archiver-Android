@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
+import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -205,8 +206,22 @@ internal fun ScreenHost.setStoryOperation(
     message: String,
     progress: Float? = null,
 ) {
-    storyOperation = StoryOperationState(storyId, kind, message, progress)
-    if (activeStory?.id == storyId) showDetails(storyId)
+    val previous = storyOperation
+    val next = StoryOperationState(storyId, kind, message, progress)
+    storyOperation = next
+    if (activeStory?.id != storyId) return
+    // First tick for this operation (or kind change): full Details rebuild so buttons disable and
+    // the progress slot is allocated. Subsequent ticks only swap the slot's message/bar — a full
+    // rebuild per chapter was the cleanup flicker (blank frame + scroll restore on every update).
+    val canPatchInPlace =
+        previous?.storyId == storyId &&
+            previous.kind == kind &&
+            detailsOperationSlot != null
+    if (canPatchInPlace) {
+        renderStoryOperationProgress(detailsOperationSlot!!, next)
+    } else {
+        showDetails(storyId)
+    }
 }
 
 internal fun ScreenHost.clearStoryOperation(
@@ -216,6 +231,7 @@ internal fun ScreenHost.clearStoryOperation(
 ) {
     if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
         storyOperation = null
+        detailsOperationSlot = null
         if (rerender && activeStory?.id == storyId) showDetails(storyId)
     }
 }

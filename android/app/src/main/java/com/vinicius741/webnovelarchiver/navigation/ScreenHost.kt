@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.navigation
 
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
@@ -124,6 +125,16 @@ interface ScreenHost {
     val ttsEngine: TtsEngine
     var activeStory: Story?
     var storyOperation: StoryOperationState?
+
+    /**
+     * Direct reference to the Details in-flight operation progress slot (sync / cleanup / EPUB).
+     * Captured at [com.vinicius741.webnovelarchiver.feature.details.showDetails] render time so
+     * subsequent [storyOperation] ticks can patch the message/bar in place instead of rebuilding
+     * the whole Details tree (same pattern as the download banner slot). May be null when no
+     * operation is active, or when Details is not on screen. Cleared/reassigned on each Details
+     * render.
+     */
+    var detailsOperationSlot: ViewGroup?
     val navigator: AppNavigator
 
     /** Scroll offsets keyed by [AppRoute.stableKey], never by mutable app-bar copy. */

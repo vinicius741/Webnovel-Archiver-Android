@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
+import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -87,6 +88,7 @@ class MainActivity :
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
+    override var detailsOperationSlot: ViewGroup? = null
     override val navigator = AppNavigator()
     override val routeScrollPositions: MutableMap<String, Int> = mutableMapOf()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()

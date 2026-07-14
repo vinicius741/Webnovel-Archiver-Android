@@ -61,6 +61,8 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // from the window but the references stay valid). Assigned synchronously inside screen { ... }.
     var bannerSlot: ViewGroup? = null
     var downloadActionSlot: LinearLayout? = null
+    // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
+    detailsOperationSlot = null
     screen(
         route = AppRoute.Details(story.id),
         title = story.title,
@@ -75,6 +77,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
         val infoPanel = panel.view
         bannerSlot = panel.bannerSlot
         downloadActionSlot = panel.downloadActionSlot
+        // Direct ref for setStoryOperation in-place ticks (cleanup/EPUB/sync). Must not be a tree
+        // walk: in compact layout the slot lives in the RecyclerView header and can detach.
+        detailsOperationSlot = panel.operationSlot
 
         // ---- Chapter filter (search + chips) ----
         val chapterControls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
