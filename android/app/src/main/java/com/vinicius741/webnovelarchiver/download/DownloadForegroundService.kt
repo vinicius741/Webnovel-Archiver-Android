@@ -2,8 +2,6 @@ package com.vinicius741.webnovelarchiver.download
 
 import android.Manifest
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -18,6 +16,8 @@ import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
+import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import timber.log.Timber
 
 class DownloadForegroundService : Service() {
@@ -34,7 +34,7 @@ class DownloadForegroundService : Service() {
         val container = appContainer
         engine = DownloadEngine(container.repository, container.network)
         engine.onProgress = ::updateNotification
-        createNotificationChannel()
+        AppNotificationChannels.ensureCreated(this)
     }
 
     override fun onDestroy() {
@@ -180,7 +180,7 @@ class DownloadForegroundService : Service() {
         val done = (progress.completed + progress.failed + progress.cancelled).coerceAtMost(max)
 
         return NotificationCompat
-            .Builder(this, CHANNEL_ID)
+            .Builder(this, AppNotificationCategory.DOWNLOADS.channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
@@ -195,21 +195,7 @@ class DownloadForegroundService : Service() {
             .build()
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel =
-            NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.download_channel_name),
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = getString(R.string.download_channel_desc)
-            }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-    }
-
     companion object {
-        private const val CHANNEL_ID = "webnovel_downloads"
         private const val NOTIFICATION_ID = 1001
         const val ACTION_START = "com.vinicius741.webnovelarchiver.download.START"
         const val ACTION_PREPARE = "com.vinicius741.webnovelarchiver.download.PREPARE"

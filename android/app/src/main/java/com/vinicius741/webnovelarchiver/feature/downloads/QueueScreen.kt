@@ -12,7 +12,6 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
-import com.vinicius741.webnovelarchiver.download.DownloadForegroundService
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
@@ -189,7 +188,7 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
             GlobalQueueAction.RESUME_ALL ->
                 AppBarAction(R.drawable.wna_play, "Resume All") {
                     downloadEngine.resumeAll()
-                    DownloadForegroundService.start(app)
+                    startDownloadForegroundService()
                 }
             GlobalQueueAction.PAUSE_ALL ->
                 AppBarAction(R.drawable.wna_pause, "Pause All") {
@@ -207,12 +206,12 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
                     if (blocked != null) {
                         showSourceAccessBlockedDialog(blocked.chapter.url) {
                             downloadEngine.retryFailed()
-                            DownloadForegroundService.start(app)
+                            startDownloadForegroundService()
                         }
                         return@AppBarAction
                     }
                     downloadEngine.retryFailed()
-                    DownloadForegroundService.start(app)
+                    startDownloadForegroundService()
                 }
             GlobalQueueAction.CANCEL_ALL ->
                 AppBarAction(R.drawable.wna_stop, "Cancel All", ThemeManager.colors.error) {
@@ -359,7 +358,7 @@ private fun ScreenHost.storyActionButton(
         QueueAction.RESUME ->
             iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume story", 44) {
                 jobs.filter { it.status == DownloadJobStatus.Paused.wire }.forEach { downloadEngine.resumeJob(it.id) }
-                DownloadForegroundService.start(app)
+                startDownloadForegroundService()
             }
         QueueAction.CANCEL ->
             iconAction(R.drawable.wna_stop, ThemeManager.colors.error, "Cancel story", 44) {
@@ -373,13 +372,13 @@ private fun ScreenHost.storyActionButton(
                         ?.let {
                             showSourceAccessBlockedDialog(it.chapter.url) {
                                 downloadEngine.retryFailedForStory(storyId)
-                                DownloadForegroundService.start(app)
+                                startDownloadForegroundService()
                             }
                         }
                     return@iconAction
                 }
                 downloadEngine.retryFailedForStory(storyId)
-                DownloadForegroundService.start(app)
+                startDownloadForegroundService()
             }
         QueueAction.REMOVE ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove story", 44) {
@@ -472,19 +471,19 @@ private fun ScreenHost.chapterActionButton(
         QueueAction.RESUME ->
             iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume", 36) {
                 downloadEngine.resumeJob(job.id)
-                DownloadForegroundService.start(app)
+                startDownloadForegroundService()
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry", 36) {
                 if (job.errorCategory == "source_blocked") {
                     showSourceAccessBlockedDialog(job.chapter.url) {
                         downloadEngine.retryJob(job.id)
-                        DownloadForegroundService.start(app)
+                        startDownloadForegroundService()
                     }
                     return@iconAction
                 }
                 downloadEngine.retryJob(job.id)
-                DownloadForegroundService.start(app)
+                startDownloadForegroundService()
             }
         QueueAction.CANCEL ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.error, "Cancel", 36) {

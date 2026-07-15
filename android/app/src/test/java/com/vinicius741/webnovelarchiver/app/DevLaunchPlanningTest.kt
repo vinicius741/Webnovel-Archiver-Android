@@ -38,6 +38,10 @@ class DevLaunchPlanningTest {
             DevLaunchPlanning.resolve("settings", null, null, provider),
         )
         assertEquals(
+            DevLaunchPlanning.DevStartTarget.Notifications,
+            DevLaunchPlanning.resolve("notifications", null, null, provider),
+        )
+        assertEquals(
             DevLaunchPlanning.DevStartTarget.Updates,
             DevLaunchPlanning.resolve("updates", null, null, provider),
         )

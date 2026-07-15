@@ -59,6 +59,7 @@ class AppLaunchSmokeTest {
                 "library" to "Library",
                 "queue" to "Downloads",
                 "settings" to "Settings",
+                "notifications" to "Notifications",
                 "updates" to "Updates",
                 "addstory" to "Add Story",
             )

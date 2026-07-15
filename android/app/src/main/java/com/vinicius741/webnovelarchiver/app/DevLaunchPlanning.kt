@@ -38,6 +38,7 @@ object DevLaunchPlanning {
         LIBRARY("library"),
         QUEUE("queue"),
         SETTINGS("settings"),
+        NOTIFICATIONS("notifications"),
         UPDATES("updates"),
         READER("reader"),
         DETAILS("details"),
@@ -62,6 +63,8 @@ object DevLaunchPlanning {
         data object Queue : DevStartTarget
 
         data object Settings : DevStartTarget
+
+        data object Notifications : DevStartTarget
 
         data object Updates : DevStartTarget
 
@@ -96,6 +99,7 @@ object DevLaunchPlanning {
             DevStartScreen.LIBRARY -> DevStartTarget.Library
             DevStartScreen.QUEUE -> DevStartTarget.Queue
             DevStartScreen.SETTINGS -> DevStartTarget.Settings
+            DevStartScreen.NOTIFICATIONS -> DevStartTarget.Notifications
             DevStartScreen.UPDATES -> DevStartTarget.Updates
             DevStartScreen.ADD_STORY -> DevStartTarget.AddStory
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)

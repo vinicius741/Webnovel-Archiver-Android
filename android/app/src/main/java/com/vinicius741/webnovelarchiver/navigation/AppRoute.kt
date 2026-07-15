@@ -44,6 +44,8 @@ sealed class AppRoute(
 
     data object Settings : AppRoute("settings")
 
+    data object Notifications : AppRoute("notifications")
+
     data object DownloadSettings : AppRoute("download_settings")
 
     data object TtsSettings : AppRoute("tts_settings")
@@ -98,6 +100,7 @@ object AppRouteCodec {
             "updates" -> AppRoute.Updates
             "update_follow_selection" -> AppRoute.UpdateFollowSelection
             "settings" -> AppRoute.Settings
+            "notifications" -> AppRoute.Notifications
             "download_settings" -> AppRoute.DownloadSettings
             "tts_settings" -> AppRoute.TtsSettings
             "tabs" -> AppRoute.Tabs

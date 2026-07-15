@@ -102,6 +102,11 @@ internal fun ScreenHost.showSettings() {
         // not a global Cover/Inner toggle. foldLayoutMode remains in DisplayPreferences for backup
         // compatibility but is intentionally not exposed here — nothing in the EPUB engine reads it.
         divider()
+        section("Notifications")
+        settingRow(R.drawable.wna_notifications, "Notifications", "Manage downloads and text-to-speech alerts") {
+            showNotifications()
+        }
+        divider()
         section("Downloads")
         settingRow(R.drawable.wna_list, "Download Manager", "View and manage active downloads") { showQueue() }
         settingRow(R.drawable.wna_download, "Download Settings", "Global defaults and per-source overrides") { showDownloadSettings() }

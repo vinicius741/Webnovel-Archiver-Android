@@ -31,6 +31,7 @@ internal fun ScreenHost.queueDownload(
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return
     }
+    requestNotificationPermissionForDownload()
     val screenTagAtEnqueue = frame.tag
     val servicePrepared = runCatching { DownloadForegroundService.prepare(app.applicationContext) }
     if (servicePrepared.isFailure) {

@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.app
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
@@ -14,10 +13,9 @@ import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.app.appContainer
@@ -39,6 +37,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
+import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showTabs
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
@@ -52,6 +51,9 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
+import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import com.vinicius741.webnovelarchiver.notification.NotificationPermissionAction
+import com.vinicius741.webnovelarchiver.notification.NotificationSettingsPlanning
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -122,6 +124,11 @@ class MainActivity :
             override fun handleOnBackPressed() {
                 backHandler?.invoke()
             }
+        }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         }
 
     override var backHandler: (() -> Unit)? = null
@@ -207,7 +214,6 @@ class MainActivity :
             }
         ThemeManager.apply(startupState.activeThemeId)
         applyWindowTheme()
-        requestNotificationPermissionIfNeeded()
         // Foldable hinge/inner-display detection. The activity declares all configChanges in the
         // manifest, so fold/unfold/rotation does NOT recreate it — we must observe the fold sensor
         // (here) and re-render the live screen on change (below) for the responsive layout to adapt.
@@ -231,6 +237,7 @@ class MainActivity :
                 DevLaunchPlanning.DevStartTarget.Library -> showLibrary()
                 DevLaunchPlanning.DevStartTarget.Queue -> showQueue()
                 DevLaunchPlanning.DevStartTarget.Settings -> showSettings()
+                DevLaunchPlanning.DevStartTarget.Notifications -> showNotifications()
                 DevLaunchPlanning.DevStartTarget.Updates -> showUpdates()
                 DevLaunchPlanning.DevStartTarget.AddStory -> showAddStory()
                 is DevLaunchPlanning.DevStartTarget.Reader ->
@@ -262,6 +269,7 @@ class MainActivity :
     override fun onResume() {
         super.onResume()
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
+        if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
     }
 
     override fun onDestroy() {
@@ -302,6 +310,7 @@ class MainActivity :
             AppRoute.Updates -> showUpdates()
             AppRoute.UpdateFollowSelection -> showUpdateFollowSelection()
             AppRoute.Settings -> showSettings()
+            AppRoute.Notifications -> showNotifications()
             AppRoute.DownloadSettings -> showDownloadSettings()
             AppRoute.TtsSettings -> showTtsSettings()
             AppRoute.Tabs -> showTabs()
@@ -344,10 +353,56 @@ class MainActivity :
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !t.isDark
     }
 
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
-        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
+    override fun notificationPermissionActionLabel(): String =
+        when (notificationPermissionAction()) {
+            NotificationPermissionAction.REQUEST_PERMISSION -> "Allow notifications"
+            NotificationPermissionAction.OPEN_APP_SETTINGS -> "Open app notification settings"
+        }
+
+    override fun performNotificationPermissionAction() {
+        when (notificationPermissionAction()) {
+            NotificationPermissionAction.REQUEST_PERMISSION -> {
+                markAutomaticNotificationPromptShown()
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            NotificationPermissionAction.OPEN_APP_SETTINGS ->
+                startActivity(AppNotificationChannels.appSettingsIntent(this))
+        }
+    }
+
+    override fun requestNotificationPermissionForDownload() {
+        val shouldRequest =
+            NotificationSettingsPlanning.shouldRequestAutomatically(
+                runtimePermissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+                permissionGranted = AppNotificationChannels.hasPostNotificationsPermission(this),
+                automaticPromptShown = automaticNotificationPromptShown(),
+            )
+        if (!shouldRequest) return
+        // The automatic prompt is reachable from lifecycleScope-backed sync coroutines that
+        // survive the app being backgrounded (UpdateSyncOrchestrator/in-place sync call queueDownload
+        // after network IO). launch() on a STOPPED activity won't show a usable dialog yet would
+        // still consume the one-time prompt, so defer it to the next foregrounded download instead.
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || isFinishing || isDestroyed) return
+        markAutomaticNotificationPromptShown()
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun notificationPermissionAction(): NotificationPermissionAction =
+        NotificationSettingsPlanning.settingsAction(
+            runtimePermissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+            permissionGranted = AppNotificationChannels.hasPostNotificationsPermission(this),
+            automaticPromptShown = automaticNotificationPromptShown(),
+        )
+
+    private fun automaticNotificationPromptShown(): Boolean =
+        getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
+            .getBoolean(KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN, false)
+
+    private fun markAutomaticNotificationPromptShown() {
+        getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN, true)
+            .apply()
     }
 
     private fun browserImportUrl(intent: Intent?): String? = BrowserImportPlanning.importUrl(intent?.action, intent?.dataString)
@@ -362,6 +417,8 @@ class MainActivity :
         const val STATE_ROUTE_STACK = "navigation.route_stack"
         const val STATE_SCROLL_KEYS = "navigation.scroll_keys"
         const val STATE_SCROLL_VALUES = "navigation.scroll_values"
+        const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
+        const val KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN = "automatic_prompt_shown"
     }
 }
 

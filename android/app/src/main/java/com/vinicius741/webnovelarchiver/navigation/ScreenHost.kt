@@ -143,6 +143,15 @@ interface ScreenHost {
     /** Renders an already-selected route, used by back navigation and saved-state restoration. */
     fun renderRoute(route: AppRoute)
 
+    /** User-facing label for the current app-level notification permission action. */
+    fun notificationPermissionActionLabel(): String
+
+    /** Performs the explicit notification action shown on the Notifications settings screen. */
+    fun performNotificationPermissionAction()
+
+    /** Shows the one-time contextual Android 13+ permission request before a user-started download. */
+    fun requestNotificationPermissionForDownload()
+
     fun navigateBack() {
         navigator.back()?.let(::renderRoute)
     }

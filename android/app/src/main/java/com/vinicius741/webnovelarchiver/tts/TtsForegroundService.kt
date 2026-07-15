@@ -1,14 +1,11 @@
 package com.vinicius741.webnovelarchiver.tts
 
-import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -18,12 +15,13 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.view.KeyEvent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import androidx.media.session.MediaButtonReceiver
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
+import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 
 class TtsForegroundService : Service() {
     private lateinit var engine: TtsEngine
@@ -72,7 +70,7 @@ class TtsForegroundService : Service() {
                     }
                 },
             )
-        createNotificationChannel()
+        AppNotificationChannels.ensureCreated(this)
         ensureMediaSession()
         // Single hook (R3): the engine emits a snapshot after every playback state change, so the
         // service refreshes the MediaSession + notification in one place instead of polling storage.
@@ -266,18 +264,16 @@ class TtsForegroundService : Service() {
         refreshMediaState(engine.currentSnapshot(lastSnapshot?.isPlaying == true))
     }
 
+    @SuppressLint("MissingPermission") // MediaSession notifications are exempt from POST_NOTIFICATIONS on Android 13+.
     private fun updateNotification() {
         if (!foregroundStarted) {
             startForegroundIfNeeded(buildNotification(lastSnapshot))
             return
         }
-        if (
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        ) {
-            runCatching {
-                NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(lastSnapshot))
-            }
+        // MediaSession notifications are exempt from Android 13's POST_NOTIFICATIONS permission;
+        // the user-controlled TTS channel still decides whether this is visible.
+        runCatching {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(lastSnapshot))
         }
     }
 
@@ -310,7 +306,7 @@ class TtsForegroundService : Service() {
 
         val builder =
             NotificationCompat
-                .Builder(this, CHANNEL_ID)
+                .Builder(this, AppNotificationCategory.TEXT_TO_SPEECH.channelId)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(body)
@@ -463,18 +459,8 @@ class TtsForegroundService : Service() {
         )
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel =
-            NotificationChannel(CHANNEL_ID, getString(R.string.tts_channel_name), NotificationManager.IMPORTANCE_LOW).apply {
-                description = getString(R.string.tts_channel_desc)
-            }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-    }
-
     companion object {
         private const val TAG = "WebnovelTts"
-        private const val CHANNEL_ID = "webnovel_tts"
         private const val NOTIFICATION_ID = 1002
         private const val EXTRA_STORY_ID = "storyId"
         private const val EXTRA_CHAPTER_ID = "chapterId"

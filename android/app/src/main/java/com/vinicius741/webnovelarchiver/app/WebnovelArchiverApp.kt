@@ -6,6 +6,7 @@ import android.os.StrictMode
 import android.webkit.CookieManager
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnosticTree
+import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,9 @@ class WebnovelArchiverApp : Application() {
         }
         Timber.plant(LocalDiagnosticTree())
         if (BuildConfig.DEBUG) enableDebugStrictMode()
+        // Channels must exist before the Settings screen can show or open their system controls.
+        // Creating them is idempotent and does not trigger the Android 13 runtime permission prompt.
+        AppNotificationChannels.ensureCreated(this)
         // Resolve the shared User-Agent asynchronously. WebSettings.getDefaultUserAgent lazily loads
         // the WebView provider, which is expensive — calling it synchronously on the main thread
         // here caused a startup ANR (the process failed to complete startup within the system's
