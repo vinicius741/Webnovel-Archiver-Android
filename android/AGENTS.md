@@ -6,15 +6,18 @@ These instructions apply to the active Kotlin application under `android/`. Comm
 
 All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarchiver/`.
 
-- `app/` owns Android lifecycle and process-wide dependency wiring; `navigation/` defines the `ScreenHost` contract.
+- `app/` owns Android lifecycle and process-wide dependency wiring (`WebnovelArchiverApp`, `MainActivity`, `AppContainer`, `RepositoryStartup`). `AppContainer` holds the single process-wide instances of repository, network, sync/epub/tts engines.
+- `navigation/` defines route-based navigation: `AppRoute` (stable destination identity with persisted ids), `AppNavigator`, and the `ScreenHost` contract. New full-screen destinations need a route and a `ScreenHost` entry — do not key screens off mutable display titles.
 - `feature/browser/` launches third-party sites in a browser-powered Custom Tab and receives import URLs through `MainActivity`; do not move third-party OAuth back into a WebView. It also hosts `CloudflareSolveActivity`, a narrow in-app WebView that solves Cloudflare challenges so the earned `cf_clearance` lands in the shared `android.webkit.CookieManager` (bridged to OkHttp by `source/network/AndroidCookieJar.kt`). That CF solver is a distinct concern from OAuth — third-party login/credential flows still go through Custom Tabs, never the in-app WebView.
-- `feature/` groups browser, cleanup, details, downloads, library, reader, settings, and shared story-action UI by user-facing flow.
+- `feature/` groups browser, cleanup, details, downloads, library, reader, settings, updates, and shared story-action UI by user-facing flow.
 - "The download screen" is ambiguous: `feature/downloads/QueueScreen.kt` (`showQueue`) is the global queue across all stories; `feature/details/DetailsScreenDownload.kt` is the per-story download banner on the details page. The top-level `download/` package is the engine/planning layer (`DownloadEngine`, `DownloadForegroundService`, scheduler) and contains no screen — confirm which surface a change targets before editing.
-- `domain/model/` contains persisted/application models; `domain/archive/` and `domain/story/` contain pure domain rules.
-- `data/repository/`, `data/storage/`, and `data/backup/` own state access and persistence concerns.
-- `source/` owns network/source providers, while `sync/`, `download/`, `epub/`, `cleanup/`, and `tts/` own their respective engines and planning logic.
+- `domain/model/` contains persisted/application models; `domain/archive/` and `domain/story/` contain pure domain rules (including publication-status lifecycle).
+- `data/repository/` is the single owner of library, download-queue, and settings mutations (`AppRepository` + cached `StateFlow`s). Screens and services should go through the repository rather than opening parallel storage write paths.
+- `data/storage/` owns file-based JSON persistence (`AppStorage`), atomic writes, library-index recovery, and backup orchestration helpers. `data/backup/` owns backup/restore planning and validation. `data/diagnostics/` owns local diagnostic export.
+- `source/` owns network/source providers and Cloudflare detection/solving; `sync/`, `download/`, `epub/`, `cleanup/`, and `tts/` own their respective engines and planning logic.
+- `notification/` owns notification channel definitions and Android 13+ permission helpers used by download/TTS services and the Notifications settings screen (`feature/settings/SettingsNotifications.kt`).
 - `ui/` contains the programmatic View DSL, themes, responsive/foldable behavior, and reusable widgets; `ui/layout/` contains pure layout planning.
-- Unit tests mirror production package paths under `app/src/test/java/`.
+- Unit tests mirror production package paths under `app/src/test/java/`. Instrumentation tests live under `app/src/androidTest/` and use the separate `instrumentation` application id so they do not share the debug library sandbox.
 
 ## Architecture Rules
 
@@ -22,6 +25,8 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - Put deterministic decisions and transformations in pure planning functions; keep Android, network, storage, and other I/O in engines or orchestration code.
 - Add or update the matching JUnit test when changing planning logic.
 - Use the existing `AppContainer` for process-wide dependencies and explicit constructor dependencies elsewhere. Do not add a dependency-injection framework without an explicit architectural request.
+- Prefer `AppRepository` transactions and its cached flows for library, queue, and settings reads/writes. Do not instantiate additional `AppStorage` owners that race the same JSON files; the activity and foreground services must share the single repository/storage lock.
+- Navigation is route-based (`AppRoute` / `AppNavigator`). Process recreation restores by route identity (persisted ids), not by mutable titles.
 - Keep file-based JSON storage compatible with existing data. Treat migrations, backup formats, chapter paths, and archive IDs as compatibility-sensitive.
 - New novel sites implement `SourceProvider` and must be registered in `SourceRegistry`. Source
   metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes and persists public or
@@ -67,9 +72,9 @@ The debug variant cold-starts directly into a chosen screen via an `am start --e
 
 **This is the required way to reach a screen for agent QA.** When you have built/installed the debug app and need to verify a change that lives on a screen (reader transport, settings, queue, etc.), cold-start onto that screen via the `dev-launch-screen` skill or the commands below — do NOT launch the app and tap through the UI by hand to get there. Tap/swipe only for interactions *after* you've landed on the target screen. Manual navigation wastes a session and is error-prone (you can end up on the wrong chapter, the wrong story, or fumbling the overflow menu). Skill triggering is heuristic; if the skill isn't auto-loaded for a post-build verification step, invoke it explicitly or run the cold-start command here directly.
 
-Tokens: `library`, `queue` (download manager), `settings`, `updates`, `reader`, `details`, `addstory`.
+Tokens: `library`, `queue` (download manager), `settings`, `notifications`, `updates`, `reader`, `details`, `addstory`.
 
-- No-arg screens (`library`, `queue`, `settings`, `updates`, `addstory`) need nothing else.
+- No-arg screens (`library`, `queue`, `settings`, `notifications`, `updates`, `addstory`) need nothing else.
 - `reader` and `details` auto-pick the first story in the persisted library (and the first chapter for `reader`); supply `--es dev_start_story <id>` and (reader only) `--es dev_start_chapter <id>` to target a specific one. If the library is empty or the ids don't resolve, the app falls back to the normal library start rather than rendering a blank screen.
 - The dev target takes precedence over browser-import and TTS-resume, so it reliably lands where asked.
 

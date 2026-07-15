@@ -6,17 +6,20 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 
 ## Key Features
 
-- **Multi-Source Support** — Extensible `SourceProvider` architecture (RoyalRoad, Scribble Hub; add more via `SourceRegistry`).
-- **In-App Browser** — Embedded WebView for browsing supported sites and importing novels with a single click.
+- **Multi-Source Support** — Extensible `SourceProvider` architecture (Royal Road, Scribble Hub; add more via `SourceRegistry`). Source metadata can include scores, tags, content warnings, publication status, and linked Patreon stats.
+- **In-App Source Browser** — Source picker plus Chrome Custom Tabs for browsing supported sites and importing novels. Cloudflare challenges are solved in a narrow shared-cookie WebView so OkHttp reuses the earned clearance.
 - **Offline Library** — Download chapters for reading without an internet connection.
-- **Built-in Reader** — WebView-based reader with TTS highlighting, image support, and last-read position tracking.
-- **Text-to-Speech** — Foreground service with media playback, notification controls, configurable voice/rate/pitch, and auto-resume.
-- **EPUB Export** — Generate EPUB 2.0 files with volume splitting and configurable chapter ranges.
-- **Background Downloads** — Foreground service with concurrent engine, persistent queue, notification controls, automatic recovery, and error classification with exponential backoff retry.
-- **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both).
-- **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, sort controls, and archive snapshots.
+- **Built-in Reader** — WebView-based reader with sentence-level TTS highlighting, image support, last-read position tracking, and a floating TTS transport.
+- **Text-to-Speech** — Foreground service with MediaSession, notification/media-button controls, audio focus, stall recovery, configurable voice/rate/pitch, and auto-resume across chapters.
+- **Updates Tracker** — Follow novels and batch-sync for new chapters (concurrent per-story sync) with nested chapter rows under each novel.
+- **EPUB Export** — Generate EPUB 2.0 files with volume splitting, configurable chapter ranges, timestamped outputs, and a Legacy EPUBs screen for leftovers.
+- **Background Downloads** — Foreground service with concurrent engine, persistent queue, per-source delay ranges, notification controls, automatic recovery, and error classification with exponential backoff retry.
+- **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both), live sample previews, and circuit-breaking for pathological user regex.
+- **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, persisted sort controls (including Patreon earnings/members), and archive snapshots.
+- **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
 - **Smart Updates** — New-chapter detection with intelligent merge and stale-EPUB marking.
-- **Backup & Restore** — JSON metadata export/import with merge-on-import, plus full ZIP backup/restore.
+- **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
+- **Notifications Settings** — Dedicated screen for Android 13+ notification permission and channel guidance (downloads vs TTS media controls).
 - **Pluggable Theme System** — Obsidian, Midnight, Forest, and Classic Light themes with custom typography.
 
 ## Tech Stack
@@ -26,14 +29,18 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 | Language | Kotlin 2.1.20 |
 | UI | Programmatic Android Views (no XML layouts) |
 | Build | Gradle 9.0 + AGP 8.13.2 |
-| HTTP Client | OkHttp 4.12 |
+| HTTP Client | OkHttp 4.12 (+ shared WebView cookie jar for Cloudflare) |
 | HTML Parsing | Jsoup 1.21 |
 | JSON | Gson 2.13 |
 | Async | Kotlin Coroutines 1.10 |
-| Storage | File-based JSON (no Room/SQLite) |
-| TTS | Android TextToSpeech API |
+| Images | Coil 2.7 |
+| Logging | Timber 5 (debug-gated in release) |
+| Storage | File-based JSON via `AppStorage` / `AppRepository` (no Room/SQLite) |
+| TTS | Android TextToSpeech API + MediaSession |
 | Services | Foreground Services (dataSync, mediaPlayback) |
-| Testing | JUnit 4 |
+| Browser | AndroidX Browser Custom Tabs |
+| Testing | JUnit 4, MockWebServer, coroutines-test; instrumentation build type for device tests |
+| Quality | kotlinter, detekt, Android lint, Kotlin file-size budget, R8 minify/shrink on release |
 
 ## Getting Started
 
@@ -105,17 +112,23 @@ cd android
 
 This produces `apk-output/WebnovelArchiver-Test-debug.apk` with package ID `com.vinicius741.webnovelarchiver.nativeapp.debug`.
 
+There is also an `instrumentation` build type (`…nativeapp.instrumentation`) used for connected tests so they do not share the debug app’s library sandbox.
+
+For emulator redeploy scripts and the debug-only “cold-start into a screen” helper, see `android/AGENTS.md`.
+
 ### Testing
 
 ```bash
 cd android
 ./gradlew :app:testDebugUnitTest              # All unit tests
 ./gradlew :app:testDebugUnitTest --tests "*.TextCleanupTest"  # Single test class
-./gradlew :app:lintDebug                       # Android lint
-./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug  # Full check
+./gradlew :app:lintKotlin                     # Kotlin formatting check
+./gradlew :app:detekt                         # Static analysis
+./gradlew :app:lintDebug                      # Android lint
+./gradlew :app:lintKotlin :app:ci             # Full local quality gate
 ```
 
-See `AGENTS.md` for architecture details, coding standards, and development guidelines.
+See `AGENTS.md` (repo-wide rules) and `android/AGENTS.md` (architecture, coding standards, emulator workflow) before contributing.
 
 ## Project Structure
 
@@ -125,28 +138,37 @@ android/
     src/
       main/
         java/com/vinicius741/webnovelarchiver/
-          MainActivity.kt              # Single-activity app, programmatic UI
-          WebnovelArchiverApp.kt       # Application class
-          core/
-            Models.kt                  # Data classes (Story, Chapter, etc.)
-            Engines.kt                 # Stateful engines (Sync, Download, EPUB, TTS)
-            Storage.kt                 # AppStorage — file-based JSON persistence
-            Sources.kt                 # Source providers + network client
-            *Planning.kt              # Pure-logic planning functions
-            *.kt                       # Utilities, validators, renderers
-          download/
-            DownloadForegroundService.kt
-          tts/
-            TtsForegroundService.kt
+          app/                 # Application, MainActivity, AppContainer, startup recovery
+          navigation/          # AppRoute, AppNavigator, ScreenHost
+          feature/             # UI by flow: library, details, reader, browser, downloads,
+                               # updates, settings, cleanup, story actions
+          domain/              # Models + pure domain rules (story, archive)
+          data/
+            repository/        # AppRepository — single owner of library/queue/settings
+            storage/           # AppStorage + atomic writes, recovery, backup orchestration
+            backup/            # Backup/restore planning and validation
+            diagnostics/       # Local diagnostics export
+          source/              # SourceProvider registry, Royal Road, Scribble Hub
+            network/           # OkHttp client, Cloudflare cookie jar + solver
+          sync/                # Story sync engine + merge planning
+          download/            # Download engine, queue, foreground service
+          epub/                # EPUB generation
+          cleanup/             # Text cleanup for download + TTS
+          tts/                 # TTS engine + foreground service
+          notification/        # Notification channels + permission helpers
+          ui/                  # Programmatic View DSL, themes, widgets
         AndroidManifest.xml
-      test/
-        java/com/vinicius741/webnovelarchiver/core/
-          *Test.kt                     # 1:1 test files for each core module
+      test/                    # Unit tests mirroring production packages
+      androidTest/             # Instrumentation tests
     build.gradle
   build.gradle
+  gradle/quality.gradle        # detekt, file-size budget, :app:ci gate
   settings.gradle
+docs/                          # Long-form docs by subject (see docs/README.md)
+scripts/                       # redeploy.sh, watch-redeploy.sh (emulator only)
+.agents/skills/                # Agent skills (build/install, dev launch, emulator QA)
 ```
 
 ## Contributing
 
-Contributions are welcome! Please read `AGENTS.md` before submitting a PR. All changes should target the native Kotlin app under `android/`.
+Contributions are welcome! Please read `AGENTS.md` and `android/AGENTS.md` before submitting a PR. All changes should target the native Kotlin app under `android/`.
