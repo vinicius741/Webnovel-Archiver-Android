@@ -3,11 +3,14 @@ package com.vinicius741.webnovelarchiver.feature.settings
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebStorage
+import android.webkit.WebView
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatDelegate
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
@@ -18,6 +21,8 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
+import com.vinicius741.webnovelarchiver.source.network.CloudflareWebViewSolver
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -129,12 +134,32 @@ internal fun ScreenHost.showSettings() {
             }
         }
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
-        settingRow(R.drawable.wna_globe, "Clear Source Cookies", "Drop Cloudflare clearance and site cookies for Scribble Hub") {
-            confirm("Clear all Scribble Hub cookies? The next sync will re-solve Cloudflare.", confirmLabel = "Clear") {
-                com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
-                    .removeAllFor("https://www.scribblehub.com/") { cleared ->
-                        toast(if (cleared) "Source cookies cleared" else "No clearance cookie was present")
-                    }
+        val sourceNetwork = app.appContainer.network
+        val sourceSnapshot = sourceNetwork.reliabilitySnapshots().firstOrNull { it.host.endsWith("scribblehub.com") }
+        val webViewPackage = WebView.getCurrentWebViewPackage()
+        val sourceAccessSummary =
+            when {
+                sourceSnapshot?.manualVerificationRequired == true -> "Verification required"
+                sourceSnapshot?.browserTransportActive == true -> "Chromium transport active"
+                sourceSnapshot?.cooldownRemainingMillis?.let { it > 0L } == true -> "Cooling down"
+                else -> "Ready"
+            } + " • WebView ${webViewPackage?.versionName ?: "unavailable"}"
+        settingRow(R.drawable.wna_globe, "Source Access Status", sourceAccessSummary) {
+            val detail =
+                sourceSnapshot?.let { snapshot ->
+                    "Requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
+                        "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
+                } ?: "No Scribble Hub requests in this app session"
+            toast(detail)
+        }
+        settingRow(R.drawable.wna_cleaning, "Reset Source Web Session", "Clear source cookies, browser storage, and access cooldowns") {
+            confirm("Reset the Scribble Hub browser session? The next request may require verification.", confirmLabel = "Reset") {
+                CloudflareWebViewSolver.destroySessions()
+                WebStorage.getInstance().deleteAllData()
+                sourceNetwork.clearSourceAccess("https://www.scribblehub.com/", keepBrowserTransport = false)
+                CloudflareCookies.removeAllFor("https://www.scribblehub.com/") {
+                    toast("Source web session reset")
+                }
             }
         }
         settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {

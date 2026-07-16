@@ -1,10 +1,13 @@
 package com.vinicius741.webnovelarchiver.app
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
@@ -37,7 +40,37 @@ class AppContainer(
     /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
-    val network: NetworkClient = NetworkClient(client = NetworkClient.buildDefault(appContext))
+    private val sourceReliability = SourceReliabilityCoordinator()
+    val network: NetworkClient =
+        NetworkClient(
+            client = NetworkClient.buildDefault(appContext, sourceReliability),
+            reliabilityCoordinator = sourceReliability,
+        )
+
+    @Volatile private var activeNetwork: Network? = null
+
+    @Volatile private var hasObservedNetwork = false
+
+    @Volatile private var activeNetworkWasLost = false
+
+    private val networkCallback =
+        object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(networkHandle: Network) {
+                val previous = activeNetwork
+                activeNetwork = networkHandle
+                val changed = hasObservedNetwork && (activeNetworkWasLost || previous != null && previous != networkHandle)
+                hasObservedNetwork = true
+                activeNetworkWasLost = false
+                if (changed) network.onNetworkChanged()
+            }
+
+            override fun onLost(networkHandle: Network) {
+                if (activeNetwork == networkHandle) {
+                    activeNetwork = null
+                    activeNetworkWasLost = true
+                }
+            }
+        }
     val storage: AppStorage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)
     val syncEngine: StorySyncEngine = StorySyncEngine(storage, network)
@@ -64,6 +97,10 @@ class AppContainer(
 
     /** Starts migration/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
+        runCatching {
+            (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
+                .registerDefaultNetworkCallback(networkCallback)
+        }
         repositoryStartup.start(applicationScope)
     }
 

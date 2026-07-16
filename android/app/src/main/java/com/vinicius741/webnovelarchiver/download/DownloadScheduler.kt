@@ -110,6 +110,7 @@ data class ClassifiedDownloadError(
     val category: String,
     val code: String,
     val retryable: Boolean,
+    val retryAfterMillis: Long? = null,
 )
 
 object DownloadErrorClassifier {
@@ -126,7 +127,13 @@ object DownloadErrorClassifier {
             )
         }
         if (error is RateLimitNetworkException) {
-            return ClassifiedDownloadError("HTTP ${error.statusCode}", "rate_limit", error.statusCode.toString(), true)
+            return ClassifiedDownloadError(
+                "HTTP ${error.statusCode}",
+                "rate_limit",
+                error.statusCode.toString(),
+                true,
+                error.retryAfterMillis,
+            )
         }
         if (error is HttpNetworkException) {
             val retryable = error.statusCode in setOf(408, 500, 502, 503, 504)
@@ -188,6 +195,42 @@ object DownloadErrorClassifier {
         val multiplier = 1L shl (retryAttempt - 1).coerceIn(0, 10)
         return minOf(RETRY_MAX_DELAY_MS, RETRY_BASE_DELAY_MS * multiplier)
     }
+
+    fun retryDelayMs(
+        job: DownloadJob,
+        error: ClassifiedDownloadError,
+    ): Long = maxOf(retryDelayMs(job), error.retryAfterMillis ?: 0L)
+}
+
+/** Source-wide queue transitions used by the Cloudflare circuit breaker and rate-limit cooldown. */
+object DownloadSourceFailurePlanning {
+    fun blockActiveJobs(
+        jobs: List<DownloadJob>,
+        providerName: String,
+        message: String?,
+        providerNameForJob: (DownloadJob) -> String?,
+    ): List<DownloadJob> =
+        jobs.onEach { job ->
+            if (job.status in DownloadJobStatus.activeWires && providerNameForJob(job) == providerName) {
+                job.status = DownloadJobStatus.Failed.wire
+                job.error = message
+                job.errorCategory = "source_blocked"
+                job.errorCode = "SOURCE_BLOCKED"
+                job.nextRetryAt = null
+            }
+        }
+
+    fun deferPendingJobs(
+        jobs: List<DownloadJob>,
+        providerName: String,
+        retryAt: Long,
+        providerNameForJob: (DownloadJob) -> String?,
+    ): List<DownloadJob> =
+        jobs.onEach { job ->
+            if (job.status == DownloadJobStatus.Pending.wire && providerNameForJob(job) == providerName) {
+                job.nextRetryAt = maxOf(job.nextRetryAt ?: 0L, retryAt)
+            }
+        }
 }
 
 data class DownloadProgress(

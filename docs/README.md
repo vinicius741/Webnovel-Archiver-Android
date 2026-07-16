@@ -29,6 +29,7 @@ when Cloudflare presents a browser challenge.
 | `scribblehub-cloudflare-options.html` | Compliance-focused investigation: shared WebView/OkHttp cookie jar, in-app Source Access screen, and source throttling. |
 | `glm-Cloudflare-bypass.html` | GLM research — codebase audit, Cloudflare 2026 mechanics, Mihon deep-dive, bypass-method survey, and five candidate plans. |
 | `scribblehub-cloudflare-master-strategy.html` | Master architectural plan synthesizing the research into the recommended Mihon-pattern implementation roadmap. |
+| `source-reliability-implementation.md` | Current implemented architecture: source-wide pacing/circuit state, sticky Chromium transport, bulk preflight, retry semantics, diagnostics, and reset behavior. |
 
 ### `tts/`
 

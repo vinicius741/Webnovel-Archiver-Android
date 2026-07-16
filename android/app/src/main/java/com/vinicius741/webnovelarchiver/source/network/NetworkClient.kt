@@ -5,10 +5,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -20,11 +19,11 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.random.Random
 
+@Suppress("TooManyFunctions")
 class NetworkClient(
     /**
      * Shared OkHttp client (R6). Cover/image fetches go through the same client as page fetches.
@@ -39,10 +38,12 @@ class NetworkClient(
     private val jitterMillis: (Long) -> Long = { maximum ->
         if (maximum <= 0L) 0L else Random.nextLong(maximum + 1L)
     },
+    reliabilityCoordinator: SourceReliabilityCoordinator? = null,
 ) {
     private sealed interface AttemptResult<out T> {
         data class Success<T>(
             val value: T,
+            val browserRendered: Boolean,
         ) : AttemptResult<T>
 
         data class HttpFailure(
@@ -51,32 +52,35 @@ class NetworkClient(
         ) : AttemptResult<Nothing>
     }
 
-    /**
-     * Per-host rate-limit gates (R6). Each host has its own [Mutex]; the Scribble Hub gap is enforced
-     * inside the lock so concurrent downloads from the activity + foreground service cannot bypass it.
-     * The "next allowed at" timestamp is stored alongside the mutex so the lock is held only briefly.
-     */
-    private data class HostGate(
-        val mutex: Mutex,
-        var nextAllowedAt: Long = 0L,
+    private data class PreparedPage(
+        val html: String,
+        val expiresAt: Long,
     )
 
-    private val hostGates = ConcurrentHashMap<String, HostGate>()
-    private val hostGatesLock = Mutex()
-
-    private suspend fun gateFor(host: String): HostGate =
-        hostGatesLock.withLock {
-            hostGates.getOrPut(host) { HostGate(Mutex()) }
-        }
+    private val reliability =
+        reliabilityCoordinator
+            ?: SourceReliabilityCoordinator(
+                nowMillis = nowMillis,
+                sleep = sleep,
+                randomBetween = { minimum, maximum ->
+                    val width = (maximum - minimum).coerceAtLeast(0L)
+                    minimum + jitterMillis(width).coerceIn(0L, width)
+                },
+            )
+    private val preparedPages = java.util.concurrent.ConcurrentHashMap<String, PreparedPage>()
 
     suspend fun fetch(
         url: String,
         callTimeoutMillis: Long? = null,
+        maximumAttemptsOverride: Int? = null,
+        allowPreparedPage: Boolean = true,
     ): String {
+        if (allowPreparedPage) {
+            preparedPages.remove(url)?.takeIf { it.expiresAt > nowMillis() }?.let { return it.html }
+        }
         val request = NetworkRequests.pageRequest(url)
         val policy = policyResolver.policyFor(request.url)
-        waitForRateLimit(request.url.host, policy)
-        return executeWithRetries(url, request, policy, callTimeoutMillis) { response ->
+        return executeWithRetries(url, request, policy, callTimeoutMillis, maximumAttemptsOverride) { response ->
             val body = response.body?.string().orEmpty()
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
                 throw SourceAccessBlockedException(url)
@@ -92,7 +96,6 @@ class NetworkClient(
     ): String {
         val request = NetworkRequests.formRequest(url, fields, headers)
         val policy = policyResolver.policyFor(request.url)
-        waitForRateLimit(request.url.host, policy)
         return executeWithRetries(url, request, policy) { response ->
             val body = response.body?.string().orEmpty()
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
@@ -114,11 +117,20 @@ class NetworkClient(
     ): ByteArray? {
         val request = NetworkRequests.binaryRequest(url)
         val policy = policyResolver.policyFor(request.url)
-        waitForRateLimit(request.url.host, policy)
+        reliability.awaitPermission(url, request.url.host, policy)
         return try {
             withContext(ioDispatcher) {
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use null
+                    if (!response.isSuccessful) {
+                        if (response.code == 429) {
+                            reliability.recordRateLimit(
+                                request.url.host,
+                                policy,
+                                retryAfterMillis(response.header("Retry-After"), policy),
+                            )
+                        }
+                        return@use null
+                    }
                     val contentType = response.header("Content-Type").orEmpty()
                     if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@use null
                     val body = response.body ?: return@use null
@@ -130,7 +142,7 @@ class NetworkClient(
                     val source = body.source()
                     source.request(maxBytes + 1)
                     if (source.buffer.size > maxBytes) return@use null
-                    source.buffer.readByteArray()
+                    source.buffer.readByteArray().also { reliability.recordSuccess(request.url.host, policy) }
                 }
             }
         } catch (error: CancellationException) {
@@ -140,27 +152,35 @@ class NetworkClient(
         }
     }
 
+    @Suppress("NestedBlockDepth", "ThrowsCount")
     private suspend fun <T> executeWithRetries(
         url: String,
         request: Request,
         policy: SourceNetworkPolicy,
         callTimeoutMillis: Long? = null,
+        maximumAttemptsOverride: Int? = null,
         read: (Response) -> T,
     ): T {
         var attempt = 1
-        val maximumAttempts = policy.maximumAttempts.coerceAtLeast(1)
+        val maximumAttempts = (maximumAttemptsOverride ?: policy.maximumAttempts).coerceAtLeast(1)
         while (attempt <= maximumAttempts) {
+            reliability.awaitPermission(url, request.url.host, policy)
             val result = executeAttempt(url, request, callTimeoutMillis, read)
             when (result) {
-                is AttemptResult.Success -> return result.value
+                is AttemptResult.Success -> {
+                    reliability.recordSuccess(request.url.host, policy, result.browserRendered)
+                    return result.value
+                }
                 is AttemptResult.HttpFailure -> {
                     val isRateLimited = result.statusCode in policy.retryableStatusCodes
                     if (!isRateLimited || attempt >= maximumAttempts) {
                         if (isRateLimited) {
+                            val requestedRetryAfter = retryAfterMillis(result.retryAfterHeader, policy)
+                            val cooldown = reliability.recordRateLimit(request.url.host, policy, requestedRetryAfter)
                             throw RateLimitNetworkException(
                                 requestedUrl = url,
                                 statusCode = result.statusCode,
-                                retryAfterMillis = retryAfterMillis(result.retryAfterHeader, policy),
+                                retryAfterMillis = maxOf(requestedRetryAfter ?: 0L, cooldown),
                             )
                         }
                         throw HttpNetworkException(url, result.statusCode)
@@ -184,7 +204,12 @@ class NetworkClient(
                 val call = client.newCall(request)
                 callTimeoutMillis?.let { timeout -> call.timeout().timeout(timeout, TimeUnit.MILLISECONDS) }
                 call.execute().use { response ->
-                    if (response.isSuccessful) return@withContext AttemptResult.Success(read(response))
+                    if (response.isSuccessful) {
+                        return@withContext AttemptResult.Success(
+                            read(response),
+                            response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER) == "1",
+                        )
+                    }
                     val responseBody = response.body?.string().orEmpty()
                     if (SourceAccessBlockDetector.isChallengeResponse(response.headers, responseBody)) {
                         throw SourceAccessBlockedException(url)
@@ -195,6 +220,7 @@ class NetworkClient(
         } catch (error: CancellationException) {
             throw error
         } catch (error: SourceAccessBlockedException) {
+            reliability.requireManualVerification(request.url.host)
             throw error
         } catch (error: SocketTimeoutException) {
             throw NetworkTimeoutException(url, error)
@@ -210,31 +236,35 @@ class NetworkClient(
             throw NetworkTransportException(url, error)
         }
 
-    private suspend fun waitForRateLimit(
-        host: String,
-        policy: SourceNetworkPolicy,
+    fun configurePacing(
+        url: String,
+        minimumGapMillis: Long,
+        maximumGapMillis: Long,
     ) {
-        val gap = policy.minimumRequestGapMillis.coerceAtLeast(0L)
-        if (gap <= 0) return
-        val gate = gateFor(host)
-        // Claim or measure wait under the lock, then sleep outside it so concurrent callers for the
-        // same host can schedule their own waits instead of serializing behind one sleeper.
-        while (true) {
-            val waitMillis =
-                gate.mutex.withLock {
-                    val now = nowMillis()
-                    val next = gate.nextAllowedAt
-                    if (next > now) {
-                        next - now
-                    } else {
-                        gate.nextAllowedAt = now + gap
-                        0L
-                    }
-                }
-            if (waitMillis <= 0L) return
-            sleep(waitMillis)
-        }
+        val parsed = url.toHttpUrlOrNull() ?: return
+        reliability.configurePacing(parsed.host, minimumGapMillis, maximumGapMillis)
     }
+
+    /** Warms a large batch and caches its first page so preflight does not duplicate the download. */
+    suspend fun prepareBulkDownload(url: String) {
+        val html = fetch(url, maximumAttemptsOverride = 1, allowPreparedPage = false)
+        preparedPages[url] = PreparedPage(html, nowMillis() + PREPARED_PAGE_TTL_MILLIS)
+    }
+
+    fun clearSourceAccess(
+        url: String,
+        keepBrowserTransport: Boolean = true,
+    ) {
+        val parsed = url.toHttpUrlOrNull() ?: return
+        reliability.clearAccessBlock(parsed.host, keepBrowserTransport)
+    }
+
+    fun onNetworkChanged() {
+        preparedPages.clear()
+        reliability.onNetworkChanged()
+    }
+
+    fun reliabilitySnapshots(): List<SourceReliabilitySnapshot> = reliability.snapshots()
 
     private fun retryDelayMillis(
         attempt: Int,
@@ -275,6 +305,7 @@ class NetworkClient(
     companion object {
         /** Maximum bytes accepted for a cover/image download (R6 size cap). */
         const val MAX_IMAGE_BYTES = 8_000_000L
+        private const val PREPARED_PAGE_TTL_MILLIS = 5L * 60L * 1_000L
 
         /**
          * Legacy fallback built without a [Context]. Kept for the parameter default only — the real
@@ -295,13 +326,16 @@ class NetworkClient(
          * the [CloudflareBypassInterceptor] (so a detected challenge is solved by a background
          * WebView before the response reaches [executeWithRetries]).
          */
-        fun buildDefault(context: Context): OkHttpClient =
+        fun buildDefault(
+            context: Context,
+            reliabilityCoordinator: SourceReliabilityCoordinator,
+        ): OkHttpClient =
             OkHttpClient
                 .Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(45, TimeUnit.SECONDS)
                 .cookieJar(AndroidCookieJar())
-                .addInterceptor(CloudflareBypassInterceptor(context.applicationContext))
+                .addInterceptor(CloudflareBypassInterceptor(context.applicationContext, reliabilityCoordinator))
                 .build()
     }
 }

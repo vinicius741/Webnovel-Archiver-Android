@@ -2,35 +2,89 @@ package com.vinicius741.webnovelarchiver.source.network
 
 import android.content.Context
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
+import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
+import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 
-/**
- * OkHttp [Interceptor] that solves Cloudflare challenges in a background WebView before the response
- * reaches [NetworkClient.executeWithRetries].
- *
- * Flow: proceed with the request → if [SourceAccessBlockDetector.isChallengeResponse] recognizes a
- * real CF challenge (403/503 + Cloudflare server header + challenge DOM, or `cf-mitigated:
- * challenge`), acquire this host's per-host lock so concurrent requests to the same host wait instead
- * of each spawning their own WebView, run [CloudflareWebViewSolver.solve], and on success retry
- * `chain.proceed(request)` so the now-cookie-bearing request goes out. On failure the original
- * challenge response is returned unchanged and [NetworkClient] surfaces it as
- * [SourceAccessBlockedException] exactly as before — at which point the UI layer offers the visible
- * [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity] fallback.
- *
- * Guardrails (per the ScribbleHub-options doc's cautions about hidden WebViews):
- *  - One solve attempt per host at a time; concurrent callers block on [HostGate.lock] and benefit
- *    from the in-flight solve rather than multiplying WebViews.
- *  - 20s hard timeout inside the solver; this interceptor never blocks indefinitely.
- *  - Detection is delegated to the existing conservative [SourceAccessBlockDetector], so the solver
- *    never fires on normal Cloudflare-proxied content or on a geo-block (which no cookie can fix).
- */
-class CloudflareBypassInterceptor(
+/** The browser-rendered result of a request that OkHttp could not pass through Cloudflare. */
+internal data class CloudflareRenderedPage(
+    val html: String,
+    val finalUrl: String,
+)
+
+/** A request shape supported by WebView's top-level GET and form-POST APIs. */
+internal data class CloudflareWebViewRequest(
+    val url: String,
+    val method: String,
+    val userAgent: String,
+    val headers: Map<String, String>,
+    val postData: ByteArray?,
+) {
+    companion object {
+        fun from(
+            request: Request,
+            headers: Map<String, String>,
+        ): CloudflareWebViewRequest? {
+            val postData =
+                when (request.method) {
+                    "GET" -> null
+                    "POST" ->
+                        runCatching {
+                            val buffer = Buffer()
+                            request.body?.writeTo(buffer)
+                            if (buffer.size > MAX_POST_BYTES) return null
+                            buffer.readByteArray()
+                        }.getOrNull() ?: return null
+                    else -> return null
+                }
+            return CloudflareWebViewRequest(
+                url = request.url.toString(),
+                method = request.method,
+                userAgent = request.header("User-Agent").orEmpty(),
+                headers = headers,
+                postData = postData,
+            )
+        }
+
+        private const val MAX_POST_BYTES = 1_000_000L
+    }
+}
+
+internal fun interface CloudflarePageRenderer {
+    fun render(request: CloudflareWebViewRequest): CloudflareRenderedPage?
+}
+
+private class AndroidCloudflarePageRenderer(
     private val context: Context,
+) : CloudflarePageRenderer {
+    override fun render(request: CloudflareWebViewRequest): CloudflareRenderedPage? = CloudflareWebViewSolver.render(context, request)
+}
+
+/**
+ * Handles a detected Cloudflare challenge with Android WebView's Chromium network stack.
+ *
+ * The first request still uses OkHttp. If Cloudflare challenges it, the same GET or form POST is
+ * rendered in a detached WebView. A successful rendered DOM is converted into an OkHttp response so
+ * the existing source parsers remain unchanged. Crucially, the browser response is not discarded in
+ * favor of another OkHttp retry; doing that caused a permanent verification loop when Cloudflare
+ * accepted Chromium's session but rejected OkHttp's different browser/TLS fingerprint.
+ */
+class CloudflareBypassInterceptor internal constructor(
+    private val renderer: CloudflarePageRenderer,
+    private val reliability: SourceReliabilityCoordinator = SourceReliabilityCoordinator(),
 ) : Interceptor {
-    /** Per-host serialization so concurrent blocked requests share one WebView solve. */
+    constructor(
+        context: Context,
+        reliability: SourceReliabilityCoordinator,
+    ) : this(AndroidCloudflarePageRenderer(context.applicationContext), reliability)
+
     private data class HostGate(
         val lock: ReentrantLock = ReentrantLock(),
     )
@@ -39,61 +93,95 @@ class CloudflareBypassInterceptor(
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val response = chain.proceed(request)
+        val browserRequest =
+            request
+                .takeIf(::isBrowserPageRequest)
+                ?.let { CloudflareWebViewRequest.from(it, safeWebViewHeaders(it)) }
 
-        if (!isChallengeResponse(response)) return response
-
-        val host = request.url.host
-        val gate = hostGates.getOrPut(host) { HostGate() }
-        if (!gate.lock.tryLock()) {
-            // Another request for this host is already solving. Wait for it, then retry once: if the
-            // in-flight solve earned a clearance, this retry will carry it (the cookie jar is shared).
-            gate.lock.lockInterruptibly()
+        // Once this host has challenged OkHttp, stop presenting the same rejected native TLS/HTTP
+        // fingerprint before every chapter. Keep all browser requests serialized through the host
+        // gate and the persistent Chromium session for the remainder of the passage window.
+        if (browserRequest != null && reliability.browserTransportActive(request.url.host)) {
+            val gate = hostGates.getOrPut(hostKey(request)) { HostGate() }
+            lockGate(gate)
             try {
-                return retry(chain, response)
+                val rendered = renderer.render(browserRequest)
+                if (rendered != null) return renderedResponse(request, rendered)
+                reliability.requireManualVerification(request.url.host)
+                throw SourceAccessBlockedException(request.url.toString())
             } finally {
                 gate.lock.unlock()
             }
         }
+
+        val response = chain.proceed(request)
+        if (!isChallengeResponse(response)) return response
+
+        reliability.recordChallengeDetected(request.url.host)
+        val webViewRequest = browserRequest ?: return response
+        val gate = hostGates.getOrPut(hostKey(request)) { HostGate() }
+        lockGate(gate, response)
         try {
-            val solved =
-                CloudflareWebViewSolver.solve(
-                    context = context,
-                    url = request.url.toString(),
-                    userAgent = SourceUserAgent.resolved,
-                    headers = safeWebViewHeaders(request.headers),
-                )
-            if (solved) return retry(chain, response)
+            val rendered =
+                renderer.render(webViewRequest) ?: run {
+                    reliability.requireManualVerification(request.url.host)
+                    return response
+                }
+            response.close()
+            return renderedResponse(request, rendered)
         } finally {
             gate.lock.unlock()
         }
-        // Solve failed (timeout or interactive challenge): surface the original challenge response
-        // so NetworkClient throws SourceAccessBlockedException and the UI offers the manual fallback.
-        return response
     }
 
-    private fun retry(
-        chain: Interceptor.Chain,
-        exhausted: Response,
-    ): Response {
-        exhausted.close()
-        return chain.proceed(chain.request())
+    private fun lockGate(
+        gate: HostGate,
+        responseToClose: Response? = null,
+    ) {
+        try {
+            gate.lock.lockInterruptibly()
+        } catch (error: InterruptedException) {
+            responseToClose?.close()
+            Thread.currentThread().interrupt()
+            throw IOException("Interrupted while waiting for Cloudflare verification", error)
+        }
     }
 
-    /**
-     * Conservative challenge detection delegating to the existing [SourceAccessBlockDetector].
-     * Uses [Response.peekBody] so the body remains readable downstream if the solve fails and the
-     * response is returned to [NetworkClient] (which reads the body for its own challenge check).
-     */
+    private fun renderedResponse(
+        request: Request,
+        rendered: CloudflareRenderedPage,
+    ): Response =
+        Response
+            .Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .header("Content-Type", HTML_CONTENT_TYPE.toString())
+            .header(BROWSER_RENDERED_HEADER, "1")
+            .header(BROWSER_FINAL_URL_HEADER, rendered.finalUrl)
+            .body(rendered.html.toResponseBody(HTML_CONTENT_TYPE))
+            .build()
+
     private fun isChallengeResponse(response: Response): Boolean {
-        if (response.code !in CHALLENGE_CODES) return false
         val bodyString =
             runCatching { response.peekBody(BODY_PEEK_BYTES).string() }.getOrNull().orEmpty()
         return SourceAccessBlockDetector.isChallengeResponse(response.headers, bodyString)
     }
 
-    private fun safeWebViewHeaders(headers: okhttp3.Headers): Map<String, String> =
-        headers
+    private fun isBrowserPageRequest(request: Request): Boolean =
+        request.method in setOf("GET", "POST") &&
+            request.header("Accept").orEmpty().let { accept ->
+                accept.isBlank() || accept.contains("text/html") || accept.contains("application/xhtml+xml")
+            }
+
+    private fun hostKey(request: Request): String =
+        request.url.host
+            .lowercase(Locale.US)
+            .removePrefix("www.")
+
+    private fun safeWebViewHeaders(request: Request): Map<String, String> =
+        request.headers
             .filter { (name, value) -> isRequestHeaderSafe(name, value) }
             .groupBy(keySelector = { (name, _) -> name }) { (_, value) -> value }
             .mapValues { it.value.firstOrNull().orEmpty() }
@@ -109,9 +197,11 @@ class CloudflareBypassInterceptor(
         return true
     }
 
-    private companion object {
-        val CHALLENGE_CODES = setOf(403, 503)
+    companion object {
+        internal const val BROWSER_RENDERED_HEADER = "X-WNA-Browser-Rendered"
+        internal const val BROWSER_FINAL_URL_HEADER = "X-WNA-Browser-Final-Url"
         const val BODY_PEEK_BYTES = 64_000L
+        val HTML_CONTENT_TYPE = "text/html; charset=utf-8".toMediaType()
         val UNSAFE_HEADER_NAMES =
             setOf(
                 "content-length",
@@ -119,6 +209,8 @@ class CloudflareBypassInterceptor(
                 "trailer",
                 "te",
                 "upgrade",
+                "user-agent",
+                "cookie",
                 "cookie2",
                 "keep-alive",
                 "transfer-encoding",

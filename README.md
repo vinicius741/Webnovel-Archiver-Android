@@ -7,13 +7,13 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 ## Key Features
 
 - **Multi-Source Support** — Extensible `SourceProvider` architecture (Royal Road, Scribble Hub; add more via `SourceRegistry`). Source metadata can include scores, tags, content warnings, publication status, and linked Patreon stats.
-- **In-App Source Browser** — Source picker plus Chrome Custom Tabs for browsing supported sites and importing novels. Cloudflare challenges are solved in a narrow shared-cookie WebView so OkHttp reuses the earned clearance.
+- **In-App Source Browser** — Source picker plus Chrome Custom Tabs for browsing supported sites and importing novels. Cloudflare challenges use a persistent shared-session WebView, with sticky Chromium transport when the native HTTP fingerprint is rejected.
 - **Offline Library** — Download chapters for reading without an internet connection.
 - **Built-in Reader** — WebView-based reader with sentence-level TTS highlighting, image support, last-read position tracking, and a floating TTS transport.
 - **Text-to-Speech** — Foreground service with MediaSession, notification/media-button controls, audio focus, stall recovery, configurable voice/rate/pitch, and auto-resume across chapters.
 - **Updates Tracker** — Follow novels and batch-sync for new chapters (concurrent per-story sync) with nested chapter rows under each novel.
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting, configurable chapter ranges, timestamped outputs, and a Legacy EPUBs screen for leftovers.
-- **Background Downloads** — Foreground service with concurrent engine, persistent queue, per-source delay ranges, notification controls, automatic recovery, and error classification with exponential backoff retry.
+- **Background Downloads** — Foreground service with persistent queue, bulk preflight, per-source concurrency, adaptive pacing, source-wide Cloudflare circuit breaking, `Retry-After` cooldowns, and automatic recovery.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both), live sample previews, and circuit-breaking for pathological user regex.
 - **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, persisted sort controls (including Patreon earnings/members), and archive snapshots.
 - **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
@@ -29,7 +29,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 | Language | Kotlin 2.1.20 |
 | UI | Programmatic Android Views (no XML layouts) |
 | Build | Gradle 9.0 + AGP 8.13.2 |
-| HTTP Client | OkHttp 4.12 (+ shared WebView cookie jar for Cloudflare) |
+| HTTP Client | OkHttp 4.12 + shared source coordinator + sticky Chromium transport for challenged hosts |
 | HTML Parsing | Jsoup 1.21 |
 | JSON | Gson 2.13 |
 | Async | Kotlin Coroutines 1.10 |
@@ -149,7 +149,7 @@ android/
             backup/            # Backup/restore planning and validation
             diagnostics/       # Local diagnostics export
           source/              # SourceProvider registry, Royal Road, Scribble Hub
-            network/           # OkHttp client, Cloudflare cookie jar + solver
+            network/           # OkHttp client, Cloudflare cookie jar + Chromium fallback
           sync/                # Story sync engine + merge planning
           download/            # Download engine, queue, foreground service
           epub/                # EPUB generation

@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.ui.size
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -52,7 +53,7 @@ class DownloadEngine(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private val acceptsWorkerResults = AtomicBoolean(true)
-    private val nextAllowedJobAtBySource = mutableMapOf<String, Long>()
+    private val sourceReliability = DownloadSourceReliability(storage, network, acceptsWorkerResults::get)
     private var worker: Job? = null
     var onChanged: (() -> Unit)? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
@@ -236,6 +237,14 @@ class DownloadEngine(
                     delay = settings.downloadDelay,
                     delayMax = settings.downloadDelayMax,
                 )
+            SourceRegistry.all().forEach { provider ->
+                val sourcePacing = DownloadScheduler.settingsFor(provider.name, globalDownloadSettings, sourceSettings)
+                network.configurePacing(provider.baseUrl, sourcePacing.delay, sourcePacing.delayMax)
+            }
+            val preflightQueue = storage.getQueue()
+            val preflight = sourceReliability.preflightLargeBatch(preflightQueue)
+            preflight.mutation?.let(::publishQueueMutation)
+            if (preflight.attempted) continue
             lateinit var queue: MutableList<DownloadJob>
             lateinit var pending: List<DownloadJob>
             synchronized(storage) {
@@ -247,7 +256,7 @@ class DownloadEngine(
                         globalSettings = globalDownloadSettings,
                         sourceSettings = sourceSettings,
                         activeCounts = emptyMap(),
-                        nextAllowedAt = nextAllowedJobAtBySource,
+                        nextAllowedAt = emptyMap(),
                         providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
                     )
                 if (pending.isNotEmpty()) {
@@ -264,7 +273,7 @@ class DownloadEngine(
                     DownloadScheduler.nextWakeUpAt(
                         jobs = queue,
                         now = System.currentTimeMillis(),
-                        nextAllowedAt = nextAllowedJobAtBySource,
+                        nextAllowedAt = emptyMap(),
                         providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
                     )
                 if (sleepUntil != null) {
@@ -274,20 +283,6 @@ class DownloadEngine(
                 break
             }
             pending.map { job -> scope.launch { processJob(job) } }.forEach { it.join() }
-            val now = System.currentTimeMillis()
-            pending
-                .mapNotNull { job -> SourceRegistry.getProvider(job.chapter.url)?.name }
-                .distinct()
-                .forEach { providerName ->
-                    val sourceDelay =
-                        DownloadScheduler
-                            .settingsFor(
-                                providerName,
-                                globalDownloadSettings,
-                                sourceSettings,
-                            ).let(DownloadScheduler::randomDelayMillis)
-                    if (sourceDelay > 0) nextAllowedJobAtBySource[providerName] = now + sourceDelay
-                }
         }
     }
 
@@ -331,10 +326,14 @@ class DownloadEngine(
         // buildProgress re-parse download_queue.json. The cancellation check below re-reads after
         // network I/O (a user can cancel during the fetch), but only once rather than twice.
         emitProgress(job, storage.getQueue())
+        var providerName: String? = null
         try {
             storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
-            val html = network.fetch(job.chapter.url)
+            providerName = provider.name
+            // DownloadEngine owns the durable retry budget. NetworkClient therefore makes one
+            // attempt per job execution, preventing the former 3 network × 4 queue retry stack.
+            val html = network.fetch(job.chapter.url, maximumAttemptsOverride = 1)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
             val clean =
@@ -363,9 +362,18 @@ class DownloadEngine(
             // CancellationException here is a real teardown — re-throw so the parent is cleaned up.
             Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
             throw error
+        } catch (error: SourceAccessBlockedException) {
+            if (!isCancelled(job.id, storage.getQueue())) {
+                val mutation =
+                    providerName?.let { sourceReliability.blockSourceJobs(it, error) }
+                        ?: sourceReliability.handleJobError(job, error, null)
+                mutation?.let(::publishQueueMutation)
+            }
         } catch (error: Exception) {
             // E2: catch Exception (not Throwable) so OutOfMemoryError/StackOverflowError propagate.
-            if (!isCancelled(job.id, storage.getQueue())) handleJobError(job, error)
+            if (!isCancelled(job.id, storage.getQueue())) {
+                sourceReliability.handleJobError(job, error, providerName)?.let(::publishQueueMutation)
+            }
         }
     }
 
@@ -398,45 +406,8 @@ class DownloadEngine(
         onChanged?.invoke()
     }
 
-    private fun handleJobError(
-        job: DownloadJob,
-        error: Throwable,
-    ) {
-        if (!acceptsWorkerResults.get()) return
-        val classified = DownloadErrorClassifier.classify(error)
-        // T1: error classification decisions are otherwise invisible; log them with the cause so a
-        // "Download failed" report is diagnosable. (downloadErrorCategory/code map to classified.*)
-        Timber.w(
-            error,
-            "Download job %s failed (category=%s, code=%s, retry=%s)",
-            job.id,
-            classified.category,
-            classified.code,
-            job.retryCount,
-        )
-        lateinit var queue: List<DownloadJob>
-        var accepted = false
-        storage.mutateQueueInPlace { current ->
-            queue = current
-            if (!acceptsWorkerResults.get()) return@mutateQueueInPlace current
-            current.find { it.id == job.id }?.let {
-                it.retryCount += 1
-                it.error = classified.message
-                it.errorCategory = classified.category
-                it.errorCode = classified.code
-                if (DownloadErrorClassifier.shouldAutoRetry(it, classified)) {
-                    it.status = DownloadJobStatus.Pending.wire
-                    it.nextRetryAt = System.currentTimeMillis() + DownloadErrorClassifier.retryDelayMs(it)
-                } else {
-                    it.status = if (classified.category == "cancelled") DownloadJobStatus.Cancelled.wire else DownloadJobStatus.Failed.wire
-                    it.nextRetryAt = null
-                }
-            }
-            accepted = true
-            current
-        }
-        if (!accepted) return
-        emitProgress(queue.find { it.id == job.id }, queue)
+    private fun publishQueueMutation(mutation: DownloadQueueMutation) {
+        emitProgress(mutation.activeJobId?.let { id -> mutation.queue.find { it.id == id } }, mutation.queue)
         repository.publishDownloadState(queueChanged = true)
         onChanged?.invoke()
     }

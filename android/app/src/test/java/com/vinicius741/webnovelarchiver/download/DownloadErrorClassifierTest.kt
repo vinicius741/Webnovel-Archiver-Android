@@ -79,6 +79,15 @@ class DownloadErrorClassifierTest {
         assertFalse(forbidden.retryable)
         assertEquals("rate_limit", limited.category)
         assertTrue(limited.retryable)
+        assertEquals(1_000L, limited.retryAfterMillis)
+    }
+
+    @Test
+    fun queueRetryDelayNeverUndercutsServerCooldown() {
+        val job = DownloadJob(retryCount = 1)
+        val limited = DownloadErrorClassifier.classify(RateLimitNetworkException("https://example.test", 429, 90_000L))
+
+        assertEquals(90_000L, DownloadErrorClassifier.retryDelayMs(job, limited))
     }
 
     @Test

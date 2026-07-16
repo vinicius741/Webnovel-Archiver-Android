@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebSettings
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * The single User-Agent string shared by every HTTP/WebView surface in the app.
@@ -23,15 +25,14 @@ import android.webkit.WebSettings
  * Resolution is deferred off the Application main thread because [WebSettings.getDefaultUserAgent]
  * lazily loads the WebView provider, which is expensive and caused a startup ANR when done in
  * [com.vinicius741.webnovelarchiver.app.WebnovelArchiverApp.onCreate]. [resolveAsync] posts the read
- * to the main Looper (WebSettings requires a Looper thread) but does not block startup; [resolved]
- * falls back to [FALLBACK] until the async read completes, which is acceptable because no OkHttp
- * request fires during that window (the user must navigate to a screen first).
+ * to the main Looper (WebSettings requires a Looper thread) but does not block startup. The first
+ * background request briefly waits for that resolution, then freezes the selected value so the
+ * process cannot change User-Agent midway through a Cloudflare passage.
  */
 object SourceUserAgent {
     /**
-     * A safe pre-resolution UA used until [resolveAsync] completes. Kept current-ish (a recent
-     * Chrome major) so requests made in the brief window before resolution are not flagged as stale
-     * by Cloudflare; once resolution finishes, every subsequent request uses the exact WebView UA.
+     * A safe pre-resolution UA used if WebView resolution fails or the first consumer arrives from
+     * the main thread. Once consumed, the selected value is frozen for the process.
      */
     private const val FALLBACK =
         "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -40,8 +41,28 @@ object SourceUserAgent {
     @Volatile
     private var value: String = FALLBACK
 
-    /** The normalized UA to send on every request and WebView. Falls back to [FALLBACK] pre-resolution. */
-    val resolved: String get() = value
+    @Volatile
+    private var frozen = false
+
+    private val resolvedLatch = CountDownLatch(1)
+
+    /**
+     * The normalized UA to send on every request and WebView. The first consumer freezes the value
+     * for the process so a clearance cannot be minted with the fallback UA and replayed later with a
+     * different UA. Background callers briefly await normal WebView resolution; main-thread callers
+     * never block and safely freeze the fallback in the unlikely early-access case.
+     */
+    val resolved: String
+        get() {
+            val canAwait = runCatching { Looper.myLooper() != Looper.getMainLooper() }.getOrDefault(false)
+            if (canAwait) {
+                runCatching { resolvedLatch.await(2, TimeUnit.SECONDS) }
+            }
+            synchronized(this) {
+                frozen = true
+                return value
+            }
+        }
 
     /**
      * Reads the system WebView UA asynchronously and stores the normalized form. Safe to call from
@@ -54,9 +75,14 @@ object SourceUserAgent {
             // WebSettings.getDefaultUserAgent must run on a Looper thread; we are on the main one.
             // Wrapped in runCatching so a misbehaving WebView provider can never crash the app —
             // the fallback UA remains in effect and requests still go out.
-            value =
-                runCatching { normalize(WebSettings.getDefaultUserAgent(appContext)) }
-                    .getOrDefault(value)
+            synchronized(this) {
+                if (!frozen) {
+                    value =
+                        runCatching { normalize(WebSettings.getDefaultUserAgent(appContext)) }
+                            .getOrDefault(value)
+                }
+                resolvedLatch.countDown()
+            }
         }
     }
 

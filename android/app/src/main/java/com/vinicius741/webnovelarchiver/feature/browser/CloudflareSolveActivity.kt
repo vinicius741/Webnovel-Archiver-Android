@@ -20,6 +20,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockDetector
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
@@ -185,6 +186,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         if (solved) return
         solved = true
         CloudflareCookies.flush()
+        appContainer.network.clearSourceAccess(url, keepBrowserTransport = true)
         SourceAccessRetryCoordinator.markReadyToRetry()
         statusText?.text = "Access verified — returning to the app…"
         setResult(Activity.RESULT_OK)

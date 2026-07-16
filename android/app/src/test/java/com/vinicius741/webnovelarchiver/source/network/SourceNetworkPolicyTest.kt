@@ -10,9 +10,10 @@ class SourceNetworkPolicyTest {
     fun productionResolverKeepsScribbleHubRulesOutsideNetworkClient() {
         val policy = DefaultNetworkPolicyResolver.policyFor("https://www.scribblehub.com/chapter/1".toHttpUrl())
 
-        assertEquals(1_500L, policy.minimumRequestGapMillis)
+        assertEquals(3_000L, policy.minimumRequestGapMillis)
         assertEquals(3, policy.maximumAttempts)
         assertEquals(setOf(403, 429), policy.retryableStatusCodes)
+        assertEquals(12, policy.maximumRequestsPerWindow)
     }
 
     @Test
