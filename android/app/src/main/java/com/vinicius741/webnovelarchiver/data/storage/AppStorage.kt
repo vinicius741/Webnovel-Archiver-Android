@@ -7,6 +7,7 @@ import com.google.gson.GsonBuilder
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
@@ -16,6 +17,8 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
+import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
@@ -58,6 +61,7 @@ class AppStorage(
     internal val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     internal val root = File(this.context.filesDir, "webnovel_archiver").apply { mkdirs() }
     internal val storyDir = File(root, "stories").apply { mkdirs() }
+    internal val metricDir = File(root, "metrics").apply { mkdirs() }
     internal val chapterRoot = File(root, "novels").apply { mkdirs() }
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
@@ -122,6 +126,41 @@ class AppStorage(
         write(libraryIndex, ids)
     }
 
+    /**
+     * Reads the recorded metric-history for [id]. Returns an empty history when the file is absent
+     * (a story that has never been synced since the trend feature shipped, or whose history was
+     * deleted with the story).
+     */
+    @Synchronized
+    fun getMetricHistory(id: String): StoryMetricHistory {
+        val raw = read<StoryMetricHistory>(metricFile(id)) ?: return StoryMetricHistory(storyId = id)
+        // Pin storyId from the lookup key so the returned model is authoritative about which story it
+        // belongs to, regardless of what (or whether) the JSON stored for the field.
+        return raw.copy(storyId = id)
+    }
+
+    /**
+     * Appends one [snapshot] to the story's metric history under the storage monitor, applying the
+     * same-day coalescing + downsampling retention from [MetricSnapshotPlanning]. The read-modify-
+     * write is fully synchronized on this [AppStorage] (the same monitor the sync engine holds while
+     * writing the story itself), so two concurrent syncs cannot interleave their history writes.
+     */
+    @Synchronized
+    fun appendMetricSnapshot(
+        id: String,
+        snapshot: StoryMetricSnapshot,
+    ) {
+        val existing = getMetricHistory(id).snapshots
+        val retained = MetricSnapshotPlanning.appendAndRetain(existing, snapshot)
+        write(metricFile(id), StoryMetricHistory(storyId = id, snapshots = retained.toMutableList()))
+    }
+
+    /** Removes the metric history for [id]; a no-op if it never existed. */
+    @Synchronized
+    fun deleteMetricHistory(id: String) {
+        metricFile(id).delete()
+    }
+
     @Synchronized
     fun deleteStory(id: String) {
         val ids = readLibraryIdsWithRecovery().filterNot { it == id }
@@ -131,6 +170,8 @@ class AppStorage(
         storyFile(id).delete()
         File(chapterRoot, safeName(id)).deleteRecursively()
         File(epubRoot, safeName(id)).deleteRecursively()
+        // Drop the per-story trend history too so its file does not outlive the story.
+        metricFile(id).delete()
         saveQueue(getQueue().filterNot { it.storyId == id })
     }
 
@@ -139,6 +180,7 @@ class AppStorage(
         root.deleteRecursively()
         root.mkdirs()
         storyDir.mkdirs()
+        metricDir.mkdirs()
         chapterRoot.mkdirs()
         epubRoot.mkdirs()
         backupRoot.mkdirs()
@@ -508,6 +550,8 @@ class AppStorage(
     }
 
     private fun storyFile(id: String) = File(storyDir, "${safeName(id)}.json")
+
+    internal fun metricFile(id: String) = File(metricDir, "${safeName(id)}.json")
 
     private fun chapterFile(
         storyId: String,

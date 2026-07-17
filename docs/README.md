@@ -18,6 +18,7 @@ under `android/`.
 | `project-improvement-audit.md` | Current static audit of speed, reliability, and maintainability gaps with prioritized recommendations (Markdown source, refreshed 2026-07-08). |
 | `project-improvement-audit.html` | Legacy HTML rendering of the original audit for easier reading and navigation; use the Markdown source for the refreshed current version. |
 | `refactoring-large-files.md` | Record of the large-file decomposition (Sources, AppStorage, DetailsScreen, TextCleanup), marked complete. |
+| `metric-trends.md` | Per-novel metric Trends feature: snapshot capture on sync, retention/downsampling, JSON history-store layout, and the Trends screen. |
 
 ### `cloudflare/`
 

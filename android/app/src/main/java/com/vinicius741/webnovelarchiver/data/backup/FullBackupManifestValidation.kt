@@ -56,6 +56,35 @@ object FullBackupManifestValidation {
         if (chapterKeys.distinct().size != chapterKeys.size) {
             return "Invalid full backup: duplicate chapter entries"
         }
+        return validateMetricFiles(manifest["metricFiles"], ids.toSet())
+    }
+
+    /** metricFiles is optional: backups written before the Trends feature shipped omit it, and a
+     *  restore then leaves each story with empty history. When present it must be well-formed. */
+    private fun validateMetricFiles(
+        metricFiles: Any?,
+        ids: Set<String>,
+    ): String? {
+        if (metricFiles == null) return null
+        if (metricFiles !is List<*>) return "Invalid full backup: malformed metric file index"
+        if (metricFiles.size > ids.size) return "Invalid full backup: too many metric files"
+        val metricEntries = metricFiles.map { it as? Map<*, *> ?: return "Invalid full backup: malformed metric file index" }
+        if (
+            metricEntries.any { entry ->
+                val storyId = entry["storyId"] as? String
+                val path = entry["path"] as? String
+                storyId.isNullOrBlank() ||
+                    storyId !in ids ||
+                    path.isNullOrBlank() ||
+                    !BackupInputLimits.isAllowedFullBackupEntry(path, directory = false)
+            }
+        ) {
+            return "Invalid full backup: malformed metric file index"
+        }
+        val metricPaths = metricEntries.map { it["path"] as String }
+        if (metricPaths.distinct().size != metricPaths.size) return "Invalid full backup: duplicate metric paths"
+        val metricStoryIds = metricEntries.map { it["storyId"] as String }
+        if (metricStoryIds.distinct().size != metricStoryIds.size) return "Invalid full backup: duplicate metric entries"
         return null
     }
 }

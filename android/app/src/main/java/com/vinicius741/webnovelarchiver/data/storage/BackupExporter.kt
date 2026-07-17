@@ -47,7 +47,8 @@ internal class BackupExporter(
         val library = storage.getLibrary()
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
         val chapterFiles = collectChapterFiles(library)
-        val manifest = fullManifest(library, chapterFiles)
+        val metricFiles = collectMetricFiles(library)
+        val manifest = fullManifest(library, chapterFiles, metricFiles)
         return File(storage.backupRoot, "webnovel_full_backup_${System.currentTimeMillis()}.zip").also { output ->
             AtomicFileWrites.stream(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
@@ -59,6 +60,11 @@ internal class BackupExporter(
                         chapter.source.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
                     }
+                    metricFiles.forEach { metric ->
+                        zip.putNextEntry(ZipEntry(metric.path))
+                        metric.source.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
                 }
             }
         }
@@ -67,6 +73,7 @@ internal class BackupExporter(
     private fun fullManifest(
         library: List<Story>,
         chapterFiles: List<FullBackupChapterFile>,
+        metricFiles: List<FullBackupMetricFile>,
     ): Map<String, Any?> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",
@@ -84,6 +91,9 @@ internal class BackupExporter(
                         "path" to it.path,
                     )
                 },
+            // Per-story trend history (`metrics/<id>.json`). Optional on restore: older backups omit
+            // the key and restore with empty history (the storage layer's missing-file path).
+            "metricFiles" to metricFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
         )
 
     private fun fullConfig(): Map<String, Any?> {
@@ -138,6 +148,15 @@ internal class BackupExporter(
                 )
             }
         }
+
+    /** Collects each story's trend-history file that actually exists on disk. Stories that have never
+     *  been synced since the Trends feature shipped have no file and are skipped (restore recreates an
+     *  empty history via the missing-file path). */
+    private fun collectMetricFiles(library: List<Story>): List<FullBackupMetricFile> =
+        library.mapNotNull { story ->
+            val source = storage.metricFile(story.id).takeIf(File::exists) ?: return@mapNotNull null
+            FullBackupMetricFile(storyId = story.id, path = FullBackupPaths.metricPath(story.id), source = source)
+        }
 }
 
 private data class FullBackupChapterFile(
@@ -145,6 +164,12 @@ private data class FullBackupChapterFile(
     val chapterId: String,
     val chapterIndex: Int,
     val title: String,
+    val path: String,
+    val source: File,
+)
+
+private data class FullBackupMetricFile(
+    val storyId: String,
     val path: String,
     val source: File,
 )

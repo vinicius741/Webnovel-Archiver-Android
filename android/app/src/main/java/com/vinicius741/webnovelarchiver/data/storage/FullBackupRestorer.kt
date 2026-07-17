@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.data.backup.BackupInputLimits
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestValidation
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterFileIndex
+import com.vinicius741.webnovelarchiver.data.backup.RestoredMetricFileIndex
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
@@ -60,7 +61,8 @@ internal class FullBackupRestorer(
             val extracted = FullBackupZipExtractor.extract(zipFile, raw, restoreDir.usableSpace)
             val payload = readAndValidateManifest(raw)
             val chapterFiles = chapterFileIndex(payload)
-            verifyZipIndex(extracted.files, chapterFiles)
+            val metricFiles = metricFileIndex(payload)
+            verifyZipIndex(extracted.files, chapterFiles, metricFiles)
             val stories = buildStagedRoot(raw, staged, payload, chapterFiles)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
@@ -103,11 +105,30 @@ internal class FullBackupRestorer(
         }
     }
 
+    private fun metricFileIndex(payload: Map<String, Any>): List<RestoredMetricFileIndex> {
+        // metricFiles is optional (backups predating the Trends feature omit it). A missing or null
+        // entry yields an empty index — no metric entries to verify or stage.
+        val raw = payload["metricFiles"] ?: return emptyList()
+        val type = object : TypeToken<List<Map<String, Any?>>>() {}.type
+        val entries: List<Map<String, Any?>> = gson.fromJson(gson.toJson(raw), type) ?: return emptyList()
+        return entries.map { entry ->
+            RestoredMetricFileIndex(
+                storyId = entry["storyId"]?.toString().orEmpty(),
+                path = entry["path"]?.toString().orEmpty(),
+            )
+        }
+    }
+
     private fun verifyZipIndex(
         extractedFiles: Set<String>,
         chapterFiles: List<RestoredChapterFileIndex>,
+        metricFiles: List<RestoredMetricFileIndex>,
     ) {
-        val expected = chapterFiles.mapTo(mutableSetOf()) { it.path }.apply { add("manifest.json") }
+        val expected =
+            chapterFiles.mapTo(mutableSetOf()) { it.path }.apply {
+                add("manifest.json")
+                metricFiles.forEach { add(it.path) }
+            }
         check(extractedFiles == expected) {
             val unexpected = extractedFiles - expected
             val missing = expected - extractedFiles
@@ -133,6 +154,10 @@ internal class FullBackupRestorer(
                 gson.fromJson(gson.toJson(it), object : TypeToken<Map<String, Any>>() {}.type)
             } ?: payload
         File(raw, "novels").takeIf(File::exists)?.copyRecursively(File(staged, "novels").apply { mkdirs() }, overwrite = true)
+        // Trend history files extract under raw/metrics/<encoded>.json; copy the whole tree verbatim
+        // so restore preserves per-novel score/Patreon history. The commit step moves the entire
+        // staged root into place, and initializeStorageDirectories() recreates metrics/ if absent.
+        File(raw, "metrics").takeIf(File::exists)?.copyRecursively(File(staged, "metrics").apply { mkdirs() }, overwrite = true)
         File(staged, "epubs").mkdirs()
         stagingWriter.writeConfig(staged, config)
         FullBackupRestorePlanning.applyRestoredChapterFiles(stories, chapterFiles) { path ->

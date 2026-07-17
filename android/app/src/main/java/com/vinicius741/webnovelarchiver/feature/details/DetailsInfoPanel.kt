@@ -164,7 +164,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     // could not be fetched: a link-only card surfaces that the creator has a Patreon, instead of
     // silently showing nothing (which would be indistinguishable from having no Patreon).
     if (!story.patreonUrl.isNullOrBlank()) {
-        infoPanel.addView(buildPatreonStatsCard(story.patreonStats, story.patreonUrl))
+        infoPanel.addView(buildPatreonStatsCard(story.patreonStats, story.patreonUrl) { showTrends(story.id, FOCUS_PATREON_USD) })
     }
 
     addDetailsDescription(infoPanel, story)

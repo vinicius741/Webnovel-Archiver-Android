@@ -125,6 +125,9 @@ dependencies {
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     // ViewPager2 — swipe-between-tabs pager in the Library (closes the legacy RN PagerView parity gap).
     implementation 'androidx.viewpager2:viewpager2:1.1.0'
+    // MPAndroidChart — line charts on the per-novel Trends screen (score/Patreon over time). Only
+    // published on JitPack (see settings.gradle). v3.1.0 is the final release.
+    implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
     // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
     implementation 'androidx.window:window:1.4.0'

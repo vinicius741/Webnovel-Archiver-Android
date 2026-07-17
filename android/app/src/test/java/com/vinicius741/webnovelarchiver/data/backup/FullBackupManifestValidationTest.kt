@@ -101,6 +101,48 @@ class FullBackupManifestValidationTest {
         )
     }
 
+    @Test
+    fun metricFilesOptionalAndValidatedWhenPresent() {
+        // Absent key (backups predating the Trends feature) is accepted — restore yields empty history.
+        assertNull(FullBackupManifestValidation.validate(validManifest().minus("metricFiles")))
+        // A well-formed entry is accepted.
+        assertNull(
+            FullBackupManifestValidation.validate(
+                validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1", "path" to "metrics/story-1.json"))),
+            ),
+        )
+        // storyId not in library, malformed entry, disallowed path, and duplicates are each rejected.
+        assertEquals(
+            "Invalid full backup: malformed metric file index",
+            FullBackupManifestValidation.validate(
+                validManifest("metricFiles" to listOf(mapOf("storyId" to "missing-story", "path" to "metrics/missing-story.json"))),
+            ),
+        )
+        assertEquals(
+            "Invalid full backup: malformed metric file index",
+            FullBackupManifestValidation.validate(validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1")))),
+        )
+        assertEquals(
+            "Invalid full backup: malformed metric file index",
+            FullBackupManifestValidation.validate(
+                validManifest("metricFiles" to listOf(mapOf("storyId" to "story-1", "path" to "settings.json"))),
+            ),
+        )
+        val metricEntry = mapOf("storyId" to "story-1", "path" to "metrics/story-1.json")
+        // Two distinct stories sharing one path trips the duplicate-path check. The library has both
+        // ids so the "too many metric files" guard (size > library size) does not fire first.
+        val twoStoryLibrary = listOf(mapOf("id" to "story-1"), mapOf("id" to "story-2"))
+        assertEquals(
+            "Invalid full backup: duplicate metric paths",
+            FullBackupManifestValidation.validate(
+                validManifest(
+                    "library" to twoStoryLibrary,
+                    "metricFiles" to listOf(metricEntry, mapOf("storyId" to "story-2", "path" to "metrics/story-1.json")),
+                ),
+            ),
+        )
+    }
+
     private fun validManifest(vararg replacements: Pair<String, Any>): Map<String, Any> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",

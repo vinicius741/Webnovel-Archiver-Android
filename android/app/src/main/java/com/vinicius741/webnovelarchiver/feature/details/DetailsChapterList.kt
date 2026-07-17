@@ -56,6 +56,8 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     options += "Legacy EPUBs" to {
         if (isBusy) toast("Please wait for the current operation to finish") else showLegacyEpubs(story.id)
     }
+    // Pure navigation (no story mutation), so no busy guard is needed.
+    options += "Trends" to { showTrends(story.id, null) }
     options += "Apply Text Cleanup" to {
         if (isBusy) toast("Please wait for the current operation to finish") else applyCleanup(story)
     }

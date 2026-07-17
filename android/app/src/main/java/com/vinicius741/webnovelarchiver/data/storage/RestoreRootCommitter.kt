@@ -73,6 +73,7 @@ internal class RestoreRootCommitter(
     private fun initializeStorageDirectories() {
         storage.root.mkdirs()
         storage.storyDir.mkdirs()
+        storage.metricDir.mkdirs()
         storage.chapterRoot.mkdirs()
         storage.epubRoot.mkdirs()
         storage.backupRoot.mkdirs()

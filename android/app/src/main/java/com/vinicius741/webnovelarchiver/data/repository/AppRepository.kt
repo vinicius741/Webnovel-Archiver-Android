@@ -12,6 +12,8 @@ import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
+import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
@@ -297,6 +299,16 @@ class AppRepository private constructor(
     fun resolveAbsolutePath(path: String?): File? = requiredStorage.resolveAbsolutePath(path)
 
     suspend fun listEpubs(storyId: String): List<File> = withContext(ioDispatcher) { requiredStorage.listEpubs(storyId) }
+
+    suspend fun getMetricHistory(storyId: String): StoryMetricHistory =
+        withContext(ioDispatcher) { requiredStorage.getMetricHistory(storyId) }
+
+    suspend fun appendMetricSnapshot(
+        storyId: String,
+        snapshot: StoryMetricSnapshot,
+    ): Unit = withContext(ioDispatcher) { requiredStorage.appendMetricSnapshot(storyId, snapshot) }
+
+    suspend fun deleteMetricHistory(storyId: String): Unit = withContext(ioDispatcher) { requiredStorage.deleteMetricHistory(storyId) }
 
     suspend fun deleteEpubFile(
         storyId: String,

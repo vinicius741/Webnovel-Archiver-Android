@@ -23,4 +23,12 @@ class FullBackupPathsTest {
             FullBackupPaths.chapterPath("story/id", "chapter:8", 7),
         )
     }
+
+    @Test
+    fun metricPathEncodesStoryIdUnderMetricsDir() {
+        // One segment deep under metrics/, with the same encoding chapterPath uses for story ids, so
+        // a round-trip through restore reconstructs the on-disk metrics/<safeName(id)>.json layout.
+        assertEquals("metrics/story%2Fid.json", FullBackupPaths.metricPath("story/id"))
+        assertEquals("metrics/plain.json", FullBackupPaths.metricPath("plain"))
+    }
 }

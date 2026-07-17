@@ -17,6 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.scoreRow
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
 
 /** Centered story header — cover, title, author, source/archived chips, an optional score row, and
  *  a compact "Saved / Chapters" progress summary. Mirrors the RN `StoryHeader`; D5 collapsed the
@@ -82,10 +83,17 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     // Score (e.g. "4.5" with a star glyph). Rendered in the header so the rating is visible on the
     // details screen too, mirroring the library card — not only on the library list. The star is
     // enlarged (24dp vs the 16dp library card default) since the header has room to breathe and the
-    // rating is a focal point on this screen.
+    // rating is a focal point on this screen. Tapping the score opens the Trends screen focused on
+    // the score series (a contextual shortcut to the rating-over-time graph).
     story.score?.takeIf { it.isNotBlank() }?.let { score ->
         col.addView(
             scoreRow(score, iconSizeDp = 24).apply {
+                contentDescription = "Score $score. Tap to view trends."
+                isClickable = true
+                isFocusable = true
+                // Selectable-row ripple so the press gives feedback (the row is otherwise a bare layout).
+                background = selectableRipple(ThemeManager.colors.onSurface)
+                setOnClickListener { showTrends(story.id, FOCUS_SCORE) }
                 layoutParams =
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         topMargin = dp(Space.SM)

@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import java.text.NumberFormat
 import java.time.Instant
@@ -29,9 +30,10 @@ import kotlin.math.roundToLong
 
 /**
  * Patreon support snapshot for the creator behind a story. Sits below the primary action buttons
- * so it reads as supplementary context (not a call to action). The card itself is informational; the
- * trailing open-in-external glyph in the header is the only tap target and opens the creator's
- * Patreon page when [patreonUrl] is set, so the rest of the card stays non-interactive.
+ * so it reads as supplementary context (not a call to action). The card has two tap targets: the
+ * trailing open-in-external glyph in the header opens the creator's Patreon page when [patreonUrl]
+ * is set, and the stats body (when [stats] are present) opens the per-novel Trends screen via
+ * [onShowTrends] so the user can see members/earnings change over time.
  *
  * The card is rendered whenever the story has a [patreonUrl]. When [stats] are available they fill
  * the divider + two-number body + footer; when [stats] is null the card still appears as a plain
@@ -41,6 +43,7 @@ import kotlin.math.roundToLong
 internal fun ScreenHost.buildPatreonStatsCard(
     stats: PatreonStats?,
     patreonUrl: String?,
+    onShowTrends: () -> Unit,
 ): LinearLayout {
     val colors = ThemeManager.colors
     val clickable = !patreonUrl.isNullOrBlank()
@@ -102,12 +105,19 @@ internal fun ScreenHost.buildPatreonStatsCard(
         )
         if (stats != null) {
             addView(makeDivider(app))
-            // ---- Stats: two big numbers side by side ----
+            // ---- Stats: two big numbers side by side. Tapping the body opens the Patreon trends
+            // (members + monthly earnings over time). The header's open-external glyph still opens
+            // the creator's Patreon page, so the two tap targets stay distinct. ----
             addView(
                 LinearLayout(app).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(Space.XS), 0, dp(Space.SM))
+                    isClickable = true
+                    isFocusable = true
+                    background = selectableRipple(colors.onSurface)
+                    contentDescription = "Patreon stats. Tap to view trends."
+                    setOnClickListener { onShowTrends() }
                     addView(
                         buildPatreonStat(
                             if (stats.membersIsEstimated) "Est. paid members" else "Paid members",
@@ -129,7 +139,7 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 addView(
                     makeText(
                         app,
-                        "Updated ${formatPatreonDate(stats.updatedAt)} · per month",
+                        "Updated ${formatPatreonDate(stats.updatedAt)} · per month · tap for trends",
                         Type.BODY_SMALL,
                         colors.onSurfaceVariant,
                     ),

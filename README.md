@@ -16,6 +16,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Background Downloads** — Foreground service with persistent queue, bulk preflight, per-source concurrency, adaptive pacing, source-wide Cloudflare circuit breaking, `Retry-After` cooldowns, and automatic recovery.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both), live sample previews, and circuit-breaking for pathological user regex.
 - **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, persisted sort controls (including Patreon earnings/members), and archive snapshots.
+- **Trends** — Per-novel metric history captured on every sync (score, Patreon members, monthly earnings) and graphed over time on a Trends sub-screen reached from the detail page's score row, Patreon card, and overflow menu, with current-value/delta/range summaries and same-day coalescing + bounded retention.
 - **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
 - **Smart Updates** — New-chapter detection with intelligent merge and stale-EPUB marking.
 - **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
@@ -34,6 +35,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 | JSON | Gson 2.13 |
 | Async | Kotlin Coroutines 1.10 |
 | Images | Coil 2.7 |
+| Charts | MPAndroidChart 3.1 (trend graphs; JitPack) |
 | Logging | Timber 5 (debug-gated in release) |
 | Storage | File-based JSON via `AppStorage` / `AppRepository` (no Room/SQLite) |
 | TTS | Android TextToSpeech API + MediaSession |

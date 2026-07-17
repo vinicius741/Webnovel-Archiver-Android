@@ -20,6 +20,18 @@ class BackupInputLimitsTest {
     }
 
     @Test
+    fun allowlistAcceptsMetricTreeAlongsideNovels() {
+        // Per-story trend-history files live under metrics/<encoded-id>.json.
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("metrics", directory = true))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("metrics/story%2Fid.json", directory = false))
+        // Wrong extension, traversal, and overly-deep paths are rejected just like the novels/ tree.
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("metrics/story.json/nested.json", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("metrics/../escape.json", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("metrics/story.txt", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("metrics/", directory = false))
+    }
+
+    @Test
     fun streamingInputLimitStopsBeforeUnboundedRead() {
         val failure =
             assertThrows(IllegalStateException::class.java) {

@@ -129,6 +129,32 @@ data class PatreonStats(
     val membersIsEstimated: Boolean = false,
 )
 
+/**
+ * One point in a novel's metric history, captured at [capturedAt] during a sync. The score, chapter
+ * count, and publication status are captured on every sync. The Patreon fields are captured only
+ * when Patreon stats were actually refreshed for this sync — they stay `null` on batch "Follow
+ * Updates" syncs (which pass `refreshPatreonStats = false`) and on stories without a Patreon URL, so
+ * a `null` Patreon field reads as "not measured this sync" rather than "zero". New metrics (rating
+ * count, favorites, ranking, …) should be added as additional nullable fields so persisted history
+ * stays forward/backward-compatible without a format migration.
+ */
+data class StoryMetricSnapshot(
+    val capturedAt: Long = 0L,
+    val score: String? = null,
+    val totalChapters: Int = 0,
+    val publicationStatus: PublicationStatus = PublicationStatus.unknown,
+    val patreonPaidMembers: Int? = null,
+    val patreonMonthlyUsdCents: Long? = null,
+    val patreonAmountIsEstimated: Boolean = false,
+    val patreonMembersIsEstimated: Boolean = false,
+)
+
+/** All recorded [StoryMetricSnapshot]s for a single story, persisted to `metrics/<storyId>.json`. */
+data class StoryMetricHistory(
+    val storyId: String = "",
+    val snapshots: MutableList<StoryMetricSnapshot> = mutableListOf(),
+)
+
 data class Tab(
     val id: String = "",
     val name: String = "",

@@ -60,9 +60,14 @@ object BackupInputLimits {
         if (parts.any { it.isBlank() || it == "." || it == ".." }) return false
         if (normalized == "manifest.json") return !directory
         if (normalized == "novels") return directory
-        if (!normalized.startsWith("novels/")) return false
+        if (normalized == "metrics") return directory
+        if (!normalized.startsWith("novels/") && !normalized.startsWith("metrics/")) return false
         if (directory) return parts.size == 2 && parts[1].isNotBlank()
-        return parts.size == 3 && parts[1].isNotBlank() && parts[2].endsWith(".html", ignoreCase = true)
+        // novels/<story>/<chapter>.html or metrics/<story>.json — depth distinguishes the two trees.
+        return when {
+            normalized.startsWith("novels/") -> parts.size == 3 && parts[1].isNotBlank() && parts[2].endsWith(".html", ignoreCase = true)
+            else -> parts.size == 2 && parts[1].isNotBlank() && parts[1].endsWith(".json", ignoreCase = true)
+        }
     }
 
     fun readUtf8(

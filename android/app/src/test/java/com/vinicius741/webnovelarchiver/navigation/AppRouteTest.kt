@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.navigation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,6 +22,20 @@ class AppRouteTest {
             )
 
         routes.forEach { route -> assertEquals(route, AppRouteCodec.decode(AppRouteCodec.encode(route))) }
+    }
+
+    @Test
+    fun `trends route round trips with and without focus`() {
+        // No focus: single storyId argument; focus decodes back to null.
+        val noFocus = AppRoute.Trends("story:/1")
+        assertEquals(noFocus, AppRouteCodec.decode(AppRouteCodec.encode(noFocus)))
+
+        val withFocus = AppRoute.Trends("story:/1", "patreon_usd")
+        assertEquals(withFocus, AppRouteCodec.decode(AppRouteCodec.encode(withFocus)))
+
+        // Focus and no-focus variants of the same story must have distinct stable keys so view state
+        // (e.g. scroll-to-chart) is restored for the right variant after process death.
+        assertNotEquals(noFocus.stableKey, withFocus.stableKey)
     }
 
     @Test

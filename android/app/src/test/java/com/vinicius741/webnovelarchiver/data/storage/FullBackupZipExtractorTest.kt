@@ -45,6 +45,25 @@ class FullBackupZipExtractorTest {
         assertEquals(false, File(output, "settings.json").exists())
     }
 
+    @Test
+    fun extractsMetricHistoryFilesAlongsideChapters() {
+        val zip =
+            zipOf(
+                "manifest.json" to "{}",
+                "novels/story/chapter.html" to "chapter",
+                "metrics/story.json" to """{"snapshots":[]}""",
+            )
+        val output = File(directory, "output")
+
+        val result = FullBackupZipExtractor.extract(zip, output, Long.MAX_VALUE)
+
+        assertEquals(
+            setOf("manifest.json", "novels/story/chapter.html", "metrics/story.json"),
+            result.files,
+        )
+        assertEquals("""{"snapshots":[]}""", File(output, "metrics/story.json").readText())
+    }
+
     private fun zipOf(vararg entries: Pair<String, String>): File =
         File(directory, "backup_${System.nanoTime()}.zip").also { file ->
             ZipOutputStream(file.outputStream()).use { zip ->

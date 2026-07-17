@@ -9,6 +9,14 @@ data class RestoredChapterFileIndex(
     val path: String,
 )
 
+/** A trend-history file listed in a full-backup manifest. Unlike [RestoredChapterFileIndex], the file
+ *  is an opaque JSON blob restored verbatim into `metrics/` — it does not mutate any `Story` field, so
+ *  there is no `apply…` step parallel to [FullBackupRestorePlanning.applyRestoredChapterFiles]. */
+data class RestoredMetricFileIndex(
+    val storyId: String,
+    val path: String,
+)
+
 object FullBackupRestorePlanning {
     fun scrubTransientState(stories: MutableList<Story>): MutableList<Story> {
         stories.forEach { story ->

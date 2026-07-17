@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.sync
 
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
@@ -9,6 +10,7 @@ import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.ui.size
+import timber.log.Timber
 
 enum class StorySyncMode {
     Default,
@@ -142,6 +144,22 @@ class StorySyncEngine(
                 val current = storage.getStory(storyId)
                 val merged = StorySyncMergePlanning.foldConcurrentChanges(story, current, provider)
                 storage.addOrUpdateStory(merged)
+                // Record a trend snapshot inside the same storage transaction so a concurrent sync
+                // can't interleave two history writes. Patreon fields are only filled when this sync
+                // actually fetched fresh Patreon stats (`refreshedPatreonStats != null`); batch
+                // "Follow Updates" syncs pass `refreshPatreonStats = false` and so record Patreon as
+                // null rather than re-stamping the carried-forward value as if it were measured now.
+                //
+                // Trend capture is best-effort: a fenced/corrupt metrics file (e.g. an IoFailure
+                // health issue, or a forward-compat UnsupportedSchema from a future app version) must
+                // not fail the story sync — the story itself is already persisted above, and failing
+                // here would skip the post-sync auto-download and surface a spurious "Sync failed".
+                runCatching {
+                    storage.appendMetricSnapshot(
+                        merged.id,
+                        MetricSnapshotPlanning.fromStory(merged, patreonRefreshed = refreshedPatreonStats != null, capturedAt = syncedAt),
+                    )
+                }.onFailure { Timber.w(it, "Failed to record metric snapshot for %s", merged.id) }
                 merged
             }
         return persisted

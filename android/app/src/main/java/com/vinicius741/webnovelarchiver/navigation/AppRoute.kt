@@ -31,6 +31,16 @@ sealed class AppRoute(
         val storyId: String,
     ) : AppRoute("legacy_epubs")
 
+    /**
+     * Per-novel metric Trends sub-screen. [focus] optionally opens the screen scrolled/emphasized to
+     * a particular series (`"score"`, `"patreon_members"`, `"patreon_usd"`); `null` opens the generic
+     * view (used by the overflow-menu entry).
+     */
+    data class Trends(
+        val storyId: String,
+        val focus: String? = null,
+    ) : AppRoute("trends")
+
     data class Reader(
         val storyId: String,
         val chapterId: String,
@@ -64,6 +74,7 @@ sealed class AppRoute(
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
                 is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
+                is Trends -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${focus ?: ""}"
                 else -> name
             }
 }
@@ -78,6 +89,7 @@ object AppRouteCodec {
                 is AppRoute.Details -> listOf(route.storyId)
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
+                is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
                 is AppRoute.LibrarySelection -> route.selectedStoryIds.sorted()
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
                 else -> emptyList()
@@ -95,6 +107,7 @@ object AppRouteCodec {
             "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
+            "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
             "queue" -> AppRoute.Queue
             "updates" -> AppRoute.Updates
