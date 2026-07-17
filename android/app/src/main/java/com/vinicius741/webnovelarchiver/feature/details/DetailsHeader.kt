@@ -23,7 +23,7 @@ import com.vinicius741.webnovelarchiver.ui.scoreRow
  *  three duplicate stat pills (Score/Chapters/Saved) — the chapter total is implied by the list —
  *  into one progress summary. The score is now rendered directly in the header via [scoreRow],
  *  matching the library card, instead of only appearing as a tag. */
-internal fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
+internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     val col =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -93,9 +93,15 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
             },
         )
     }
-    if (story.totalChapters > 0) {
+    val progressSummary =
+        if (story.totalChapters > 0) {
+            makeProgressSummary(app, story.downloadedChapters, story.totalChapters)
+        } else {
+            null
+        }
+    if (progressSummary != null) {
         col.addView(
-            makeProgressSummary(app, story.downloadedChapters, story.totalChapters).apply {
+            progressSummary.apply {
                 layoutParams =
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         topMargin = dp(Space.XS)
@@ -104,5 +110,11 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): LinearLayout {
             },
         )
     }
-    return col
+    return DetailsHeader(col, progressSummary)
 }
+
+/** Header view plus the stable progress-summary child patched by live download events. */
+internal data class DetailsHeader(
+    val view: LinearLayout,
+    val progressSummary: View?,
+)

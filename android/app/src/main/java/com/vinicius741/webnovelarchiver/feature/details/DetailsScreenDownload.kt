@@ -24,6 +24,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeProgress
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.updateProgressSummary
 
 /** Avoid replacing the RecyclerView hierarchy while a touch/fling gesture is still active. */
 internal const val DETAILS_SCROLL_RETRY_MS = 250L
@@ -39,8 +40,8 @@ internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownl
 
 /**
  * Handles a Details download event *without* rebuilding the screen: reads the repository's coherent
- * queue + story snapshots, then patches the chapter adapter (per-row status flip to
- * spinner/dot/"Available Offline") and swaps the banner slot's contents in place. This replaces the old
+ * queue + story snapshots, then patches the header summary, chapter adapter (per-row status flip to
+ * spinner/dot/"Available Offline"), and banner slot in place. This replaces the old
  * `showDetails(storyId)` full-screen re-render — tearing down the whole view tree every ~1.2s while
  * downloading caused a visible flicker (blank frame while the new tree inflated, then scroll
  * snapped back and was restored).
@@ -55,6 +56,7 @@ internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownl
  */
 internal fun ScreenHost.refreshDetailsDownload(
     storyId: String,
+    headerProgressSummary: View?,
     bannerSlot: ViewGroup?,
     downloadActionSlot: LinearLayout?,
     isBusy: Boolean,
@@ -65,6 +67,9 @@ internal fun ScreenHost.refreshDetailsDownload(
     val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
 
+    headerProgressSummary?.let {
+        updateProgressSummary(it, story.downloadedChapters, story.totalChapters)
+    }
     downloadActionSlot?.let { renderDetailsDownloadAction(it, story, summary, isBusy) }
 
     // Patch the chapter rows in place via the adapter's update(), which reuses view holders

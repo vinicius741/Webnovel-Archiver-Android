@@ -58,6 +58,8 @@ class ChapterListAdapter(
     private var query: String = "",
     private var filter: String = "all",
     private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap(),
+    private val chipsContainer: ViewGroup,
+    private val onPick: (String) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     init {
         // U1: stable ids let RecyclerView track rows across DiffUtil updates (and animations) by
@@ -317,7 +319,9 @@ class ChapterListAdapter(
             ),
         )
         holder.bookmark.contentDescription = if (isBookmarked) "Clear bookmark" else "Bookmark chapter"
-        holder.bookmark.setOnClickListener { host.toggleChapterBookmark(story, chapter, list, query, filter) }
+        holder.bookmark.setOnClickListener {
+            host.toggleChapterBookmark(story, chapter, list, chipsContainer, filter, query, onPick)
+        }
     }
 
     /** U1: replace the leading child of the fixed [statusSlot] with the view for [liveStatus]. Cheaper

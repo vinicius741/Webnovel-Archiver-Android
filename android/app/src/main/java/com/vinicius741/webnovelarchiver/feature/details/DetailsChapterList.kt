@@ -79,6 +79,8 @@ internal fun ScreenHost.renderChapterList(
     list: androidx.recyclerview.widget.RecyclerView,
     query: String,
     filter: String,
+    chipsContainer: ViewGroup,
+    onPick: (String) -> Unit,
     chapterStatuses: Map<String, com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus> = emptyMap(),
     header: View? = null,
 ) {
@@ -102,7 +104,8 @@ internal fun ScreenHost.renderChapterList(
         return
     }
     val initialChapters = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else displayedChapters
-    val chapterAdapter = ChapterListAdapter(this, initialChapters, story, isEmptyState, list, query, filter, chapterStatuses)
+    val chapterAdapter =
+        ChapterListAdapter(this, initialChapters, story, isEmptyState, list, query, filter, chapterStatuses, chipsContainer, onPick)
     list.adapter =
         if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
 }
@@ -132,38 +135,54 @@ internal fun filterDetailsChapters(
 }
 
 /**
+ * Number of chapters the "From Bookmark" filter would show — i.e. chapters from the bookmarked
+ * one onward (inclusive of the bookmark itself). Returns 0 when there is no valid bookmark, which
+ * the chip group uses to disable the chip and skip the "(N)" suffix.
+ */
+internal fun fromBookmarkCount(story: Story): Int {
+    val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
+    return if (bookmarkIndex < 0) 0 else story.chapters.size - bookmarkIndex
+}
+
+/**
  * Toggles the bookmark on [chapter] for [story] from the per-row bookmark button (which replaced the
- * old three-dot chapter overflow). Persists the new [Story.lastReadChapterId] and re-renders the list
- * so the tapped row's icon flips between the empty outline and the filled, primary-tinted bookmark.
+ * old three-dot chapter overflow). Persists the new [Story.lastReadChapterId], rebuilds the filter
+ * chips so the "From Bookmark (N)" count and enabled state stay in sync, and re-renders the list so
+ * the tapped row's icon flips between the empty outline and the filled, primary-tinted bookmark.
  */
 internal fun ScreenHost.toggleChapterBookmark(
     story: Story,
     chapter: Chapter,
     list: androidx.recyclerview.widget.RecyclerView,
+    chipsContainer: ViewGroup,
+    currentFilter: String,
     query: String,
-    filter: String,
+    onPick: (String) -> Unit,
 ) {
     scope.launch {
         val updated = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
-        renderChapterList(updated, list, query, filter)
+        renderFilterChips(chipsContainer, currentFilter, fromBookmarkCount(updated), onPick)
+        renderChapterList(updated, list, query, currentFilter, chipsContainer, onPick)
     }
 }
 
 /**
  * Rebuilds the filter chip group so the active mode re-highlights on every pick. The "From Bookmark"
- * chip is disabled when there is no valid bookmark, mirroring RN's `disabled={!hasBookmark}`.
+ * chip shows a "(N)" suffix with the number of chapters from the bookmark onward, and is disabled
+ * when there is no valid bookmark ([fromBookmarkCount] == 0), mirroring RN's `disabled={!hasBookmark}`.
  */
 internal fun ScreenHost.renderFilterChips(
     container: ViewGroup,
     current: String,
-    hasBookmark: Boolean,
+    fromBookmarkCount: Int,
     onPick: (String) -> Unit,
 ) {
     container.removeAllViews()
     container.addView(makeChip(app, "All", current == "all") { onPick("all") })
     container.addView(makeChip(app, "Downloaded", current == "hideNonDownloaded") { onPick("hideNonDownloaded") })
-    val bookmarkChip = makeChip(app, "From Bookmark", current == "hideAboveBookmark") { onPick("hideAboveBookmark") }
-    if (!hasBookmark) {
+    val bookmarkLabel = if (fromBookmarkCount > 0) "From Bookmark ($fromBookmarkCount)" else "From Bookmark"
+    val bookmarkChip = makeChip(app, bookmarkLabel, current == "hideAboveBookmark") { onPick("hideAboveBookmark") }
+    if (fromBookmarkCount == 0) {
         bookmarkChip.isEnabled = false
         bookmarkChip.alpha = 0.4f
     }

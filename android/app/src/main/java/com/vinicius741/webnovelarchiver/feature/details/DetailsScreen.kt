@@ -56,9 +56,10 @@ internal fun ScreenHost.showDetails(storyId: String) {
     val jobsForStory = repository.queue().filter { it.storyId == story.id }
     val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
-    // Stable references captured into the refresh closure below so the loop patches the banner
-    // and download action in place even when the header is scrolled off-screen (the slots detach
-    // from the window but the references stay valid). Assigned synchronously inside screen { ... }.
+    // Stable references captured into the refresh closure below so the loop patches the header
+    // progress, banner, and download action in place even when the header is scrolled off-screen
+    // (the views detach but the references stay valid). Assigned synchronously inside screen { ... }.
+    var headerProgressSummary: View? = null
     var bannerSlot: ViewGroup? = null
     var downloadActionSlot: LinearLayout? = null
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
@@ -75,6 +76,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     ) {
         val panel = buildDetailsInfoPanel(story, operation, downloadSummary)
         val infoPanel = panel.view
+        headerProgressSummary = panel.headerProgressSummary
         bannerSlot = panel.bannerSlot
         downloadActionSlot = panel.downloadActionSlot
         // Direct ref for setStoryOperation in-place ticks (cleanup/EPUB/sync). Must not be a tree
@@ -112,18 +114,18 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 null
             }
 
-        val hasBookmark = story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
         var chapterFilter = repository.getChapterFilterSettings().filterMode
         var chapterQuery = ""
 
         // Chips are rebuilt on every pick so the active one re-highlights (the original bug was
-        // that chips were built once and never reflected the tapped selection).
+        // that chips were built once and never reflected the tapped selection). The "From Bookmark"
+        // chip also carries the live (N) count of chapters remaining from the bookmark.
         var pick: (String) -> Unit = {}
         pick = { mode ->
             chapterFilter = mode
             scope.launch { repository.saveChapterFilterSettings(ChapterFilterSettings(mode)) }
-            renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
-            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
+            renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
+            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chipsContainer, pick, chapterStatuses, listHeader)
         }
         search.addTextChangedListener(
             object : TextWatcher {
@@ -141,14 +143,14 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     count: Int,
                 ) {
                     chapterQuery = s?.toString().orEmpty()
-                    renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
+                    renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chipsContainer, pick, chapterStatuses, listHeader)
                 }
 
                 override fun afterTextChanged(s: Editable?) = Unit
             },
         )
-        renderFilterChips(chipsContainer, chapterFilter, hasBookmark, pick)
-        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chapterStatuses, listHeader)
+        renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
+        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chipsContainer, pick, chapterStatuses, listHeader)
 
         if (layout.isTwoPane) {
             // Two-pane: info scrolls on the left, chapter list scrolls on the right. The info
@@ -181,7 +183,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }
     }
-    observeDetailsDownload(storyId, bannerSlot, downloadActionSlot, isBusy)
+    observeDetailsDownload(storyId, headerProgressSummary, bannerSlot, downloadActionSlot, isBusy)
 }
 
 /**
@@ -223,6 +225,7 @@ private fun ScreenHost.buildCompactListHeader(
  */
 private fun ScreenHost.observeDetailsDownload(
     storyId: String,
+    headerProgressSummary: View?,
     bannerSlot: ViewGroup?,
     downloadActionSlot: LinearLayout?,
     isBusy: Boolean,
@@ -248,7 +251,14 @@ private fun ScreenHost.observeDetailsDownload(
                     patchPosted = false
                     val snapshot = pendingSnapshot
                     pendingSnapshot = null
-                    refreshDetailsDownload(storyId, bannerSlot, downloadActionSlot, isBusy, snapshot)
+                    refreshDetailsDownload(
+                        storyId,
+                        headerProgressSummary,
+                        bannerSlot,
+                        downloadActionSlot,
+                        isBusy,
+                        snapshot,
+                    )
                 }
             }
         handler.post(patch)

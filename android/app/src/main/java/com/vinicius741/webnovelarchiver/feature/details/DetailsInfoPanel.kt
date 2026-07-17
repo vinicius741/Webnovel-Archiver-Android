@@ -37,7 +37,7 @@ import com.vinicius741.webnovelarchiver.ui.truncateDescription
  * Info-panel builder for the Details screen (Maintainability M1: split out of DetailsScreen.kt).
  * Assembles the single vertical column above the chapter list: header, primary actions (sync /
  * download / generate EPUB / read EPUB), the live download banner slot, Patreon card, expandable
- * description, and tags. Returns the panel plus the two stable slots the download-refresh loop in
+ * description, and tags. Returns the panel plus the stable views the download-refresh loop in
  * [showDetails] patches in place after a progress event.
  *
  * @param operation the in-flight story operation, if any (drives the "Syncing..." / "Generating..."
@@ -51,7 +51,8 @@ internal fun ScreenHost.buildDetailsInfoPanel(
 ): DetailsInfoPanel {
     val isBusy = operation != null
     val infoPanel = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    infoPanel.addView(buildDetailsHeader(story))
+    val header = buildDetailsHeader(story)
+    infoPanel.addView(header.view)
 
     // Mutable slots the caller patches after download / story-operation progress events; non-null
     // only when rendered.
@@ -169,7 +170,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     addDetailsDescription(infoPanel, story)
     addDetailsTags(infoPanel, story)
 
-    return DetailsInfoPanel(infoPanel, bannerSlot, downloadActionSlot, operationSlot)
+    return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot)
 }
 
 /**
@@ -186,9 +187,11 @@ private fun makeStoryOperationSlot(
         renderStoryOperationProgress(this, operation)
     }
 
-/** Result of [buildDetailsInfoPanel]: the panel plus the stable slots the refresh loop patches. */
+/** Result of [buildDetailsInfoPanel]: the panel plus the stable views the refresh loop patches. */
 internal data class DetailsInfoPanel(
     val view: LinearLayout,
+    /** Header's downloaded / total summary, patched as each chapter finishes. */
+    val headerProgressSummary: android.view.View?,
     /** Live download banner slot, non-null only when the banner is shown. */
     val bannerSlot: LinearLayout?,
     /** "Download Remaining" action slot, non-null only when downloads can be queued. */
