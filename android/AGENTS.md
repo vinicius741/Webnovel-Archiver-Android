@@ -77,6 +77,7 @@ Tokens: `library`, `queue` (download manager), `settings`, `notifications`, `upd
 
 - No-arg screens (`library`, `queue`, `settings`, `notifications`, `updates`, `addstory`) need nothing else.
 - `reader` and `details` auto-pick the first story in the persisted library (and the first chapter for `reader`); supply `--es dev_start_story <id>` and (reader only) `--es dev_start_chapter <id>` to target a specific one. If the library is empty or the ids don't resolve, the app falls back to the normal library start rather than rendering a blank screen.
+- To discover ids or open a specific novel/chapter without hand-editing the `am start` line, use `scripts/dev_library.sh`: `list`/filter (`--status`, `--source`, `--tag`, `--jq '<expr>'`, …) the installed novels; `open <row|id|title> [--chapter <row|id|title>]` cold-starts onto that novel's details or that chapter's reader (add `--rebuild` to build+install+open in one shot, `--dry-run` to preview the resolved ids). It is emulator-only and fails closed on a phone serial.
 - The dev target takes precedence over browser-import and TTS-resume, so it reliably lands where asked.
 
 Shorthand — `scripts/redeploy.sh <token>` rebuilds and relaunches straight into the screen:

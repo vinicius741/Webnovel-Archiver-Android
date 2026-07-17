@@ -6,6 +6,12 @@
 #   The optional arg is a debug-only intent extra (see android/AGENTS.md "Dev launch screen")
 #   that cold-starts the app directly into a screen — e.g. `reader`, `queue`, `settings`,
 #   `updates`, `details`, `addstory`, `library`. Omit it for the normal library start.
+#
+#   To land on a SPECIFIC novel/chapter after the rebuild, set env vars (the values
+#   are forwarded as `--es dev_start_story` / `--es dev_start_chapter`):
+#     REDEPLOY_STORY_ID=<id> scripts/redeploy.sh reader
+#     REDEPLOY_STORY_ID=<id> REDEPLOY_CHAPTER_ID=<id> scripts/redeploy.sh reader
+#   `scripts/dev_library.sh open <ref> [--chapter <cref>] --rebuild` sets these for you.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -66,10 +72,14 @@ fi
 
 # Optional debug-only "dev launch screen" (android/AGENTS.md "Dev launch screen"): cold-start the
 # app directly into a target screen via an intent extra. No-arg invocation is unchanged.
+# REDEPLOY_STORY_ID / REDEPLOY_CHAPTER_ID (set by scripts/dev_library.sh open --rebuild) forward
+# a specific novel/chapter so a rebuild can land straight on it.
 DEV_START_ARGS=()
 if [ $# -ge 1 ] && [ -n "$1" ]; then
   DEV_START_ARGS+=(--es dev_start_screen "$1")
 fi
+[ -n "${REDEPLOY_STORY_ID:-}" ]   && DEV_START_ARGS+=(--es dev_start_story "$REDEPLOY_STORY_ID")
+[ -n "${REDEPLOY_CHAPTER_ID:-}" ] && DEV_START_ARGS+=(--es dev_start_chapter "$REDEPLOY_CHAPTER_ID")
 
 echo "▸ Launching $PKG on $EMULATOR_SERIAL"
 # force-stop first so the app cold-starts with the new code (no stale process)
