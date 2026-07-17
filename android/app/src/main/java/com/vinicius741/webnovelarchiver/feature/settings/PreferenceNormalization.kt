@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutPlanning
 object PreferenceNormalization {
     private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark")
     private val foldLayoutModes = setOf("auto", "cover", "inner")
+
     /** Allowed Library sort option keys — mirrors the Sort dialog option list in LibraryFilters.
      *  Includes the legacy "updated" alias so old persisted values normalize to "lastUpdated". */
     private val librarySortOptions =

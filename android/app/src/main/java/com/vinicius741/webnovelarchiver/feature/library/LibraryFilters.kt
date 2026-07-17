@@ -87,8 +87,7 @@ internal fun ScreenHost.makeLibraryFilters(
 
     fun sortChipLabel(): String = sortOptionLabel(currentSortOption) + if (currentSortAscending) " ↑" else " ↓"
 
-    fun sortChipIconRes(): Int =
-        if (currentSortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
+    fun sortChipIconRes(): Int = if (currentSortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
 
     // L2: a labeled chip communicates the active sort + direction instead of a bare, stateless icon.
     val sortIconView =

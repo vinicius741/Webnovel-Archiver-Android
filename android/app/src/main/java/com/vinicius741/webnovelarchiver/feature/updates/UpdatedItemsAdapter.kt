@@ -10,7 +10,6 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -122,10 +121,11 @@ internal class UpdatedItemsAdapter(
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams =
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ).apply { topMargin = context.dp(Space.MD) }
+                    LinearLayout
+                        .LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ).apply { topMargin = context.dp(Space.MD) }
             }
         val card =
             makeCard(context).apply {
@@ -133,10 +133,11 @@ internal class UpdatedItemsAdapter(
                 addView(header)
                 addView(chaptersContainer)
                 layoutParams =
-                    RecyclerView.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ).apply { topMargin = context.dp(Space.MD) }
+                    RecyclerView
+                        .LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ).apply { topMargin = context.dp(Space.MD) }
             }
         return GroupHolder(card, title, author, open, chaptersContainer)
     }

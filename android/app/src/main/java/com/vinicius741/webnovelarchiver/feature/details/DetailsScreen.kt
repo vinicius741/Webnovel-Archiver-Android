@@ -143,7 +143,16 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     count: Int,
                 ) {
                     chapterQuery = s?.toString().orEmpty()
-                    renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chipsContainer, pick, chapterStatuses, listHeader)
+                    renderChapterList(
+                        story,
+                        chaptersContainer,
+                        chapterQuery,
+                        chapterFilter,
+                        chipsContainer,
+                        pick,
+                        chapterStatuses,
+                        listHeader,
+                    )
                 }
 
                 override fun afterTextChanged(s: Editable?) = Unit

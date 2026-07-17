@@ -116,7 +116,10 @@ internal fun ScreenHost.showLibrary() {
         var sortOption = persistedSort.librarySortOption.ifBlank { "lastUpdated" }
         var sortAscending = persistedSort.librarySortAscending
 
-        fun persistSort(option: String, ascending: Boolean) {
+        fun persistSort(
+            option: String,
+            ascending: Boolean,
+        ) {
             val display = repository.getDisplayPreferences()
             if (display.librarySortOption != option || display.librarySortAscending != ascending) {
                 scope.launch {
