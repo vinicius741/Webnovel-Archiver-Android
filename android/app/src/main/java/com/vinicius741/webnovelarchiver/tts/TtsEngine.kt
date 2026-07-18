@@ -46,7 +46,17 @@ class TtsEngine(
         } else {
             TtsPlaybackPreparer(storage)
         }
-    private val sessionStore = TtsSessionStore(storage)
+
+    // The store MUST share the same owner as the preparer's read path. When a repository is present
+    // the preparer reads the in-memory session cache, so writes route through the repository too
+    // (disk + cache in one call) — otherwise a pause updates only disk and resume reads a stale
+    // cache, silently no-op'ing play-after-pause.
+    private val sessionStore =
+        if (repository != null) {
+            TtsSessionStore(repository)
+        } else {
+            TtsSessionStore(storage)
+        }
     private var tts: TextToSpeech? = null
     private var ttsInitialized = false
     private var pendingSpeakOnInit = false
@@ -210,7 +220,14 @@ class TtsEngine(
                     awaitRepositoryReady()
                     preparer.resume()
                 }.onFailure { Timber.e(it, "TTS session restore failed") }
-                    .getOrNull() ?: return@launch
+                    .getOrNull() ?: run {
+                    // Logging (not erroring) here: an empty/stale persisted session is a valid state
+                    // (fresh install, or the user stopped playback). But it is also the symptom of a
+                    // read/write divergence in session persistence, so make the no-op visible rather
+                    // than failing silently as it did before.
+                    Timber.w("TTS resume skipped: no resumable persisted session")
+                    return@launch
+                }
             stateMutex.withLock {
                 if (request != commandVersion.get()) return@withLock
                 startPreparedPlaybackLocked(prepared)

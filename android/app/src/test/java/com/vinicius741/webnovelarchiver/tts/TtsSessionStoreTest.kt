@@ -48,11 +48,11 @@ class TtsSessionStoreTest {
         val saved = mutableListOf<TtsSession>()
         var clearCount = 0
 
-        override fun save(session: TtsSession) {
+        override suspend fun save(session: TtsSession) {
             saved += session
         }
 
-        override fun clear() {
+        override suspend fun clear() {
             clearCount += 1
         }
     }
