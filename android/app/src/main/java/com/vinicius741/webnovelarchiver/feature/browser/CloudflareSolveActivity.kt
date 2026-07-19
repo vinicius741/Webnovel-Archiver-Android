@@ -17,7 +17,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
@@ -74,6 +76,24 @@ class CloudflareSolveActivity : AppCompatActivity() {
                 setNavigationContentDescription("Cancel")
                 setNavigationOnClickListener { finish() }
             }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val safeInsets =
+                insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() or
+                        WindowInsetsCompat.Type.displayCutout(),
+                )
+            // This activity draws edge to edge. Keep the toolbar background behind the status bar
+            // while moving its controls below the clock/cutout, and keep the WebView clear of the
+            // navigation/gesture area at the other edges.
+            toolbar.setPadding(
+                toolbar.paddingLeft,
+                safeInsets.top,
+                toolbar.paddingRight,
+                toolbar.paddingBottom,
+            )
+            view.setPadding(safeInsets.left, 0, safeInsets.right, safeInsets.bottom)
+            insets
+        }
         root.addView(
             toolbar,
             LinearLayout.LayoutParams(
