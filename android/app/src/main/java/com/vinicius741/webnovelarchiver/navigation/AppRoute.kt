@@ -64,6 +64,8 @@ sealed class AppRoute(
 
     data object CleanupRules : AppRoute("cleanup_rules")
 
+    data object DataBackup : AppRoute("data_backup")
+
     /** An operation progress surface is intentionally not restored after process death. */
     data object Working : AppRoute("working")
 
@@ -103,12 +105,6 @@ object AppRouteCodec {
         return when (parts.firstOrNull()) {
             "library" -> AppRoute.Library
             "add_story" -> AppRoute.AddStory
-            "library_selection" -> AppRoute.LibrarySelection(arguments.toSet())
-            "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
-            "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
-            "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
-            "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
-            "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
             "queue" -> AppRoute.Queue
             "updates" -> AppRoute.Updates
             "update_follow_selection" -> AppRoute.UpdateFollowSelection
@@ -118,10 +114,24 @@ object AppRouteCodec {
             "tts_settings" -> AppRoute.TtsSettings
             "tabs" -> AppRoute.Tabs
             "cleanup_rules" -> AppRoute.CleanupRules
+            "data_backup" -> AppRoute.DataBackup
             "working" -> AppRoute.Working
-            else -> null
+            // Argument-bearing routes resolve in a helper so this `when` stays under detekt's
+            // cyclomatic-complexity budget as the route table grows.
+            else -> decodeRouteWithArguments(parts.firstOrNull(), arguments)
         }
     }
+
+    private fun decodeRouteWithArguments(name: String?, arguments: List<String>): AppRoute? =
+        when (name) {
+            "library_selection" -> AppRoute.LibrarySelection(arguments.toSet())
+            "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
+            "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
+            "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
+            "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
+            "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
+            else -> null
+        }
 
     private fun hexEncode(value: String): String =
         value.encodeToByteArray().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }

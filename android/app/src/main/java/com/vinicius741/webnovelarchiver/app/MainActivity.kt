@@ -37,6 +37,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
+import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
@@ -143,7 +144,7 @@ class MainActivity :
             uri ?: return@registerForActivityResult
             scope.launch {
                 toast(repository.importBackupUri(uri))
-                showSettings()
+                showDataBackup()
             }
         }
 
@@ -317,6 +318,7 @@ class MainActivity :
             AppRoute.TtsSettings -> showTtsSettings()
             AppRoute.Tabs -> showTabs()
             AppRoute.CleanupRules -> showCleanupRules()
+            AppRoute.DataBackup -> showDataBackup()
             AppRoute.Working -> showLibrary()
         }
     }

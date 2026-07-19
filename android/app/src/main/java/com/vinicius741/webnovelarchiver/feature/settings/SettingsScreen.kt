@@ -13,7 +13,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
 import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
@@ -107,22 +106,94 @@ internal fun ScreenHost.showSettings() {
         // not a global Cover/Inner toggle. foldLayoutMode remains in DisplayPreferences for backup
         // compatibility but is intentionally not exposed here — nothing in the EPUB engine reads it.
         divider()
-        section("Notifications")
+        section("Reading & Audio")
+        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
+        settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
+        divider()
+        // Operational destinations live off the Library top bar (Downloads) or are promoted here as
+        // ungrouped rows without their own noisy single-row section header.
         settingRow(R.drawable.wna_notifications, "Notifications", "Manage downloads and text-to-speech alerts") {
             showNotifications()
         }
-        divider()
-        section("Downloads")
-        settingRow(R.drawable.wna_list, "Download Manager", "View and manage active downloads") { showQueue() }
-        settingRow(R.drawable.wna_download, "Download Settings", "Global defaults and per-source overrides") { showDownloadSettings() }
-        divider()
-        section("Text To Speech")
-        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
-        divider()
-        section("Library Organization")
         settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
+        // Storage issues surface as a marker on the title so the row still draws attention without
+        // permanently occupying its own slot in the main list.
+        val storageHealth = repository.getStorageHealth()
+        val dataBackupTitle = if (storageHealth.requiresUserAttention) "Data & Backup •" else "Data & Backup"
+        settingRow(R.drawable.wna_folder, dataBackupTitle, "Backups, source access, and storage tools") {
+            showDataBackup()
+        }
+        // Width cap: on large screens, constrain this content LinearLayout and center it within the
+        // ScrollView so Settings doesn't stretch edge-to-edge (expanded → 840dp, medium → 720dp).
+        // No-op on compact widths where the cap exceeds the screen.
+        //
+        // This block runs inside `screen(...)`'s content builder, where `this` is the content
+        // LinearLayout *before* it is added to its ScrollView parent. At that point the view has no
+        // layout params yet (layoutParams == null), so reading/casting them NPEs. We instead set fresh
+        // FrameLayout.LayoutParams (the ScrollView is a FrameLayout) with a fixed width and centered
+        // gravity; the scaffold assigns exactly these params when it wraps content in the ScrollView.
+        if (layout.widthClass != com.vinicius741.webnovelarchiver.ui.layout.WidthClass.COMPACT) {
+            val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
+            layoutParams =
+                android.widget.FrameLayout.LayoutParams(
+                    context.dp(contentMaxWidthDp),
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                    android.view.Gravity.CENTER_HORIZONTAL,
+                )
+        }
+    }
+}
+
+/**
+ * Aggregated home for the heavy, rarely-used action rows that previously cluttered the main Settings
+ * screen: backup/restore (JSON + ZIP), source-session maintenance, storage notices, and destructive
+ * reset. Lifted verbatim from the old Settings body; only the parent screen changed.
+ */
+internal fun ScreenHost.showDataBackup() {
+    screen(route = AppRoute.DataBackup, title = "Data & Backup", onBack = { showSettings() }, scrollable = true) {
+        section("Backup")
+        // The host-owned state prevents concurrent exports and survives configuration re-renders.
+        // Each controller is captured via a nullable holder so the click lambda can update its row.
+        var exportController: com.vinicius741.webnovelarchiver.ui.SettingRowLoadingController? = null
+        settingRowWithLoading(
+            R.drawable.wna_share,
+            "Export Backup",
+            "Export library metadata and tabs to a JSON file",
+            loading = backupExportState.activeKind == BackupExportKind.JSON,
+        ) {
+            if (backupExportState.activeKind == null) {
+                backupExportState.activeKind = BackupExportKind.JSON
+                exportController?.setLoading(true)
+                exportAndShare({ repository.exportBackup() }) {
+                    backupExportState.activeKind = null
+                    if (navigator.current == AppRoute.DataBackup) showDataBackup()
+                }
+            }
+        }.also { exportController = it.second }
+        settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") {
+            importBackupLauncher.launch(arrayOf("application/json", "text/*"))
+        }
+        var fullBackupController: com.vinicius741.webnovelarchiver.ui.SettingRowLoadingController? = null
+        settingRowWithLoading(
+            R.drawable.wna_archive,
+            "Create Full Backup",
+            "Save settings, tabs, library, and chapters to a local ZIP file",
+            loading = backupExportState.activeKind == BackupExportKind.FULL,
+        ) {
+            if (backupExportState.activeKind == null) {
+                backupExportState.activeKind = BackupExportKind.FULL
+                fullBackupController?.setLoading(true)
+                exportAndShare({ repository.exportFullBackup() }) {
+                    backupExportState.activeKind = null
+                    if (navigator.current == AppRoute.DataBackup) showDataBackup()
+                }
+            }
+        }.also { fullBackupController = it.second }
+        settingRow(R.drawable.wna_unarchive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
+            importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+        }
         divider()
-        section("Data")
+        section("Sources & Storage")
         val storageHealth = repository.getStorageHealth()
         if (storageHealth.requiresUserAttention) {
             settingRow(
@@ -133,7 +204,6 @@ internal fun ScreenHost.showSettings() {
                 toast(storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
             }
         }
-        settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
         val sourceNetwork = app.appContainer.network
         val sourceSnapshot = sourceNetwork.reliabilitySnapshots().firstOrNull { it.host.endsWith("scribblehub.com") }
         val webViewPackage = WebView.getCurrentWebViewPackage()
@@ -162,6 +232,8 @@ internal fun ScreenHost.showSettings() {
                 }
             }
         }
+        divider()
+        section("Danger Zone")
         settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {
             confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") {
                 scope.launch {
@@ -169,66 +241,6 @@ internal fun ScreenHost.showSettings() {
                     showLibrary()
                 }
             }
-        }
-        divider()
-        section("Backup")
-        // The host-owned state prevents concurrent exports and survives configuration re-renders.
-        // Each controller is captured via a nullable holder so the click lambda can update its row.
-        var exportController: com.vinicius741.webnovelarchiver.ui.SettingRowLoadingController? = null
-        settingRowWithLoading(
-            R.drawable.wna_share,
-            "Export Backup",
-            "Export library metadata and tabs to a JSON file",
-            loading = backupExportState.activeKind == BackupExportKind.JSON,
-        ) {
-            if (backupExportState.activeKind == null) {
-                backupExportState.activeKind = BackupExportKind.JSON
-                exportController?.setLoading(true)
-                exportAndShare({ repository.exportBackup() }) {
-                    backupExportState.activeKind = null
-                    if (navigator.current == AppRoute.Settings) showSettings()
-                }
-            }
-        }.also { exportController = it.second }
-        settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") {
-            importBackupLauncher.launch(arrayOf("application/json", "text/*"))
-        }
-        var fullBackupController: com.vinicius741.webnovelarchiver.ui.SettingRowLoadingController? = null
-        settingRowWithLoading(
-            R.drawable.wna_archive,
-            "Create Full Backup",
-            "Save settings, tabs, library, and chapters to a local ZIP file",
-            loading = backupExportState.activeKind == BackupExportKind.FULL,
-        ) {
-            if (backupExportState.activeKind == null) {
-                backupExportState.activeKind = BackupExportKind.FULL
-                fullBackupController?.setLoading(true)
-                exportAndShare({ repository.exportFullBackup() }) {
-                    backupExportState.activeKind = null
-                    if (navigator.current == AppRoute.Settings) showSettings()
-                }
-            }
-        }.also { fullBackupController = it.second }
-        settingRow(R.drawable.wna_unarchive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
-            importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
-        }
-        // Width cap: on large screens, constrain this content LinearLayout and center it within the
-        // ScrollView so Settings doesn't stretch edge-to-edge (expanded → 840dp, medium → 720dp).
-        // No-op on compact widths where the cap exceeds the screen.
-        //
-        // This block runs inside `screen(...)`'s content builder, where `this` is the content
-        // LinearLayout *before* it is added to its ScrollView parent. At that point the view has no
-        // layout params yet (layoutParams == null), so reading/casting them NPEs. We instead set fresh
-        // FrameLayout.LayoutParams (the ScrollView is a FrameLayout) with a fixed width and centered
-        // gravity; the scaffold assigns exactly these params when it wraps content in the ScrollView.
-        if (layout.widthClass != com.vinicius741.webnovelarchiver.ui.layout.WidthClass.COMPACT) {
-            val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
-            layoutParams =
-                android.widget.FrameLayout.LayoutParams(
-                    context.dp(contentMaxWidthDp),
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.view.Gravity.CENTER_HORIZONTAL,
-                )
         }
     }
 }
