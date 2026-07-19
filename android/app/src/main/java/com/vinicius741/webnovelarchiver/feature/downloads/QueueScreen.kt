@@ -18,6 +18,7 @@ import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.download.QueueStatusCounts
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
@@ -59,7 +60,12 @@ internal fun ScreenHost.showQueue() {
     lateinit var emptySlot: FrameLayout
     lateinit var list: RecyclerView
     val initialGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(queue))
-    screen(route = AppRoute.Queue, title = "Downloads", onBack = { showLibrary() }, actions = globalAppBarActions(initialGlobalActions)) {
+    // Gear is a fixed first action (always reachable); the per-queue actions append behind it so the
+    // dynamically recomputed set (Resume/Pause/Retry/Cancel/Clear) still drives the rest of the bar.
+    val appBarActions =
+        listOf(AppBarAction(R.drawable.wna_settings, "Download Settings") { showDownloadSettings() }) +
+            globalAppBarActions(initialGlobalActions)
+    screen(route = AppRoute.Queue, title = "Downloads", onBack = { showLibrary() }, actions = appBarActions) {
         // Center everything in a width-capped column (920/1080dp by width class) so the queue doesn't
         // stretch edge-to-edge on tablets/the Fold inner display. On phone widths the cap is larger
         // than the screen so it has no effect.

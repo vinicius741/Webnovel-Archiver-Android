@@ -240,6 +240,7 @@ private fun ScreenHost.showStoryActionsDialog(story: Story) {
     val options = mutableListOf<Pair<String, () -> Unit>>("Open" to { showDetails(story.id) })
     if (StoryActionGuards.canSync(story)) options += "Sync" to { syncStory(story) }
     options += "Move" to { showMoveStoryDialog(story) }
+    options += "Move Batch" to { showLibrarySelection(setOf(story.id)) }
     options += "Delete" to {
         confirm("Delete ${story.title}?") {
             scope.launch {

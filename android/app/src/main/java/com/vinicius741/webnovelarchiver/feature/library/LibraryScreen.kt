@@ -7,6 +7,7 @@ import android.widget.FrameLayout
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
@@ -48,7 +49,7 @@ internal fun ScreenHost.showLibrary() {
         actions =
             listOf(
                 AppBarAction(R.drawable.wna_refresh, "Updates") { showUpdates() },
-                AppBarAction(R.drawable.wna_check, "Select") { showLibrarySelection() },
+                AppBarAction(R.drawable.wna_download, "Downloads") { showQueue() },
                 AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
             ),
         fab = { showAddStory() },
@@ -97,14 +98,14 @@ internal fun ScreenHost.showLibrary() {
         // Resolve against the live tabs so a deleted tab's stale id falls back to All instead of an
         // empty, un-selectable view.
         // The single source of truth for "what is a swipeable tab", shared by the tab bar and the
-        // pager so their ordering can never drift. Matches the legacy RN `useLibraryPager.pageTabIds`:
-        // All first, then the synthetic Unassigned tab (only when stories are unassigned), then real
-        // tabs in their configured order. `null` is the runtime sentinel for Unassigned.
+        // pager so their ordering can never drift. The synthetic Unassigned tab (only when stories
+        // are unassigned) comes first, then real tabs in their configured order, then All last.
+        // `null` is the runtime sentinel for Unassigned.
         val pageTabs: List<String?> =
             buildList {
-                add(LibraryTabSelection.ALL_TAB_ID)
                 if (hasUnassigned) add(null)
                 addAll(tabs.map { it.id })
+                add(LibraryTabSelection.ALL_TAB_ID)
             }
 
         val selectedTags = mutableSetOf<String>()

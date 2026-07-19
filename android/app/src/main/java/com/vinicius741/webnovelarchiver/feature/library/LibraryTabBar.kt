@@ -126,13 +126,13 @@ internal fun ScreenHost.makeLibraryTabBar(
         tabViews += TabView(id, text, underline)
     }
 
-    addTab("All", LibraryTabSelection.ALL_TAB_ID)
     if (unassignedCount > 0) {
         addTab("Unassigned ($unassignedCount)", null)
     }
     tabs.forEach { tab ->
         addTab(tab.name, tab.id)
     }
+    addTab("All", LibraryTabSelection.ALL_TAB_ID)
     applySelection(currentSelection)
     scroll.addView(row)
     return LibraryTabBar(scroll, ::applySelection).also { holder ->
