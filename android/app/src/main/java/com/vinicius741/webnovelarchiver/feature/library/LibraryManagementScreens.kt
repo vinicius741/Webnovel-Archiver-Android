@@ -1,7 +1,9 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import android.content.res.ColorStateList
+import android.text.Editable
 import android.text.TextUtils
+import android.text.TextWatcher
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -28,7 +30,9 @@ import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.fullButton
+import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeField
+import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.makeSelectableCardRow
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
@@ -47,51 +51,113 @@ import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = emptySet()) {
     val stories = repository.getLibrary()
+    val tabs = repository.getTabs().sortedBy { it.order }
     val selectedIds = initialSelectedIds.toMutableSet()
-    screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Select Novels", onBack = { showLibrary() }) {
+    screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Organize Novels", onBack = { showLibrary() }) {
+        // Empty library: show the same empty state the Library screen shows instead of a bare
+        // filter bar with nothing to filter.
+        if (stories.isEmpty()) {
+            addView(
+                makeEmptyState(
+                    context,
+                    title = "Your library is empty",
+                    message = "Import a story before organizing novels into tabs.",
+                    iconRes = R.drawable.wna_menu_book,
+                ),
+            )
+            return@screen
+        }
+
+        // Filter state is held in local closures rather than on ScreenHost because the screen never
+        // rebuilds its own view tree: Select All / Deselect All re-filter in place (see [applyFilters]),
+        // and the activity's configChanges declaration keeps the view tree alive across rotation/fold.
+        // Opening the screen fresh always starts from the All tab + no tag filters + last-updated sort.
+        var selectedTabId: String? = LibraryTabSelection.ALL_TAB_ID
+        val selectedTags = mutableSetOf<String>()
+        var sortOption = "lastUpdated"
+        var sortAscending = false
+
+        // Declared up front as reassignable lambdas (matching the Library screen) so the search watcher,
+        // chip callbacks, tab bar, and Select All / Deselect All can all close over them before their
+        // real bodies are assigned further down.
+        var applyFilters: () -> Unit = {}
+        var currentFilteredIds: () -> List<String> = { emptyList() }
+
+        val search =
+            makeSearchField(context, "Search novels").apply {
+                addTextChangedListener(
+                    object : TextWatcher {
+                        override fun beforeTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            count: Int,
+                            after: Int,
+                        ) = Unit
+
+                        override fun afterTextChanged(s: Editable?) = Unit
+
+                        override fun onTextChanged(
+                            s: CharSequence?,
+                            start: Int,
+                            before: Int,
+                            count: Int,
+                        ) = applyFilters()
+                    },
+                )
+            }
+
+        val filters =
+            makeLibraryFilters(
+                context,
+                search,
+                tabs.isNotEmpty(),
+                stories,
+                selectedTabId,
+                selectedTags,
+                sortOption,
+                sortAscending,
+                { newSort ->
+                    sortOption = newSort.first
+                    sortAscending = newSort.second
+                    applyFilters()
+                },
+                { tag ->
+                    if (!selectedTags.add(tag)) selectedTags.remove(tag)
+                    applyFilters()
+                },
+            )
+        val refreshFilters = filters.rebuildChips
+        val tabBar =
+            makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
+                selectedTabId = newTabId
+                refreshFilters(selectedTabId, selectedTags)
+                applyFilters()
+            }
+        addView(tabBar.view)
+        addView(filters.view)
+
+        // Select All / Deselect All act on the *currently filtered* list (matching the Follow Updates
+        // selection screen), so selecting every novel in a search result or a single tab is one tap.
         var refreshBulkActions: () -> Unit = {}
-        // X3: select-all / deselect-all affordance.
         flow {
             button("Select All", Btn.TEXT, R.drawable.wna_check) {
-                selectedIds.clear()
-                selectedIds.addAll(stories.map { it.id })
-                showLibrarySelection(selectedIds)
+                selectedIds.addAll(currentFilteredIds())
+                refreshBulkActions()
+                applyFilters()
             }
             button("Deselect All", Btn.TEXT, R.drawable.wna_close) {
-                selectedIds.clear()
-                showLibrarySelection(selectedIds)
+                selectedIds.removeAll(currentFilteredIds().toSet())
+                refreshBulkActions()
+                applyFilters()
             }
         }
-        addView(
-            scroll(
-                LinearLayout(app).apply {
-                    orientation = LinearLayout.VERTICAL
-                    // X1: card-style rows with title/author instead of bare CheckBoxes.
-                    stories.forEach { story ->
-                        // Archives share the live title; label them so bulk move/delete is not ambiguous.
-                        val subtitle =
-                            if (story.isArchived == true) {
-                                listOfNotNull(story.author.takeIf { it.isNotBlank() }, "Archived").joinToString(" · ")
-                            } else {
-                                story.author
-                            }
-                        addView(
-                            makeSelectableCardRow(
-                                context,
-                                title = story.title,
-                                subtitle = subtitle,
-                                selected = selectedIds.contains(story.id),
-                            ) { checked ->
-                                if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
-                                refreshBulkActions()
-                            },
-                        )
-                    }
-                },
-            ),
-            verticalFill(),
-        )
-        // X2: bulk actions docked at the bottom as full-width primary CTAs.
+
+        // Reusable row container rebuilt by [applyFilters]. Wraps it in a scroller so a long filtered
+        // list scrolls independently of the pinned tab bar / search / chips above it.
+        val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        addView(scroll(rows), verticalFill())
+
+        // Bulk actions docked at the bottom as full-width primary CTAs.
         lateinit var moveButton: Button
         lateinit var deleteButton: Button
         moveButton =
@@ -115,7 +181,70 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             moveButton.text = "Move ${selectedIds.size} Selected"
             deleteButton.text = if (selectedIds.isEmpty()) "Delete Selected" else "Delete ${selectedIds.size} Selected"
         }
-        refreshBulkActions()
+
+        // Snapshot the current filtered ids for Select All / Deselect All. Computed on demand rather
+        // than cached so it always reflects the latest search/tab/tag state at click time.
+        currentFilteredIds = {
+            LibraryQuery
+                .filterAndSort(
+                    stories,
+                    search.text.toString(),
+                    selectedTabId,
+                    selectedTags,
+                    sortOption,
+                    sortAscending,
+                ).map { it.id }
+        }
+
+        // Rebuild the row list from the current filter snapshot, then refresh the bulk-action labels.
+        // Rebuilding rather than re-rendering keeps the tab bar, search field, and chips untouched, so
+        // the user's filter context is never disturbed by a Select All or a row toggle.
+        applyFilters = {
+            val visible =
+                LibraryQuery.filterAndSort(
+                    stories,
+                    search.text.toString(),
+                    selectedTabId,
+                    selectedTags,
+                    sortOption,
+                    sortAscending,
+                )
+            rows.removeAllViews()
+            if (visible.isEmpty()) {
+                rows.addView(
+                    makeText(
+                        context,
+                        "No novels match these filters.",
+                        Type.BODY_MEDIUM,
+                        ThemeManager.colors.onSurfaceVariant,
+                    ).apply { setPadding(0, dp(Space.LG), 0, dp(Space.LG)) },
+                )
+            } else {
+                visible.forEach { story ->
+                    // Archives share the live title; label them so bulk move/delete is not ambiguous.
+                    val subtitle =
+                        if (story.isArchived == true) {
+                            listOfNotNull(story.author.takeIf { it.isNotBlank() }, "Archived").joinToString(" · ")
+                        } else {
+                            story.author
+                        }
+                    rows.addView(
+                        makeSelectableCardRow(
+                            context,
+                            title = story.title,
+                            subtitle = subtitle,
+                            selected = selectedIds.contains(story.id),
+                        ) { checked ->
+                            if (checked) selectedIds.add(story.id) else selectedIds.remove(story.id)
+                            refreshBulkActions()
+                        },
+                    )
+                }
+            }
+            refreshBulkActions()
+        }
+
+        applyFilters()
     }
 }
 

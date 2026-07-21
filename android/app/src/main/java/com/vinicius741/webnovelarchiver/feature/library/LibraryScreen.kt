@@ -48,6 +48,7 @@ internal fun ScreenHost.showLibrary() {
         subtitle = if (stories.isEmpty()) null else "${stories.size} novel${if (stories.size == 1) "" else "s"}",
         actions =
             listOf(
+                AppBarAction(R.drawable.wna_check, "Select") { showLibrarySelection() },
                 AppBarAction(R.drawable.wna_refresh, "Updates") { showUpdates() },
                 AppBarAction(R.drawable.wna_download, "Downloads") { showQueue() },
                 AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
