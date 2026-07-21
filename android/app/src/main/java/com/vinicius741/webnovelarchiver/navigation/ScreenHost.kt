@@ -205,4 +205,5 @@ interface ScreenHost {
     val foldTracker: FoldTracker
     val importBackupLauncher: ActivityResultLauncher<Array<String>>
     val importFullBackupLauncher: ActivityResultLauncher<Array<String>>
+    val notificationPermissionLauncher: ActivityResultLauncher<String>
 }

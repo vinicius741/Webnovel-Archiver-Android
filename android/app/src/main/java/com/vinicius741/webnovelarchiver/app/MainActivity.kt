@@ -1,10 +1,8 @@
 package com.vinicius741.webnovelarchiver.app
 
-import android.Manifest
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -15,10 +13,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.app.renderRouteDispatch
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
@@ -26,24 +24,15 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
-import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
-import com.vinicius741.webnovelarchiver.feature.details.showChapterSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
-import com.vinicius741.webnovelarchiver.feature.details.showLegacyEpubs
-import com.vinicius741.webnovelarchiver.feature.details.showTrends
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
-import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
-import com.vinicius741.webnovelarchiver.feature.settings.showTabs
-import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
-import com.vinicius741.webnovelarchiver.feature.updates.showUpdateFollowSelection
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
@@ -53,9 +42,6 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
-import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
-import com.vinicius741.webnovelarchiver.notification.NotificationPermissionAction
-import com.vinicius741.webnovelarchiver.notification.NotificationSettingsPlanning
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -66,6 +52,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import com.vinicius741.webnovelarchiver.app.notificationPermissionActionLabel as notificationPermissionActionLabelExt
+import com.vinicius741.webnovelarchiver.app.performNotificationPermissionAction as performNotificationPermissionActionExt
+import com.vinicius741.webnovelarchiver.app.requestNotificationPermissionForDownload as requestNotificationPermissionForDownloadExt
 
 /**
  * App entry point. Owns lifecycle and wiring only: instantiates the storage/engines, the root
@@ -128,7 +117,7 @@ class MainActivity :
             }
         }
 
-    private val notificationPermissionLauncher =
+    override val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         }
@@ -299,29 +288,7 @@ class MainActivity :
         super.onSaveInstanceState(outState)
     }
 
-    override fun renderRoute(route: AppRoute) {
-        when (route) {
-            AppRoute.Library -> showLibrary()
-            AppRoute.AddStory -> showAddStory()
-            is AppRoute.LibrarySelection -> showLibrarySelection(route.selectedStoryIds)
-            is AppRoute.Details -> showDetails(route.storyId)
-            is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
-            is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)
-            is AppRoute.Trends -> showTrends(route.storyId, route.focus)
-            is AppRoute.Reader -> showReader(route.storyId, route.chapterId)
-            AppRoute.Queue -> showQueue()
-            AppRoute.Updates -> showUpdates()
-            AppRoute.UpdateFollowSelection -> showUpdateFollowSelection()
-            AppRoute.Settings -> showSettings()
-            AppRoute.Notifications -> showNotifications()
-            AppRoute.DownloadSettings -> showDownloadSettings()
-            AppRoute.TtsSettings -> showTtsSettings()
-            AppRoute.Tabs -> showTabs()
-            AppRoute.CleanupRules -> showCleanupRules()
-            AppRoute.DataBackup -> showDataBackup()
-            AppRoute.Working -> showLibrary()
-        }
-    }
+    override fun renderRoute(route: AppRoute) = renderRouteDispatch(route)
 
     private fun restoreNavigationState(state: Bundle?): Boolean {
         state ?: return false
@@ -357,56 +324,14 @@ class MainActivity :
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !t.isDark
     }
 
-    override fun notificationPermissionActionLabel(): String =
-        when (notificationPermissionAction()) {
-            NotificationPermissionAction.REQUEST_PERMISSION -> "Allow notifications"
-            NotificationPermissionAction.OPEN_APP_SETTINGS -> "Open app notification settings"
-        }
+    override fun notificationPermissionActionLabel(): String = notificationPermissionActionLabelExt()
 
     override fun performNotificationPermissionAction() {
-        when (notificationPermissionAction()) {
-            NotificationPermissionAction.REQUEST_PERMISSION -> {
-                markAutomaticNotificationPromptShown()
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-            NotificationPermissionAction.OPEN_APP_SETTINGS ->
-                startActivity(AppNotificationChannels.appSettingsIntent(this))
-        }
+        performNotificationPermissionActionExt()
     }
 
     override fun requestNotificationPermissionForDownload() {
-        val shouldRequest =
-            NotificationSettingsPlanning.shouldRequestAutomatically(
-                runtimePermissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-                permissionGranted = AppNotificationChannels.hasPostNotificationsPermission(this),
-                automaticPromptShown = automaticNotificationPromptShown(),
-            )
-        if (!shouldRequest) return
-        // The automatic prompt is reachable from lifecycleScope-backed sync coroutines that
-        // survive the app being backgrounded (UpdateSyncOrchestrator/in-place sync call queueDownload
-        // after network IO). launch() on a STOPPED activity won't show a usable dialog yet would
-        // still consume the one-time prompt, so defer it to the next foregrounded download instead.
-        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) || isFinishing || isDestroyed) return
-        markAutomaticNotificationPromptShown()
-        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-    }
-
-    private fun notificationPermissionAction(): NotificationPermissionAction =
-        NotificationSettingsPlanning.settingsAction(
-            runtimePermissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-            permissionGranted = AppNotificationChannels.hasPostNotificationsPermission(this),
-            automaticPromptShown = automaticNotificationPromptShown(),
-        )
-
-    private fun automaticNotificationPromptShown(): Boolean =
-        getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
-            .getBoolean(KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN, false)
-
-    private fun markAutomaticNotificationPromptShown() {
-        getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN, true)
-            .apply()
+        requestNotificationPermissionForDownloadExt()
     }
 
     private fun browserImportUrl(intent: Intent?): String? = BrowserImportPlanning.importUrl(intent?.action, intent?.dataString)
@@ -421,8 +346,6 @@ class MainActivity :
         const val STATE_ROUTE_STACK = "navigation.route_stack"
         const val STATE_SCROLL_KEYS = "navigation.scroll_keys"
         const val STATE_SCROLL_VALUES = "navigation.scroll_values"
-        const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
-        const val KEY_AUTOMATIC_NOTIFICATION_PROMPT_SHOWN = "automatic_prompt_shown"
     }
 }
 
