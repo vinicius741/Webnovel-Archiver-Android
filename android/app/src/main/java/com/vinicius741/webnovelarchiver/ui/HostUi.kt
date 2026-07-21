@@ -171,6 +171,7 @@ internal fun formatScore(score: String): String {
 internal fun ScreenHost.scoreRow(
     score: String,
     iconSizeDp: Int = 16,
+    trailing: View? = null,
 ): View =
     LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -182,6 +183,7 @@ internal fun ScreenHost.scoreRow(
             },
         )
         addView(makeText(app, formatScore(score), Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
+        trailing?.let { addView(it) }
     }
 
 internal fun ScreenHost.dot(color: Int): View =

@@ -8,8 +8,8 @@ import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.ValueFormatter
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricPoint
+import com.vinicius741.webnovelarchiver.domain.metrics.TrendAxisPlanning
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.dp
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -22,7 +22,8 @@ import java.util.Locale
  *
  * The chart intentionally disables vertical zoom and pin zoom (which fight the screen's vertical
  * scroll) and enables only horizontal drag so a long history can be panned. The X axis is epoch-millis
- * formatted as a date; the Y axis format and range come from [kind].
+ * formatted as a date; the Y axis format comes from [kind] and its range is fitted to the data by
+ * [TrendAxisPlanning] (clamped to the metric's valid domain) so small movements stay visible.
  */
 internal fun buildTrendChart(
     context: Context,
@@ -67,7 +68,8 @@ internal fun buildTrendChart(
     chart.setScaleEnabled(false)
     chart.setPinchZoom(false)
     chart.isDoubleTapToZoomEnabled = false
-    chart.setViewPortOffsets(56f, 16f, 24f, 48f)
+    // No manual view-port offsets: the fitted Y range can produce wide labels ("1,250" members),
+    // and the chart only reserves enough room for them when it computes offsets itself.
 
     val xAxis = chart.xAxis
     xAxis.position = XAxis.XAxisPosition.BOTTOM
@@ -78,6 +80,11 @@ internal fun buildTrendChart(
     xAxis.setDrawAxisLine(false)
     xAxis.setLabelCount(4, true)
     xAxis.textSize = 10f
+    // Snapshots are coalesced to one point per calendar day, so labels closer than a day can only
+    // repeat the same date — force day granularity to keep a short history's axis readable.
+    xAxis.granularity = MILLIS_PER_DAY_FLOAT
+    // Keep the first/last date from being clipped at the chart edges.
+    xAxis.setAvoidFirstLastClipping(true)
 
     val yAxis = chart.axisLeft
     yAxis.valueFormatter = YAxisFormatter(kind)
@@ -86,11 +93,24 @@ internal fun buildTrendChart(
     yAxis.gridLineWidth = 1f
     yAxis.setDrawAxisLine(false)
     yAxis.textSize = 10f
-    if (kind == TrendMetricKind.SCORE) {
-        // Ratings are 0–5; pin the range so the line's slope is visually comparable across novels
-        // instead of auto-fitting to a narrow band that exaggerates noise.
-        yAxis.axisMinimum = 0f
-        yAxis.axisMaximum = 5f
+    // A fitted (narrow) range makes the default label count draw duplicate, overlapping labels;
+    // cap it and let the chart pick clean intervals instead of forcing an exact count.
+    yAxis.setLabelCount(Y_AXIS_LABEL_COUNT, false)
+    if (kind == TrendMetricKind.PATREON_MEMBERS) {
+        // Members are whole counts: fractional grid lines would format to duplicate integers.
+        yAxis.granularity = 1f
+    }
+    // Fit the axis to the recorded data (clamped to the metric's valid domain) so small movements
+    // stay visible; a fixed 0–5 / 0-based axis rendered real week-to-week changes as a flat line.
+    val range =
+        TrendAxisPlanning.yAxisRange(
+            points = points,
+            hardMin = 0.0,
+            hardMax = if (kind == TrendMetricKind.SCORE) SCORE_MAX else Double.POSITIVE_INFINITY,
+        )
+    if (range != null) {
+        yAxis.axisMinimum = range.first.toFloat()
+        yAxis.axisMaximum = range.second.toFloat()
     } else {
         yAxis.axisMinimum = 0f
     }
@@ -100,15 +120,20 @@ internal fun buildTrendChart(
     // don't feel slow.
     chart.animateX(400)
 
-    // A readable default height; the screen wraps the chart in its own card layout.
-    chart.layoutParams =
-        android.view.ViewGroup.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            context.dp(180),
-        )
+    // The chart's height is set by the Trends screen when it adds the view to its card (a
+    // LineChart has no intrinsic height and WRAP_CONTENT would collapse it inside a ScrollView).
     chart.invalidate()
     return chart
 }
+
+/** X-axis granularity: one calendar day in epoch millis (the resolution snapshots are coalesced to). */
+private const val MILLIS_PER_DAY_FLOAT = 24f * 60f * 60f * 1000f
+
+/** Score metrics live on a 0–5 scale; used as the hard domain for the fitted Y range. */
+private const val SCORE_MAX = 5.0
+
+/** Target number of Y grid lines; the chart adjusts to clean intervals around this count. */
+private const val Y_AXIS_LABEL_COUNT = 5
 
 /** Formats epoch-millis X values as `MMM d, yy` in the system timezone. */
 private class DateAxisFormatter(
@@ -130,9 +155,11 @@ private class YAxisFormatter(
 
     override fun getFormattedValue(value: Float): String =
         when (kind) {
-            TrendMetricKind.SCORE -> String.format(Locale.US, "%.1f", value)
+            // Two decimals: the fitted range is narrow, and one decimal rounded adjacent grid
+            // lines to the same label (4.55 and 4.65 both read "4.6").
+            TrendMetricKind.SCORE -> String.format(Locale.US, "%.2f", value)
             TrendMetricKind.PATREON_MEMBERS -> intFormat.format(value.toInt())
-            // Stored as cents; show compact dollars ($1.2k, $12k).
+            // Stored as cents; show compact dollars ($1.20k, $12.5k).
             TrendMetricKind.PATREON_USD -> compactUsd(value.toLong())
         }
 
@@ -140,7 +167,9 @@ private class YAxisFormatter(
         val dollars = cents / 100.0
         return when {
             dollars >= 1_000_000 -> String.format(Locale.US, "$%.1fM", dollars / 1_000_000)
-            dollars >= 1_000 -> String.format(Locale.US, "$%.1fk", dollars / 1_000)
+            dollars >= 10_000 -> String.format(Locale.US, "$%.1fk", dollars / 1_000)
+            // Below $10k use two k-decimals so grid lines ~$10 apart stay distinct ($3.40k/$3.45k).
+            dollars >= 1_000 -> String.format(Locale.US, "$%.2fk", dollars / 1_000)
             else -> String.format(Locale.US, "$%.0f", dollars)
         }
     }

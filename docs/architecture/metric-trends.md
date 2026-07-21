@@ -101,6 +101,25 @@ summary line ("Current 4.84 (+0.12 since last sync) · range 4.2–4.9"). A seri
 points to draw a line; with fewer it shows an explanatory card. The empty state ("No trend data yet")
 appears for a novel that has never been synced since the feature shipped.
 
+Chart axes are fitted to the recorded data, not pinned to the metric's full domain: week-to-week
+movement in these metrics is small (a score wobbling 4.6→4.8, members creeping 1200→1250), and a
+fixed 0–5 / 0-based axis rendered that as a flat line. `TrendAxisPlanning.yAxisRange` computes the
+Y range from the series with a padding margin, clamped to the valid domain (score 0–5, counts/cents
+≥ 0), with a synthetic window for flat series. Each chart is laid out at a fixed height
+(`TREND_CHART_HEIGHT_DP`) — a `LineChart` has no intrinsic height and collapses to a few dozen px
+under `WRAP_CONTENT` inside the ScrollView — and the Y label count/format precision are chosen so a
+narrow range cannot produce duplicate, overlapping axis labels. The X axis uses one-day granularity,
+matching the per-calendar-day snapshot resolution.
+
+## Trend indicator on the detail page
+
+The detail page's score row carries a small arrow beside the rating (`DetailsHeader.observeScoreTrend`):
+up (tertiary) when the score rose across the recorded series, down (error) when it fell, hidden when
+there are fewer than two points or the series is flat. Direction is the overall trajectory —
+`MetricSnapshotPlanning.direction` (last minus first point), not the last-sync delta — so one noisy
+sync cannot flip it. The history read is asynchronous (the repository does not cache metric history
+in memory) and the arrow is patched in place once loaded.
+
 ## Adding new metrics
 
 Future metrics (rating count, favorites, ranking, Patreon tier breakdown) require small extensions to
@@ -109,5 +128,6 @@ parse them). `StoryMetricSnapshot` then gains matching **nullable** fields. Beca
 forward/backward-compatible (Gson fills missing fields with defaults), no history-format migration is
 needed — old history files simply read as `null` for the new field until the next sync populates it.
 
-The chart helper (`buildTrendChart` / `TrendMetricKind`) and the series extractors in
-`MetricSnapshotPlanning` are the only other places that need a new entry per metric.
+The chart helper (`buildTrendChart` / `TrendMetricKind`), the axis-range planner
+(`TrendAxisPlanning`), and the series extractors in `MetricSnapshotPlanning` are the only other
+places that need a new entry per metric.

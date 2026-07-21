@@ -118,6 +118,25 @@ object MetricSnapshotPlanning {
     /** Last value minus the previous value, or `null` when there are fewer than two points. */
     fun delta(points: List<MetricPoint>): Double? = if (points.size < 2) null else points.last().second - points.dropLast(1).last().second
 
+    /** Overall direction of movement across a series; see [direction]. */
+    enum class TrendDirection { UP, DOWN, FLAT }
+
+    /**
+     * Direction of movement across the whole series (last value minus first), used by the compact
+     * trend indicator on the Details screen. Unlike [delta] (last sync only) this reads the overall
+     * trajectory since recording started, so one noisy sync cannot flip the indicator. `null` when
+     * there are fewer than two points — nothing meaningful to show yet.
+     */
+    fun direction(points: List<MetricPoint>): TrendDirection? {
+        if (points.size < 2) return null
+        val movement = points.last().second - points.first().second
+        return when {
+            movement > FLAT_EPSILON -> TrendDirection.UP
+            movement < -FLAT_EPSILON -> TrendDirection.DOWN
+            else -> TrendDirection.FLAT
+        }
+    }
+
     /** Summary statistics over a series; `count == 0` when there are no points. */
     data class Summary(
         val count: Int,

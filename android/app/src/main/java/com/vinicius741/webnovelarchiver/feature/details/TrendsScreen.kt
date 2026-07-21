@@ -263,9 +263,12 @@ private fun ScreenHost.addChartCard(
             )
             if (card.showChart) {
                 addView(makeDivider(app))
+                // Fixed height: WRAP_CONTENT measures a LineChart inside this ScrollView to a few
+                // dozen px (the view has no intrinsic height), which squished the plot and stacked
+                // the axis labels on top of each other.
                 addView(
                     card.chartProvider(),
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TREND_CHART_HEIGHT_DP)).apply {
                         topMargin = dp(Space.SM)
                     },
                 )
@@ -364,3 +367,6 @@ private fun formatUsd(
 
 private fun formatDate(epochMillis: Long): String =
     DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
+
+/** Fixed chart height (dp) inside a trend card; see [ScreenHost.addChartCard]. */
+private const val TREND_CHART_HEIGHT_DP = 180

@@ -245,6 +245,28 @@ class MetricSnapshotPlanningTest {
         assertFalse(MetricSnapshotPlanning.isFlat(listOf(1L to 4.0)))
     }
 
+    @Test
+    fun directionIsNullWithFewerThanTwoPoints() {
+        assertNull(MetricSnapshotPlanning.direction(emptyList()))
+        assertNull(MetricSnapshotPlanning.direction(listOf(1L to 4.0)))
+    }
+
+    @Test
+    fun directionReadsOverallTrajectoryNotLastSync() {
+        assertEquals(
+            MetricSnapshotPlanning.TrendDirection.UP,
+            MetricSnapshotPlanning.direction(listOf(1L to 4.0, 2L to 4.5, 3L to 4.4)),
+        )
+        assertEquals(
+            MetricSnapshotPlanning.TrendDirection.DOWN,
+            MetricSnapshotPlanning.direction(listOf(1L to 4.5, 2L to 4.0, 3L to 4.1)),
+        )
+        assertEquals(
+            MetricSnapshotPlanning.TrendDirection.FLAT,
+            MetricSnapshotPlanning.direction(listOf(1L to 4.0, 2L to 4.6, 3L to 4.0)),
+        )
+    }
+
     private fun dayMillis(
         year: Int,
         month: Int,
