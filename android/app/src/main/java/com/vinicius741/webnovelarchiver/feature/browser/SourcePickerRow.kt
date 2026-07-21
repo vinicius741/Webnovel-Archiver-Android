@@ -44,7 +44,6 @@ private fun sourcePickerRow(
 ): LinearLayout {
     val t = ThemeManager.current
     val colors = t.colors
-    val radiusPx = context.dp(t.shapes.cardRadius).toFloat()
     return LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL

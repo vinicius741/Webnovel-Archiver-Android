@@ -101,7 +101,8 @@ object WebViewSafety {
             return
         }
         if (root is android.view.ViewGroup) {
-            (0 until root.childCount).map { root.getChildAt(it) }.forEach { disposeAll(it) }
+            // Iterate over a copy: destroy() (via disposeAll on a WebView child) mutates the child list.
+            (0 until root.childCount).map { root.getChildAt(it) }.forEach { child -> disposeAll(child) }
         }
     }
 }

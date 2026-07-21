@@ -122,7 +122,10 @@ object AppRouteCodec {
         }
     }
 
-    private fun decodeRouteWithArguments(name: String?, arguments: List<String>): AppRoute? =
+    private fun decodeRouteWithArguments(
+        name: String?,
+        arguments: List<String>,
+    ): AppRoute? =
         when (name) {
             "library_selection" -> AppRoute.LibrarySelection(arguments.toSet())
             "details" -> arguments.singleOrNull()?.let(AppRoute::Details)

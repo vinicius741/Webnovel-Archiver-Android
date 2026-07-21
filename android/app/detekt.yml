@@ -4,7 +4,7 @@
 # *new* finding without forcing the existing ones to be fixed in one pass. Lower it toward 0 as
 # findings are addressed; never raise it without a deliberate decision. (Audit Rec 8.)
 build:
-  maxIssues: 48  # ratchet baseline — lower as existing findings are fixed; do not raise
+  maxIssues: 45  # ratchet baseline — lower as existing findings are fixed; do not raise
 
 config:
   validation: true
