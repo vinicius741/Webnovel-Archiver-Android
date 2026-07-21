@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.tts
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.speech.tts.Voice
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -88,36 +87,24 @@ class TtsEngine(
      * component may call it defensively on each lifecycle entry.
      */
 
-    fun addStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) {
-        listeners.addState(listener)
-    }
+    fun addStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) = listeners.addState(listener)
 
     /** Detaches a previously-registered observer; safe to call with an unregistered listener. */
-    fun removeStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) {
-        listeners.removeState(listener)
-    }
+    fun removeStateListener(listener: (TtsPlaybackSnapshot?) -> Unit) = listeners.removeState(listener)
 
-    fun addErrorListener(listener: (TtsPlaybackError) -> Unit) {
-        listeners.addError(listener)
-    }
+    fun addErrorListener(listener: (TtsPlaybackError) -> Unit) = listeners.addError(listener)
 
-    fun removeErrorListener(listener: (TtsPlaybackError) -> Unit) {
-        listeners.removeError(listener)
-    }
+    fun removeErrorListener(listener: (TtsPlaybackError) -> Unit) = listeners.removeError(listener)
 
     fun addVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) {
         listeners.addVoices(listener)
         if (ttsInitialized) listener(availableVoices())
     }
 
-    fun removeVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) {
-        listeners.removeVoices(listener)
-    }
+    fun removeVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) = listeners.removeVoices(listener)
 
     /** Notifies every registered listener. Defensive copy so listeners may [removeStateListener] mid-dispatch. */
-    private fun notifyStateListeners(snapshot: TtsPlaybackSnapshot?) {
-        listeners.dispatchState(snapshot)
-    }
+    private fun notifyStateListeners(snapshot: TtsPlaybackSnapshot?) = listeners.dispatchState(snapshot)
 
     private fun notifyErrorListeners(error: TtsPlaybackError) {
         Timber.w(TtsErrorPlanning.logMessage(error))
@@ -360,53 +347,51 @@ class TtsEngine(
             )
     }
 
-    fun availableVoices(): List<VoiceInfo> =
-        (tts ?: TextToSpeech(context, this).also { tts = it })
-            ?.voices
-            ?.filter { !it.isNetworkConnectionRequired }
-            ?.sortedWith(compareBy<Voice> { it.locale.toLanguageTag() }.thenBy { it.name })
-            ?.map {
-                VoiceInfo(
-                    identifier = it.name,
-                    name = it.name,
-                    language = it.locale.toLanguageTag(),
-                    quality = it.quality,
-                    latency = it.latency,
-                )
-            }
-            ?: emptyList()
+    fun availableVoices(): List<VoiceInfo> {
+        // Lazy engine construction stays here (side-effect); the sort/filter/map lives in
+        // TtsVoicePlanning so it can be unit-tested without a real TextToSpeech instance.
+        val engine = tts ?: TextToSpeech(context, this).also { tts = it } ?: return emptyList()
+        return TtsVoicePlanning.toVoiceInfo(engine.voices)
+    }
 
     private fun applySettingsLocked(settings: TtsSettings): Boolean {
         val engine = ensureEngineLocked() ?: return false
         if (!ttsInitialized) return false
-        val selectedVoice = settings.voiceIdentifier?.let { id -> engine.voices?.firstOrNull { it.name == id } }
-        if (selectedVoice != null) {
-            if (engine.setVoice(selectedVoice) == TextToSpeech.ERROR) {
+        // The voice/language decision is pure (TtsVoicePlanning.resolveVoice); the engine owns the
+        // side-effects — setVoice/setLanguage return values and the handlePlaybackErrorLocked
+        // routing — so the LANG_MISSING_DATA / LANG_NOT_SUPPORTED / ERROR branching stays exactly
+        // where it was before the extraction.
+        when (val result = TtsVoicePlanning.resolveVoice(engine.voices, settings)) {
+            is VoiceSelectionResult.VoiceResolved -> {
+                if (engine.setVoice(result.voice) == TextToSpeech.ERROR) {
+                    handlePlaybackErrorLocked(
+                        TtsPlaybackError(
+                            kind = TtsPlaybackErrorKind.VoiceRejected,
+                            detail = result.voice.name,
+                        ),
+                    )
+                    return false
+                }
+            }
+            is VoiceSelectionResult.VoiceMissing -> {
                 handlePlaybackErrorLocked(
                     TtsPlaybackError(
-                        kind = TtsPlaybackErrorKind.VoiceRejected,
-                        detail = selectedVoice.name,
+                        kind = TtsPlaybackErrorKind.VoiceUnavailable,
+                        detail = result.identifier,
                     ),
                 )
                 return false
             }
-        } else if (settings.voiceIdentifier != null) {
-            handlePlaybackErrorLocked(
-                TtsPlaybackError(
-                    kind = TtsPlaybackErrorKind.VoiceUnavailable,
-                    detail = settings.voiceIdentifier,
-                ),
-            )
-            return false
-        } else {
-            when (engine.setLanguage(Locale.getDefault())) {
-                TextToSpeech.LANG_MISSING_DATA -> {
-                    handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.LanguageMissingData))
-                    return false
-                }
-                TextToSpeech.LANG_NOT_SUPPORTED -> {
-                    handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.LanguageNotSupported))
-                    return false
+            VoiceSelectionResult.UseDefaultLanguage -> {
+                when (engine.setLanguage(Locale.getDefault())) {
+                    TextToSpeech.LANG_MISSING_DATA -> {
+                        handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.LanguageMissingData))
+                        return false
+                    }
+                    TextToSpeech.LANG_NOT_SUPPORTED -> {
+                        handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.LanguageNotSupported))
+                        return false
+                    }
                 }
             }
         }
@@ -623,11 +608,3 @@ class TtsEngine(
     /** Alias for [shutdown]; provided so the engine exposes the conventional close() lifecycle. */
     fun close() = shutdown()
 }
-
-data class VoiceInfo(
-    val identifier: String,
-    val name: String,
-    val language: String,
-    val quality: Int,
-    val latency: Int,
-)
