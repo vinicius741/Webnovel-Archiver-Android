@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Native Android emulator QA — 2026-07-21</title>
+  <style>
+    :root { color-scheme: light dark; --ink: #20201d; --paper: #fbfaf7; --line: #d8d3c8; --accent: #8a6612; --pass: #176b43; --issue: #a33922; --muted: #625f59; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #f1eee8; --paper: #171713; --line: #4a4842; --accent: #e4be50; --pass: #7dd4a2; --issue: #ff9b7e; --muted: #c5c0b7; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 28px 72px; }
+    h1, h2, h3 { line-height: 1.2; }
+    h1 { margin: 0 0 8px; font-size: clamp(2rem, 5vw, 3.2rem); }
+    h2 { margin-top: 42px; padding-top: 8px; border-top: 1px solid var(--line); }
+    h3 { margin-bottom: 6px; }
+    p, li { max-width: 78ch; }
+    .lede, .meta { color: var(--muted); }
+    .lede { font-size: 1.16rem; margin-top: 0; }
+    .summary { border-left: 5px solid var(--pass); background: color-mix(in srgb, var(--pass) 8%, transparent); padding: 16px 20px; margin: 24px 0; }
+    .summary strong { color: var(--pass); }
+    code { background: color-mix(in srgb, var(--ink) 8%, transparent); border-radius: 4px; padding: 0.12em 0.32em; }
+    table { width: 100%; border-collapse: collapse; margin: 18px 0 28px; }
+    th, td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid var(--line); }
+    th { font-size: .88rem; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+    .pass { color: var(--pass); font-weight: 700; }
+    .issue { color: var(--issue); font-weight: 700; }
+    .not-run { color: var(--muted); font-weight: 700; }
+    .finding { border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
+    .finding p { margin: 8px 0; }
+    footer { color: var(--muted); font-size: .92rem; margin-top: 40px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Native Android emulator QA</h1>
+  <p class="lede">Debug build exercised on 21 July 2026. The app is fully stable across all tested local flows and interactive surfaces; 0 bugs or fatal exceptions were encountered.</p>
+  <p class="meta">Target: <code>com.vinicius741.webnovelarchiver.nativeapp.debug</code> · Device: <code>emulator-5554</code> (AVD <code>webnovel_api36</code>, Pixel 8, Android API 36) · Test library: 9 pre-existing novels (8 active + 1 archived)</p>
+
+  <section class="summary" aria-label="Outcome summary">
+    <strong>Outcome: 0 issues found (Pass).</strong> The build, unit test suite, cold-start launch targets (Library, Queue, Settings, Updates, Add Story, Details, Reader), interactive selection, EPUB generation, and system TTS controls executed flawlessly. All 4 target regression checks from the 2026-07-10 pass remained verified and fixed.
+  </section>
+
+  <h2>Validation performed</h2>
+  <ul>
+    <li><code>cd android && ./gradlew :app:assembleDebug --console=plain</code> — passed cleanly.</li>
+    <li><code>cd android && ./gradlew :app:testDebugUnitTest --console=plain</code> — passed all unit tests (26 actionable tasks executed/up-to-date).</li>
+    <li>Installed the freshly assembled debug APK to the explicitly targeted <code>emulator-5554</code> (verified <code>lastUpdateTime=2026-07-21 13:05:03</code>).</li>
+    <li>Cold-started all major screens using <code>dev_start_screen</code> intent tokens (<code>library</code>, <code>queue</code>, <code>settings</code>, <code>updates</code>, <code>addstory</code>, <code>details</code>, <code>reader</code>).</li>
+    <li>Exercised interactive surfaces, captured UI hierarchy XML dumps and screencaps for every state, and performed logcat exception extraction. Logcat inspection confirmed zero fatal exceptions or runtime crashes.</li>
+  </ul>
+
+  <h2>Functional coverage</h2>
+  <table>
+    <thead><tr><th>Area</th><th>What was exercised</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Library</td><td>Populated 9-novel list, tab switcher ("QA Reading", "Test", "All"), filter panel toggle, selection mode ("Organize Novels"), and verified archive item labeling (<code>· Archived</code>).</td><td class="pass">Pass</td></tr>
+      <tr><td>Queue</td><td>Empty download queue state ("Nothing downloading") and top-bar Download Settings icon navigation.</td><td class="pass">Pass</td></tr>
+      <tr><td>Settings</td><td>Main settings options, theme chips ("Obsidian", "Midnight", "Forest", "Classic Light"), Large Screen Layout controls ("Auto", "Cover", "Inner"), Voice &amp; Speech screen, Text Cleanup Rules, Notifications, Manage Tabs, and Data &amp; Backup.</td><td class="pass">Pass</td></tr>
+      <tr><td>Updates</td><td>Updates overview, "Following 2 novels" status, empty update queue, and the "Choose novels" selector (verified archive story exclusion).</td><td class="pass">Pass</td></tr>
+      <tr><td>Add Story</td><td>Add Story form, target tab spinner, source shortcut buttons (Royal Road, Scribble Hub), and empty URL submit validation (form stays put without leaving screen).</td><td class="pass">Pass</td></tr>
+      <tr><td>Story Details</td><td>Story metadata, rating display, chapter sync button, EPUB local generation, and Read EPUB action.</td><td class="pass">Pass — EPUB regenerated successfully</td></tr>
+      <tr><td>Reader</td><td>WebView chapter text rendering, bookmark toggling, top action bar controls, settling probe loop, and reader bottom navigation padding.</td><td class="pass">Pass</td></tr>
+      <tr><td>Text-to-Speech</td><td>Started system TTS via top-bar "Read aloud" button, verified active transport overlay, and stopped playback cleanly.</td><td class="pass">Pass</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Regression verification</h2>
+  <ul>
+    <li><strong>Reader Settings → Voice settings dismissal:</strong> Tapping <em>Voice settings</em> in the Reader Settings panel immediately closes the modal and navigates directly to the <em>Voice &amp; Speech</em> screen. Tapping Back returns directly to the Reader view rather than main Settings. <span class="pass">Verified Fixed</span></li>
+    <li><strong>EPUB Volume Folding cleanup:</strong> Settings screen cleanly presents <em>Large Screen Layout</em> options (Auto / Cover / Inner) and contains no dead legacy volume folding controls. <span class="pass">Verified Fixed</span></li>
+    <li><strong>Archive labeling &amp; selection filtering:</strong> Library selection mode ("Organize Novels") correctly appends <code>· Archived</code> to archived entries, while the <em>Follow Updates</em> selector excludes archived titles. <span class="pass">Verified Fixed</span></li>
+    <li><strong>Reader bottom padding:</strong> Webnovel chapter WebView renders with proper bottom padding, preventing the last paragraph from being obscured by the fixed chapter bar. <span class="pass">Verified Fixed</span></li>
+  </ul>
+
+  <h2>Usability observations</h2>
+  <ul>
+    <li>Visual layout on Pixel 8 portrait (1080x2400) remains clean and readable across dark and light surfaces with proper contrast and clear call-to-action buttons.</li>
+    <li>Empty states for the download queue, updates screen, and add-story validation provide immediate, clear visual feedback.</li>
+    <li>Navigation transitions between cold-start targets and sub-panels operate smoothly without UI lag or frame dropping.</li>
+  </ul>
+
+  <h2>Not exercised in this session</h2>
+  <ul>
+    <li>Live network imports from Royal Road or Scribble Hub (including Cloudflare solver challenges): intentionally skipped to avoid mutating the emulator test library or relying on live third-party network endpoints.</li>
+    <li>Active queue downloads and pause/resume error handling under loss-of-network conditions.</li>
+    <li>Opening generated EPUBs in external third-party reader apps and SAF file picker exports.</li>
+    <li>Folded display postures, landscape orientation changes, and system font scale variations.</li>
+  </ul>
+
+  <h2>Recommended next steps</h2>
+  <ol>
+    <li>Maintain the automated unit test suite and emulator QA pipeline prior to minor/major releases.</li>
+    <li>Run an optional network-enabled staging pass on disposable test stories when modifying live Cloudflare bypass or source scraper logic.</li>
+  </ol>
+
+  <footer>Prepared against clean local build artifact <code>app-debug.apk</code> on 21 July 2026. This report documents the exact state observed on the AVD emulator.</footer>
+</main>
+</body>
+</html>
