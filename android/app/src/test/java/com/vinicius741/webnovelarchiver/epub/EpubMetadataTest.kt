@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.epub
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -61,5 +62,52 @@ class EpubMetadataTest {
         assertTrue(ncx.contains("<text>Description and Tags</text>"))
         assertTrue(ncx.contains("<text>Chapter &amp; One</text>"))
         assertTrue(ncx.contains("playOrder=\"4\""))
+    }
+
+    @Test
+    fun opfOmitsAllFrontMatterWhenChaptersOnly() {
+        val story = Story(id = "s1", title = "Title", author = "Author")
+        val chapters = listOf(Chapter(id = "c1", title = "Chapter 1"))
+
+        val opf =
+            EpubMetadata.opf(
+                story,
+                chapters,
+                cover = null,
+                chaptersOnly = true,
+            )
+
+        // "Chapters only" drops every front-matter page: cover, details, TOC, and the cover image.
+        assertFalse(opf.contains("href=\"cover.xhtml\""))
+        assertFalse(opf.contains("href=\"details.xhtml\""))
+        assertFalse(opf.contains("href=\"toc.xhtml\""))
+        assertFalse(opf.contains("id=\"cover-image\""))
+        assertFalse(opf.contains("<itemref idref=\"cover\"/>"))
+        assertFalse(opf.contains("<itemref idref=\"details\"/>"))
+        assertFalse(opf.contains("<itemref idref=\"toc\"/>"))
+        assertFalse(opf.contains("<guide>"))
+        // Chapters are always present, and the spine starts directly at chapter_1.
+        assertTrue(opf.contains("<item id=\"chapter_1\""))
+        assertTrue(opf.contains("<spine toc=\"ncx\"><itemref idref=\"chapter_1\"/>"))
+    }
+
+    @Test
+    fun ncxStartsChaptersAtPlayOrderOneWhenChaptersOnly() {
+        val story = Story(id = "s1", title = "Title")
+        val chapters = listOf(Chapter(id = "c1", title = "Chapter 1"))
+
+        val ncx =
+            EpubMetadata.ncx(
+                story,
+                chapters,
+                chaptersOnly = true,
+            )
+
+        // No front-matter navPoints remain, so the first chapter is playOrder 1 (not the historical 4).
+        assertFalse(ncx.contains("navPoint-cover"))
+        assertFalse(ncx.contains("navPoint-details"))
+        assertFalse(ncx.contains("navPoint-toc"))
+        assertFalse(ncx.contains("Description and Tags"))
+        assertTrue(ncx.contains("<navPoint id=\"navPoint-1\" playOrder=\"1\">"))
     }
 }

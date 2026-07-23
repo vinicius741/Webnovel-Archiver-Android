@@ -83,10 +83,27 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
             isEnabled = hasBookmark
         }
     styledCheckBox(startAtBookmark)
+    val chaptersOnly =
+        CheckBox(app).apply {
+            text = "Chapters only"
+            isChecked = current.chaptersOnly
+        }
+    styledCheckBox(chaptersOnly)
     view.addView(maxChapters)
     view.addView(rangeStart)
     view.addView(rangeEnd)
     view.addView(startAtBookmark)
+    view.addView(chaptersOnly)
+    view.addView(
+        makeText(
+            app,
+            "\"Chapters only\" omits the cover image, description/tags page, and table of contents — the EPUB contains just the chapter text.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        ).apply {
+            setPadding(0, dp(4), 0, 0)
+        },
+    )
     // DL2: explain why "Start at the bookmark" is disabled when there is no bookmark.
     if (!hasBookmark) {
         view.addView(
@@ -138,6 +155,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
                         rangeStart = start,
                         rangeEnd = end,
                         startAtBookmark = startAtBookmark.isChecked && hasBookmark,
+                        chaptersOnly = chaptersOnly.isChecked,
                     )
                 scope.launch {
                     repository.setEpubConfig(story.id, config)

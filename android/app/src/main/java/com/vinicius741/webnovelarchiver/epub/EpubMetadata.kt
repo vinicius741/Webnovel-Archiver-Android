@@ -13,6 +13,7 @@ object EpubMetadata {
         story: Story,
         chapters: List<Chapter>,
         cover: EpubCoverMetadata?,
+        chaptersOnly: Boolean = false,
     ): String {
         val manifest =
             chapters
@@ -26,6 +27,29 @@ object EpubMetadata {
                     "<item id=\"cover-image\" href=\"${xml(it.href)}\" media-type=\"${xml(it.mediaType)}\"/>"
                 }.orEmpty()
         val coverMeta = cover?.let { "<meta name=\"cover\" content=\"cover-image\" />" }.orEmpty()
+        // When chaptersOnly is set, the cover page, description/tags page, and human-readable TOC are
+        // all omitted; their manifest items, spine entries, and guide references go with them. The
+        // metadata (dc:description/dc:subject) is still emitted so the EPUB stays catalogable.
+        val frontMatterItems =
+            if (chaptersOnly) {
+                ""
+            } else {
+                "<item id=\"cover\" href=\"cover.xhtml\" media-type=\"application/xhtml+xml\"/>" +
+                    "<item id=\"details\" href=\"details.xhtml\" media-type=\"application/xhtml+xml\"/>" +
+                    "<item id=\"toc\" href=\"toc.xhtml\" media-type=\"application/xhtml+xml\"/>"
+            }
+        val frontMatterSpine =
+            if (chaptersOnly) {
+                ""
+            } else {
+                "<itemref idref=\"cover\"/><itemref idref=\"details\"/><itemref idref=\"toc\"/>"
+            }
+        val guide =
+            if (chaptersOnly) {
+                ""
+            } else {
+                "<guide><reference type=\"cover\" title=\"Cover\" href=\"cover.xhtml\"/><reference type=\"toc\" title=\"Table of Contents\" href=\"toc.xhtml\"/></guide>"
+            }
         val description =
             story.description
                 ?.takeIf { it.isNotBlank() }
@@ -40,27 +64,36 @@ object EpubMetadata {
             story.author,
         )}</dc:creator><dc:language>en</dc:language><dc:identifier id="BookId">urn:webnovel:${xml(
             story.id,
-        )}</dc:identifier>$description$subjects$coverMeta<meta name="generator" content="Webnovel Archiver Android" /></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="style" href="style.css" media-type="text/css"/><item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/><item id="details" href="details.xhtml" media-type="application/xhtml+xml"/><item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>$coverItem$manifest</manifest><spine toc="ncx"><itemref idref="cover"/><itemref idref="details"/><itemref idref="toc"/>$spine</spine><guide><reference type="cover" title="Cover" href="cover.xhtml"/><reference type="toc" title="Table of Contents" href="toc.xhtml"/></guide></package>"""
+        )}</dc:identifier>$description$subjects$coverMeta<meta name="generator" content="Webnovel Archiver Android" /></metadata><manifest><item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/><item id="style" href="style.css" media-type="text/css"/>$frontMatterItems$coverItem$manifest</manifest><spine toc="ncx">$frontMatterSpine$spine</spine>$guide</package>"""
     }
 
     fun ncx(
         story: Story,
         chapters: List<Chapter>,
+        chaptersOnly: Boolean = false,
     ): String {
+        // Front matter navPoints only exist when those pages are in the package. When chaptersOnly is
+        // set there is no front matter, so chapters begin at playOrder 1; otherwise cover/details/toc
+        // occupy playOrder 1-3 and chapters start at 4.
         val frontMatter =
-            listOf(
-                Triple("cover", "Cover", "cover.xhtml"),
-                Triple("details", "Description and Tags", "details.xhtml"),
-                Triple("toc", "Table of Contents", "toc.xhtml"),
-            ).mapIndexed { index, item ->
-                "<navPoint id=\"navPoint-${item.first}\" playOrder=\"${index + 1}\"><navLabel><text>${xml(
-                    item.second,
-                )}</text></navLabel><content src=\"${xml(item.third)}\"/></navPoint>"
-            }.joinToString("")
+            if (chaptersOnly) {
+                ""
+            } else {
+                listOf(
+                    Triple("cover", "Cover", "cover.xhtml"),
+                    Triple("details", "Description and Tags", "details.xhtml"),
+                    Triple("toc", "Table of Contents", "toc.xhtml"),
+                ).mapIndexed { index, item ->
+                    "<navPoint id=\"navPoint-${item.first}\" playOrder=\"${index + 1}\"><navLabel><text>${xml(
+                        item.second,
+                    )}</text></navLabel><content src=\"${xml(item.third)}\"/></navPoint>"
+                }.joinToString("")
+            }
+        val chapterStart = if (chaptersOnly) 1 else 4
         val chapterNav =
             chapters
                 .mapIndexed { index, chapter ->
-                    "<navPoint id=\"navPoint-${index + 1}\" playOrder=\"${index + 4}\"><navLabel><text>${xml(
+                    "<navPoint id=\"navPoint-${index + 1}\" playOrder=\"${index + chapterStart}\"><navLabel><text>${xml(
                         chapter.title,
                     )}</text></navLabel><content src=\"chapter_${index + 1}.xhtml\"/></navPoint>"
                 }.joinToString("")

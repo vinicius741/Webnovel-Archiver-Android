@@ -127,7 +127,7 @@ internal fun ScreenHost.generateConfiguredEpub(
         generateEpub(
             story,
             selectedEntries.map { it.chapter },
-            config.maxChaptersPerEpub,
+            config,
             selectedEntries.map { it.originalChapterNumber },
         )
     }
@@ -149,7 +149,7 @@ internal fun ScreenHost.generateConfiguredEpub(
 internal fun ScreenHost.generateEpub(
     story: Story,
     chapters: List<Chapter>,
-    maxChaptersPerFile: Int = repository.getSettings().maxChaptersPerEpub,
+    config: EpubConfig = EpubConfig(maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub),
     originalChapterNumbers: List<Int>? = null,
 ) {
     if (storyOperation != null) {
@@ -160,7 +160,7 @@ internal fun ScreenHost.generateEpub(
         try {
             setStoryOperation(story.id, StoryOperationKind.EPUB, "Preparing...")
             val results =
-                epubEngine.generate(story, chapters, maxChaptersPerFile, originalChapterNumbers) { msg ->
+                epubEngine.generate(story, chapters, config, originalChapterNumbers) { msg ->
                     app.runOnUiThread {
                         setStoryOperation(story.id, StoryOperationKind.EPUB, msg, epubProgressFromMessage(msg))
                     }

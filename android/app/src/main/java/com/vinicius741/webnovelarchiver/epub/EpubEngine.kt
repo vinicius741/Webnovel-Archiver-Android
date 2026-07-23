@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.epub
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveUtils
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.EpubResult
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
@@ -40,7 +41,7 @@ class EpubEngine(
     suspend fun generate(
         story: Story,
         chapters: List<Chapter>,
-        maxPerFile: Int,
+        config: EpubConfig,
         originalChapterNumbers: List<Int>? = null,
         progress: (String) -> Unit = {},
     ): List<EpubResult> =
@@ -48,10 +49,11 @@ class EpubEngine(
             val available = chapters.filter { it.content != null || storage.readChapter(it) != null }
             if (available.isEmpty()) error("No downloaded chapters available")
             val chaptersPerFile =
-                maxPerFile.coerceIn(
+                config.maxChaptersPerEpub.coerceIn(
                     SettingsValidation.MAX_CHAPTERS_PER_EPUB_MIN,
                     SettingsValidation.MAX_CHAPTERS_PER_EPUB_MAX,
                 )
+            val chaptersOnly = config.chaptersOnly
             val chunks = available.chunked(chaptersPerFile)
             val results = mutableListOf<EpubResult>()
             val chapterNumberById =
@@ -66,11 +68,12 @@ class EpubEngine(
                 val filename = EpubFilename.forRange(story.title, start, end)
                 // S5: fetch the cover (suspend) first, then stream the EPUB straight to its final file
                 // via a temp+rename (no full ByteArrayOutputStream held in memory), keeping one
-                // chapter's XHTML resident at a time.
-                val coverAsset = story.coverUrl?.let { fetchCover(it) }
+                // chapter's XHTML resident at a time. When chaptersOnly is set we skip the fetch
+                // entirely — no network round-trip, and no failed-fetch risk on a missing cover URL.
+                val coverAsset = if (chaptersOnly) null else story.coverUrl?.let { fetchCover(it) }
                 val file =
                     storage.saveEpubStreamed(story.id, filename) { out ->
-                        writeEpub(ZipOutputStream(out), story, chunk, coverAsset)
+                        writeEpub(ZipOutputStream(out), story, chunk, coverAsset, chaptersOnly)
                     }
                 results.add(EpubResult(file.absolutePath, filename, start, end))
             }
@@ -102,12 +105,17 @@ class EpubEngine(
     /**
      * Writes the full EPUB 2.0 structure into [zip]. Streamed entry-by-entry so only one chapter's
      * XHTML is resident at a time (S5). Non-suspend — the cover is fetched before streaming.
+     *
+     * When [chaptersOnly] is true, all front matter is omitted: the cover image, cover page,
+     * description/tags page, and human-readable TOC are skipped here, and `opf`/`ncx` drop their
+     * references to keep the package consistent.
      */
     private fun writeEpub(
         zip: ZipOutputStream,
         story: Story,
         chapters: List<Chapter>,
         coverAsset: CoverAsset?,
+        chaptersOnly: Boolean,
     ) {
         ArchiveUtils.putStoredEntry(zip, "mimetype", "application/epub+zip".toByteArray())
         entry(
@@ -121,14 +129,16 @@ class EpubEngine(
             zip.write(cover.data)
             zip.closeEntry()
         }
-        entry(zip, "OEBPS/cover.xhtml", EpubContent.cover(story, coverAsset?.href))
-        entry(zip, "OEBPS/details.xhtml", EpubContent.details(story))
-        entry(zip, "OEBPS/toc.xhtml", EpubContent.tableOfContents(chapters))
+        if (!chaptersOnly) {
+            entry(zip, "OEBPS/cover.xhtml", EpubContent.cover(story, coverAsset?.href))
+            entry(zip, "OEBPS/details.xhtml", EpubContent.details(story))
+            entry(zip, "OEBPS/toc.xhtml", EpubContent.tableOfContents(chapters))
+        }
         chapters.forEachIndexed { i, chapter ->
             entry(zip, "OEBPS/chapter_${i + 1}.xhtml", EpubContent.chapter(chapter, storage.readChapter(chapter) ?: ""))
         }
-        entry(zip, "OEBPS/content.opf", EpubMetadata.opf(story, chapters, coverAsset?.let { EpubCoverMetadata(it.href, it.mediaType) }))
-        entry(zip, "OEBPS/toc.ncx", EpubMetadata.ncx(story, chapters))
+        entry(zip, "OEBPS/content.opf", EpubMetadata.opf(story, chapters, coverAsset?.let { EpubCoverMetadata(it.href, it.mediaType) }, chaptersOnly))
+        entry(zip, "OEBPS/toc.ncx", EpubMetadata.ncx(story, chapters, chaptersOnly))
         zip.close()
     }
 

@@ -79,6 +79,10 @@ data class EpubConfig(
     // bookmark" (include, not skip) semantics.
     @com.google.gson.annotations.SerializedName("startAfterBookmark")
     val startAtBookmark: Boolean = false,
+    // Produce an EPUB containing only chapter text: drop the cover image, cover page, description/tags
+    // page, and the human-readable Table of Contents. The EPUB-2 NCX (toc.ncx) is still emitted so
+    // <spine toc="ncx"> stays valid. Defaults to false so existing on-disk configs keep all front matter.
+    val chaptersOnly: Boolean = false,
 )
 
 data class Story(
