@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning.TrendDirection
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -17,7 +18,7 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
-import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
+import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.scoreRow
@@ -122,7 +123,13 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     }
     val progressSummary =
         if (story.totalChapters > 0) {
-            makeProgressSummary(app, story.downloadedChapters, story.totalChapters)
+            makeChapterCoverageSummary(
+                app,
+                StoryBookmarkPlanning.downloadedFlags(story),
+                StoryBookmarkPlanning.bookmarkFraction(story),
+                story.downloadedChapters,
+                story.totalChapters,
+            )
         } else {
             null
         }

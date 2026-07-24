@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.library.LibraryQuery
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
@@ -22,8 +23,8 @@ import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
+import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
-import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.row
@@ -32,7 +33,7 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import com.vinicius741.webnovelarchiver.ui.updateProgressSummary
+import com.vinicius741.webnovelarchiver.ui.updateChapterCoverageSummary
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
@@ -105,10 +106,17 @@ internal fun ScreenHost.renderTabGrid(
                 }
                 addView(content)
                 if (story.totalChapters > 0) {
-                    // L5: show the download-count text alongside the thin progress bar so you don't have
-                    // to open the story to see "12 / 140 chapters".
+                    // L5: show the download-count text alongside a chapter-coverage bar that fills
+                    // only where chapters are actually on disk (so the last 7 of 100 read at the
+                    // right end, not the left) and marks the bookmarked chapter with a pin.
                     addView(
-                        makeProgressSummary(context, story.downloadedChapters, story.totalChapters).apply {
+                        makeChapterCoverageSummary(
+                            context,
+                            StoryBookmarkPlanning.downloadedFlags(story),
+                            StoryBookmarkPlanning.bookmarkFraction(story),
+                            story.downloadedChapters,
+                            story.totalChapters,
+                        ).apply {
                             tag = LibraryProgressTag(story.id)
                             layoutParams =
                                 LinearLayout
@@ -127,13 +135,19 @@ internal fun ScreenHost.renderTabGrid(
     }
 }
 
-/** Patches only the count text and progress bar for a story, preserving every scroll/gesture view. */
+/** Patches only the count text and coverage bar for a story, preserving every scroll/gesture view. */
 internal fun patchLibraryProgress(
     root: android.view.View,
     story: Story,
 ) {
     if (root.tag == LibraryProgressTag(story.id)) {
-        updateProgressSummary(root, story.downloadedChapters, story.totalChapters)
+        updateChapterCoverageSummary(
+            root,
+            StoryBookmarkPlanning.downloadedFlags(story),
+            StoryBookmarkPlanning.bookmarkFraction(story),
+            story.downloadedChapters,
+            story.totalChapters,
+        )
     }
     if (root is ViewGroup) {
         for (index in 0 until root.childCount) patchLibraryProgress(root.getChildAt(index), story)

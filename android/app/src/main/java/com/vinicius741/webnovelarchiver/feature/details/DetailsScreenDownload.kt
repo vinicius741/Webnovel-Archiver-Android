@@ -11,6 +11,7 @@ import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -24,7 +25,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeProgress
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.updateProgressSummary
+import com.vinicius741.webnovelarchiver.ui.updateChapterCoverageSummary
 
 /** Avoid replacing the RecyclerView hierarchy while a touch/fling gesture is still active. */
 internal const val DETAILS_SCROLL_RETRY_MS = 250L
@@ -68,7 +69,13 @@ internal fun ScreenHost.refreshDetailsDownload(
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
 
     headerProgressSummary?.let {
-        updateProgressSummary(it, story.downloadedChapters, story.totalChapters)
+        updateChapterCoverageSummary(
+            it,
+            StoryBookmarkPlanning.downloadedFlags(story),
+            StoryBookmarkPlanning.bookmarkFraction(story),
+            story.downloadedChapters,
+            story.totalChapters,
+        )
     }
     downloadActionSlot?.let { renderDetailsDownloadAction(it, story, summary, isBusy) }
 
