@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.download
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
@@ -81,8 +82,16 @@ object DownloadScheduler {
         val override = sourceSettings[providerName]
         val minDelay = (override?.delay ?: globalSettings.delay).coerceAtLeast(0)
         val maxDelay = override?.delayMax ?: globalSettings.delayMax
+        val requestedConcurrency = override?.concurrency ?: globalSettings.concurrency.coerceAtLeast(1)
+        val concurrency =
+            SourceRegistry
+                .all()
+                .firstOrNull { it.name == providerName }
+                ?.maximumDownloadConcurrency
+                ?.let { requestedConcurrency.coerceAtMost(it) }
+                ?: requestedConcurrency
         return SourceDownloadSettings(
-            concurrency = override?.concurrency ?: globalSettings.concurrency.coerceAtLeast(1),
+            concurrency = concurrency,
             delay = minDelay,
             delayMax = maxDelay.coerceAtLeast(minDelay),
         )

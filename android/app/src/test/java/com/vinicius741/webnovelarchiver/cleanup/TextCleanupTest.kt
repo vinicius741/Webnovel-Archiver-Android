@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.cleanup
 
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.ui.size
+import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -269,6 +270,24 @@ class TextCleanupTest {
             assertTrue("missing fallback group $i", annotated.annotatedHtml.contains("data-tts-group=\"$i\""))
         }
         assertTrue(annotated.annotatedHtml.contains("tts-chunk"))
+    }
+
+    @Test
+    fun prepareTtsAnnotatedHtmlPreservesForumBreakSeparatedParagraphs() {
+        val html =
+            "Kurtz StarSector<br>Kenish Duchy<br>System 100212-B<br>Scrap station<br><br>" +
+                "First prose paragraph.<br><br>Second prose paragraph."
+
+        val chunks = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 500)
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 500)
+        val rendered = Jsoup.parseBodyFragment(annotated.annotatedHtml)
+        val paragraphs = rendered.select("p")
+
+        assertEquals(chunks, annotated.chunks)
+        assertEquals(3, paragraphs.size)
+        assertEquals(3, paragraphs[0].select("br").size)
+        assertTrue(paragraphs[1].text().contains("First prose paragraph"))
+        assertTrue(paragraphs[2].text().contains("Second prose paragraph"))
     }
 
     @Test

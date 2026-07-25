@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.ui.size
 import kotlinx.coroutines.runBlocking
+import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -94,10 +95,41 @@ class SourceProviderFixtureTest {
     }
 
     @Test
+    fun spaceBattlesMetadataParsesThreadmarkHeaderAndStarterArtwork() {
+        val html = fixture("/fixtures/spacebattles/story.html")
+        val meta = SpaceBattlesProvider.parseMetadata(html)
+        assertEquals("Phantom Star", meta.title)
+        assertEquals("ExampleAuthor", meta.author)
+        assertEquals("https://forums.spacebattles.com/threads/fixture-story.1183048/", meta.canonicalUrl)
+        assertEquals(PublicationStatus.ongoing, meta.publicationStatus)
+        assertEquals(
+            "https://forums.spacebattles.com/data/attachments/fixture-cover.jpg",
+            meta.coverUrl,
+        )
+        assertEquals(listOf("space opera", "original"), meta.tags)
+        assertTrue(meta.description.orEmpty().contains("\n\n"))
+    }
+
+    @Test
+    fun spaceBattlesChapterContentStripsScripts() {
+        val html = fixture("/fixtures/spacebattles/chapter.html")
+        val content = SpaceBattlesProvider.parseChapterContent(html)
+        assertTrue(content.contains("first star burned blue"))
+        assertFalse(content.contains("trackReader"))
+        val paragraphs = Jsoup.parseBodyFragment(content).select("p")
+        assertEquals(3, paragraphs.size)
+        assertEquals(3, paragraphs[0].select("br").size)
+    }
+
+    @Test
     fun providersDetectAndIdentifyTheirUrls() {
         assertTrue(RoyalRoadProvider.isSource("https://www.royalroad.com/fiction/12345/x"))
         assertEquals("rr_12345", RoyalRoadProvider.getStoryId("https://www.royalroad.com/fiction/12345/x"))
         assertTrue(ScribbleHubProvider.isSource("https://www.scribblehub.com/series/98765/x"))
         assertEquals("sh_98765", ScribbleHubProvider.getStoryId("https://www.scribblehub.com/series/98765/x"))
+        assertTrue(SpaceBattlesProvider.isSource("https://forums.spacebattles.com/threads/fixture-story.1183048/"))
+        assertTrue(SpaceBattlesProvider.isSource("https://forums.spacebattles.com/posts/7001/"))
+        assertEquals("sb_1183048", SpaceBattlesProvider.getStoryId("https://forums.spacebattles.com/threads/x.1183048/"))
+        assertEquals("sb_7001", SpaceBattlesProvider.getChapterId("https://forums.spacebattles.com/posts/7001/"))
     }
 }

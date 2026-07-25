@@ -205,30 +205,42 @@ internal fun ScreenHost.showDataBackup() {
             }
         }
         val sourceNetwork = app.appContainer.network
-        val sourceSnapshot = sourceNetwork.reliabilitySnapshots().firstOrNull { it.host.endsWith("scribblehub.com") }
+        val sourceSnapshots =
+            sourceNetwork
+                .reliabilitySnapshots()
+                .filter { snapshot ->
+                    snapshot.host.endsWith("scribblehub.com") || snapshot.host.endsWith("spacebattles.com")
+                }
         val webViewPackage = WebView.getCurrentWebViewPackage()
         val sourceAccessSummary =
             when {
-                sourceSnapshot?.manualVerificationRequired == true -> "Verification required"
-                sourceSnapshot?.browserTransportActive == true -> "Chromium transport active"
-                sourceSnapshot?.cooldownRemainingMillis?.let { it > 0L } == true -> "Cooling down"
+                sourceSnapshots.any { it.manualVerificationRequired } -> "Verification required"
+                sourceSnapshots.any { it.browserTransportActive } -> "Chromium transport active"
+                sourceSnapshots.any { it.cooldownRemainingMillis > 0L } -> "Cooling down"
                 else -> "Ready"
             } + " • WebView ${webViewPackage?.versionName ?: "unavailable"}"
         settingRow(R.drawable.wna_globe, "Source Access Status", sourceAccessSummary) {
             val detail =
-                sourceSnapshot?.let { snapshot ->
-                    "Requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
-                        "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
-                } ?: "No Scribble Hub requests in this app session"
+                if (sourceSnapshots.isEmpty()) {
+                    "No protected-source requests in this app session"
+                } else {
+                    sourceSnapshots.joinToString("\n") { snapshot ->
+                        "${snapshot.host}: requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
+                            "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
+                    }
+                }
             toast(detail)
         }
         settingRow(R.drawable.wna_cleaning, "Reset Source Web Session", "Clear source cookies, browser storage, and access cooldowns") {
-            confirm("Reset the Scribble Hub browser session? The next request may require verification.", confirmLabel = "Reset") {
+            confirm("Reset source browser sessions? The next request may require verification.", confirmLabel = "Reset") {
                 CloudflareWebViewSolver.destroySessions()
                 WebStorage.getInstance().deleteAllData()
                 sourceNetwork.clearSourceAccess("https://www.scribblehub.com/", keepBrowserTransport = false)
+                sourceNetwork.clearSourceAccess("https://forums.spacebattles.com/", keepBrowserTransport = false)
                 CloudflareCookies.removeAllFor("https://www.scribblehub.com/") {
-                    toast("Source web session reset")
+                    CloudflareCookies.removeAllFor("https://forums.spacebattles.com/") {
+                        toast("Source web sessions reset")
+                    }
                 }
             }
         }
@@ -323,8 +335,11 @@ internal fun ScreenHost.showDownloadSettings() {
                         fieldsContainer.apply {
                             sourceConcurrency =
                                 labeledField(
-                                    "Concurrency",
-                                    (override?.concurrency ?: settings.downloadConcurrency).toString(),
+                                    provider.maximumDownloadConcurrency?.let { "Concurrency (max $it)" } ?: "Concurrency",
+                                    minOf(
+                                        override?.concurrency ?: settings.downloadConcurrency,
+                                        provider.maximumDownloadConcurrency ?: Int.MAX_VALUE,
+                                    ).toString(),
                                     InputType.TYPE_CLASS_NUMBER,
                                 )
                             sourceDelayMin =

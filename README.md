@@ -6,7 +6,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 
 ## Key Features
 
-- **Multi-Source Support** — Extensible `SourceProvider` architecture (Royal Road, Scribble Hub; add more via `SourceRegistry`). Source metadata can include scores, tags, content warnings, publication status, and linked Patreon stats.
+- **Multi-Source Support** — Extensible `SourceProvider` architecture for Royal Road, Scribble Hub, and SpaceBattles. SpaceBattles imports use main Threadmarks and Reader pages, excluding forum replies and optional threadmark categories. Source metadata can include scores, tags, content warnings, publication status, and linked Patreon stats.
 - **In-App Source Browser** — Source picker plus Chrome Custom Tabs for browsing supported sites and importing novels. Cloudflare challenges use a persistent shared-session WebView, with sticky Chromium transport when the native HTTP fingerprint is rejected.
 - **Offline Library** — Download chapters for reading without an internet connection.
 - **Built-in Reader** — WebView-based reader with sentence-level TTS highlighting, image support, last-read position tracking, and a floating TTS transport.
@@ -150,7 +150,7 @@ android/
             storage/           # AppStorage + atomic writes, recovery, backup orchestration
             backup/            # Backup/restore planning and validation
             diagnostics/       # Local diagnostics export
-          source/              # SourceProvider registry, Royal Road, Scribble Hub
+          source/              # SourceProvider registry: Royal Road, Scribble Hub, SpaceBattles
             network/           # OkHttp client, Cloudflare cookie jar + Chromium fallback
           sync/                # Story sync engine + merge planning
           download/            # Download engine, queue, foreground service

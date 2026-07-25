@@ -4,7 +4,9 @@ object SourceUrlValidation {
     fun isImportableStoryUrl(url: String): Boolean {
         val normalized = url.trim()
         if (normalized.isBlank()) return false
-        return isRoyalRoadStoryUrl(normalized) || isScribbleHubStoryUrl(normalized)
+        return isRoyalRoadStoryUrl(normalized) ||
+            isScribbleHubStoryUrl(normalized) ||
+            isSpaceBattlesStoryUrl(normalized)
     }
 
     private fun isRoyalRoadStoryUrl(url: String): Boolean {
@@ -15,4 +17,10 @@ object SourceUrlValidation {
 
     private fun isScribbleHubStoryUrl(url: String): Boolean =
         Regex("""https?://(?:www\.)?scribblehub\.com/series/\d+""").containsMatchIn(url)
+
+    private fun isSpaceBattlesStoryUrl(url: String): Boolean =
+        Regex(
+            """^https?://(?:(?:forum|forums)\.)?spacebattles\.com/threads/(?:[^/?#]*\.)?\d+/?(?:[?#].*)?$""",
+            RegexOption.IGNORE_CASE,
+        ).matches(url)
 }

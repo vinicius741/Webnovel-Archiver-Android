@@ -83,7 +83,7 @@ internal fun ScreenHost.showLibrary() {
             addView(
                 makeEmptyState(
                     context,
-                    message = "Import a Royal Road or Scribble Hub story to start building your library.",
+                    message = "Import a Royal Road, Scribble Hub, or SpaceBattles story to start building your library.",
                     title = "Your library is empty",
                     iconRes = R.drawable.wna_menu_book,
                     actionLabel = "Add a story",

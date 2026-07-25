@@ -5,6 +5,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -19,6 +21,7 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 import kotlin.random.Random
@@ -67,7 +70,9 @@ class NetworkClient(
                     minimum + jitterMillis(width).coerceIn(0L, width)
                 },
             )
-    private val preparedPages = java.util.concurrent.ConcurrentHashMap<String, PreparedPage>()
+    private val preparedPages = ConcurrentHashMap<String, PreparedPage>()
+    private val reusablePages = ConcurrentHashMap<String, PreparedPage>()
+    private val reusablePageLocks = ConcurrentHashMap<String, Mutex>()
 
     suspend fun fetch(
         url: String,
@@ -86,6 +91,52 @@ class NetworkClient(
                 throw SourceAccessBlockedException(url)
             }
             body
+        }
+    }
+
+    /**
+     * Fetches a page that several chapter jobs may share and retains it briefly. The per-key mutex
+     * coalesces concurrent misses, so a Reader page is requested only once even when parallel
+     * workers ask for different chapters on that page at the same time. [cacheValidator] controls
+     * cache admission and prevents successful-but-invalid HTML from poisoning later jobs.
+     */
+    suspend fun fetchReusablePage(
+        url: String,
+        cacheKey: String = url,
+        ttlMillis: Long = REUSABLE_PAGE_TTL_MILLIS,
+        callTimeoutMillis: Long? = null,
+        maximumAttemptsOverride: Int? = null,
+        cacheValidator: (String) -> Boolean = { it.isNotBlank() },
+    ): String {
+        val now = nowMillis()
+        reusablePages[cacheKey]?.let { cached ->
+            if (cached.expiresAt > now && cacheValidator(cached.html)) return cached.html
+            reusablePages.remove(cacheKey, cached)
+        }
+        val lock = reusablePageLocks.getOrPut(cacheKey) { Mutex() }
+        return lock.withLock {
+            val lockedNow = nowMillis()
+            reusablePages[cacheKey]?.let { cached ->
+                if (cached.expiresAt > lockedNow && cacheValidator(cached.html)) return@withLock cached.html
+                reusablePages.remove(cacheKey, cached)
+            }
+            fetch(
+                url = url,
+                callTimeoutMillis = callTimeoutMillis,
+                maximumAttemptsOverride = maximumAttemptsOverride,
+            ).also { html ->
+                if (cacheValidator(html)) {
+                    reusablePages.entries
+                        .filter { (_, page) -> page.expiresAt <= lockedNow }
+                        .forEach { (key, page) -> reusablePages.remove(key, page) }
+                    if (reusablePages.size >= MAX_REUSABLE_PAGES) {
+                        reusablePages.entries.minByOrNull { it.value.expiresAt }?.let { oldest ->
+                            reusablePages.remove(oldest.key, oldest.value)
+                        }
+                    }
+                    reusablePages[cacheKey] = PreparedPage(html, lockedNow + ttlMillis.coerceAtLeast(0L))
+                }
+            }
         }
     }
 
@@ -261,6 +312,8 @@ class NetworkClient(
 
     fun onNetworkChanged() {
         preparedPages.clear()
+        reusablePages.clear()
+        reusablePageLocks.clear()
         reliability.onNetworkChanged()
     }
 
@@ -306,6 +359,8 @@ class NetworkClient(
         /** Maximum bytes accepted for a cover/image download (R6 size cap). */
         const val MAX_IMAGE_BYTES = 8_000_000L
         private const val PREPARED_PAGE_TTL_MILLIS = 5L * 60L * 1_000L
+        private const val REUSABLE_PAGE_TTL_MILLIS = 10L * 60L * 1_000L
+        private const val MAX_REUSABLE_PAGES = 24
 
         /**
          * Legacy fallback built without a [Context]. Kept for the parameter default only — the real

@@ -328,17 +328,19 @@ class DownloadEngine(
         emitProgress(job, storage.getQueue())
         var providerName: String? = null
         try {
-            storage.getStory(job.storyId) ?: error("Story not found")
+            val story = storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
             providerName = provider.name
-            // DownloadEngine owns the durable retry budget. NetworkClient therefore makes one
-            // attempt per job execution, preventing the former 3 network × 4 queue retry stack.
-            val html = network.fetch(job.chapter.url, maximumAttemptsOverride = 1)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
             val clean =
                 CleanupEngine.shared.applyDownload(
-                    provider.parseChapterContent(html),
+                    provider.fetchChapterContent(
+                        storyUrl = story.sourceUrl,
+                        chapter = job.chapter,
+                        chapterIndex = job.chapterIndex,
+                        network = network,
+                    ),
                     storage.getSentenceRemovalList(),
                     storage.getRegexRules(),
                 )

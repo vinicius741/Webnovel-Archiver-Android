@@ -17,6 +17,19 @@ class SourceNetworkPolicyTest {
     }
 
     @Test
+    fun productionResolverUsesConservativeSpaceBattlesRules() {
+        val policy =
+            DefaultNetworkPolicyResolver.policyFor(
+                "https://forums.spacebattles.com/threads/example.1/threadmarks".toHttpUrl(),
+            )
+
+        assertEquals(1_500L, policy.minimumRequestGapMillis)
+        assertEquals(2, policy.maximumAttempts)
+        assertEquals(setOf(429, 503), policy.retryableStatusCodes)
+        assertEquals(30, policy.maximumRequestsPerWindow)
+    }
+
+    @Test
     fun mockWebServerHostGetsGenericPolicyUnlessTestInjectsOne() {
         val policy = DefaultNetworkPolicyResolver.policyFor("http://localhost:1234/chapter".toHttpUrl())
 

@@ -93,6 +93,21 @@ class DownloadSchedulerTest {
     }
 
     @Test
+    fun spaceBattlesCapsConcurrencyAtOne() {
+        val settings =
+            DownloadScheduler.settingsFor(
+                providerName = "SpaceBattles",
+                globalSettings = SourceDownloadSettings(concurrency = 4, delay = 0, delayMax = 0),
+                sourceSettings =
+                    mapOf(
+                        "SpaceBattles" to SourceDownloadSettings(concurrency = 8, delay = 0, delayMax = 0),
+                    ),
+            )
+
+        assertEquals(1, settings.concurrency)
+    }
+
+    @Test
     fun randomDelaySamplesWithinRangeAndKeepsFixedDelay() {
         assertEquals(
             500L,

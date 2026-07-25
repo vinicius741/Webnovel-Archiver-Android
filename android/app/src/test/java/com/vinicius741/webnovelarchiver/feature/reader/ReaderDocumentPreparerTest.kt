@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.feature.reader.ReaderContentRenderer.ReaderDocumentColors
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
+import org.jsoup.Jsoup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -44,6 +45,39 @@ class ReaderDocumentPreparerTest {
             assertFalse(document.annotated.annotatedHtml.contains("<script"))
             assertTrue(document.webViewHtml.contains("data-tts-group"))
             assertTrue(document.webViewHtml.contains("#121212"))
+        }
+
+    @Test
+    fun preservesBreakSeparatedForumParagraphsFromExistingDownloads() =
+        runTest {
+            val content =
+                "Header line one<br>Header line two<br><br>" +
+                    "First prose paragraph.<br><br>Second prose paragraph."
+            val chapter = Chapter(id = "chapter-1", title = "First", content = content)
+            val story = Story(id = "story-1", title = "Story", chapters = mutableListOf(chapter))
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val preparer =
+                ReaderDocumentPreparer(
+                    source = FakeReaderDocumentSource(story),
+                    ioDispatcher = dispatcher,
+                    computationDispatcher = dispatcher,
+                )
+
+            val document =
+                preparer.prepare(
+                    story.id,
+                    chapter.id,
+                    ReaderDocumentPalette(
+                        normal = ReaderDocumentColors("#FFFFFF", "#000000"),
+                        forcedDark = ReaderDocumentColors("#121212", "#E6E6E6"),
+                    ),
+                ) ?: error("Expected document")
+            val paragraphs = Jsoup.parse(document.webViewHtml).select("body > p")
+
+            assertEquals(3, paragraphs.size)
+            assertEquals(1, paragraphs[0].select("br").size)
+            assertTrue(paragraphs[1].text().contains("First prose paragraph"))
+            assertTrue(paragraphs[2].text().contains("Second prose paragraph"))
         }
 
     private class FakeReaderDocumentSource(

@@ -28,6 +28,7 @@ object TtsTextPreparation {
         if (html.isBlank()) return emptyList()
 
         val doc = Jsoup.parseBodyFragment(html)
+        LooseHtmlStructure.wrapBreakSeparatedParagraphs(doc.body())
         return planChunks(buildUnits(doc, regexRules, contributingElements(doc))).chunks
     }
 
@@ -62,6 +63,7 @@ object TtsTextPreparation {
         if (html.isBlank()) return TtsAnnotatedHtml("", emptyList())
 
         val doc = Jsoup.parseBodyFragment(html)
+        LooseHtmlStructure.wrapBreakSeparatedParagraphs(doc.body())
         val elements = contributingElements(doc)
         val units = buildUnits(doc, regexRules, elements)
         val plan = planChunks(units)

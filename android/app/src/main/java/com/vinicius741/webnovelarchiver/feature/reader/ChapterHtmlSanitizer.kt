@@ -7,7 +7,8 @@ import org.jsoup.safety.Safelist
  * Sanitizes downloaded chapter HTML before it is rendered in the reader WebView (R9, parity gap 3).
  *
  * The reader now runs with JavaScript enabled (required for TTS paragraph highlighting + tap-to-
- * start). Because the chapter HTML comes from an untrusted source (Royal Road / Scribble Hub), it is
+ * start). Because chapter HTML comes from an untrusted source (Royal Road / Scribble Hub /
+ * SpaceBattles), it is
  * first cleaned through a strict Jsoup [Safelist]: scripts, event handlers (`on*`), inline styles
  * that can carry payloads, `<iframe>`/`<object>`/`<embed>`, and other active content are stripped,
  * while the prose-bearing tags the reader needs (`p`, headings, `blockquote`, `li`, tables, `img`,

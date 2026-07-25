@@ -39,6 +39,7 @@ internal class DownloadSourceReliability(
                 .firstOrNull { (providerName, jobs) ->
                     providerName != null &&
                         providerName !in preflightedSources &&
+                        SourceRegistry.getProvider(jobs.first().chapter.url)?.supportsBulkDownloadPreflight == true &&
                         jobs.size >= BULK_PREFLIGHT_CHAPTERS
                 } ?: return BulkPreflightResult(attempted = false)
         val providerName = candidate.key ?: return BulkPreflightResult(attempted = false)

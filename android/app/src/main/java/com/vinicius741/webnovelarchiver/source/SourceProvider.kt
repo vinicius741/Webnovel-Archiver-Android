@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
@@ -23,6 +24,8 @@ interface SourceProvider {
     val name: String
     val baseUrl: String
     val supportsLatestChapterSync: Boolean get() = false
+    val supportsBulkDownloadPreflight: Boolean get() = true
+    val maximumDownloadConcurrency: Int? get() = null
 
     fun isSource(url: String): Boolean
 
@@ -47,10 +50,21 @@ interface SourceProvider {
     ): List<ChapterInfo>? = null
 
     fun parseChapterContent(html: String): String
+
+    /**
+     * Fetches one chapter for the download queue. Most sources expose one chapter per URL, while
+     * forum-backed sources can override this to reuse a reader page containing several chapters.
+     */
+    suspend fun fetchChapterContent(
+        storyUrl: String,
+        chapter: Chapter,
+        chapterIndex: Int,
+        network: NetworkClient,
+    ): String = parseChapterContent(network.fetch(chapter.url, maximumAttemptsOverride = 1))
 }
 
 object SourceRegistry {
-    private val providers = listOf(RoyalRoadProvider, ScribbleHubProvider)
+    private val providers = listOf(RoyalRoadProvider, ScribbleHubProvider, SpaceBattlesProvider)
 
     fun getProvider(url: String): SourceProvider? = providers.firstOrNull { it.isSource(url) }
 

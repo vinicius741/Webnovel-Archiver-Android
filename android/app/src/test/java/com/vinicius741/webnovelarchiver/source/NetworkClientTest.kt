@@ -9,6 +9,8 @@ import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -49,6 +51,43 @@ class NetworkClientTest {
             server.enqueue(MockResponse().setBody("<html>hello</html>"))
             val body = client.fetch(server.url("/page").toString())
             assertEquals("<html>hello</html>", body)
+        }
+
+    @Test
+    fun reusablePageCoalescesConcurrentRequestsForTheSameReaderPage() =
+        runBlocking {
+            server.enqueue(MockResponse().setBody("<html>reader batch</html>").setBodyDelay(100, TimeUnit.MILLISECONDS))
+            val url = server.url("/reader/page-1").toString()
+
+            val bodies =
+                listOf(
+                    async { client.fetchReusablePage(url) },
+                    async { client.fetchReusablePage(url) },
+                    async { client.fetchReusablePage(url) },
+                ).awaitAll()
+
+            assertEquals(List(3) { "<html>reader batch</html>" }, bodies)
+            assertEquals(1, server.requestCount)
+        }
+
+    @Test
+    fun reusablePageDoesNotCacheBodiesRejectedByTheCaller() =
+        runBlocking {
+            val url = server.url("/reader/page-1").toString()
+            val isReaderPage: (String) -> Boolean = { it.contains("message--post") }
+            server.enqueue(MockResponse().setBody("<html>temporary login wall</html>"))
+            server.enqueue(MockResponse().setBody("<article class=\"message--post\">chapter</article>"))
+
+            assertEquals(
+                "<html>temporary login wall</html>",
+                client.fetchReusablePage(url, cacheValidator = isReaderPage),
+            )
+            val valid = client.fetchReusablePage(url, cacheValidator = isReaderPage)
+            val cached = client.fetchReusablePage(url, cacheValidator = isReaderPage)
+
+            assertEquals("<article class=\"message--post\">chapter</article>", valid)
+            assertEquals(valid, cached)
+            assertEquals(2, server.requestCount)
         }
 
     @Test

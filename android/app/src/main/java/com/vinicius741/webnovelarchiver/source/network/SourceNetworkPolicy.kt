@@ -30,10 +30,18 @@ object DefaultNetworkPolicyResolver : NetworkPolicyResolver {
             retryableStatusCodes = setOf(403, 429),
             maximumRequestsPerWindow = 12,
         )
+    private val spaceBattles =
+        SourceNetworkPolicy(
+            minimumRequestGapMillis = 1_500L,
+            maximumAttempts = 2,
+            retryableStatusCodes = setOf(429, 503),
+            maximumRequestsPerWindow = 30,
+        )
 
     override fun policyFor(url: HttpUrl): SourceNetworkPolicy =
         when (url.host.lowercase()) {
             "scribblehub.com", "www.scribblehub.com" -> scribbleHub
+            "spacebattles.com", "forums.spacebattles.com", "forum.spacebattles.com" -> spaceBattles
             else -> default
         }
 }

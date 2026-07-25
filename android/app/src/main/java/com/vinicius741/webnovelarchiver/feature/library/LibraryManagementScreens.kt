@@ -296,7 +296,7 @@ internal fun ScreenHost.showAddStory() {
             makeField(
                 context,
                 addStoryUrlText ?: "",
-                "Royal Road or Scribble Hub story URL",
+                "Royal Road, Scribble Hub, or SpaceBattles story URL",
                 android.text.InputType.TYPE_TEXT_VARIATION_URI,
             ).apply {
                 // Roomier vertical padding than the compact field style shared with search bars/dialogs,
