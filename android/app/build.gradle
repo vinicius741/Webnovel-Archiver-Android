@@ -110,17 +110,17 @@ tasks.register('ci') {
 }
 
 dependencies {
-    implementation 'androidx.core:core-ktx:1.17.0'
-    implementation 'androidx.activity:activity-ktx:1.12.0'
+    implementation 'androidx.core:core-ktx:1.18.0'
+    implementation 'androidx.activity:activity-ktx:1.13.0'
     // lifecycle-runtime-ktx provides lifecycleScope used by MainActivity (M3 lifecycle-aware scopes)
-    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.4'
     implementation 'androidx.appcompat:appcompat:1.7.1'
     // Browser-powered in-app navigation; required for secure third-party OAuth flows.
-    implementation 'androidx.browser:browser:1.9.0'
+    implementation 'androidx.browser:browser:1.10.0'
     // androidx.media — MediaSessionCompat + MediaStyle + MediaButtonReceiver for the TTS foreground
     // service's lock-screen / system media UI and headset/Bluetooth media-button handling
     // (parity gaps 1 & 2; same artifact/version the legacy tts-media-session module used).
-    implementation 'androidx.media:media:1.7.0'
+    implementation 'androidx.media:media:1.8.0'
     // RecyclerView — recycles views for the Details chapter list and other long lists (Speed S1).
     implementation 'androidx.recyclerview:recyclerview:1.4.0'
     // ViewPager2 — swipe-between-tabs pager in the Library (closes the legacy RN PagerView parity gap).
@@ -130,20 +130,24 @@ dependencies {
     implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
     // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
-    implementation 'androidx.window:window:1.4.0'
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    implementation 'androidx.window:window:1.5.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
     // Timber — structured logging (Observability; Tier 1, T1). Plant a DebugTree in debug builds so
     // every catch block and download/TTS state transition is diagnosable from logcat without forcing
     // exceptions into user-facing toasts.
     implementation 'com.jakewharton.timber:timber:5.0.1'
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'org.jsoup:jsoup:1.21.2'
-    implementation 'com.google.code.gson:gson:2.13.2'
-    // Coil — image loading with memory/disk cache, downsampling, cancellation (Speed S4).
-    implementation 'io.coil-kt:coil:2.7.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.4.0'
+    implementation 'org.jsoup:jsoup:1.22.2'
+    implementation 'com.google.code.gson:gson:2.14.0'
+    // Coil 3 — image loading with memory/disk cache, downsampling, cancellation (Speed S4).
+    // Coil 3 split network support into its own artifact, so coil-network-okhttp is required to load
+    // remote cover URLs. Pinned to 3.2.0 (the last Coil 3 built against Kotlin 2.1.20); 3.3.0+ needs
+    // Kotlin 2.2+, which is out of scope for this dependency refresh.
+    implementation 'io.coil-kt.coil3:coil:3.2.0'
+    implementation 'io.coil-kt.coil3:coil-network-okhttp:3.2.0'
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
-    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:5.4.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
     androidTestImplementation 'androidx.test:core-ktx:1.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'
     androidTestImplementation 'androidx.test:rules:1.7.0'

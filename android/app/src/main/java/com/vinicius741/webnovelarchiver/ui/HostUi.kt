@@ -14,7 +14,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
 import androidx.window.layout.WindowMetricsCalculator
-import coil.load
+import coil3.load
+import coil3.request.crossfade
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
