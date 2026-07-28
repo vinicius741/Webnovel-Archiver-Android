@@ -137,7 +137,18 @@ class EpubEngine(
         chapters.forEachIndexed { i, chapter ->
             entry(zip, "OEBPS/chapter_${i + 1}.xhtml", EpubContent.chapter(chapter, storage.readChapter(chapter) ?: ""))
         }
-        entry(zip, "OEBPS/content.opf", EpubMetadata.opf(story, chapters, coverAsset?.let { EpubCoverMetadata(it.href, it.mediaType) }, chaptersOnly))
+        entry(
+            zip,
+            "OEBPS/content.opf",
+            EpubMetadata.opf(
+                story,
+                chapters,
+                coverAsset?.let {
+                    EpubCoverMetadata(it.href, it.mediaType)
+                },
+                chaptersOnly,
+            ),
+        )
         entry(zip, "OEBPS/toc.ncx", EpubMetadata.ncx(story, chapters, chaptersOnly))
         zip.close()
     }
