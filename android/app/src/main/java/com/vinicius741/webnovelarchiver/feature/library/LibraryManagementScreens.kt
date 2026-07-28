@@ -53,7 +53,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
     val stories = repository.getLibrary()
     val tabs = repository.getTabs().sortedBy { it.order }
     val selectedIds = initialSelectedIds.toMutableSet()
-    screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Organize Novels", onBack = { showLibrary() }) {
+    screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Organize Novels", onBack = { navigateBack() }) {
         // Empty library: show the same empty state the Library screen shows instead of a bare
         // filter bar with nothing to filter.
         if (stories.isEmpty()) {

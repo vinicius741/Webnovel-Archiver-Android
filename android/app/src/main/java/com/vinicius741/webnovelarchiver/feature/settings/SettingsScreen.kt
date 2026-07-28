@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
 import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -116,6 +117,12 @@ internal fun ScreenHost.showSettings() {
             showNotifications()
         }
         settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
+        // Organize Novels (bulk select / move / delete) used to live on the Library top bar. Moved
+        // here next to Manage Tabs so both library-organization actions share a home; the per-story
+        // "Select Multiple" overflow on each novel card remains as a contextual shortcut.
+        settingRow(R.drawable.wna_check, "Organize Novels", "Select, move, or delete novels in your library") {
+            showLibrarySelection()
+        }
         // Storage issues surface as a marker on the title so the row still draws attention without
         // permanently occupying its own slot in the main list.
         val storageHealth = repository.getStorageHealth()
