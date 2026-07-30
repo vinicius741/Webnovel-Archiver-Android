@@ -6,7 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
@@ -53,9 +53,21 @@ internal fun ScreenHost.showDetails(storyId: String) {
     val isBusy = operation != null
     // Live download feedback: reduce this story's queue jobs once for the initial render from the
     // cached queue. Later repository events patch the banner and chapter rows in place below.
-    val jobsForStory = repository.queue().filter { it.storyId == story.id }
+    val queue = repository.queue()
+    val jobsForStory = queue.filter { it.storyId == story.id }
     val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
+    val initialPacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
+    val waitingChapterIds = waitingChapterIds(jobsForStory, initialPacingSnapshots, System.currentTimeMillis())
+    val initialPacingStatus =
+        detailsPacingStatus(
+            storyId = story.id,
+            storySourceUrl = story.sourceUrl,
+            jobsForStory = jobsForStory,
+            snapshots = initialPacingSnapshots,
+            nowMillis = System.currentTimeMillis(),
+            allJobs = queue,
+        )
     // Stable references captured into the refresh closure below so the loop patches the header
     // progress, banner, and download action in place even when the header is scrolled off-screen
     // (the views detach but the references stay valid). Assigned synchronously inside screen { ... }.
@@ -74,7 +86,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         // Android measure and inflate every chapter row, defeating recycling for large novels.
         scrollable = false,
     ) {
-        val panel = buildDetailsInfoPanel(story, operation, downloadSummary)
+        val panel = buildDetailsInfoPanel(story, operation, downloadSummary, initialPacingStatus)
         val infoPanel = panel.view
         headerProgressSummary = panel.headerProgressSummary
         bannerSlot = panel.bannerSlot
@@ -125,7 +137,17 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chapterFilter = mode
             scope.launch { repository.saveChapterFilterSettings(ChapterFilterSettings(mode)) }
             renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
-            renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chipsContainer, pick, chapterStatuses, listHeader)
+            renderChapterList(
+                story,
+                chaptersContainer,
+                chapterQuery,
+                chapterFilter,
+                chipsContainer,
+                pick,
+                chapterStatuses,
+                waitingChapterIds,
+                listHeader,
+            )
         }
         search.addTextChangedListener(
             object : TextWatcher {
@@ -151,6 +173,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                         chipsContainer,
                         pick,
                         chapterStatuses,
+                        waitingChapterIds,
                         listHeader,
                     )
                 }
@@ -159,7 +182,17 @@ internal fun ScreenHost.showDetails(storyId: String) {
             },
         )
         renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
-        renderChapterList(story, chaptersContainer, chapterQuery, chapterFilter, chipsContainer, pick, chapterStatuses, listHeader)
+        renderChapterList(
+            story,
+            chaptersContainer,
+            chapterQuery,
+            chapterFilter,
+            chipsContainer,
+            pick,
+            chapterStatuses,
+            waitingChapterIds,
+            listHeader,
+        )
 
         if (layout.isTwoPane) {
             // Two-pane: info scrolls on the left, chapter list scrolls on the right. The info
@@ -192,7 +225,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }
     }
-    observeDetailsDownload(storyId, headerProgressSummary, bannerSlot, downloadActionSlot, isBusy)
+    observeDetailsDownload(storyId, headerProgressSummary, bannerSlot, downloadActionSlot, isBusy, initialPacingStatus)
 }
 
 /**
@@ -224,76 +257,6 @@ private fun ScreenHost.buildCompactListHeader(
         addView(makeDivider(app))
         addView(chapterControls)
     }
-
-/**
- * Subscribes the in-place download-refresh loop for the Details screen. Download state is emitted
- * process-wide by the shared repository; this patches only the chapter rows and banner after a
- * coherent event and never polls disk or rebuilds the screen for progress ticks. If the list is
- * being dragged/flung, events are coalesced until it becomes idle so an adapter update cannot
- * interfere with the gesture.
- */
-private fun ScreenHost.observeDetailsDownload(
-    storyId: String,
-    headerProgressSummary: View?,
-    bannerSlot: ViewGroup?,
-    downloadActionSlot: LinearLayout?,
-    isBusy: Boolean,
-) {
-    if (frame.childCount == 0) return
-    val root = frame.getChildAt(0)
-    val handler = android.os.Handler(android.os.Looper.getMainLooper())
-    var patchPosted = false
-    var pendingSnapshot: DownloadUiSnapshot? = null
-
-    fun postPatch() {
-        if (patchPosted) return
-        patchPosted = true
-        val patch =
-            object : Runnable {
-                override fun run() {
-                    if (root.parent !== frame) return
-                    val chapterList = findDetailsChapterList(root)
-                    if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
-                        handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
-                        return
-                    }
-                    patchPosted = false
-                    val snapshot = pendingSnapshot
-                    pendingSnapshot = null
-                    refreshDetailsDownload(
-                        storyId,
-                        headerProgressSummary,
-                        bannerSlot,
-                        downloadActionSlot,
-                        isBusy,
-                        snapshot,
-                    )
-                }
-            }
-        handler.post(patch)
-    }
-    // Capture before launching so an event before collector registration is not dropped.
-    val initialSnapshot = repository.downloadState.value
-    var observedLibraryVersion = initialSnapshot.libraryVersion
-    var observedQueueVersion = initialSnapshot.queueVersion
-    screenObserver =
-        scope.launch {
-            repository.downloadState.collect { snapshot ->
-                if (
-                    snapshot.libraryVersion == observedLibraryVersion &&
-                    snapshot.queueVersion == observedQueueVersion
-                ) {
-                    return@collect
-                }
-                observedLibraryVersion = snapshot.libraryVersion
-                observedQueueVersion = snapshot.queueVersion
-                if (root.parent === frame) {
-                    pendingSnapshot = snapshot
-                    postPatch()
-                }
-            }
-        }
-}
 
 /** Re-derives only the Details download action after a progress event. */
 internal fun ScreenHost.renderDetailsDownloadAction(

@@ -95,12 +95,17 @@ object DownloadManagerPlanning {
             }
         }
 
-    /** Single-line status summary for a story, e.g. "12/20 chapters • 3 downloading • 2 queued • 1 failed".
+    /** Single-line status summary for a story, e.g. "12/20 chapters • 2 downloading • 1 waiting for delay • 2 queued • 1 failed".
      *  Mirrors the legacy RN getSubtitleText: always leads with "X/Y chapters" then appends each
      *  non-zero status segment joined by " • ". */
-    fun storySubtitle(counts: QueueStatusCounts): String {
+    fun storySubtitle(
+        counts: QueueStatusCounts,
+        waitingForDelay: Int = 0,
+    ): String {
         val segments = mutableListOf<String>()
-        counts.downloading.takeIf { it > 0 }?.let { segments += "$it downloading" }
+        val waiting = waitingForDelay.coerceIn(0, counts.downloading)
+        (counts.downloading - waiting).takeIf { it > 0 }?.let { segments += "$it downloading" }
+        waiting.takeIf { it > 0 }?.let { segments += "$it waiting for delay" }
         counts.pending.takeIf { it > 0 }?.let { segments += "$it queued" }
         counts.paused.takeIf { it > 0 }?.let { segments += "$it paused" }
         counts.failed.takeIf { it > 0 }?.let { segments += "$it failed" }

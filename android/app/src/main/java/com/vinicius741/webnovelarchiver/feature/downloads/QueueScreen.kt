@@ -10,9 +10,12 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
+import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.download.QueueStatusCounts
@@ -21,6 +24,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -33,7 +37,6 @@ import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.formatRelativeTime
 import com.vinicius741.webnovelarchiver.ui.jobStatusDot
 import com.vinicius741.webnovelarchiver.ui.layout.queueMaxWidth
-import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeCountChip
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
@@ -45,6 +48,11 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.statusColor
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showQueue() {
@@ -52,6 +60,8 @@ internal fun ScreenHost.showQueue() {
     val queue =
         repository.downloadState.value.queue
             .ifEmpty { repository.getQueue() }
+    val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
+    val nowMillis = System.currentTimeMillis()
     // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
     rerender = { showQueue() }
     val layout = currentScreenLayout()
@@ -89,7 +99,10 @@ internal fun ScreenHost.showQueue() {
         emptySlot = FrameLayout(context)
         adapter =
             QueueGroupAdapter(host) {
-                adapter.submitQueue(repository.downloadState.value.queue)
+                adapter.submitQueue(
+                    repository.downloadState.value.queue,
+                    app.appContainer.downloadPacer.snapshots.value.values,
+                )
             }
         list =
             RecyclerView(context).apply {
@@ -107,7 +120,7 @@ internal fun ScreenHost.showQueue() {
         )
         centered.addView(emptySlot, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         centered.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        updateQueueContent(summarySlot, emptySlot, list, adapter, queue)
+        updateQueueContent(summarySlot, emptySlot, list, adapter, queue, pacingSnapshots, nowMillis)
         addView(centeredShell, verticalFill())
     }
     observeQueueUpdates(summarySlot, emptySlot, list, adapter, initialGlobalActions)
@@ -125,23 +138,46 @@ private fun ScreenHost.observeQueueUpdates(
     // Capture before launching so an event before collector registration is not dropped.
     var observedQueueVersion = repository.downloadState.value.queueVersion
     var observedGlobalActions = initialGlobalActions
+    var hadTimedStatus =
+        app.appContainer.downloadPacer.snapshots.value.values.any {
+            it.nextRequestAtMillis > System.currentTimeMillis()
+        } ||
+            repository.downloadState.value.queue.any {
+                (it.nextRetryAt ?: 0L) > System.currentTimeMillis()
+            }
     screenObserver =
         scope.launch {
-            repository.downloadState.collect { snapshot ->
-                if (snapshot.queueVersion == observedQueueVersion) return@collect
-                observedQueueVersion = snapshot.queueVersion
-                if (root.parent === frame) {
-                    val nextGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(snapshot.queue))
-                    if (nextGlobalActions != observedGlobalActions) {
-                        observedGlobalActions = nextGlobalActions
-                        frame.post {
-                            if (root.parent === frame) showQueue()
-                        }
-                        return@collect
+            combine(
+                repository.downloadState,
+                app.appContainer.downloadPacer.snapshots,
+                flow {
+                    while (currentCoroutineContext().isActive) {
+                        emit(System.currentTimeMillis())
+                        delay(1_000L)
                     }
-                    updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue)
+                },
+            ) { repositorySnapshot, pacing, now -> Triple(repositorySnapshot, pacing, now) }
+                .collect { (snapshot, pacing, now) ->
+                    val queueChanged = snapshot.queueVersion != observedQueueVersion
+                    observedQueueVersion = snapshot.queueVersion
+                    val hasTimedStatus =
+                        pacing.values.any { it.nextRequestAtMillis > now } ||
+                            snapshot.queue.any { (it.nextRetryAt ?: 0L) > now }
+                    val countdownChanged = hasTimedStatus || hadTimedStatus
+                    hadTimedStatus = hasTimedStatus
+                    if (!queueChanged && !countdownChanged) return@collect
+                    if (root.parent === frame) {
+                        val nextGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(snapshot.queue))
+                        if (queueChanged && nextGlobalActions != observedGlobalActions) {
+                            observedGlobalActions = nextGlobalActions
+                            frame.post {
+                                if (root.parent === frame) showQueue()
+                            }
+                            return@collect
+                        }
+                        updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue, pacing.values, now)
+                    }
                 }
-            }
         }
 }
 
@@ -151,6 +187,8 @@ private fun ScreenHost.updateQueueContent(
     list: RecyclerView,
     adapter: QueueGroupAdapter,
     queue: List<DownloadJob>,
+    pacingSnapshots: Collection<DownloadPacingSnapshot>,
+    nowMillis: Long,
 ) {
     val counts = QueueStatusCounts.from(queue)
     summarySlot.removeAllViews()
@@ -176,15 +214,32 @@ private fun ScreenHost.updateQueueContent(
         summarySlot.row {
             addView(makeProgressSummary(context, counts.completed, counts.total))
         }
+        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, queue, nowMillis)
+        val downloadingNow = counts.downloading - waitingByJobId.size
         summarySlot.flow {
-            addView(makeCountChip(context, "active", counts.downloading, ThemeManager.colors.primary))
+            addView(makeCountChip(context, "downloading", downloadingNow, ThemeManager.colors.primary))
+            addView(makeCountChip(context, "waiting for delay", waitingByJobId.size, ThemeManager.colors.secondary))
             addView(makeCountChip(context, "queued", counts.pending, ThemeManager.colors.onSurfaceVariant))
             addView(makeCountChip(context, "paused", counts.paused, ThemeManager.colors.secondary))
             addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
             addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
         }
+        DownloadPacingUiPlanning
+            .activeSourceWaits(pacingSnapshots, queue, nowMillis)
+            .forEach { wait ->
+                summarySlot.addView(
+                    makeText(
+                        app,
+                        DownloadPacingUiPlanning.sourceHeadline(wait),
+                        Type.LABEL_MEDIUM,
+                        ThemeManager.colors.primary,
+                    ).apply {
+                        setPadding(0, dp(Space.XS), 0, 0)
+                    },
+                )
+            }
     }
-    adapter.submitQueue(queue)
+    adapter.submitQueue(queue, pacingSnapshots, nowMillis)
 }
 
 /** Global (whole-queue) actions rendered as a stable app-bar icon strip. */
@@ -258,6 +313,9 @@ internal class QueueGroupCard(
 ) {
     fun bind(
         jobs: List<DownloadJob>,
+        allJobs: List<DownloadJob>,
+        pacingSnapshots: Collection<DownloadPacingSnapshot>,
+        nowMillis: Long,
         onToggle: () -> Unit,
     ) {
         val storyId = jobs.first().storyId
@@ -266,7 +324,25 @@ internal class QueueGroupCard(
         val expanded = host.storyExpandOverride[storyId] ?: (counts.hasActive || counts.hasFailed)
 
         title.text = storyTitle
-        subtitle.text = DownloadManagerPlanning.storySubtitle(counts)
+        val providerName = SourceRegistry.getProvider(jobs.first().chapter.url)?.name
+        val pacingStatus =
+            DownloadPacingUiPlanning.storyStatus(
+                storyId = storyId,
+                providerName = providerName,
+                storyJobs = jobs,
+                snapshots = pacingSnapshots,
+                nowMillis = nowMillis,
+                allJobs = allJobs,
+            )
+        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, jobs, nowMillis)
+        subtitle.text =
+            buildString {
+                append(DownloadManagerPlanning.storySubtitle(counts, waitingByJobId.size))
+                pacingStatus?.let {
+                    append('\n')
+                    append(DownloadPacingUiPlanning.groupHeadline(it))
+                }
+            }
         chevron.rotation = if (expanded) 0f else -90f
 
         // Progress summary + action group are small views; rebuild only their contents in place.
@@ -286,56 +362,10 @@ internal class QueueGroupCard(
             body.addView(makeDivider(host.app))
             jobs.sortedBy { it.chapterIndex }.forEachIndexed { index, job ->
                 if (index > 0) body.addView(makeDivider(host.app))
-                body.addView(host.addQueueJobRow(job))
+                body.addView(host.addQueueJobRow(job, waitingByJobId[job.id]))
             }
         }
     }
-}
-
-/** Build the persistent skeleton for a [QueueGroupCard] (built once per recycled holder). */
-internal fun ScreenHost.createQueueGroupCard(): QueueGroupCard {
-    val chevron = chevronIcon(expanded = true) // rotation is set in bind
-    val title =
-        makeText(app, "", Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        }
-    val subtitle =
-        makeText(app, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(0, dp(2), 0, 0)
-        }
-    val progressSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    val actionSlot =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-        }
-    val textColumn =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(title)
-            addView(subtitle)
-            addView(progressSlot.apply { setPadding(0, dp(Space.XS + 2), 0, 0) })
-        }
-    val card =
-        makeCard(app).apply {
-            val header =
-                row {
-                    addView(chevron)
-                    addView(textColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(actionSlot)
-                }
-            header.isClickable = true
-            header.isFocusable = true
-            header.background = selectableRipple(ThemeManager.colors.onSurface)
-            addView(LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }) // body, captured below
-        }
-    val body = card.getChildAt(card.childCount - 1) as LinearLayout
-    card.layoutParams =
-        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            bottomMargin = app.dp(Space.LG)
-        }
-    return QueueGroupCard(card, this, card.getChildAt(0) as LinearLayout, chevron, title, subtitle, progressSlot, actionSlot, body)
 }
 
 /** Inline story-header action icons (pause/resume/cancel/retry as relevant). Tapping the header
@@ -392,20 +422,10 @@ private fun ScreenHost.storyActionButton(
             }
     }
 
-/** Down chevron rotated to point left (collapsed) when the group is folded. Sized generously so
- *  the expand/collapse affordance stays clearly visible — a 24dp box with CENTER_INSIDE plus the old
- *  8dp padding squeezed the glyph to ~8dp, making it nearly invisible. FIT_CENTER lets the 24dp
- *  vector scale up to fill the larger touch target. */
-private fun ScreenHost.chevronIcon(expanded: Boolean): View =
-    ImageView(app).apply {
-        setImageDrawable(app.tintedIcon(R.drawable.wna_chevron_down, ThemeManager.colors.onSurfaceVariant))
-        scaleType = ImageView.ScaleType.FIT_CENTER
-        setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
-        rotation = if (expanded) 0f else -90f
-        layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
-    }
-
-internal fun ScreenHost.addQueueJobRow(job: DownloadJob): View {
+internal fun ScreenHost.addQueueJobRow(
+    job: DownloadJob,
+    waitingForDelay: com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus? = null,
+): View {
     val row =
         LinearLayout(app).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -425,10 +445,14 @@ internal fun ScreenHost.addQueueJobRow(job: DownloadJob): View {
             )
             val retryDetail = if (job.retryCount > 0) " • retries ${job.retryCount}/${job.maxRetries}" else ""
             val nextRetry = job.nextRetryAt?.let { " • retry in ${formatRelativeTime(it)}" }.orEmpty()
+            val statusLabel =
+                waitingForDelay?.let {
+                    "Waiting for delay • next request in ${DownloadPacingUiPlanning.formatDuration(requireNotNull(it.remainingSeconds))}"
+                } ?: job.status
             addView(
                 makeText(
                     app,
-                    "${job.status}${job.error?.let { " • $it" } ?: ""}$retryDetail$nextRetry",
+                    "$statusLabel${job.error?.let { " • $it" } ?: ""}$retryDetail$nextRetry",
                     Type.LABEL_SMALL,
                     statusColor(job.status),
                 ).apply {

@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
 import com.vinicius741.webnovelarchiver.feature.story.openEpubForStory
@@ -48,6 +49,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     story: Story,
     operation: StoryOperationState?,
     downloadSummary: DownloadDetailsPlanning.StoryDownloadSummary,
+    pacingStatus: DownloadPacingUiStatus? = null,
 ): DetailsInfoPanel {
     val isBusy = operation != null
     val infoPanel = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
@@ -103,7 +105,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         bannerSlot =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(makeDownloadProgressBanner(app, downloadSummary) { showQueue() })
+                addView(makeDownloadProgressBanner(app, downloadSummary, pacingStatus) { showQueue() })
             }
         infoPanel.addView(bannerSlot!!)
     }

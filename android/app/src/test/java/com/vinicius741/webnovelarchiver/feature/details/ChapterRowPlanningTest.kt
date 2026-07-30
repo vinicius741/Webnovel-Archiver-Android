@@ -39,6 +39,19 @@ class ChapterRowPlanningTest {
     }
 
     @Test
+    fun subtitleMakesConfiguredDelayDistinctFromAnActiveDownload() {
+        assertEquals(
+            "Waiting for delay",
+            ChapterRowPlanning.subtitle(
+                DownloadJobStatus.Downloading,
+                downloaded = false,
+                downloadedAt = null,
+                waitingForDelay = true,
+            ),
+        )
+    }
+
+    @Test
     fun subtitleShowsDownloadDateWhenKnown() {
         val noon =
             LocalDate

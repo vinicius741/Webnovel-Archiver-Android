@@ -170,6 +170,16 @@ class DownloadManagerPlanningTest {
     }
 
     @Test
+    fun storySubtitleSeparatesWaitingForDelayFromActualDownloads() {
+        val counts = QueueStatusCounts(downloading = 2, pending = 1, completed = 3)
+
+        assertEquals(
+            "3/6 chapters • 1 downloading • 1 waiting for delay • 1 queued",
+            DownloadManagerPlanning.storySubtitle(counts, waitingForDelay = 1),
+        )
+    }
+
+    @Test
     fun storySubtitleHasNoStatusTailWhenAllCompleted() {
         val counts = QueueStatusCounts(completed = 3)
         assertEquals("3/3 chapters", DownloadManagerPlanning.storySubtitle(counts))

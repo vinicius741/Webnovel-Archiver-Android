@@ -30,9 +30,10 @@ object ChapterRowPlanning {
         liveStatus: DownloadJobStatus?,
         downloaded: Boolean,
         downloadedAt: Long?,
+        waitingForDelay: Boolean = false,
     ): String? =
         when (liveStatus) {
-            DownloadJobStatus.Downloading -> "Downloading…"
+            DownloadJobStatus.Downloading -> if (waitingForDelay) "Waiting for delay" else "Downloading…"
             DownloadJobStatus.Pending -> "Queued"
             DownloadJobStatus.Failed -> "Download failed"
             else ->
@@ -49,11 +50,12 @@ object ChapterRowPlanning {
         liveStatus: DownloadJobStatus?,
         downloaded: Boolean,
         downloadedAt: Long?,
+        waitingForDelay: Boolean = false,
     ): String =
         buildString {
             append("Index ")
             append(indexLabel(zeroBasedIndex))
-            subtitle(liveStatus, downloaded, downloadedAt)?.let {
+            subtitle(liveStatus, downloaded, downloadedAt, waitingForDelay)?.let {
                 append("  •  ")
                 append(it)
             }

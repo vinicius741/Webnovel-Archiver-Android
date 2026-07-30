@@ -76,6 +76,7 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     showStyledOptionsDialog("More options", options)
 }
 
+@Suppress("LongParameterList") // chapter status + waiting-state overlay are always passed together
 internal fun ScreenHost.renderChapterList(
     story: Story,
     list: androidx.recyclerview.widget.RecyclerView,
@@ -84,6 +85,7 @@ internal fun ScreenHost.renderChapterList(
     chipsContainer: ViewGroup,
     onPick: (String) -> Unit,
     chapterStatuses: Map<String, com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus> = emptyMap(),
+    waitingChapterIds: Set<String> = emptySet(),
     header: View? = null,
 ) {
     val displayedChapters = filterDetailsChapters(story, query, filter)
@@ -102,12 +104,25 @@ internal fun ScreenHost.renderChapterList(
             query,
             filter,
             chapterStatuses,
+            waitingChapterIds,
         )
         return
     }
     val initialChapters = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else displayedChapters
     val chapterAdapter =
-        ChapterListAdapter(this, initialChapters, story, isEmptyState, list, query, filter, chapterStatuses, chipsContainer, onPick)
+        ChapterListAdapter(
+            this,
+            initialChapters,
+            story,
+            isEmptyState,
+            list,
+            query,
+            filter,
+            chapterStatuses,
+            waitingChapterIds,
+            chipsContainer,
+            onPick,
+        )
     list.adapter =
         if (header == null) chapterAdapter else androidx.recyclerview.widget.ConcatAdapter(DetailsHeaderAdapter(header), chapterAdapter)
 }

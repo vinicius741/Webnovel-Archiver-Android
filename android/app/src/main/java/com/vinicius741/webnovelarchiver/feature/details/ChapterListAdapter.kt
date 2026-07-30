@@ -57,6 +57,7 @@ class ChapterListAdapter(
     private var query: String = "",
     private var filter: String = "all",
     private var chapterStatuses: Map<String, DownloadJobStatus> = emptyMap(),
+    private var waitingChapterIds: Set<String> = emptySet(),
     private val chipsContainer: ViewGroup,
     private val onPick: (String) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
@@ -93,17 +94,20 @@ class ChapterListAdapter(
         query: String,
         filter: String,
         chapterStatuses: Map<String, DownloadJobStatus>,
+        waitingChapterIds: Set<String> = emptySet(),
     ) {
         val previous = this.chapters
         val previousEmpty = this.isEmptyState
         val previousBookmarkId = this.story.lastReadChapterId
         val previousChapterStatuses = this.chapterStatuses
+        val previousWaitingChapterIds = this.waitingChapterIds
         this.chapters = chapters
         this.story = story
         this.isEmptyState = isEmptyState
         this.query = query
         this.filter = filter
         this.chapterStatuses = chapterStatuses
+        this.waitingChapterIds = waitingChapterIds
         // U1: prefer a DiffUtil pass keyed by chapter id so insertions/removals/reorders animate and
         // only changed rows rebind. When the empty-state toggles, the whole tree changes shape, so
         // fall back to a full notifyDataSetChanged in that one transition.
@@ -143,6 +147,7 @@ class ChapterListAdapter(
                             oldChapter.downloaded == newChapter.downloaded &&
                             oldChapter.downloadedAt == newChapter.downloadedAt &&
                             previousChapterStatuses[oldChapter.id] == chapterStatuses[newChapter.id] &&
+                            (oldChapter.id in previousWaitingChapterIds) == (newChapter.id in waitingChapterIds) &&
                             (previousBookmarkId == oldChapter.id) == (nextBookmarkId == newChapter.id)
                     }
                 },
@@ -295,8 +300,9 @@ class ChapterListAdapter(
         // Live status from the download queue takes precedence over the static downloaded flag, so
         // an in-flight/queued/failed chapter shows real-time feedback rather than "not downloaded".
         val liveStatus = chapterStatuses[chapter.id]
+        val waitingForDelay = chapter.id in waitingChapterIds
         // U1: swap only the leading child of the fixed status slot instead of rebuilding the row.
-        setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, context)
+        setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, waitingForDelay, context)
         holder.title.text = ChapterRowPlanning.displayTitle(chapter.title)
         // Dim the title when the chapter can't be opened so the row reads as disabled, matching the
         // faint status dot used for non-downloaded chapters.
@@ -306,7 +312,7 @@ class ChapterListAdapter(
         // U1: rebuild only the single subtitle TextView (cheap) inside the reused subtitle slot.
         holder.subtitleSlot.removeAllViews()
         holder.subtitleSlot.addView(
-            subtitleText(index, liveStatus, chapter.downloaded, chapter.downloadedAt, context),
+            subtitleText(index, liveStatus, chapter.downloaded, chapter.downloadedAt, waitingForDelay, context),
         )
         // One-tap bookmark (replaces the per-chapter three-dot overflow): empty outline by default,
         // filled + primary-tinted when this chapter is the novel's bookmark. Tapping toggles it.
@@ -329,11 +335,12 @@ class ChapterListAdapter(
         statusSlot: FrameLayout,
         liveStatus: DownloadJobStatus?,
         downloaded: Boolean,
+        waitingForDelay: Boolean,
         context: Context,
     ) {
         val desired: View =
             when (liveStatus) {
-                DownloadJobStatus.Downloading -> chapterSpinner(context)
+                DownloadJobStatus.Downloading -> if (waitingForDelay) host.dot(ThemeManager.colors.secondary) else chapterSpinner(context)
                 DownloadJobStatus.Pending -> host.dot(ThemeManager.colors.primary)
                 DownloadJobStatus.Failed -> host.dot(ThemeManager.colors.error)
                 else -> host.chapterStatusDot(downloaded)
@@ -359,12 +366,13 @@ class ChapterListAdapter(
         liveStatus: DownloadJobStatus?,
         downloaded: Boolean,
         downloadedAt: Long?,
+        waitingForDelay: Boolean,
         context: Context,
     ): TextView {
-        val label = ChapterRowPlanning.metadataLabel(index, liveStatus, downloaded, downloadedAt)
+        val label = ChapterRowPlanning.metadataLabel(index, liveStatus, downloaded, downloadedAt, waitingForDelay)
         val color =
             when (liveStatus) {
-                DownloadJobStatus.Downloading -> ThemeManager.colors.primary
+                DownloadJobStatus.Downloading -> if (waitingForDelay) ThemeManager.colors.secondary else ThemeManager.colors.primary
                 DownloadJobStatus.Failed -> ThemeManager.colors.error
                 // Quiet metadata for download date / offline cue so the title stays the focus.
                 else -> ThemeManager.colors.onSurfaceVariant

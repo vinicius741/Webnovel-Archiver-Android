@@ -9,14 +9,20 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
+import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -64,9 +70,12 @@ internal fun ScreenHost.refreshDetailsDownload(
     snapshot: DownloadUiSnapshot? = null,
 ) {
     val story = snapshot?.library?.firstOrNull { it.id == storyId } ?: repository.story(storyId) ?: return
-    val jobsForStory = (snapshot?.queue ?: repository.queue()).filter { it.storyId == storyId }
+    val queue = snapshot?.queue ?: repository.queue()
+    val jobsForStory = queue.filter { it.storyId == storyId }
     val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
+    val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
+    val waitingChapterIds = waitingChapterIds(jobsForStory, pacingSnapshots, System.currentTimeMillis())
 
     headerProgressSummary?.let {
         updateChapterCoverageSummary(
@@ -93,7 +102,7 @@ internal fun ScreenHost.refreshDetailsDownload(
         val filtered = filterDetailsChapters(story, query, filter)
         val isEmptyState = filtered.isEmpty()
         val displayed = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else filtered
-        adapter.update(displayed, story, isEmptyState, query, filter, chapterStatuses)
+        adapter.update(displayed, story, isEmptyState, query, filter, chapterStatuses, waitingChapterIds)
     }
 
     // Patch the banner slot in place. The slot reference is stable across header recycling; if the
@@ -101,8 +110,17 @@ internal fun ScreenHost.refreshDetailsDownload(
     // header — keeps it). No showDetails() fallback: the next navigation/render rebuilds naturally.
     if (bannerSlot != null) {
         if (shouldShowDetailsBanner(summary)) {
+            val pacingStatus =
+                detailsPacingStatus(
+                    storyId = storyId,
+                    storySourceUrl = story.sourceUrl,
+                    jobsForStory = jobsForStory,
+                    snapshots = pacingSnapshots,
+                    nowMillis = System.currentTimeMillis(),
+                    allJobs = queue,
+                )
             bannerSlot.removeAllViews()
-            bannerSlot.addView(makeDownloadProgressBanner(app, summary) { showQueue() })
+            bannerSlot.addView(makeDownloadProgressBanner(app, summary, pacingStatus) { showQueue() })
         } else {
             bannerSlot.removeAllViews()
         }
@@ -199,9 +217,10 @@ internal fun makeStoryOperationProgress(
 internal fun makeDownloadProgressBanner(
     context: Context,
     summary: DownloadDetailsPlanning.StoryDownloadSummary,
+    pacingStatus: DownloadPacingUiStatus? = null,
     onViewDownloads: () -> Unit,
 ): LinearLayout {
-    val headline = DownloadDetailsPlanning.headline(summary)
+    val headline = pacingStatus?.let(DownloadPacingUiPlanning::storyHeadline) ?: DownloadDetailsPlanning.headline(summary)
     return LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
@@ -236,6 +255,19 @@ internal fun makeDownloadProgressBanner(
                 ellipsize = TextUtils.TruncateAt.END
             },
         )
+        pacingStatus
+            ?.chapterTitle
+            ?.takeIf { it.isNotBlank() }
+            ?.let { chapterTitle ->
+                addView(
+                    makeText(context, "“$chapterTitle”", Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                        gravity = Gravity.CENTER
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, context.dp(2), 0, 0)
+                    },
+                )
+            }
         addView(
             makeButton(context, "Go to Downloads", Btn.TEXT, R.drawable.wna_list) { onViewDownloads() }.apply {
                 layoutParams =
@@ -245,4 +277,74 @@ internal fun makeDownloadProgressBanner(
             },
         )
     }
+}
+
+internal fun detailsPacingStatus(
+    storyId: String,
+    storySourceUrl: String,
+    jobsForStory: List<DownloadJob>,
+    snapshots: Collection<DownloadPacingSnapshot>,
+    nowMillis: Long,
+    allJobs: List<DownloadJob> = jobsForStory,
+): DownloadPacingUiStatus? =
+    DownloadPacingUiPlanning.storyStatus(
+        storyId = storyId,
+        providerName = SourceRegistry.getProvider(storySourceUrl)?.name,
+        storyJobs = jobsForStory,
+        snapshots = snapshots,
+        nowMillis = nowMillis,
+        allJobs = allJobs,
+    )
+
+/** Chapters held only by the configured request delay, not yet fetching their content. */
+internal fun waitingChapterIds(
+    jobs: List<DownloadJob>,
+    snapshots: Collection<DownloadPacingSnapshot>,
+    nowMillis: Long,
+): Set<String> {
+    val waitingJobIds = DownloadPacingUiPlanning.waitingJobs(snapshots, jobs, nowMillis).keys
+    return jobs
+        .asSequence()
+        .filter { it.id in waitingJobIds }
+        .map { it.chapter.id }
+        .toSet()
+}
+
+internal fun ScreenHost.refreshDetailsPacingBanner(
+    storyId: String,
+    bannerSlot: ViewGroup?,
+    snapshots: Collection<DownloadPacingSnapshot>,
+    nowMillis: Long,
+) {
+    if (bannerSlot == null) return
+    val story = repository.story(storyId) ?: return
+    val queue = repository.queue()
+    val jobsForStory = queue.filter { it.storyId == storyId }
+    val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
+    if (!shouldShowDetailsBanner(summary)) return
+    val pacingStatus = detailsPacingStatus(storyId, story.sourceUrl, jobsForStory, snapshots, nowMillis, queue)
+    val chapterList = findDetailsChapterList(frame)
+    val adapter =
+        chapterList?.adapter?.let {
+            it as? ChapterListAdapter
+                ?: (it as? androidx.recyclerview.widget.ConcatAdapter)?.adapters?.filterIsInstance<ChapterListAdapter>()?.singleOrNull()
+        }
+    if (adapter != null) {
+        val query = adapter.currentQuery()
+        val filter = adapter.currentFilter()
+        val filtered = filterDetailsChapters(story, query, filter)
+        val isEmptyState = filtered.isEmpty()
+        val displayed = if (isEmptyState) listOf(-1 to Chapter(title = "No chapters match this view.")) else filtered
+        adapter.update(
+            displayed,
+            story,
+            isEmptyState,
+            query,
+            filter,
+            DownloadDetailsPlanning.chapterJobStatuses(jobsForStory),
+            waitingChapterIds(jobsForStory, snapshots, nowMillis),
+        )
+    }
+    bannerSlot.removeAllViews()
+    bannerSlot.addView(makeDownloadProgressBanner(app, summary, pacingStatus) { showQueue() })
 }
