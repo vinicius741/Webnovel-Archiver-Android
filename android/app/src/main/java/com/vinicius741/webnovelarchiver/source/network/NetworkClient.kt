@@ -8,7 +8,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -19,12 +18,21 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import kotlin.math.min
 import kotlin.random.Random
+
+/**
+ * Optional per-request gate layered around the shared source-safety claim.
+ *
+ * Download code uses this to combine its user-configured delay with the process-wide cooldown and
+ * rolling request budget at one actual request boundary. Sync and other callers omit the gate, so
+ * they never inherit download preferences. Implementations must invoke [claimSourcePermission]
+ * exactly once before returning.
+ */
+fun interface NetworkRequestGate {
+    suspend fun awaitRequest(claimSourcePermission: suspend () -> Unit)
+}
 
 @Suppress("TooManyFunctions")
 class NetworkClient(
@@ -65,11 +73,8 @@ class NetworkClient(
             ?: SourceReliabilityCoordinator(
                 nowMillis = nowMillis,
                 sleep = sleep,
-                randomBetween = { minimum, maximum ->
-                    val width = (maximum - minimum).coerceAtLeast(0L)
-                    minimum + jitterMillis(width).coerceIn(0L, width)
-                },
             )
+    private val retryBackoff = RetryBackoff(nowMillis, jitterMillis)
     private val preparedPages = ConcurrentHashMap<String, PreparedPage>()
     private val reusablePages = ConcurrentHashMap<String, PreparedPage>()
     private val reusablePageLocks = ConcurrentHashMap<String, Mutex>()
@@ -79,13 +84,14 @@ class NetworkClient(
         callTimeoutMillis: Long? = null,
         maximumAttemptsOverride: Int? = null,
         allowPreparedPage: Boolean = true,
+        requestGate: NetworkRequestGate? = null,
     ): String {
         if (allowPreparedPage) {
             preparedPages.remove(url)?.takeIf { it.expiresAt > nowMillis() }?.let { return it.html }
         }
         val request = NetworkRequests.pageRequest(url)
         val policy = policyResolver.policyFor(request.url)
-        return executeWithRetries(url, request, policy, callTimeoutMillis, maximumAttemptsOverride) { response ->
+        return executeWithRetries(url, request, policy, callTimeoutMillis, maximumAttemptsOverride, requestGate) { response ->
             val body = response.body?.string().orEmpty()
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
                 throw SourceAccessBlockedException(url)
@@ -106,6 +112,7 @@ class NetworkClient(
         ttlMillis: Long = REUSABLE_PAGE_TTL_MILLIS,
         callTimeoutMillis: Long? = null,
         maximumAttemptsOverride: Int? = null,
+        requestGate: NetworkRequestGate? = null,
         cacheValidator: (String) -> Boolean = { it.isNotBlank() },
     ): String {
         val now = nowMillis()
@@ -124,17 +131,19 @@ class NetworkClient(
                 url = url,
                 callTimeoutMillis = callTimeoutMillis,
                 maximumAttemptsOverride = maximumAttemptsOverride,
+                requestGate = requestGate,
             ).also { html ->
                 if (cacheValidator(html)) {
+                    val cachedAt = nowMillis()
                     reusablePages.entries
-                        .filter { (_, page) -> page.expiresAt <= lockedNow }
+                        .filter { (_, page) -> page.expiresAt <= cachedAt }
                         .forEach { (key, page) -> reusablePages.remove(key, page) }
                     if (reusablePages.size >= MAX_REUSABLE_PAGES) {
                         reusablePages.entries.minByOrNull { it.value.expiresAt }?.let { oldest ->
                             reusablePages.remove(oldest.key, oldest.value)
                         }
                     }
-                    reusablePages[cacheKey] = PreparedPage(html, lockedNow + ttlMillis.coerceAtLeast(0L))
+                    reusablePages[cacheKey] = PreparedPage(html, cachedAt + ttlMillis.coerceAtLeast(0L))
                 }
             }
         }
@@ -177,7 +186,7 @@ class NetworkClient(
                             reliability.recordRateLimit(
                                 request.url.host,
                                 policy,
-                                retryAfterMillis(response.header("Retry-After"), policy),
+                                retryBackoff.retryAfterMillis(response.header("Retry-After"), policy),
                             )
                         }
                         return@use null
@@ -210,12 +219,20 @@ class NetworkClient(
         policy: SourceNetworkPolicy,
         callTimeoutMillis: Long? = null,
         maximumAttemptsOverride: Int? = null,
+        requestGate: NetworkRequestGate? = null,
         read: (Response) -> T,
     ): T {
         var attempt = 1
         val maximumAttempts = (maximumAttemptsOverride ?: policy.maximumAttempts).coerceAtLeast(1)
         while (attempt <= maximumAttempts) {
-            reliability.awaitPermission(url, request.url.host, policy)
+            val claimSourcePermission: suspend () -> Unit = {
+                reliability.awaitPermission(url, request.url.host, policy)
+            }
+            if (requestGate == null) {
+                claimSourcePermission()
+            } else {
+                requestGate.awaitRequest(claimSourcePermission)
+            }
             val result = executeAttempt(url, request, callTimeoutMillis, read)
             when (result) {
                 is AttemptResult.Success -> {
@@ -226,7 +243,7 @@ class NetworkClient(
                     val isRateLimited = result.statusCode in policy.retryableStatusCodes
                     if (!isRateLimited || attempt >= maximumAttempts) {
                         if (isRateLimited) {
-                            val requestedRetryAfter = retryAfterMillis(result.retryAfterHeader, policy)
+                            val requestedRetryAfter = retryBackoff.retryAfterMillis(result.retryAfterHeader, policy)
                             val cooldown = reliability.recordRateLimit(request.url.host, policy, requestedRetryAfter)
                             throw RateLimitNetworkException(
                                 requestedUrl = url,
@@ -236,7 +253,7 @@ class NetworkClient(
                         }
                         throw HttpNetworkException(url, result.statusCode)
                     }
-                    sleep(retryDelayMillis(attempt, result.retryAfterHeader, policy))
+                    sleep(retryBackoff.delayFor(attempt, result.retryAfterHeader, policy))
                     attempt += 1
                 }
             }
@@ -287,18 +304,18 @@ class NetworkClient(
             throw NetworkTransportException(url, error)
         }
 
-    fun configurePacing(
-        url: String,
-        minimumGapMillis: Long,
-        maximumGapMillis: Long,
-    ) {
-        val parsed = url.toHttpUrlOrNull() ?: return
-        reliability.configurePacing(parsed.host, minimumGapMillis, maximumGapMillis)
-    }
-
     /** Warms a large batch and caches its first page so preflight does not duplicate the download. */
-    suspend fun prepareBulkDownload(url: String) {
-        val html = fetch(url, maximumAttemptsOverride = 1, allowPreparedPage = false)
+    suspend fun prepareBulkDownload(
+        url: String,
+        requestGate: NetworkRequestGate? = null,
+    ) {
+        val html =
+            fetch(
+                url = url,
+                maximumAttemptsOverride = 1,
+                allowPreparedPage = false,
+                requestGate = requestGate,
+            )
         preparedPages[url] = PreparedPage(html, nowMillis() + PREPARED_PAGE_TTL_MILLIS)
     }
 
@@ -318,42 +335,6 @@ class NetworkClient(
     }
 
     fun reliabilitySnapshots(): List<SourceReliabilitySnapshot> = reliability.snapshots()
-
-    private fun retryDelayMillis(
-        attempt: Int,
-        retryAfterHeader: String?,
-        policy: SourceNetworkPolicy,
-    ): Long {
-        val requested =
-            retryAfterMillis(retryAfterHeader, policy)
-                ?: (policy.baseRetryDelayMillis.coerceAtLeast(0L) * attempt)
-                    .coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
-        val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), requested / 5L)
-        val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
-        return (requested + jitter).coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
-    }
-
-    private fun retryAfterMillis(
-        header: String?,
-        policy: SourceNetworkPolicy,
-    ): Long? {
-        if (header.isNullOrBlank()) return null
-        val rawMillis =
-            header.trim().toLongOrNull()?.let { seconds ->
-                seconds
-                    .coerceIn(0L, Long.MAX_VALUE / 1_000L)
-                    .times(1_000L)
-            }
-                ?: runCatching {
-                    ZonedDateTime
-                        .parse(header.trim(), DateTimeFormatter.RFC_1123_DATE_TIME)
-                        .toInstant()
-                        .toEpochMilli()
-                        .minus(nowMillis())
-                        .coerceAtLeast(0L)
-                }.getOrNull()
-        return rawMillis?.coerceAtMost(policy.maximumRetryAfterMillis.coerceAtLeast(0L))
-    }
 
     companion object {
         /** Maximum bytes accepted for a cover/image download (R6 size cap). */
@@ -393,56 +374,4 @@ class NetworkClient(
                 .addInterceptor(CloudflareBypassInterceptor(context.applicationContext, reliabilityCoordinator))
                 .build()
     }
-}
-
-object NetworkRequests {
-    /**
-     * The User-Agent sent on every OkHttp request. Reads [SourceUserAgent.resolved] so it stays
-     * byte-identical to the UA the solving WebView used to mint `cf_clearance` (Cloudflare binds
-     * the clearance cookie to the exact UA). Resolved once at Application startup.
-     */
-    val USER_AGENT: String get() = SourceUserAgent.resolved
-    const val DEFAULT_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-    const val FORM_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-    const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=UTF-8"
-
-    fun pageRequest(url: String): Request =
-        Request
-            .Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", DEFAULT_ACCEPT)
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .build()
-
-    fun formRequest(
-        url: String,
-        fields: Map<String, Any>,
-        headers: Map<String, String> = emptyMap(),
-    ): Request {
-        val bodyBuilder = FormBody.Builder()
-        fields.forEach { (key, value) -> bodyBuilder.add(key, value.toString()) }
-        val builder =
-            Request
-                .Builder()
-                .url(url)
-                .post(bodyBuilder.build())
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", FORM_ACCEPT)
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .header("Content-Type", FORM_CONTENT_TYPE)
-                .header("X-Requested-With", "XMLHttpRequest")
-        headers.forEach { (key, value) -> builder.header(key, value) }
-        return builder.build()
-    }
-
-    /** Request builder for binary downloads (cover images) — reuses the shared client (R6). */
-    fun binaryRequest(url: String): Request =
-        Request
-            .Builder()
-            .url(url)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .build()
 }

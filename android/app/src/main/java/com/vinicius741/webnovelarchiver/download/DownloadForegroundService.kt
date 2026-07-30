@@ -32,7 +32,7 @@ class DownloadForegroundService : Service() {
         // the activity's engine is a control/enqueue handle only, so only this instance ever runs the
         // loop and honors the configured concurrency cap.
         val container = appContainer
-        engine = DownloadEngine(container.repository, container.network)
+        engine = DownloadEngine(container.repository, container.network, container.downloadPacer)
         engine.onProgress = ::updateNotification
         AppNotificationChannels.ensureCreated(this)
     }

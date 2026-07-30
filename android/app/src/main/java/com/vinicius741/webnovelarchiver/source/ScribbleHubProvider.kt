@@ -86,7 +86,7 @@ object ScribbleHubProvider : SourceProvider {
         val chapters = parseToc(doc).toMutableList()
         val seen = chapters.map { it.url }.toMutableSet()
         if (!postId.isNullOrBlank() && chapters.size >= 15) {
-            progress("Fetching chapter page 1...")
+            progress("Fetching chapter page 1 · ${chapterCountLabel(chapters.size)} found...")
             val firstPage =
                 try {
                     fetchTocPage(network, url, postId, 1)
@@ -100,7 +100,7 @@ object ScribbleHubProvider : SourceProvider {
                 seen.addAll(chapters.map { it.url })
             }
             for (page in 2..500) {
-                progress("Fetching chapter page $page...")
+                progress("Fetching chapter page $page · ${chapterCountLabel(chapters.size)} found...")
                 val pageChapters =
                     try {
                         fetchTocPage(network, url, postId, page)
@@ -114,6 +114,7 @@ object ScribbleHubProvider : SourceProvider {
                 if (pageChapters.size < MAX_TOC_PAGE_SIZE) break
             }
         }
+        progress("${chapterCountLabel(chapters.size)} found")
         return chapters.asReversed()
     }
 
@@ -162,6 +163,8 @@ object ScribbleHubProvider : SourceProvider {
                 publishedAt = li.chapterPublishedAt(),
             )
         }
+
+    private fun chapterCountLabel(count: Int): String = "$count ${if (count == 1) "chapter" else "chapters"}"
 
     private suspend fun fetchTocPage(
         network: NetworkClient,

@@ -47,12 +47,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 class DownloadEngine(
     private val repository: AppRepository,
     private val network: NetworkClient,
+    private val downloadPacer: DownloadRequestPacer,
     private val ownsProcessLoop: Boolean = true,
 ) {
     private val storage: AppStorage = repository.storage
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private val acceptsWorkerResults = AtomicBoolean(true)
+    private val requestGateFactory = DownloadRequestGateFactory(storage, downloadPacer)
     private val sourceReliability = DownloadSourceReliability(storage, network, acceptsWorkerResults::get)
     private var worker: Job? = null
     var onChanged: (() -> Unit)? = null
@@ -237,12 +239,11 @@ class DownloadEngine(
                     delay = settings.downloadDelay,
                     delayMax = settings.downloadDelayMax,
                 )
-            SourceRegistry.all().forEach { provider ->
-                val sourcePacing = DownloadScheduler.settingsFor(provider.name, globalDownloadSettings, sourceSettings)
-                network.configurePacing(provider.baseUrl, sourcePacing.delay, sourcePacing.delayMax)
-            }
             val preflightQueue = storage.getQueue()
-            val preflight = sourceReliability.preflightLargeBatch(preflightQueue)
+            val preflight =
+                sourceReliability.preflightLargeBatch(preflightQueue) { providerName, job ->
+                    requestGateFactory.gateFor(providerName, job)
+                }
             preflight.mutation?.let(::publishQueueMutation)
             if (preflight.attempted) continue
             lateinit var queue: MutableList<DownloadJob>
@@ -331,6 +332,7 @@ class DownloadEngine(
             val story = storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
             providerName = provider.name
+            requestGateFactory.ensureJobActive(job.id)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
             val clean =
@@ -340,6 +342,7 @@ class DownloadEngine(
                         chapter = job.chapter,
                         chapterIndex = job.chapterIndex,
                         network = network,
+                        requestGate = requestGateFactory.gateFor(provider.name, job),
                     ),
                     storage.getSentenceRemovalList(),
                     storage.getRegexRules(),
@@ -359,9 +362,9 @@ class DownloadEngine(
             // is observed (gap 4: this previously triggered two fresh getQueue() parses).
             if (!isCancelled(job.id, storage.getQueue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: CancellationException) {
-            // E2: a genuine scope/job cancellation must always propagate. A *user* pause does not
-            // cancel this coroutine (pauseJob/pauseAll only flip queue status), so any
-            // CancellationException here is a real teardown — re-throw so the parent is cleaned up.
+            // E2: cancellation must propagate. Scope teardown cancels directly; a user pause/cancel
+            // while this job is still in the pacer is converted to cancellation by the queue-state
+            // checks above so the request never starts after the job stopped being active.
             Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
             throw error
         } catch (error: SourceAccessBlockedException) {

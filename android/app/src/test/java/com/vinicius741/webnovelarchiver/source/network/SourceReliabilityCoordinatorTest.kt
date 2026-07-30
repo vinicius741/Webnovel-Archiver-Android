@@ -8,7 +8,7 @@ import org.junit.Test
 
 class SourceReliabilityCoordinatorTest {
     @Test
-    fun configuredGapIsSharedAcrossWwwAndBareHost() =
+    fun builtInPolicyGapIsSharedAcrossWwwAndBareHost() =
         runBlocking {
             var now = 1_000L
             val sleeps = mutableListOf<Long>()
@@ -19,10 +19,8 @@ class SourceReliabilityCoordinatorTest {
                         sleeps += millis
                         now += millis
                     },
-                    randomBetween = { minimum, _ -> minimum },
                 )
-            coordinator.configurePacing("www.scribblehub.com", 3_000L, 20_000L)
-            val policy = SourceNetworkPolicy()
+            val policy = SourceNetworkPolicy(minimumRequestGapMillis = 3_000L)
 
             coordinator.awaitPermission("https://www.scribblehub.com/a", "www.scribblehub.com", policy)
             coordinator.awaitPermission("https://scribblehub.com/b", "scribblehub.com", policy)
@@ -43,7 +41,6 @@ class SourceReliabilityCoordinatorTest {
                         sleeps += millis
                         now += millis
                     },
-                    randomBetween = { minimum, _ -> minimum },
                 )
             val policy = SourceNetworkPolicy(requestWindowMillis = 1_000L, maximumRequestsPerWindow = 2)
 
@@ -64,7 +61,6 @@ class SourceReliabilityCoordinatorTest {
                         sleeps += millis
                         now += millis
                     },
-                    randomBetween = { minimum, _ -> minimum },
                 )
             val policy = SourceNetworkPolicy(minimumRequestGapMillis = 1_500L)
 
@@ -79,7 +75,7 @@ class SourceReliabilityCoordinatorTest {
     @Test
     fun manualCircuitFailsFastUntilCleared() =
         runBlocking {
-            val coordinator = SourceReliabilityCoordinator(randomBetween = { minimum, _ -> minimum })
+            val coordinator = SourceReliabilityCoordinator()
             coordinator.recordChallengeDetected("example.test")
             coordinator.requireManualVerification("example.test")
 

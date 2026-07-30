@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
@@ -22,7 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
  * process-wide dependency:
  *
  *  - [repository] → owns the single [AppStorage] and the queue/story transaction lock (R2/R3).
- *  - [network] → shared OkHttp client + per-host rate limiter (R6).
+ *  - [network] → shared OkHttp client + source-safety limits and server cooldowns (R6).
+ *  - [downloadPacer] → user-configured download-only delays; sync never reads this state.
  *  - [syncEngine] / [epubEngine] → stateful engines built on the shared repository + network.
  *  - [ttsEngine] → the single TTS playback engine, shared by [MainActivity] (reader highlight +
  *    transport, parity gaps 3 & 4) and [com.vinicius741.webnovelarchiver.tts.TtsForegroundService]
@@ -73,6 +75,7 @@ class AppContainer(
         }
     val storage: AppStorage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)
+    internal val downloadPacer = DownloadRequestPacer()
     val syncEngine: StorySyncEngine = StorySyncEngine(storage, network)
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     private val repositoryStartup =

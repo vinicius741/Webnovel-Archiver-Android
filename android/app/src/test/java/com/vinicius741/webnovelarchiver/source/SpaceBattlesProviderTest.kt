@@ -43,9 +43,18 @@ class SpaceBattlesProviderTest {
             )
             server.enqueue(MockResponse().setBody(threadmarkPage(threadmarkRow(7002, "Chapter 2"))))
 
-            val chapters = SpaceBattlesProvider.getChapterList(storyHtml, root, network)
+            val progress = mutableListOf<String>()
+            val chapters = SpaceBattlesProvider.getChapterList(storyHtml, root, network, progress::add)
 
             assertEquals(listOf("sb_7001", "sb_7002"), chapters.map { it.id })
+            assertEquals(
+                listOf(
+                    "Fetching threadmark page 1...",
+                    "Fetching threadmark page 2 of 2 · 1 chapter found...",
+                    "2 chapters found",
+                ),
+                progress,
+            )
             assertEquals("${server.url("/")}posts/7001/", chapters.first().url)
             assertEquals(2, server.requestCount)
             assertTrue(server.takeRequest().path!!.contains("threadmark_category=1"))

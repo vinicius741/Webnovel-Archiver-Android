@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
 import com.vinicius741.webnovelarchiver.source.network.NetworkPolicyResolver
+import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 import com.vinicius741.webnovelarchiver.source.network.NetworkTimeoutException
 import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
@@ -88,6 +89,56 @@ class NetworkClientTest {
             assertEquals("<article class=\"message--post\">chapter</article>", valid)
             assertEquals(valid, cached)
             assertEquals(2, server.requestCount)
+        }
+
+    @Test
+    fun reusablePageTtlStartsAfterRequestGateCompletes() =
+        runBlocking {
+            var now = 0L
+            var gateCalls = 0
+            client = NetworkClient(nowMillis = { now })
+            val gate =
+                NetworkRequestGate { claimSourcePermission ->
+                    gateCalls += 1
+                    now = 1_000L
+                    claimSourcePermission()
+                }
+            val url = server.url("/reader/page-1").toString()
+            server.enqueue(MockResponse().setBody("<html>reader batch</html>"))
+
+            val first = client.fetchReusablePage(url, ttlMillis = 500L, requestGate = gate)
+            val cached = client.fetchReusablePage(url, ttlMillis = 500L, requestGate = gate)
+
+            assertEquals(first, cached)
+            assertEquals(1, gateCalls)
+            assertEquals(1, server.requestCount)
+        }
+
+    @Test
+    fun preparedPageBypassesGateOnlyWhileTheCachedResponseExists() =
+        runBlocking {
+            val firstUrl = server.url("/prepared").toString()
+            val clearedUrl = server.url("/cleared").toString()
+            var gateCalls = 0
+            val gate =
+                NetworkRequestGate { claimSourcePermission ->
+                    gateCalls += 1
+                    claimSourcePermission()
+                }
+            server.enqueue(MockResponse().setBody("prepared body"))
+            server.enqueue(MockResponse().setBody("stale body"))
+            server.enqueue(MockResponse().setBody("fresh body"))
+
+            client.prepareBulkDownload(firstUrl, gate)
+            assertEquals("prepared body", client.fetch(firstUrl, requestGate = gate))
+            assertEquals(1, gateCalls)
+            assertEquals(1, server.requestCount)
+
+            client.prepareBulkDownload(clearedUrl, gate)
+            client.onNetworkChanged()
+            assertEquals("fresh body", client.fetch(clearedUrl, requestGate = gate))
+            assertEquals(3, gateCalls)
+            assertEquals(3, server.requestCount)
         }
 
     @Test

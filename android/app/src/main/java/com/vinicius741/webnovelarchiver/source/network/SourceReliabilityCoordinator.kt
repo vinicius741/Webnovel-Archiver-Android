@@ -4,7 +4,6 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
-import kotlin.random.Random
 
 /** Privacy-safe, aggregate state for source-network diagnostics and Settings. */
 data class SourceReliabilitySnapshot(
@@ -20,33 +19,24 @@ data class SourceReliabilitySnapshot(
 )
 
 /**
- * Process-wide pacing, circuit-breaker, and browser-transport state for source traffic.
+ * Process-wide source-safety, circuit-breaker, and browser-transport state for source traffic.
  *
  * Every network consumer shares one instance through [com.vinicius741.webnovelarchiver.app.AppContainer],
  * so update sync, downloads, cover fetches, and retries cannot independently consume the same
- * source's request budget. Waiting always occurs outside the per-host mutex.
+ * source's built-in request budget or server-directed cooldown. User-configured download pacing is
+ * deliberately owned by the download layer and must not be stored here. Waiting always occurs
+ * outside the per-host mutex.
  */
 @Suppress("TooManyFunctions")
 class SourceReliabilityCoordinator(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-    private val randomBetween: (Long, Long) -> Long = { minimum, maximum ->
-        if (maximum <= minimum) {
-            minimum
-        } else if (maximum == Long.MAX_VALUE) {
-            minimum + Random.nextLong(maximum - minimum)
-        } else {
-            Random.nextLong(minimum, maximum + 1L)
-        }
-    },
 ) {
     private data class HostState(
         var nextAllowedAt: Long = 0L,
         var cooldownUntil: Long = 0L,
         var manualVerificationRequired: Boolean = false,
         var browserTransportUntil: Long = 0L,
-        var configuredMinimumGapMillis: Long? = null,
-        var configuredMaximumGapMillis: Long? = null,
         var adaptiveMinimumGapMillis: Long = 0L,
         var consecutiveSuccesses: Int = 0,
         val recentRequests: ArrayDeque<Long> = ArrayDeque(),
@@ -57,19 +47,6 @@ class SourceReliabilityCoordinator(
     )
 
     private val states = ConcurrentHashMap<String, HostState>()
-
-    fun configurePacing(
-        host: String,
-        minimumGapMillis: Long,
-        maximumGapMillis: Long,
-    ) {
-        val state = stateFor(host)
-        synchronized(state) {
-            val minimum = minimumGapMillis.coerceIn(0L, MAX_CONFIGURED_GAP_MILLIS)
-            state.configuredMinimumGapMillis = minimum
-            state.configuredMaximumGapMillis = maximumGapMillis.coerceIn(minimum, MAX_CONFIGURED_GAP_MILLIS)
-        }
-    }
 
     /** Waits for both the cooldown and rolling request budget, then atomically claims one slot. */
     suspend fun awaitPermission(
@@ -97,8 +74,7 @@ class SourceReliabilityCoordinator(
                     if (waitUntil > now) return@synchronized waitUntil - now
 
                     val minimumGap = effectiveMinimumGap(state, policy)
-                    val maximumGap = effectiveMaximumGap(state, minimumGap)
-                    state.nextAllowedAt = now + randomBetween(minimumGap, maximumGap)
+                    state.nextAllowedAt = now + minimumGap
                     state.recentRequests.addLast(now)
                     state.requestCount += 1L
                     0L
@@ -244,16 +220,7 @@ class SourceReliabilityCoordinator(
     private fun effectiveMinimumGap(
         state: HostState,
         policy: SourceNetworkPolicy,
-    ): Long =
-        max(
-            max(policy.minimumRequestGapMillis.coerceAtLeast(0L), state.configuredMinimumGapMillis ?: 0L),
-            state.adaptiveMinimumGapMillis,
-        )
-
-    private fun effectiveMaximumGap(
-        state: HostState,
-        minimumGap: Long,
-    ): Long = (state.configuredMaximumGapMillis ?: minimumGap).coerceAtLeast(minimumGap)
+    ): Long = max(policy.minimumRequestGapMillis.coerceAtLeast(0L), state.adaptiveMinimumGapMillis)
 
     private fun pruneRequestWindow(
         state: HostState,
@@ -269,6 +236,5 @@ class SourceReliabilityCoordinator(
     private companion object {
         const val SUCCESSES_BEFORE_RECOVERY = 8
         const val BROWSER_TRANSPORT_TTL_MILLIS = 30L * 60L * 1_000L
-        const val MAX_CONFIGURED_GAP_MILLIS = 30L * 60L * 1_000L
     }
 }

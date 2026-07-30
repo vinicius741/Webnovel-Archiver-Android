@@ -160,7 +160,13 @@ class MainActivity :
         // pairs every resume/retry with `DownloadForegroundService.start(app)` so the service's loop
         // picks the work up. Two loops running at once would each honor their own concurrency cap and
         // double the effective parallelism, so only one engine may run the loop.
-        downloadEngine = DownloadEngine(repository, container.network, ownsProcessLoop = false)
+        downloadEngine =
+            DownloadEngine(
+                repository,
+                container.network,
+                container.downloadPacer,
+                ownsProcessLoop = false,
+            )
         // Shared process-wide TTS engine (M2): the same instance the TtsForegroundService plays
         // through, so the reader's multicast state listener fires for service-driven playback.
         ttsEngine = container.ttsEngine

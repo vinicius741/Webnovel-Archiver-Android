@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
@@ -60,7 +61,15 @@ interface SourceProvider {
         chapter: Chapter,
         chapterIndex: Int,
         network: NetworkClient,
-    ): String = parseChapterContent(network.fetch(chapter.url, maximumAttemptsOverride = 1))
+        requestGate: NetworkRequestGate? = null,
+    ): String =
+        parseChapterContent(
+            network.fetch(
+                url = chapter.url,
+                maximumAttemptsOverride = 1,
+                requestGate = requestGate,
+            ),
+        )
 }
 
 object SourceRegistry {

@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
+import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -85,7 +86,7 @@ object SpaceBattlesProvider : SourceProvider {
                         ?.equals("Status", ignoreCase = true) == true
                 }?.selectFirst("dd")
                 ?.text()
-        val coverUrl = coverUrl(doc, author)
+        val coverUrl = spaceBattlesCoverUrl(doc, author)
         return NovelMetadata(
             title = title,
             author = author,
@@ -106,13 +107,13 @@ object SpaceBattlesProvider : SourceProvider {
     ): List<ChapterInfo> {
         val root = storyRoot(Jsoup.parse(html, url), url)
         val firstUrl = threadmarkListUrl(root, 1)
-        progress("Fetching main threadmarks...")
+        progress("Fetching threadmark page 1...")
         val firstHtml = network.fetch(firstUrl)
         val chapters = parseThreadmarks(firstHtml, root).toMutableList()
         val seen = chapters.mapNotNull { it.id }.toMutableSet()
         val lastPage = threadmarkPageCount(firstHtml).coerceAtMost(MAX_THREADMARK_PAGES)
         for (page in 2..lastPage) {
-            progress("Fetching threadmark page $page of $lastPage...")
+            progress("Fetching threadmark page $page of $lastPage · ${chapterCountLabel(chapters.size)} found...")
             parseThreadmarks(network.fetch(threadmarkListUrl(root, page)), root)
                 .filter { it.id != null && seen.add(it.id) }
                 .let(chapters::addAll)
@@ -120,6 +121,7 @@ object SpaceBattlesProvider : SourceProvider {
         if (chapters.isEmpty()) {
             throw NetworkParseException("No main SpaceBattles threadmarks were found")
         }
+        progress("${chapterCountLabel(chapters.size)} found")
         return chapters
     }
 
@@ -148,6 +150,7 @@ object SpaceBattlesProvider : SourceProvider {
         chapter: Chapter,
         chapterIndex: Int,
         network: NetworkClient,
+        requestGate: NetworkRequestGate?,
     ): String {
         val postId = rawPostId(chapter.url) ?: throw NetworkParseException("SpaceBattles post ID was not found")
         val root = storyRoot(null, storyUrl)
@@ -160,6 +163,7 @@ object SpaceBattlesProvider : SourceProvider {
                         url = readerUrl,
                         cacheKey = readerUrl,
                         maximumAttemptsOverride = 1,
+                        requestGate = requestGate,
                         cacheValidator = ::isReaderPage,
                     )
                 } catch (error: HttpNetworkException) {
@@ -169,7 +173,12 @@ object SpaceBattlesProvider : SourceProvider {
             parsePost(html, postId, readerUrl)?.let { return it }
         }
 
-        val fallbackHtml = network.fetch(chapter.url, maximumAttemptsOverride = 1)
+        val fallbackHtml =
+            network.fetch(
+                url = chapter.url,
+                maximumAttemptsOverride = 1,
+                requestGate = requestGate,
+            )
         return parsePost(fallbackHtml, postId, chapter.url)
             ?: throw NetworkParseException("SpaceBattles chapter post $postId was not found")
     }
@@ -200,6 +209,8 @@ object SpaceBattlesProvider : SourceProvider {
             )
         }
     }
+
+    private fun chapterCountLabel(count: Int): String = "$count ${if (count == 1) "chapter" else "chapters"}"
 
     internal fun parseThreadmarkRss(
         xml: String,
@@ -253,50 +264,6 @@ object SpaceBattlesProvider : SourceProvider {
         }
         LooseHtmlStructure.wrapBreakSeparatedParagraphs(content)
         return content.html().trim()
-    }
-
-    private fun coverUrl(
-        doc: Document,
-        author: String,
-    ): String? {
-        val socialImage =
-            doc
-                .selectFirst("meta[property=og:image], meta[name=twitter:image]")
-                ?.attr("content")
-                ?.trim()
-                ?.takeIf(::isMeaningfulImageUrl)
-        if (socialImage != null) return socialImage
-
-        val starterPost =
-            doc
-                .select("article.message--post")
-                .firstOrNull { it.attr("data-author").equals(author, ignoreCase = true) }
-                ?: return null
-        return starterPost
-            .select(".message-body .bbWrapper img")
-            .asSequence()
-            .filterNot { image ->
-                image.parents().any { parent ->
-                    parent.hasClass("bbCodeBlock-unfurl") ||
-                        parent.hasClass("smilie") ||
-                        parent.tagName().equals("blockquote", ignoreCase = true)
-                }
-            }.mapNotNull(::imageUrl)
-            .firstOrNull(::isMeaningfulImageUrl)
-    }
-
-    private fun imageUrl(image: Element): String? {
-        val width = image.attr("width").toIntOrNull()
-        val height = image.attr("height").toIntOrNull()
-        if (width != null && height != null && width * height < MIN_COVER_AREA) return null
-        return listOf("data-url", "data-src", "src")
-            .firstNotNullOfOrNull { attribute -> safeAbsoluteUrl(image, attribute) }
-    }
-
-    private fun isMeaningfulImageUrl(url: String): Boolean {
-        val normalized = url.lowercase()
-        return (normalized.startsWith("http://") || normalized.startsWith("https://")) &&
-            COVER_IMAGE_EXCLUSIONS.none(normalized::contains)
     }
 
     private fun storyRoot(
@@ -357,7 +324,7 @@ object SpaceBattlesProvider : SourceProvider {
         return doc.selectFirst("article.message--post .message-body .bbWrapper") != null
     }
 
-    private fun safeAbsoluteUrl(
+    internal fun safeAbsoluteUrl(
         element: Element,
         attribute: String,
     ): String? =
@@ -381,7 +348,6 @@ object SpaceBattlesProvider : SourceProvider {
     private const val THREADMARKS_PER_PAGE = 200
     private const val READER_POSTS_PER_PAGE = 10
     private const val MAX_THREADMARK_PAGES = 500
-    private const val MIN_COVER_AREA = 10_000
     private val SPACEBATTLES_HOST =
         Regex("""https?://(?:(?:forum|forums)\.)?spacebattles\.com/""", RegexOption.IGNORE_CASE)
     private val THREAD_ID = Regex("""/threads/(?:[^/?#]*\.)?(\d+)(?:[/?#]|$)""", RegexOption.IGNORE_CASE)
@@ -390,12 +356,4 @@ object SpaceBattlesProvider : SourceProvider {
     private val POST_ID = Regex("""(?:/posts/|#post-|/post-)(\d+)""", RegexOption.IGNORE_CASE)
     private val ORIGIN = Regex("""^https?://[^/]+""", RegexOption.IGNORE_CASE)
     private val PAGE_QUERY = Regex("""[?&]page=(\d+)""", RegexOption.IGNORE_CASE)
-    private val COVER_IMAGE_EXCLUSIONS =
-        setOf(
-            "favicon",
-            "/avatar/",
-            "/smilies/",
-            "/emoji/",
-            "/data/svg/",
-        )
 }

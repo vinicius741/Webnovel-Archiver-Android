@@ -76,9 +76,17 @@ class SourceProviderFixtureTest {
     fun scribbleHubChapterListParsesTocWithoutAjaxWhenSmall() =
         runBlocking {
             val html = fixture("/fixtures/scribblehub/story.html")
-            val chapters = ScribbleHubProvider.getChapterList(html, "https://www.scribblehub.com/series/98765/x", noopNetwork)
+            val progress = mutableListOf<String>()
+            val chapters =
+                ScribbleHubProvider.getChapterList(
+                    html,
+                    "https://www.scribblehub.com/series/98765/x",
+                    noopNetwork,
+                    progress::add,
+                )
             // Fixtures have 2 entries; below the 15-chapter ajax threshold so no pagination occurs.
             assertEquals(2, chapters.size)
+            assertEquals(listOf("Parsing chapter list...", "2 chapters found"), progress)
             // ScribbleHub reverses the TOC (newest-first → oldest-first), so the last document entry
             // ("sh_200002") lands first, and chapter ids are prefixed with "sh_".
             assertEquals("sh_200002", chapters.first().id)

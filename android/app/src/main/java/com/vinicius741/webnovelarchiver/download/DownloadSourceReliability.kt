@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import timber.log.Timber
@@ -28,7 +29,10 @@ internal class DownloadSourceReliability(
 ) {
     private val preflightedSources = mutableSetOf<String>()
 
-    suspend fun preflightLargeBatch(queue: List<DownloadJob>): BulkPreflightResult {
+    suspend fun preflightLargeBatch(
+        queue: List<DownloadJob>,
+        requestGateFor: (providerName: String, job: DownloadJob) -> NetworkRequestGate,
+    ): BulkPreflightResult {
         val grouped =
             queue
                 .filter { it.status == DownloadJobStatus.Pending.wire }
@@ -45,11 +49,16 @@ internal class DownloadSourceReliability(
         val providerName = candidate.key ?: return BulkPreflightResult(attempted = false)
         preflightedSources += providerName
         return try {
+            val firstJob = candidate.value.first()
             network.prepareBulkDownload(
-                candidate.value
-                    .first()
-                    .chapter.url,
+                url = firstJob.chapter.url,
+                requestGate = requestGateFor(providerName, firstJob),
             )
+            BulkPreflightResult(attempted = true)
+        } catch (_: DownloadJobInactiveException) {
+            // The callback runs directly in the process loop rather than in a child job. Treat a
+            // user pause/cancel as a stale candidate, not as cancellation of the entire engine.
+            preflightedSources -= providerName
             BulkPreflightResult(attempted = true)
         } catch (error: SourceAccessBlockedException) {
             BulkPreflightResult(attempted = true, mutation = blockSourceJobs(providerName, error))
