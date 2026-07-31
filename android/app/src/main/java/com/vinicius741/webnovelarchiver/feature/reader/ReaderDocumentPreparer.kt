@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.reader
 
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
+import com.vinicius741.webnovelarchiver.cleanup.HtmlCleanup
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -84,10 +84,9 @@ internal class ReaderDocumentPreparer(
         return withContext(computationDispatcher) {
             val rawContent = ReaderContentRenderer.contentOrUndownloadedMessage(input.rawContent)
             val annotated =
-                TextCleanup.prepareTtsAnnotatedHtml(
+                TtsTextPreparation.prepareTtsAnnotatedHtml(
                     ChapterHtmlSanitizer.sanitize(rawContent),
                     input.rules,
-                    input.settings.chunkSize,
                 )
             val colors = if (input.display.readerDark) palette.forcedDark else palette.normal
             ReaderDocument(
@@ -95,7 +94,7 @@ internal class ReaderDocumentPreparer(
                 chapter = input.chapter,
                 chapterIndex = input.chapterIndex,
                 annotated = annotated,
-                formattedText = TextCleanup.htmlToFormattedText(rawContent),
+                formattedText = HtmlCleanup.htmlToFormattedText(rawContent),
                 display = input.display,
                 persistedSession = input.persistedSession,
                 colors = colors,
@@ -126,7 +125,7 @@ private data class ReaderDocumentInput(
 private class RepositoryReaderDocumentSource(
     private val repository: AppRepository,
 ) : ReaderDocumentSource {
-    override fun story(id: String): Story? = repository.getStory(id)
+    override fun story(id: String): Story? = repository.story(id)
 
     override suspend fun chapterHtml(chapter: Chapter): String? = repository.readChapter(chapter)
 

@@ -50,7 +50,7 @@ internal class BackupExporter(
         val metricFiles = collectMetricFiles(library)
         val manifest = fullManifest(library, chapterFiles, metricFiles)
         return File(storage.backupRoot, "webnovel_full_backup_${System.currentTimeMillis()}.zip").also { output ->
-            AtomicFileWrites.stream(output) { stream ->
+            AtomicFileWrites.writeAtomically(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
                     zip.putNextEntry(ZipEntry("manifest.json"))
                     zip.write(gson.toJson(manifest).toByteArray())

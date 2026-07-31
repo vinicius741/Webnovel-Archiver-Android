@@ -24,16 +24,11 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
-import com.vinicius741.webnovelarchiver.feature.details.showDetails
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
-import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
-import com.vinicius741.webnovelarchiver.feature.settings.showSettings
-import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -190,7 +185,7 @@ class MainActivity :
             run {
                 val resumeTarget =
                     TtsSessionPlanning.readerResumeTarget(repository.getTtsSession()) { storyId ->
-                        repository.getStory(storyId)
+                        repository.story(storyId)
                     }
                 val devTarget =
                     if (BuildConfig.DEBUG) {
@@ -230,17 +225,7 @@ class MainActivity :
         val resumeTarget = startupState.resumeTarget
         val devTarget = startupState.devTarget
         if (devTarget != null) {
-            when (devTarget) {
-                DevLaunchPlanning.DevStartTarget.Library -> showLibrary()
-                DevLaunchPlanning.DevStartTarget.Queue -> showQueue()
-                DevLaunchPlanning.DevStartTarget.Settings -> showSettings()
-                DevLaunchPlanning.DevStartTarget.Notifications -> showNotifications()
-                DevLaunchPlanning.DevStartTarget.Updates -> showUpdates()
-                DevLaunchPlanning.DevStartTarget.AddStory -> showAddStory()
-                is DevLaunchPlanning.DevStartTarget.Reader ->
-                    showReader(devTarget.storyId, devTarget.chapterId)
-                is DevLaunchPlanning.DevStartTarget.Details -> showDetails(devTarget.storyId)
-            }
+            renderRoute(devTarget)
         } else if (browserImportUrl != null) {
             showLibrary()
             importFromBrowser(browserImportUrl)
@@ -273,7 +258,7 @@ class MainActivity :
         screenObserver?.cancel()
         // R9: destroy any lingering reader WebView in the frame so it can't leak the activity
         // reference. Third-party browsing uses a browser-owned Custom Tab rather than this frame.
-        com.vinicius741.webnovelarchiver.ui.WebViewSafety
+        com.vinicius741.webnovelarchiver.platform.WebViewSafety
             .disposeAll(frame)
         // Detach the reader's TTS observer (if a reader screen is active) so it can't fire into a
         // destroyed activity. The shared TTS engine is process-wide; only the listener is dropped.
@@ -345,7 +330,7 @@ class MainActivity :
     private data class InitialStartupState(
         val activeThemeId: String,
         val resumeTarget: TtsSessionPlanning.ReaderResumeTarget?,
-        val devTarget: DevLaunchPlanning.DevStartTarget?,
+        val devTarget: AppRoute?,
     )
 
     private companion object {

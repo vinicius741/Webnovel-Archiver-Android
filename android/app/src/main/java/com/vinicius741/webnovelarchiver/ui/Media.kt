@@ -154,52 +154,65 @@ fun makeCountChip(
 }
 
 /** Compact "3 / 9 chapters" progress summary: a fractional value on the left, a thin bar on the right. */
+class ProgressStrip(
+    val root: LinearLayout,
+    private val label: TextView,
+    private val bar: ProgressBar,
+) {
+    fun render(
+        done: Int,
+        total: Int,
+    ) {
+        label.text = "$done / $total"
+        bar.progress = if (total > 0) ((done.toFloat() / total).coerceIn(0f, 1f) * 100).toInt() else 0
+    }
+}
+
 fun makeProgressSummary(
     context: Context,
     done: Int,
     total: Int,
-): View {
+): ProgressStrip {
     val t = ThemeManager.current
     val ratio = if (total > 0) done.toFloat() / total else 0f
-    return LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, 0, 0, 0)
-        // MATCH_PARENT so the weighted ProgressBar below stretches to fill the available width
-        // (the row/column it's placed in). Without this the root defaults to WRAP_CONTENT and the
-        // weight has no leftover space to claim, leaving the bar a thin sliver.
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        addView(
-            TextView(context).apply {
-                text = "$done / $total"
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
-                typeface = Typeface.create(typeface, Typeface.BOLD)
-                setTextColor(t.colors.onSurface)
-                includeFontPadding = false
-            },
-        )
-        addView(
-            ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-                max = 100
-                progress = (ratio.coerceIn(0f, 1f) * 100).toInt()
-                progressTintList = ColorStateList.valueOf(t.colors.primary)
-                progressBackgroundTintList = ColorStateList.valueOf(t.colors.surfaceVariant)
-                layoutParams = LinearLayout.LayoutParams(0, context.dp(4), 1f).apply { marginStart = context.dp(Space.SM + 2) }
-            },
-        )
-    }
+    val label =
+        TextView(context).apply {
+            text = "$done / $total"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
+            typeface = Typeface.create(typeface, Typeface.BOLD)
+            setTextColor(t.colors.onSurface)
+            includeFontPadding = false
+        }
+    val bar =
+        ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progress = (ratio.coerceIn(0f, 1f) * 100).toInt()
+            progressTintList = ColorStateList.valueOf(t.colors.primary)
+            progressBackgroundTintList = ColorStateList.valueOf(t.colors.surfaceVariant)
+            layoutParams = LinearLayout.LayoutParams(0, context.dp(4), 1f).apply { marginStart = context.dp(Space.SM + 2) }
+        }
+    val root =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 0)
+            // MATCH_PARENT so the weighted ProgressBar below stretches to fill the available width
+            // (the row/column it's placed in). Without this the root defaults to WRAP_CONTENT and the
+            // weight has no leftover space to claim, leaving the bar a thin sliver.
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            addView(label)
+            addView(bar)
+        }
+    return ProgressStrip(root, label, bar)
 }
 
-/** Updates an existing [makeProgressSummary] without replacing its view hierarchy. */
+/** Updates an existing [ProgressStrip] without replacing its view hierarchy. */
 fun updateProgressSummary(
-    view: View,
+    strip: ProgressStrip,
     done: Int,
     total: Int,
 ) {
-    val row = view as? LinearLayout ?: return
-    (row.getChildAt(0) as? TextView)?.text = "$done / $total"
-    (row.getChildAt(1) as? ProgressBar)?.progress =
-        if (total > 0) ((done.toFloat() / total).coerceIn(0f, 1f) * 100).toInt() else 0
+    strip.render(done, total)
 }
 
 // ------------------------------------------------------------------
@@ -394,38 +407,59 @@ class ChapterCoverageBar(
  *  marks the bookmarked chapter with a pin raised above the bar. Mirrors the layout of
  *  [makeProgressSummary] (count text on the left, weighted bar on the right) so it slots into
  *  the same call sites. */
-fun makeChapterCoverageSummary(
+class ChapterCoverageSummary(
     context: Context,
     downloaded: BooleanArray,
     bookmarkFraction: Float?,
     done: Int,
     total: Int,
-): View {
-    val t = ThemeManager.current
-    return LinearLayout(context).apply {
+) : LinearLayout(context) {
+    private val count =
+        TextView(context).apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
+            typeface = Typeface.create(typeface, Typeface.BOLD)
+            setTextColor(ThemeManager.colors.onSurface)
+            includeFontPadding = false
+        }
+    private val bar = ChapterCoverageBar(context, downloaded, bookmarkFraction)
+
+    init {
+        val t = ThemeManager.current
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         layoutParams =
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        count.setTextColor(t.colors.onSurface)
+        addView(count)
         addView(
-            TextView(context).apply {
-                text = "$done / $total"
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
-                typeface = Typeface.create(typeface, Typeface.BOLD)
-                setTextColor(t.colors.onSurface)
-                includeFontPadding = false
-            },
-        )
-        addView(
-            ChapterCoverageBar(context, downloaded, bookmarkFraction).apply {
+            bar.apply {
                 layoutParams =
                     LinearLayout.LayoutParams(0, context.dp(COVERAGE_BAR_HEIGHT_DP), 1f).apply {
                         marginStart = context.dp(Space.SM + 2)
                     }
             },
         )
+        render(done, total, downloaded, bookmarkFraction)
+    }
+
+    fun render(
+        done: Int,
+        total: Int,
+        downloaded: BooleanArray,
+        bookmarkFraction: Float?,
+    ) {
+        count.text = "$done / $total"
+        bar.bind(downloaded, bookmarkFraction)
     }
 }
+
+fun makeChapterCoverageSummary(
+    context: Context,
+    downloaded: BooleanArray,
+    bookmarkFraction: Float?,
+    done: Int,
+    total: Int,
+): ChapterCoverageSummary = ChapterCoverageSummary(context, downloaded, bookmarkFraction, done, total)
 
 /** Patches an existing [makeChapterCoverageSummary] in place (count text + bar) without
  *  rebuilding the view hierarchy — used for live download ticks. */
@@ -436,9 +470,7 @@ fun updateChapterCoverageSummary(
     done: Int,
     total: Int,
 ) {
-    val row = view as? LinearLayout ?: return
-    (row.getChildAt(0) as? TextView)?.text = "$done / $total"
-    (row.getChildAt(1) as? ChapterCoverageBar)?.bind(downloaded, bookmarkFraction)
+    (view as? ChapterCoverageSummary)?.render(done, total, downloaded, bookmarkFraction)
 }
 
 /** Capsule height (dp) for the [ChapterCoverageBar]. */

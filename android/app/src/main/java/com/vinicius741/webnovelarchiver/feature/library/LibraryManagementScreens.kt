@@ -1,9 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import android.content.res.ColorStateList
-import android.text.Editable
 import android.text.TextUtils
-import android.text.TextWatcher
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -11,6 +9,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.Spinner
+import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.browser.showBrowser
@@ -50,7 +49,7 @@ import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = emptySet()) {
-    val stories = repository.getLibrary()
+    val stories = repository.library()
     val tabs = repository.getTabs().sortedBy { it.order }
     val selectedIds = initialSelectedIds.toMutableSet()
     screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Organize Novels", onBack = { navigateBack() }) {
@@ -72,10 +71,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
         // rebuilds its own view tree: Select All / Deselect All re-filter in place (see [applyFilters]),
         // and the activity's configChanges declaration keeps the view tree alive across rotation/fold.
         // Opening the screen fresh always starts from the All tab + no tag filters + last-updated sort.
-        var selectedTabId: String? = LibraryTabSelection.ALL_TAB_ID
-        val selectedTags = mutableSetOf<String>()
-        var sortOption = "lastUpdated"
-        var sortAscending = false
+        var filterState = LibraryFilterState()
 
         // Declared up front as reassignable lambdas (matching the Library screen) so the search watcher,
         // chip callbacks, tab bar, and Select All / Deselect All can all close over them before their
@@ -85,25 +81,10 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
 
         val search =
             makeSearchField(context, "Search novels").apply {
-                addTextChangedListener(
-                    object : TextWatcher {
-                        override fun beforeTextChanged(
-                            s: CharSequence?,
-                            start: Int,
-                            count: Int,
-                            after: Int,
-                        ) = Unit
-
-                        override fun afterTextChanged(s: Editable?) = Unit
-
-                        override fun onTextChanged(
-                            s: CharSequence?,
-                            start: Int,
-                            before: Int,
-                            count: Int,
-                        ) = applyFilters()
-                    },
-                )
+                doAfterTextChanged {
+                    filterState = filterState.copy(query = it?.toString().orEmpty())
+                    applyFilters()
+                }
             }
 
         val filters =
@@ -112,25 +93,26 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                 search,
                 tabs.isNotEmpty(),
                 stories,
-                selectedTabId,
-                selectedTags,
-                sortOption,
-                sortAscending,
+                filterState.selectedTabId,
+                filterState.selectedTags,
+                filterState.sortOption,
+                filterState.sortAscending,
                 { newSort ->
-                    sortOption = newSort.first
-                    sortAscending = newSort.second
+                    filterState = filterState.copy(sortOption = newSort.first, sortAscending = newSort.second)
                     applyFilters()
                 },
                 { tag ->
-                    if (!selectedTags.add(tag)) selectedTags.remove(tag)
+                    val nextTags = filterState.selectedTags.toMutableSet()
+                    if (!nextTags.add(tag)) nextTags.remove(tag)
+                    filterState = filterState.copy(selectedTags = nextTags)
                     applyFilters()
                 },
             )
         val refreshFilters = filters.rebuildChips
         val tabBar =
-            makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
-                selectedTabId = newTabId
-                refreshFilters(selectedTabId, selectedTags)
+            makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
+                filterState = filterState.copy(selectedTabId = newTabId)
+                refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                 applyFilters()
             }
         addView(tabBar.view)
@@ -188,11 +170,11 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             LibraryQuery
                 .filterAndSort(
                     stories,
-                    search.text.toString(),
-                    selectedTabId,
-                    selectedTags,
-                    sortOption,
-                    sortAscending,
+                    filterState.query,
+                    filterState.selectedTabId,
+                    filterState.selectedTags,
+                    filterState.sortOption,
+                    filterState.sortAscending,
                 ).map { it.id }
         }
 
@@ -203,11 +185,11 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             val visible =
                 LibraryQuery.filterAndSort(
                     stories,
-                    search.text.toString(),
-                    selectedTabId,
-                    selectedTags,
-                    sortOption,
-                    sortAscending,
+                    filterState.query,
+                    filterState.selectedTabId,
+                    filterState.selectedTags,
+                    filterState.sortOption,
+                    filterState.sortAscending,
                 )
             rows.removeAllViews()
             if (visible.isEmpty()) {
@@ -256,7 +238,7 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
             label to {
                 scope.launch {
                     storyIds.forEach { id ->
-                        repository.getStory(id)?.let { story ->
+                        repository.story(id)?.let { story ->
                             story.tabId = tabId
                             repository.addOrUpdateStory(story)
                         }
@@ -304,27 +286,7 @@ internal fun ScreenHost.showAddStory() {
                 setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
                 // Mirror typing into the captured state so a status-driven re-render restores the
                 // exact text the user entered rather than blanking the field.
-                addTextChangedListener(
-                    object : android.text.TextWatcher {
-                        override fun beforeTextChanged(
-                            s: CharSequence?,
-                            start: Int,
-                            count: Int,
-                            after: Int,
-                        ) {}
-
-                        override fun onTextChanged(
-                            s: CharSequence?,
-                            start: Int,
-                            before: Int,
-                            count: Int,
-                        ) {
-                            addStoryUrlText = s?.toString().orEmpty()
-                        }
-
-                        override fun afterTextChanged(s: android.text.Editable?) {}
-                    },
-                )
+                doAfterTextChanged { addStoryUrlText = it?.toString().orEmpty() }
             }
         // Paste button beside the field — a one-tap content-paste affordance that reads the system
         // clipboard instead of long-pressing the field.

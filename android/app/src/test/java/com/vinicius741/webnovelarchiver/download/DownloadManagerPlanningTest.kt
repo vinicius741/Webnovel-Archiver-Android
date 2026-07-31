@@ -35,7 +35,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storyHeaderActionsShowsInProgressGroupWhileActive() {
-        val counts = QueueStatusCounts(downloading = 1, pending = 2, completed = 3)
+        val counts = DownloadCounts(downloading = 1, pending = 2, completed = 3)
         assertEquals(
             listOf(QueueAction.PAUSE, QueueAction.CANCEL),
             DownloadManagerPlanning.storyHeaderActions(counts),
@@ -44,7 +44,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storyHeaderActionsShowsResumeWhenOnlyPaused() {
-        val counts = QueueStatusCounts(paused = 2, completed = 1)
+        val counts = DownloadCounts(paused = 2, completed = 1)
         assertEquals(
             listOf(QueueAction.RESUME, QueueAction.CANCEL),
             DownloadManagerPlanning.storyHeaderActions(counts),
@@ -53,7 +53,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storyHeaderActionsShowPauseInsteadOfResumeWhenAnyWorkIsActive() {
-        val counts = QueueStatusCounts(downloading = 1, paused = 2, completed = 1)
+        val counts = DownloadCounts(downloading = 1, paused = 2, completed = 1)
         assertEquals(
             listOf(QueueAction.PAUSE, QueueAction.CANCEL),
             DownloadManagerPlanning.storyHeaderActions(counts),
@@ -62,7 +62,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storyHeaderActionsAppendsRetryWhenActiveAndFailed() {
-        val counts = QueueStatusCounts(pending = 1, failed = 2)
+        val counts = DownloadCounts(pending = 1, failed = 2)
         assertEquals(
             listOf(QueueAction.PAUSE, QueueAction.CANCEL, QueueAction.RETRY),
             DownloadManagerPlanning.storyHeaderActions(counts),
@@ -71,20 +71,20 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storyHeaderActionsRetryOnlyForFailedWithNoActiveWork() {
-        val counts = QueueStatusCounts(failed = 2, completed = 1)
+        val counts = DownloadCounts(failed = 2, completed = 1)
         assertEquals(listOf(QueueAction.RETRY), DownloadManagerPlanning.storyHeaderActions(counts))
     }
 
     @Test
     fun storyHeaderActionsEmptyForAllCompleted() {
-        val counts = QueueStatusCounts(completed = 3)
+        val counts = DownloadCounts(completed = 3)
         assertTrue(DownloadManagerPlanning.storyHeaderActions(counts).isEmpty())
     }
 
     @Test
     fun globalActionsShowPauseInsteadOfResumeWhenAnyWorkIsActive() {
         val counts =
-            QueueStatusCounts(
+            DownloadCounts(
                 downloading = 1,
                 paused = 1,
                 completed = 2,
@@ -102,7 +102,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun globalActionsShowResumeWhenQueueIsOnlyPaused() {
-        val counts = QueueStatusCounts(paused = 2, completed = 1)
+        val counts = DownloadCounts(paused = 2, completed = 1)
         assertEquals(
             listOf(GlobalQueueAction.RESUME_ALL, GlobalQueueAction.CANCEL_ALL),
             DownloadManagerPlanning.globalActions(counts),
@@ -111,7 +111,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun globalActionsHideCancelAllWhenQueueIsIdle() {
-        val counts = QueueStatusCounts(completed = 2, failed = 1)
+        val counts = DownloadCounts(completed = 2, failed = 1)
         assertEquals(
             listOf(GlobalQueueAction.RETRY_ALL, GlobalQueueAction.CLEAR_FINISHED),
             DownloadManagerPlanning.globalActions(counts),
@@ -122,13 +122,13 @@ class DownloadManagerPlanningTest {
     fun globalActionsShowsClearFinishedForAllCompleted() {
         assertEquals(
             listOf(GlobalQueueAction.CLEAR_FINISHED),
-            DownloadManagerPlanning.globalActions(QueueStatusCounts(completed = 1)),
+            DownloadManagerPlanning.globalActions(DownloadCounts(completed = 1)),
         )
     }
 
     @Test
     fun globalActionsEmptyForEmptyQueue() {
-        assertTrue(DownloadManagerPlanning.globalActions(QueueStatusCounts()).isEmpty())
+        assertTrue(DownloadManagerPlanning.globalActions(DownloadCounts()).isEmpty())
     }
 
     @Test
@@ -145,7 +145,7 @@ class DownloadManagerPlanningTest {
                 job("h", "cancelled"),
             )
 
-        val counts = QueueStatusCounts.from(jobs)
+        val counts = DownloadCounts.from(jobs)
 
         assertEquals(1, counts.downloading)
         assertEquals(2, counts.pending)
@@ -161,8 +161,21 @@ class DownloadManagerPlanningTest {
     }
 
     @Test
+    fun downloadCountsIsTheSharedProjectionForLegacyStatuses() {
+        val counts =
+            listOf(
+                job("active", "downloading"),
+                job("unknown", "legacy-status"),
+            ).downloadCounts()
+
+        assertEquals(1, counts.downloading)
+        assertEquals(1, counts.failed)
+        assertEquals(2, counts.total)
+    }
+
+    @Test
     fun storySubtitleLeadsWithChaptersAndAppendsNonZeroSegments() {
-        val counts = QueueStatusCounts(downloading = 1, pending = 2, paused = 0, completed = 3, failed = 1)
+        val counts = DownloadCounts(downloading = 1, pending = 2, paused = 0, completed = 3, failed = 1)
         assertEquals(
             "3/7 chapters • 1 downloading • 2 queued • 1 failed",
             DownloadManagerPlanning.storySubtitle(counts),
@@ -171,7 +184,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storySubtitleSeparatesWaitingForDelayFromActualDownloads() {
-        val counts = QueueStatusCounts(downloading = 2, pending = 1, completed = 3)
+        val counts = DownloadCounts(downloading = 2, pending = 1, completed = 3)
 
         assertEquals(
             "3/6 chapters • 1 downloading • 1 waiting for delay • 1 queued",
@@ -181,7 +194,7 @@ class DownloadManagerPlanningTest {
 
     @Test
     fun storySubtitleHasNoStatusTailWhenAllCompleted() {
-        val counts = QueueStatusCounts(completed = 3)
+        val counts = DownloadCounts(completed = 3)
         assertEquals("3/3 chapters", DownloadManagerPlanning.storySubtitle(counts))
     }
 

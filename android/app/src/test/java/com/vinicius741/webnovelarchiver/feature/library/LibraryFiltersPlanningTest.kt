@@ -1,9 +1,31 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LibraryFiltersPlanningTest {
+    @Test
+    fun filterStateAppliesQueryTabTagsAndSortTogether() {
+        val state =
+            LibraryFilterState(
+                query = "alpha",
+                selectedTabId = "tab-a",
+                selectedTags = setOf("fantasy"),
+                sortOption = "title",
+                sortAscending = true,
+            )
+        val visible =
+            state.applyTo(
+                listOf(
+                    Story(id = "2", title = "Beta", tabId = "tab-a", tags = mutableListOf("fantasy")),
+                    Story(id = "1", title = "Alpha", tabId = "tab-a", tags = mutableListOf("fantasy")),
+                    Story(id = "3", title = "Alpha Other", tabId = "tab-b", tags = mutableListOf("fantasy")),
+                ),
+            )
+        assertEquals(listOf("1"), visible.map { it.id })
+    }
+
     @Test
     fun normalizeSortOptionMapsLegacyUpdatedAlias() {
         assertEquals("lastUpdated", LibraryFiltersPlanning.normalizeSortOption("updated"))

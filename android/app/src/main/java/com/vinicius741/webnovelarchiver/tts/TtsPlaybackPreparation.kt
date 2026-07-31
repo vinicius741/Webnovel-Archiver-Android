@@ -1,8 +1,7 @@
 package com.vinicius741.webnovelarchiver.tts
 
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
+import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
-import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -23,7 +22,7 @@ internal data class PreparedTtsPlayback(
 internal interface TtsPlaybackSource {
     fun story(id: String): Story?
 
-    fun chapterHtml(chapter: Chapter): String?
+    suspend fun chapterHtml(chapter: Chapter): String?
 
     fun settings(): TtsSettings
 
@@ -46,16 +45,9 @@ internal class TtsPlaybackPreparer(
 ) {
     constructor(
         repository: AppRepository,
-        storage: AppStorage,
         ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
         computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    ) : this(RepositoryTtsPlaybackSource(repository, storage), ioDispatcher, computationDispatcher)
-
-    constructor(
-        storage: AppStorage,
-        ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-        computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
-    ) : this(StorageTtsPlaybackSource(storage), ioDispatcher, computationDispatcher)
+    ) : this(RepositoryTtsPlaybackSource(repository), ioDispatcher, computationDispatcher)
 
     suspend fun prepare(
         storyId: String,
@@ -108,7 +100,7 @@ internal class TtsPlaybackPreparer(
     ): PreparedTtsPlayback? =
         withContext(computationDispatcher) {
             val html = input.html ?: return@withContext null
-            val chunks = TextCleanup.prepareTtsChunks(html, input.rules, input.settings.chunkSize)
+            val chunks = TtsTextPreparation.prepareTtsChunks(html, input.rules)
             if (chunks.isEmpty()) return@withContext null
             PreparedTtsPlayback(
                 story = input.story,
@@ -128,14 +120,13 @@ private data class PreparationInput(
     val rules: List<RegexCleanupRule>,
 )
 
-/** Production source: repository owns story cache/publish; storage still serves chapter HTML. */
+/** Production source: repository owns story/session/settings state and chapter reads. */
 private class RepositoryTtsPlaybackSource(
     private val repository: AppRepository,
-    private val storage: AppStorage,
 ) : TtsPlaybackSource {
-    override fun story(id: String): Story? = repository.getStory(id)
+    override fun story(id: String): Story? = repository.story(id)
 
-    override fun chapterHtml(chapter: Chapter): String? = storage.readChapter(chapter)
+    override suspend fun chapterHtml(chapter: Chapter): String? = repository.readChapter(chapter)
 
     override fun settings(): TtsSettings = repository.getTtsSettings()
 
@@ -148,31 +139,5 @@ private class RepositoryTtsPlaybackSource(
         chapterId: String,
     ) {
         repository.setLastReadChapter(storyId, chapterId)
-    }
-}
-
-/** Storage-only fallback for tests and call sites that do not hold an [AppRepository]. */
-private class StorageTtsPlaybackSource(
-    private val storage: AppStorage,
-) : TtsPlaybackSource {
-    override fun story(id: String): Story? = storage.getStory(id)
-
-    override fun chapterHtml(chapter: Chapter): String? = storage.readChapter(chapter)
-
-    override fun settings(): TtsSettings = storage.getTtsSettings()
-
-    override fun regexRules(): List<RegexCleanupRule> = storage.getRegexRules()
-
-    override fun session(): TtsSession? = storage.getTtsSession()
-
-    override suspend fun markChapterRead(
-        storyId: String,
-        chapterId: String,
-    ) {
-        synchronized(storage) {
-            val latest = storage.getStory(storyId) ?: return
-            latest.lastReadChapterId = chapterId
-            storage.addOrUpdateStory(latest)
-        }
     }
 }

@@ -31,7 +31,7 @@ internal fun ScreenHost.showChapterSelection(
     storyId: String,
     initialSelectedIds: Set<String> = emptySet(),
 ) {
-    val story = repository.getStory(storyId) ?: return showLibrary()
+    val story = repository.story(storyId) ?: return showLibrary()
     if (!StoryActionGuards.canQueueDownloads(story)) {
         toast(StoryActionGuards.archivedActionMessage("Downloading"))
         return showDetails(story.id)

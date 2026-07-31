@@ -11,6 +11,7 @@ class StoryActionGuardsTest {
     fun activeStoriesCanSyncAndQueueDownloads() {
         val story = Story(id = "active", isArchived = false)
 
+        assertTrue(StoryActionGuards.canModifyStory(story))
         assertTrue(StoryActionGuards.canSync(story))
         assertTrue(StoryActionGuards.canQueueDownloads(story))
     }
@@ -19,6 +20,7 @@ class StoryActionGuardsTest {
     fun archivedStoriesCannotSyncOrQueueDownloads() {
         val story = Story(id = "archive", isArchived = true)
 
+        assertFalse(StoryActionGuards.canModifyStory(story))
         assertFalse(StoryActionGuards.canSync(story))
         assertFalse(StoryActionGuards.canQueueDownloads(story))
     }

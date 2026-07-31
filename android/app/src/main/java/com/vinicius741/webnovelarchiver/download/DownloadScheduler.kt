@@ -11,11 +11,10 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkTimeoutException
 import com.vinicius741.webnovelarchiver.source.network.NetworkTransportException
 import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
-import com.vinicius741.webnovelarchiver.ui.size
 import kotlin.random.Random
 
 /**
- * Download scheduling + error classification + progress (Maintainability M1: split out of Engines.kt).
+ * Download scheduling, error classification, and progress.
  * These are the pure helpers the [DownloadEngine] process loop relies on; they stay together because
  * the scheduler, classifier, and progress shape are tightly coupled to job lifecycle.
  */

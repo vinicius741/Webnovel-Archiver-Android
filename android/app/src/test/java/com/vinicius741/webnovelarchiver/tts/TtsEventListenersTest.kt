@@ -5,16 +5,16 @@ import org.junit.Test
 
 class TtsEventListenersTest {
     @Test
-    fun `listener registration is identity-idempotent and removable`() {
+    fun `error listener registration is identity-idempotent and removable`() {
         val registry = TtsEventListeners()
         var calls = 0
-        val listener: (TtsPlaybackSnapshot?) -> Unit = { calls += 1 }
+        val listener: (TtsPlaybackError) -> Unit = { calls += 1 }
 
-        registry.addState(listener)
-        registry.addState(listener)
-        registry.dispatchState(null)
-        registry.removeState(listener)
-        registry.dispatchState(null)
+        registry.addError(listener)
+        registry.addError(listener)
+        registry.dispatchError(TtsPlaybackError(TtsPlaybackErrorKind.InitFailed))
+        registry.removeError(listener)
+        registry.dispatchError(TtsPlaybackError(TtsPlaybackErrorKind.InitFailed))
 
         assertEquals(1, calls)
     }

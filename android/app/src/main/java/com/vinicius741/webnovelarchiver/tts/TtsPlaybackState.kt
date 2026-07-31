@@ -20,6 +20,15 @@ data class TtsPlaybackSnapshot(
     val isPaused: Boolean,
 )
 
+/**
+ * Replaying engine state. The initial value is not authoritative because the repository hydrates
+ * after the process-wide engine is constructed; an authoritative `null` is an explicit stop.
+ */
+data class TtsPlaybackUpdate(
+    val snapshot: TtsPlaybackSnapshot?,
+    val isAuthoritative: Boolean,
+)
+
 object TtsPlaybackState {
     /**
      * Returns the chapter the visible reader should open when TTS moves to another chapter in the
@@ -34,6 +43,22 @@ object TtsPlaybackState {
         snapshot
             ?.takeIf { it.storyId == currentStoryId && it.chapterId != currentChapterId }
             ?.chapterId
+
+    /**
+     * Keeps a restored Reader snapshot while the engine still exposes its pre-hydration placeholder,
+     * but applies both live snapshots and explicit stops once state is authoritative.
+     */
+    fun readerSnapshotAfterUpdate(
+        current: TtsPlaybackSnapshot?,
+        update: TtsPlaybackUpdate,
+        storyId: String,
+        chapterId: String,
+    ): TtsPlaybackSnapshot? =
+        if (update.isAuthoritative) {
+            update.snapshot?.takeIf { it.storyId == storyId && it.chapterId == chapterId }
+        } else {
+            current
+        }
 
     /** Human-readable "Chunk X / Y" label used by the notification body + the reader transport. */
     fun chunkProgress(

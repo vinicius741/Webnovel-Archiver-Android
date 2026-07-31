@@ -9,7 +9,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.vinicius741.webnovelarchiver.ui.WebViewSafety
+import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import org.json.JSONArray
 import org.jsoup.Jsoup
 import java.util.concurrent.ConcurrentHashMap

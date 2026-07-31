@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.domain.archive
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.ui.size
 import java.util.UUID
 
 object ArchiveSnapshotPlanning {

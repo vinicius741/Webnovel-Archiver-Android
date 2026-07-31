@@ -1,17 +1,12 @@
 package com.vinicius741.webnovelarchiver.tts
 
 /**
- * Multicast observer registry shared by the Android TTS adapter, foreground service, and Reader.
- * Dispatch uses defensive snapshots so observers can remove themselves from inside callbacks.
+ * Multicast registry for the event channels that are not durable playback state (errors and voice
+ * availability). Playback state itself is exposed through [TtsEngine.playbackState].
  */
 internal class TtsEventListeners {
-    private val state = mutableListOf<(TtsPlaybackSnapshot?) -> Unit>()
     private val errors = mutableListOf<(TtsPlaybackError) -> Unit>()
     private val voices = mutableListOf<(List<VoiceInfo>) -> Unit>()
-
-    fun addState(listener: (TtsPlaybackSnapshot?) -> Unit) = addIdentity(state, listener)
-
-    fun removeState(listener: (TtsPlaybackSnapshot?) -> Unit) = removeIdentity(state, listener)
 
     fun addError(listener: (TtsPlaybackError) -> Unit) = addIdentity(errors, listener)
 
@@ -20,10 +15,6 @@ internal class TtsEventListeners {
     fun addVoices(listener: (List<VoiceInfo>) -> Unit) = addIdentity(voices, listener)
 
     fun removeVoices(listener: (List<VoiceInfo>) -> Unit) = removeIdentity(voices, listener)
-
-    fun dispatchState(snapshot: TtsPlaybackSnapshot?) {
-        state.toList().forEach { runCatching { it(snapshot) } }
-    }
 
     fun dispatchError(error: TtsPlaybackError) {
         errors.toList().forEach { runCatching { it(error) } }

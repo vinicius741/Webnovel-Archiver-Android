@@ -5,7 +5,9 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.util.TypedValue
+import android.view.View
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 
@@ -14,6 +16,40 @@ import com.vinicius741.webnovelarchiver.R
 // ------------------------------------------------------------------
 
 enum class Btn { THEME_DEFAULT, FILLED, TONAL, OUTLINED, TEXT, ELEVATED, ERROR }
+
+/** Shared icon-button geometry for app chrome and compact inline actions. */
+enum class IconButtonStyle(
+    val sizeDp: Int,
+    val paddingDp: Int,
+) {
+    Standard(44, Space.SM + 2),
+    Small(40, Space.SM),
+    Compact(36, Space.SM),
+}
+
+/** Creates an accessible, themed icon button while leaving caller-specific margins/layout intact. */
+fun Context.iconButton(
+    iconRes: Int,
+    contentDescription: String,
+    tint: Int = ThemeManager.colors.onSurface,
+    style: IconButtonStyle = IconButtonStyle.Standard,
+    enabled: Boolean = true,
+    onClick: () -> Unit = {},
+): ImageView =
+    ImageView(this).apply {
+        this.contentDescription = contentDescription
+        setImageDrawable(tintedIcon(iconRes, tint))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        val padding = dp(style.paddingDp)
+        setPadding(padding, padding, padding, padding)
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        isClickable = enabled
+        isFocusable = enabled
+        isEnabled = enabled
+        alpha = if (enabled) 1f else 0.4f
+        setOnClickListener(if (enabled) View.OnClickListener { onClick() } else null)
+        layoutParams = android.widget.LinearLayout.LayoutParams(dp(style.sizeDp), dp(style.sizeDp))
+    }
 
 private fun resolvedVariant(v: Btn): Btn {
     if (v != Btn.THEME_DEFAULT) return v

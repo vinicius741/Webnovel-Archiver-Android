@@ -38,6 +38,36 @@ class TtsPlaybackStateTest {
     }
 
     @Test
+    fun readerKeepsPersistedSnapshotForInitialNonAuthoritativeEngineState() {
+        val persisted = playbackSnapshot(storyId = "story-1", chapterId = "chapter-1")
+
+        val resolved =
+            TtsPlaybackState.readerSnapshotAfterUpdate(
+                current = persisted,
+                update = TtsPlaybackUpdate(snapshot = null, isAuthoritative = false),
+                storyId = "story-1",
+                chapterId = "chapter-1",
+            )
+
+        assertEquals(persisted, resolved)
+    }
+
+    @Test
+    fun readerAppliesAuthoritativeStopAfterPersistedSnapshot() {
+        val persisted = playbackSnapshot(storyId = "story-1", chapterId = "chapter-1")
+
+        val resolved =
+            TtsPlaybackState.readerSnapshotAfterUpdate(
+                current = persisted,
+                update = TtsPlaybackUpdate(snapshot = null, isAuthoritative = true),
+                storyId = "story-1",
+                chapterId = "chapter-1",
+            )
+
+        assertNull(resolved)
+    }
+
+    @Test
     fun chunkProgressReportsOneIndexedPosition() {
         assertEquals("Chunk 1 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 0, totalChunks = 10))
         assertEquals("Chunk 5 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 4, totalChunks = 10))
@@ -65,7 +95,6 @@ class TtsPlaybackStateTest {
                 currentChunkIndex = 3,
                 isPaused = false,
                 wasPlaying = true,
-                chunkSize = 500,
             )
 
         val snapshot = TtsPlaybackState.snapshotForSession(session, totalChunks = 10, isPlaying = true)

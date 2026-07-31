@@ -5,9 +5,6 @@
 
 package com.vinicius741.webnovelarchiver.domain.model
 
-import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
-import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
-
 enum class DownloadStatus {
     idle,
     downloading,
@@ -83,7 +80,12 @@ data class EpubConfig(
     // page, and the human-readable Table of Contents. The EPUB-2 NCX (toc.ncx) is still emitted so
     // <spine toc="ncx"> stays valid. Defaults to false so existing on-disk configs keep all front matter.
     val chaptersOnly: Boolean = false,
-)
+) {
+    companion object {
+        const val MAX_CHAPTERS_PER_EPUB_MIN = 10
+        const val MAX_CHAPTERS_PER_EPUB_MAX = 1000
+    }
+}
 
 data class Story(
     var id: String = "",
@@ -192,18 +194,18 @@ data class DisplayPreferences(
      */
     var foldLayoutMode: String = "auto",
     /** User override for how the app treats the screen size/fold: "auto" (detect), "cover" (force
-     *  phone/1-column), or "inner" (force tablet/multi-column). Fed into [resolveScreenLayout]. */
+     *  phone/1-column), or "inner" (force tablet/multi-column). Fed into screen layout planning. */
     var screenLayoutMode: String = "auto",
     /** Multiplier applied to the reader WebView base font-size (1.0 = 18px). Clamped to 0.8–1.6. */
     var readerFontScale: Float = 1.0f,
     /** When true the reader WebView renders on a dark background (dark-reader toggle). */
     var readerDark: Boolean = false,
-    /** Persisted Library tab selection. Encoded form of the runtime id (see [LibraryTabSelection]);
+    /** Persisted Library tab selection. Encoded form of the runtime id (see library tab selection);
      *  `null`/blank means "never set", which resolves to the All tab. Survives app restarts. */
     var libraryTabId: String? = null,
     /** Persisted Library sort option key (e.g. "lastUpdated", "title"). Survives app restarts;
      *  defaults to "lastUpdated" so persisted JSON written before this field exists keeps the prior
-     *  behaviour. See [com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization]
+     *  behaviour. See [com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization]
      *  for the allowed keys and legacy normalization. */
     var librarySortOption: String = "lastUpdated",
     /** Persisted Library sort direction: true = ascending, false = descending. Survives app restarts;
@@ -228,7 +230,6 @@ data class TtsSettings(
     val pitch: Float = 1.0f,
     val rate: Float = 1.0f,
     val voiceIdentifier: String? = null,
-    val chunkSize: Int = 500,
 )
 
 data class TtsSession(
@@ -238,7 +239,6 @@ data class TtsSession(
     var currentChunkIndex: Int = 0,
     var isPaused: Boolean = false,
     var wasPlaying: Boolean = false,
-    var chunkSize: Int = 500,
     var voiceIdentifier: String? = null,
     var rate: Float = 1.0f,
     var pitch: Float = 1.0f,

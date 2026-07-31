@@ -5,6 +5,7 @@ import com.google.gson.JsonParseException
 import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.backup.BackupInputLimits
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifest
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestValidation
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterFileIndex
@@ -59,11 +60,9 @@ internal class FullBackupRestorer(
             val raw = freshDirectory(restoreDir, "raw_extraction")
             val staged = freshDirectory(restoreDir, "staged_root")
             val extracted = FullBackupZipExtractor.extract(zipFile, raw, restoreDir.usableSpace)
-            val payload = readAndValidateManifest(raw)
-            val chapterFiles = chapterFileIndex(payload)
-            val metricFiles = metricFileIndex(payload)
-            verifyZipIndex(extracted.files, chapterFiles, metricFiles)
-            val stories = buildStagedRoot(raw, staged, payload, chapterFiles)
+            val manifest = readAndValidateManifest(raw)
+            verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles)
+            val stories = buildStagedRoot(raw, staged, manifest)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
             synchronized(storage) { committer.commit(checkNotNull(swapCandidate)) }
@@ -79,7 +78,7 @@ internal class FullBackupRestorer(
         }
     }
 
-    private fun readAndValidateManifest(raw: File): Map<String, Any> {
+    private fun readAndValidateManifest(raw: File): FullBackupManifest {
         val manifest = File(raw, "manifest.json")
         check(manifest.exists()) { FullBackupManifestValidation.MISSING_MANIFEST_MESSAGE }
         val text =
@@ -89,34 +88,7 @@ internal class FullBackupRestorer(
         val payload: Map<String, Any> =
             gson.fromJson(text, object : TypeToken<Map<String, Any>>() {}.type)
                 ?: error("Invalid full backup: manifest was empty")
-        FullBackupManifestValidation.validate(payload)?.let { error(it) }
-        return payload
-    }
-
-    private fun chapterFileIndex(payload: Map<String, Any>): List<RestoredChapterFileIndex> {
-        val type = object : TypeToken<List<Map<String, Any?>>>() {}.type
-        val entries: List<Map<String, Any?>> = gson.fromJson(gson.toJson(payload["chapterFiles"]), type)
-        return entries.map { entry ->
-            RestoredChapterFileIndex(
-                storyId = entry["storyId"]?.toString().orEmpty(),
-                chapterId = entry["chapterId"]?.toString().orEmpty(),
-                path = entry["path"]?.toString().orEmpty(),
-            )
-        }
-    }
-
-    private fun metricFileIndex(payload: Map<String, Any>): List<RestoredMetricFileIndex> {
-        // metricFiles is optional (backups predating the Trends feature omit it). A missing or null
-        // entry yields an empty index — no metric entries to verify or stage.
-        val raw = payload["metricFiles"] ?: return emptyList()
-        val type = object : TypeToken<List<Map<String, Any?>>>() {}.type
-        val entries: List<Map<String, Any?>> = gson.fromJson(gson.toJson(raw), type) ?: return emptyList()
-        return entries.map { entry ->
-            RestoredMetricFileIndex(
-                storyId = entry["storyId"]?.toString().orEmpty(),
-                path = entry["path"]?.toString().orEmpty(),
-            )
-        }
+        return FullBackupManifestValidation.parseValidated(gson, payload)
     }
 
     private fun verifyZipIndex(
@@ -143,16 +115,11 @@ internal class FullBackupRestorer(
     private fun buildStagedRoot(
         raw: File,
         staged: File,
-        payload: Map<String, Any>,
-        chapterFiles: List<RestoredChapterFileIndex>,
+        payload: FullBackupManifest,
     ): MutableList<Story> {
-        val stories: MutableList<Story> =
-            gson.fromJson(gson.toJson(payload["library"]), object : TypeToken<MutableList<Story>>() {}.type)
+        val stories = payload.library.toMutableList()
         FullBackupRestorePlanning.scrubTransientState(stories)
-        val config: Map<String, Any> =
-            payload["config"]?.let {
-                gson.fromJson(gson.toJson(it), object : TypeToken<Map<String, Any>>() {}.type)
-            } ?: payload
+        val config = payload.config
         File(raw, "novels").takeIf(File::exists)?.copyRecursively(File(staged, "novels").apply { mkdirs() }, overwrite = true)
         // Trend history files extract under raw/metrics/<encoded>.json; copy the whole tree verbatim
         // so restore preserves per-novel score/Patreon history. The commit step moves the entire
@@ -160,7 +127,7 @@ internal class FullBackupRestorer(
         File(raw, "metrics").takeIf(File::exists)?.copyRecursively(File(staged, "metrics").apply { mkdirs() }, overwrite = true)
         File(staged, "epubs").mkdirs()
         stagingWriter.writeConfig(staged, config)
-        FullBackupRestorePlanning.applyRestoredChapterFiles(stories, chapterFiles) { path ->
+        FullBackupRestorePlanning.applyRestoredChapterFiles(stories, payload.chapterFiles) { path ->
             File(staged, path).takeIf(File::exists)?.toRelativeString(staged)
         }
         stagingWriter.writeLibrary(staged, stories)

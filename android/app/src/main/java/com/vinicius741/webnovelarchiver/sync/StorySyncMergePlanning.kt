@@ -38,16 +38,13 @@ object StorySyncMergePlanning {
         if (onDisk == null) return synced
         if (synced.id != onDisk.id) return synced
 
-        val onDiskByStable = linkedMapOf<String, Chapter>()
-        onDisk.chapters.forEach { chapter ->
-            val stable = provider.getChapterId(chapter.url) ?: chapter.id.ifBlank { chapter.url }
-            if (stable.isNotBlank()) onDiskByStable.putIfAbsent(stable, chapter)
-        }
+        val matcher = ChapterMatcher(provider)
+        val onDiskByStable = matcher.index(onDisk.chapters).byStableId
 
         val mergedChapters =
             synced.chapters
                 .map { chapter ->
-                    val stable = provider.getChapterId(chapter.url) ?: chapter.id.ifBlank { chapter.url }
+                    val stable = matcher.stableId(chapter)
                     val current = if (stable.isNotBlank()) onDiskByStable[stable] else null
                     if (current != null && current.downloaded && current.filePath != null) {
                         // Preserve a download that completed during the sync window. The synced chapter's
@@ -78,7 +75,7 @@ object StorySyncMergePlanning {
                 lastRead = onDisk.lastReadChapterId,
                 sourceChapters = onDisk.chapters,
                 targetChapters = mergedChapters,
-                provider = provider,
+                matcher = matcher,
             )
 
         return synced.copy(
@@ -93,19 +90,14 @@ object StorySyncMergePlanning {
         lastRead: String?,
         sourceChapters: List<Chapter>,
         targetChapters: List<Chapter>,
-        provider: SourceProvider,
+        matcher: ChapterMatcher,
     ): String? {
         lastRead ?: return null
         val sourceStable =
             sourceChapters
                 .firstOrNull { it.id == lastRead || it.url == lastRead }
-                ?.let { stableChapterId(it, provider) }
+                ?.let(matcher::stableId)
                 ?: lastRead
-        return targetChapters.firstOrNull { stableChapterId(it, provider) == sourceStable }?.id
+        return targetChapters.firstOrNull { matcher.stableId(it) == sourceStable }?.id
     }
-
-    private fun stableChapterId(
-        chapter: Chapter,
-        provider: SourceProvider,
-    ): String = provider.getChapterId(chapter.url) ?: chapter.id.ifBlank { chapter.url }
 }

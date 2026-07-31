@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.reader
 
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
+import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.epub.EpubMetadata
 
 object ReaderContentRenderer {
@@ -45,7 +45,7 @@ object ReaderContentRenderer {
 
     /**
      * Full reader document (parity gap 3). When [includeTtsScript] is true, the body HTML is assumed
-     * to have already been through [TextCleanup.prepareTtsAnnotatedHtml] (so block elements carry
+     * to have already been through [TtsTextPreparation.prepareTtsAnnotatedHtml] (so block elements carry
      * `data-tts-group` indices) and a small, self-contained script is injected that (a) exposes
      * `WnaTts.setActive(index)` to toggle the `.tts-active` highlight on the speaking chunk, and
      * (b) listens for a double-tap on a tagged paragraph to ask the host to start TTS there via the

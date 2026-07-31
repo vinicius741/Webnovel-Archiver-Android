@@ -20,7 +20,7 @@ class DownloadForegroundServiceTimeoutPlanningTest {
                 job("cancelled"),
             )
 
-        val recovered = DownloadForegroundServiceTimeoutPlanning.recoverQueue(jobs)
+        val recovered = DownloadForegroundServiceTimeoutHandler.recoverQueue(jobs)
 
         assertEquals(
             listOf("pending", "pending", "paused", "completed", "failed", "cancelled"),
@@ -35,7 +35,7 @@ class DownloadForegroundServiceTimeoutPlanningTest {
     fun doesNotMutatePublishedQueueObjects() {
         val downloading = job("downloading", nextRetryAt = 200L)
 
-        val recovered = DownloadForegroundServiceTimeoutPlanning.recoverQueue(listOf(downloading)).single()
+        val recovered = DownloadForegroundServiceTimeoutHandler.recoverQueue(listOf(downloading)).single()
 
         assertNotSame(downloading, recovered)
         assertNotSame(downloading.chapter, recovered.chapter)

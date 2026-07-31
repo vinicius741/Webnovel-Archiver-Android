@@ -22,6 +22,13 @@ import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 class TtsForegroundService : Service() {
     private lateinit var engine: TtsEngine
@@ -29,17 +36,17 @@ class TtsForegroundService : Service() {
     private var foregroundStarted = false
     private var resumeAfterFocusGain = false
     private var lastErrorText: String? = null
+    private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var stateCollectionJob: Job? = null
 
     /** Real Android MediaSession (parity gaps 1 & 2): owns the lock-screen / system media UI and
      *  receives headset-hook / Bluetooth media-button events. Its token drives the MediaStyle
      *  notification so the standard media card + transport metadata appear system-wide. */
     private var mediaSession: MediaSessionCompat? = null
 
-    /** Last snapshot fanned out by the engine; drives notification + MediaSession refresh. */
+    /** Last snapshot emitted by the engine; drives notification + MediaSession refresh. */
     private var lastSnapshot: TtsPlaybackSnapshot? = null
 
-    /** The service's own listener reference, kept so [onDestroy] can detach exactly this one. */
-    private val stateListener: (TtsPlaybackSnapshot?) -> Unit = { snapshot -> refreshMediaState(snapshot) }
     private val errorListener: (TtsPlaybackError) -> Unit = { error -> showPlaybackError(error) }
 
     override fun onCreate() {
@@ -72,9 +79,11 @@ class TtsForegroundService : Service() {
             )
         AppNotificationChannels.ensureCreated(this)
         ensureMediaSession()
-        // Single hook (R3): the engine emits a snapshot after every playback state change, so the
-        // service refreshes the MediaSession + notification in one place instead of polling storage.
-        engine.addStateListener(stateListener)
+        // One replaying state stream drives the MediaSession + notification without polling storage.
+        stateCollectionJob =
+            stateScope.launch {
+                engine.playbackState.collect { update -> refreshMediaState(update.snapshot) }
+            }
         engine.addErrorListener(errorListener)
     }
 
@@ -125,7 +134,9 @@ class TtsForegroundService : Service() {
         // touch playback here: the ACTION_STOP / ACTION_PAUSE handlers already put the engine into
         // the right state before stopSelf(), and a system-killed service should leave the persisted
         // session intact so playback can resume next launch.
-        engine.removeStateListener(stateListener)
+        stateCollectionJob?.cancel()
+        stateCollectionJob = null
+        stateScope.cancel()
         engine.removeErrorListener(errorListener)
         audioFocus.abandon()
         mediaSession?.run {
@@ -220,7 +231,7 @@ class TtsForegroundService : Service() {
 
     /**
      * Single refresh entry point invoked from the engine's multicast state-listener hook
-     * (see [TtsEngine.addStateListener]). Updates the cached snapshot, the MediaSession playback
+     * (see [TtsEngine.playbackState]). Updates the cached snapshot, the MediaSession playback
      * state + metadata, and the notification.
      */
     private fun refreshMediaState(snapshot: TtsPlaybackSnapshot?) {

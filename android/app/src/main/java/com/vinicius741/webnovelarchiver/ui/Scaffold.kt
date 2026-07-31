@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 
 internal data class AppBarAction(
     val icon: Int,
@@ -56,7 +57,7 @@ internal fun ScreenHost.screen(
     val savedScrollY = if (scrollable) routeScrollPositions[screenKey] ?: 0 else 0
     // R9: destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
-    disposeWebViews(frame)
+    WebViewSafety.disposeAll(frame)
     frame.removeAllViews()
     // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
     // hardware/gesture back navigation so the OS default (exit) applies.
@@ -125,17 +126,6 @@ internal fun findScrollView(root: View): ScrollView? {
  * in the [root] tree (R9). Called before `removeAllViews()` on navigation so Reader/Browser WebViews
  * don't outlive their screen and leak activity references, network work, or JS state.
  */
-private fun disposeWebViews(root: View) {
-    if (root is android.webkit.WebView) {
-        WebViewSafety.destroy(root)
-        return
-    }
-    if (root is ViewGroup) {
-        // Iterate over a copy: destroy() mutates the child list.
-        (0 until root.childCount).map { root.getChildAt(it) }.forEach { child -> disposeWebViews(child) }
-    }
-}
-
 private fun ScreenHost.appBar(
     title: String,
     subtitle: String?,
@@ -150,7 +140,11 @@ private fun ScreenHost.appBar(
         // G2: symmetric edge gap (was dp(4) right-only) so the icon strip isn't flush with the edge.
         setPadding(dp(Spacing.SM), systemBarTop() + dp(Spacing.SM), dp(Spacing.SM), dp(Spacing.SM))
         if (onBack != null) {
-            addView(iconButton(R.drawable.wna_arrow_back, "Back") { onBack() })
+            addView(
+                app.iconButton(R.drawable.wna_arrow_back, "Back") { onBack() }.apply {
+                    (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Spacing.XS)
+                },
+            )
         } else {
             addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(Spacing.MD), dp(1)) })
         }
@@ -170,32 +164,12 @@ private fun ScreenHost.appBar(
         }
         addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach { a ->
-            addView(iconButton(a.icon, a.label, a.tint) { a.onClick() })
+            addView(
+                app.iconButton(a.icon, a.label, a.tint ?: t.colors.onSurface) { a.onClick() }.apply {
+                    (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Spacing.XS)
+                },
+            )
         }
-    }
-}
-
-private fun ScreenHost.iconButton(
-    iconRes: Int,
-    desc: String,
-    tint: Int? = null,
-    onClick: () -> Unit,
-): View {
-    val t = ThemeManager.current
-    val iconColor = tint ?: t.colors.onSurface
-    val size = dp(44)
-    return ImageView(app).apply {
-        contentDescription = desc
-        setImageDrawable(app.tintedIcon(iconRes, iconColor))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(Spacing.SM + 2), dp(Spacing.SM + 2), dp(Spacing.SM + 2), dp(Spacing.SM + 2))
-        background = selectableRipple(t.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { onClick() }
-        // G2: widen the gap between adjacent app-bar icons so each reads as its own action,
-        // not a single cluttered strip.
-        layoutParams = LinearLayout.LayoutParams(size, size).apply { marginStart = dp(Spacing.XS) }
     }
 }
 

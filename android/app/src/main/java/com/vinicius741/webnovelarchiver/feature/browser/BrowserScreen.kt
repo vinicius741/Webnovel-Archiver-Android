@@ -9,10 +9,9 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.graphics.drawable.toBitmap
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.MainActivity
-import com.vinicius741.webnovelarchiver.feature.story.isNovelUrl
-import com.vinicius741.webnovelarchiver.feature.story.resolveUrl
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
@@ -25,7 +24,7 @@ import com.vinicius741.webnovelarchiver.ui.toast
  * password manager. The app still receives the current page URL through the Import action.
  */
 internal fun ScreenHost.showBrowser(startUrl: String) {
-    val url = resolveUrl(startUrl)
+    val url = BrowserUrlPlanning.resolveUrl(startUrl)
     if (url.isBlank()) return toast("Enter a URL")
 
     val importIntent =
@@ -75,7 +74,7 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
 
 /** Validates and imports the URL returned by the Custom Tab action. */
 internal fun ScreenHost.importFromBrowser(url: String) {
-    if (!isNovelUrl(url)) {
+    if (!SourceUrlValidation.isImportableStoryUrl(url)) {
         toast("Open a supported novel page before importing")
         return
     }

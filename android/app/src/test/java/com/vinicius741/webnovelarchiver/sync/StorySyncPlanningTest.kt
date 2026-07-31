@@ -166,6 +166,42 @@ class StorySyncPlanningTest {
     }
 
     @Test
+    fun mergeLatestChaptersUsesOriginalPositionsWhenStableIdsAreDuplicated() {
+        val duplicateUrl = "https://www.scribblehub.com/read/1-story/chapter/100/"
+        val existing =
+            listOf(
+                Chapter(id = "first-a", title = "First A", url = duplicateUrl),
+                Chapter(id = "duplicate-a", title = "Duplicate A", url = duplicateUrl),
+                Chapter(
+                    id = "sh_200",
+                    title = "B",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/200/",
+                ),
+            )
+        val latest =
+            listOf(
+                ChapterInfo(id = "sh_100", title = "A Updated", url = duplicateUrl),
+                ChapterInfo(
+                    id = "sh_200",
+                    title = "B Updated",
+                    url = "https://www.scribblehub.com/read/1-story/chapter/200/",
+                ),
+            )
+
+        val merge =
+            StorySyncPlanning.mergeLatestChapters(
+                existing,
+                latest,
+                ScribbleHubProvider,
+                lastRead = null,
+            )
+
+        requireNotNull(merge)
+        assertEquals(listOf("sh_100", "duplicate-a", "sh_200"), merge.chapters.map { it.id })
+        assertEquals(listOf("A Updated", "Duplicate A", "B Updated"), merge.chapters.map { it.title })
+    }
+
+    @Test
     fun mergeLatestChaptersReturnsNullWhenThereIsNoOverlap() {
         val existing =
             listOf(

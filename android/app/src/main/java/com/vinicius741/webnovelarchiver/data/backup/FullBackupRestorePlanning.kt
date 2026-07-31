@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.backup
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.ui.size
 
 data class RestoredChapterFileIndex(
     val storyId: String,

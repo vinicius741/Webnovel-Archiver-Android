@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.feature.browser
 
-import com.vinicius741.webnovelarchiver.feature.story.resolveUrl
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

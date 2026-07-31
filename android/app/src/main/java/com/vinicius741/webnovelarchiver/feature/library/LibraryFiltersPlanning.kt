@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import com.vinicius741.webnovelarchiver.domain.model.Story
+
 /**
  * Pure sort-key helpers for the Library filter bar, split out of [LibraryFilters] so the
  * deterministic sort normalization/labeling can be unit-tested and reused by both the sort chip
@@ -38,4 +40,23 @@ object LibraryFiltersPlanning {
             "default" -> "Default"
             else -> "Default"
         }
+}
+
+/** Shared mutable UI snapshot for Library and Organize Novels filtering. */
+data class LibraryFilterState(
+    val query: String = "",
+    val selectedTabId: String? = LibraryTabSelection.ALL_TAB_ID,
+    val selectedTags: Set<String> = emptySet(),
+    val sortOption: String = "lastUpdated",
+    val sortAscending: Boolean = false,
+) {
+    fun applyTo(stories: List<Story>): List<Story> =
+        LibraryQuery.filterAndSort(
+            stories,
+            query,
+            selectedTabId,
+            selectedTags,
+            sortOption,
+            sortAscending,
+        )
 }

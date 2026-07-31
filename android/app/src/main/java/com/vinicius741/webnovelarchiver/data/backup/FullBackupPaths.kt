@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.data.backup
 
+import com.vinicius741.webnovelarchiver.domain.archive.PercentEncoding
+
 object FullBackupPaths {
     fun chapterPath(
         storyId: String,
@@ -11,20 +13,5 @@ object FullBackupPaths {
      *  `metrics/<safeName(id)>.json` layout so restore can copy the whole `metrics/` tree verbatim. */
     fun metricPath(storyId: String): String = "metrics/${encodeURIComponent(storyId)}.json"
 
-    fun encodeURIComponent(value: String): String =
-        buildString {
-            value.encodeToByteArray().forEach { byte ->
-                val unsigned = byte.toInt() and 0xff
-                val char = unsigned.toChar()
-                if (char in UNESCAPED_CHARACTERS) {
-                    append(char)
-                } else {
-                    append('%')
-                    append(unsigned.toString(16).uppercase().padStart(2, '0'))
-                }
-            }
-        }
-
-    private val UNESCAPED_CHARACTERS: Set<Char> =
-        (('A'..'Z') + ('a'..'z') + ('0'..'9') + listOf('-', '_', '.', '!', '~', '*', '\'', '(', ')')).toSet()
+    fun encodeURIComponent(value: String): String = PercentEncoding.encodeURIComponent(value)
 }

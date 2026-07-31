@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.app
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -26,27 +27,27 @@ class DevLaunchPlanningTest {
         // A provider that throws proves resolve did not touch the library for no-arg screens.
         val provider = throwingProvider()
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Library,
+            AppRoute.Library,
             DevLaunchPlanning.resolve("library", null, null, provider),
         )
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Queue,
+            AppRoute.Queue,
             DevLaunchPlanning.resolve("queue", null, null, provider),
         )
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Settings,
+            AppRoute.Settings,
             DevLaunchPlanning.resolve("settings", null, null, provider),
         )
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Notifications,
+            AppRoute.Notifications,
             DevLaunchPlanning.resolve("notifications", null, null, provider),
         )
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Updates,
+            AppRoute.Updates,
             DevLaunchPlanning.resolve("updates", null, null, provider),
         )
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.AddStory,
+            AppRoute.AddStory,
             DevLaunchPlanning.resolve("addstory", null, null, provider),
         )
     }
@@ -55,11 +56,11 @@ class DevLaunchPlanningTest {
     fun tokensAreCaseInsensitiveAndTrimmed() {
         val provider = throwingProvider()
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Queue,
+            AppRoute.Queue,
             DevLaunchPlanning.resolve("Queue", null, null, provider),
         )
         assertEquals(
-            DevLaunchPlanning.DevStartTarget.Settings,
+            AppRoute.Settings,
             DevLaunchPlanning.resolve("  SETTINGS  ", null, null, provider),
         )
     }
@@ -85,8 +86,8 @@ class DevLaunchPlanningTest {
                 story("s2", "Story Two", listOf(chapter("c3", "Chapter 3"))),
             )
         val target = DevLaunchPlanning.resolve("reader", null, null, { library })
-        assertTrue(target is DevLaunchPlanning.DevStartTarget.Reader)
-        target as DevLaunchPlanning.DevStartTarget.Reader
+        assertTrue(target is AppRoute.Reader)
+        target as AppRoute.Reader
         assertEquals("s1", target.storyId)
         assertEquals("c1", target.chapterId)
     }
@@ -99,7 +100,7 @@ class DevLaunchPlanningTest {
             )
         val target =
             DevLaunchPlanning.resolve("reader", "s1", "c2") { library }
-        target as DevLaunchPlanning.DevStartTarget.Reader
+        target as AppRoute.Reader
         assertEquals("s1", target.storyId)
         assertEquals("c2", target.chapterId)
     }
@@ -134,8 +135,8 @@ class DevLaunchPlanningTest {
                 story("s2", "Story Two", listOf(chapter("c2", "Chapter 2"))),
             )
         val target = DevLaunchPlanning.resolve("details", null, null) { library }
-        assertTrue(target is DevLaunchPlanning.DevStartTarget.Details)
-        assertEquals("s1", (target as DevLaunchPlanning.DevStartTarget.Details).storyId)
+        assertTrue(target is AppRoute.Details)
+        assertEquals("s1", (target as AppRoute.Details).storyId)
     }
 
     @Test
@@ -146,7 +147,7 @@ class DevLaunchPlanningTest {
                 story("s2", "Story Two", listOf(chapter("c2", "Chapter 2"))),
             )
         val target = DevLaunchPlanning.resolve("details", "s2", null) { library }
-        assertEquals("s2", (target as DevLaunchPlanning.DevStartTarget.Details).storyId)
+        assertEquals("s2", (target as AppRoute.Details).storyId)
     }
 
     @Test

@@ -25,7 +25,7 @@ object ChapterHtmlSanitizer {
             .relaxed()
             // Preserve the structural classes the reader CSS + TTS annotation rely on.
             .addAttributes(":all", "class")
-            // TTS chunk grouping attribute set by [TextCleanup.prepareTtsAnnotatedHtml].
+            // TTS chunk grouping attribute set by [TtsTextPreparation.prepareTtsAnnotatedHtml].
             .addAttributes(":all", "data-tts-group")
             .addAttributes(":all", "data-tts-groups")
             // `dir`/`lang` keep RTL/translated prose readable; both are inert attributes.

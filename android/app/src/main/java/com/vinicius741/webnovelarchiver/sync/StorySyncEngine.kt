@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.sync
 
-import com.vinicius741.webnovelarchiver.data.storage.AppStorage
-import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -9,8 +8,6 @@ import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
-import com.vinicius741.webnovelarchiver.ui.size
-import timber.log.Timber
 
 enum class StorySyncMode {
     Default,
@@ -18,11 +15,11 @@ enum class StorySyncMode {
 }
 
 /**
- * Fetches or syncs a story from its source (Maintainability M1: split out of Engines.kt). Lives in
+ * Fetches or syncs a story from its source. Lives in
  * the `core` package so existing imports (`core.StorySyncEngine`) keep resolving.
  */
 class StorySyncEngine(
-    private val storage: AppStorage,
+    private val repository: AppRepository,
     private val network: NetworkClient,
 ) {
     suspend fun fetchOrSync(
@@ -35,7 +32,7 @@ class StorySyncEngine(
         val provider = SourceRegistry.getProvider(url) ?: error("Unsupported source URL")
         if (!SourceUrlValidation.isImportableStoryUrl(url)) error("Unsupported source URL")
         val storyId = provider.getStoryId(url)
-        val existing = storage.getStory(storyId)
+        val existing = repository.story(storyId)
         status("Fetching from ${provider.name}...")
         val html = network.fetch(url)
         val metadata = provider.parseMetadata(html)
@@ -86,7 +83,6 @@ class StorySyncEngine(
                     provider,
                     existing?.lastReadChapterId,
                 )
-        if (existing != null && merge.removedChapters.isNotEmpty()) createArchive(existing)
         val pendingNewChapterIds =
             if (existing == null) {
                 null
@@ -132,45 +128,20 @@ class StorySyncEngine(
                         syncedAt,
                     ),
             )
-        // Audit gap 10 / Rec 3: re-read the on-disk story under the shared storage monitor and fold
-        // any concurrent changes onto the synced story before writing. The network window above can
-        // span seconds; a download that completed for a chapter in that window, or a bookmark the user
-        // set, would otherwise be clobbered by a wholesale addOrUpdateStory. The fold preserves the
-        // synced metadata/chapter list while re-applying per-chapter download state + reading position.
-        // (Same monitor the download engine and repository use, so this write cannot interleave with
-        // DownloadEngine.processJob's own read-modify-write of the same story.)
+        // The repository owns the final read/merge/write/publish transaction. This keeps the
+        // concurrent-download/bookmark fence, archive write, metric snapshot, and cached state
+        // publication on one lock and removes the former second mutation path in the sync engine.
         val persisted =
-            synchronized(storage) {
-                val current = storage.getStory(storyId)
-                val merged = StorySyncMergePlanning.foldConcurrentChanges(story, current, provider)
-                storage.addOrUpdateStory(merged)
-                // Record a trend snapshot inside the same storage transaction so a concurrent sync
-                // can't interleave two history writes. Patreon fields are only filled when this sync
-                // actually fetched fresh Patreon stats (`refreshedPatreonStats != null`); batch
-                // "Follow Updates" syncs pass `refreshPatreonStats = false` and so record Patreon as
-                // null rather than re-stamping the carried-forward value as if it were measured now.
-                //
-                // Trend capture is best-effort: a fenced/corrupt metrics file (e.g. an IoFailure
-                // health issue, or a forward-compat UnsupportedSchema from a future app version) must
-                // not fail the story sync — the story itself is already persisted above, and failing
-                // here would skip the post-sync auto-download and surface a spurious "Sync failed".
-                runCatching {
-                    storage.appendMetricSnapshot(
-                        merged.id,
-                        MetricSnapshotPlanning.fromStory(merged, patreonRefreshed = refreshedPatreonStats != null, capturedAt = syncedAt),
-                    )
-                }.onFailure { Timber.w(it, "Failed to record metric snapshot for %s", merged.id) }
-                merged
-            }
+            repository.commitSyncedStory(
+                story = story,
+                archiveSource = existing?.takeIf { merge.removedChapters.isNotEmpty() },
+                metricSnapshot =
+                    MetricSnapshotPlanning.fromStory(
+                        story,
+                        patreonRefreshed = refreshedPatreonStats != null,
+                        capturedAt = syncedAt,
+                    ),
+            ) { current -> StorySyncMergePlanning.foldConcurrentChanges(story, current, provider) }
         return persisted
-    }
-
-    private fun createArchive(source: Story) {
-        val now = System.currentTimeMillis()
-        val archive =
-            ArchiveSnapshotPlanning.buildArchiveSnapshot(source, now) { archiveId, index, chapter ->
-                storage.copyChapterToStory(archiveId, index, chapter)
-            }
-        storage.addOrUpdateStory(archive)
     }
 }

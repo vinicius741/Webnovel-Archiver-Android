@@ -2,13 +2,7 @@ package com.vinicius741.webnovelarchiver.cleanup
 
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 
-/**
- * Regex rule management consumed by the cleanup UI (Maintainability M1: split out of TextCleanup.kt).
- * Owns validation, normalization, dedup detection, quick-pattern generation, and preview for the
- * regex cleanup-rule editor. Stateless; the cached/compile-once application path lives in
- * [com.vinicius741.webnovelarchiver.cleanup.CleanupEngine], and [TextCleanup] re-exposes these for
- * callers that still go through the stateless entry points.
- */
+/** Regex rule validation, normalization, and editor helpers. */
 object RegexRuleCleanup {
     private val regexFlagOrder = listOf('g', 'i', 'm', 's', 'u')
     private val allowedRegexFlags = regexFlagOrder.toSet()
@@ -21,6 +15,41 @@ object RegexRuleCleanup {
         )
     private const val MAX_REGEX_PATTERN_LENGTH = 500
     private const val MAX_RULE_NAME_LENGTH = 80
+
+    internal fun regexOptions(flags: String): Set<RegexOption> =
+        buildSet {
+            if ('i' in flags) add(RegexOption.IGNORE_CASE)
+            if ('m' in flags) add(RegexOption.MULTILINE)
+            if ('s' in flags) add(RegexOption.DOT_MATCHES_ALL)
+        }
+
+    /** Builds the stateless cleanup function used while preparing TTS and reader text. */
+    @Suppress("TooGenericExceptionCaught")
+    internal fun regexRunner(
+        rules: List<RegexCleanupRule>,
+        target: String,
+    ): (String) -> String {
+        val compiled =
+            rules
+                .filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == target) && !RegexCircuitBreaker.isDisabled(it) }
+                .mapNotNull { rule ->
+                    runCatching { Regex(rule.pattern, regexOptions(rule.flags)) }.getOrNull()?.let { it to rule }
+                }
+        return { input ->
+            compiled.fold(input) { text, (regex, rule) ->
+                val start = System.nanoTime()
+                val result =
+                    try {
+                        regex.replace(text, "")
+                    } catch (_: Throwable) {
+                        RegexCircuitBreaker.report(rule, System.nanoTime() - start, failed = true)
+                        return@fold text
+                    }
+                RegexCircuitBreaker.report(rule, System.nanoTime() - start)
+                result
+            }
+        }
+    }
 
     data class RegexValidationResult(
         val valid: Boolean,
@@ -111,7 +140,7 @@ object RegexRuleCleanup {
 
         val normalizedFlags = normalizeRegexFlags(flags)
         return runCatching {
-            Regex(pattern, TextCleanup.regexOptions(normalizedFlags.replace("g", "")))
+            Regex(pattern, regexOptions(normalizedFlags.replace("g", "")))
             RegexValidationResult(true, normalizedPattern = pattern, normalizedFlags = normalizedFlags)
         }.getOrElse { RegexValidationResult(false, "Invalid regex: ${it.message}") }
     }
@@ -132,12 +161,7 @@ object RegexRuleCleanup {
         return QuickPattern(pattern, flags, "Remove $display ($minCount+) $scope")
     }
 
-    /**
-     * Preview helper for the regex rule editor (parity gap 5): validates the in-progress rule, then
-     * applies it to [sampleInput] and returns the cleaned text — `null` when the rule is invalid or
-     * the input is blank. Mirrors the legacy RN `RuleDialog` "Test Preview" pane (the draft is
-     * treated as `appliesTo = both`, exactly as the RN version did).
-     */
+    /** Validates an in-progress editor rule and applies it to [sampleInput]. */
     fun previewRegexRule(
         pattern: String,
         flags: String,
@@ -150,7 +174,7 @@ object RegexRuleCleanup {
         val normalizedFlags = validation.normalizedFlags ?: ""
         val compiled =
             runCatching {
-                Regex(normalizedPattern, TextCleanup.regexOptions(normalizedFlags))
+                Regex(normalizedPattern, regexOptions(normalizedFlags))
             }.getOrNull() ?: return null
         return compiled.replace(sampleInput, "")
     }

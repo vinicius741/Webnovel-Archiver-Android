@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.epub
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.ui.size
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 

@@ -1,56 +1,11 @@
 package com.vinicius741.webnovelarchiver.cleanup
 
-import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 
-/**
- * HTML-to-text transformation consumed by the download engine and the reader (Maintainability M1:
- * split out of TextCleanup.kt). Owns sentence/regex stripping for downloaded chapter HTML plus the
- * plain-text and structured (paragraph/heading/table-preserving) flattening used by the reader.
- * [TextCleanup] re-exposes these for callers that still go through the stateless entry points.
- */
+/** HTML-to-text transformations for downloaded chapters and reader display. */
 object HtmlCleanup {
-    fun applyDownloadCleanup(
-        html: String,
-        sentences: List<String>,
-        rules: List<RegexCleanupRule>,
-    ): String {
-        val doc = Jsoup.parseBodyFragment(html)
-        val sentencePatterns =
-            sentences.mapNotNull { sentence ->
-                val escaped = Regex.escape(sentence.trim()).replace("\\ ", "\\s+")
-                if (escaped.isBlank()) null else runCatching { Regex(escaped, setOf(RegexOption.IGNORE_CASE)) }.getOrNull()
-            }
-        val regexRules =
-            rules.filter { it.enabled && (it.appliesTo == "both" || it.appliesTo == "download") }.mapNotNull {
-                runCatching {
-                    Regex(it.pattern, TextCleanup.regexOptions(it.flags))
-                }.getOrNull()
-            }
-        doc.select("script,style,noscript,iframe").remove()
-        doc.body().traverseTextNodes().forEach { node ->
-            var text = node.text()
-            sentencePatterns.forEach { text = it.replace(text, "") }
-            regexRules.forEach { text = it.replace(text, "") }
-            node.text(text)
-        }
-        return doc.body().html()
-    }
-
-    fun htmlToPlainText(html: String): String {
-        val doc = Jsoup.parseBodyFragment(html)
-        doc.select("script,style,noscript,iframe").remove()
-        doc.select("p,div,br,h1,h2,h3,h4,h5,h6,li").append(" ")
-        return doc
-            .body()
-            .text()
-            .replace(Regex("\\s+"), " ")
-            .trim()
-    }
-
     fun htmlToFormattedText(html: String): String {
         if (html.isBlank()) return ""
         val doc = Jsoup.parseBodyFragment(html)
@@ -134,18 +89,5 @@ object HtmlCleanup {
             .replace(Regex("\\n[ \\t]+"), "\n")
             .replace(Regex("\\n{3,}"), "\n\n")
             .trimEnd()
-    }
-
-    private fun Node.traverseTextNodes(): List<TextNode> {
-        val result = mutableListOf<TextNode>()
-
-        fun visit(node: Node) {
-            if (node is TextNode) {
-                result.add(node)
-            }
-            node.childNodes().forEach(::visit)
-        }
-        visit(this)
-        return result
     }
 }

@@ -101,7 +101,7 @@ internal fun ScreenHost.renderTabGrid(
                 content.setOnLongClickListener {
                     // Progress is patched without rebuilding this card, so resolve the latest story
                     // before an action that may persist it; never act on the pre-download snapshot.
-                    repository.getStory(story.id)?.let(::showStoryActionsDialog)
+                    repository.story(story.id)?.let(::showStoryActionsDialog)
                     true
                 }
                 addView(content)

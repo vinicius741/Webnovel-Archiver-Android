@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
-import com.vinicius741.webnovelarchiver.ui.size
 
 /**
  * Pure planning functions for the live download feedback shown on the Details (View Chapter)
@@ -44,25 +43,18 @@ object DownloadDetailsPlanning {
      * "Downloading: <title>" headline.
      */
     fun summarizeStoryDownload(jobsForStory: List<DownloadJob>): StoryDownloadSummary {
-        val downloading = jobsForStory.count { it.status == DownloadJobStatus.Downloading.wire }
-        val pending = jobsForStory.count { it.status == DownloadJobStatus.Pending.wire }
-        val paused = jobsForStory.count { it.status == DownloadJobStatus.Paused.wire }
-        val completed = jobsForStory.count { it.status == DownloadJobStatus.Completed.wire }
-        val failed = jobsForStory.count { it.status == DownloadJobStatus.Failed.wire }
-        val cancelled = jobsForStory.count { it.status == DownloadJobStatus.Cancelled.wire }
-        val total = jobsForStory.size
-        val active = downloading + pending
-        val activeTitle = jobsForStory.firstOrNull { it.status == DownloadJobStatus.Downloading.wire }?.chapter?.title
+        val counts = jobsForStory.downloadCounts()
+        val activeTitle = jobsForStory.firstOrNull { DownloadJobStatus.parse(it.status) == DownloadJobStatus.Downloading }?.chapter?.title
         return StoryDownloadSummary(
-            isActive = active > 0,
-            isPaused = active == 0 && paused > 0,
-            isFinished = active == 0 && paused == 0 && total > 0,
-            completed = completed,
-            failed = failed,
-            cancelled = cancelled,
-            pending = pending,
-            downloading = downloading,
-            total = total,
+            isActive = counts.hasActive,
+            isPaused = !counts.hasActive && counts.hasPaused,
+            isFinished = !counts.hasActive && !counts.hasPaused && counts.total > 0,
+            completed = counts.completed,
+            failed = counts.failed,
+            cancelled = counts.cancelled,
+            pending = counts.pending,
+            downloading = counts.downloading,
+            total = counts.total,
             activeTitle = activeTitle,
         )
     }

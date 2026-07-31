@@ -23,11 +23,11 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockDetector
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.WebViewSafety
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import org.json.JSONArray

@@ -1,5 +1,18 @@
 package com.vinicius741.webnovelarchiver.data.backup
 
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.vinicius741.webnovelarchiver.domain.model.Story
+
+/** Manifest data needed by restore after the untrusted raw JSON has passed validation. */
+data class FullBackupManifest(
+    val version: Int,
+    val library: List<Story>,
+    val config: Map<String, Any>,
+    val chapterFiles: List<RestoredChapterFileIndex>,
+    val metricFiles: List<RestoredMetricFileIndex>,
+)
+
 object FullBackupManifestValidation {
     private const val FORMAT = "webnovel-archiver-full-backup"
     const val MISSING_MANIFEST_MESSAGE = "Invalid full backup: missing manifest"
@@ -58,6 +71,49 @@ object FullBackupManifestValidation {
         }
         return validateMetricFiles(manifest["metricFiles"], ids.toSet())
     }
+
+    /**
+     * Converts only a manifest that has already passed the raw shape and safety checks above.
+     * Later restore stages receive typed entries and do not need to reparse untrusted map values.
+     */
+    fun parseValidated(
+        gson: Gson,
+        manifest: Map<String, Any>,
+    ): FullBackupManifest {
+        validate(manifest)?.let(::error)
+        val stories: List<Story> =
+            gson.fromJson(gson.toJson(manifest["library"]), object : TypeToken<List<Story>>() {}.type)
+                ?: error("Invalid full backup: missing library")
+        val config: Map<String, Any> =
+            gson.fromJson(gson.toJson(manifest["config"]), object : TypeToken<Map<String, Any>>() {}.type)
+                ?: error("Invalid full backup: missing configuration")
+        val chapterFiles =
+            (manifest["chapterFiles"] as List<*>).map { raw ->
+                val entry = raw as Map<*, *>
+                RestoredChapterFileIndex(
+                    storyId = entry.getString("storyId"),
+                    chapterId = entry.getString("chapterId"),
+                    path = entry.getString("path"),
+                )
+            }
+        val metricFiles =
+            (manifest["metricFiles"] as? List<*>).orEmpty().map { raw ->
+                val entry = raw as Map<*, *>
+                RestoredMetricFileIndex(
+                    storyId = entry.getString("storyId"),
+                    path = entry.getString("path"),
+                )
+            }
+        return FullBackupManifest(
+            version = BackupInputLimits.exactInt(manifest["version"]) ?: error("Invalid full backup: missing version"),
+            library = stories,
+            config = config,
+            chapterFiles = chapterFiles,
+            metricFiles = metricFiles,
+        )
+    }
+
+    private fun Map<*, *>.getString(key: String): String = get(key) as String
 
     /** metricFiles is optional: backups written before the Trends feature shipped omit it, and a
      *  restore then leaves each story with empty history. When present it must be well-formed. */

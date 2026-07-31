@@ -7,19 +7,13 @@ import androidx.core.content.FileProvider
 import com.vinicius741.webnovelarchiver.data.backup.FileMimeTypes
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
-import com.vinicius741.webnovelarchiver.feature.browser.BrowserUrlPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 import java.io.File
-
-internal fun resolveUrl(input: String): String = BrowserUrlPlanning.resolveUrl(input)
-
-internal fun isNovelUrl(url: String): Boolean = SourceUrlValidation.isImportableStoryUrl(url)
 
 internal fun ScreenHost.openFile(path: String?) {
     if (path == null) return toast("No EPUB generated")

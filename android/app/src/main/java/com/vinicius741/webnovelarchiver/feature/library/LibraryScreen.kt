@@ -1,14 +1,12 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.Gravity
 import android.widget.FrameLayout
+import androidx.core.widget.doAfterTextChanged
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
-import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -24,8 +22,6 @@ import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
-import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.launch
 
@@ -38,7 +34,7 @@ internal fun ScreenHost.showLibrary() {
     // setting toggles, so the column count reflows 1 → 2 → 3 live.
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
-    var stories: List<Story> = repository.getLibrary()
+    var stories: List<Story> = repository.library()
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
     val tabs = repository.getTabs().sortedBy { it.order }
@@ -57,7 +53,7 @@ internal fun ScreenHost.showLibrary() {
         // Resolve and persist tab selection even when the library is empty. Configured tabs are
         // still useful before the first import, and hiding them makes tab creation look ineffective.
         val hasUnassigned = stories.any { it.tabId == null }
-        var selectedTabId: String? =
+        val initialSelectedTabId: String? =
             LibraryTabSelection.resolve(
                 repository.getDisplayPreferences().libraryTabId,
                 tabs,
@@ -74,8 +70,8 @@ internal fun ScreenHost.showLibrary() {
 
         if (stories.isEmpty()) {
             addView(
-                makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
-                    selectedTabId = newTabId
+                makeLibraryTabBar(context, tabs, stories, initialSelectedTabId) { newTabId ->
+                    // The empty state has no filter bar, but tab selection still persists.
                     persistTab(newTabId)
                 }.view,
             )
@@ -108,14 +104,17 @@ internal fun ScreenHost.showLibrary() {
                 add(LibraryTabSelection.ALL_TAB_ID)
             }
 
-        val selectedTags = mutableSetOf<String>()
         // Restore the last-selected sort from persisted prefs (survives navigating away AND app
         // restarts). Mirrors the persisted tab handling above; the normalization layer maps the
         // legacy "updated" key onto the canonical "lastUpdated" and clamps unknown values.
         val persistedSort = repository.getDisplayPreferences()
         // Canonical key matches the Sort dialog option list ("lastUpdated", not the legacy "updated").
-        var sortOption = persistedSort.librarySortOption.ifBlank { "lastUpdated" }
-        var sortAscending = persistedSort.librarySortAscending
+        var filterState =
+            LibraryFilterState(
+                selectedTabId = initialSelectedTabId,
+                sortOption = persistedSort.librarySortOption.ifBlank { "lastUpdated" },
+                sortAscending = persistedSort.librarySortAscending,
+            )
 
         fun persistSort(
             option: String,
@@ -142,18 +141,19 @@ internal fun ScreenHost.showLibrary() {
                 search,
                 tabs.isNotEmpty(),
                 stories,
-                selectedTabId,
-                selectedTags,
-                sortOption,
-                sortAscending,
+                filterState.selectedTabId,
+                filterState.selectedTags,
+                filterState.sortOption,
+                filterState.sortAscending,
                 { newSort ->
-                    sortOption = newSort.first
-                    sortAscending = newSort.second
-                    persistSort(sortOption, sortAscending)
+                    filterState = filterState.copy(sortOption = newSort.first, sortAscending = newSort.second)
+                    persistSort(filterState.sortOption, filterState.sortAscending)
                     applyFilters()
                 },
                 { tag ->
-                    if (!selectedTags.add(tag)) selectedTags.remove(tag)
+                    val nextTags = filterState.selectedTags.toMutableSet()
+                    if (!nextTags.add(tag)) nextTags.remove(tag)
+                    filterState = filterState.copy(selectedTags = nextTags)
                     applyFilters()
                 },
             )
@@ -163,44 +163,24 @@ internal fun ScreenHost.showLibrary() {
         val refreshFilters = filters.rebuildChips
 
         val tabBar =
-            makeLibraryTabBar(context, tabs, stories, selectedTabId) { newTabId ->
-                selectedTabId = newTabId
+            makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
+                filterState = filterState.copy(selectedTabId = newTabId)
                 persistTab(newTabId)
-                refreshFilters(selectedTabId, selectedTags)
+                refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                 applyFilters()
             }
         // Tab bar renders above the filter row, matching the original layout.
         addView(tabBar.view)
         addView(filters.view)
 
-        // `showLibrary` runs inside the receiver scope; make `search.text` resolve here.
-        fun currentFilter(): String = search.text.toString()
-
         // One watcher drives BOTH the single-grid and pager paths through the shared `applyFilters`
         // closure, so a keystroke re-filters whichever surface is showing. Previously this was wired
         // only inside the single-tab branch, which left the swipeable multi-tab pager unfiltered on
         // typing — `applyFilters` was reachable only via tag/sort callbacks and page swipes.
-        search.addTextChangedListener(
-            object : TextWatcher {
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    count: Int,
-                    after: Int,
-                ) = Unit
-
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    before: Int,
-                    count: Int,
-                ) {
-                    applyFilters()
-                }
-
-                override fun afterTextChanged(s: Editable?) = Unit
-            },
-        )
+        search.doAfterTextChanged {
+            filterState = filterState.copy(query = it?.toString().orEmpty())
+            applyFilters()
+        }
 
         if (pageTabs.size >= 2) {
             // Swipe-between-tabs (Gap #6 parity with the legacy RN PagerView). Each page owns its own
@@ -216,11 +196,11 @@ internal fun ScreenHost.showLibrary() {
                     getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
                 }
             // Land on the persisted tab without animating on first show.
-            val initialPage = pageTabs.indexOf(selectedTabId).coerceAtLeast(0)
+            val initialPage = pageTabs.indexOf(filterState.selectedTabId).coerceAtLeast(0)
             pager.setCurrentItem(initialPage, false)
 
             applyFilters = {
-                adapter.updateFilter(currentFilter(), selectedTags, sortOption, sortAscending)
+                adapter.updateFilter(filterState.query, filterState.selectedTags, filterState.sortOption, filterState.sortAscending)
             }
             refreshLibraryContent = { latest ->
                 val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
@@ -237,13 +217,13 @@ internal fun ScreenHost.showLibrary() {
                     override fun onPageSelected(position: Int) {
                         if (suppressingPageCallback) return
                         val newTabId = pageTabs.getOrNull(position) ?: return
-                        if (newTabId != selectedTabId) {
-                            selectedTabId = newTabId
+                        if (newTabId != filterState.selectedTabId) {
+                            filterState = filterState.copy(selectedTabId = newTabId)
                             persistTab(newTabId)
                             tabBar.selectVisual(newTabId)
                             // Refresh the chip set + re-filter so the newly visible page reflects the
                             // active tab's tags/sources plus the active search/tags/sort.
-                            refreshFilters(selectedTabId, selectedTags)
+                            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                             applyFilters()
                         }
                     }
@@ -274,7 +254,16 @@ internal fun ScreenHost.showLibrary() {
                     verticalSpacingDp = Space.XS
                 }
             applyFilters = {
-                renderTabGrid(stories, list, layoutResult, currentFilter(), selectedTabId, selectedTags, sortOption, sortAscending)
+                renderTabGrid(
+                    stories,
+                    list,
+                    layoutResult,
+                    filterState.query,
+                    filterState.selectedTabId,
+                    filterState.selectedTags,
+                    filterState.sortOption,
+                    filterState.sortAscending,
+                )
             }
             refreshLibraryContent = { latest ->
                 val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }

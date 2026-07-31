@@ -3,7 +3,8 @@ package com.vinicius741.webnovelarchiver.download
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 
-data class QueueStatusCounts(
+/** One canonical reduction of queue lifecycle state used by UI and worker progress projections. */
+data class DownloadCounts(
     val downloading: Int = 0,
     val pending: Int = 0,
     val paused: Int = 0,
@@ -19,7 +20,7 @@ data class QueueStatusCounts(
     val total: Int get() = downloading + pending + paused + completed + failed + cancelled
 
     companion object {
-        fun from(jobs: Iterable<DownloadJob>): QueueStatusCounts {
+        fun from(jobs: Iterable<DownloadJob>): DownloadCounts {
             var downloading = 0
             var pending = 0
             var paused = 0
@@ -36,10 +37,12 @@ data class QueueStatusCounts(
                     DownloadJobStatus.Cancelled -> cancelled += 1
                 }
             }
-            return QueueStatusCounts(downloading, pending, paused, completed, failed, cancelled)
+            return DownloadCounts(downloading, pending, paused, completed, failed, cancelled)
         }
     }
 }
+
+fun Iterable<DownloadJob>.downloadCounts(): DownloadCounts = DownloadCounts.from(this)
 
 /** Per-chapter and per-story actions surfaced as inline icons in the download manager. */
 enum class QueueAction { PAUSE, RESUME, RETRY, CANCEL, REMOVE }
@@ -65,7 +68,7 @@ object DownloadManagerPlanning {
     /** Story-header action group. While a story has active or paused work it shows the in-progress
      *  group (pause-or-resume/cancel/retry-as-relevant); a story with only terminal failures shows a
      *  single retry; an all-completed story shows nothing. */
-    fun storyHeaderActions(counts: QueueStatusCounts): List<QueueAction> {
+    fun storyHeaderActions(counts: DownloadCounts): List<QueueAction> {
         if (counts.hasActive || counts.hasPaused) {
             return buildList {
                 if (counts.hasActive) {
@@ -81,7 +84,7 @@ object DownloadManagerPlanning {
         return emptyList()
     }
 
-    fun globalActions(counts: QueueStatusCounts): List<GlobalQueueAction> =
+    fun globalActions(counts: DownloadCounts): List<GlobalQueueAction> =
         buildList {
             if (counts.hasActive) {
                 add(GlobalQueueAction.PAUSE_ALL)
@@ -99,7 +102,7 @@ object DownloadManagerPlanning {
      *  Mirrors the legacy RN getSubtitleText: always leads with "X/Y chapters" then appends each
      *  non-zero status segment joined by " • ". */
     fun storySubtitle(
-        counts: QueueStatusCounts,
+        counts: DownloadCounts,
         waitingForDelay: Int = 0,
     ): String {
         val segments = mutableListOf<String>()

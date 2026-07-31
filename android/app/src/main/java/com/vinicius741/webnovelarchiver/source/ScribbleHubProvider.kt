@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
-import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
+import com.vinicius741.webnovelarchiver.domain.archive.PercentEncoding
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
@@ -21,13 +21,22 @@ object ScribbleHubProvider : SourceProvider {
     override fun isSource(url: String) =
         Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
 
+    override fun classifyUrl(url: String): SourceUrlKind? =
+        when {
+            Regex("""https?://(?:www\.)?scribblehub\.com/series/\d+""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(url) -> SourceUrlKind.STORY
+            Regex("""https?://(?:www\.)?scribblehub\.com/read/[^/]+/chapter/\d+""", RegexOption.IGNORE_CASE)
+                .containsMatchIn(url) -> SourceUrlKind.CHAPTER
+            else -> null
+        }
+
     override fun getStoryId(url: String) =
         Regex("/series/(\\d+)", RegexOption.IGNORE_CASE)
             .find(url)
             ?.groupValues
             ?.get(1)
             ?.let { "sh_$it" }
-            ?: "sh_url_${FullBackupPaths.encodeURIComponent(url.lowercase())}"
+            ?: "sh_url_${PercentEncoding.encodeURIComponent(url.lowercase())}"
 
     override fun getChapterId(url: String) =
         Regex("/chapter/(\\d+)", RegexOption.IGNORE_CASE)

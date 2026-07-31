@@ -58,7 +58,7 @@ internal fun ScreenHost.showTabs() {
             }
         }
         tabs.forEachIndexed { index, tab ->
-            val novelCount = repository.getLibrary().count { it.tabId == tab.id }
+            val novelCount = repository.library().count { it.tabId == tab.id }
             addView(
                 card {
                     row {
@@ -112,7 +112,7 @@ internal fun ScreenHost.showTabs() {
                         tabActionButton(R.drawable.wna_delete, "Delete ${tab.name}", tint = ThemeManager.colors.error) {
                             confirm("Delete tab \"${tab.name}\" and move its novels to Unassigned?", confirmLabel = "Delete") {
                                 scope.launch {
-                                    repository.getLibrary().forEach { story ->
+                                    repository.library().forEach { story ->
                                         if (story.tabId == tab.id) {
                                             story.tabId = null
                                             repository.addOrUpdateStory(story)

@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import android.system.Os
-import com.vinicius741.webnovelarchiver.ui.text
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -32,30 +31,20 @@ object AtomicFileWrites {
     fun writeBytes(
         destination: File,
         bytes: ByteArray,
-    ): File {
-        destination.parentFile?.mkdirs()
-        val temp = tempSibling(destination)
-        try {
-            temp.writeBytes(bytes)
-            fsync(temp)
-            renameOnto(temp, destination)
-        } finally {
-            cleanupTempIfPresent(temp)
-        }
-        return destination
-    }
+    ): File = writeAtomically(destination) { it.write(bytes) }.let { destination }
 
     /** Writes [text] atomically to [destination]. */
     fun writeText(
         destination: File,
         text: String,
-    ): File = writeBytes(destination, text.toByteArray(Charsets.UTF_8))
+    ): File = writeAtomically(destination) { it.write(text.toByteArray(Charsets.UTF_8)) }.let { destination }
 
     /**
      * Opens [block] with an [OutputStream] backed by a temp file, then renames it onto
-     * [destination] when [block] returns normally. Used for streamed EPUB generation.
+     * [destination] when [block] returns normally. All atomic writes use this path so text,
+     * bytes, and streamed files share the same durability and cleanup guarantees.
      */
-    fun <R> stream(
+    fun <R> writeAtomically(
         destination: File,
         block: (OutputStream) -> R,
     ): R {
@@ -65,21 +54,9 @@ object AtomicFileWrites {
         try {
             result =
                 FileOutputStream(temp).use { out ->
-                    val wrapped =
-                        object : OutputStream() {
-                            override fun write(b: Int) = out.write(b)
-
-                            override fun write(
-                                b: ByteArray,
-                                off: Int,
-                                len: Int,
-                            ) = out.write(b, off, len)
-
-                            override fun flush() = out.flush()
-
-                            override fun close() = out.close()
-                        }
-                    block(wrapped)
+                    val value = block(out)
+                    out.flush()
+                    value
                 }
             fsync(temp)
             renameOnto(temp, destination)

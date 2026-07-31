@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.tts
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
-import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,25 +28,19 @@ class TtsSessionPlanningTest {
     }
 
     @Test
-    fun restoredChunkSizeUsesCurrentSettingsWithMinimumBounds() {
-        assertEquals(600, TtsSessionPlanning.restoredChunkSize(TtsSettings(chunkSize = 600)))
-        assertEquals(100, TtsSessionPlanning.restoredChunkSize(TtsSettings(chunkSize = 40)))
+    fun nextChunkIndexAdvancesCurrentCursorAndClampsAtEnd() {
+        assertEquals(1, TtsSessionPlanning.nextChunkIndex(currentChunkIndex = 0, chunkCount = 4))
+        assertEquals(3, TtsSessionPlanning.nextChunkIndex(currentChunkIndex = 99, chunkCount = 4))
+        assertEquals(1, TtsSessionPlanning.nextChunkIndex(currentChunkIndex = -1, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.nextChunkIndex(currentChunkIndex = 2, chunkCount = 0))
     }
 
     @Test
-    fun nextChunkRequestIndexUsesPostIncrementCursor() {
-        assertEquals(1, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = 1, chunkCount = 4))
-        assertEquals(3, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = 99, chunkCount = 4))
-        assertEquals(0, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = -1, chunkCount = 4))
-        assertEquals(0, TtsSessionPlanning.nextChunkRequestIndex(currentPostIncrementIndex = 2, chunkCount = 0))
-    }
-
-    @Test
-    fun previousChunkRequestIndexStepsBackFromPostIncrementCursor() {
-        assertEquals(0, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = 1, chunkCount = 4))
-        assertEquals(2, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = 4, chunkCount = 4))
-        assertEquals(0, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = -1, chunkCount = 4))
-        assertEquals(0, TtsSessionPlanning.previousChunkRequestIndex(currentPostIncrementIndex = 2, chunkCount = 0))
+    fun previousChunkIndexStepsBackFromCurrentCursor() {
+        assertEquals(0, TtsSessionPlanning.previousChunkIndex(currentChunkIndex = 1, chunkCount = 4))
+        assertEquals(2, TtsSessionPlanning.previousChunkIndex(currentChunkIndex = 3, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.previousChunkIndex(currentChunkIndex = -1, chunkCount = 4))
+        assertEquals(0, TtsSessionPlanning.previousChunkIndex(currentChunkIndex = 2, chunkCount = 0))
     }
 
     @Test

@@ -89,34 +89,37 @@ internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
 }
 
 internal fun ScreenHost.showTtsVoicePicker(onBack: (() -> Unit)? = null) {
+    val currentVoice = repository.getTtsSettings().voiceIdentifier
+
+    fun showLoadedVoices(voices: List<VoiceInfo>) {
+        if (voices.isEmpty()) {
+            toast("No local TTS voices available yet")
+            return
+        }
+        showTtsVoiceDialog(voices, currentVoice) { voice -> saveTtsVoice(voice, onBack) }
+    }
+
     val voices = ttsEngine.availableVoices()
     if (voices.isEmpty()) {
         lateinit var listener: (List<VoiceInfo>) -> Unit
         listener = { loadedVoices ->
             ttsEngine.removeVoiceAvailabilityListener(listener)
-            app.runOnUiThread {
-                if (loadedVoices.isEmpty()) {
-                    toast("No local TTS voices available yet")
-                } else {
-                    showTtsVoiceDialog(loadedVoices, repository.getTtsSettings().voiceIdentifier) { voice ->
-                        val current = repository.getTtsSettings()
-                        scope.launch {
-                            repository.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-                            showTtsSettings(onBack)
-                        }
-                    }
-                }
-            }
+            app.runOnUiThread { showLoadedVoices(loadedVoices) }
         }
         ttsEngine.addVoiceAvailabilityListener(listener)
         toast("Loading local TTS voices")
         return
     }
-    showTtsVoiceDialog(voices, repository.getTtsSettings().voiceIdentifier) { voice ->
+    showLoadedVoices(voices)
+}
+
+private fun ScreenHost.saveTtsVoice(
+    voice: VoiceInfo?,
+    onBack: (() -> Unit)?,
+) {
+    scope.launch {
         val current = repository.getTtsSettings()
-        scope.launch {
-            repository.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-            showTtsSettings(onBack)
-        }
+        repository.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
+        showTtsSettings(onBack)
     }
 }

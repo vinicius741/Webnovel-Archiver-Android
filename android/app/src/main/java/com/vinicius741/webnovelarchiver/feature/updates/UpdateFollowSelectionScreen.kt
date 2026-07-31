@@ -1,12 +1,11 @@
 package com.vinicius741.webnovelarchiver.feature.updates
 
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -25,7 +24,6 @@ import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
-import com.vinicius741.webnovelarchiver.ui.makeSelectableCardRow
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
@@ -78,28 +76,10 @@ internal fun ScreenHost.showUpdateFollowSelection() {
         val search =
             makeSearchField(context, "Search novels").apply {
                 setText(state.query)
-                addTextChangedListener(
-                    object : TextWatcher {
-                        override fun beforeTextChanged(
-                            s: CharSequence?,
-                            start: Int,
-                            count: Int,
-                            after: Int,
-                        ) = Unit
-
-                        override fun afterTextChanged(s: Editable?) = Unit
-
-                        override fun onTextChanged(
-                            s: CharSequence?,
-                            start: Int,
-                            before: Int,
-                            count: Int,
-                        ) {
-                            state.query = s?.toString().orEmpty()
-                            adapter.submit(stories, selected, state.query, state.showCovers)
-                        }
-                    },
-                )
+                doAfterTextChanged {
+                    state.query = it?.toString().orEmpty()
+                    adapter.submit(stories, selected, state.query, state.showCovers)
+                }
             }
         addView(search)
         addView(
@@ -150,16 +130,77 @@ private class FollowStoryAdapter(
     override fun onCreateViewHolder(
         parent: ViewGroup,
         viewType: Int,
-    ) = Holder(LinearLayout(parent.context))
+    ): Holder {
+        val context = parent.context
+        val theme = ThemeManager.current
+        val checkbox = CheckBox(context).apply { applyCheckBoxTint() }
+        val coverSlot = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val title =
+            TextView(context).apply {
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.TITLE_SMALL.size())
+                typeface = android.graphics.Typeface.create(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(theme.colors.onSurface)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+            }
+        val subtitle =
+            TextView(context).apply {
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
+                setTextColor(theme.colors.onSurfaceVariant)
+                setPadding(0, context.dp(2), 0, 0)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+            }
+        val textColumn =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(title)
+                addView(subtitle)
+            }
+        val row =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
+                background = roundedBg(theme.colors.elevation1, context.dp(theme.shapes.cardRadius).toFloat())
+                layoutParams =
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        bottomMargin = context.dp(Space.MD)
+                    }
+                addView(checkbox)
+                addView(coverSlot)
+                addView(
+                    textColumn,
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginStart = context.dp(Space.MD)
+                    },
+                )
+            }
+        val holder = Holder(row, title, subtitle, checkbox, coverSlot)
+        row.setOnClickListener { checkbox.isChecked = !checkbox.isChecked }
+        return holder
+    }
 
     override fun onBindViewHolder(
         holder: Holder,
         position: Int,
     ) {
         val item = items[position]
-        val row = host.makeFollowRow(item.story, item.selected, item.showCover) { onToggle(item.story.id, it) }
-        holder.container.removeAllViews()
-        holder.container.addView(row)
+        holder.title.text = item.story.title
+        holder.subtitle.text =
+            buildString {
+                append("by ${item.story.author}")
+                if (item.story.isArchived == true) append(" · Archived")
+            }
+        holder.checkbox.setOnCheckedChangeListener(null)
+        holder.checkbox.isChecked = item.selected
+        holder.checkbox.setOnCheckedChangeListener { _, checked -> onToggle(item.story.id, checked) }
+        holder.coverSlot.removeAllViews()
+        if (item.showCover) {
+            holder.coverSlot.addView(host.coverImage(item.story, 80, 120, false))
+        }
     }
 
     fun submit(
@@ -192,8 +233,12 @@ private class FollowStoryAdapter(
     }
 
     class Holder(
-        val container: LinearLayout,
-    ) : RecyclerView.ViewHolder(container)
+        val row: LinearLayout,
+        val title: TextView,
+        val subtitle: TextView,
+        val checkbox: CheckBox,
+        val coverSlot: LinearLayout,
+    ) : RecyclerView.ViewHolder(row)
 }
 
 private fun ScreenHost.makeShowCoversToggleRow(
@@ -241,22 +286,3 @@ private fun ScreenHost.makeShowCoversToggleRow(
         setOnClickListener { checkBox.isChecked = !checkBox.isChecked }
     }
 }
-
-private fun ScreenHost.makeFollowRow(
-    story: Story,
-    selected: Boolean,
-    showCover: Boolean,
-    toggle: (Boolean) -> Unit,
-): LinearLayout =
-    makeSelectableCardRow(
-        app,
-        story.title,
-        buildString {
-            append("by ${story.author}")
-            if (story.isArchived == true) append(" · Archived")
-        },
-        selected,
-        toggle,
-    ).apply {
-        if (showCover) addView(coverImage(story, 80, 120, false), 0)
-    }

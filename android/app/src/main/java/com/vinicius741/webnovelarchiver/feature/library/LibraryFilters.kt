@@ -18,14 +18,13 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.chip
-import com.vinicius741.webnovelarchiver.ui.circularRipple
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeSourceChip
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
@@ -210,10 +209,15 @@ internal fun ScreenHost.makeLibraryFilters(
     // its own no-op listener from iconButtonSmall), consumes it, and the parent never expands — leaving
     // the search/sort/tag filters trapped behind View.GONE and the whole filter row unresponsive.
     val toggleIcon =
-        context.iconButtonSmall(R.drawable.wna_chevron_down, "Toggle filters") { }.apply {
-            isClickable = false
-            isFocusable = false
-        }
+        context
+            .iconButton(
+                R.drawable.wna_chevron_down,
+                "Toggle filters",
+                style = com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Small,
+            ).apply {
+                isClickable = false
+                isFocusable = false
+            }
     val toggleWrap =
         FrameLayout(context).apply {
             layoutParams =
@@ -278,25 +282,4 @@ internal fun ScreenHost.makeLibraryFilters(
     }
     wrapper.layoutParams = filterTopMargin
     return LibraryFiltersView(wrapper, populateChips)
-}
-
-private fun Context.iconButtonSmall(
-    iconRes: Int,
-    desc: String,
-    onClick: () -> Unit,
-): ImageView {
-    val size = dp(40)
-    return ImageView(this).apply {
-        contentDescription = desc
-        setImageDrawable(tintedIcon(iconRes, ThemeManager.colors.onSurfaceVariant))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
-        // OVAL mask so the press feedback reads as a round highlight instead of a square block,
-        // matching Material's circular icon-button ripple for a square tap target.
-        background = circularRipple(ThemeManager.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { onClick() }
-        layoutParams = LinearLayout.LayoutParams(size, size)
-    }
 }

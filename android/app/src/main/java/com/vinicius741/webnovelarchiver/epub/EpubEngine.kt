@@ -6,31 +6,20 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.EpubResult
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
-import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.text
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URL
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/**
- * EPUB generation (Maintainability M1: split out of Engines.kt). Builds EPUB 2.0 ZIP/XML into a
- * byte array per volume; covers are fetched through the shared [NetworkClient] (R6).
- */
+/** EPUB generation and retention for downloaded story chapters. */
 class EpubEngine(
     private val repository: AppRepository,
     private val network: NetworkClient,
 ) {
     private val storage = repository.storage
-    private val _lastCleanupResult = MutableStateFlow<EpubCleanupResult?>(null)
-    val lastCleanupResult: StateFlow<EpubCleanupResult?> = _lastCleanupResult.asStateFlow()
 
     private data class CoverAsset(
         val data: ByteArray,
@@ -45,13 +34,25 @@ class EpubEngine(
         originalChapterNumbers: List<Int>? = null,
         progress: (String) -> Unit = {},
     ): List<EpubResult> =
+        generateWithProgress(story, chapters, config, originalChapterNumbers) { update ->
+            progress("Generating EPUB ${update.completed}/${update.total}...")
+        }
+
+    /** Typed progress entry point for callers that can render progress without parsing text. */
+    suspend fun generateWithProgress(
+        story: Story,
+        chapters: List<Chapter>,
+        config: EpubConfig,
+        originalChapterNumbers: List<Int>? = null,
+        progress: (EpubProgress) -> Unit = {},
+    ): List<EpubResult> =
         withContext(Dispatchers.IO) {
             val available = chapters.filter { it.content != null || storage.readChapter(it) != null }
             if (available.isEmpty()) error("No downloaded chapters available")
             val chaptersPerFile =
                 config.maxChaptersPerEpub.coerceIn(
-                    SettingsValidation.MAX_CHAPTERS_PER_EPUB_MIN,
-                    SettingsValidation.MAX_CHAPTERS_PER_EPUB_MAX,
+                    EpubConfig.MAX_CHAPTERS_PER_EPUB_MIN,
+                    EpubConfig.MAX_CHAPTERS_PER_EPUB_MAX,
                 )
             val chaptersOnly = config.chaptersOnly
             val chunks = available.chunked(chaptersPerFile)
@@ -62,14 +63,14 @@ class EpubEngine(
                         chapter.id to (originalChapterNumbers?.getOrNull(index) ?: (index + 1))
                     }.toMap()
             chunks.forEachIndexed { index, chunk ->
-                progress("Generating EPUB ${index + 1}/${chunks.size}...")
+                progress(EpubProgress(completed = index + 1, total = chunks.size))
                 val start = chapterNumberById[chunk.first().id] ?: (chapters.indexOf(chunk.first()) + 1)
                 val end = chapterNumberById[chunk.last().id] ?: (chapters.indexOf(chunk.last()) + 1)
                 val filename = EpubFilename.forRange(story.title, start, end)
-                // S5: fetch the cover (suspend) first, then stream the EPUB straight to its final file
-                // via a temp+rename (no full ByteArrayOutputStream held in memory), keeping one
-                // chapter's XHTML resident at a time. When chaptersOnly is set we skip the fetch
-                // entirely — no network round-trip, and no failed-fetch risk on a missing cover URL.
+                // Fetch the cover (suspend) before streaming the EPUB to its final file via a
+                // temp+rename, keeping one chapter's XHTML resident at a time. When chaptersOnly
+                // is set we skip the fetch entirely — no network round-trip, and no failed-fetch
+                // risk on a missing cover URL.
                 val coverAsset = if (chaptersOnly) null else story.coverUrl?.let { fetchCover(it) }
                 val file =
                     storage.saveEpubStreamed(story.id, filename) { out ->
@@ -81,30 +82,26 @@ class EpubEngine(
             check(committed != null) {
                 "Story was removed while EPUB generation was running"
             }
-            _lastCleanupResult.value = applyRetention(story.id, committed.epubPaths.orEmpty().toSet())
+            applyRetention(story.id, committed.epubPaths.orEmpty().toSet())
             results
         }
 
     private fun applyRetention(
         storyId: String,
         referencedPaths: Set<String>,
-    ): EpubCleanupResult {
+    ) {
         val entries =
             storage.listEpubs(storyId).map { file ->
                 EpubStorageEntry(runCatching { file.canonicalPath }.getOrDefault(file.absolutePath), file.length(), file.lastModified())
             }
         val canonicalReferences = referencedPaths.mapTo(mutableSetOf()) { runCatching { File(it).canonicalPath }.getOrDefault(it) }
         val plan = EpubRetentionPolicy.plan(entries, canonicalReferences)
-        val deleted =
-            plan.delete
-                .filter { storage.deleteEpubFile(storyId, it.path) }
-                .mapTo(mutableSetOf()) { it.path }
-        return EpubRetentionPolicy.result(plan, deleted)
+        plan.delete.forEach { storage.deleteEpubFile(storyId, it.path) }
     }
 
     /**
      * Writes the full EPUB 2.0 structure into [zip]. Streamed entry-by-entry so only one chapter's
-     * XHTML is resident at a time (S5). Non-suspend — the cover is fetched before streaming.
+     * XHTML is resident at a time. Non-suspend — the cover is fetched before streaming.
      *
      * When [chaptersOnly] is true, all front matter is omitted: the cover image, cover page,
      * description/tags page, and human-readable TOC are skipped here, and `opf`/`ncx` drop their
@@ -155,11 +152,10 @@ class EpubEngine(
 
     private suspend fun fetchCover(url: String): CoverAsset? =
         runCatching {
-            // R6: route cover downloads through the shared OkHttp client with a size cap instead of
-            // raw URL.openConnection(), which has weaker timeouts/limits and bypasses the rate limiter.
+            // Route cover downloads through the shared client with a size cap instead of a raw URL
+            // connection, which would bypass the app's timeout and request policies.
             val data = network.fetchBytes(url) ?: return@runCatching null
-            val mediaType = normalizeCoverMediaType(null, url)
-            if (!mediaType.startsWith("image/")) return@runCatching null
+            val mediaType = getCoverMediaType(url)
             val extension = getCoverExtension(url, mediaType)
             CoverAsset(data, "images/cover.$extension", mediaType)
         }.getOrNull()
@@ -173,16 +169,6 @@ class EpubEngine(
         zip.write(text.toByteArray())
         zip.closeEntry()
     }
-
-    private fun normalizeCoverMediaType(
-        contentType: String?,
-        coverUrl: String,
-    ): String =
-        contentType
-            ?.substringBefore(";")
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
-            ?: getCoverMediaType(coverUrl)
 
     private fun getCoverMediaType(coverUrl: String): String {
         val extension = getExtensionFromUrl(coverUrl)

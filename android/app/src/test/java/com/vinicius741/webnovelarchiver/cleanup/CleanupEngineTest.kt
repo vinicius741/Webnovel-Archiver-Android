@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.cleanup
 
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
-import com.vinicius741.webnovelarchiver.ui.size
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -10,8 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Tests for the cached cleanup engine (Speed S6). Verifies the cache recompiles only on settings
- * change and that its output matches the stateless TextCleanup path.
+ * Tests for the cached cleanup engine. Verifies the cache recompiles only on settings change and
+ * that its output preserves the cleanup contract.
  */
 class CleanupEngineTest {
     @Test
@@ -51,16 +50,15 @@ class CleanupEngineTest {
     }
 
     @Test
-    fun applyDownloadMatchesTextCleanupOutput() {
+    fun applyDownloadRemovesSentencesAndRegexRules() {
         val html = "<p>Buy now! Patreon exclusive content here.</p>"
         val sentences = listOf("Patreon exclusive")
         val rules = listOf(RegexCleanupRule(id = "r1", name = "ads", pattern = "Buy now", flags = "i", enabled = true, appliesTo = "both"))
-        val expected = TextCleanup.applyDownloadCleanup(html, sentences, rules)
         val actual = CleanupEngine().applyDownload(html, sentences, rules)
-        assertEquals(expected, actual)
         // Both the regex rule ("Buy now") and the sentence ("Patreon exclusive") are stripped.
         assertTrue(!actual.contains("Buy now", ignoreCase = true))
         assertTrue(!actual.contains("Patreon exclusive", ignoreCase = true))
+        assertTrue(actual.contains("content here"))
     }
 
     @Test
@@ -72,7 +70,9 @@ class CleanupEngineTest {
                 RegexCleanupRule(id = "t", name = "tt", pattern = "/bar/g", flags = "g", appliesTo = "tts"),
             )
         val compiled = engine.compiled(emptyList(), rules)
-        assertEquals(1, compiled.downloadRegexes.size)
-        assertEquals(1, compiled.ttsRegexes.size)
+        assertEquals(1, compiled.downloadRules.size)
+        assertEquals(1, compiled.ttsRules.size)
+        val compiledRule = compiled.downloadRules.single().source
+        assertEquals("d", compiledRule.id)
     }
 }

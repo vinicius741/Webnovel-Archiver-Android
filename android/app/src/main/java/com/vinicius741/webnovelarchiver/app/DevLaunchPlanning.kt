@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.app
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 
 /**
  * Debug-only "dev launch screen" planning (agent QA convenience).
@@ -54,33 +55,6 @@ object DevLaunchPlanning {
     }
 
     /**
-     * The resolved launch target. The no-arg screens are singletons; `reader`/`details` carry the
-     * resolved ids so [MainActivity] can hand them straight to `showReader`/`showDetails`.
-     */
-    sealed interface DevStartTarget {
-        data object Library : DevStartTarget
-
-        data object Queue : DevStartTarget
-
-        data object Settings : DevStartTarget
-
-        data object Notifications : DevStartTarget
-
-        data object Updates : DevStartTarget
-
-        data object AddStory : DevStartTarget
-
-        data class Reader(
-            val storyId: String,
-            val chapterId: String,
-        ) : DevStartTarget
-
-        data class Details(
-            val storyId: String,
-        ) : DevStartTarget
-    }
-
-    /**
      * Resolves the dev launch target from the intent extras. Returns `null` when the token is
      * missing/unknown or the required story/chapter can't be resolved, so the caller falls through
      * to its normal launch flow.
@@ -93,15 +67,15 @@ object DevLaunchPlanning {
         storyOverride: String?,
         chapterOverride: String?,
         libraryProvider: () -> List<Story>,
-    ): DevStartTarget? =
+    ): AppRoute? =
         when (DevStartScreen.fromToken(screenName)) {
             null -> null
-            DevStartScreen.LIBRARY -> DevStartTarget.Library
-            DevStartScreen.QUEUE -> DevStartTarget.Queue
-            DevStartScreen.SETTINGS -> DevStartTarget.Settings
-            DevStartScreen.NOTIFICATIONS -> DevStartTarget.Notifications
-            DevStartScreen.UPDATES -> DevStartTarget.Updates
-            DevStartScreen.ADD_STORY -> DevStartTarget.AddStory
+            DevStartScreen.LIBRARY -> AppRoute.Library
+            DevStartScreen.QUEUE -> AppRoute.Queue
+            DevStartScreen.SETTINGS -> AppRoute.Settings
+            DevStartScreen.NOTIFICATIONS -> AppRoute.Notifications
+            DevStartScreen.UPDATES -> AppRoute.Updates
+            DevStartScreen.ADD_STORY -> AppRoute.AddStory
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
             DevStartScreen.READER -> resolveReader(storyOverride, chapterOverride, libraryProvider)
         }
@@ -109,19 +83,19 @@ object DevLaunchPlanning {
     private fun resolveDetails(
         storyOverride: String?,
         libraryProvider: () -> List<Story>,
-    ): DevStartTarget.Details? {
+    ): AppRoute.Details? {
         val story = pickStory(storyOverride, libraryProvider) ?: return null
-        return DevStartTarget.Details(story.id)
+        return AppRoute.Details(story.id)
     }
 
     private fun resolveReader(
         storyOverride: String?,
         chapterOverride: String?,
         libraryProvider: () -> List<Story>,
-    ): DevStartTarget.Reader? {
+    ): AppRoute.Reader? {
         val story = pickStory(storyOverride, libraryProvider) ?: return null
         val chapterId = pickChapterId(story, chapterOverride) ?: return null
-        return DevStartTarget.Reader(story.id, chapterId)
+        return AppRoute.Reader(story.id, chapterId)
     }
 
     private fun pickStory(

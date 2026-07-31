@@ -9,21 +9,17 @@ import java.util.Locale
 
 /**
  * TTS text preparation consumed by the TTS engine and the reader (Maintainability M1: split out of
- * TextCleanup.kt). Produces both the flat chunk list the engine speaks and the chunk-tagged HTML the
- * reader highlights. Kept under `cleanup/` (rather than `tts/`) so it shares the package-private
- * [TextCleanup.regexRunner] with the rest of the cleanup domain. [TextCleanup] re-exposes these for
- * callers that still go through the stateless entry points.
+ * the cleanup facade. Produces both the flat chunk list the engine speaks and the chunk-tagged HTML
+ * the reader highlights. Kept under `cleanup/` (rather than `tts/`) so it shares the package-private
+ * [RegexRuleCleanup.regexRunner] with the rest of the cleanup domain.
  */
 object TtsTextPreparation {
     private const val MIN_CHUNK_SIZE = 100
     private const val MAX_CHUNK_SIZE = 800
 
-    // `chunkSize` stays in the facade for caller/storage compatibility; the chunking policy is internal.
-    @Suppress("UNUSED_PARAMETER")
     fun prepareTtsChunks(
         html: String,
         regexRules: List<RegexCleanupRule>,
-        chunkSize: Int,
     ): List<String> {
         if (html.isBlank()) return emptyList()
 
@@ -54,11 +50,9 @@ object TtsTextPreparation {
      * When no block elements match, falls back to escaped inline spans with matching group indices,
      * so plain-text fragments still highlight and support tap-to-start.
      */
-    @Suppress("UNUSED_PARAMETER")
     fun prepareTtsAnnotatedHtml(
         html: String,
         regexRules: List<RegexCleanupRule>,
-        chunkSize: Int,
     ): TtsAnnotatedHtml {
         if (html.isBlank()) return TtsAnnotatedHtml("", emptyList())
 
@@ -170,8 +164,8 @@ object TtsTextPreparation {
         regexRules: List<RegexCleanupRule>,
         elements: List<Element>,
     ): List<TtsUnit> {
-        val cleanupForDisplay = TextCleanup.regexRunner(regexRules, "download")
-        val cleanupForTts = TextCleanup.regexRunner(regexRules, "tts")
+        val cleanupForDisplay = RegexRuleCleanup.regexRunner(regexRules, "download")
+        val cleanupForTts = RegexRuleCleanup.regexRunner(regexRules, "tts")
         val units = mutableListOf<TtsUnit>()
 
         elements.forEachIndexed { index, element ->

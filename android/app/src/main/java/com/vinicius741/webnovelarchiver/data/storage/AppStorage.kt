@@ -5,7 +5,7 @@ import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
+import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
@@ -22,8 +22,8 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.domain.story.StoryNormalization
-import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -218,9 +218,9 @@ class AppStorage(
 
     fun saveSentenceRemovalList(items: List<String>) = write(sentencesFile, items)
 
-    fun getRegexRules(): MutableList<RegexCleanupRule> = TextCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
+    fun getRegexRules(): MutableList<RegexCleanupRule> = RegexRuleCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
 
-    fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, TextCleanup.sanitizeRegexRules(rules))
+    fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, RegexRuleCleanup.sanitizeRegexRules(rules))
 
     fun getUpdateFollowedStoryIds(): MutableList<String> = read(updateFollowedStoriesFile) ?: mutableListOf()
 
@@ -363,7 +363,7 @@ class AppStorage(
         source: File,
         target: File,
     ) {
-        AtomicFileWrites.stream(target) { output ->
+        AtomicFileWrites.writeAtomically(target) { output ->
             source.inputStream().use { input -> input.copyTo(output) }
         }
         check(target.exists()) { "Could not restore ${target.name}" }
@@ -474,7 +474,7 @@ class AppStorage(
     ): File {
         val dir = File(epubRoot, safeName(storyId)).apply { mkdirs() }
         val file = File(dir, filename)
-        AtomicFileWrites.stream(file) { out -> block(out) }
+        AtomicFileWrites.writeAtomically(file) { out -> block(out) }
         return file
     }
 

@@ -11,7 +11,7 @@ data class UpdatedChapter(
 
 object UpdateTrackerPlanning {
     /** Stories that can participate in update following (archives are read-only snapshots). */
-    fun followableStories(stories: List<Story>): List<Story> = stories.filter { StoryActionGuards.canSync(it) }
+    fun followableStories(stories: List<Story>): List<Story> = stories.filter { StoryActionGuards.canModifyStory(it) }
 
     fun filterStories(
         stories: List<Story>,
@@ -45,7 +45,7 @@ object UpdateTrackerPlanning {
     fun syncableFollowedStories(
         stories: List<Story>,
         followedIds: List<String>,
-    ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canSync)
+    ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canModifyStory)
 
     fun syncBatches(
         stories: List<Story>,

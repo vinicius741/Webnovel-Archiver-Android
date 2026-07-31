@@ -8,7 +8,6 @@ object SettingsValidation {
     const val MAX_CHAPTERS_PER_EPUB_MAX = 1000
     const val TTS_MIN = 0.5f
     const val TTS_MAX = 2.0f
-    const val TTS_CHUNK_SIZE_MIN = 100
 
     fun concurrency(
         value: String,
@@ -40,9 +39,4 @@ object SettingsValidation {
         value: String,
         fallback: Float = 1.0f,
     ): Float = (value.toFloatOrNull() ?: fallback).coerceIn(TTS_MIN, TTS_MAX)
-
-    fun ttsChunkSize(
-        value: String,
-        fallback: Int = 500,
-    ): Int = (value.toIntOrNull() ?: fallback).coerceAtLeast(TTS_CHUNK_SIZE_MIN)
 }

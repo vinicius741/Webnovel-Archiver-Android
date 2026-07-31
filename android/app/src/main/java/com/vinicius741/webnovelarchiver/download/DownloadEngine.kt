@@ -11,7 +11,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
-import com.vinicius741.webnovelarchiver.ui.size
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,9 +24,9 @@ import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Queue-based chapter downloader (Maintainability M1: split out of Engines.kt). Owns the download
+ * Queue-based chapter downloader. Owns the download
  * process loop, per-source rate-limit bookkeeping, retry/error classification, and progress emission.
- * See the class doc in Engines.kt for the R3 single-owner + lifecycle notes.
+ * The repository owns durable queue state; this engine owns worker lifecycle and source fences.
  *
  * R3 single-owner serialization: every queue read-modify-write goes through [AppStorage.mutateQueueInPlace]
  * / [AppStorage.saveEnqueue], which hold the storage monitor across the whole RMW. The activity and the
@@ -57,7 +56,6 @@ class DownloadEngine(
     private val requestGateFactory = DownloadRequestGateFactory(storage, downloadPacer)
     private val sourceReliability = DownloadSourceReliability(storage, network, acceptsWorkerResults::get)
     private var worker: Job? = null
-    var onChanged: (() -> Unit)? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
 
     private companion object {
@@ -107,28 +105,19 @@ class DownloadEngine(
             }
         }
         repository.publishDownloadState(changedStoryIds = setOf(story.id), queueChanged = true)
-        onChanged?.invoke()
     }
 
     fun pauseAll() = mutateQueue { DownloadQueueControlPlanning.pauseAll(it) }
 
     fun pauseJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.pauseJob(it, jobId) }
 
-    fun resumeJob(jobId: String) {
-        mutateQueue { DownloadQueueControlPlanning.resumeJob(it, jobId) }
-        start()
-        onChanged?.invoke()
-    }
+    fun resumeJob(jobId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.resumeJob(it, jobId) }
 
     fun cancelAll() = mutateQueue { DownloadQueueControlPlanning.cancelAll(it) }
 
     fun cancelJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.cancelJob(it, jobId) }
 
-    fun resumeAll() {
-        mutateQueue { DownloadQueueControlPlanning.resumeAll(it) }
-        start()
-        onChanged?.invoke()
-    }
+    fun resumeAll() = mutateQueueAndStart(DownloadQueueControlPlanning::resumeAll)
 
     fun clearFinished() {
         mutateQueue { jobs -> jobs.filterNot { it.status in DownloadJobStatus.terminalWires } }
@@ -136,23 +125,11 @@ class DownloadEngine(
 
     fun removeJob(jobId: String) = mutateQueue { jobs -> jobs.filterNot { it.id == jobId } }
 
-    fun retryFailed() {
-        mutateQueue { DownloadQueueControlPlanning.retryFailed(it) }
-        start()
-        onChanged?.invoke()
-    }
+    fun retryFailed() = mutateQueueAndStart(DownloadQueueControlPlanning::retryFailed)
 
-    fun retryJob(jobId: String) {
-        mutateQueue { DownloadQueueControlPlanning.retryFailedJob(it, jobId) }
-        start()
-        onChanged?.invoke()
-    }
+    fun retryJob(jobId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailedJob(it, jobId) }
 
-    fun retryFailedForStory(storyId: String) {
-        mutateQueue { DownloadQueueControlPlanning.retryFailed(it, storyId) }
-        start()
-        onChanged?.invoke()
-    }
+    fun retryFailedForStory(storyId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailed(it, storyId) }
 
     /**
      * Centralized read-modify-write for the queue, routed through [AppStorage.mutateQueueInPlace]:
@@ -163,7 +140,11 @@ class DownloadEngine(
     private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
         storage.mutateQueueInPlace { transform(it) }
         repository.publishDownloadState(queueChanged = true)
-        onChanged?.invoke()
+    }
+
+    private fun mutateQueueAndStart(transform: (List<DownloadJob>) -> List<DownloadJob>) {
+        mutateQueue(transform)
+        start()
     }
 
     /**
@@ -194,7 +175,6 @@ class DownloadEngine(
                     processLoop()
                 } finally {
                     running.set(false)
-                    onChanged?.invoke()
                 }
             }
     }
@@ -220,7 +200,7 @@ class DownloadEngine(
     internal fun recoverAfterForegroundServiceTimeout() {
         acceptsWorkerResults.set(false)
         stopAndCancel()
-        mutateQueue(DownloadForegroundServiceTimeoutPlanning::recoverQueue)
+        mutateQueue(DownloadForegroundServiceTimeoutHandler::recoverQueue)
     }
 
     /** Releases the engine's coroutine scope. Call from the owning service's onDestroy. */
@@ -316,7 +296,6 @@ class DownloadEngine(
         }
         if (cleaned) {
             repository.publishDownloadState(changedStoryIds = changedStoryIds, queueChanged = true)
-            onChanged?.invoke()
         }
     }
 
@@ -334,7 +313,7 @@ class DownloadEngine(
             providerName = provider.name
             requestGateFactory.ensureJobActive(job.id)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
-            // per chapter. Output is identical to TextCleanup.applyDownloadCleanup.
+            // per chapter. Output is identical to the cleanup engine's stateless contract.
             val clean =
                 CleanupEngine.shared.applyDownload(
                     provider.fetchChapterContent(
@@ -408,13 +387,11 @@ class DownloadEngine(
         if (!accepted) return
         emitProgress(queue.find { it.id == id }, queue)
         repository.publishDownloadState(queueChanged = true)
-        onChanged?.invoke()
     }
 
     private fun publishQueueMutation(mutation: DownloadQueueMutation) {
         emitProgress(mutation.activeJobId?.let { id -> mutation.queue.find { it.id == id } }, mutation.queue)
         repository.publishDownloadState(queueChanged = true)
-        onChanged?.invoke()
     }
 
     private fun isCancelled(
@@ -435,15 +412,15 @@ class DownloadEngine(
         activeJob: DownloadJob?,
         queue: List<DownloadJob>,
     ): DownloadProgress {
-        val jobs = queue
+        val counts = queue.downloadCounts()
         return DownloadProgress(
-            pending = jobs.count { it.status == DownloadJobStatus.Pending.wire },
-            active = jobs.count { it.status == DownloadJobStatus.Downloading.wire },
-            completed = jobs.count { it.status == DownloadJobStatus.Completed.wire },
-            failed = jobs.count { it.status == DownloadJobStatus.Failed.wire },
-            cancelled = jobs.count { it.status == DownloadJobStatus.Cancelled.wire },
-            paused = jobs.count { it.status == DownloadJobStatus.Paused.wire },
-            total = jobs.size,
+            pending = counts.pending,
+            active = counts.downloading,
+            completed = counts.completed,
+            failed = counts.failed,
+            cancelled = counts.cancelled,
+            paused = counts.paused,
+            total = counts.total,
             activeTitle = activeJob?.let { "${it.storyTitle}: ${it.chapter.title}" },
         )
     }

@@ -8,7 +8,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.PublicationStatusPlanning
 import com.vinicius741.webnovelarchiver.source.SourceProvider
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
-import com.vinicius741.webnovelarchiver.ui.size
 
 data class ChapterMergeResult(
     val chapters: List<Chapter>,
@@ -24,23 +23,16 @@ object StorySyncPlanning {
         provider: SourceProvider,
         lastRead: String?,
     ): ChapterMergeResult {
-        val existingById = linkedMapOf<String, Chapter>()
-        val aliases = mutableMapOf<String, String>()
-        val remaining = mutableSetOf<String>()
-        existing.forEach { chapter ->
-            val stable = provider.getChapterId(chapter.url) ?: chapter.id.ifBlank { chapter.url }
-            if (stable.isBlank()) return@forEach
-            existingById.putIfAbsent(stable, chapter)
-            remaining.add(stable)
-            if (chapter.id.isNotBlank()) aliases[chapter.id] = stable
-            if (chapter.url.isNotBlank()) aliases[chapter.url] = stable
-        }
+        val matcher = ChapterMatcher(provider)
+        val index = matcher.index(existing)
+        val existingById = index.byStableId
+        val remaining = index.originalIndexByStableId.keys.toMutableSet()
 
         val newIds = mutableListOf<String>()
         val chapters =
             incoming.map { info ->
-                val stable = provider.getChapterId(info.url) ?: info.id ?: info.url
-                val found = existingById[stable]
+                val stable = matcher.stableId(info)
+                val found = matcher.match(info, index)
                 if (found != null) {
                     remaining.remove(stable)
                     found.copy(
@@ -61,7 +53,7 @@ object StorySyncPlanning {
                 }
             }
 
-        var remappedLast = lastRead?.let { aliases[it] ?: it }
+        var remappedLast = lastRead?.let { index.aliases[it] ?: it }
         if (remappedLast != null && chapters.none { it.id == remappedLast }) remappedLast = null
         val removed = remaining.mapNotNull { existingById[it] }
         return ChapterMergeResult(chapters, newIds, removed, remappedLast)
@@ -75,24 +67,16 @@ object StorySyncPlanning {
     ): ChapterMergeResult? {
         if (existing.isEmpty() || incomingLatest.isEmpty()) return null
 
-        val existingByStable = linkedMapOf<String, Chapter>()
-        val aliases = mutableMapOf<String, String>()
-        val existingStableOrder =
-            existing.mapNotNull { chapter ->
-                val stable = provider.getChapterId(chapter.url) ?: chapter.id.ifBlank { chapter.url }
-                if (stable.isBlank()) return@mapNotNull null
-                existingByStable.putIfAbsent(stable, chapter)
-                if (chapter.id.isNotBlank()) aliases[chapter.id] = stable
-                if (chapter.url.isNotBlank()) aliases[chapter.url] = stable
-                stable
-            }
-        if (existingStableOrder.isEmpty()) return null
+        val matcher = ChapterMatcher(provider)
+        val index = matcher.index(existing)
+        val existingByStable = index.byStableId
+        val existingIndexByStable = index.originalIndexByStableId
+        if (existingIndexByStable.isEmpty()) return null
 
-        val existingIndexByStable = existingStableOrder.withIndex().associate { it.value to it.index }
         val incomingStable =
             incomingLatest
                 .map { info ->
-                    val stable = provider.getChapterId(info.url) ?: info.id ?: info.url
+                    val stable = matcher.stableId(info)
                     stable to info
                 }.filter { (stable, _) ->
                     stable.isNotBlank()
@@ -149,7 +133,7 @@ object StorySyncPlanning {
                 addAll(existing.drop(lastCoveredExistingIndex + 1))
             }
 
-        var remappedLast = lastRead?.let { aliases[it] ?: it }
+        var remappedLast = lastRead?.let { index.aliases[it] ?: it }
         if (remappedLast != null && chapters.none { it.id == remappedLast }) remappedLast = null
         return ChapterMergeResult(chapters, newIds, removedChapters = emptyList(), lastReadChapterId = remappedLast)
     }

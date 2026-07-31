@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
@@ -22,7 +23,6 @@ import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.WebViewSafety
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
@@ -36,22 +36,17 @@ import com.vinicius741.webnovelarchiver.ui.showReaderSettingsPanel
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-/**
- * File-scope slot holding the reader screen's TTS state listener, so successive `showReader()`
- * renders (fold/rotate/settings) swap the listener (remove old → add new) instead of stacking
- * duplicates. Single-activity app → at most one reader is active at a time, so one slot suffices.
- * Set to `null` on reader teardown / activity destroy.
- */
-internal var activeReaderTtsListener: ((TtsPlaybackSnapshot?) -> Unit)? = null
+/** The single reader collector is replaced whenever the screen is rebuilt. */
+internal var activeReaderTtsStateJob: Job? = null
 
-/** Detaches the active reader's TTS state listener (if any) and clears the slot. Called when the
- *  reader screen is left so its closure (which holds the reader WebView) can't fire into a torn-down
- *  view tree. Safe to call when no reader is active. */
+/** Cancels the active reader collector before its WebView is torn down or replaced. */
 internal fun ScreenHost.detachReaderTtsListener() {
-    activeReaderTtsListener?.let { ttsEngine.removeStateListener(it) }
-    activeReaderTtsListener = null
+    activeReaderTtsStateJob?.cancel()
+    activeReaderTtsStateJob = null
 }
 
 internal fun ScreenHost.showReader(
@@ -172,54 +167,53 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             },
         )
 
-    // Gap 3 + 4: the engine emits a snapshot after every playback state change. We subscribe while
-    // this reader screen is alive to (a) move the in-document highlight to the speaking chunk and
-    // (b) refresh the floating transport's play/pause icon. Only snapshots for *this* chapter are
-    // acted on, so navigating between chapters never cross-talks.
-    //
-    // The engine's listeners are multicast, and this single-activity app shows at most one reader
-    // at a time, so we hold the active reader listener in a file-scope slot and swap it out on each
-    // showReader() (remove old → add new). This avoids both clobbering the service's listener and
-    // leaking a fresh listener per re-render (fold/rotate/settings).
+    // Collect the replaying state stream while this reader screen is alive to move the
+    // in-document highlight and refresh the floating transport. Only snapshots for this chapter
+    // are acted on, so navigating between chapters never cross-talks.
     var transportSnapshot: TtsPlaybackSnapshot? =
         currentReaderSnapshot(document.persistedSession, story.id, chapter.id, annotated.chunks.size)
     var transportPlayPause: ImageView? = null
     var transportBar: LinearLayout? = null
-    activeReaderTtsListener?.let { ttsEngine.removeStateListener(it) }
-    val readerListener: (TtsPlaybackSnapshot?) -> Unit = { snapshot ->
-        app.runOnUiThread {
-            val chapterToOpen = TtsPlaybackState.readerChapterTransition(story.id, chapter.id, snapshot)
-            if (chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
-                // Auto-advance changes the engine session before emitting its first snapshot for the
-                // next chapter. Follow that transition by rebuilding the reader for the same chapter
-                // the engine is now speaking; showReader swaps this listener out during the rebuild.
-                showReader(story.id, chapterToOpen)
-                return@runOnUiThread
+    activeReaderTtsStateJob?.cancel()
+    activeReaderTtsStateJob =
+        scope.launch {
+            ttsEngine.playbackState.collect { update ->
+                val snapshot = update.snapshot
+                val chapterToOpen = TtsPlaybackState.readerChapterTransition(story.id, chapter.id, snapshot)
+                if (chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
+                    // Auto-advance changes the engine session before emitting its first snapshot for the
+                    // next chapter. Follow that transition by rebuilding the reader for the same chapter.
+                    showReader(story.id, chapterToOpen)
+                    return@collect
+                }
+                val relevant =
+                    TtsPlaybackState.readerSnapshotAfterUpdate(
+                        current = transportSnapshot,
+                        update = update,
+                        storyId = story.id,
+                        chapterId = chapter.id,
+                    )
+                transportSnapshot = relevant
+                // Gap 4 transport refresh. The bar is always present in the tree; we toggle its
+                // visibility rather than adding/removing it, so a TTS session that starts after the
+                // reader was built (the common case: open chapter → tap "Read aloud") reveals the bar
+                // without needing a full screen rebuild.
+                transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
+                transportPlayPause?.let { button ->
+                    val isPaused = relevant?.isPaused != false
+                    button.setImageDrawable(
+                        app.tintedIcon(
+                            if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
+                            ThemeManager.colors.primary,
+                        ),
+                    )
+                    button.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
+                }
+                // Gap 3 highlight refresh — evaluateJavascript is async + non-reloading, so the page
+                // doesn't flash. Only applied when there is a relevant snapshot (clear on stop/leave).
+                applyHighlight(reader, relevant?.chunkIndex, relevant?.totalChunks ?: 0)
             }
-            val relevant = snapshot?.takeIf { it.storyId == story.id && it.chapterId == chapter.id }
-            transportSnapshot = relevant
-            // Gap 4 transport refresh. The bar is always present in the tree; we toggle its
-            // visibility rather than adding/removing it, so a TTS session that starts after the
-            // reader was built (the common case: open chapter → tap "Read aloud") reveals the bar
-            // without needing a full screen rebuild.
-            transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
-            transportPlayPause?.let { button ->
-                val isPaused = relevant?.isPaused != false
-                button.setImageDrawable(
-                    app.tintedIcon(
-                        if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
-                        ThemeManager.colors.primary,
-                    ),
-                )
-                button.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
-            }
-            // Gap 3 highlight refresh — evaluateJavascript is async + non-reloading, so the page
-            // doesn't flash. Only applied when there is a relevant snapshot (clear on stop/leave).
-            applyHighlight(reader, relevant?.chunkIndex, relevant?.totalChunks ?: 0)
         }
-    }
-    activeReaderTtsListener = readerListener
-    ttsEngine.addStateListener(readerListener)
 
     screen(
         route = AppRoute.Reader(story.id, chapter.id),

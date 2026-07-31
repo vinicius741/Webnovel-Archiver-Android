@@ -1,16 +1,11 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
-import android.view.ViewGroup
-import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -23,14 +18,12 @@ import kotlinx.coroutines.launch
  */
 internal fun ScreenHost.observeDetailsDownload(
     storyId: String,
-    headerProgressSummary: android.view.View?,
-    bannerSlot: ViewGroup?,
-    downloadActionSlot: LinearLayout?,
+    bindings: DetailsBindings,
     isBusy: Boolean,
     initialPacingStatus: DownloadPacingUiStatus?,
 ) {
     if (frame.childCount == 0) return
-    val root = frame.getChildAt(0)
+    val root = bindings.root
     val handler = android.os.Handler(android.os.Looper.getMainLooper())
     var patchPosted = false
     var pendingSnapshot: DownloadUiSnapshot? = null
@@ -42,8 +35,7 @@ internal fun ScreenHost.observeDetailsDownload(
             object : Runnable {
                 override fun run() {
                     if (root.parent !== frame) return
-                    val chapterList = findDetailsChapterList(root)
-                    if (chapterList?.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                    if (bindings.chapters.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
                         handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
                         return
                     }
@@ -52,9 +44,7 @@ internal fun ScreenHost.observeDetailsDownload(
                     pendingSnapshot = null
                     refreshDetailsDownload(
                         storyId,
-                        headerProgressSummary,
-                        bannerSlot,
-                        downloadActionSlot,
+                        bindings,
                         isBusy,
                         snapshot,
                     )
@@ -88,12 +78,7 @@ internal fun ScreenHost.observeDetailsDownload(
             launch {
                 combine(
                     app.appContainer.downloadPacer.snapshots,
-                    flow {
-                        while (currentCoroutineContext().isActive) {
-                            emit(System.currentTimeMillis())
-                            delay(1_000L)
-                        }
-                    },
+                    tickerFlow(),
                 ) { pacing, now -> pacing.values to now }
                     .collect { (pacing, now) ->
                         if (root.parent !== frame) return@collect
@@ -118,7 +103,7 @@ internal fun ScreenHost.observeDetailsDownload(
                             )
                         if (pacingStatus != observedPacingStatus) {
                             observedPacingStatus = pacingStatus
-                            refreshDetailsPacingBanner(storyId, bannerSlot, pacing, now)
+                            refreshDetailsPacingBanner(storyId, bindings, pacing, now)
                         }
                     }
             }

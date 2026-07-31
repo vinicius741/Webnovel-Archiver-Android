@@ -22,7 +22,7 @@ class TextCleanupTest {
             """.trimIndent()
 
         val cleaned =
-            TextCleanup.applyDownloadCleanup(
+            CleanupEngine().applyDownload(
                 html,
                 listOf("Support me on Patreon"),
                 listOf(
@@ -100,13 +100,6 @@ class TextCleanupTest {
         val chunks = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 120)
 
         assertEquals(listOf("Yes.", "No.", "Maybe.", "Fine."), chunks)
-    }
-
-    @Test
-    fun htmlToPlainTextRemovesNonTextElementsAndSeparatesBlocks() {
-        val html = "<p>Line 1</p><script>bad()</script><p>Line 2</p>"
-
-        assertEquals("Line 1 Line 2", TextCleanup.htmlToPlainText(html))
     }
 
     @Test
@@ -206,7 +199,7 @@ class TextCleanupTest {
     fun cleanupSupportsDotMatchesAllRegexFlag() {
         val html = "<p>Before start middle end after</p>"
         val cleaned =
-            TextCleanup.applyDownloadCleanup(
+            CleanupEngine().applyDownload(
                 html,
                 emptyList(),
                 listOf(

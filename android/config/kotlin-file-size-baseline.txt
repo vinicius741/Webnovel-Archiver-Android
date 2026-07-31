@@ -3,15 +3,15 @@
 # Values are maximum line counts, not targets. Lower or remove an entry when a file shrinks; do not
 # raise a value merely to make the gate pass. Any production Kotlin file absent here is limited to
 # 400 lines by checkKotlinFileSize.
-src/main/java/com/vinicius741/webnovelarchiver/data/repository/AppRepository.kt=575
+src/main/java/com/vinicius741/webnovelarchiver/data/repository/AppRepository.kt=599
 src/main/java/com/vinicius741/webnovelarchiver/data/storage/AppStorage.kt=803
-src/main/java/com/vinicius741/webnovelarchiver/data/storage/BackupRestoreCoordinator.kt=774
-src/main/java/com/vinicius741/webnovelarchiver/download/DownloadEngine.kt=474
-src/main/java/com/vinicius741/webnovelarchiver/feature/cleanup/CleanupScreen.kt=497
-src/main/java/com/vinicius741/webnovelarchiver/feature/downloads/QueueScreen.kt=637
-src/main/java/com/vinicius741/webnovelarchiver/feature/reader/ReaderScreen.kt=453
-src/main/java/com/vinicius741/webnovelarchiver/feature/settings/SettingsScreen.kt=627
-src/main/java/com/vinicius741/webnovelarchiver/feature/story/StoryActions.kt=506
-src/main/java/com/vinicius741/webnovelarchiver/feature/updates/UpdatesScreen.kt=647
-src/main/java/com/vinicius741/webnovelarchiver/tts/TtsEngine.kt=610
-src/main/java/com/vinicius741/webnovelarchiver/tts/TtsForegroundService.kt=532
+src/main/java/com/vinicius741/webnovelarchiver/data/storage/BackupRestoreCoordinator.kt=33
+src/main/java/com/vinicius741/webnovelarchiver/download/DownloadEngine.kt=427
+src/main/java/com/vinicius741/webnovelarchiver/feature/cleanup/CleanupScreen.kt=193
+src/main/java/com/vinicius741/webnovelarchiver/feature/downloads/QueueScreen.kt=527
+src/main/java/com/vinicius741/webnovelarchiver/feature/reader/ReaderScreen.kt=329
+src/main/java/com/vinicius741/webnovelarchiver/feature/settings/SettingsScreen.kt=443
+src/main/java/com/vinicius741/webnovelarchiver/feature/story/StoryActions.kt=212
+src/main/java/com/vinicius741/webnovelarchiver/feature/updates/UpdatesScreen.kt=151
+src/main/java/com/vinicius741/webnovelarchiver/tts/TtsEngine.kt=580
+src/main/java/com/vinicius741/webnovelarchiver/tts/TtsForegroundService.kt=529

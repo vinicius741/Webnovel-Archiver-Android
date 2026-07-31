@@ -28,6 +28,5 @@ class SettingsValidationTest {
         assertEquals(150, SettingsValidation.maxChaptersPerEpub(""))
         assertEquals(0.5f, SettingsValidation.ttsScalar("0.1"), 0.0f)
         assertEquals(2.0f, SettingsValidation.ttsScalar("3"), 0.0f)
-        assertEquals(100, SettingsValidation.ttsChunkSize("20"))
     }
 }

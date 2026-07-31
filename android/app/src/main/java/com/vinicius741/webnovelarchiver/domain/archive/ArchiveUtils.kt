@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.domain.archive
 
-import com.vinicius741.webnovelarchiver.ui.size
 import java.io.File
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry

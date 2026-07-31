@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.data.repository
 import android.net.Uri
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
+import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
@@ -17,21 +18,23 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 
 /** Minimal persistence contract used by repository transaction/cache tests. */
 internal interface RepositoryStoryStore {
     val transactionLock: Any
 
-    fun getLibrary(): List<Story>
+    fun stories(): List<Story>
 
-    fun getStory(id: String): Story?
+    fun story(id: String): Story?
 
     fun addOrUpdateStory(story: Story)
 
@@ -39,7 +42,7 @@ internal interface RepositoryStoryStore {
 
     fun saveLibrary(stories: List<Story>)
 
-    fun getQueue(): List<DownloadJob>
+    fun queue(): List<DownloadJob>
 
     fun saveQueue(jobs: List<DownloadJob>)
 }
@@ -49,9 +52,9 @@ private class AppStorageStoryStore(
 ) : RepositoryStoryStore {
     override val transactionLock: Any get() = storage
 
-    override fun getLibrary(): List<Story> = storage.getLibrary()
+    override fun stories(): List<Story> = storage.getLibrary()
 
-    override fun getStory(id: String): Story? = storage.getStory(id)
+    override fun story(id: String): Story? = storage.getStory(id)
 
     override fun addOrUpdateStory(story: Story) = storage.addOrUpdateStory(story)
 
@@ -59,7 +62,7 @@ private class AppStorageStoryStore(
 
     override fun saveLibrary(stories: List<Story>) = storage.saveLibrary(stories)
 
-    override fun getQueue(): List<DownloadJob> = storage.getQueue()
+    override fun queue(): List<DownloadJob> = storage.getQueue()
 
     override fun saveQueue(jobs: List<DownloadJob>) = storage.saveQueue(jobs)
 }
@@ -78,9 +81,9 @@ data class DownloadUiSnapshot(
  * the download engine. The activity and foreground service therefore cannot race on
  * `download_queue.json` or per-story files, and there is one lock around every multi-step mutation.
  *
- * Exposes cached [StateFlow]s ([libraryFlow], [queueFlow], [settingsFlow]) that are refreshed after
- * each successful transaction, so screens can observe state without re-reading JSON on every render
- * (Speed S3). The low-level [storage] is still accessible to engines for direct file I/O (chapter
+ * Exposes one coherent cached [downloadState] that is refreshed after each successful download or
+ * story transaction, so screens can observe state without re-reading JSON on every render (Speed S3).
+ * The low-level [storage] is still accessible to engines for direct file I/O (chapter
  * HTML, EPUB bytes) — only the stateful read-modify-write mutations are centralized here.
  */
 class AppRepository private constructor(
@@ -107,33 +110,20 @@ class AppRepository private constructor(
     private val requiredStorage: AppStorage get() = storage
 
     private val libraryById = linkedMapOf<String, Story>()
-    private val _libraryFlow = MutableStateFlow<List<Story>>(emptyList())
-    val libraryFlow: StateFlow<List<Story>> = _libraryFlow.asStateFlow()
+    private val libraryCache = MutableStateFlow<List<Story>>(emptyList())
 
-    private val _queueFlow = MutableStateFlow<List<DownloadJob>>(emptyList())
-    val queueFlow: StateFlow<List<DownloadJob>> = _queueFlow.asStateFlow()
-
-    private val _downloadStateVersion = MutableStateFlow(0L)
-
-    /**
-     * Monotonic, process-wide signal emitted after a coherent download state snapshot has been
-     * published to [libraryFlow] and/or [queueFlow]. Screens observe this instead of polling JSON.
-     * A version is used rather than relying on model equality because queue/story models contain
-     * mutable fields and may be updated in place by the download engine.
-     */
-    val downloadStateVersion: StateFlow<Long> = _downloadStateVersion.asStateFlow()
+    private val queueCache = MutableStateFlow<List<DownloadJob>>(emptyList())
 
     private val _downloadState = MutableStateFlow(DownloadUiSnapshot())
 
     /**
-     * Typed process-wide download snapshot. Unlike [downloadStateVersion], this carries the coherent
-     * library + queue state that UI surfaces should bind to directly, so screens no longer need to
-     * treat a counter tick as a signal to re-read storage or rebuild themselves.
+     * Typed process-wide download snapshot carrying the coherent library + queue state that UI
+     * surfaces bind to directly.
      */
     val downloadState: StateFlow<DownloadUiSnapshot> = _downloadState.asStateFlow()
 
-    private val _settingsFlow = MutableStateFlow(AppSettings())
-    val settingsFlow: StateFlow<AppSettings> = _settingsFlow.asStateFlow()
+    @Volatile
+    private var appSettings = AppSettings()
 
     @Volatile
     private var sourceDownloadSettings: Map<String, SourceDownloadSettings> = emptyMap()
@@ -166,13 +156,13 @@ class AppRepository private constructor(
     fun refresh() {
         synchronized(transactionLock) {
             val storage = requiredStorage
-            val library = storyStore.getLibrary().map(StoryMutations::snapshot)
-            val queue = storyStore.getQueue().map(::snapshotJob)
+            val library = storyStore.stories().map(StoryMutations::snapshot)
+            val queue = storyStore.queue().map(::snapshotJob)
             libraryById.clear()
             library.forEach { libraryById[it.id] = it }
-            _libraryFlow.value = library
-            _queueFlow.value = queue
-            _settingsFlow.value = storage.getSettings()
+            libraryCache.value = library
+            queueCache.value = queue
+            appSettings = storage.getSettings()
             sourceDownloadSettings = storage.getSourceDownloadSettings().toMap()
             chapterFilterSettings = storage.getChapterFilterSettings()
             displayPreferences = storage.getDisplayPreferences().copy()
@@ -197,15 +187,15 @@ class AppRepository private constructor(
     ) {
         synchronized(transactionLock) {
             changedStoryIds.forEach { storyId ->
-                val story = storyStore.getStory(storyId)
+                val story = storyStore.story(storyId)
                 if (story == null) {
                     libraryById.remove(storyId)
                 } else {
                     libraryById[storyId] = StoryMutations.snapshot(story)
                 }
             }
-            if (changedStoryIds.isNotEmpty()) _libraryFlow.value = libraryById.values.toList()
-            if (queueChanged) _queueFlow.value = storyStore.getQueue().map(::snapshotJob)
+            if (changedStoryIds.isNotEmpty()) libraryCache.value = libraryById.values.toList()
+            if (queueChanged) queueCache.value = storyStore.queue().map(::snapshotJob)
             publishDownloadStateLocked(
                 libraryChanged = changedStoryIds.isNotEmpty(),
                 queueChanged = queueChanged,
@@ -218,8 +208,8 @@ class AppRepository private constructor(
         queueChanged: Boolean,
     ) {
         val previous = _downloadState.value
-        val library = _libraryFlow.value
-        val queue = _queueFlow.value
+        val library = libraryCache.value
+        val queue = queueCache.value
         val version = previous.version + 1L
         _downloadState.value =
             DownloadUiSnapshot(
@@ -229,7 +219,6 @@ class AppRepository private constructor(
                 library = library,
                 queue = queue,
             )
-        _downloadStateVersion.value = version
     }
 
     /**
@@ -240,33 +229,24 @@ class AppRepository private constructor(
         val published = StoryMutations.snapshot(story)
         libraryById[published.id] = published
         val library = libraryById.values.toList()
-        _libraryFlow.value = library
+        libraryCache.value = library
         publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
     }
 
     /** Cached library snapshot; reads from memory rather than re-parsing every story JSON. */
-    fun library(): List<Story> = _libraryFlow.value.map(StoryMutations::snapshot)
-
-    /** Compatibility spelling for callers migrating from AppStorage; this is still cache-only. */
-    fun getLibrary(): List<Story> = library()
+    fun library(): List<Story> = libraryCache.value.map(StoryMutations::snapshot)
 
     /** Cached queue snapshot. */
-    fun queue(): List<DownloadJob> = _queueFlow.value.map(::snapshotJob)
-
-    /** Compatibility spelling for callers migrating from AppStorage; this is still cache-only. */
-    fun getQueue(): List<DownloadJob> = queue()
+    fun queue(): List<DownloadJob> = queueCache.value.map(::snapshotJob)
 
     /** Single-story lookup by id, from the cached library. */
     fun story(id: String): Story? = synchronized(transactionLock) { libraryById[id]?.let(StoryMutations::snapshot) }
-
-    /** Compatibility spelling for callers migrating from AppStorage; this is still cache-only. */
-    fun getStory(id: String): Story? = story(id)
 
     /** Adds or replaces one story without rebuilding/re-parsing the rest of the library. */
     suspend fun addOrUpdateStory(story: Story) = upsertStory(story)
 
     // ---- In-memory configuration snapshots (hydrated by refresh) ----
-    fun getSettings(): AppSettings = _settingsFlow.value.copy()
+    fun getSettings(): AppSettings = appSettings.copy()
 
     fun getSourceDownloadSettings(): Map<String, SourceDownloadSettings> = sourceDownloadSettings.toMap()
 
@@ -341,33 +321,37 @@ class AppRepository private constructor(
     // ---- Configuration writes (serialized on the injected I/O dispatcher) ----
     suspend fun saveSettings(settings: AppSettings) =
         withContext(ioDispatcher) {
+            val normalized = PreferenceNormalization.appSettings(settings)
             synchronized(transactionLock) {
-                requiredStorage.saveSettings(settings)
-                _settingsFlow.value = settings.copy()
+                requiredStorage.saveSettings(normalized)
+                appSettings = normalized.copy()
             }
         }
 
     suspend fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
         withContext(ioDispatcher) {
+            val normalized = PreferenceNormalization.sourceDownloadSettings(settings)
             synchronized(transactionLock) {
-                requiredStorage.saveSourceDownloadSettings(settings)
-                sourceDownloadSettings = settings.toMap()
+                requiredStorage.saveSourceDownloadSettings(normalized)
+                sourceDownloadSettings = normalized.toMap()
             }
         }
 
     suspend fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
         withContext(ioDispatcher) {
+            val normalized = PreferenceNormalization.chapterFilterSettings(settings)
             synchronized(transactionLock) {
-                requiredStorage.saveChapterFilterSettings(settings)
-                chapterFilterSettings = settings.copy()
+                requiredStorage.saveChapterFilterSettings(normalized)
+                chapterFilterSettings = normalized.copy()
             }
         }
 
     suspend fun saveDisplayPreferences(preferences: DisplayPreferences) =
         withContext(ioDispatcher) {
+            val normalized = PreferenceNormalization.displayPreferences(preferences)
             synchronized(transactionLock) {
-                requiredStorage.saveDisplayPreferences(preferences)
-                displayPreferences = preferences.copy()
+                requiredStorage.saveDisplayPreferences(normalized)
+                displayPreferences = normalized.copy()
             }
         }
 
@@ -397,9 +381,10 @@ class AppRepository private constructor(
 
     suspend fun saveTtsSettings(settings: TtsSettings) =
         withContext(ioDispatcher) {
+            val normalized = PreferenceNormalization.ttsSettings(settings)
             synchronized(transactionLock) {
-                requiredStorage.saveTtsSettings(settings)
-                ttsSettings = settings.copy()
+                requiredStorage.saveTtsSettings(normalized)
+                ttsSettings = normalized.copy()
             }
         }
 
@@ -440,7 +425,7 @@ class AppRepository private constructor(
     ): Story? =
         withContext(ioDispatcher) {
             synchronized(transactionLock) {
-                val current = storyStore.getStory(storyId)
+                val current = storyStore.story(storyId)
                 val updated = block(current) ?: return@synchronized null
                 storyStore.addOrUpdateStory(updated)
                 publishStoryLocked(updated)
@@ -502,6 +487,45 @@ class AppRepository private constructor(
             StoryMutations.markChapterDownloaded(it, chapterId, path, completedAt)
         }
 
+    /**
+     * Commits a completed sync as one repository transaction. The merge callback runs while the
+     * latest on-disk story is protected by the same lock used by downloads and user mutations, so a
+     * sync cannot publish a stale whole-story snapshot. An optional archive and metric snapshot are
+     * committed alongside the story before the cached state is published.
+     */
+    suspend fun commitSyncedStory(
+        story: Story,
+        archiveSource: Story? = null,
+        metricSnapshot: StoryMetricSnapshot? = null,
+        merge: (Story?) -> Story = { story },
+    ): Story =
+        withContext(ioDispatcher) {
+            synchronized(transactionLock) {
+                val committed = merge(storyStore.story(story.id))
+                val archive =
+                    archiveSource?.let { source ->
+                        ArchiveSnapshotPlanning.buildArchiveSnapshot(source, System.currentTimeMillis()) { archiveId, index, chapter ->
+                            requiredStorage.copyChapterToStory(archiveId, index, chapter)
+                        }
+                    }
+                archive?.let {
+                    storyStore.addOrUpdateStory(it)
+                    libraryById[it.id] = StoryMutations.snapshot(it)
+                }
+                storyStore.addOrUpdateStory(committed)
+                libraryById[committed.id] = StoryMutations.snapshot(committed)
+                metricSnapshot?.let { snapshot ->
+                    // Metrics are diagnostic/history data. A fenced metrics document must not make
+                    // the already-committed story disappear from the library after a successful sync.
+                    runCatching { requiredStorage.appendMetricSnapshot(committed.id, snapshot) }
+                        .onFailure { error -> Timber.w(error, "Failed to record metric snapshot for %s", committed.id) }
+                }
+                libraryCache.value = libraryById.values.toList()
+                publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
+                StoryMutations.snapshot(committed)
+            }
+        }
+
     /** Adds or replaces a story, then refreshes the library flow. */
     suspend fun upsertStory(story: Story) {
         withContext(ioDispatcher) {
@@ -517,8 +541,8 @@ class AppRepository private constructor(
             synchronized(transactionLock) {
                 storyStore.deleteStory(id)
                 libraryById.remove(id)
-                _libraryFlow.value = libraryById.values.toList()
-                _queueFlow.value = storyStore.getQueue().map(::snapshotJob)
+                libraryCache.value = libraryById.values.toList()
+                queueCache.value = storyStore.queue().map(::snapshotJob)
                 publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
             }
         }
@@ -530,7 +554,7 @@ class AppRepository private constructor(
                 storyStore.saveLibrary(stories)
                 libraryById.clear()
                 stories.map(StoryMutations::snapshot).forEach { libraryById[it.id] = it }
-                _libraryFlow.value = libraryById.values.toList()
+                libraryCache.value = libraryById.values.toList()
                 publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
             }
         }
@@ -545,10 +569,10 @@ class AppRepository private constructor(
     suspend fun updateQueue(block: (List<DownloadJob>) -> List<DownloadJob>) {
         withContext(ioDispatcher) {
             synchronized(transactionLock) {
-                val current = storyStore.getQueue()
+                val current = storyStore.queue()
                 val updated = block(current)
                 storyStore.saveQueue(updated)
-                _queueFlow.value = updated.map(::snapshotJob)
+                queueCache.value = updated.map(::snapshotJob)
                 publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
             }
         }
@@ -559,7 +583,7 @@ class AppRepository private constructor(
         withContext(ioDispatcher) {
             synchronized(transactionLock) {
                 storyStore.saveQueue(jobs)
-                _queueFlow.value = jobs.map(::snapshotJob)
+                queueCache.value = jobs.map(::snapshotJob)
                 publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
             }
         }
@@ -569,7 +593,7 @@ class AppRepository private constructor(
      * Direct disk read of the queue for worker loops that must not depend on StateFlow equality.
      * UI code should observe [queue] / [downloadState] instead so it stays coherent with publishes.
      */
-    internal fun readQueueFromDiskForWorker(): List<DownloadJob> = storyStore.getQueue()
+    internal fun readQueueFromDiskForWorker(): List<DownloadJob> = storyStore.queue()
 
     private fun snapshotJob(job: DownloadJob): DownloadJob = job.copy(chapter = job.chapter.copy())
 }

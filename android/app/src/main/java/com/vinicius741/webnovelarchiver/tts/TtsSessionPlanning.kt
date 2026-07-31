@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.tts
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
-import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 
 object TtsSessionPlanning {
     data class ReaderResumeTarget(
@@ -36,22 +35,20 @@ object TtsSessionPlanning {
         return session.currentChunkIndex.coerceIn(0, chunkCount - 1)
     }
 
-    fun restoredChunkSize(settings: TtsSettings): Int = settings.chunkSize.coerceAtLeast(100)
-
-    fun nextChunkRequestIndex(
-        currentPostIncrementIndex: Int,
+    fun nextChunkIndex(
+        currentChunkIndex: Int,
         chunkCount: Int,
     ): Int {
-        if (chunkCount <= 0) return 0
-        return currentPostIncrementIndex.coerceIn(0, chunkCount - 1)
+        if (chunkCount <= 1) return 0
+        return currentChunkIndex.coerceIn(0, chunkCount - 2) + 1
     }
 
-    fun previousChunkRequestIndex(
-        currentPostIncrementIndex: Int,
+    fun previousChunkIndex(
+        currentChunkIndex: Int,
         chunkCount: Int,
     ): Int {
-        if (chunkCount <= 0) return 0
-        return (currentPostIncrementIndex - 2).coerceIn(0, chunkCount - 1)
+        if (chunkCount <= 1) return 0
+        return currentChunkIndex.coerceIn(1, chunkCount - 1) - 1
     }
 
     fun nextChapterIndex(

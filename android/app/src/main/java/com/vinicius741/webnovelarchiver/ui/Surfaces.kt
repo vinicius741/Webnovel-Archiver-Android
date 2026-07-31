@@ -83,33 +83,7 @@ fun makeSettingRow(
     title: CharSequence,
     description: CharSequence? = null,
     onClick: () -> Unit,
-): LinearLayout {
-    val t = ThemeManager.current
-    return LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        isClickable = true
-        isFocusable = true
-        setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
-        background = selectableRipple(t.colors.surface)
-        layoutParams =
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = context.dp(Space.XS)
-            }
-        // Leading icon, sized to match the Material list-item leading icon (~24dp).
-        addView(
-            makeSettingRowIcon(context, iconRes),
-            LinearLayout.LayoutParams(context.dp(24), context.dp(24)),
-        )
-        addView(
-            makeSettingRowTextColumn(context, title, description),
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = context.dp(Space.MD)
-            },
-        )
-        setOnClickListener { onClick() }
-    }
-}
+): SettingActionRow = SettingActionRow(context, iconRes, title, description, onClick)
 
 /*
 

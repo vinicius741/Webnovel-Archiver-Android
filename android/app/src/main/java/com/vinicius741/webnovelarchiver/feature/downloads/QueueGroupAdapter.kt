@@ -11,8 +11,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
+import com.vinicius741.webnovelarchiver.download.DownloadCounts
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
-import com.vinicius741.webnovelarchiver.download.QueueStatusCounts
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -25,17 +25,30 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
-private data class QueueStoryGroup(
+internal data class QueueJobUi(
+    val job: DownloadJob,
+    val status: DownloadJobStatus,
+    val retryRemainingSeconds: Long?,
+)
+
+internal data class QueueWaitUi(
+    val providerName: String,
     val storyId: String,
-    val jobs: List<DownloadJob>,
-    val signature: String,
+    val remainingSeconds: Long,
+)
+
+internal data class QueueStoryGroupUi(
+    val storyId: String,
+    val jobs: List<QueueJobUi>,
+    val expanded: Boolean,
+    val waits: List<QueueWaitUi>,
 )
 
 internal class QueueGroupAdapter(
     private val host: ScreenHost,
     private val onExpansionChanged: () -> Unit,
 ) : RecyclerView.Adapter<QueueGroupAdapter.GroupHolder>() {
-    private var groups: List<QueueStoryGroup> = emptyList()
+    private var groups: List<QueueStoryGroupUi> = emptyList()
     private var pacingSnapshots: Collection<DownloadPacingSnapshot> = emptyList()
     private var nowMillis: Long = 0L
     private var queue: List<DownloadJob> = emptyList()
@@ -68,7 +81,7 @@ internal class QueueGroupAdapter(
             holder.container.removeAllViews()
             holder.container.addView(card.view)
         }
-        card.bind(group.jobs, queue, pacingSnapshots, nowMillis, onExpansionChanged)
+        card.bind(group, queue, pacingSnapshots, nowMillis, onExpansionChanged)
     }
 
     fun submitQueue(
@@ -77,7 +90,13 @@ internal class QueueGroupAdapter(
         nowMillis: Long = System.currentTimeMillis(),
     ) {
         val previous = groups
-        val next = host.queueGroups(queue, pacingSnapshots, nowMillis)
+        val activeJobIds =
+            queue
+                .asSequence()
+                .filter { it.status in DownloadJobStatus.activeWires }
+                .map { it.id }
+                .toSet()
+        val next = host.queueGroups(queue, pacingSnapshots, nowMillis, activeJobIds)
         this.pacingSnapshots = pacingSnapshots
         this.nowMillis = nowMillis
         this.queue = queue
@@ -97,7 +116,7 @@ internal class QueueGroupAdapter(
                     override fun areContentsTheSame(
                         old: Int,
                         new: Int,
-                    ): Boolean = previous[old].signature == next[new].signature
+                    ): Boolean = previous[old] == next[new]
                 },
             ).dispatchUpdatesTo(this)
     }
@@ -113,64 +132,45 @@ private fun ScreenHost.queueGroups(
     queue: List<DownloadJob>,
     pacingSnapshots: Collection<DownloadPacingSnapshot>,
     nowMillis: Long,
-): List<QueueStoryGroup> =
+    activeJobIds: Set<String>,
+): List<QueueStoryGroupUi> =
     queue
         .groupBy { it.storyId }
         .values
         .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
         .map { jobs ->
-            val counts = QueueStatusCounts.from(jobs)
+            val counts = DownloadCounts.from(jobs)
             val expanded = storyExpandOverride[jobs.first().storyId] ?: (counts.hasActive || counts.hasFailed)
             val providerName = SourceRegistry.getProvider(jobs.first().chapter.url)?.name
-            QueueStoryGroup(
+            QueueStoryGroupUi(
                 storyId = jobs.first().storyId,
-                jobs = jobs,
-                signature =
-                    buildString {
-                        append(expanded)
-                        jobs.sortedBy { it.chapterIndex }.forEach { job ->
-                            append('|')
-                            append(job.id)
-                            append(':')
-                            append(job.chapterIndex)
-                            append(':')
-                            append(job.chapter.title)
-                            append(':')
-                            append(job.status)
-                            append(':')
-                            append(job.retryCount)
-                            append(':')
-                            append(job.error.orEmpty())
-                            append(':')
-                            append(job.errorCategory.orEmpty())
-                            append(':')
-                            append(job.errorCode.orEmpty())
-                            append(':')
-                            append(job.nextRetryAt ?: 0L)
-                            job.nextRetryAt
-                                ?.takeIf { it > nowMillis }
-                                ?.let { retryAt ->
-                                    append(':')
-                                    append((retryAt - nowMillis + 999L) / 1_000L)
-                                }
-                        }
-                        pacingSnapshots
-                            .filter { snapshot ->
-                                snapshot.nextRequestAtMillis > nowMillis &&
-                                    snapshot.providerName == providerName &&
-                                    queue.any { job ->
-                                        job.id == snapshot.jobId && job.status in DownloadJobStatus.activeWires
-                                    }
-                            }.sortedBy { it.providerName }
-                            .forEach { wait ->
-                                append("|wait:")
-                                append(wait.providerName)
-                                append(':')
-                                append(wait.storyId)
-                                append(':')
-                                append((wait.nextRequestAtMillis - nowMillis + 999L) / 1_000L)
-                            }
+                jobs =
+                    jobs.sortedBy { it.chapterIndex }.map { job ->
+                        QueueJobUi(
+                            job = job,
+                            status = DownloadJobStatus.parse(job.status),
+                            retryRemainingSeconds =
+                                job.nextRetryAt?.let { retryAt ->
+                                    (retryAt - nowMillis + 999L).coerceAtLeast(0L) / 1_000L
+                                },
+                        )
                     },
+                expanded = expanded,
+                waits =
+                    pacingSnapshots
+                        .filter { snapshot ->
+                            snapshot.nextRequestAtMillis > nowMillis &&
+                                snapshot.providerName == providerName &&
+                                snapshot.jobId in activeJobIds &&
+                                jobs.any { it.id == snapshot.jobId }
+                        }.sortedBy { it.providerName }
+                        .map { wait ->
+                            QueueWaitUi(
+                                providerName = wait.providerName,
+                                storyId = wait.storyId,
+                                remainingSeconds = (wait.nextRequestAtMillis - nowMillis + 999L) / 1_000L,
+                            )
+                        },
             )
         }
 

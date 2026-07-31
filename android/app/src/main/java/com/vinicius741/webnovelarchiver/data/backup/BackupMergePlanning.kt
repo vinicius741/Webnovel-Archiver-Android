@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.data.backup
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.sync.StorySyncPlanning
-import com.vinicius741.webnovelarchiver.ui.size
 
 object BackupMergePlanning {
     fun mergeJsonBackupStory(

@@ -10,6 +10,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsVoicePlanning
@@ -216,25 +217,7 @@ internal fun ScreenHost.showTtsVoiceDialog(
         languageCodes.forEach { addFilter(it, TtsVoicePlanning.languageFilterLabel(it)) }
     }
 
-    search.addTextChangedListener(
-        object : android.text.TextWatcher {
-            override fun beforeTextChanged(
-                s: CharSequence?,
-                start: Int,
-                count: Int,
-                after: Int,
-            ) = Unit
-
-            override fun onTextChanged(
-                s: CharSequence?,
-                start: Int,
-                before: Int,
-                count: Int,
-            ) = renderResults()
-
-            override fun afterTextChanged(s: android.text.Editable?) = Unit
-        },
-    )
+    search.doAfterTextChanged { renderResults() }
     renderFilters()
     renderResults()
 

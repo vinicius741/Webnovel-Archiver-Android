@@ -1,7 +1,7 @@
 package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.cleanup.LooseHtmlStructure
-import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
+import com.vinicius741.webnovelarchiver.domain.archive.PercentEncoding
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
@@ -31,13 +31,23 @@ object SpaceBattlesProvider : SourceProvider {
         SPACEBATTLES_HOST.containsMatchIn(url) &&
             (THREAD_ID.find(url) != null || POST_ID.find(url) != null)
 
+    override fun classifyUrl(url: String): SourceUrlKind? =
+        when {
+            Regex(
+                """^https?://(?:(?:forum|forums)\.)?spacebattles\.com/threads/(?:[^/?#]*\.)?\d+/?(?:[?#].*)?$""",
+                RegexOption.IGNORE_CASE,
+            ).matches(url) -> SourceUrlKind.STORY
+            SPACEBATTLES_HOST.containsMatchIn(url) && POST_ID.find(url) != null -> SourceUrlKind.CHAPTER
+            else -> null
+        }
+
     override fun getStoryId(url: String): String =
         THREAD_ID
             .find(url)
             ?.groupValues
             ?.get(1)
             ?.let { "sb_$it" }
-            ?: "sb_url_${FullBackupPaths.encodeURIComponent(url.lowercase())}"
+            ?: "sb_url_${PercentEncoding.encodeURIComponent(url.lowercase())}"
 
     override fun getChapterId(url: String): String? = rawPostId(url)?.let { "sb_$it" }
 

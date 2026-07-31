@@ -35,10 +35,15 @@ class AppNavigator(
     }
 
     fun restore(encodedRoutes: List<String>): Boolean {
-        val decoded = encodedRoutes.map(AppRouteCodec::decode)
-        if (decoded.isEmpty() || decoded.any { it == null }) return false
+        val decoded =
+            encodedRoutes
+                .takeIf { it.isNotEmpty() }
+                ?.map(AppRouteCodec::decode)
+                ?.takeIf { routes -> routes.all { it != null } }
+                ?.filterNotNull()
+                ?: return false
         routes.clear()
-        routes += decoded.filterNotNull()
+        routes += decoded
         return true
     }
 }

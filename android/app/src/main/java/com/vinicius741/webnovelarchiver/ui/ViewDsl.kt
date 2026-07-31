@@ -215,8 +215,8 @@ internal fun ViewGroup.settingRowWithLoading(
     description: String? = null,
     loading: Boolean = false,
     onClick: () -> Unit,
-): Pair<LinearLayout, SettingRowLoadingController> {
-    val (row, controller) = makeSettingRowWithLoading(context, iconRes, title, description, onClick, loading)
+): SettingActionRow {
+    val row = makeSettingRowWithLoading(context, iconRes, title, description, onClick, loading)
     addView(row)
-    return row to controller
+    return row
 }

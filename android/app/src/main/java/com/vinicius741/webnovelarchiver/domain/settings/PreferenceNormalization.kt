@@ -1,18 +1,23 @@
-package com.vinicius741.webnovelarchiver.feature.settings
+package com.vinicius741.webnovelarchiver.domain.settings
 
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
-import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutPlanning
 
+/** Canonicalizes persisted settings at every storage boundary. */
 object PreferenceNormalization {
+    private const val CONCURRENCY_MIN = 1
+    private const val CONCURRENCY_MAX = 10
+    private const val MAX_CHAPTERS_PER_EPUB_MIN = 10
+    private const val MAX_CHAPTERS_PER_EPUB_MAX = 1000
+    private const val TTS_MIN = 0.5f
+    private const val TTS_MAX = 2.0f
+
     private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark")
     private val foldLayoutModes = setOf("auto", "cover", "inner")
-
-    /** Allowed Library sort option keys — mirrors the Sort dialog option list in LibraryFilters.
-     *  Includes the legacy "updated" alias so old persisted values normalize to "lastUpdated". */
+    private val screenLayoutModes = setOf("auto", "cover", "inner")
     private val librarySortOptions =
         setOf(
             "default",
@@ -25,6 +30,7 @@ object PreferenceNormalization {
             "patreonMonthly",
             "patreonMembers",
         )
+
     const val READER_FONT_SCALE_MIN = 0.8f
     const val READER_FONT_SCALE_MAX = 1.6f
 
@@ -32,18 +38,10 @@ object PreferenceNormalization {
         val minDelay = settings.downloadDelay.takeIf { it >= 0 } ?: AppSettings().downloadDelay
         val maxDelay = settings.downloadDelayMax.takeIf { it >= minDelay } ?: minDelay
         return settings.copy(
-            downloadConcurrency =
-                settings.downloadConcurrency.coerceIn(
-                    SettingsValidation.CONCURRENCY_MIN,
-                    SettingsValidation.CONCURRENCY_MAX,
-                ),
+            downloadConcurrency = settings.downloadConcurrency.coerceIn(CONCURRENCY_MIN, CONCURRENCY_MAX),
             downloadDelay = minDelay,
             downloadDelayMax = maxDelay,
-            maxChaptersPerEpub =
-                settings.maxChaptersPerEpub.coerceIn(
-                    SettingsValidation.MAX_CHAPTERS_PER_EPUB_MIN,
-                    SettingsValidation.MAX_CHAPTERS_PER_EPUB_MAX,
-                ),
+            maxChaptersPerEpub = settings.maxChaptersPerEpub.coerceIn(MAX_CHAPTERS_PER_EPUB_MIN, MAX_CHAPTERS_PER_EPUB_MAX),
         )
     }
 
@@ -53,34 +51,22 @@ object PreferenceNormalization {
                 val minDelay = value.delay.takeIf { it >= 0 } ?: SourceDownloadSettings().delay
                 val maxDelay = value.delayMax.takeIf { it >= minDelay } ?: minDelay
                 value.copy(
-                    concurrency =
-                        value.concurrency.coerceIn(
-                            SettingsValidation.CONCURRENCY_MIN,
-                            SettingsValidation.CONCURRENCY_MAX,
-                        ),
+                    concurrency = value.concurrency.coerceIn(CONCURRENCY_MIN, CONCURRENCY_MAX),
                     delay = minDelay,
                     delayMax = maxDelay,
                 )
             }.toMutableMap()
 
     fun chapterFilterSettings(settings: ChapterFilterSettings): ChapterFilterSettings =
-        settings.copy(
-            filterMode = settings.filterMode.takeIf { it in chapterFilterModes } ?: ChapterFilterSettings().filterMode,
-        )
+        settings.copy(filterMode = settings.filterMode.takeIf { it in chapterFilterModes } ?: ChapterFilterSettings().filterMode)
 
     fun displayPreferences(preferences: DisplayPreferences): DisplayPreferences =
         preferences.copy(
             activeThemeId = preferences.activeThemeId.ifBlank { DisplayPreferences().activeThemeId },
             foldLayoutMode = preferences.foldLayoutMode.takeIf { it in foldLayoutModes } ?: DisplayPreferences().foldLayoutMode,
-            screenLayoutMode =
-                preferences.screenLayoutMode.takeIf { it in ScreenLayoutPlanning.screenLayoutModes }
-                    ?: DisplayPreferences().screenLayoutMode,
+            screenLayoutMode = preferences.screenLayoutMode.takeIf { it in screenLayoutModes } ?: DisplayPreferences().screenLayoutMode,
             readerFontScale = preferences.readerFontScale.coerceIn(READER_FONT_SCALE_MIN, READER_FONT_SCALE_MAX),
-            // A blank persisted value means "never set" (resolves to All on render); normalize all
-            // whitespace to that same state rather than carrying it through.
             libraryTabId = preferences.libraryTabId?.takeIf { it.isNotBlank() },
-            // Map the legacy "updated" key onto the canonical "lastUpdated"; fall back to the default
-            // for any unknown/blank value so a corrupted or hand-edited pref can't break the Library.
             librarySortOption =
                 preferences.librarySortOption
                     .takeIf { it.isNotBlank() && it in librarySortOptions }
@@ -90,8 +76,7 @@ object PreferenceNormalization {
 
     fun ttsSettings(settings: TtsSettings): TtsSettings =
         settings.copy(
-            pitch = settings.pitch.coerceIn(SettingsValidation.TTS_MIN, SettingsValidation.TTS_MAX),
-            rate = settings.rate.coerceIn(SettingsValidation.TTS_MIN, SettingsValidation.TTS_MAX),
-            chunkSize = settings.chunkSize.coerceAtLeast(SettingsValidation.TTS_CHUNK_SIZE_MIN),
+            pitch = settings.pitch.coerceIn(TTS_MIN, TTS_MAX),
+            rate = settings.rate.coerceIn(TTS_MIN, TTS_MAX),
         )
 }

@@ -5,7 +5,7 @@ import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Session-scoped circuit breaker for user-provided cleanup regex rules (audit Rec 7).
+ * Session-scoped circuit breaker for user-provided cleanup regex rules.
  *
  * Kotlin/JVM regex matching has no execution timeout, so a pattern that passes
  * [RegexRuleCleanup]'s validation heuristic can still cause catastrophic backtracking (ReDoS) at
@@ -19,10 +19,8 @@ import java.util.concurrent.ConcurrentHashMap
  * JVM `Matcher` mid-match is unreliable; the breaker trips on the *next* check after a slow call so
  * a rule can stall at most `maxStrikes` times before being quarantined.
  *
- * Used by both cleanup paths so convergence (audit gap 5) does not require merging the cached
- * [CleanupEngine] and the stateless [TextCleanup.regexRunner]: each path consults [isDisabled] and
- * reports outcomes through the same breaker, so a rule that misbehaves on either path is disabled
- * for both.
+ * Used by both cleanup paths: each path consults [isDisabled] and reports outcomes through the same
+ * breaker, so a rule that misbehaves on either path is disabled for both.
  *
  * Thread-safe via [ConcurrentHashMap]; the strike count is approximate (read-modify-write is not
  * atomic) which is acceptable — over-counting just trips the breaker slightly sooner.

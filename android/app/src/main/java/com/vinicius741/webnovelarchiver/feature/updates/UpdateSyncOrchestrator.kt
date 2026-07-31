@@ -35,7 +35,6 @@ internal fun ScreenHost.syncFollowedUpdates(onProgress: () -> Unit) {
         }
         withContext(Dispatchers.Main) {
             state.finish()
-            repository.publishDownloadState(toSync.mapTo(linkedSetOf()) { it.id }, queueChanged = true)
             if (renderedRoot.parent === frame) showUpdates()
         }
     }
@@ -51,7 +50,7 @@ private suspend fun ScreenHost.syncStory(
     state.inFlight[story.id] = InFlightStorySync(story.title)
     try {
         if (renderedRoot.parent === frame) onProgress()
-        val before = withContext(Dispatchers.IO) { repository.getStory(story.id) }
+        val before = withContext(Dispatchers.IO) { repository.story(story.id) }
         val synced =
             withContext(Dispatchers.IO) {
                 syncEngine.fetchOrSync(story.sourceUrl, story.tabId, refreshPatreonStats = false) { message ->
@@ -61,7 +60,6 @@ private suspend fun ScreenHost.syncStory(
                     }
                 }
             }
-        repository.publishDownloadState(setOf(story.id), queueChanged = false)
         state.syncedUpdatedChapterIds[story.id] = synced.pendingNewChapterIds.orEmpty().distinct()
         queuePendingNewDownloads(before, synced)
     } catch (error: Throwable) {

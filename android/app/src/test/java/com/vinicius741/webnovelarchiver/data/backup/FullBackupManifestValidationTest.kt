@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.backup
 
+import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -8,6 +9,29 @@ class FullBackupManifestValidationTest {
     @Test
     fun acceptsValidManifestShape() {
         assertNull(FullBackupManifestValidation.validate(validManifest()))
+    }
+
+    @Test
+    fun parsesTypedManifestOnlyAfterRawValidation() {
+        val manifest =
+            validManifest(
+                "chapterFiles" to
+                    listOf(
+                        mapOf(
+                            "storyId" to "story-1",
+                            "chapterId" to "chapter-1",
+                            "path" to "novels/story-1/chapter-1.html",
+                        ),
+                    ),
+                "metricFiles" to listOf(mapOf("storyId" to "story-1", "path" to "metrics/story-1.json")),
+            )
+
+        val parsed = FullBackupManifestValidation.parseValidated(Gson(), manifest)
+
+        assertEquals(1, parsed.version)
+        assertEquals("story-1", parsed.library.single().id)
+        assertEquals(RestoredChapterFileIndex("story-1", "chapter-1", "novels/story-1/chapter-1.html"), parsed.chapterFiles.single())
+        assertEquals(RestoredMetricFileIndex("story-1", "metrics/story-1.json"), parsed.metricFiles.single())
     }
 
     @Test

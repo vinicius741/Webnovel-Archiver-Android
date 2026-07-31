@@ -2,7 +2,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
+import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -12,7 +12,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
-import com.vinicius741.webnovelarchiver.feature.settings.PreferenceNormalization
+import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import java.io.File
 import java.lang.reflect.Type
 
@@ -87,7 +87,7 @@ internal class RestoreStagingWriter(
         }
         payload["regexCleanupRules"]?.let {
             val rules = normalize<List<RegexCleanupRule>>(it, object : TypeToken<MutableList<RegexCleanupRule>>() {}.type)
-            writeEnvelope(File(root, "regex_cleanup_rules.json"), TextCleanup.sanitizeRegexRules(rules))
+            writeEnvelope(File(root, "regex_cleanup_rules.json"), RegexRuleCleanup.sanitizeRegexRules(rules))
         }
         payload["updateFollowedStoryIds"]?.let {
             val ids = normalize<List<String>>(it, object : TypeToken<MutableList<String>>() {}.type)

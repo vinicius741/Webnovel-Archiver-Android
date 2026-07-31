@@ -67,7 +67,7 @@ internal fun ScreenHost.showTrends(
     storyId: String,
     focus: String?,
 ) {
-    val story = repository.getStory(storyId) ?: return showDetails(storyId)
+    val story = repository.story(storyId) ?: return showDetails(storyId)
     screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {

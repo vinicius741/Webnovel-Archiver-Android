@@ -50,7 +50,7 @@ import java.util.Locale
  * **Delete** (confirm then remove from disk).
  */
 internal fun ScreenHost.showLegacyEpubs(storyId: String) {
-    val story = repository.getStory(storyId) ?: return showLibrary()
+    val story = repository.story(storyId) ?: return showLibrary()
     screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
         addView(
             makeEmptyState(

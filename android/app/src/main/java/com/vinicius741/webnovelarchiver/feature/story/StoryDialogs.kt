@@ -47,7 +47,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     // chapter list (which persists a fresh Story.copy) wouldn't be reflected here — leaving the
     // "Start at the bookmark" checkbox disabled even though a bookmark exists. Re-read the latest
     // persisted story so the dialog always matches on-disk state.
-    val story = repository.getStory(story.id) ?: story
+    val story = repository.story(story.id) ?: story
     if (story.chapters.isEmpty()) return toast("No chapters available")
     val current =
         story.epubConfig ?: EpubConfig(

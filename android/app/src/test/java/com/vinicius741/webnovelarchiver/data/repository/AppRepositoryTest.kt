@@ -17,20 +17,20 @@ class AppRepositoryTest {
             val store = FakeRepositoryStoryStore(story())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
 
-            repository.upsertStory(store.getStory("story")!!)
-            val beforeMutation = repository.getStory("story")!!
+            repository.upsertStory(store.story("story")!!)
+            val beforeMutation = repository.story("story")!!
             repository.toggleBookmark("story", "two")
 
-            val published = repository.getStory("story")!!
+            val published = repository.story("story")!!
             assertEquals("two", published.lastReadChapterId)
             assertEquals(0, store.libraryReadCount)
-            assertNotSame(store.getStory("story")!!.chapters, published.chapters)
+            assertNotSame(store.story("story")!!.chapters, published.chapters)
 
             beforeMutation.chapters.first().title = "changed outside repository"
             assertEquals(
                 "One",
                 repository
-                    .getStory("story")!!
+                    .story("story")!!
                     .chapters
                     .first()
                     .title,
@@ -46,8 +46,8 @@ class AppRepositoryTest {
 
             repository.deleteStory("story")
 
-            assertNull(repository.getStory("story"))
-            assertEquals(listOf("other"), repository.getLibrary().map { it.id })
+            assertNull(repository.story("story"))
+            assertEquals(listOf("other"), repository.library().map { it.id })
             assertEquals(0, store.libraryReadCount)
         }
 
@@ -56,14 +56,32 @@ class AppRepositoryTest {
         runTest {
             val store = FakeRepositoryStoryStore(story())
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
-            repository.upsertStory(store.getStory("story")!!)
+            repository.upsertStory(store.story("story")!!)
             val syncedAt = 1_750_000_000_000L
 
-            store.stories["story"] = store.getStory("story")!!.copy(lastChapterSyncAt = syncedAt)
+            store.stories["story"] = store.story("story")!!.copy(lastChapterSyncAt = syncedAt)
             repository.publishDownloadState(setOf("story"), queueChanged = false)
 
-            assertEquals(syncedAt, repository.getStory("story")!!.lastChapterSyncAt)
+            assertEquals(syncedAt, repository.story("story")!!.lastChapterSyncAt)
             assertEquals(0, store.libraryReadCount)
+        }
+
+    @Test
+    fun syncCommitMergesLatestStoryAndPublishesOneRepositorySnapshot() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.story("story")!!)
+            val synced = story().copy(title = "Synced")
+
+            val committed =
+                repository.commitSyncedStory(synced) { current ->
+                    current!!.copy(title = synced.title, lastReadChapterId = "two")
+                }
+
+            assertEquals("Synced", committed.title)
+            assertEquals("two", repository.story("story")?.lastReadChapterId)
+            assertEquals("Synced", store.story("story")?.title)
         }
 
     private class FakeRepositoryStoryStore(
@@ -74,12 +92,12 @@ class AppRepositoryTest {
         private var queue: List<DownloadJob> = emptyList()
         var libraryReadCount = 0
 
-        override fun getLibrary(): List<Story> {
+        override fun stories(): List<Story> {
             libraryReadCount += 1
             return stories.values.toList()
         }
 
-        override fun getStory(id: String): Story? = stories[id]
+        override fun story(id: String): Story? = stories[id]
 
         override fun addOrUpdateStory(story: Story) {
             stories[story.id] = story
@@ -94,7 +112,7 @@ class AppRepositoryTest {
             stories.associateByTo(this.stories) { it.id }
         }
 
-        override fun getQueue(): List<DownloadJob> = queue
+        override fun queue(): List<DownloadJob> = queue
 
         override fun saveQueue(jobs: List<DownloadJob>) {
             queue = jobs

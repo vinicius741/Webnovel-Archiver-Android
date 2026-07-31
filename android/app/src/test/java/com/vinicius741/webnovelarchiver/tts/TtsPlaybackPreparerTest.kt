@@ -65,7 +65,7 @@ class TtsPlaybackPreparerTest {
 
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
-        override fun chapterHtml(chapter: Chapter): String? = chapter.content
+        override suspend fun chapterHtml(chapter: Chapter): String? = chapter.content
 
         override fun settings() = TtsSettings()
 

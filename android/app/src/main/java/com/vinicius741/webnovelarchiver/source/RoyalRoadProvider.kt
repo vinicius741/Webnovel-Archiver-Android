@@ -14,6 +14,16 @@ object RoyalRoadProvider : SourceProvider {
 
     override fun isSource(url: String) = url.contains("royalroad.com", ignoreCase = true)
 
+    override fun classifyUrl(url: String): SourceUrlKind? {
+        val lower = url.lowercase()
+        return when {
+            Regex("""https?://(?:www\.)?royalroad\.com/fiction/\d+""").containsMatchIn(lower) &&
+                !lower.contains("/chapter/") -> SourceUrlKind.STORY
+            Regex("""/chapter/\d+""").containsMatchIn(lower) -> SourceUrlKind.CHAPTER
+            else -> null
+        }
+    }
+
     override fun getStoryId(url: String) =
         Regex("fiction/(\\d+)")
             .find(url)

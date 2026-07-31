@@ -1,10 +1,9 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
@@ -74,6 +73,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     var headerProgressSummary: View? = null
     var bannerSlot: ViewGroup? = null
     var downloadActionSlot: LinearLayout? = null
+    var chaptersBinding: androidx.recyclerview.widget.RecyclerView? = null
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
     screen(
@@ -116,6 +116,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 setHasFixedSize(false)
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
             }
+        chaptersBinding = chaptersContainer
 
         // Compact keeps one continuous scroll by exposing details and controls as the list's first
         // item. Two-pane keeps controls fixed above the independently scrolling chapter list.
@@ -149,38 +150,20 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 listHeader,
             )
         }
-        search.addTextChangedListener(
-            object : TextWatcher {
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    count: Int,
-                    after: Int,
-                ) = Unit
-
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    before: Int,
-                    count: Int,
-                ) {
-                    chapterQuery = s?.toString().orEmpty()
-                    renderChapterList(
-                        story,
-                        chaptersContainer,
-                        chapterQuery,
-                        chapterFilter,
-                        chipsContainer,
-                        pick,
-                        chapterStatuses,
-                        waitingChapterIds,
-                        listHeader,
-                    )
-                }
-
-                override fun afterTextChanged(s: Editable?) = Unit
-            },
-        )
+        search.doAfterTextChanged {
+            chapterQuery = it?.toString().orEmpty()
+            renderChapterList(
+                story,
+                chaptersContainer,
+                chapterQuery,
+                chapterFilter,
+                chipsContainer,
+                pick,
+                chapterStatuses,
+                waitingChapterIds,
+                listHeader,
+            )
+        }
         renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
         renderChapterList(
             story,
@@ -225,7 +208,16 @@ internal fun ScreenHost.showDetails(storyId: String) {
             chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }
     }
-    observeDetailsDownload(storyId, headerProgressSummary, bannerSlot, downloadActionSlot, isBusy, initialPacingStatus)
+    val root = frame.getChildAt(0)
+    val bindings =
+        DetailsBindings(
+            root = root,
+            chapters = requireNotNull(chaptersBinding),
+            headerProgressSummary = headerProgressSummary,
+            bannerSlot = bannerSlot,
+            downloadActionSlot = downloadActionSlot,
+        )
+    observeDetailsDownload(storyId, bindings, isBusy, initialPacingStatus)
 }
 
 /**
@@ -284,7 +276,7 @@ internal fun ScreenHost.renderDetailsDownloadAction(
             dp(Space.SM + 2),
             enabled = !isBusy && !summary.isActive,
         ) {
-            val latest = repository.getStory(story.id) ?: return@makeFullWidthButton
+            val latest = repository.story(story.id) ?: return@makeFullWidthButton
             queueDownload(
                 latest,
                 latest.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null },

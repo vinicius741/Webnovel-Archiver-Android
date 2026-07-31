@@ -21,6 +21,11 @@ import java.time.format.DateTimeFormatterBuilder
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
+enum class SourceUrlKind {
+    STORY,
+    CHAPTER,
+}
+
 interface SourceProvider {
     val name: String
     val baseUrl: String
@@ -29,6 +34,9 @@ interface SourceProvider {
     val maximumDownloadConcurrency: Int? get() = null
 
     fun isSource(url: String): Boolean
+
+    /** Classifies importable URLs without exposing provider-specific regexes centrally. */
+    fun classifyUrl(url: String): SourceUrlKind? = null
 
     fun getStoryId(url: String): String
 

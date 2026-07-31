@@ -7,7 +7,11 @@ object StoryActionGuards {
 
     fun archivedActionMessage(action: String): String = "$action is disabled for archived snapshots. Use the active story entry instead."
 
-    fun canSync(story: Story): Boolean = story.isArchived != true
+    /** Shared policy for actions that mutate or fetch the active story. */
+    fun canModifyStory(story: Story): Boolean = story.isArchived != true
 
-    fun canQueueDownloads(story: Story): Boolean = story.isArchived != true
+    /** Compatibility names for feature callers not yet migrated to the shared policy name. */
+    fun canSync(story: Story): Boolean = canModifyStory(story)
+
+    fun canQueueDownloads(story: Story): Boolean = canModifyStory(story)
 }

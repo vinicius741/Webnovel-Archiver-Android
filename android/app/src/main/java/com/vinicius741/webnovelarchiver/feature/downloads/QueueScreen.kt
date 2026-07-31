@@ -4,7 +4,6 @@ import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -13,12 +12,12 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
+import com.vinicius741.webnovelarchiver.download.DownloadCounts
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
-import com.vinicius741.webnovelarchiver.download.QueueStatusCounts
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
@@ -35,6 +34,7 @@ import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.formatRelativeTime
+import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.jobStatusDot
 import com.vinicius741.webnovelarchiver.ui.layout.queueMaxWidth
 import com.vinicius741.webnovelarchiver.ui.makeCountChip
@@ -44,22 +44,17 @@ import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.statusColor
-import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import com.vinicius741.webnovelarchiver.ui.verticalFill
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showQueue() {
     val host = this
     val queue =
         repository.downloadState.value.queue
-            .ifEmpty { repository.getQueue() }
+            .ifEmpty { repository.queue() }
     val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
     val nowMillis = System.currentTimeMillis()
     // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
@@ -69,7 +64,7 @@ internal fun ScreenHost.showQueue() {
     lateinit var summarySlot: LinearLayout
     lateinit var emptySlot: FrameLayout
     lateinit var list: RecyclerView
-    val initialGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(queue))
+    val initialGlobalActions = DownloadManagerPlanning.globalActions(DownloadCounts.from(queue))
     // Gear is a fixed first action (always reachable); the per-queue actions append behind it so the
     // dynamically recomputed set (Resume/Pause/Retry/Cancel/Clear) still drives the rest of the bar.
     val appBarActions =
@@ -150,12 +145,7 @@ private fun ScreenHost.observeQueueUpdates(
             combine(
                 repository.downloadState,
                 app.appContainer.downloadPacer.snapshots,
-                flow {
-                    while (currentCoroutineContext().isActive) {
-                        emit(System.currentTimeMillis())
-                        delay(1_000L)
-                    }
-                },
+                tickerFlow(),
             ) { repositorySnapshot, pacing, now -> Triple(repositorySnapshot, pacing, now) }
                 .collect { (snapshot, pacing, now) ->
                     val queueChanged = snapshot.queueVersion != observedQueueVersion
@@ -167,7 +157,7 @@ private fun ScreenHost.observeQueueUpdates(
                     hadTimedStatus = hasTimedStatus
                     if (!queueChanged && !countdownChanged) return@collect
                     if (root.parent === frame) {
-                        val nextGlobalActions = DownloadManagerPlanning.globalActions(QueueStatusCounts.from(snapshot.queue))
+                        val nextGlobalActions = DownloadManagerPlanning.globalActions(DownloadCounts.from(snapshot.queue))
                         if (queueChanged && nextGlobalActions != observedGlobalActions) {
                             observedGlobalActions = nextGlobalActions
                             frame.post {
@@ -190,7 +180,7 @@ private fun ScreenHost.updateQueueContent(
     pacingSnapshots: Collection<DownloadPacingSnapshot>,
     nowMillis: Long,
 ) {
-    val counts = QueueStatusCounts.from(queue)
+    val counts = DownloadCounts.from(queue)
     summarySlot.removeAllViews()
     emptySlot.removeAllViews()
     if (queue.isEmpty()) {
@@ -212,7 +202,7 @@ private fun ScreenHost.updateQueueContent(
         list.visibility = View.VISIBLE
         emptySlot.visibility = View.GONE
         summarySlot.row {
-            addView(makeProgressSummary(context, counts.completed, counts.total))
+            addView(makeProgressSummary(context, counts.completed, counts.total).root)
         }
         val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, queue, nowMillis)
         val downloadingNow = counts.downloading - waitingByJobId.size
@@ -249,7 +239,7 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
                             .value
                             .queue
                             .firstOrNull { it.errorCategory == "source_blocked" }
-                            ?: repository.getQueue().firstOrNull { it.errorCategory == "source_blocked" }
+                            ?: repository.queue().firstOrNull { it.errorCategory == "source_blocked" }
                     if (blocked != null) {
                         showSourceAccessBlockedDialog(blocked.chapter.url) {
                             downloadEngine.retryFailed()
@@ -298,16 +288,17 @@ internal class QueueGroupCard(
     private val body: LinearLayout,
 ) {
     fun bind(
-        jobs: List<DownloadJob>,
+        group: QueueStoryGroupUi,
         allJobs: List<DownloadJob>,
         pacingSnapshots: Collection<DownloadPacingSnapshot>,
         nowMillis: Long,
         onToggle: () -> Unit,
     ) {
-        val storyId = jobs.first().storyId
+        val jobs = group.jobs.map { it.job }
+        val storyId = group.storyId
         val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
-        val counts = QueueStatusCounts.from(jobs)
-        val expanded = host.storyExpandOverride[storyId] ?: (counts.hasActive || counts.hasFailed)
+        val counts = DownloadCounts.from(jobs)
+        val expanded = group.expanded
 
         title.text = storyTitle
         val providerName = SourceRegistry.getProvider(jobs.first().chapter.url)?.name
@@ -333,7 +324,7 @@ internal class QueueGroupCard(
 
         // Progress summary + action group are small views; rebuild only their contents in place.
         progressSlot.removeAllViews()
-        progressSlot.addView(makeProgressSummary(host.app, counts.completed, counts.total))
+        progressSlot.addView(makeProgressSummary(host.app, counts.completed, counts.total).root)
         actionSlot.removeAllViews()
         actionSlot.addView(host.storyActionGroup(storyId, jobs, counts))
 
@@ -359,7 +350,7 @@ internal class QueueGroupCard(
 private fun ScreenHost.storyActionGroup(
     storyId: String,
     jobs: List<DownloadJob>,
-    counts: QueueStatusCounts,
+    counts: DownloadCounts,
 ): View =
     LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
@@ -519,18 +510,18 @@ internal fun ScreenHost.iconAction(
     sizeDp: Int,
     onClick: () -> Unit,
 ): View =
-    ImageView(app).apply {
-        contentDescription = desc
-        setImageDrawable(app.tintedIcon(icon, tint))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        val pad = dp(Space.SM)
-        setPadding(pad, pad, pad, pad)
-        background = selectableRipple(ThemeManager.colors.onSurface)
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { onClick() }
-        layoutParams =
-            LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)).apply {
-                marginStart = dp(Space.XS)
-            }
-    }
+    app
+        .iconButton(
+            icon,
+            desc,
+            tint,
+            style =
+                when (sizeDp) {
+                    44 -> com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Standard
+                    40 -> com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Small
+                    else -> com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Compact
+                },
+            onClick = onClick,
+        ).apply {
+            (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Space.XS)
+        }

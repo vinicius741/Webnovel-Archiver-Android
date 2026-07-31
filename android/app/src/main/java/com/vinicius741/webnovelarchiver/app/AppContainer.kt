@@ -14,7 +14,6 @@ import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Lightweight process-wide dependency container (Maintainability M2). Attached to
@@ -73,10 +72,10 @@ class AppContainer(
                 }
             }
         }
-    val storage: AppStorage = AppStorage(context)
+    private val storage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)
     internal val downloadPacer = DownloadRequestPacer()
-    val syncEngine: StorySyncEngine = StorySyncEngine(storage, network)
+    val syncEngine: StorySyncEngine = StorySyncEngine(repository, network)
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     private val repositoryStartup =
         RepositoryStartup {
@@ -89,11 +88,9 @@ class AppContainer(
                 repository.refresh()
             }
         }
-    val repositoryReadiness: StateFlow<RepositoryReadiness> = repositoryStartup.readiness
     val ttsEngine: TtsEngine =
         TtsEngine(
             context = appContext,
-            storage = storage,
             repository = repository,
             awaitRepositoryReady = repositoryStartup::awaitReady,
         )

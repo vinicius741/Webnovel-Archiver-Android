@@ -10,9 +10,9 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
-import com.vinicius741.webnovelarchiver.cleanup.TextCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -118,7 +118,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
 
     // Gap 5: live "test your rule" pane — mirrors the legacy RN RuleDialog. The user pastes sample
     // text and the in-progress rule (pattern + flags) is applied to it in real time via
-    // [TextCleanup.previewRegexRule], so they see what the rule removes before saving. Reuses the
+    // [RegexRuleCleanup.previewRegexRule], so they see what the rule removes before saving. Reuses the
     // same monospace preview styling as [showQuickRegexBuilder]'s pattern preview.
     view.addView(
         makeText(app, "Test Preview", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
@@ -158,16 +158,16 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
 
     fun updatePreview() {
         val cleaned =
-            TextCleanup.previewRegexRule(
+            RegexRuleCleanup.previewRegexRule(
                 pattern.text.toString(),
                 flags.text.toString(),
                 previewInput.text.toString(),
             )
         previewOutput.text = cleaned ?: "(No output)"
     }
-    pattern.addTextChangedListener(simpleTextWatcher { updatePreview() })
-    flags.addTextChangedListener(simpleTextWatcher { updatePreview() })
-    previewInput.addTextChangedListener(simpleTextWatcher { updatePreview() })
+    pattern.doAfterTextChanged { updatePreview() }
+    flags.doAfterTextChanged { updatePreview() }
+    previewInput.doAfterTextChanged { updatePreview() }
 
     val dialog =
         AlertDialog
@@ -182,7 +182,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         updatePreview()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val validation =
-                TextCleanup.validateRegexRule(
+                RegexRuleCleanup.validateRegexRule(
                     name.text.toString(),
                     pattern.text.toString(),
                     flags.text.toString(),
@@ -206,7 +206,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
                     else -> "both"
                 }
             val rules = repository.getRegexRules().toMutableList()
-            if (TextCleanup.hasSimilarRegexRule(
+            if (RegexRuleCleanup.hasSimilarRegexRule(
                     rules,
                     existing?.id,
                     validation.normalizedPattern.orEmpty(),
@@ -266,7 +266,7 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.Qui
     view.addView(preview)
     val updatePreview = {
         val generated =
-            TextCleanup.generateQuickPattern(
+            RegexRuleCleanup.generateQuickPattern(
                 characters.text.toString(),
                 minCount.text.toString().toIntOrNull() ?: 0,
                 wholeLine.isChecked,
@@ -280,8 +280,8 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.Qui
                 "Pattern preview: /${generated.pattern}/${generated.flags}"
             }
     }
-    characters.addTextChangedListener(simpleTextWatcher { updatePreview() })
-    minCount.addTextChangedListener(simpleTextWatcher { updatePreview() })
+    characters.doAfterTextChanged { updatePreview() }
+    minCount.doAfterTextChanged { updatePreview() }
     wholeLine.setOnCheckedChangeListener { _, _ -> updatePreview() }
 
     val dialog =
@@ -296,7 +296,7 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.Qui
         updatePreview()
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             val generated =
-                TextCleanup.generateQuickPattern(
+                RegexRuleCleanup.generateQuickPattern(
                     characters.text.toString(),
                     minCount.text.toString().toIntOrNull() ?: 0,
                     wholeLine.isChecked,
@@ -312,23 +312,3 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.Qui
     dialog.show()
     dialog.applyAppTheme()
 }
-
-/** Minimal TextWatcher that only forwards onTextChanged, for concise inline listeners. */
-internal fun simpleTextWatcher(onChanged: () -> Unit) =
-    object : android.text.TextWatcher {
-        override fun beforeTextChanged(
-            s: CharSequence?,
-            start: Int,
-            count: Int,
-            after: Int,
-        ) = Unit
-
-        override fun onTextChanged(
-            s: CharSequence?,
-            start: Int,
-            before: Int,
-            count: Int,
-        ) = onChanged()
-
-        override fun afterTextChanged(s: android.text.Editable?) = Unit
-    }

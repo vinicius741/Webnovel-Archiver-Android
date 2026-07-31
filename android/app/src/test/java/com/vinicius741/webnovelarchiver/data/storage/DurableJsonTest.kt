@@ -44,7 +44,7 @@ class DurableJsonTest {
     fun atomicFileWritesStreamProducesSameBytes() {
         val target = File(dir, "book.epub")
         val payload = ByteArray(2048) { (it % 251).toByte() }
-        AtomicFileWrites.stream(target) { out -> out.write(payload) }
+        AtomicFileWrites.writeAtomically(target) { out -> out.write(payload) }
         assertTrue(payload.contentEquals(target.readBytes()))
     }
 
@@ -52,7 +52,7 @@ class DurableJsonTest {
     fun atomicFileWritesStreamReplacesPriorContent() {
         val target = File(dir, "book2.epub")
         AtomicFileWrites.writeBytes(target, ByteArray(512))
-        AtomicFileWrites.stream(target) { out -> out.write(byteArrayOf(1, 2, 3)) }
+        AtomicFileWrites.writeAtomically(target) { out -> out.write(byteArrayOf(1, 2, 3)) }
         assertEquals(3, target.readBytes().size)
     }
 

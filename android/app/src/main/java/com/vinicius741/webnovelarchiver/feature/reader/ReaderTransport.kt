@@ -13,8 +13,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.selectableRipple
-import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import com.vinicius741.webnovelarchiver.ui.iconButton
 
 internal fun readerDocumentColors(forceDark: Boolean): ReaderDocumentColors {
     val theme = ThemeManager.current
@@ -83,19 +82,11 @@ internal fun ScreenHost.readerTtsTransport(
         desc: String,
         icon: Int,
         action: () -> Unit,
-    ) = ImageView(app).apply {
-        contentDescription = desc
-        setImageDrawable(app.tintedIcon(icon, colors.primary))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        val pad = dp(Spacing.SM)
-        setPadding(pad, pad, pad, pad)
-        background = selectableRipple(colors.onSurface)
-        setOnClickListener { action() }
-        layoutParams =
-            LinearLayout.LayoutParams(dp(44), dp(44)).apply {
-                marginStart = dp(Spacing.XS)
-                marginEnd = dp(Spacing.XS)
-            }
+    ) = app.iconButton(icon, desc, colors.primary, onClick = action).apply {
+        (layoutParams as LinearLayout.LayoutParams).apply {
+            marginStart = dp(Spacing.XS)
+            marginEnd = dp(Spacing.XS)
+        }
     }
     bar.addView(transportIcon("Previous chunk", R.drawable.wna_skip_prev, onPrev))
     val isPaused = snapshot?.isPaused != false
