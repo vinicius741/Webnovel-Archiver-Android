@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Native app emulator QA — 2026-07-31</title>
+  <style>
+    :root { color-scheme: dark; --bg:#11100f; --panel:#1d1b19; --panel-2:#26231f; --ink:#f4f0e8; --muted:#c0b9ad; --gold:#d6b44d; --red:#ff9f9f; --orange:#f1bd83; --green:#9ed5ad; --line:#4b4640; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:1120px; margin:0 auto; padding:40px 24px 72px; }
+    h1,h2,h3 { line-height:1.15; }
+    h1 { font-size:clamp(2rem,5vw,3.5rem); margin:0 0 12px; }
+    h2 { margin:42px 0 16px; font-size:1.65rem; color:var(--gold); }
+    h3 { margin:28px 0 8px; font-size:1.2rem; }
+    p { max-width:88ch; }
+    .lede { color:var(--muted); font-size:1.15rem; }
+    .meta, .callout { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; }
+    .meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px 22px; margin:24px 0; }
+    .meta div { display:flex; flex-direction:column; }
+    .meta b { color:var(--gold); font-size:.82rem; letter-spacing:.06em; text-transform:uppercase; }
+    code { color:#ffe7a4; background:#2a261e; border-radius:5px; padding:.08em .35em; }
+    .status { display:inline-block; border-radius:999px; padding:3px 10px; font-size:.8rem; font-weight:700; }
+    .pass { color:#102716; background:var(--green); }
+    .issue { color:#32100d; background:var(--red); }
+    .note { color:#3a230d; background:var(--orange); }
+    table { width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+    th,td { padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; text-align:left; }
+    th { color:var(--gold); background:var(--panel-2); }
+    tr:last-child td { border-bottom:0; }
+    .finding { border-left:5px solid var(--red); background:var(--panel); border-radius:0 14px 14px 0; padding:4px 20px 18px; margin:20px 0; }
+    .finding.p3 { border-left-color:var(--orange); }
+    .finding h3 { margin-bottom:5px; }
+    .finding ul { margin-top:8px; }
+    .evidence { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:16px; margin:14px 0 8px; }
+    figure { margin:0; background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:9px; }
+    figure img { display:block; width:100%; height:auto; border-radius:7px; background:#000; }
+    figcaption { color:var(--muted); font-size:.86rem; padding:8px 3px 2px; }
+    .small { color:var(--muted); font-size:.92rem; }
+    .commands { white-space:pre-wrap; overflow:auto; background:#0a0a09; border:1px solid var(--line); border-radius:10px; padding:14px; color:#f0d98a; }
+    footer { margin-top:44px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); }
+    @media (max-width:680px) { main { padding:28px 14px 56px; } th,td { padding:9px; font-size:.92rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Native Android emulator QA</h1>
+    <p class="lede">Broad functional and visual pass of the latest debug build on the configured simulator. The app remained usable across the main product paths, but the queue/download accounting and EPUB handoff need attention.</p>
+    <div class="meta">
+      <div><b>Date</b><span>2026-07-31 (America/Sao_Paulo)</span></div>
+      <div><b>Emulator</b><span><code>webnovel_api36</code> · <code>emulator-5554</code> · API 36</span></div>
+      <div><b>Package</b><span><code>com.vinicius741.webnovelarchiver.nativeapp.debug</code></span></div>
+      <div><b>Build</b><span>1.0.1-native · versionCode 2 · debug APK installed successfully</span></div>
+      <div><b>Final state</b><span>Library screen, Starter tab, 115 novels, no app crash detected</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>Executive result</h2>
+    <div class="callout">
+      <p><span class="status issue">2 P2</span> The primary download path over-enqueued work after a sync, and <code>Read EPUB</code> gave no visible response when the emulator had no EPUB reader handler.</p>
+      <p><span class="status note">2 P3</span> The narrow 1080×2400 viewport visibly truncates horizontal Library/Add Story content, and the Trends score chart repeats rounded Y-axis labels for a small score range.</p>
+      <p><span class="status pass">No P1</span> No app crash, data loss, stuck reader loading state, or failed live sync/download was observed. The user-authorized destructive/network checks changed the emulator library as expected.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Validation performed</h2>
+    <div class="commands">android/gradlew -p android :app:assembleDebug -x copyDebugApkToProjectRoot --console=plain
+adb -s emulator-5554 install -r -d android/app/build/outputs/apk/debug/app-debug.apk</div>
+    <table>
+      <thead><tr><th>Area</th><th>What was exercised</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Library</td><td>Cold start; Starter, Plan, All and Following-related tab states; filter expansion; search/sort/source chips; final return to Library.</td><td><span class="status pass">Pass</span> Tabs and filters worked. Narrow horizontal labels are visibly clipped; see P3-02.</td></tr>
+        <tr><td>Queue / downloads</td><td>Loaded existing queue, ran a 16-chapter remaining download after sync, verified story and queue state.</td><td><span class="status issue">Issue</span> Completed download reached 39/39, but the queue showed 30/30 for the action labeled “Download Remaining (16)”; see P2-01.</td></tr>
+        <tr><td>Details</td><td>Story header, collapse/show details, chapter list, chapter search state, overflow menu, Select Chapters, EPUB Settings, Trends.</td><td><span class="status pass">Pass</span> All surfaces opened and settled.</td></tr>
+        <tr><td>Reader</td><td>Cold start on downloaded chapter, next chapter, reader settings, Voice settings, TTS play/highlight/transport, TTS stop.</td><td><span class="status pass">Pass</span> Reader content loaded; Voice settings dismissed correctly and TTS transport appeared/disappeared.</td></tr>
+        <tr><td>Settings</td><td>Theme/layout controls; Voice &amp; Speech; Text Cleanup; Notifications; Manage Tabs; Organize Novels Select All/Deselect All; Data &amp; Backup.</td><td><span class="status pass">Pass</span> Pages and selection state behaved normally.</td></tr>
+        <tr><td>Updates</td><td>Sync Followed Novels; Choose novels; followed set inspection for archived duplicates.</td><td><span class="status pass">Pass</span> Sync completed with 8 followed, 5 novels, 15 updated chapters. No archive duplicate was included.</td></tr>
+        <tr><td>Add Story</td><td>Empty URL validation and a valid existing Royal Road URL.</td><td><span class="status pass">Pass</span> Empty submission stayed on the form; valid import reached the existing story details at 39/39.</td></tr>
+        <tr><td>Notifications</td><td>In-app notification page and Android “Open app notification settings” handoff.</td><td><span class="status pass">Pass</span> Android notification settings opened with Downloads and Text to Speech categories.</td></tr>
+        <tr><td>Backup / EPUB</td><td>JSON export, full backup creation, ZIP/EPUB archive validation, EPUB Settings, Read EPUB action.</td><td><span class="status issue">Issue</span> Export/full backup/EPUB artifacts were valid; Read EPUB had no visible no-handler feedback. See P2-02.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Findings</h2>
+
+    <article class="finding">
+      <h3>P2-01 — “Download Remaining (16)” enqueued 30 queue items</h3>
+      <p><b>Repro:</b> Opened <i>Arcane Zoologist: The Dragon’s Chosen</i> at 9/25, tapped <code>Sync Chapters</code>, and waited for the details screen to settle at 23/39 with <code>Download Remaining (16)</code>. Tapping that action eventually produced a correct 39/39 story, but Downloads showed <code>Arcane Zoologist … 30/30 chapters</code> and the persisted queue contained 30 completed rows (chapter indices 25–38 and 0–15).</p>
+      <p><b>Impact:</b> The user-facing remaining count and the actual queue plan disagree. The final story is complete, but the app performs unnecessary/duplicate queue work and makes download progress/accounting difficult to trust after sync.</p>
+      <div class="evidence">
+        <figure><img src="assets/qa-2026-07-31/details-sync-result.png" alt="Arcane Zoologist details showing 23 of 39 and Download Remaining 16"><figcaption>Before download: details says 23/39 and Download Remaining (16).</figcaption></figure>
+        <figure><img src="assets/qa-2026-07-31/queue-after-download.png" alt="Downloads queue showing Arcane Zoologist at 30 of 30"><figcaption>After download: queue shows Arcane Zoologist at 30/30.</figcaption></figure>
+      </div>
+      <p class="small"><b>Suggested investigation:</b> compare the chapter set used to render <code>downloadedChapters</code>/<code>Download Remaining</code> with the chapter set passed to the queue planner after a sync refresh. The persisted queue evidence is stronger than the visual count alone.</p>
+    </article>
+
+    <article class="finding">
+      <h3>P2-02 — Read EPUB gives no visible result without an external EPUB handler</h3>
+      <p><b>Repro:</b> Generated <code>arcane_zoologist_the_dragon_s_chosen_progfan_magic_Ch1-39.epub</code>, confirmed the file existed and passed <code>unzip -t</code>, then tapped the enabled <code>Read EPUB</code> button. After waiting, the app remained on story details with no chooser, toast, or error message. Logcat showed a VIEW intent for <code>application/epub+zip</code> with no visible handoff on this emulator.</p>
+      <p><b>Impact:</b> On a device without an EPUB-capable app, the action appears dead. A clear “install/select an EPUB reader” message or an in-app reader fallback would make the failure understandable.</p>
+      <figure><img src="assets/qa-2026-07-31/epub-read.png" alt="Story details with enabled Read EPUB button"><figcaption>After tapping Read EPUB, the same details screen remained visible.</figcaption></figure>
+      <p class="small">This is environment-sensitive: the emulator had no external EPUB reader installed. The generated EPUB itself was valid.</p>
+    </article>
+
+    <article class="finding p3">
+      <h3>P3-01 — Trends score chart repeats rounded Y-axis labels</h3>
+      <p>The Trends screen displayed a score range of 4.34–4.36, but the chart’s five visible Y-axis labels rounded to <code>4.36, 4.36, 4.35, 4.34, 4.34</code>. The line is usable, but duplicated labels make the scale look incorrect and reduce confidence in small changes.</p>
+      <figure><img src="assets/qa-2026-07-31/trends.png" alt="Trends score chart with repeated 4.36 and 4.34 Y-axis labels"><figcaption>Repeated rounded labels are visible on the Score chart.</figcaption></figure>
+      <p class="small"><b>Suggested improvement:</b> choose a tick formatter/interval that guarantees strictly increasing displayed labels, or show more precision when the fitted range is narrow.</p>
+    </article>
+
+    <article class="finding p3">
+      <h3>P3-02 — Horizontal Library/Add Story content is truncated on the QA viewport</h3>
+      <p>On the 1080×2400 emulator, the Library filter chip row cuts off the third source chip and the trailing <code>All</code> tab is only partially visible. Add Story’s URL hint also ends at “SpaceBattl…” because the clipboard button consumes the remaining width. The controls remained usable through horizontal/edge interaction, but the initial presentation looks clipped rather than intentionally scrollable.</p>
+      <div class="evidence">
+        <figure><img src="assets/qa-2026-07-31/library-filters-open.png" alt="Library filters with partially clipped source chip and All tab"><figcaption>Library filter chips and the rightmost tab are clipped.</figcaption></figure>
+        <figure><img src="assets/qa-2026-07-31/addstory.png" alt="Add Story URL field with clipped placeholder text"><figcaption>Add Story URL hint is clipped beside the clipboard button.</figcaption></figure>
+      </div>
+      <p class="small"><b>Suggested improvement:</b> make the horizontal affordance explicit, give the chip/tab strip a visible scroll treatment, and shorten or ellipsize the Add Story hint intentionally.</p>
+    </article>
+  </section>
+
+  <section>
+    <h2>Representative passing evidence</h2>
+    <div class="evidence">
+      <figure><img src="assets/qa-2026-07-31/final-library-starter.png" alt="Final Library Starter screen"><figcaption>Final handoff state: Library.</figcaption></figure>
+      <figure><img src="assets/qa-2026-07-31/reader.png" alt="Settled reader showing chapter text"><figcaption>Reader settled with chapter text and navigation.</figcaption></figure>
+      <figure><img src="assets/qa-2026-07-31/reader-tts-playing.png" alt="Reader with TTS transport and highlighted text"><figcaption>TTS transport and current-text highlighting appeared.</figcaption></figure>
+      <figure><img src="assets/qa-2026-07-31/reader-voice-settings.png" alt="Voice and Speech settings screen opened from reader settings"><figcaption>Reader Voice settings navigated correctly.</figcaption></figure>
+      <figure><img src="assets/qa-2026-07-31/updates-sync-result.png" alt="Updates screen showing 15 new chapters after sync"><figcaption>Followed sync completed with updated chapters.</figcaption></figure>
+      <figure><img src="assets/qa-2026-07-31/backup-export.png" alt="Android share sheet for exported JSON backup"><figcaption>Backup export opened the Android share sheet.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Artifacts and scope limits</h2>
+    <ul>
+      <li>Generated full backup ZIP: 61 MB; archive integrity passed.</li>
+      <li>Generated Arcane Zoologist EPUB: 495 KB; archive integrity passed.</li>
+      <li>Not run: physical phone, release APK, landscape/folded-posture coverage, restore/import of a backup, Clear Local Storage, Delete Novel, or selecting an external share target. These were omitted to preserve the emulator’s seeded QA library after the requested sync/download/import checks.</li>
+      <li>Live Royal Road sync/import and a limited real download were run because the request explicitly authorized network and destructive testing. No live mass import across all sources was attempted.</li>
+      <li>Logcat contained expected Android/WebView/StrictMode diagnostic noise, but no app-scoped <code>FATAL EXCEPTION</code> was found during the final check.</li>
+    </ul>
+  </section>
+
+  <footer>QA report generated from the emulator session on 2026-07-31. Screenshots are stored beside this report under <code>assets/qa-2026-07-31/</code>.</footer>
+</main>
+</body>
+</html>
