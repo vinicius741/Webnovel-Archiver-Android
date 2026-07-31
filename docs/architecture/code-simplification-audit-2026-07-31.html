@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webnovel Archiver — Code Simplification Audit</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1015; --panel:#131b23; --panel2:#18232d; --text:#e7edf3; --muted:#9fb0bf; --line:#2b3b49; --blue:#65b8ff; --green:#68d391; --amber:#f6c76b; --red:#ff8b85; --code:#080c10; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:radial-gradient(circle at 85% 0,rgba(50,130,190,.18),transparent 28rem),var(--bg); color:var(--text); font:16px/1.62 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    a { color:var(--blue); }
+    header,main,footer { width:min(1120px,calc(100% - 2rem)); margin:auto; }
+    header { padding:4rem 0 2.5rem; }
+    h1 { margin:.3rem 0 .8rem; font-size:clamp(2.3rem,6vw,4.8rem); line-height:1; }
+    h2 { margin:3.2rem 0 1rem; padding-top:1rem; font-size:2rem; }
+    h3 { margin:0; font-size:1.2rem; }
+    p { margin:.6rem 0 1rem; }
+    code { padding:.08rem .3rem; border:1px solid var(--line); border-radius:.3rem; background:var(--code); font:.9em ui-monospace,SFMono-Regular,Menlo,monospace; }
+    pre { overflow:auto; margin:.8rem 0 0; padding:1rem; border:1px solid var(--line); border-radius:.7rem; background:var(--code); color:#d9e5ee; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    pre code { padding:0; border:0; background:none; }
+    .eyebrow { color:var(--amber); font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+    .lede { max-width:850px; color:var(--muted); font-size:1.18rem; }
+    .meta,.stats { display:flex; flex-wrap:wrap; gap:.7rem; }
+    .pill { padding:.25rem .65rem; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:.82rem; }
+    nav { position:sticky; top:0; z-index:2; border-block:1px solid var(--line); background:rgba(11,16,21,.93); backdrop-filter:blur(10px); }
+    nav div { width:min(1120px,calc(100% - 2rem)); margin:auto; padding:.7rem 0; display:flex; gap:1rem; overflow:auto; white-space:nowrap; }
+    nav a { color:var(--muted); text-decoration:none; }
+    .summary,.finding,.guardrail { border:1px solid var(--line); border-radius:.9rem; background:linear-gradient(145deg,var(--panel),var(--panel2)); }
+    .summary { padding:1.2rem 1.4rem; }
+    .stats { margin-top:1rem; }
+    .stat { flex:1 1 145px; padding:1rem; border:1px solid var(--line); border-radius:.7rem; background:rgba(0,0,0,.18); }
+    .stat strong { display:block; color:var(--green); font-size:1.65rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:1rem; }
+    .finding { padding:1.1rem; }
+    .finding.wide { grid-column:1/-1; }
+    .head { display:flex; align-items:flex-start; justify-content:space-between; gap:.7rem; }
+    .priority { flex:none; padding:.15rem .48rem; border-radius:999px; font-size:.72rem; font-weight:850; }
+    .p0 { color:#ffd5d2; border:1px solid #944d49; background:#442421; }
+    .p1 { color:#ffe3af; border:1px solid #87672e; background:#3b301c; }
+    .p2 { color:#cbe7ff; border:1px solid #38688d; background:#193247; }
+    .where { color:var(--muted); font-size:.86rem; }
+    .example { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+    .example b { display:block; margin-top:.7rem; color:var(--muted); font-size:.8rem; text-transform:uppercase; }
+    table { width:100%; border-collapse:collapse; background:var(--panel); }
+    th,td { padding:.75rem; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:var(--panel2); }
+    .guardrails { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:1rem; }
+    .guardrail { padding:1rem; }
+    .roadmap li { margin:.65rem 0; }
+    footer { padding:3rem 0 5rem; color:var(--muted); }
+    @media (max-width:720px) { .example { grid-template-columns:1fr; } .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Repository-wide static review · 31 July 2026</div>
+  <h1>Code Simplification Audit</h1>
+  <p class="lede">The project does not need an architectural rewrite. Its strongest simplification path is subtraction: remove obsolete seams, consolidate repeated projections and mutations, and replace view-tree/index conventions with typed state. This report records 40 concrete opportunities with examples and the behavior each change must preserve.</p>
+  <div class="meta"><span class="pill">Native Kotlin app</span><span class="pill">Documentation-only pass</span><span class="pill">No production code changed</span></div>
+</header>
+<nav><div><a href="#verdict">Verdict</a><a href="#delete">Delete</a><a href="#merge">Merge</a><a href="#ui">UI structure</a><a href="#small">Smaller wins</a><a href="#guardrails">Guardrails</a><a href="#roadmap">Roadmap</a></div></nav>
+<main>
+<section id="verdict">
+  <h2>Executive verdict</h2>
+  <div class="summary">
+    <p><strong>Prefer a sequence of narrow consolidations over a new layer or framework.</strong> The existing package boundaries are generally sensible. Complexity is concentrated in parallel representations of the same state, compatibility facades that survived their migrations, and UI code that encodes structure by child position or reconstructed signatures.</p>
+    <div class="stats">
+      <div class="stat"><strong>196</strong>production Kotlin files</div>
+      <div class="stat"><strong>30,673</strong>production lines</div>
+      <div class="stat"><strong>1,200</strong>functions</div>
+      <div class="stat"><strong>40</strong>opportunities recorded</div>
+      <div class="stat"><strong>45</strong>current detekt findings</div>
+    </div>
+    <p>The best first tranche is findings 1–10: mostly deletion or consolidation, high leverage, and independently testable. File splitting alone is deliberately lower priority—it improves navigation, but does not simplify behavior unless duplicate ownership is removed first.</p>
+  </div>
+</section>
+
+
+<section id="delete">
+  <h2>Part I — Delete obsolete surfaces</h2>
+  <div class="grid">
+    <article class="finding wide"><div class="head"><h3>1. Remove production APIs with no production consumer</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>LibraryPresenter.kt</code>; <code>EpubEngine.lastCleanupResult</code>; <code>DownloadEngine.onChanged</code>; unused TTS aliases and counters</p>
+      <p><code>LibraryPresenter</code> is unreferenced. Several public properties and wrappers are only referenced by their declaring file or tests. Their visibility implies extension points that do not exist and makes ownership harder to see.</p>
+      <div class="example"><div><b>Current</b><pre><code>fun close() = shutdown()
+fun currentChunkCount() = chunks.size
+var onChanged: (() -&gt; Unit)? = null</code></pre></div><div><b>Simpler</b><pre><code>// Call shutdown() at the service boundary.
+// Delete counters/callbacks after a usage search.
+// Delete LibraryPresenter as one atomic change.</code></pre></div></div>
+      <p><strong>Check:</strong> search production, tests, reflection, XML handlers, and serialization names before deletion. Keep test seams that model real boundaries.</p>
+    </article>
+
+    <article class="finding wide"><div class="head"><h3>2. Retire the <code>TextCleanup</code> compatibility facade</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>cleanup/TextCleanup.kt</code>, <code>HtmlCleanup.kt</code>, <code>CleanupEngine.kt</code></p>
+      <p>The facade forwards to three newer owners, while <code>HtmlCleanup.applyDownloadCleanup</code> retains a second stateless implementation beside the cached production engine. Move callers to the real owners, delete the facade, and make compiled rules one object rather than parallel lists.</p>
+      <div class="example"><div><b>Current</b><pre><code>TextCleanup.applyRules(text, rules)
+
+private val rules: List&lt;CleanupRule&gt;
+private val regexes: List&lt;Regex&gt;</code></pre></div><div><b>Simpler</b><pre><code>cleanupEngine.clean(text)
+
+data class CompiledRule(
+  val rule: CleanupRule,
+  val regex: Regex,
+)</code></pre></div></div>
+      <p><strong>Preserve:</strong> rule ordering, invalid-regex handling, download versus TTS semantics, and cache behavior. Golden output tests should precede deletion.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>3. Remove the dead TTS <code>chunkSize</code> setting</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>TtsTextPreparation.kt</code>, <code>Models.kt</code>, <code>PreferenceNormalization.kt</code></p>
+      <p>The setting is normalized and persisted but does not control chunking; preparation uses sentence boundaries with an 800-character maximum.</p>
+      <pre><code>// Current
+prepare(text, chunkSize = preferences.chunkSize) // ignored
+
+// Simpler
+prepare(text) // policy is explicit inside preparation</code></pre>
+      <p>Old JSON can safely contain an extra property, but add a compatibility test before removing the model field.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>4. Delete repository compatibility names and unused flows</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>data/AppRepository.kt</code></p>
+      <p>Aliases such as <code>library/getLibrary</code> and state channels with no observer obscure the canonical API.</p>
+      <pre><code>// Current: two names for one operation
+val library get() = stories
+fun getLibrary() = stories
+
+// Simpler: one vocabulary
+val stories: List&lt;Story&gt;</code></pre>
+      <p>Remove aliases only after confirming no serialized or Java-facing contract depends on them.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>5. Remove pass-through URL and permission wrappers</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>StoryFileActions.kt</code>, <code>ScreenHost.kt</code>, <code>MainActivity.kt</code></p>
+      <p>One-line aliases that add no policy make the call graph longer. Call the actual owner, or give the wrapper a policy-bearing name.</p>
+      <pre><code>// Current
+fun normalizeUrl(url: String) = BrowserUrlPlanning.normalize(url)
+
+// Simpler
+BrowserUrlPlanning.normalize(url)</code></pre>
+    </article>
+
+    <article class="finding"><div class="head"><h3>6. Replace stale size gates and audit comments</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>config/detekt-baseline.xml</code>; historical audit-ID comments across production</p>
+      <p>The baseline still records pre-split line counts for files now hundreds of lines smaller, and comments reference a nonexistent <code>Engines.kt</code>. These markers no longer explain behavior.</p>
+      <pre><code>// Current
+// AUDIT-17 extracted from Engines.kt
+
+// Simpler
+// Explain the invariant here, or delete the archaeology.</code></pre>
+      <p>Prefer a regenerated exact baseline plus “no new findings” enforcement over raw line-count gates that encourage moving code without reducing it.</p>
+    </article>
+  </div>
+</section>
+
+<section id="merge">
+  <h2>Part II — Merge duplicated behavior and state</h2>
+  <div class="grid">
+    <article class="finding wide"><div class="head"><h3>7. Give story sync one commit operation</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>feature/story/StoryActions.kt</code>, <code>sync/SyncEngine.kt</code>, <code>data/AppRepository.kt</code></p>
+      <p>Manual and bulk sync repeat lookup, fetch, publish, pending-download calculation, auto-queue logic, cancellation, and source blocking. <code>SyncEngine</code> also writes storage while repository state is published elsewhere. Keep presentation callbacks separate, but merge the domain operation and make the repository the mutation owner.</p>
+      <div class="example"><div><b>Current</b><pre><code>val updated = provider.fetch(existing)
+storage.upsertStory(updated)
+repository.publishLibraryChanged()
+calculatePending(updated)
+maybeAutoQueue(updated)</code></pre></div><div><b>Simpler</b><pre><code>val result = storySync.sync(storyId)
+
+repository.commitSyncedStory(
+  story = result.story,
+  metrics = result.metrics,
+)</code></pre></div></div>
+      <p><strong>Preserve:</strong> per-story sync lock, cancellation, source reliability fences, metrics snapshots, and the difference between UI messages and durable state.</p>
+    </article>
+
+    <article class="finding wide"><div class="head"><h3>8. Use one download-count projection</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>DownloadManagerPlanning.kt</code>, <code>DownloadDetailsPlanning.kt</code>, <code>DownloadScheduler.kt</code>, <code>DownloadEngine.kt</code></p>
+      <p>Queued, active, completed, failed, and total counts are derived in at least four shapes. Centralize the fold and adapt it for each screen.</p>
+      <div class="example"><div><b>Current</b><pre><code>QueueStatusCounts(...)
+StoryDownloadSummary(...)
+DownloadProgress(...)
+// plus manual counters in DownloadEngine</code></pre></div><div><b>Simpler</b><pre><code>data class DownloadCounts(
+  val queued: Int,
+  val active: Int,
+  val completed: Int,
+  val failed: Int,
+)
+
+fun Iterable&lt;DownloadJob&gt;.counts(): DownloadCounts</code></pre></div></div>
+      <p>Screen models may still expose different labels; they should adapt from the same arithmetic.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>9. Combine queue mutation and restart paths</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>download/DownloadEngine.kt</code>, <code>DownloadQueuePlanning.kt</code></p>
+      <p><code>resume</code> and <code>retry</code> mutate, publish, and start work through nearly identical paths. Queue action and target should be one command.</p>
+      <pre><code>sealed interface QueueCommand {
+  data class Resume(val id: JobId) : QueueCommand
+  data class Retry(val id: JobId) : QueueCommand
+}
+
+private fun mutateAndStart(command: QueueCommand)</code></pre>
+      <p>Retain atomic enqueue behavior and do not merge away the second source-acceptance fence.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>10. Require repository-backed TTS in production</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>tts/TtsEngine.kt</code>, <code>TtsPlaybackPreparation.kt</code>, <code>TtsSessionStore.kt</code></p>
+      <p>The app container always constructs TTS through the repository, yet storage-backed production alternatives remain. Keep interfaces for tests; remove unused production implementations.</p>
+      <pre><code>// Current
+TtsEngine(storageSource, storagePersistence)
+TtsEngine(repositorySource, repositoryPersistence)
+
+// Simpler production graph
+TtsEngine(repository)</code></pre>
+    </article>
+
+    <article class="finding wide"><div class="head"><h3>11. Model the TTS cursor as “current,” not “next”</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>tts/TtsEngine.kt</code>, <code>TtsSessionPlanning.kt</code></p>
+      <p>The engine post-increments its chunk index and then compensates in pause, previous/next, watchdog, restore, and error paths. A single <code>currentChunkIndex</code> removes offset helpers and makes persistence literal.</p>
+      <div class="example"><div><b>Current</b><pre><code>val chunk = chunks[nextIndex++]
+persist(index = nextIndex - 1)
+fun previous() = seek(nextIndex - 2)</code></pre></div><div><b>Simpler</b><pre><code>val chunk = chunks[currentChunkIndex]
+persist(index = currentChunkIndex)
+fun previous() = seek(currentChunkIndex - 1)</code></pre></div></div>
+      <p>This is high-touch: lock down restore, skip, pause, watchdog, and utterance-error tests first.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>12. Expose TTS state through one observable stream</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>TtsEngine.kt</code>, <code>TtsForegroundService.kt</code>, reader TTS UI</p>
+      <p>Multiple callbacks create ordering questions. Publish a state snapshot and derive UI/service behavior from it.</p>
+      <pre><code>data class TtsPlaybackState(
+  val status: Status,
+  val chapterId: String?,
+  val chunkIndex: Int,
+)
+val state: StateFlow&lt;TtsPlaybackState&gt;</code></pre>
+      <p>Do not turn durable commands into UI scope work; service ownership remains.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>13. Merge sync identity and merge planning</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>StorySyncPlanning.kt</code>, <code>StorySyncMergePlanning.kt</code></p>
+      <p>Stable chapter identity is calculated in both planning files. One internal chapter matcher can own normalization, match priority, and conflict behavior.</p>
+      <pre><code>internal class ChapterMatcher {
+  fun match(remote: Chapter, local: List&lt;Chapter&gt;): Match?
+}
+
+plan = matcher.match(...).toMergePlan()</code></pre>
+    </article>
+
+    <article class="finding wide"><div class="head"><h3>14. Normalize preferences once, then persist one object</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>PreferenceNormalization.kt</code>, <code>SettingsValidation.kt</code>, <code>AppStorage.kt</code>, <code>RestoreStagingWriter.kt</code>, <code>AppRepository.kt</code></p>
+      <p>Normalization currently crosses feature and data packages and may be repeated during read, restore, and write. Move the rules to a neutral settings/domain package, normalize at ingress, and use one repository config-write helper.</p>
+      <div class="example"><div><b>Current</b><pre><code>repository.setFontSize(normalizeFontSize(value))
+repository.setLineHeight(normalizeLineHeight(value))
+repository.setTheme(normalizeTheme(value))</code></pre></div><div><b>Simpler</b><pre><code>repository.updatePreferences { current -&gt;
+  current.copy(reader = requestedReader).normalized()
+}</code></pre></div></div>
+      <p><strong>Preserve:</strong> restore validation, backward-compatible defaults, and equality-based suppression of redundant writes.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>15. Make EPUB selection and progress typed</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>epub/EpubSelection.kt</code>, <code>EpubEngine.kt</code>, <code>StoryContentActions.kt</code></p>
+      <p>Bound selection and progress cross boundaries as strings and are parsed back with regex. Return values the caller can use directly.</p>
+      <pre><code>data class EpubProgress(val completed: Int, val total: Int)
+data class ChapterRange(val first: Int, val last: Int)
+
+engine.export(range) { progress: EpubProgress -&gt; ... }</code></pre>
+      <p>Also remove <code>normalizeCoverMediaType</code> branches that only handle a content type never supplied by the caller.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>16. Route atomic text and bytes through one stream writer</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>data/AtomicFileWrites.kt</code></p>
+      <p>Text and byte overloads repeat temporary-file, flush, sync, rename, and fallback mechanics.</p>
+      <pre><code>fun writeAtomically(file: File, write: (OutputStream) -&gt; Unit)
+
+fun writeText(file: File, text: String) =
+  writeAtomically(file) { it.writer().use { w -&gt; w.write(text) } }</code></pre>
+      <p>Preserve fsync and fallback ordering exactly; this is structural deduplication, not a durability rewrite.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>17. Parse a typed backup manifest after raw validation</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>BackupExporter.kt</code>, <code>FullBackupManifestValidation.kt</code>, <code>FullBackupRestorer.kt</code>, <code>RestoreStagingWriter.kt</code></p>
+      <p>Manifest keys and conversions are repeated. Validate untrusted JSON first, then hand later stages a typed, already-checked model.</p>
+      <pre><code>val raw = readManifest(zip)
+validateRawManifest(raw) // limits and hostile input checks
+val manifest = FullBackupManifest.fromValidated(raw)
+restore(manifest)</code></pre>
+      <p>Do not collapse archive limits, path traversal checks, staging, commit, or rollback into one “convenient” restore function.</p>
+    </article>
+  </div>
+</section>
+
+<section id="ui">
+  <h2>Part III — Simplify UI structure</h2>
+  <div class="grid">
+    <article class="finding wide"><div class="head"><h3>18. Bind Details views once and patch chapter rows once</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>DetailsScreen.kt</code>, <code>DetailsScreenDownload.kt</code>, <code>DetailsDownloadObserver.kt</code></p>
+      <p>Details screen collaborators repeatedly recover views from the tree, and download updates have two chapter-row patch paths. Introduce a screen-scoped binding object and one status patcher.</p>
+      <div class="example"><div><b>Current</b><pre><code>val list = root.findViewById&lt;RecyclerView&gt;(...)
+val progress = root.findViewById&lt;ProgressBar&gt;(...)
+patchVisibleChapter(...)
+updateChapterStatus(...)</code></pre></div><div><b>Simpler</b><pre><code>data class DetailsBindings(
+  val chapters: RecyclerView,
+  val progress: ProgressBar,
+)
+
+bindings.patchChapterRows(snapshot)</code></pre></div></div>
+      <p>Keep the existing root-parent guard that prevents updates from an old screen instance.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>19. Give <code>FollowStoryAdapter</code> a persistent holder</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>UpdateFollowSelectionScreen.kt</code></p>
+      <p>The adapter rebuilds a complete row during every bind. Inflate/build once in <code>onCreateViewHolder</code>, then bind values and listeners.</p>
+      <pre><code>class Holder(
+  val title: TextView,
+  val checkbox: CheckBox,
+) : RecyclerView.ViewHolder(root)
+
+override fun onBindViewHolder(h: Holder, p: Int) = h.bind(items[p])</code></pre>
+    </article>
+
+    <article class="finding"><div class="head"><h3>20. Replace queue signatures with typed immutable UI models</h3><span class="priority p0">P0</span></div>
+      <p class="where"><code>QueueGroupAdapter.kt</code></p>
+      <p>A handcrafted concatenated signature stands in for structural equality and is fragile when fields change.</p>
+      <pre><code>data class QueueStoryGroupUi(
+  val storyId: String,
+  val jobs: List&lt;QueueJobUi&gt;,
+  val expanded: Boolean,
+)
+
+// DiffUtil compares typed fields; no signature string.</code></pre>
+      <p>Precompute active job IDs once per submit instead of rebuilding membership during binds.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>21. Replace handwritten <code>TextWatcher</code> objects</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>Dialogs.kt</code>, Library and Updates screens, cleanup UI</p>
+      <p>At least seven watchers implement two empty methods just to observe the third. Use Core KTX or one local extension.</p>
+      <pre><code>// Current: beforeTextChanged {}, onTextChanged {}, afterTextChanged { ... }
+
+query.doAfterTextChanged { text -&gt;
+  model.filter(text?.toString().orEmpty())
+}</code></pre>
+    </article>
+
+    <article class="finding"><div class="head"><h3>22. Keep one WebView-tree walker</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>ui/Scaffold.kt</code>, <code>ui/WebViewSafety.kt</code></p>
+      <p>Recursive disposal logic exists twice. Make the scaffold call the safety owner.</p>
+      <pre><code>// Current
+fun destroyWebViews(view: View) { /* recursive */ }
+fun disposeAll(view: View) { /* recursive */ }
+
+// Simpler
+WebViewSafety.disposeAll(root)</code></pre>
+    </article>
+
+    <article class="finding"><div class="head"><h3>23. Return typed progress views, not positional children</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>ui/Media.kt</code></p>
+      <p>Progress components are updated through <code>getChildAt(index)</code>. A wrapper or explicit references make the contract visible.</p>
+      <pre><code>class ProgressStrip(
+  val root: View,
+  private val bar: ProgressBar,
+  private val label: TextView,
+) {
+  fun render(state: ProgressUi)
+}</code></pre>
+    </article>
+
+    <article class="finding wide"><div class="head"><h3>24. Merge normal and loading settings rows</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>ui/Surfaces.kt</code>, <code>SettingRowLoadingController.kt</code>, <code>ViewDsl.kt</code></p>
+      <p>A normal row, a loading row, a controller, and a <code>Pair</code>-returning builder represent one component. Return a typed row with a render method.</p>
+      <div class="example"><div><b>Current</b><pre><code>val (row, spinner) = loadingSettingRow(...)
+val controller = SettingRowLoadingController(row, spinner)
+controller.setLoading(true)</code></pre></div><div><b>Simpler</b><pre><code>val row = SettingActionRow(...)
+row.render(
+  title = title,
+  isLoading = true,
+  enabled = false,
+)</code></pre></div></div>
+    </article>
+
+    <article class="finding"><div class="head"><h3>25. Share library filter state, not whole screens</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>LibraryScreen.kt</code>, <code>LibraryManagementScreens.kt</code></p>
+      <p>Query, labels, sort, direction, and recomputation are duplicated. Extract a small state holder while leaving pager/selection behavior local.</p>
+      <pre><code>data class LibraryFilterState(
+  val query: String = "",
+  val labels: Set&lt;String&gt; = emptySet(),
+  val sort: LibrarySort = LibrarySort.UPDATED,
+)
+
+fun LibraryFilterState.applyTo(stories: List&lt;Story&gt;): List&lt;Story&gt;</code></pre>
+    </article>
+
+    <article class="finding"><div class="head"><h3>26. Make dev-launch planning return <code>AppRoute</code></h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>DevLaunchPlanning.kt</code>, <code>MainActivity.kt</code>, screen dispatch</p>
+      <p>A second target hierarchy is mapped to the real route hierarchy. Parse extras directly into a route.</p>
+      <pre><code>// Current
+intent -&gt; DevLaunchTarget -&gt; AppRoute -&gt; screen
+
+// Simpler
+intent -&gt; DevLaunchPlanning.route(intent) -&gt; screen</code></pre>
+      <p>Keep dev-only extras out of production navigation APIs.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>27. Put importable-URL rules on providers</h3><span class="priority p1">P1</span></div>
+      <p class="where"><code>SourceUrlValidation.kt</code>, source providers, <code>FullBackupPaths.kt</code></p>
+      <p>Provider-specific URL knowledge is split from providers, while providers import percent encoding from a backup-named file. Move only neutral encoding to a common utility.</p>
+      <pre><code>interface SourceProvider {
+  fun classifyUrl(url: String): SourceUrlKind?
+}
+
+object PercentEncoding { fun encodePathSegment(value: String): String }</code></pre>
+      <p>Preserve story-versus-chapter distinctions and byte-identical backup path encoding.</p>
+    </article>
+
+    <article class="finding"><div class="head"><h3>28. Extract common request scaffolding, not source semantics</h3><span class="priority p1">P1</span></div>
+      <p class="where">source provider network implementations</p>
+      <p>Base client construction and stable headers repeat. Share those pieces, but retain separate Cloudflare, binary, pacing, and retry paths.</p>
+      <pre><code>val client = SourceHttpClientFactory.create(sourceId)
+val request = SourceRequestBuilder(baseHeaders).get(url)
+
+// Provider still owns parsing, challenge handling, and retry policy.</code></pre>
+    </article>
+  </div>
+</section>
+
+<section id="small">
+  <h2>Part IV — Smaller, safe wins</h2>
+  <p>These are worthwhile after the ownership changes above. Each row includes the concrete transformation; none warrants a new framework.</p>
+  <table>
+    <thead><tr><th># / priority</th><th>Opportunity and location</th><th>Example of the simplification</th><th>Do not lose</th></tr></thead>
+    <tbody>
+      <tr><td><strong>29</strong> · P2</td><td>Centralize repeated icon-button construction in Scaffold, Queue, Library filters, and Reader transport.</td><td><code>iconButton(icon, contentDescription, style = IconButtonStyle.Compact)</code> replaces four near-identical builders.</td><td>44dp targets, ripple, enabled alpha, and intentional size variants.</td></tr>
+      <tr><td><strong>30</strong> · P2</td><td>Share the cold countdown flow used by Details and Queue.</td><td><code>tickerFlow(period = 1.seconds)</code> feeds both formatters instead of two callback flows.</td><td>Lifecycle cancellation and immediate first render.</td></tr>
+      <tr><td><strong>31</strong> · P2</td><td>Deduplicate notification-enabled predicates in <code>AppNotificationChannels</code>.</td><td>One <code>isUsable(channelId)</code> function replaces paired API-level/importance checks.</td><td>Pre-channel Android behavior and user-disabled channels.</td></tr>
+      <tr><td><strong>32</strong> · P2</td><td>Merge foreground timeout planning and handler micro-objects.</td><td><code>ForegroundTimeout.schedule(handler, deadline) { stop() }</code> instead of two files that only forward.</td><td>Absolute deadline semantics and callback removal.</td></tr>
+      <tr><td><strong>33</strong> · P2</td><td>Merge identical story action guards.</td><td><code>canModifyStory(story)</code> replaces <code>canSync</code> and <code>canQueue</code> if product policy is truly shared.</td><td>Keep separate names if the policies are expected to diverge.</td></tr>
+      <tr><td><strong>34</strong> · P2</td><td>Simplify navigator restore null handling.</td><td><code>saved?.let(::decode)?.takeIf(::isValid) ?: AppRoute.Library</code> replaces nested branch plumbing.</td><td>Unknown-route fallback and restored back-stack order.</td></tr>
+      <tr><td><strong>35</strong> · P2</td><td>Collapse repeated TTS voice-picker branches in Settings.</td><td><code>showVoicePicker(engine, currentVoice, ::saveVoice)</code> owns loaded/empty/error presentation.</td><td>Engine-specific voice IDs and current selection.</td></tr>
+      <tr><td><strong>36</strong> · P2</td><td>Share the standard download-job fixture across nine tests.</td><td><code>downloadJob(status = QUEUED, chapter = 3)</code> replaces copied constructors.</td><td>Keep scenario-specific fixtures local so tests still advertise unusual inputs.</td></tr>
+      <tr><td><strong>37</strong> · P2</td><td>Split <code>SourceProvider</code> by responsibility only where implementations benefit.</td><td><code>StoryCatalogSource</code>, <code>ChapterContentSource</code>, and optional <code>SourceAccessRecovery</code> replace one broad contract.</td><td>Avoid capability casts scattered through callers; compose at registration.</td></tr>
+      <tr><td><strong>38</strong> · P2</td><td>Split the large <code>Models.kt</code> by domain without changing packages.</td><td><code>StoryModels.kt</code>, <code>DownloadModels.kt</code>, <code>TtsModels.kt</code>, and <code>PreferenceModels.kt</code>.</td><td>No package migration or serialization-name changes in the same patch.</td></tr>
+      <tr><td><strong>39</strong> · P2</td><td>Reduce public container state and redundant activity scope wrappers.</td><td>Make unused <code>AppContainer.storage</code>/<code>repositoryReadiness</code> private or delete; call the existing lifecycle scope directly.</td><td>Application scope remains the owner of durable queue and service work.</td></tr>
+      <tr><td><strong>40</strong> · P2</td><td>Remove UI imports from lower-layer files and prune forwarding extensions.</td><td>A domain planner returns <code>Result</code>/sealed outcomes; the screen maps them to resources and widgets.</td><td>Do not introduce a generic “utils” dumping ground.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>File moves that become useful after consolidation</h2>
+  <table>
+    <thead><tr><th>Current file</th><th>Suggested result</th><th>Why later, not first</th></tr></thead>
+    <tbody>
+      <tr><td><code>LibraryManagementScreens.kt</code></td><td><code>LibrarySelectionScreen.kt</code>, <code>AddStoryScreen.kt</code>, <code>MoveStoryDialog.kt</code></td><td>First extract shared filter state; otherwise splitting preserves duplication.</td></tr>
+      <tr><td><code>SettingsScreen.kt</code></td><td>Three route-level files plus shared row components</td><td>First merge normal/loading row APIs.</td></tr>
+      <tr><td><code>DetailsScreenDownload.kt</code> + <code>DetailsDownloadObserver.kt</code></td><td><code>DetailsDownloadUi.kt</code></td><td>First introduce bindings and one patch path.</td></tr>
+      <tr><td><code>ChapterStatusSlots.kt</code></td><td>Fold into the typed chapter-row component</td><td>A tiny file is not a problem until row ownership is clear.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="guardrails">
+  <h2>Complexity that is earning its keep</h2>
+  <p>Simplification should reduce accidental complexity without flattening the safety boundaries below.</p>
+  <div class="guardrails">
+    <div class="guardrail"><h3>Download ownership</h3><p>Keep one durable owner, atomic enqueue, foreground-service rules, pacing, circuit state, and the second acceptance fence that catches a source becoming blocked mid-request.</p></div>
+    <div class="guardrail"><h3>Backup restore</h3><p>Keep archive limits, raw manifest validation, path traversal defenses, staging, commit, rollback, and the distinct privacy scrubs. They are separate failure barriers.</p></div>
+    <div class="guardrail"><h3>Reader and WebView safety</h3><p>Keep navigation policy, content isolation, teardown, Cloudflare access flow, external custom-tab flow, and root-instance guards separate even when helpers are shared.</p></div>
+    <div class="guardrail"><h3>TTS lifecycle</h3><p>Keep audio focus, wake/foreground ownership, watchdog, persisted session recovery, utterance correlation, and shutdown cleanup. Simplify the state model around those guarantees.</p></div>
+    <div class="guardrail"><h3>Sync and EPUB</h3><p>Keep per-story synchronization, stable chapter identity, metric capture, streamed EPUB output, cancellation, and partial-file cleanup.</p></div>
+    <div class="guardrail"><h3>Responsive UI</h3><p>Keep fold/window planning, drag selection, ConcatAdapter headers, coverage-bar drawing/accessibility, and deliberately different button dimensions.</p></div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>Recommended implementation order</h2>
+  <ol class="roadmap">
+    <li><strong>Lock behavior down:</strong> add golden cleanup tests, TTS cursor/restore tests, download-count projection tests, backup compatibility tests, and an exact detekt baseline.</li>
+    <li><strong>Delete first:</strong> remove verified dead APIs, <code>chunkSize</code>, obsolete aliases, historical comments, and the cleanup facade.</li>
+    <li><strong>Unify domain ownership:</strong> repository sync commit, common download counts, queue mutate-and-start, repository-only TTS production wiring, and normalized preference writes.</li>
+    <li><strong>Replace implicit UI contracts:</strong> Details bindings, persistent RecyclerView holders, typed queue UI models, typed progress wrappers, and KTX text listeners.</li>
+    <li><strong>Simplify TTS state:</strong> move to a current-index cursor, then a single state stream. Keep this separate from the deletion tranche because it has broader runtime risk.</li>
+    <li><strong>Reorganize files last:</strong> split screens and model files only after responsibilities and duplicate logic have converged.</li>
+  </ol>
+  <div class="summary">
+    <h3>Definition of “simpler” for this project</h3>
+    <p>A successful change should remove a state representation, duplicate branch, public surface, or ownership ambiguity—not merely move lines to another file. Track production line count, function count, detekt findings, and test coverage, but review the number of competing state models and mutation paths as the primary signal.</p>
+  </div>
+</section>
+
+<section>
+  <h2>Audit method and limitations</h2>
+  <p>This was a repository-wide static pass over the native Kotlin production and test sources, existing architecture/QA documents, dependency direction, call sites, and complexity output. A fresh <code>:app:detekt --rerun-tasks</code> run completed successfully and reported 45 accepted findings (primarily large function/type counts, enum naming, long parameter lists, and cyclomatic complexity). The pass intentionally made no production changes and did not claim runtime defects.</p>
+  <p>Line numbers are intentionally omitted because several files are actively changing; filenames, symbols, and code shapes are the durable locators. Every deletion still requires a fresh usage search at implementation time. The opportunities are prioritized by leverage and confidence, not by raw file size.</p>
+</section>
+</main>
+<footer>Webnovel Archiver Android · Code simplification audit · Generated 31 July 2026</footer>
+</body>
+</html>
