@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.story
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.core.content.FileProvider
 import com.vinicius741.webnovelarchiver.data.backup.FileMimeTypes
@@ -10,6 +11,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.BrowserUrlPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
+import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
@@ -27,7 +29,25 @@ internal fun ScreenHost.openFile(path: String?) {
         Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/epub+zip")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    runCatching { app.startActivity(intent) }.onFailure { toast("No app available to open EPUB") }
+    when (planEpubOpen(hasEpubReader(intent))) {
+        EpubOpenPlan.LAUNCH ->
+            runCatching { app.startActivity(intent) }
+                .onFailure { showEpubReaderRequired() }
+        EpubOpenPlan.SHOW_READER_REQUIRED -> showEpubReaderRequired()
+    }
+}
+
+@Suppress("DEPRECATION")
+private fun ScreenHost.hasEpubReader(intent: Intent): Boolean =
+    app.packageManager
+        .queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        .isNotEmpty()
+
+private fun ScreenHost.showEpubReaderRequired() {
+    alert(
+        title = "EPUB reader required",
+        message = "No installed app can open EPUB files. Install an EPUB reader, then try Read EPUB again.",
+    )
 }
 
 internal fun ScreenHost.openEpubForStory(story: Story) {
