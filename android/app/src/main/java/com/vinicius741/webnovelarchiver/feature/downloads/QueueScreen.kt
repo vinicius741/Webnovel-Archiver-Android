@@ -224,20 +224,6 @@ private fun ScreenHost.updateQueueContent(
             addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
             addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
         }
-        DownloadPacingUiPlanning
-            .activeSourceWaits(pacingSnapshots, queue, nowMillis)
-            .forEach { wait ->
-                summarySlot.addView(
-                    makeText(
-                        app,
-                        DownloadPacingUiPlanning.sourceHeadline(wait),
-                        Type.LABEL_MEDIUM,
-                        ThemeManager.colors.primary,
-                    ).apply {
-                        setPadding(0, dp(Space.XS), 0, 0)
-                    },
-                )
-            }
     }
     adapter.submitQueue(queue, pacingSnapshots, nowMillis)
 }
@@ -338,9 +324,9 @@ internal class QueueGroupCard(
         subtitle.text =
             buildString {
                 append(DownloadManagerPlanning.storySubtitle(counts, waitingByJobId.size))
-                pacingStatus?.let {
+                DownloadPacingUiPlanning.groupHeadline(pacingStatus)?.let {
                     append('\n')
-                    append(DownloadPacingUiPlanning.groupHeadline(it))
+                    append(it)
                 }
             }
         chevron.rotation = if (expanded) 0f else -90f

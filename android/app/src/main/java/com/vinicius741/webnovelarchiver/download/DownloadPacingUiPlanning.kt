@@ -51,22 +51,6 @@ object DownloadPacingUiPlanning {
                     }
             }.toMap()
 
-    fun activeSourceWaits(
-        snapshots: Collection<DownloadPacingSnapshot>,
-        jobs: List<DownloadJob>,
-        nowMillis: Long,
-    ): List<DownloadPacingUiStatus> =
-        waitingJobs(snapshots, jobs, nowMillis)
-            // A durable retry/cooldown has higher status priority than the configured download
-            // delay. Do not show both for the same chapter.
-            .filter { (jobId, _) ->
-                (jobs.firstOrNull { it.id == jobId }?.nextRetryAt ?: 0L) <= nowMillis
-            }.asSequence()
-            .map { it.value }
-            .sortedBy { it.remainingSeconds }
-            .distinctBy { it.providerName }
-            .toList()
-
     fun storyStatus(
         storyId: String,
         providerName: String?,
@@ -118,9 +102,6 @@ object DownloadPacingUiPlanning {
         return null
     }
 
-    fun sourceHeadline(status: DownloadPacingUiStatus): String =
-        "${status.providerName} · Waiting for delay · ${formatClock(requireNotNull(status.remainingSeconds))}"
-
     fun storyHeadline(status: DownloadPacingUiStatus): String =
         when (status.kind) {
             DownloadPacingUiKind.CONFIGURED_WAIT ->
@@ -133,14 +114,13 @@ object DownloadPacingUiPlanning {
                 "Queued behind other ${status.providerName} downloads"
         }
 
-    fun groupHeadline(status: DownloadPacingUiStatus): String =
-        when (status.kind) {
-            DownloadPacingUiKind.CONFIGURED_WAIT ->
-                "Waiting for delay · ${formatDuration(requireNotNull(status.remainingSeconds))}" +
-                    status.chapterTitle
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { " · “$it”" }
-                        .orEmpty()
+    /**
+     * Configured-delay countdowns live on the affected chapter row, where the wait is actionable
+     * and unambiguous. Story headers still surface retry, rate-limit, and cross-story queue states.
+     */
+    fun groupHeadline(status: DownloadPacingUiStatus?): String? =
+        when (status?.kind) {
+            null, DownloadPacingUiKind.CONFIGURED_WAIT -> null
             else -> storyHeadline(status)
         }
 
@@ -148,18 +128,6 @@ object DownloadPacingUiPlanning {
         targetMillis: Long,
         nowMillis: Long,
     ): Long = ((targetMillis - nowMillis).coerceAtLeast(0L) + 999L) / 1_000L
-
-    internal fun formatClock(seconds: Long): String {
-        val safe = seconds.coerceAtLeast(0L)
-        val hours = safe / 3_600L
-        val minutes = (safe % 3_600L) / 60L
-        val remainder = safe % 60L
-        return if (hours > 0L) {
-            "%d:%02d:%02d".format(hours, minutes, remainder)
-        } else {
-            "%02d:%02d".format(minutes, remainder)
-        }
-    }
 
     internal fun formatDuration(seconds: Long): String {
         val safe = seconds.coerceAtLeast(0L)

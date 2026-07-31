@@ -8,20 +8,20 @@ import org.junit.Test
 
 class DownloadPacingUiPlanningTest {
     @Test
-    fun countdownRoundsUpAndFormatsForSourceSummary() {
+    fun countdownRoundsUpForChapterStatus() {
         val snapshot = snapshot(nextRequestAtMillis = 25_001L)
 
         val status =
             DownloadPacingUiPlanning
-                .activeSourceWaits(listOf(snapshot), listOf(job("job-a", "story-a")), 1_000L)
-                .single()
+                .waitingJobs(listOf(snapshot), listOf(job("job-a", "story-a")), 1_000L)
+                .getValue("job-a")
 
         assertEquals(25L, status.remainingSeconds)
-        assertEquals("Scribble Hub · Waiting for delay · 00:25", DownloadPacingUiPlanning.sourceHeadline(status))
+        assertEquals("25 seconds", DownloadPacingUiPlanning.formatDuration(requireNotNull(status.remainingSeconds)))
     }
 
     @Test
-    fun matchingStoryShowsConfiguredWaitAndChapter() {
+    fun matchingStoryKeepsConfiguredWaitOffQueueGroupHeader() {
         val status =
             DownloadPacingUiPlanning.storyStatus(
                 storyId = "story-a",
@@ -32,11 +32,8 @@ class DownloadPacingUiPlanningTest {
             )
 
         assertEquals(DownloadPacingUiKind.CONFIGURED_WAIT, status?.kind)
-        assertEquals(
-            "Waiting for delay · next request starts in 29 seconds",
-            DownloadPacingUiPlanning.storyHeadline(requireNotNull(status)),
-        )
-        assertEquals("Chapter 42", status.chapterTitle)
+        assertNull(DownloadPacingUiPlanning.groupHeadline(status))
+        assertEquals("Chapter 42", status?.chapterTitle)
     }
 
     @Test
@@ -57,7 +54,7 @@ class DownloadPacingUiPlanningTest {
             )
 
         assertEquals(DownloadPacingUiKind.RATE_LIMIT_WAIT, status?.kind)
-        assertEquals("Rate limited · Retrying in 1m 30s", DownloadPacingUiPlanning.storyHeadline(requireNotNull(status)))
+        assertEquals("Rate limited · Retrying in 1m 30s", DownloadPacingUiPlanning.groupHeadline(status))
     }
 
     @Test
@@ -75,7 +72,7 @@ class DownloadPacingUiPlanningTest {
         assertEquals(DownloadPacingUiKind.QUEUED_BEHIND, status?.kind)
         assertEquals(
             "Queued behind other Scribble Hub downloads",
-            DownloadPacingUiPlanning.storyHeadline(requireNotNull(status)),
+            DownloadPacingUiPlanning.groupHeadline(status),
         )
     }
 
@@ -106,8 +103,8 @@ class DownloadPacingUiPlanningTest {
             ),
         )
         assertEquals(
-            emptyList<DownloadPacingUiStatus>(),
-            DownloadPacingUiPlanning.activeSourceWaits(listOf(snapshot()), listOf(paused), 1_000L),
+            emptyMap<String, DownloadPacingUiStatus>(),
+            DownloadPacingUiPlanning.waitingJobs(listOf(snapshot()), listOf(paused), 1_000L),
         )
     }
 
