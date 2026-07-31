@@ -92,6 +92,90 @@ class DownloadQueuePlanningTest {
         assertTrue(plan.jobs.isEmpty())
     }
 
+    @Test
+    fun queueChaptersRetiresEarlierCompletedBatchWhenAddingNewWorkForStory() {
+        val story =
+            story(
+                Chapter(id = "old-1", downloaded = true),
+                Chapter(id = "old-2", downloaded = true),
+                Chapter(id = "remaining-1"),
+                Chapter(id = "remaining-2"),
+            )
+        val earlierCompletedBatch =
+            listOf(
+                job(storyId = story.id, chapterIndex = 0, chapter = story.chapters[0], status = "completed"),
+                job(storyId = story.id, chapterIndex = 1, chapter = story.chapters[1], status = "completed"),
+                job(storyId = "other-story", chapterIndex = 0, chapter = Chapter(id = "other"), status = "completed"),
+            )
+
+        val plan = DownloadQueuePlanning.queueChapters(earlierCompletedBatch, story, listOf(2, 3))
+
+        assertTrue(plan.changed)
+        assertTrue(plan.hasRunnableWork)
+        assertEquals(
+            listOf("other-story_0", "story-1_2", "story-1_3"),
+            plan.jobs.map { it.id },
+        )
+        assertEquals(2, plan.jobs.count { it.storyId == story.id })
+    }
+
+    @Test
+    fun queueChaptersNoOpPreservesCompletedHistory() {
+        val story = story(Chapter(id = "downloaded", downloaded = true))
+        val completed = job(story.id, 0, story.chapters[0], status = "completed")
+
+        val plan = DownloadQueuePlanning.queueChapters(listOf(completed), story, listOf(0))
+
+        assertFalse(plan.changed)
+        assertFalse(plan.hasRunnableWork)
+        assertEquals(listOf(completed), plan.jobs)
+    }
+
+    @Test
+    fun queueChaptersPreservesNonCompletedRowsWhenRetiringHistory() {
+        val story =
+            story(
+                Chapter(id = "downloaded", downloaded = true),
+                Chapter(id = "new"),
+                Chapter(id = "active"),
+                Chapter(id = "failed"),
+                Chapter(id = "cancelled"),
+            )
+        val existing =
+            listOf(
+                job(story.id, 0, story.chapters[0], status = "completed"),
+                job(story.id, 2, story.chapters[2], status = "pending"),
+                job(story.id, 3, story.chapters[3], status = "failed"),
+                job(story.id, 4, story.chapters[4], status = "cancelled"),
+            )
+
+        val plan = DownloadQueuePlanning.queueChapters(existing, story, listOf(1))
+
+        assertEquals(
+            listOf("pending", "failed", "cancelled", "pending"),
+            plan.jobs.map { it.status },
+        )
+        assertEquals(
+            listOf("active", "failed", "cancelled", "new"),
+            plan.jobs.map { it.chapter.id },
+        )
+    }
+
+    private fun job(
+        storyId: String,
+        chapterIndex: Int,
+        chapter: Chapter,
+        status: String,
+    ): DownloadJob =
+        DownloadJob(
+            id = "${storyId}_$chapterIndex",
+            storyId = storyId,
+            storyTitle = storyId,
+            chapterIndex = chapterIndex,
+            chapter = chapter,
+            status = status,
+        )
+
     private fun story(vararg chapters: Chapter): Story =
         Story(
             id = "story-1",

@@ -47,6 +47,18 @@ object DownloadQueuePlanning {
             }
         }
 
+        // A completed row is history from an earlier batch, not part of the new enqueue's progress.
+        // Keep it until genuinely new work is added (so a no-op tap cannot silently clear history),
+        // then retire only this story's completed rows. Failed/cancelled rows remain available for
+        // retry, and active rows remain part of the current work. This is especially important after
+        // sync auto-downloads new chapters: a later "Download Remaining (N)" batch must report N
+        // jobs rather than aggregating those already-finished sync jobs into its total.
+        if (changed) {
+            jobs.removeAll { job ->
+                job.storyId == story.id && job.status == DownloadJobStatus.Completed.wire
+            }
+        }
+
         return QueueChapterPlan(jobs, changed, hasRunnableWork)
     }
 
