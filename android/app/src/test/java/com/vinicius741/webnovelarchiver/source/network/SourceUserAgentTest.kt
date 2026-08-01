@@ -5,10 +5,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Guards the UA normalization that keeps OkHttp's User-Agent byte-identical to the solving
- * WebView's. Cloudflare binds `cf_clearance` to the exact UA, so any divergence between the two
- * strings silently invalidates the cookie. These cases pin the two transforms (drop `; wv)` and the
- * redundant `Version/x` token) and the idempotence/identity invariants.
+ * Guards the UA normalization that keeps OkHttp's User-Agent byte-identical to the solving WebView
+ * for each source surface. Cloudflare binds `cf_clearance` to the exact UA, so any divergence
+ * between the two strings silently invalidates the cookie. These cases pin the two transforms
+ * (drop `; wv)` and the redundant `Version/x` token) and the idempotence/identity invariants.
  */
 class SourceUserAgentTest {
     @Test

@@ -154,11 +154,16 @@ object CloudflareWebViewSolver {
     fun destroySessions() {
         val existing = sessions.values.toList()
         sessions.clear()
-        Handler(Looper.getMainLooper()).post {
+        val destroy = {
             existing.forEach { session ->
                 session.webView?.let(WebViewSafety::destroy)
                 session.webView = null
             }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            destroy()
+        } else {
+            Handler(Looper.getMainLooper()).post(destroy)
         }
     }
 
@@ -218,6 +223,7 @@ internal object CloudflareRenderedPageValidator {
                 .host
                 ?.lowercase()
                 ?.removePrefix("www.")
+                ?.removePrefix("m.")
         }.getOrNull()
 }
 

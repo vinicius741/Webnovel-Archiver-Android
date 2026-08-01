@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source
 import com.vinicius741.webnovelarchiver.source.network.NetworkRequests
 import okio.Buffer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NetworkRequestsTest {
@@ -13,6 +14,14 @@ class NetworkRequestsTest {
         assertEquals(NetworkRequests.USER_AGENT, request.header("User-Agent"))
         assertEquals(NetworkRequests.DEFAULT_ACCEPT, request.header("Accept"))
         assertEquals("en-US,en;q=0.9", request.header("Accept-Language"))
+    }
+
+    @Test
+    fun fanFictionRequestsUseDesktopMarkupUserAgent() {
+        val request = NetworkRequests.pageRequest("https://www.fanfiction.net/s/7347955/1/title")
+
+        assertTrue(request.header("User-Agent").orEmpty().contains("X11; Linux x86_64"))
+        assertTrue(!request.header("User-Agent").orEmpty().contains("Mobile"))
     }
 
     @Test

@@ -86,6 +86,24 @@ object SourceUserAgent {
         }
     }
 
+    /** FanFiction.net serves a reduced mobile page without its complete chapter selector. */
+    fun forUrl(url: String): String {
+        val parsedUri = runCatching { java.net.URI(url) }.getOrNull()
+        val rawHost = parsedUri?.host ?: ""
+        val normalizedHost = rawHost.lowercase()
+        val withoutWww = normalizedHost.removePrefix("www.")
+        val host = withoutWww.removePrefix("m.")
+        if (host != "fanfiction.net") return resolved
+        val chromeVersion =
+            Regex("Chrome/([^\\s]+)")
+                .find(resolved)
+                ?.groupValues
+                ?.get(1)
+                ?: "130.0.0.0"
+        return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+            "Chrome/$chromeVersion Safari/537.36"
+    }
+
     /**
      * Pure transform used by [resolveAsync] and unit-tested directly. It keeps the WebView's actual
      * Chrome version while applying the same reductions Mihon uses:

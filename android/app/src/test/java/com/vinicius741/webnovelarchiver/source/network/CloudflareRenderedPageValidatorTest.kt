@@ -45,6 +45,19 @@ class CloudflareRenderedPageValidatorTest {
         )
     }
 
+    @Test
+    fun acceptsMobileRedirectForDesktopSourceUrl() {
+        val request = request("https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine")
+
+        assertTrue(
+            CloudflareRenderedPageValidator.isExpectedPage(
+                request,
+                "https://m.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine",
+                "<html><body><div id=\"storytext\">Chapter</div></body></html>",
+            ),
+        )
+    }
+
     private fun request(url: String) =
         CloudflareWebViewRequest(
             url = url,

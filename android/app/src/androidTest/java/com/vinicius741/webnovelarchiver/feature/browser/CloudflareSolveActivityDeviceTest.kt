@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.browser
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.view.View
 import android.view.ViewGroup
@@ -10,6 +11,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,6 +20,37 @@ import org.junit.runner.RunWith
 @LargeTest
 @RunWith(AndroidJUnit4::class)
 class CloudflareSolveActivityDeviceTest {
+    @Test
+    fun doneWithoutClearanceOffersConfirmedRetryEscapeHatch() {
+        val intent =
+            Intent(
+                ApplicationProvider.getApplicationContext(),
+                CloudflareSolveActivity::class.java,
+            ).apply {
+                putExtra("cloudflare_solve_url", "https://example.invalid/cloudflare-test")
+            }
+        var retried = false
+        SourceAccessRetryCoordinator.arm { retried = true }
+
+        ActivityScenario.launch<CloudflareSolveActivity>(intent).use { scenario ->
+            scenario.onActivity { activity ->
+                val toolbar = checkNotNull(activity.window.decorView.findToolbar())
+                assertTrue(toolbar.menu.performIdentifierAction(1, 0))
+
+                val dialog = activity.continueWithoutCookieDialog()
+                assertTrue(dialog.isShowing)
+                assertEquals(
+                    "Continue anyway",
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).text.toString(),
+                )
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
+            assertTrue("Confirmed no-cookie flow did not release the pending retry", retried)
+        }
+    }
+
     @Test
     fun solverContentClearsSystemBars() {
         val intent =
@@ -51,6 +84,12 @@ class CloudflareSolveActivityDeviceTest {
             assertTrue("System-bar insets were not dispatched", insetsChecked)
         }
     }
+}
+
+private fun CloudflareSolveActivity.continueWithoutCookieDialog(): AlertDialog {
+    val field = CloudflareSolveActivity::class.java.getDeclaredField("continueWithoutCookieDialog")
+    field.isAccessible = true
+    return checkNotNull(field.get(this) as? AlertDialog)
 }
 
 private fun View.findToolbar(): Toolbar? {

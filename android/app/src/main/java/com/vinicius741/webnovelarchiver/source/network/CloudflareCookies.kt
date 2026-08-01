@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source.network
 import android.webkit.CookieManager
 import java.net.URI
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Focused helpers over [CookieManager] for the Cloudflare `cf_clearance` cookie. The clearance
@@ -14,6 +15,7 @@ import java.util.Locale
  * background interceptor, the visible [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity],
  * and the diagnostics entry in Settings.
  */
+@Suppress("TooManyFunctions")
 object CloudflareCookies {
     private const val CLEARANCE_NAME = "cf_clearance"
 
@@ -32,6 +34,15 @@ object CloudflareCookies {
     fun hasClearance(url: String): Boolean = clearanceFor(url) != null
 
     /**
+     * True when a clearance is present for [url] or one of the site's common host variants.
+     *
+     * Some sources redirect between `www`, mobile, and bare hosts. A host-only clearance minted
+     * on one of those variants is still useful to the browser session, but must never be confused
+     * with a clearance belonging to another source.
+     */
+    fun hasClearanceForSite(url: String): Boolean = clearanceScopeUrls(url).any(::hasClearance)
+
+    /**
      * Removes the `cf_clearance` cookie for [url]'s host so the next solve can be detected as a
      * *fresh* grant (Mihon's success criterion: any clearance present after the page load must be
      * newly minted, not the stale one). Cloudflare may scope the cookie either to the exact host or
@@ -40,9 +51,50 @@ object CloudflareCookies {
      */
     fun clearClearance(url: String): Boolean {
         val cm = CookieManager.getInstance()
-        expireCookie(cm, url, CLEARANCE_NAME)
+        val scopeUrls = clearanceScopeUrls(url)
+        scopeUrls.forEach { scopeUrl ->
+            expireCookie(cm, scopeUrl, CLEARANCE_NAME)
+        }
         cm.flush()
-        return !hasClearance(url)
+        return scopeUrls.none(::hasClearance)
+    }
+
+    /**
+     * Clears [url]'s clearance and invokes [callback] after Chromium has applied every expiration.
+     * CookieManager's callback-free setter is asynchronous on current WebView releases, so a
+     * caller that immediately loads a page can otherwise send the stale clearance one last time.
+     */
+    fun clearClearanceAsync(
+        url: String,
+        callback: (Boolean) -> Unit,
+    ) {
+        val cm = CookieManager.getInstance()
+        val expirations =
+            clearanceScopeUrls(url).flatMap { scopeUrl ->
+                domainCandidates(scopeUrl).flatMap { domain ->
+                    listOf("/", "").map { path ->
+                        scopeUrl to expirationCookie(CLEARANCE_NAME, domain, path)
+                    }
+                }
+            }
+        if (expirations.isEmpty()) {
+            callback(false)
+            return
+        }
+        val remaining = AtomicInteger(expirations.size)
+        val complete = {
+            if (remaining.decrementAndGet() == 0) {
+                cm.flush()
+                callback(clearanceScopeUrls(url).none(::hasClearance))
+            }
+        }
+        expirations.forEach { (scopeUrl, cookie) ->
+            runCatching {
+                cm.setCookie(scopeUrl, cookie) { complete() }
+            }.onFailure {
+                complete()
+            }
+        }
     }
 
     /** Persists the in-memory cookie store to disk. Call after a successful solve. */
@@ -60,16 +112,62 @@ object CloudflareCookies {
         callback: ((Boolean) -> Unit)? = null,
     ) {
         val cm = CookieManager.getInstance()
-        val before = cm.getCookie(url).orEmpty()
-        cookieNames(before)
-            .plus(CLEARANCE_NAME)
-            .plus("toc_show")
-            .forEach { name ->
-                expireCookie(cm, url, name)
+        val scopeUrls = clearanceScopeUrls(url)
+        val beforeCookies =
+            scopeUrls.map { scopeUrl ->
+                cm.getCookie(scopeUrl).orEmpty()
             }
+        val names =
+            beforeCookies
+                .flatMap { cookieNames(it) }
+                .toSet()
+                .plus(CLEARANCE_NAME)
+                .plus("toc_show")
+        scopeUrls.forEach { scopeUrl ->
+            names.forEach { name ->
+                expireCookie(cm, scopeUrl, name)
+            }
+        }
         cm.flush()
-        val after = cm.getCookie(url).orEmpty()
-        callback?.invoke(before.isNotBlank() && after.isBlank())
+        val afterCookies =
+            scopeUrls.map { scopeUrl ->
+                cm.getCookie(scopeUrl).orEmpty()
+            }
+        callback?.invoke(beforeCookies.any { it.isNotBlank() } && afterCookies.all { it.isBlank() })
+    }
+
+    /** URLs whose host-only or parent-domain cookies may participate in the same source session. */
+    internal fun clearanceScopeUrls(url: String): List<String> {
+        val parsed = runCatching { URI(url) }.getOrNull() ?: return listOf(url)
+        val host =
+            parsed.host
+                ?.trimEnd('.')
+                ?.lowercase(Locale.US)
+                ?.takeIf { it.isNotBlank() }
+                ?: return listOf(url)
+        val rootHost =
+            when {
+                host.startsWith("www.") || host.startsWith("m.") -> host.substringAfter('.')
+                host.count { it == '.' } >= 2 -> host.substringAfter('.')
+                else -> host
+            }
+        val hosts =
+            listOf(host, rootHost, "www.$rootHost", "m.$rootHost")
+                .distinct()
+        return hosts
+            .map { variantHost ->
+                runCatching {
+                    URI(
+                        parsed.scheme,
+                        parsed.userInfo,
+                        variantHost,
+                        parsed.port,
+                        parsed.path,
+                        parsed.query,
+                        parsed.fragment,
+                    ).toString()
+                }.getOrDefault(url)
+            }.distinct()
     }
 
     private fun expireCookie(
@@ -79,15 +177,23 @@ object CloudflareCookies {
     ) {
         for (domain in domainCandidates(url)) {
             for (path in listOf("/", "")) {
-                val attributes =
-                    buildString {
-                        if (domain != null) append("; Domain=").append(domain)
-                        if (path.isNotEmpty()) append("; Path=").append(path)
-                        append("; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
-                    }
-                runCatching { cm.setCookie(url, "$name=$attributes") }
+                runCatching { cm.setCookie(url, expirationCookie(name, domain, path)) }
             }
         }
+    }
+
+    private fun expirationCookie(
+        name: String,
+        domain: String?,
+        path: String,
+    ): String {
+        val attributes =
+            buildString {
+                if (domain != null) append("; Domain=").append(domain)
+                if (path.isNotEmpty()) append("; Path=").append(path)
+                append("; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
+            }
+        return "$name=$attributes"
     }
 
     private fun cookieNames(cookieHeader: String): Set<String> =
