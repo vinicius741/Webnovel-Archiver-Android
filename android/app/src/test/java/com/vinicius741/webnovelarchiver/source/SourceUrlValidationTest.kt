@@ -15,6 +15,16 @@ class SourceUrlValidationTest {
                 "https://forums.spacebattles.com/threads/phantom-star-original-space-opera.1183048/",
             ),
         )
+        assertTrue(
+            SourceUrlValidation.isImportableStoryUrl(
+                "https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine",
+            ),
+        )
+        assertTrue(
+            SourceUrlValidation.isImportableStoryUrl(
+                "https://m.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine",
+            ),
+        )
     }
 
     @Test
@@ -22,6 +32,8 @@ class SourceUrlValidationTest {
         assertFalse(SourceUrlValidation.isImportableStoryUrl("https://www.royalroad.com/fiction/123/story/chapter/456/one"))
         assertFalse(SourceUrlValidation.isImportableStoryUrl("https://www.scribblehub.com/read/99-story/chapter/1000/"))
         assertFalse(SourceUrlValidation.isImportableStoryUrl("https://forums.spacebattles.com/posts/7001/"))
+        assertFalse(SourceUrlValidation.isImportableStoryUrl("https://www.fanfiction.net/u/315314/Silver-Queen"))
+        assertFalse(SourceUrlValidation.isImportableStoryUrl("https://www.fanfiction.net/s/7347955/"))
         assertFalse(SourceUrlValidation.isImportableStoryUrl("https://forums.spacebattles.com/threads/"))
         assertFalse(SourceUrlValidation.isImportableStoryUrl("https://www.royalroad.com/home"))
         assertFalse(SourceUrlValidation.isImportableStoryUrl("https://example.com/fiction/123/story"))

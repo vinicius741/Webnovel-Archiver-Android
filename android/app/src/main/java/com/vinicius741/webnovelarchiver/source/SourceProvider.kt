@@ -38,6 +38,12 @@ interface SourceProvider {
     /** Classifies importable URLs without exposing provider-specific regexes centrally. */
     fun classifyUrl(url: String): SourceUrlKind? = null
 
+    /**
+     * Converts equivalent source URL variants to the one representation used for fetching and
+     * persistence. Providers without alternate hosts or URL forms only trim the submitted value.
+     */
+    fun normalizeStoryUrl(url: String): String = url.trim()
+
     fun getStoryId(url: String): String
 
     fun getChapterId(url: String): String?
@@ -81,7 +87,13 @@ interface SourceProvider {
 }
 
 object SourceRegistry {
-    private val providers = listOf(RoyalRoadProvider, ScribbleHubProvider, SpaceBattlesProvider)
+    private val providers =
+        listOf(
+            RoyalRoadProvider,
+            ScribbleHubProvider,
+            SpaceBattlesProvider,
+            FanFictionProvider,
+        )
 
     fun getProvider(url: String): SourceProvider? = providers.firstOrNull { it.isSource(url) }
 
