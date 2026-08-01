@@ -28,6 +28,12 @@ The native app ships as distinct application IDs — each is a separate app with
 - **Owner's phone:** always the **release** variant — `com.vinicius741.webnovelarchiver.nativeapp` (APK: `android/app/build/outputs/apk/release/app-release.apk`), and only when phone use is explicitly authorized for the current message.
 - **Instrumentation tests:** use the **instrumentation** variant — `com.vinicius741.webnovelarchiver.nativeapp.instrumentation` — so connected tests do not read, clear, or overwrite the debug library sandbox.
 
+## Build and Validation
+
+- The Gradle wrapper lives under `android/` (no root wrapper). Run builds from the repo root as `android/gradlew -p android :app:...`.
+- Install APKs from the raw Gradle outputs under `android/app/build/outputs/apk/`, not the repo-root `apk-output/` mirrors (convenience copies from post-build tasks, potentially stale).
+- There is no CI configuration in this repo; all validation is local. See `android/AGENTS.md` for per-change command selection and the full gate (`:app:lintKotlin :app:ci`).
+
 ## Documentation
 
 - Long-form documentation lives under `docs/`, grouped by subject — one folder per topic (e.g. `docs/cloudflare/`, `docs/tts/`, `docs/architecture/`).
