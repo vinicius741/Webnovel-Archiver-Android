@@ -29,17 +29,19 @@ class StorySyncEngine(
         refreshPatreonStats: Boolean = true,
         status: (String) -> Unit = {},
     ): Story {
-        val provider = SourceRegistry.getProvider(url) ?: error("Unsupported source URL")
-        if (!SourceUrlValidation.isImportableStoryUrl(url)) error("Unsupported source URL")
-        val storyId = provider.getStoryId(url)
+        val submittedUrl = url.trim()
+        val provider = SourceRegistry.getProvider(submittedUrl) ?: error("Unsupported source URL")
+        val normalizedUrl = provider.normalizeStoryUrl(submittedUrl)
+        if (!SourceUrlValidation.isImportableStoryUrl(normalizedUrl)) error("Unsupported source URL")
+        val storyId = provider.getStoryId(normalizedUrl)
         val existing = repository.story(storyId)
         status("Fetching from ${provider.name}...")
-        val html = network.fetch(url)
+        val html = network.fetch(normalizedUrl)
         val metadata = provider.parseMetadata(html)
         status("Parsing chapters...")
         val latestIncoming =
             if (existing != null && mode != StorySyncMode.Full && provider.supportsLatestChapterSync) {
-                provider.getLatestChapterList(html, url, network, status)
+                provider.getLatestChapterList(html, normalizedUrl, network, status)
             } else {
                 null
             }
@@ -55,9 +57,9 @@ class StorySyncEngine(
         val incoming =
             if (latestIncoming != null && latestMerge == null) {
                 status("Latest chapters did not overlap; running full sync...")
-                provider.getChapterList(html, url, network, status)
+                provider.getChapterList(html, normalizedUrl, network, status)
             } else if (latestIncoming == null) {
-                provider.getChapterList(html, url, network, status)
+                provider.getChapterList(html, normalizedUrl, network, status)
             } else {
                 latestIncoming
             }
@@ -96,7 +98,7 @@ class StorySyncEngine(
                 author = metadata.author,
                 coverUrl = metadata.coverUrl ?: existing?.coverUrl,
                 description = metadata.description,
-                sourceUrl = metadata.canonicalUrl ?: url,
+                sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 status =
                     if (existing ==
                         null
