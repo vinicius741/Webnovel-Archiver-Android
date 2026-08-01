@@ -63,11 +63,13 @@ object ScribbleHubProvider : SourceProvider {
                 .ifBlank { doc.selectFirst("meta[property=og:image]")?.attr("content").orEmpty() }
                 .ifBlank { null }
         val description =
-            firstStructuredText(doc, ".wi_fic_desc", ".fic_synopsis", "#synopsis")
-                .ifBlank {
-                    doc.selectFirst("meta[property=og:description]")?.attr("content")
-                        ?: doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
-                }.ifBlank { null }
+            (
+                firstStructuredText(doc, ".wi_fic_desc", ".fic_synopsis", "#synopsis")
+                    .ifBlank {
+                        doc.selectFirst("meta[property=og:description]")?.attr("content")
+                            ?: doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
+                    }.stripSynopsisToggle()
+            ).ifBlank { null }
         val canonical = doc.selectFirst("link[rel=canonical]")?.absUrl("href") ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
         val tags =
             doc
@@ -220,6 +222,18 @@ object ScribbleHubProvider : SourceProvider {
             .firstNotNullOfOrNull { selector ->
                 doc.selectFirst(selector)?.blockText()?.takeIf { it.isNotBlank() }
             }.orEmpty()
+
+    // Scribble Hub embeds its show-more synopsis toggle ("...more>>" / "<<less") as literal text
+    // inside the description DOM, so it leaks into the archived description. Drop the toggle
+    // tokens (including the truncation ellipsis that belongs to the toggle) and tidy the
+    // whitespace left behind. At least one ellipsis run is required before "more>>" so prose that
+    // happens to contain the bare token is left untouched.
+    private fun String.stripSynopsisToggle(): String =
+        replace(Regex("""(?i)(?:(?:\.{3,}|…)\s*){1,2}more\s*>>\s*|\s*<<\s*less\s*"""), " ")
+            .replace(Regex("""[ \t]+\n"""), "\n")
+            .replace(Regex("""\n[ \t]+"""), "\n")
+            .replace(Regex("""[ \t]{2,}"""), " ")
+            .trim()
 
     private fun scribbleHubScore(doc: Document): String? =
         doc

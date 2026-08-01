@@ -151,6 +151,69 @@ class SourceProviderTest {
         }
 
     @Test
+    fun scribbleHubStripsSynopsisToggleTokens() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">Keiko</h1>
+                  <span class="auth_name_fic">Author</span>
+                  <div class="wi_fic_desc">
+                    <span class="synopsis-shown">Kicked from his guild ... Rellithesh. That...</span>
+                    <a href="#" class="synopsis-more">...more&gt;&gt;</a>
+                    <span class="synopsis-hidden"> is, until the hidden prologue event ... about that.</span>
+                    <a href="#" class="synopsis-less">&lt;&lt;less</a>
+                  </div>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals(
+            "Kicked from his guild ... Rellithesh. That is, until the hidden prologue event ... about that.",
+            metadata.description,
+        )
+    }
+
+    @Test
+    fun scribbleHubStripsInlineToggleTokenFromSingleParagraph() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">Keiko</h1>
+                  <span class="auth_name_fic">Author</span>
+                  <div class="wi_fic_desc">
+                    <p>She sets out. That... more&gt;&gt; is, until fate intervenes. &lt;&lt;less</p>
+                  </div>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals("She sets out. That is, until fate intervenes.", metadata.description)
+    }
+
+    @Test
+    fun scribbleHubKeepsBareMoreTokenWithoutToggleEllipsis() {
+        val metadata =
+            ScribbleHubProvider.parseMetadata(
+                """
+                <html><body>
+                  <h1 class="fic_title">Keiko</h1>
+                  <span class="auth_name_fic">Author</span>
+                  <div class="wi_fic_desc">
+                    <p>Readers asking for more>> details can find them on the forum.</p>
+                  </div>
+                </body></html>
+                """.trimIndent(),
+            )
+
+        assertEquals(
+            "Readers asking for more>> details can find them on the forum.",
+            metadata.description,
+        )
+    }
+
+    @Test
     fun scribbleHubParsesLiveAuthorSpanAndAggregateRatingJsonLd() {
         val metadata =
             ScribbleHubProvider.parseMetadata(
