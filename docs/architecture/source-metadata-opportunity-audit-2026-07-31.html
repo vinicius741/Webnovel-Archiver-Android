@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webnovel Archiver — Source Metadata Opportunity Audit</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1015; --panel:#131b23; --panel2:#18232d; --text:#e7edf3; --muted:#9fb0bf; --line:#2b3b49; --blue:#65b8ff; --green:#68d391; --amber:#f6c76b; --red:#ff8b85; --code:#080c10; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:radial-gradient(circle at 85% 0,rgba(50,130,190,.18),transparent 28rem),var(--bg); color:var(--text); font:16px/1.62 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    a { color:var(--blue); }
+    header,main,footer { width:min(1180px,calc(100% - 2rem)); margin:auto; }
+    header { padding:4rem 0 2.5rem; }
+    h1 { margin:.3rem 0 .8rem; font-size:clamp(2.2rem,6vw,4.6rem); line-height:1; }
+    h2 { margin:3.2rem 0 1rem; padding-top:1rem; font-size:2rem; }
+    h3 { margin:0; font-size:1.2rem; }
+    h4 { margin:1.4rem 0 .45rem; color:var(--amber); }
+    p { margin:.6rem 0 1rem; }
+    code { padding:.08rem .3rem; border:1px solid var(--line); border-radius:.3rem; background:var(--code); font:.9em ui-monospace,SFMono-Regular,Menlo,monospace; }
+    pre { overflow:auto; margin:.8rem 0 0; padding:1rem; border:1px solid var(--line); border-radius:.7rem; background:var(--code); color:#d9e5ee; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    pre code { padding:0; border:0; background:none; }
+    .eyebrow { color:var(--amber); font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+    .lede { max-width:930px; color:var(--muted); font-size:1.18rem; }
+    .meta,.stats { display:flex; flex-wrap:wrap; gap:.7rem; }
+    .pill { padding:.25rem .65rem; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:.82rem; }
+    nav { position:sticky; top:0; z-index:2; border-block:1px solid var(--line); background:rgba(11,16,21,.93); backdrop-filter:blur(10px); }
+    nav div { width:min(1180px,calc(100% - 2rem)); margin:auto; padding:.7rem 0; display:flex; gap:1rem; overflow:auto; white-space:nowrap; }
+    nav a { color:var(--muted); text-decoration:none; }
+    .summary,.callout,.source-card { border:1px solid var(--line); border-radius:.9rem; background:linear-gradient(145deg,var(--panel),var(--panel2)); }
+    .summary,.callout { padding:1.2rem 1.4rem; }
+    .stats { margin-top:1rem; }
+    .stat { flex:1 1 150px; padding:1rem; border:1px solid var(--line); border-radius:.7rem; background:rgba(0,0,0,.18); }
+    .stat strong { display:block; color:var(--green); font-size:1.65rem; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:1rem; }
+    .source-card { padding:1.2rem; }
+    .source-card.wide { grid-column:1/-1; }
+    .source-card h3 { display:flex; align-items:center; justify-content:space-between; gap:.7rem; }
+    .priority { flex:none; padding:.15rem .48rem; border-radius:999px; font-size:.72rem; font-weight:850; }
+    .p0 { color:#ffd5d2; border:1px solid #944d49; background:#442421; }
+    .p1 { color:#ffe3af; border:1px solid #87672e; background:#3b301c; }
+    .p2 { color:#cbe7ff; border:1px solid #38688d; background:#193247; }
+    .table-wrap { overflow-x:auto; margin:1rem 0; border-radius:.7rem; }
+    table { width:100%; min-width:760px; border-collapse:collapse; background:var(--panel); }
+    th,td { padding:.72rem; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:var(--panel2); color:#dce8f1; }
+    td:first-child { min-width:145px; font-weight:700; }
+    .where { color:var(--muted); font-size:.88rem; }
+    .good { color:var(--green); }
+    .muted { color:var(--muted); }
+    .avoid { color:#ffc4bf; }
+    .legend { display:flex; flex-wrap:wrap; gap:.5rem; margin:.8rem 0; }
+    .legend span { font-size:.8rem; }
+    ul { padding-left:1.35rem; }
+    li { margin:.35rem 0; }
+    footer { padding:3rem 0 5rem; color:var(--muted); }
+    @media (max-width:720px) { .grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">Native source audit · 31 July 2026</div>
+  <h1>Source Metadata Opportunity Audit</h1>
+  <p class="lede">The current app is not limited by the absence of Patreon or a numeric score. Each source publishes a different kind of reader signal: Royal Road exposes followers and favorites, Scribble Hub exposes a complete statistics page, SpaceBattles exposes forum engagement, and FanFiction.net exposes a compact story profile with reviews, favorites, follows, words, dates, and content classification. This report inventories the useful fields that are currently missing and gives a source-specific retrieval plan for a future implementation agent.</p>
+  <div class="meta"><span class="pill">Royal Road</span><span class="pill">Scribble Hub</span><span class="pill">SpaceBattles</span><span class="pill">FanFiction.net</span><span class="pill">Research + implementation guidance</span><span class="pill">No production code changed</span></div>
+</header>
+<nav><div><a href="#verdict">Verdict</a><a href="#baseline">Baseline</a><a href="#royal-road">Royal Road</a><a href="#scribble-hub">Scribble Hub</a><a href="#spacebattles">SpaceBattles</a><a href="#fanfiction">FanFiction.net</a><a href="#model">Model</a><a href="#roadmap">Roadmap</a><a href="#sources">Sources</a></div></nav>
+<main>
+<section id="verdict">
+  <h2>Executive recommendation</h2>
+  <div class="summary">
+    <p><strong>Implement one “Source statistics” block with native labels, backed by nullable typed fields.</strong> Do not turn every source into a fake five-star score. The most useful parity comes from showing each site’s own evidence of audience, size, recency, and classification.</p>
+    <div class="stats">
+      <div class="stat"><strong>4</strong>active source providers</div>
+      <div class="stat"><strong>4</strong>source-specific retrieval paths</div>
+      <div class="stat"><strong>10–15</strong>high-value fields per source</div>
+      <div class="stat"><strong>0</strong>new source APIs required</div>
+    </div>
+    <p>The first implementation tranche should prioritize <span class="good">word/page size, audience counts, engagement counts, published/updated dates, and typed content labels</span>. These are public, understandable to users, and available during the existing sync flow. Rankings, recent-reader lists, per-chapter favorites, and author achievement badges should remain out of the first version because they are volatile, privacy-sensitive, or expensive to normalize.</p>
+  </div>
+</section>
+
+<section id="baseline">
+  <h2>What the app captures today</h2>
+  <p>The registry currently contains four providers in <code>SourceRegistry</code>. <code>NovelMetadata</code> has title, author, cover, description, tags, score, canonical URL, Patreon URL, and publication status. <code>Story</code> stores those values alongside locally derived chapter/download state. Tags are already displayed and filterable, but source-specific classification is flattened into one list. Score is a nullable display string, and Patreon metrics only exist when a Patreon link is found.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>Already parsed</th><th>What users currently see</th><th>Main missing surface</th></tr></thead>
+      <tbody>
+        <tr><td>Royal Road</td><td>Title, author, cover, description, tags, content warnings as prefixed tags, overall score, canonical URL, Patreon link/stats, publication status, chapter titles/dates.</td><td>Score row, tags, status, Patreon card, chapter count/progress.</td><td>Public fiction statistics: views, average views, followers, favorites, ratings count, pages; typed fiction type and inactive state.</td></tr>
+        <tr><td>Scribble Hub</td><td>Title, author, cover, synopsis, genre/tag links, score, canonical URL, Patreon link/stats, inferred status, chapter titles/dates, latest-chapter sync.</td><td>Score row, tags, status, Patreon card, chapter count/progress.</td><td>The separate <code>/stats/</code> page: views, readers, favorites, ratings count/distribution, words, pages, average values, reviews, and chapters/week.</td></tr>
+        <tr><td>SpaceBattles</td><td>Thread title, thread starter, cover from first post, summary, tags, canonical URL, status, main threadmarks as chapters, threadmark dates, RSS/latest sync.</td><td>Tags, status, chapter count/progress. No score or Patreon card.</td><td>Forum-native engagement and size: words, watchers, replies, views, likes, awards, and story/forum category.</td></tr>
+        <tr><td>FanFiction.net</td><td>Title, author, cover, summary, fandom links plus a flattened genre/character tag list, canonical URL, chapter selector, chapter numbers/titles, first/last dates, status.</td><td>Tags, status, chapter count/progress. No score or Patreon card.</td><td>Content rating, language, typed genres/fandoms/characters, words, reviews, favorites, follows, published date, updated date.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout"><strong>Important distinction:</strong> locally derived values such as <code>totalChapters</code>, downloaded progress, and <code>lastUpdated</code> are useful app metadata, but they are not substitutes for source metrics. The recommendations below are about fields authored or measured by the source.</div>
+  <div class="callout"><strong>FanFiction.net status caveat:</strong> the current provider’s fallback treats a profile containing <code>Published:</code> as ongoing when no explicit status token is found. That is an inference, not source metadata; a future parser should preserve <code>unknown</code> unless FanFiction.net explicitly declares a status.</div>
+</section>
+
+<section id="royal-road">
+  <h2>Royal Road</h2>
+  <div class="source-card wide">
+    <h3>Highest-value opportunity: expose the public fiction statistics block <span class="priority p0">P0</span></h3>
+    <p>Royal Road has no need for a Patreon link to provide useful audience data. A live fiction page publishes <em>Overall Score, Total Views, Average Views, Followers, Favorites, Ratings, and Pages</em> in one statistics block. The current provider already locates the score in the neighboring-label pattern, so the other fields can be added with the same label-driven parser.</p>
+    <p class="where">Current code: <code>RoyalRoadProvider.parseMetadata</code>. Retrieval: the already fetched fiction page; no additional request is needed.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Potential metadata</th><th>Why it matters</th><th>How to retrieve</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>Total Views</td><td>Best reach signal when a story has few ratings or no Patreon.</td><td>In the page’s <code>Statistics</code> block, find the label <code>Total Views</code> and parse the adjacent value. Reuse the current <code>.list-unstyled li.list-item</code> label/value traversal, but match normalized text instead of relying on a fixed position.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Average Views</td><td>More comparable across stories with different chapter counts than total views.</td><td>Same statistics block; parse the <code>Average Views</code> label as a numeric value.</td><td><span class="priority p1">P1 — display if present</span></td></tr>
+          <tr><td>Followers</td><td>Strongest Royal Road equivalent to an audience/subscriber signal.</td><td>Same statistics block; parse <code>Followers</code> as an integer.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Favorites</td><td>Positive reader intent; useful even when the rating is absent.</td><td>Same statistics block; parse <code>Favorites</code> as an integer.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Ratings count</td><td>Prevents users from reading a score without knowing whether it is based on 1 rating or 1,000.</td><td>Same statistics block; parse the integer after <code>Ratings</code>. Keep it separate from the score.</td><td><span class="priority p0">P0 — display beside score</span></td></tr>
+          <tr><td>Pages / estimated words</td><td>Source-reported reading size. Royal Road exposes pages directly and sampled pages also expose an estimated word count in the stat tooltip/JSON-LD. Label the word count as estimated.</td><td>Parse <code>Pages</code> from the statistics block. Prefer JSON-LD <code>numberOfPages</code> and the stable stat tooltip for the estimated word count; keep a <code>sizeIsEstimated</code> flag if words are added.</td><td><span class="priority p1">P1 — display as source size</span></td></tr>
+          <tr><td>Source dates</td><td>Published/modified dates explain the age and freshness of a work better than the app’s local sync time.</td><td>Prefer JSON-LD <code>dateCreated</code>, <code>datePublished</code>, and <code>dateModified</code>. Store them as source timestamps; do not substitute <code>Story.lastUpdated</code>.</td><td><span class="priority p0">P0 — display and persist</span></td></tr>
+          <tr><td>Fiction type</td><td>The page labels stories as <code>Original</code> or <code>Fan Fiction</code>; this is more useful than a generic source name for users browsing a mixed library.</td><td>Read the type label in the fiction-info label group. Store it separately from genre tags.</td><td><span class="priority p1">P1 — typed badge/filter</span></td></tr>
+          <tr><td>Inactive / stub state</td><td>Royal Road can show <code>INACTIVE</code> or <code>STUB</code> even when the story is not formally complete or on hiatus. These labels explain stale updates or unusually incomplete public listings.</td><td>Inspect the same fiction-info label group. Add separate listing-state fields; do not map them to “completed.”</td><td><span class="priority p1">P1 — status detail</span></td></tr>
+          <tr><td>Content warnings</td><td>Already captured as <code>⚠</code>-prefixed tags, but a typed list can be displayed as warnings and filtered without mixing warnings into genre/tag searches.</td><td>Keep the existing warning block selector, but populate a dedicated <code>contentWarnings</code> field in addition to backward-compatible tags if needed.</td><td><span class="priority p0">P0 — fix semantics</span></td></tr>
+          <tr><td>Author profile URL</td><td>Enables an “Open author” action and avoids losing the identity behind a display name.</td><td>Read the author anchor under the fiction title, or JSON-LD <code>author.url</code>.</td><td><span class="priority p2">P2 — optional</span></td></tr>
+          <tr><td>External author/release links</td><td>Descriptions often link to Amazon, Audible, author sites, or other release locations.</td><td>Preserve safe, labeled links from the description instead of flattening every link into text. Keep this separate from Patreon.</td><td><span class="priority p2">P2 — optional</span></td></tr>
+          <tr><td>Free-access flag</td><td>Some Royal Road pages expose <code>isAccessibleForFree</code>; it can explain why the public chapter list is incomplete.</td><td>Read JSON-LD <code>isAccessibleForFree</code>. Treat it as information, not as a hard download policy.</td><td><span class="priority p2">P2 — optional</span></td></tr>
+          <tr><td>Chapter number and availability</td><td>The current row count can understate a story with gaps, premium/locked chapters, or a high latest chapter number.</td><td>Prefer the richer <code>window.chapters</code> data when present for <code>order</code>, <code>visible</code>, <code>subscriptionTiers</code>, and lock state. Populate <code>ChapterInfo.chapterNumber</code> separately from list order.</td><td><span class="priority p1">P1 — chapter-list accuracy</span></td></tr>
+          <tr><td>Style/story/grammar/character sub-scores</td><td>Potentially interesting but not consistently public; availability may depend on account level or page variant.</td><td>Do not scrape opportunistically from review content. Only add if a stable public fixture proves the fields are available anonymously.</td><td><span class="priority p2">P2 — omit initially</span></td></tr>
+          <tr><td>Rankings and review count</td><td>Rank is volatile and context-dependent; the story page does not provide a stable, clearly labeled review count in the same public statistics block.</td><td>Do not make a separate ranking/search request during every sync. A review count would require pagination or an additional route and is not worth the first implementation.</td><td><span class="priority p2">P2 — omit initially</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Display recommendation:</strong> <code>Score 4.6 · 1,240 ratings · 8,518 views · 50 followers · 12 favorites · 182 pages</code>. Hide absent values rather than showing zeros. “0 ratings” is meaningful when the source explicitly reports it; “no value parsed” is not the same thing.</p>
+  </div>
+</section>
+
+<section id="scribble-hub">
+  <h2>Scribble Hub</h2>
+  <div class="source-card wide">
+    <h3>Highest-value opportunity: fetch the linked statistics page <span class="priority p0">P0</span></h3>
+    <p>Scribble Hub is the richest source for measurable story metadata. Its statistics route exposes a compact header and a details block with total views, chapter views, average views, word count, average words, pages, favorites, chapters/week, readers, rating count, rating distribution, and reviews. The base series page remains the right place for title, description, tags, status, and the chapter list; statistics should be fetched from the canonical series URL plus <code>/stats/</code>.</p>
+    <p class="where">Current code already has Cloudflare-aware source transport. The stats page should use the same <code>NetworkClient</code>, source request gate, cookies, retry policy, and cache behavior as the base series page.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Potential metadata</th><th>Why it matters</th><th>How to retrieve</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>Readers</td><td>Scribble Hub’s most direct audience signal and a better equivalent to Royal Road followers than pageviews alone.</td><td>Fetch <code>&lt;canonical-series-url&gt;/stats/</code>. Parse the labeled header/detail value <code>Readers</code>.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Favorites</td><td>Positive reader intent and a familiar cross-source signal.</td><td>Parse the labeled <code>Favorites</code> value from the stats page header.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Total Views (All)</td><td>Reach across the series, including the source’s broader view counter.</td><td>Parse <code>Total Views (All)</code> from the details block, not only the abbreviated header string.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Total Views (Chapters)</td><td>Separates reading activity from other series-page visits.</td><td>Parse <code>Total Views (Chapters)</code> when present. Preserve it as a separate field from total views.</td><td><span class="priority p1">P1 — display in expanded stats</span></td></tr>
+          <tr><td>Average Views</td><td>Normalizes reach across stories of different lengths.</td><td>Parse the labeled <code>Average Views</code> detail.</td><td><span class="priority p1">P1 — display</span></td></tr>
+          <tr><td>Word Count</td><td>The clearest size metric for a web novel and especially useful when no score exists.</td><td>Parse <code>Word Count</code> from the stats details block.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Average Words</td><td>Provides chapter-length context without making users infer it from total words and chapter count.</td><td>Parse <code>Average Words</code>.</td><td><span class="priority p1">P1 — display if space allows</span></td></tr>
+          <tr><td>Pages</td><td>Source-reported reading size; useful alongside word count because the source exposes both.</td><td>Parse the <code>Pages:</code> row in <code>table.table_pro_overview</code>.</td><td><span class="priority p1">P1 — display in expanded stats</span></td></tr>
+          <tr><td>Chapters per Week</td><td>A strong activity/schedule signal and a good replacement for creator monetization metadata when users want to know whether a story is active.</td><td>Parse the header value <code>Chapters/Week</code>. Keep it nullable because completed or inactive works may report 0.</td><td><span class="priority p0">P0 — display with activity</span></td></tr>
+          <tr><td>Ratings count</td><td>Gives confidence context for the score.</td><td>Parse the number in the rating summary, e.g. <code>4.6 (366 ratings)</code>.</td><td><span class="priority p0">P0 — display beside score</span></td></tr>
+          <tr><td>Rating distribution</td><td>Shows whether a score is concentrated at five stars or has a broad spread.</td><td>Parse the five rating rows under <code>Rating Details</code>. Store counts or percentages, not review text.</td><td><span class="priority p1">P1 — expanded details only</span></td></tr>
+          <tr><td>Review count</td><td>Community feedback volume is useful when Patreon and score are absent or low-confidence.</td><td>Parse the <code>Reviews N</code> heading on the stats page. Do not fetch individual review pages.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Publication date</td><td>Separates a new work from an old work with the same current activity.</td><td>Prefer JSON-LD <code>Book.datePublished</code> on the base series page; keep it distinct from the latest chapter date.</td><td><span class="priority p1">P1 — persist as novel date</span></td></tr>
+          <tr><td>Content warnings</td><td>Warnings are useful safety metadata and are not ordinary genre/tag facets.</td><td>Parse <code>li.mature_contains &gt; a[href*="/content/"]</code> on the base series page. The current generic tag selector does not cover this path.</td><td><span class="priority p0">P0 — typed warning chips</span></td></tr>
+          <tr><td>Chapter views/comments/favorites</td><td>Useful only if the reader screen eventually needs chapter-level activity; they are not needed for novel cards.</td><td>On a chapter page, read <code>span.chp_stats_feature[title="Total Pageviews"]</code>, <code>title="Total Comments"</code>, and <code>#heart_cnt</code>. Avoid one request per chapter during sync.</td><td><span class="priority p2">P2 — reader detail only</span></td></tr>
+          <tr><td>Rankings</td><td>Genre/tag ranking can help users discover a story’s niche.</td><td>Parse the visible <code>Rankings</code> list only if a future UI explicitly wants it. Values are highly volatile and can be numerous.</td><td><span class="priority p2">P2 — link or optional top 3</span></td></tr>
+          <tr><td>Recent readers / traffic</td><td>Potentially interesting to an author, but it exposes a list of reader identities and is not appropriate for a library card.</td><td>Do not collect.</td><td><span class="priority p2">Omit for privacy</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Display recommendation:</strong> <code>4.6 · 366 ratings · 2.36M views · 6,065 readers · 84,125 favorites · 2.15M words · 5 chapters/week</code>. Put the full word/page/average breakdown behind the details screen rather than the library card.</p>
+  </div>
+</section>
+
+<section id="spacebattles">
+  <h2>SpaceBattles</h2>
+  <div class="source-card wide">
+    <h3>Highest-value opportunity: use forum engagement as the source’s score equivalent <span class="priority p0">P0</span></h3>
+    <p>SpaceBattles stories are forum threads rather than rating-first fiction pages. The useful metadata is therefore community activity: watchers, replies, views, likes, and awards, plus words. These metrics are visible in the SpaceBattles Story Library and are the natural replacement for a missing rating or Patreon number.</p>
+    <p class="where">Current code already fetches the main threadmarks page and parses <code>.threadmarkListingHeader-stats dl</code> for status. The same label/value parser can capture words there. The library engagement block may require a second source page or a stable thread-specific library lookup; verify the live HTML with a fixture before implementation because SpaceBattles has recently changed its XenForo layout.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Potential metadata</th><th>Why it matters</th><th>How to retrieve</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>Words</td><td>Best size signal; the story library reports it in compact form and the threadmark header already has a <code>Words</code> stat in current fixtures.</td><td>First parse the labeled <code>Words</code> entry from <code>.threadmarkListingHeader-stats dl</code>. If absent on the base/threadmarks page, use the story-library representation as a fallback.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Started / created date</td><td>Separates thread age from the app’s local sync time.</td><td>Parse the <code>Created</code> pair in <code>.threadmarkListingHeader-stats dl</code> and its nested <code>&lt;time&gt;</code> attributes when present.</td><td><span class="priority p0">P0 — display and persist</span></td></tr>
+          <tr><td>Source updated date</td><td>Important for activity. The RSS feed’s latest main-threadmark <code>pubDate</code> is more meaningful than RSS <code>lastBuildDate</code>.</td><td>Use the maximum <code>pubDate</code> from the existing main-category threadmark RSS response; do not use the feed generation timestamp.</td><td><span class="priority p0">P0 — display and persist</span></td></tr>
+          <tr><td>Watchers</td><td>Closest native equivalent to followers/subscribers, but it must remain labeled “Watchers” because it represents watched threads, not necessarily unique readers.</td><td>Parse the Story Library’s labeled <code>Watchers</code> value for the imported thread. Avoid treating it as a universal followers field in the UI.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Replies</td><td>Community discussion volume is often more informative than a star rating on a forum.</td><td>Parse the Story Library’s <code>Replies</code> value. Keep it separate from formal review counts on other sources.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Views</td><td>Reach signal for the thread.</td><td>Parse the Story Library’s <code>Views</code> value. Preserve abbreviated values such as <code>2K</code> only after converting them to a numeric snapshot value.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Likes</td><td>Positive community reaction and a useful substitute for ratings.</td><td>Parse the Story Library’s <code>Likes</code> value.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Awards</td><td>High-signal but sparse recognition; some stories have none and others show a count plus award icons.</td><td>Parse the visible <code>Awards</code> count when present. Do not infer zero from an absent block.</td><td><span class="priority p1">P1 — display if present</span></td></tr>
+          <tr><td>Threadmark count</td><td>Source-native chapter count; the app already has the count after parsing main threadmarks.</td><td>Prefer the app’s main-category chapter list count so optional/apocrypha categories remain excluded. Use the source stat only as a consistency check.</td><td><span class="priority p1">Already available</span></td></tr>
+          <tr><td>Thread prefix/type</td><td>Prefixes such as RP or Quest distinguish the kind of forum work and are not the same as free-form tags.</td><td>Read XenForo prefix markup such as <code>a.labelLink</code>/<code>.label</code> or the equivalent thread metadata field.</td><td><span class="priority p1">P1 — typed badge</span></td></tr>
+          <tr><td>Forum/story category</td><td>“Original Fiction,” “Fan Fiction,” or another forum category gives context that generic tags cannot.</td><td>Parse the breadcrumb/library category link around the thread. Store it separately from free-form tags.</td><td><span class="priority p1">P1 — typed badge</span></td></tr>
+          <tr><td>Thread open/closed state</td><td>A closed thread and a completed story are not identical, but closure explains why updates stopped.</td><td>Parse text such as <code>Not open for further replies</code> or XenForo’s <code>discussion_open</code>/<code>discussion_state</code> when available. Keep it separate from publication status.</td><td><span class="priority p1">P1 — status detail</span></td></tr>
+          <tr><td>Dropped/cancelled status</td><td>The shared parser currently maps dropped/cancelled text to hiatus, which loses information.</td><td>Extend the source status vocabulary with distinct dropped/cancelled values, or preserve the raw source status alongside the normalized status.</td><td><span class="priority p1">P1 — status accuracy</span></td></tr>
+          <tr><td>Threadmark category</td><td>A threadmark is a selected forum post, not necessarily a chapter. Categories can include Threadmarks, Sidestory, Apocrypha, Media, Informational, and Voting.</td><td>Parse the category block or RSS <code>&lt;category&gt;</code>. Keep the existing main-category-only import default and add a category field if extras are eventually supported.</td><td><span class="priority p1">P1 — provenance</span></td></tr>
+          <tr><td>Per-threadmark words/likes/author</td><td>Useful for provenance and optional chapter rows, but not a novel card metric.</td><td>Parse RSS extensions such as <code>threadmarks:words</code>, <code>threadmarks:likes</code>, and <code>author</code> from the already requested feed when present.</td><td><span class="priority p2">P2 — optional chapter detail</span></td></tr>
+          <tr><td>Author profile URL</td><td>Useful as a source link, but the existing story URL is already the primary navigation target.</td><td>Read the username link in the thread starter block.</td><td><span class="priority p2">P2 — optional</span></td></tr>
+          <tr><td>Per-post likes, voters, reader tracking, recent activity</td><td>Too granular for novel metadata; some fields are user-specific or require many requests.</td><td>Do not collect during story sync.</td><td><span class="priority p2">Omit</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Display recommendation:</strong> on Details, show <code>123k words · 52 watchers · 19 replies · 2K views · 107 likes · 8 awards</code> when the library/thread response exposes them. Keep the normal chapter list focused on title/date; per-post reactions and reader identity data should not become default UI.</p>
+  </div>
+</section>
+
+<section id="fanfiction">
+  <h2>FanFiction.net</h2>
+  <div class="source-card wide">
+    <h3>Highest-value opportunity: parse the story profile line into typed fields <span class="priority p0">P0</span></h3>
+    <p>FanFiction.net has almost all of the desired metadata in the story profile block. A live story page exposes a line like <code>Rated: Fiction T - English - Adventure - Naruto U., Shikamaru N., OC - Chapters: 151 - Words: 716,431 - Reviews: 26,497 - Favs: 23,949 - Follows: 23,070 - Updated: ... - Published: ...</code>. The current provider reads the profile, but only persists a flattened tag list and chapter dates.</p>
+    <p class="where">Current code: <code>FanFictionProvider.parseMetadata</code> and <code>getChapterList</code>. Retrieval: the already fetched chapter/story HTML; no additional API is needed.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Potential metadata</th><th>Why it matters</th><th>How to retrieve</th><th>Recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>Content rating</td><td><code>K</code>, <code>K+</code>, <code>T</code>, or <code>M</code> is a content suitability label, not a quality score.</td><td>Parse the token immediately after <code>Rated: Fiction</code> in <code>#profile_top</code>. Store it as <code>contentRating</code>, not <code>score</code>.</td><td><span class="priority p0">P0 — badge</span></td></tr>
+          <tr><td>Language</td><td>Useful for users with multilingual libraries and currently absent from the app.</td><td>Parse the token after the content rating and before the genre list.</td><td><span class="priority p0">P0 — badge/filter</span></td></tr>
+          <tr><td>Genres</td><td>Current tags merge genre and character names. A typed genre list is more useful for filtering and display.</td><td>Parse the profile line’s genre segment between language and the character segment. Preserve the source wording.</td><td><span class="priority p0">P0 — typed tags</span></td></tr>
+          <tr><td>Fandoms / crossovers</td><td>The linked fandom breadcrumbs identify the source universes. This is the main FanFiction.net equivalent of a genre/tag taxonomy.</td><td>Use the existing <code>FANDOM_LINKS</code> selector, but store the result as <code>fandoms</code> rather than only adding it to generic tags.</td><td><span class="priority p0">P0 — typed tags</span></td></tr>
+          <tr><td>Characters</td><td>Readers often search fan fiction by character. It should not be mixed with genres or fandom names.</td><td>Parse the character segment after genres and before <code>Chapters:</code>. Keep commas inside names and use the source separator carefully.</td><td><span class="priority p1">P1 — typed tags</span></td></tr>
+          <tr><td>Word count</td><td>Clear story size and a better replacement for a missing score than arbitrary local estimates.</td><td>Parse the integer after <code>Words:</code> in the profile text.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Reviews</td><td>Community feedback volume. It is not a score, but it tells users the story has received discussion.</td><td>Parse the integer after <code>Reviews:</code>. Do not fetch review bodies.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Favorites</td><td>Positive reader intent and a strong signal for a source without star ratings.</td><td>Parse the integer after <code>Favs:</code>.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Follows</td><td>Closest FanFiction.net equivalent to a subscriber/follower metric.</td><td>Parse the integer after <code>Follows:</code>.</td><td><span class="priority p0">P0 — display and snapshot</span></td></tr>
+          <tr><td>Published date</td><td>Shows the age of the work and lets users distinguish old complete works from recently started ones.</td><td>The profile contains a <code>Published:</code> timestamp in <code>span[data-xutime]</code>. The current provider already knows how to parse those timestamps.</td><td><span class="priority p1">P1 — persist as novel date</span></td></tr>
+          <tr><td>Updated date</td><td>Important for activity and hiatus interpretation. The current provider only attaches it to the last chapter entry.</td><td>Parse the <code>Updated:</code> timestamp in the profile and store it explicitly on the novel; keep the chapter timestamp as a chapter-level value too.</td><td><span class="priority p0">P0 — persist and display</span></td></tr>
+          <tr><td>Status</td><td><code>Complete</code> is already inferred, but the current fallback treats the presence of <code>Published:</code> as ongoing when an explicit status is absent. That can overstate activity.</td><td>Parse <code>Status:</code> explicitly. If FFN does not declare it, preserve <code>unknown</code> and let chapter dates/age inform the UI separately.</td><td><span class="priority p1">Correct existing behavior</span></td></tr>
+          <tr><td>Higher-resolution cover</td><td>The current provider captures the <code>/image/{id}/75/</code> thumbnail; a larger public image is available on some pages.</td><td>Prefer <code>#img_large img[data-original]</code> when present, with the existing thumbnail as fallback. This is an asset improvement rather than a new semantic field.</td><td><span class="priority p2">P2 — optional</span></td></tr>
+          <tr><td>Author profile URL</td><td>Convenient external navigation, though lower value than story stats.</td><td>Read the existing author anchor under <code>#profile_top</code>.</td><td><span class="priority p2">P2 — optional</span></td></tr>
+          <tr><td>Author’s notes, review bodies, individual reader activity</td><td>Free-form content rather than stable story metadata; review bodies also add bandwidth and moderation concerns.</td><td>Do not collect as metadata.</td><td><span class="priority p2">Omit</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><strong>Display recommendation:</strong> <code>Complete · T · English · Adventure · Naruto · 716k words · 26k reviews · 23.9k favorites · 23.1k follows</code>. Explicitly label these as FanFiction.net source fields; do not render <code>T</code> as a quality star rating.</p>
+  </div>
+</section>
+
+<section id="model">
+  <h2>Cross-source model recommendation</h2>
+  <p>Use a small common typed model for stable numeric fields, plus typed classification fields. Keep native names where the semantics differ. Do not put every source-specific value into a single unstructured string map: that would be quick to add but would make sorting, trend history, and accessibility harder later.</p>
+  <div class="legend"><span class="priority p0">P0: first implementation</span><span class="priority p1">P1: valuable follow-up</span><span class="priority p2">P2: optional or omit</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Normalized field family</th><th>Keep native semantics</th><th>Suggested source mappings</th><th>Use in app</th></tr></thead>
+      <tbody>
+        <tr><td>Size</td><td>Do not infer words where the source does not publish them.</td><td><code>wordCount</code>: Scribble Hub, SpaceBattles, FanFiction.net. <code>pageCount</code>: Royal Road, Scribble Hub. <code>averageWords</code>: Scribble Hub.</td><td>Details source-stat block; library card only for the primary size value.</td></tr>
+        <tr><td>Reach</td><td>“Views” are source-specific; retain the source label in the UI.</td><td><code>views</code>: Royal Road, Scribble Hub, SpaceBattles. <code>chapterViews</code>: Scribble Hub. <code>averageViews</code>: Royal Road, Scribble Hub.</td><td>Details and optional trends.</td></tr>
+        <tr><td>Audience intent</td><td>Followers, readers, watchers, and follows are not interchangeable.</td><td><code>followers</code>: Royal Road. <code>readers</code>: Scribble Hub. <code>watchers</code>: SpaceBattles. <code>follows</code>: FanFiction.net. <code>favorites</code>: Royal Road, Scribble Hub, FanFiction.net.</td><td>Details source-stat block; preserve the source label.</td></tr>
+        <tr><td>Reaction</td><td>Ratings, reviews, replies, likes, and awards represent different actions.</td><td><code>ratingsCount</code>: Royal Road, Scribble Hub. <code>reviewCount</code>: Scribble Hub, FanFiction.net. <code>replyCount</code>: SpaceBattles. <code>likes</code>/<code>awards</code>: SpaceBattles.</td><td>Details source-stat block; trend only stable counters.</td></tr>
+        <tr><td>Rating</td><td>Only show a score when the source has a quality/rating value. FFN’s K/T/M is a suitability rating, not a score.</td><td>Keep existing <code>score</code> for compatibility; add a numeric parsed value and scale later. Keep <code>contentRating</code> separate.</td><td>Score row only for Royal Road/Scribble Hub-like values.</td></tr>
+        <tr><td>Classification</td><td>Separate structured facets from generic tags.</td><td><code>genres</code>, <code>fandoms</code>, <code>characters</code>, <code>contentWarnings</code>, <code>contentRating</code>, <code>sourceType</code>, <code>sourceCategory</code>.</td><td>Badges, filters, and details chips.</td></tr>
+        <tr><td>Time/activity</td><td>Store source timestamps in UTC milliseconds and keep derived cadence distinct.</td><td><code>publishedAt</code>, <code>updatedAt</code>, <code>chaptersPerWeek</code>. Derive cadence from chapter dates when the source does not publish it.</td><td>Status/activity summary; future trend snapshots.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Suggested nullable shape</h3>
+  <pre><code>data class SourceStats(
+    val views: Long? = null,
+    val chapterViews: Long? = null,
+    val averageViews: Long? = null,
+    val followers: Long? = null,
+    val readers: Long? = null,
+    val watchers: Long? = null,
+    val follows: Long? = null,
+    val favorites: Long? = null,
+    val ratingsCount: Long? = null,
+    val reviewCount: Long? = null,
+    val replyCount: Long? = null,
+    val likes: Long? = null,
+    val awards: Int? = null,
+    val wordCount: Long? = null,
+    val wordCountIsEstimated: Boolean = false,
+    val averageWords: Long? = null,
+    val pageCount: Long? = null,
+    val chaptersPerWeek: Double? = null,
+    val publishedAt: Long? = null,
+    val updatedAt: Long? = null,
+)</code></pre>
+  <p>This is a recommendation, not an instruction to change code in this audit. The nullable design matters: an absent metric means “the source did not publish or the parser did not obtain it,” not zero. If source-specific names become too wide for <code>Story</code>, keep the same shape under a nested <code>sourceStats</code> property.</p>
+  <div class="callout"><strong>Do not normalize away the labels.</strong> A future UI can show <code>Followers</code>, <code>Readers</code>, <code>Watchers</code>, and <code>Follows</code> as separate rows while still using one typed model. That makes the result honest and makes it obvious to users why two sources expose different numbers.</div>
+</section>
+
+<section id="roadmap">
+  <h2>Implementation roadmap for a future agent</h2>
+  <div class="grid">
+    <article class="source-card"><h3>1. Extend metadata models <span class="priority p0">P0</span></h3><p>Add nullable <code>sourceStats</code> and typed classification fields to <code>NovelMetadata</code> and <code>Story</code>. Preserve existing JSON defaults so old libraries restore cleanly. Keep <code>score</code> and generic <code>tags</code> for compatibility.</p></article>
+    <article class="source-card"><h3>2. Parse one fixture per source <span class="priority p0">P0</span></h3><p>Expand the existing source fixture tests with statistics and classification examples. Use label-driven parsers and numeric normalization, not positional child indexes or one giant regex.</p></article>
+    <article class="source-card"><h3>3. Fetch only one extra page <span class="priority p0">P0</span></h3><p>Royal Road, SpaceBattles, and FanFiction.net can use their existing story/thread response. Scribble Hub needs a canonical <code>/stats/</code> request. Reuse source pacing, Cloudflare cookies, and network error classification.</p></article>
+    <article class="source-card"><h3>4. Add a source-stat card <span class="priority p0">P0</span></h3><p>Show 4–6 high-value values on Details with the source’s native labels; show the full breakdown in an expandable/details area. Hide absent metrics and never render missing ratings as zero.</p></article>
+    <article class="source-card"><h3>5. Add snapshot history later <span class="priority p1">P1</span></h3><p>The existing <code>StoryMetricSnapshot</code> design already calls for nullable future fields. Add views/followers/readers/watchers/favorites/words only after current values render correctly. Trend monotonic audience counters cautiously because source corrections and resets happen.</p></article>
+    <article class="source-card"><h3>6. Defer volatile fields <span class="priority p2">P2</span></h3><p>Do not block the first release on rankings, per-chapter favorites, recent readers, author achievements, review bodies, or source search pages. They add traffic and churn without improving the basic novel card proportionally.</p></article>
+  </div>
+  <h3>Parsing guardrails</h3>
+  <ul>
+    <li>Match visible labels such as <code>Followers</code>, <code>Words</code>, or <code>Reviews</code> after whitespace normalization. Do not rely on the current order of a statistics list.</li>
+    <li>Parse abbreviations such as <code>2K</code> or <code>2.36M</code> into numeric snapshots while retaining a formatter for user-facing compact display.</li>
+    <li>Keep source-reported zeros distinct from missing values. A page with “0 ratings” has data; a page where the block is absent does not.</li>
+    <li>Keep counters and classifications source-scoped. “Replies” is not “reviews,” and FanFiction.net’s <code>T</code> is not a score.</li>
+    <li>Update <code>StoryMetricSnapshot</code> with nullable fields only, following the compatibility guidance in <code>docs/architecture/metric-trends.md</code>.</li>
+    <li>Do not add a second <code>AppStorage</code> owner or a separate metadata write path. The existing sync/repository flow remains the persistence boundary.</li>
+  </ul>
+</section>
+
+<section id="sources">
+  <h2>Research references</h2>
+  <p>These are live public pages inspected for field availability and terminology on 31 July 2026. Markup can change; the links document the product evidence, while repository fixtures should become the implementation contract.</p>
+  <ul>
+    <li><a href="https://www.royalroad.com/fiction/101671/followers-of-the-gods">Royal Road — Followers of the Gods</a>: public fiction page showing the statistics labels, type/status labels, content warning, tags, and chapter list.</li>
+    <li><a href="https://www.royalroad.com/fiction/36049/the-primal-hunter">Royal Road — The Primal Hunter</a>: example of a story with a high latest chapter number, incomplete public chapter coverage, and access-related JSON-LD fields.</li>
+    <li><a href="https://www.scribblehub.com/series/526583/nexus-awakened-an-isekai-litrpg-gender-bender-story/stats">Scribble Hub — Nexus Awakened statistics</a>: public stats page showing views, favorites, chapters, chapters/week, readers, rating count, word count, pages, average values, rankings, and rating details.</li>
+    <li><a href="https://www.scribblehub.com/series/2162038/the-dukes-reborn-daughter-sometimes-chooses-violence/stats/">Scribble Hub — The Duke’s Reborn Daughter statistics</a>: example of the current statistics table, JSON-LD publication data, and the source’s separate stats route.</li>
+    <li><a href="https://www.scribblehub.com/faq-general/">Scribble Hub general FAQ</a>: source definitions for Favorites, Popularity/pageviews, and Readers.</li>
+    <li><a href="https://www.scribblehub.com/series-finder/">Scribble Hub Series Finder</a>: source search fields confirming chapters/week, favorites, ratings, number of ratings, readers, reviews, pages, pageviews, total words, genres, tags, warnings, and status.</li>
+    <li><a href="https://forums.spacebattles.com/library/stories/">SpaceBattles Story Library</a>: public library cards showing Words, Watchers, Threadmarks, Replies, Views, Likes, and occasional Awards.</li>
+    <li><a href="https://forums.spacebattles.com/threads/bahamut-effect-the-voidwalker-fleet.1315806/threadmarks.rss?threadmark_category=1">SpaceBattles — Bahamut Effect main-threadmark RSS</a>: RSS fields for title, date, stable post identity, category, likes, words, and author provenance.</li>
+    <li><a href="https://docs.xenforo.com/api/schemas/thread">XenForo Thread schema</a>: reference for public thread concepts such as reply count, view count, post dates, discussion state, prefix, and reactions.</li>
+    <li><a href="https://forums.spacebattles.com/threads/threadmarks-updates.528739/">SpaceBattles threadmarks update thread</a>: source explanation of threadmark categories and how threadmarks differ from ordinary replies.</li>
+    <li><a href="https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine">FanFiction.net — Dreaming of Sunshine</a>: public story page showing rating, language, genre, fandom/characters, chapter count, words, reviews, favorites, follows, updated date, published date, and status.</li>
+    <li><a href="https://www.fanfiction.net/r/7347955/">FanFiction.net — Dreaming of Sunshine reviews</a>: public review route linked by the story profile, useful for confirming the review-count anchor without fetching review bodies.</li>
+  </ul>
+  <div class="callout"><strong>Scope note:</strong> This is an opportunity audit, not an authorization to scrape private, authenticated, or user-specific data. All recommended fields are public story-level metadata. The omitted traffic/recent-reader surfaces are intentionally excluded even where a source renders them.</div>
+</section>
+</main>
+<footer>
+  <p>Prepared for the Webnovel Archiver Android native Kotlin app. Documentation-only change; no provider or UI implementation is included in this audit.</p>
+</footer>
+</body>
+</html>
