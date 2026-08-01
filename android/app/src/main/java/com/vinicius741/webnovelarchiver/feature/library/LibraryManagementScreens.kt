@@ -79,13 +79,12 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
         var applyFilters: () -> Unit = {}
         var currentFilteredIds: () -> List<String> = { emptyList() }
 
-        val search =
-            makeSearchField(context, "Search novels").apply {
-                doAfterTextChanged {
-                    filterState = filterState.copy(query = it?.toString().orEmpty())
-                    applyFilters()
-                }
-            }
+        val search = makeSearchField(context, "Search novels")
+
+        // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
+        // tab (All = union, a specific tab = only that tab's labels) — matching the legacy RN app.
+        // Declared before the tab bar so the bar's selection lambda can close over it.
+        var refreshFilters: (String?, Set<String>) -> Unit = { _, _ -> }
 
         val filters =
             makeLibraryFilters(
@@ -105,10 +104,12 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                     val nextTags = filterState.selectedTags.toMutableSet()
                     if (!nextTags.add(tag)) nextTags.remove(tag)
                     filterState = filterState.copy(selectedTags = nextTags)
+                    // Re-render the chip row so the tapped chip shows its selected state.
+                    refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
             )
-        val refreshFilters = filters.rebuildChips
+        refreshFilters = filters.rebuildChips
         val tabBar =
             makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
                 filterState = filterState.copy(selectedTabId = newTabId)
@@ -117,6 +118,16 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             }
         addView(tabBar.view)
         addView(filters.view)
+
+        // Wire the search watcher after `filters`/`refreshFilters` exist (mirrors the Library screen)
+        // so typing updates the collapsible header's active-filter indicators and re-narrows the chip
+        // row under the typed query, not just the visible rows.
+        search.doAfterTextChanged {
+            filterState = filterState.copy(query = it?.toString().orEmpty())
+            filters.syncActiveFilters(filterState.selectedTags)
+            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
+            applyFilters()
+        }
 
         // Select All / Deselect All act on the *currently filtered* list (matching the Follow Updates
         // selection screen), so selecting every novel in a search result or a single tab is one tap.
@@ -278,7 +289,7 @@ internal fun ScreenHost.showAddStory() {
             makeField(
                 context,
                 addStoryUrlText ?: "",
-                "Royal Road, Scribble Hub, or SpaceBattles story URL",
+                "Story URL",
                 android.text.InputType.TYPE_TEXT_VARIATION_URI,
             ).apply {
                 // Roomier vertical padding than the compact field style shared with search bars/dialogs,

@@ -13,21 +13,10 @@ object LibraryQuery {
         sortAscending: Boolean,
     ): List<Story> {
         val sourceNames = SourceRegistry.all().map { it.name }.toSet()
-        val query = searchQuery.trim()
         val filtered =
             stories
                 .filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
-                .filter { story ->
-                    query.isBlank() ||
-                        story.title.contains(query, ignoreCase = true) ||
-                        story.author.contains(query, ignoreCase = true)
-                }.filter { story ->
-                    if (selectedTags.isEmpty()) return@filter true
-                    val storySourceName = SourceRegistry.getProvider(story.sourceUrl)?.name
-                    selectedTags.all { tag ->
-                        if (tag in sourceNames) storySourceName == tag else story.tags.orEmpty().contains(tag)
-                    }
-                }
+                .filter { story -> matchesFilters(story, sourceNames, searchQuery, selectedTags) }
 
         val sorted = sortStories(filtered, sortOption)
         return if (sortAscending) sorted else sorted.asReversed()
@@ -36,13 +25,17 @@ object LibraryQuery {
     fun availableFilterLabels(
         stories: List<Story>,
         selectedTabId: String?,
-    ): List<String> = availableFilterLabelsWithCounts(stories, selectedTabId).map { it.first }
+        searchQuery: String = "",
+        selectedTags: Set<String> = emptySet(),
+    ): List<String> = availableFilterLabelsWithCounts(stories, selectedTabId, searchQuery, selectedTags).map { it.first }
 
     fun availableFilterLabelsWithCounts(
         stories: List<Story>,
         selectedTabId: String?,
+        searchQuery: String = "",
+        selectedTags: Set<String> = emptySet(),
     ): List<Pair<String, Int>> {
-        val (sources, tags) = availableFilterGroups(stories, selectedTabId)
+        val (sources, tags) = availableFilterGroups(stories, selectedTabId, searchQuery, selectedTags)
         return sources + tags
     }
 
@@ -50,12 +43,25 @@ object LibraryQuery {
      * Splits the available filter labels into two groups so the UI can render source filters
      * distinctly from genre tags (audit L4): [sourceNamesWithCounts, tagsWithCounts].
      * Sources come from registered providers; tags come from each story's `tags`.
+     *
+     * The chip set follows the current filter context: when a search query or tag selection is
+     * active, only labels that exist among the stories still passing those filters are returned, so
+     * the UI offers only combinations that actually match something. If the active filters match
+     * nothing at all, the tab's full label set is returned instead so the user can always see (and
+     * un-select) their active chips rather than the chip row vanishing.
      */
     fun availableFilterGroups(
         stories: List<Story>,
         selectedTabId: String?,
+        searchQuery: String = "",
+        selectedTags: Set<String> = emptySet(),
     ): Pair<List<Pair<String, Int>>, List<Pair<String, Int>>> {
-        val visibleStories = stories.filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
+        val sourceNames = SourceRegistry.all().map { it.name }.toSet()
+        var visibleStories = stories.filter { selectedTabId == LibraryTabSelection.ALL_TAB_ID || it.tabId == selectedTabId }
+        if (searchQuery.isNotBlank() || selectedTags.isNotEmpty()) {
+            val narrowed = visibleStories.filter { matchesFilters(it, sourceNames, searchQuery, selectedTags) }
+            if (narrowed.isNotEmpty()) visibleStories = narrowed
+        }
         val sources =
             visibleStories
                 .mapNotNull { SourceRegistry.getProvider(it.sourceUrl)?.name }
@@ -74,6 +80,25 @@ object LibraryQuery {
                 .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
                 .map { it.key to it.value }
         return sources to tags
+    }
+
+    private fun matchesFilters(
+        story: Story,
+        sourceNames: Set<String>,
+        searchQuery: String,
+        selectedTags: Set<String>,
+    ): Boolean {
+        val query = searchQuery.trim()
+        val queryMatches =
+            query.isBlank() ||
+                story.title.contains(query, ignoreCase = true) ||
+                story.author.contains(query, ignoreCase = true)
+        if (!queryMatches) return false
+        if (selectedTags.isEmpty()) return true
+        val storySourceName = SourceRegistry.getProvider(story.sourceUrl)?.name
+        return selectedTags.all { tag ->
+            if (tag in sourceNames) storySourceName == tag else story.tags.orEmpty().contains(tag)
+        }
     }
 
     private fun parseScore(score: String?): Double {

@@ -78,7 +78,7 @@ internal fun ScreenHost.showLibrary() {
             addView(
                 makeEmptyState(
                     context,
-                    message = "Import a Royal Road, Scribble Hub, or SpaceBattles story to start building your library.",
+                    message = "Import a Royal Road, Scribble Hub, SpaceBattles, or FanFiction.net story to start building your library.",
                     title = "Your library is empty",
                     iconRes = R.drawable.wna_menu_book,
                     actionLabel = "Add a story",
@@ -134,6 +134,10 @@ internal fun ScreenHost.showLibrary() {
         // [GridLayout] in single-tab mode, or every page's grid via the adapter in pager mode. Kept as
         // one closure so search/sort/tag callbacks never have to know which mode is active.
         var applyFilters: () -> Unit = {}
+        // Rebuilds the tag/source chip row from the active selection. Declared before [makeLibraryFilters]
+        // so the tag-toggle callback can re-highlight the tapped chip; assigned to `filters.rebuildChips`
+        // right after the filter bar is built (mirrors how `applyFilters` is hoisted above).
+        var refreshFilters: (String?, Set<String>) -> Unit = { _, _ -> }
 
         val filters =
             makeLibraryFilters(
@@ -154,13 +158,16 @@ internal fun ScreenHost.showLibrary() {
                     val nextTags = filterState.selectedTags.toMutableSet()
                     if (!nextTags.add(tag)) nextTags.remove(tag)
                     filterState = filterState.copy(selectedTags = nextTags)
+                    // Re-render the chip row so the tapped chip actually shows its selected state —
+                    // previously the grid re-filtered but the chip visuals never updated.
+                    refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
             )
         // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
         // tab (All = union, a specific tab = only that tab's labels) — matching the legacy RN app.
         // Declared before the tab bar so the bar's selection lambda can close over it.
-        val refreshFilters = filters.rebuildChips
+        refreshFilters = filters.rebuildChips
 
         val tabBar =
             makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
@@ -179,6 +186,10 @@ internal fun ScreenHost.showLibrary() {
         // typing — `applyFilters` was reachable only via tag/sort callbacks and page swipes.
         search.doAfterTextChanged {
             filterState = filterState.copy(query = it?.toString().orEmpty())
+            // The collapsible header's active-filter indicators track live search text too, and the
+            // chip row recomputes so it keeps offering only tags reachable under the typed query.
+            filters.syncActiveFilters(filterState.selectedTags)
+            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
             applyFilters()
         }
 

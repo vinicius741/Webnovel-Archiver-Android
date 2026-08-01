@@ -137,6 +137,53 @@ class LibraryQueryTest {
         assertEquals(listOf("Scribble Hub", "Romance"), tab2Labels)
     }
 
+    @Test
+    fun availableFilterGroupsNarrowToTagsThatCoOccurWithTheSelectedTags() {
+        val stories =
+            listOf(
+                story("a", "A", tags = mutableListOf("Action", "Fantasy")),
+                story("b", "B", tags = mutableListOf("Action", "Romance")),
+                story("c", "C", tags = mutableListOf("Horror")),
+            )
+
+        val (sources, tags) = LibraryQuery.availableFilterGroups(stories, "__all__", selectedTags = setOf("Action"))
+
+        // "Horror" only exists on a story without "Action", so it must no longer be offered;
+        // counts reflect the stories that still pass the active filter.
+        assertEquals(listOf("RoyalRoad" to 2), sources)
+        assertEquals(listOf("Action" to 2, "Fantasy" to 1, "Romance" to 1), tags)
+    }
+
+    @Test
+    fun availableFilterGroupsFallBackToTabSetWhenSelectionMatchesNothingSoActiveChipsStayDeselectable() {
+        val stories =
+            listOf(
+                story("a", "A", tags = mutableListOf("Action")),
+                story("b", "B", tags = mutableListOf("Romance")),
+            )
+
+        // "Action" and "Romance" never co-occur, so the combined selection matches nothing; the
+        // tab's full label set is returned so the active chips still render and can be un-selected.
+        val (sources, tags) =
+            LibraryQuery.availableFilterGroups(stories, "__all__", selectedTags = setOf("Action", "Romance"))
+
+        assertEquals(listOf("RoyalRoad" to 2), sources)
+        assertEquals(listOf("Action" to 1, "Romance" to 1), tags)
+    }
+
+    @Test
+    fun availableFilterGroupsFollowTheSearchQuery() {
+        val stories =
+            listOf(
+                story("a", "Dragon Knight", tags = mutableListOf("Fantasy")),
+                story("b", "Love at Sea", tags = mutableListOf("Romance", "Fantasy")),
+            )
+
+        val (_, tags) = LibraryQuery.availableFilterGroups(stories, "__all__", searchQuery = "dragon")
+
+        assertEquals(listOf("Fantasy" to 1), tags)
+    }
+
     private fun story(
         id: String,
         title: String,

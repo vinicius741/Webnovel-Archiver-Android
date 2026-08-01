@@ -5,9 +5,11 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 
@@ -154,7 +156,7 @@ fun makeChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-): TextView {
+): LinearLayout {
     val t = ThemeManager.current
     val colors = t.colors
     val radiusPx = context.dp(t.shapes.chipRadius).toFloat()
@@ -162,13 +164,21 @@ fun makeChip(
     val padV = context.dp(Space.XS + 1)
     val fg = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
 
-    return TextView(context).apply {
-        text = label
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_LARGE.size())
-        typeface = Typeface.create(typeface, Typeface.BOLD)
-        setTextColor(fg)
-        letterSpacing = 0.02f
-        includeFontPadding = false
+    // Selected chips get a leading check so the active filter reads at a glance even when the
+    // container fill alone would be too subtle (e.g. surfaceVariant vs secondaryContainer in light
+    // themes). The icon appears only when selected, mirroring the sort dialog's check row.
+    val text =
+        TextView(context).apply {
+            text = label
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_LARGE.size())
+            typeface = Typeface.create(typeface, Typeface.BOLD)
+            setTextColor(fg)
+            letterSpacing = 0.02f
+            includeFontPadding = false
+        }
+    return LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
         setPadding(padH, padV, padH, padV)
         isClickable = true
         isFocusable = true
@@ -185,6 +195,19 @@ fun makeChip(
                 radiusPx,
                 colors.onSurface,
             )
+        if (selected) {
+            addView(
+                ImageView(context).apply {
+                    setImageDrawable(context.tintedIcon(R.drawable.wna_check, fg))
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    layoutParams =
+                        LinearLayout.LayoutParams(context.dp(16), context.dp(16)).apply {
+                            marginEnd = context.dp(Space.XS + 2)
+                        }
+                },
+            )
+        }
+        addView(text)
         setOnClickListener { onClick() }
     }
 }
@@ -226,15 +249,29 @@ fun makeSourceChip(
             letterSpacing = 0.02f
             includeFontPadding = false
         }
-    return android.widget.LinearLayout(context).apply {
-        orientation = android.widget.LinearLayout.HORIZONTAL
-        gravity = android.view.Gravity.CENTER_VERTICAL
+    return LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
         setPadding(padH, padV, padH, padV)
         isClickable = true
         isFocusable = true
         background = ripple(roundedBg(containerColor, radiusPx), radiusPx, colors.onSurface)
         addView(icon)
         addView(text)
+        if (selected) {
+            // Trailing check marks the active source filter; the globe stays leading as the source
+            // identity, so selection is signalled by the check rather than a changed fill.
+            addView(
+                ImageView(context).apply {
+                    setImageDrawable(context.tintedIcon(R.drawable.wna_check, contentColor))
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    layoutParams =
+                        LinearLayout.LayoutParams(context.dp(16), context.dp(16)).apply {
+                            marginStart = context.dp(Space.XS + 2)
+                        }
+                },
+            )
+        }
         setOnClickListener { onClick() }
     }
 }
