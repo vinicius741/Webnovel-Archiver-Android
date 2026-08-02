@@ -171,6 +171,9 @@ internal fun ScreenHost.buildDetailsInfoPanel(
 
     addDetailsDescription(infoPanel, story)
     addDetailsTags(infoPanel, story)
+    // Source-native facts render as a flat chip flow alongside the tags, not as a boxed widget, so
+    // they read as supplementary reference content instead of a header stat block.
+    buildSourceMetadataFlow(story)?.let(infoPanel::addView)
 
     return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot)
 }

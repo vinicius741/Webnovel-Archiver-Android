@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.domain.story
 
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
 /**
@@ -48,6 +49,36 @@ object StoryNormalization {
         if (story.publicationStatus == null) {
             story.publicationStatus = PublicationStatus.unknown
             changed = true
+        }
+        if (story.sourceMetadata == null) {
+            story.sourceMetadata = SourceMetadata()
+            changed = true
+        } else {
+            val metadata = story.sourceMetadata
+            if (metadata.metrics == null) {
+                metadata.metrics = mutableListOf()
+                changed = true
+            }
+            if (metadata.contentWarnings == null) {
+                metadata.contentWarnings = mutableListOf()
+                changed = true
+            }
+            if (metadata.genres == null) {
+                metadata.genres = mutableListOf()
+                changed = true
+            }
+            if (metadata.fandoms == null) {
+                metadata.fandoms = mutableListOf()
+                changed = true
+            }
+            if (metadata.characters == null) {
+                metadata.characters = mutableListOf()
+                changed = true
+            }
+            if (metadata.ratingDistribution == null) {
+                metadata.ratingDistribution = mutableMapOf()
+                changed = true
+            }
         }
         if (story.chapters == null) {
             story.chapters = mutableListOf()

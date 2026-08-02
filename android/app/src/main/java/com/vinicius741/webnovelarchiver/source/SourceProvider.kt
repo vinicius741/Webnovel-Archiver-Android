@@ -50,6 +50,20 @@ interface SourceProvider {
 
     fun parseMetadata(html: String): NovelMetadata
 
+    /**
+     * Optionally fetches a small, source-owned supplemental metadata page. Most providers can
+     * return the parsed value unchanged; sources such as Scribble Hub use this for their canonical
+     * `/stats/` page. The hook is deliberately before chapter retrieval so a failed supplement can
+     * be isolated without preventing the story import.
+     */
+    suspend fun enrichMetadata(
+        metadata: NovelMetadata,
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit = {},
+    ): NovelMetadata = metadata
+
     suspend fun getChapterList(
         html: String,
         url: String,
@@ -229,13 +243,13 @@ private fun parseChapterPublishedAt(
     return parseEmbeddedDateMillis(normalized, now)
 }
 
-private fun parseEpochMillis(value: String): Long? {
+internal fun parseEpochMillis(value: String): Long? {
     val numeric = Regex("""^\d{10,13}$""").find(value)?.value ?: return null
     val raw = numeric.toLongOrNull() ?: return null
     return if (numeric.length <= 10) raw * 1000L else raw
 }
 
-private fun parseRelativeTime(
+internal fun parseRelativeTime(
     value: String,
     now: Long,
 ): Long? {
@@ -263,7 +277,7 @@ private fun parseRelativeTime(
     return now - millis
 }
 
-private fun parseInstantMillis(value: String): Long? {
+internal fun parseInstantMillis(value: String): Long? {
     listOf<(String) -> Long?>(
         { Instant.parse(it).toEpochMilli() },
         { OffsetDateTime.parse(it).toInstant().toEpochMilli() },
@@ -326,7 +340,7 @@ private fun parseEmbeddedDateMillis(
     }
 }
 
-private val localDateTimeFormatters =
+internal val localDateTimeFormatters =
     listOf(
         "yyyy-MM-dd HH:mm:ss",
         "yyyy-MM-dd HH:mm",
@@ -336,7 +350,7 @@ private val localDateTimeFormatters =
         "MMMM d yyyy h:mm a",
     ).map(::sourceDateFormatter)
 
-private val localDateFormatters =
+internal val localDateFormatters =
     listOf(
         "yyyy-MM-dd",
         "MMM d, yyyy",

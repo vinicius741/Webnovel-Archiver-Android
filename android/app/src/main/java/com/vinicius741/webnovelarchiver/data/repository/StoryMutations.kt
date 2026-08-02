@@ -96,5 +96,17 @@ internal object StoryMutations {
             epubPaths = story.epubPaths?.toMutableList(),
             pendingNewChapterIds = story.pendingNewChapterIds?.toMutableList(),
             tags = story.tags?.toMutableList(),
+            sourceMetadata =
+                story.sourceMetadata.copy(
+                    metrics =
+                        story.sourceMetadata.metrics
+                            .map { it.copy() }
+                            .toMutableList(),
+                    contentWarnings = story.sourceMetadata.contentWarnings.toMutableList(),
+                    genres = story.sourceMetadata.genres.toMutableList(),
+                    fandoms = story.sourceMetadata.fandoms.toMutableList(),
+                    characters = story.sourceMetadata.characters.toMutableList(),
+                    ratingDistribution = story.sourceMetadata.ratingDistribution.toMutableMap(),
+                ),
         )
 }

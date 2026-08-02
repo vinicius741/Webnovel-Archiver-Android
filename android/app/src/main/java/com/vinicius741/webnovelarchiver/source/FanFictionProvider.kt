@@ -3,6 +3,9 @@ package com.vinicius741.webnovelarchiver.source
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import org.jsoup.Jsoup
@@ -76,14 +79,22 @@ object FanFictionProvider : SourceProvider {
                 ?.takeIf(String::isNotBlank)
         val canonical = canonicalStoryUrl(doc)
         val profileText = profile?.text().orEmpty()
+        val facets = fanFictionFacets(profileText)
+        val fandoms = fanFictionFandoms(doc)
         val tags = fanFictionTags(doc, profileText).toMutableList().takeIf { it.isNotEmpty() }
-        val publicationStatus =
-            publicationStatusFromSourceText(profileText)
-                ?: if (profileText.contains("Published:", ignoreCase = true)) {
-                    PublicationStatus.ongoing
-                } else {
-                    PublicationStatus.unknown
-                }
+        val status = sourceField(profileText, "Status")
+        val sourceMetadata =
+            SourceMetadata(
+                metrics = fanFictionMetrics(profileText),
+                publishedAt = profile?.sourceTimestamp("Published"),
+                updatedAt = profile?.sourceTimestamp("Updated"),
+                contentRating = facets.contentRating,
+                sourceStatus = status,
+                language = facets.language,
+                genres = facets.genres.toMutableList(),
+                fandoms = fandoms.toMutableList(),
+                characters = facets.characters.toMutableList(),
+            )
         return NovelMetadata(
             title = title,
             author = author,
@@ -91,7 +102,8 @@ object FanFictionProvider : SourceProvider {
             description = description,
             tags = tags,
             canonicalUrl = canonical,
-            publicationStatus = publicationStatus,
+            publicationStatus = publicationStatusFromSourceText(status) ?: PublicationStatus.unknown,
+            sourceMetadata = sourceMetadata,
         )
     }
 
@@ -121,12 +133,8 @@ object FanFictionProvider : SourceProvider {
         }
 
         val profile = doc.selectFirst("#profile_top")
-        val publishedAt = profile?.sourceTimestamps()?.lastOrNull()
-        val updatedAt =
-            profile
-                ?.takeIf { it.text().contains("Updated:", ignoreCase = true) }
-                ?.sourceTimestamps()
-                ?.firstOrNull()
+        val publishedAt = profile?.sourceTimestamp("Published")
+        val updatedAt = profile?.sourceTimestamp("Updated")
         val lastChapterNumber = options.mapNotNull { it.attr("value").toIntOrNull() }.maxOrNull()
         val chapters =
             options.mapNotNull { option ->
@@ -177,34 +185,116 @@ object FanFictionProvider : SourceProvider {
         return "$baseUrl/s/${match.groupValues[1]}/1${match.groupValues[3]}"
     }
 
-    private fun Element.sourceTimestamps(): List<Long> =
-        select("span[data-xutime]")
-            .mapNotNull { element ->
-                element.attr("data-xutime").toLongOrNull()?.times(1_000L)
-            }
+    private fun Element.sourceTimestamp(label: String): Long? {
+        val fieldValue = sourceField(text(), label) ?: return null
+        val timestamp =
+            select("span[data-xutime]")
+                .firstOrNull { candidate ->
+                    normalizedSourceText(fieldValue).contains(normalizedSourceText(candidate.text()))
+                }
+        val sourceTimestamp = timestamp?.attr("data-xutime")?.toLongOrNull()?.times(1_000L)
+        return sourceTimestamp ?: parseSourceDateMillis(fieldValue)
+    }
+
+    private fun fanFictionMetrics(profileText: String): MutableList<SourceMetric> =
+        buildList {
+            addMetric(profileText, "Words", SourceMetricKind.WORDS)
+            addMetric(profileText, "Reviews", SourceMetricKind.REVIEWS)
+            addMetric(profileText, "Favs", SourceMetricKind.FAVORITES)
+            addMetric(profileText, "Follows", SourceMetricKind.FOLLOWS)
+        }.toMutableList()
+
+    private fun MutableList<SourceMetric>.addMetric(
+        profileText: String,
+        label: String,
+        kind: SourceMetricKind,
+    ) {
+        parseSourceMetricValue(sourceField(profileText, label))?.let { value ->
+            add(SourceMetric(kind, value))
+        }
+    }
+
+    private fun fanFictionFandoms(doc: Document): List<String> =
+        doc
+            .select(FANDOM_LINKS)
+            .map { it.text().trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
 
     private fun fanFictionTags(
         doc: Document,
         profileText: String,
     ): List<String> {
-        val fandoms =
-            doc
-                .select(FANDOM_LINKS)
-                .map { it.text().trim() }
-                .filter { it.isNotBlank() }
+        val parts = fanFictionProfileParts(profileText)
         val details =
-            Regex(
-                """Rated:.*?\s-\s[^-]+\s-\s(.*?)\s-\sChapters:""",
-                setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
-            ).find(profileText)
-                ?.groupValues
-                ?.get(1)
-                ?.split(Regex("""\s+-\s+|\s*,\s*"""))
-                .orEmpty()
+            parts
+                .drop(2)
+                .take(2)
+                .joinToString(" - ")
+                .split(Regex("""\s+-\s+|\s*,\s*"""))
                 .map(String::trim)
                 .filter(String::isNotBlank)
-        return (fandoms + details).distinct()
+        return (fanFictionFandoms(doc) + details).distinct()
     }
+
+    private fun fanFictionFacets(profileText: String): FanFictionFacets {
+        val parts = fanFictionProfileParts(profileText)
+        if (parts.size < 2) return FanFictionFacets()
+        return FanFictionFacets(
+            contentRating = parts[0].takeIf(String::isNotBlank),
+            language = parts[1].takeIf(String::isNotBlank),
+            genres = parts.getOrNull(2)?.let(::splitProfileGenres).orEmpty(),
+            characters = parts.getOrNull(3)?.let(::splitProfileCharacters).orEmpty(),
+        )
+    }
+
+    private fun fanFictionProfileParts(profileText: String): List<String> {
+        val normalizedProfile = normalizedSourceText(profileText)
+        val marker = "Rated: Fiction"
+        val markerStart = normalizedProfile.indexOf(marker, ignoreCase = true)
+        if (markerStart < 0) return emptyList()
+        val detailsStart = markerStart + marker.length
+        val chaptersStart = normalizedProfile.indexOf(" - Chapters:", detailsStart, ignoreCase = true)
+        if (chaptersStart < 0) return emptyList()
+        return normalizedProfile
+            .substring(detailsStart, chaptersStart)
+            .split(Regex("""\s+-\s+"""), limit = 4)
+            .map(String::trim)
+    }
+
+    private fun splitProfileGenres(value: String): List<String> =
+        value
+            .split(Regex("""\s*/\s*"""))
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+
+    private fun splitProfileCharacters(value: String): List<String> =
+        value
+            .split(Regex("""\s*,\s*"""))
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+
+    private fun sourceField(
+        profileText: String,
+        label: String,
+    ): String? =
+        Regex(
+            """(?i)(?:^|\s-?\s)${Regex.escape(label)}\s*:\s*""" +
+                """(.*?)(?=\s+-\s+(?:Chapters|Words|Reviews|Favs|Follows|Updated|Published|Status|id)\s*:|$)""",
+        ).find(normalizedSourceText(profileText))
+            ?.groupValues
+            ?.get(1)
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+
+    private data class FanFictionFacets(
+        val contentRating: String? = null,
+        val language: String? = null,
+        val genres: List<String> = emptyList(),
+        val characters: List<String> = emptyList(),
+    )
 
     private fun storyUrlMatch(url: String) = STORY_URL.matchEntire(url.trim())
 

@@ -172,6 +172,7 @@ internal fun formatScore(score: String): String {
 internal fun ScreenHost.scoreRow(
     score: String,
     iconSizeDp: Int = 16,
+    ratingCount: Long? = null,
     trailing: View? = null,
 ): View =
     LinearLayout(app).apply {
@@ -184,8 +185,23 @@ internal fun ScreenHost.scoreRow(
             },
         )
         addView(makeText(app, formatScore(score), Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply { setPadding(dp(4), 0, 0, 0) })
+        ratingCount?.let { count ->
+            addView(
+                makeText(
+                    app,
+                    "· ${formatSourceCount(count)} ratings",
+                    Type.LABEL_MEDIUM,
+                    ThemeManager.colors.onSurfaceVariant,
+                ).apply { setPadding(dp(Space.SM), 0, 0, 0) },
+            )
+        }
         trailing?.let { addView(it) }
     }
+
+internal fun formatSourceCount(value: Long): String =
+    java.text.NumberFormat
+        .getIntegerInstance(java.util.Locale.US)
+        .format(value)
 
 internal fun ScreenHost.dot(color: Int): View =
     View(app).apply {

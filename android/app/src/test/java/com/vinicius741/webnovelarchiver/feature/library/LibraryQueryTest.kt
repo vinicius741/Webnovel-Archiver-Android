@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -182,6 +183,23 @@ class LibraryQueryTest {
         val (_, tags) = LibraryQuery.availableFilterGroups(stories, "__all__", searchQuery = "dragon")
 
         assertEquals(listOf("Fantasy" to 1), tags)
+    }
+
+    @Test
+    fun typedSourceClassificationsRemainSearchableThroughExistingTagFilters() {
+        val stories =
+            listOf(
+                story("fandom", "Naruto story").copy(
+                    sourceMetadata = SourceMetadata(fandoms = mutableListOf("Naruto"), characters = mutableListOf("Shikamaru")),
+                ),
+                story("other", "Other story"),
+            )
+
+        assertEquals(
+            listOf("fandom"),
+            LibraryQuery.filterAndSort(stories, "", "__all__", setOf("Naruto"), "title", true).map { it.id },
+        )
+        assertEquals(listOf("Naruto" to 1, "Shikamaru" to 1), LibraryQuery.availableFilterGroups(stories, "__all__").second)
     }
 
     private fun story(

@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import kotlinx.coroutines.CancellationException
 
 enum class StorySyncMode {
     Default,
@@ -37,7 +38,15 @@ class StorySyncEngine(
         val existing = repository.story(storyId)
         status("Fetching from ${provider.name}...")
         val html = network.fetch(normalizedUrl)
-        val metadata = provider.parseMetadata(html)
+        val parsedMetadata = provider.parseMetadata(html)
+        val metadata =
+            try {
+                provider.enrichMetadata(parsedMetadata, html, normalizedUrl, network, status)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                parsedMetadata
+            }
         status("Parsing chapters...")
         val latestIncoming =
             if (existing != null && mode != StorySyncMode.Full && provider.supportsLatestChapterSync) {
@@ -112,6 +121,7 @@ class StorySyncEngine(
                 chapters = merge.chapters.toMutableList(),
                 tags = metadata.tags,
                 score = metadata.score,
+                sourceMetadata = metadata.sourceMetadata,
                 lastReadChapterId = merge.lastReadChapterId,
                 epubPath = existing?.epubPath,
                 epubPaths = existing?.epubPaths,

@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -47,6 +48,40 @@ class FanFictionProviderTest {
         assertEquals(PublicationStatus.completed, metadata.publicationStatus)
         assertTrue(metadata.tags.orEmpty().contains("Naruto"))
         assertTrue(metadata.tags.orEmpty().contains("Adventure"))
+    }
+
+    @Test
+    fun parsesTypedSourceMetadataWithoutTreatingContentRatingAsScore() {
+        val metadata = FanFictionProvider.parseMetadata(fixture("/fixtures/fanfiction/story.html"))
+        val sourceMetadata = metadata.sourceMetadata
+
+        assertEquals("T", sourceMetadata.contentRating)
+        assertEquals(null, metadata.score)
+        assertEquals("English", sourceMetadata.language)
+        assertEquals(listOf("Adventure"), sourceMetadata.genres)
+        assertEquals(listOf("Naruto"), sourceMetadata.fandoms)
+        assertEquals(listOf("Naruto U.", "Shikamaru N.", "OC"), sourceMetadata.characters)
+        assertEquals("Complete", sourceMetadata.sourceStatus)
+        assertEquals(1_315_014_342_000L, sourceMetadata.publishedAt)
+        assertEquals(1_553_758_816_000L, sourceMetadata.updatedAt)
+        assertEquals(
+            mapOf(
+                SourceMetricKind.WORDS to 716_431L,
+                SourceMetricKind.REVIEWS to 26_497L,
+                SourceMetricKind.FAVORITES to 23_949L,
+                SourceMetricKind.FOLLOWS to 23_070L,
+            ),
+            sourceMetadata.metrics.associate { it.kind to it.value },
+        )
+    }
+
+    @Test
+    fun leavesStatusUnknownWhenProfileOnlyHasPublishedDate() {
+        val metadata = FanFictionProvider.parseMetadata(fixture("/fixtures/fanfiction/story-without-status.html"))
+
+        assertEquals(PublicationStatus.unknown, metadata.publicationStatus)
+        assertEquals(null, metadata.sourceMetadata.sourceStatus)
+        assertEquals(1_315_014_342_000L, metadata.sourceMetadata.publishedAt)
     }
 
     @Test

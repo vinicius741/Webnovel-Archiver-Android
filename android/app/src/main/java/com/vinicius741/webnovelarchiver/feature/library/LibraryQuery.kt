@@ -72,7 +72,7 @@ object LibraryQuery {
                 .map { it.key to it.value }
         val tags =
             visibleStories
-                .flatMap { it.tags.orEmpty() }
+                .flatMap(::classificationFilterValues)
                 .filter { it.isNotBlank() }
                 .groupingBy { it }
                 .eachCount()
@@ -97,9 +97,23 @@ object LibraryQuery {
         if (selectedTags.isEmpty()) return true
         val storySourceName = SourceRegistry.getProvider(story.sourceUrl)?.name
         return selectedTags.all { tag ->
-            if (tag in sourceNames) storySourceName == tag else story.tags.orEmpty().contains(tag)
+            if (tag in sourceNames) storySourceName == tag else classificationFilterValues(story).contains(tag)
         }
     }
+
+    /**
+     * Typed source classifications remain available through the existing tag-chip surface. Generic
+     * tags are retained for legacy stories and provider compatibility; the typed facets fill gaps
+     * without adding another library-card row or a second filter UI.
+     */
+    private fun classificationFilterValues(story: Story): List<String> =
+        (
+            story.tags.orEmpty() +
+                story.sourceMetadata.genres +
+                story.sourceMetadata.fandoms +
+                story.sourceMetadata.characters +
+                listOfNotNull(story.sourceMetadata.sourceType, story.sourceMetadata.sourceCategory)
+        ).distinct()
 
     private fun parseScore(score: String?): Double {
         if (score.isNullOrBlank()) return 0.0

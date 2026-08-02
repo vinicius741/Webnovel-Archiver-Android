@@ -14,6 +14,24 @@ import java.time.ZoneId
 
 class SourceProviderTest {
     @Test
+    fun parsesSourceCountersAndDatesWithoutCollapsingMissingValues() {
+        assertEquals(2_360L, parseSourceMetricValue("2.36K"))
+        assertEquals(1_240L, parseSourceMetricValue("1,240"))
+        assertEquals(0L, parseSourceMetricValue("0"))
+        assertEquals(null, parseSourceMetricValue(null))
+        // Naive source dates are interpreted in the system default zone, matching the chapter-date
+        // helpers, so a "2024-05-08" published date and a chapter published that same day agree.
+        assertEquals(
+            LocalDate
+                .of(2024, 5, 8)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli(),
+            parseSourceDateMillis("2024-05-08"),
+        )
+    }
+
+    @Test
     fun royalRoadParsesMetadataChaptersAndContent() =
         runBlocking {
             val html =

@@ -43,7 +43,7 @@ private fun spaceBattlesImageUrl(image: Element): String? {
     val height = image.attr("height").toIntOrNull()
     if (width != null && height != null && width * height < MIN_COVER_AREA) return null
     return listOf("data-url", "data-src", "src")
-        .firstNotNullOfOrNull { attribute -> SpaceBattlesProvider.safeAbsoluteUrl(image, attribute) }
+        .firstNotNullOfOrNull { attribute -> safeAbsoluteUrl(image, attribute) }
 }
 
 private fun isMeaningfulImageUrl(url: String): Boolean {

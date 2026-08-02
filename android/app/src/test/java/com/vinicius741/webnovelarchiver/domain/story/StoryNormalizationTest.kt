@@ -36,6 +36,21 @@ class StoryNormalizationTest {
     }
 
     @Test
+    fun coerceDefaultsCreatesEmptySourceMetadataForLegacyStory() {
+        val story = Story(id = "legacy", title = "Legacy")
+        nullField(story, "sourceMetadata")
+
+        val result = StoryNormalization.coerceDefaults(story)
+
+        assertTrue(result.changed)
+        assertNotNull(result.story.sourceMetadata)
+        assertTrue(
+            result.story.sourceMetadata.metrics
+                .isEmpty(),
+        )
+    }
+
+    @Test
     fun coerceDefaultsIsNoOpWhenFieldsAlreadyPresent() {
         val story =
             Story(

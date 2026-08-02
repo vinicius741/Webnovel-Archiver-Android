@@ -90,6 +90,71 @@ class SpaceBattlesProviderTest {
     }
 
     @Test
+    fun rssUpdatedAtUsesNewestPubDateInsteadOfLastBuildDate() {
+        val rss =
+            """
+            <rss><channel>
+              <lastBuildDate>Sun, 26 Jul 2026 12:00:00 GMT</lastBuildDate>
+              <item>
+                <title>Chapter 12</title>
+                <pubDate>Fri, 24 Jul 2026 12:00:00 GMT</pubDate>
+                <guid>https://forums.spacebattles.com/posts/7012</guid>
+              </item>
+              <item>
+                <title>Chapter 13</title>
+                <pubDate>Sat, 25 Jul 2026 12:00:00 GMT</pubDate>
+                <guid>https://forums.spacebattles.com/posts/7013</guid>
+              </item>
+            </channel></rss>
+            """.trimIndent()
+
+        assertEquals(
+            java.time.Instant
+                .parse("2026-07-25T12:00:00Z")
+                .toEpochMilli(),
+            SpaceBattlesProvider.parseThreadmarkRssUpdatedAt(rss),
+        )
+    }
+
+    @Test
+    fun enrichMetadataFetchesMainCategoryRssOnceAndPersistsMaxUpdate() =
+        runBlocking {
+            val root = server.url("/threads/fixture-story.1183048/").toString()
+            val storyHtml = "<link rel=\"canonical\" href=\"$root\">"
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    <rss><channel>
+                      <lastBuildDate>Sun, 26 Jul 2026 12:00:00 GMT</lastBuildDate>
+                      <item><pubDate>Fri, 24 Jul 2026 12:00:00 GMT</pubDate></item>
+                      <item><pubDate>Sat, 25 Jul 2026 12:00:00 GMT</pubDate></item>
+                    </channel></rss>
+                    """.trimIndent(),
+                ),
+            )
+
+            val metadata =
+                SpaceBattlesProvider.enrichMetadata(
+                    SpaceBattlesProvider.parseMetadata(storyHtml),
+                    storyHtml,
+                    root,
+                    network,
+                )
+
+            assertEquals(
+                java.time.Instant
+                    .parse("2026-07-25T12:00:00Z")
+                    .toEpochMilli(),
+                metadata.sourceMetadata.updatedAt,
+            )
+            assertEquals(1, server.requestCount)
+            assertEquals(
+                "/threads/fixture-story.1183048/threadmarks.rss?threadmark_category=1",
+                server.takeRequest().path,
+            )
+        }
+
+    @Test
     fun chapterDownloadsReuseReaderPageForSeveralPosts() =
         runBlocking {
             val root = server.url("/threads/fixture-story.1183048/").toString()

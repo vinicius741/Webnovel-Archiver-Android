@@ -117,6 +117,8 @@ data class Story(
     var patreonStats: PatreonStats? = null,
     var publicationStatus: PublicationStatus = PublicationStatus.unknown,
     var lastChapterSyncAt: Long? = null,
+    /** Public, source-authored metadata retained separately from generic tags and local state. */
+    var sourceMetadata: SourceMetadata = SourceMetadata(),
 )
 
 data class PatreonStats(
@@ -272,6 +274,67 @@ data class NovelMetadata(
     val canonicalUrl: String? = null,
     val patreonUrl: String? = null,
     val publicationStatus: PublicationStatus = PublicationStatus.unknown,
+    /** Public, source-authored metadata retained separately from generic tags and local state. */
+    val sourceMetadata: SourceMetadata = SourceMetadata(),
+)
+
+/**
+ * Native metric families published by story sources. The enum intentionally keeps related values
+ * distinct: readers, followers, watchers, and follows are not interchangeable, nor are reviews,
+ * likes, and ratings.
+ */
+enum class SourceMetricKind {
+    TOTAL_VIEWS("Total views"),
+    TOTAL_VIEWS_CHAPTERS("Chapter views"),
+    AVERAGE_VIEWS("Average views"),
+    FOLLOWERS("Followers"),
+    READERS("Readers"),
+    WATCHERS("Watchers"),
+    FOLLOWS("Follows"),
+    FAVORITES("Favorites"),
+    RATINGS("Ratings"),
+    REVIEWS("Reviews"),
+    LIKES("Likes"),
+    WORDS("Words"),
+    AVERAGE_WORDS("Average words"),
+    PAGES("Pages"),
+    CHAPTERS_PER_WEEK("Chapters per week"),
+    ;
+
+    val label: String
+
+    constructor(label: String) {
+        this.label = label
+    }
+}
+
+/** One source-reported metric. A missing metric is different from a reported value of zero. */
+data class SourceMetric(
+    val kind: SourceMetricKind = SourceMetricKind.WORDS,
+    val value: Long = 0L,
+    val isEstimated: Boolean = false,
+)
+
+/**
+ * Source-authored facts that do not belong in the generic Story fields. Defaults are deliberately
+ * empty so libraries written before this model was added continue to restore cleanly.
+ */
+data class SourceMetadata(
+    var metrics: MutableList<SourceMetric> = mutableListOf(),
+    var createdAt: Long? = null,
+    var publishedAt: Long? = null,
+    var updatedAt: Long? = null,
+    var contentRating: String? = null,
+    var contentWarnings: MutableList<String> = mutableListOf(),
+    var sourceType: String? = null,
+    var sourceCategory: String? = null,
+    var sourceListingState: String? = null,
+    var sourceStatus: String? = null,
+    var language: String? = null,
+    var genres: MutableList<String> = mutableListOf(),
+    var fandoms: MutableList<String> = mutableListOf(),
+    var characters: MutableList<String> = mutableListOf(),
+    var ratingDistribution: MutableMap<Int, Int> = mutableMapOf(),
 )
 
 data class ChapterInfo(

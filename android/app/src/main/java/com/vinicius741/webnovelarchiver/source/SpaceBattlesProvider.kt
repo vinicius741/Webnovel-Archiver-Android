@@ -6,6 +6,9 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
@@ -51,7 +54,17 @@ object SpaceBattlesProvider : SourceProvider {
 
     override fun getChapterId(url: String): String? = rawPostId(url)?.let { "sb_$it" }
 
-    override fun parseMetadata(html: String): NovelMetadata {
+    override fun parseMetadata(html: String): NovelMetadata = parseMetadata(html, null)
+
+    /**
+     * Parses metadata when the caller already has the existing main-category RSS response. The
+     * optional response is injected rather than fetched here: [parseMetadata] is a synchronous
+     * parser, and SpaceBattles' RSS request is already part of latest-chapter sync.
+     */
+    internal fun parseMetadata(
+        html: String,
+        mainCategoryRss: String?,
+    ): NovelMetadata {
         val doc = Jsoup.parse(html, baseUrl)
         val title =
             doc
@@ -85,17 +98,25 @@ object SpaceBattlesProvider : SourceProvider {
                 .selectFirst("link[rel=canonical]")
                 ?.let { safeAbsoluteUrl(it, "href") }
                 ?: doc.selectFirst("meta[property=og:url]")?.attr("content")?.ifBlank { null }
-        val statusText =
-            doc
-                .select(".threadmarkListingHeader-stats dl")
-                .firstOrNull {
-                    it
-                        .selectFirst("dt")
-                        ?.text()
-                        ?.trim()
-                        ?.equals("Status", ignoreCase = true) == true
-                }?.selectFirst("dd")
-                ?.text()
+        val stats = doc.select(".threadmarkListingHeader-stats dl")
+        val words = sourceStatElement(stats, "Words")
+        val created = sourceStatElement(stats, "Created")
+        val statusText = sourceStatText(stats, "Status")
+        val sourceMetadata =
+            SourceMetadata(
+                metrics =
+                    buildList {
+                        parseSourceMetricValue(words?.text())?.let { value ->
+                            add(SourceMetric(SourceMetricKind.WORDS, value))
+                        }
+                    }.toMutableList(),
+                createdAt = created?.sourceDateMillis(),
+                updatedAt = mainCategoryRss?.let { parseThreadmarkRssUpdatedAt(it) },
+                sourceType = sourceStatText(stats, "Type") ?: threadPrefix(doc),
+                sourceCategory = sourceStatText(stats, "Category") ?: threadCategory(doc),
+                sourceListingState = threadDiscussionState(doc),
+                sourceStatus = statusText,
+            )
         val coverUrl = spaceBattlesCoverUrl(doc, author)
         return NovelMetadata(
             title = title,
@@ -106,7 +127,22 @@ object SpaceBattlesProvider : SourceProvider {
             canonicalUrl = canonical,
             patreonUrl = null,
             publicationStatus = publicationStatusFromSourceText(statusText) ?: PublicationStatus.unknown,
+            sourceMetadata = sourceMetadata,
         )
+    }
+
+    override suspend fun enrichMetadata(
+        metadata: NovelMetadata,
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit,
+    ): NovelMetadata {
+        val root = storyRoot(Jsoup.parse(html, url), url)
+        progress("Fetching main threadmark RSS...")
+        val rss = network.fetch("${root}threadmarks.rss?threadmark_category=$MAIN_CATEGORY")
+        val parsedWithRss = parseMetadata(html, rss)
+        return metadata.copy(sourceMetadata = parsedWithRss.sourceMetadata)
     }
 
     override suspend fun getChapterList(
@@ -238,9 +274,15 @@ object SpaceBattlesProvider : SourceProvider {
                     id = "sb_$postId",
                     title = sanitizeTitle(item.childText("title")).ifBlank { "Untitled Chapter" },
                     url = "$origin/posts/$postId/",
-                    publishedAt = item.chapterPublishedAt(),
+                    publishedAt = item.rssPublishedAt(),
                 )
             }.asReversed()
+    }
+
+    /** Returns the newest main-threadmark publication timestamp, ignoring feed generation time. */
+    internal fun parseThreadmarkRssUpdatedAt(xml: String): Long? {
+        val doc = Jsoup.parse(xml, baseUrl, Parser.xmlParser())
+        return doc.select("item").mapNotNull { it.rssPublishedAt() }.maxOrNull()
     }
 
     private fun parsePost(
@@ -322,35 +364,19 @@ object SpaceBattlesProvider : SourceProvider {
             .filter { it > 0 }
             .distinct()
 
-    private fun cleanTag(tag: Element): String? {
-        val copy = tag.clone()
-        copy.select("i, svg, .u-srOnly").remove()
-        return copy.text().trim().takeIf(String::isNotBlank)
-    }
-
-    private fun isReaderPage(html: String): Boolean {
-        if (html.isBlank()) return false
-        val doc = Jsoup.parse(html)
-        return doc.selectFirst("article.message--post .message-body .bbWrapper") != null
-    }
-
-    internal fun safeAbsoluteUrl(
-        element: Element,
-        attribute: String,
-    ): String? =
-        runCatching { element.absUrl(attribute) }
-            .getOrNull()
-            .orEmpty()
-            .ifBlank { element.attr(attribute) }
-            .trim()
-            .takeIf(String::isNotBlank)
-
     private fun Element.childText(tagName: String): String =
         children()
             .firstOrNull { it.tagName().equals(tagName, ignoreCase = true) }
             ?.text()
             .orEmpty()
             .trim()
+
+    private fun Element.rssPublishedAt(): Long? =
+        selectFirst("pubDate")
+            ?.text()
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?.let(::parseSourceDateMillis)
 
     private fun rawPostId(value: String): String? = POST_ID.find(value)?.groupValues?.get(1)
 

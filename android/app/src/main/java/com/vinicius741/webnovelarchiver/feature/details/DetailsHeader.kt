@@ -8,7 +8,9 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning.TrendDirection
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.SourceMetadataPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -82,6 +84,15 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
         publicationStatusBadge?.let {
             addBadgeWithGap(it)
         }
+        story.sourceMetadata.contentRating?.takeIf { it.isNotBlank() }?.let {
+            addBadgeWithGap(makeBadge(app, "Rated $it", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
+        }
+        story.sourceMetadata.sourceType?.takeIf { it.isNotBlank() }?.let {
+            addBadgeWithGap(makeBadge(app, it, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
+        }
+        story.sourceMetadata.sourceListingState?.takeIf { it.isNotBlank() }?.let {
+            addBadgeWithGap(makeBadge(app, it, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
+        }
         if (story.isArchived == true) {
             addBadgeWithGap(makeBadge(app, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
         }
@@ -97,6 +108,7 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     // asynchronously (same pattern as showTrends) and the arrow is patched in place. It stays
     // hidden when there is nothing meaningful to report (fewer than two points, or a flat series).
     story.score?.takeIf { it.isNotBlank() }?.let { score ->
+        val ratingCount = SourceMetadataPlanning.metric(story.sourceMetadata, SourceMetricKind.RATINGS)?.value
         val trendArrow =
             ImageView(app).apply {
                 visibility = View.GONE
@@ -106,8 +118,13 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
                     }
             }
         val row =
-            scoreRow(score, iconSizeDp = 24, trailing = trendArrow).apply {
-                contentDescription = "Score $score. Tap to view trends."
+            scoreRow(score, iconSizeDp = 24, ratingCount = ratingCount, trailing = trendArrow).apply {
+                contentDescription =
+                    buildString {
+                        append("Score $score")
+                        ratingCount?.let { append(" from $it ratings") }
+                        append(". Tap to view trends.")
+                    }
                 isClickable = true
                 isFocusable = true
                 // Selectable-row ripple so the press gives feedback (the row is otherwise a bare layout).

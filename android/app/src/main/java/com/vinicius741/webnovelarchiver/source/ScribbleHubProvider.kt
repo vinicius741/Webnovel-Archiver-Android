@@ -4,11 +4,16 @@ import com.vinicius741.webnovelarchiver.domain.archive.PercentEncoding
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
+import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import timber.log.Timber
 
 @Suppress("TooManyFunctions")
 object ScribbleHubProvider : SourceProvider {
@@ -68,7 +73,7 @@ object ScribbleHubProvider : SourceProvider {
                     .ifBlank {
                         doc.selectFirst("meta[property=og:description]")?.attr("content")
                             ?: doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
-                    }.stripSynopsisToggle()
+                    }.stripScribbleHubSynopsisToggle()
             ).ifBlank { null }
         val canonical = doc.selectFirst("link[rel=canonical]")?.absUrl("href") ?: doc.selectFirst("meta[property=og:url]")?.attr("content")
         val tags =
@@ -82,7 +87,75 @@ object ScribbleHubProvider : SourceProvider {
         val score = scribbleHubScore(doc)
         val patreonUrl = findPatreonUrl(doc)
         val publicationStatus = scribbleHubPublicationStatus(doc)
-        return NovelMetadata(title, author, cover, description, tags.ifEmpty { null }, score, canonical, patreonUrl, publicationStatus)
+        val contentWarnings =
+            doc
+                .select("li.mature_contains > a[href*=/content/]")
+                .map { normalizedSourceText(it.text()) }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .toMutableList()
+        return NovelMetadata(
+            title = title,
+            author = author,
+            coverUrl = cover,
+            description = description,
+            tags = tags.ifEmpty { null },
+            score = score,
+            canonicalUrl = canonical,
+            patreonUrl = patreonUrl,
+            publicationStatus = publicationStatus,
+            sourceMetadata =
+                SourceMetadata(
+                    publishedAt = scribbleHubParsePublicationDate(doc),
+                    contentWarnings = contentWarnings,
+                ),
+        )
+    }
+
+    override suspend fun enrichMetadata(
+        metadata: NovelMetadata,
+        html: String,
+        url: String,
+        network: NetworkClient,
+        progress: (String) -> Unit,
+    ): NovelMetadata {
+        val statsUrl = scribbleHubCanonicalSeriesUrl(metadata.canonicalUrl ?: url)?.let { "$it/stats/" } ?: return metadata
+        return try {
+            progress("Fetching Scribble Hub statistics...")
+            val stats = parseStatsMetadata(network.fetch(statsUrl))
+            if (stats.metrics.isEmpty()) {
+                metadata
+            } else {
+                metadata.copy(sourceMetadata = mergeScribbleHubSourceMetadata(metadata.sourceMetadata, stats))
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // Statistics are supplemental. A blocked, missing, or changed stats page must not make
+            // the base series import fail, but log so regressions in stats parsing don't vanish.
+            Timber.w(error, "Scribble Hub stats enrichment failed for %s; continuing without metrics.", statsUrl)
+            metadata
+        }
+    }
+
+    /** Parses the public `/stats/` page without relying on its current positional layout. */
+    internal fun parseStatsMetadata(html: String): SourceMetadata {
+        val doc = Jsoup.parse(html, baseUrl)
+        val labeledValues = scribbleHubExtractLabeledValues(doc)
+        val metrics =
+            scribbleHubStatLabels
+                .values
+                .distinct()
+                .mapNotNull { kind ->
+                    labeledValues[kind]?.let { value ->
+                        parseSourceMetricValue(value)?.let { SourceMetric(kind = kind, value = it) }
+                    }
+                }.toMutableList()
+        val ratings = scribbleHubParseRatingsCount(doc)
+        if (ratings != null && metrics.none { it.kind == SourceMetricKind.RATINGS }) {
+            metrics += SourceMetric(kind = SourceMetricKind.RATINGS, value = ratings)
+        }
+        return SourceMetadata(metrics = metrics)
     }
 
     override suspend fun getChapterList(
@@ -222,18 +295,6 @@ object ScribbleHubProvider : SourceProvider {
             .firstNotNullOfOrNull { selector ->
                 doc.selectFirst(selector)?.blockText()?.takeIf { it.isNotBlank() }
             }.orEmpty()
-
-    // Scribble Hub embeds its show-more synopsis toggle ("...more>>" / "<<less") as literal text
-    // inside the description DOM, so it leaks into the archived description. Drop the toggle
-    // tokens (including the truncation ellipsis that belongs to the toggle) and tidy the
-    // whitespace left behind. At least one ellipsis run is required before "more>>" so prose that
-    // happens to contain the bare token is left untouched.
-    private fun String.stripSynopsisToggle(): String =
-        replace(Regex("""(?i)(?:(?:\.{3,}|…)\s*){1,2}more\s*>>\s*|\s*<<\s*less\s*"""), " ")
-            .replace(Regex("""[ \t]+\n"""), "\n")
-            .replace(Regex("""\n[ \t]+"""), "\n")
-            .replace(Regex("""[ \t]{2,}"""), " ")
-            .trim()
 
     private fun scribbleHubScore(doc: Document): String? =
         doc
