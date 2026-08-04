@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -169,13 +170,13 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         infoPanel.addView(buildPatreonStatsCard(story.patreonStats, story.patreonUrl) { showTrends(story.id, FOCUS_PATREON_USD) })
     }
 
-    addDetailsDescription(infoPanel, story)
+    val descriptionTtsButton = addDetailsDescription(infoPanel, story)
     addDetailsTags(infoPanel, story)
     // Source-native facts render as a flat chip flow alongside the tags, not as a boxed widget, so
     // they read as supplementary reference content instead of a header stat block.
     buildSourceMetadataFlow(story)?.let(infoPanel::addView)
 
-    return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot)
+    return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot, descriptionTtsButton)
 }
 
 /**
@@ -207,15 +208,22 @@ internal data class DetailsInfoPanel(
      * the message/bar without rebuilding Details (see [renderStoryOperationProgress]).
      */
     val operationSlot: LinearLayout?,
+    /**
+     * Description "Listen" button, non-null when the story has a description. Patched in place by
+     * the description-TTS observer ([observeDetailsDescriptionTts]) as playback state changes.
+     */
+    val descriptionTtsButton: Button?,
 )
 
 /**
  * Inline expand/collapse description (mirrors RN StoryDescription). Copy on double-tap or long-press.
+ * Returns the "Listen" button (null when the story has no description) so the description-TTS
+ * observer can flip it between Listen / Pause / Resume in place; see [observeDetailsDescriptionTts].
  */
 private fun ScreenHost.addDetailsDescription(
     infoPanel: LinearLayout,
     story: Story,
-) {
+): Button? {
     story.description?.takeIf { it.isNotBlank() }?.let { description ->
         val canExpand = description.length > DESCRIPTION_PREVIEW_LENGTH
         var expanded = false
@@ -263,17 +271,71 @@ private fun ScreenHost.addDetailsDescription(
                 }
             }
         descCol.addView(descText)
+        // Description-TTS engagement lives directly under the text it speaks. The same button
+        // becomes Pause / Resume while this story's description session is active, and a docked
+        // transport bar (added by showDetails) offers prev/next/stop without scrolling back here.
+        // Only the full description is worth listening to: the button stays hidden behind the
+        // truncated preview and is revealed when the description is expanded.
+        // makeButton applies a 16dp horizontal padding (Space.LG) meant for chrome buttons. These
+        // inline text buttons live flush against the description text, so that padding reads as a
+        // stray indent pulling the labels off the screen's content edge. Strip the leading edge
+        // (toggle) / trailing edge (Listen) so the labels line up with the description glyphs; keep
+        // half on the inner side as a touch pad.
+        val padV = dp(Space.SM + 2)
+        val padH = dp(Space.LG)
+        val listenButton = makeButton(app, "Listen", Btn.TEXT, R.drawable.wna_speaker) { toggleDescriptionTts(story) }
+        // Keep the button compact: a default (MATCH_PARENT) width would push the icon to the far
+        // edge while the label centers — a wide gap between them.
+        listenButton.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        // Docked to the trailing edge: trim the trailing padding so the icon+label reach the
+        // content edge like the description text, keep half on the inner side as a touch pad.
+        listenButton.setPadding(padH / 2, padV, 0, padV)
+        // Group the expand toggle and Listen button on a single row so Listen no longer floats
+        // between the description text and the toggle. The toggle (the primary text control) sits
+        // at the leading edge; Listen docks to the trailing edge so the two read as a balanced
+        // pair of description actions.
+        val actionsRow =
+            LinearLayout(app).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    )
+            }
         if (canExpand) {
+            listenButton.visibility = View.GONE
             val toggle: Button = makeButton(app, "Read more", Btn.TEXT, 0) {}
+            toggle.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            // Buttons default to centered content; start-align the label so its glyphs share the
+            // same leading edge as the description text while the trailing padding remains a
+            // comfortable touch target.
+            toggle.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            toggle.setPadding(0, padV, padH / 2, padV)
             toggle.setOnClickListener {
                 expanded = !expanded
                 descText.text = if (expanded) description else truncateDescription(description)
-                toggle.text = if (expanded) "Show less" else "Read more"
+                toggle.text = if (expanded) "Read less" else "Read more"
+                listenButton.visibility = if (expanded) View.VISIBLE else View.GONE
             }
-            descCol.addView(toggle)
+            actionsRow.addView(toggle)
+            // Flexible spacer so Listen docks to the trailing edge; it collapses to nothing while
+            // Listen is GONE, leaving "Read more/less" at the leading edge. (Plain View, not
+            // android.widget.Space, to avoid clashing with the ui.Space spacing tokens.)
+            actionsRow.addView(
+                View(app),
+                LinearLayout.LayoutParams(0, 1, 1f),
+            )
+            actionsRow.addView(listenButton)
+        } else {
+            actionsRow.addView(listenButton)
         }
+        descCol.addView(actionsRow)
         infoPanel.addView(descCol)
+        return listenButton
     }
+    return null
 }
 
 /** Tag chips row (new on native; were missing). */

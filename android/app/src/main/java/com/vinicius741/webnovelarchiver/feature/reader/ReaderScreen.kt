@@ -187,7 +187,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     return@collect
                 }
                 val relevant =
-                    TtsPlaybackState.readerSnapshotAfterUpdate(
+                    TtsPlaybackState.snapshotAfterUpdate(
                         current = transportSnapshot,
                         update = update,
                         storyId = story.id,

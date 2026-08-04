@@ -24,6 +24,7 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
+import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -263,6 +264,8 @@ class MainActivity :
         // Detach the reader's TTS observer (if a reader screen is active) so it can't fire into a
         // destroyed activity. The shared TTS engine is process-wide; only the listener is dropped.
         detachReaderTtsListener()
+        // Same for the details screen's description-TTS observer.
+        detachDetailsTtsListener()
         super.onDestroy()
     }
 

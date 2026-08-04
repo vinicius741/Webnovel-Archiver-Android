@@ -66,6 +66,19 @@ class TtsSessionPlanningTest {
     }
 
     @Test
+    fun readerResumeTargetIgnoresDescriptionSessions() {
+        // A description session holds the sentinel chapter id, which no story chapter list contains,
+        // so startup must never deep-link into the reader for it.
+        val story = Story(id = "s1", chapters = mutableListOf(Chapter(id = "c1")))
+        assertEquals(
+            null,
+            TtsSessionPlanning.readerResumeTarget(
+                TtsSession(storyId = "s1", chapterId = TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID, wasPlaying = true),
+            ) { story },
+        )
+    }
+
+    @Test
     fun nextChapterIndexAdvancesOnlyWhenAFollowingChapterExists() {
         val story =
             Story(

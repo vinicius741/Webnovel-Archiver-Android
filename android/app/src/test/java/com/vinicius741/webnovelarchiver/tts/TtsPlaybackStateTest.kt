@@ -42,7 +42,7 @@ class TtsPlaybackStateTest {
         val persisted = playbackSnapshot(storyId = "story-1", chapterId = "chapter-1")
 
         val resolved =
-            TtsPlaybackState.readerSnapshotAfterUpdate(
+            TtsPlaybackState.snapshotAfterUpdate(
                 current = persisted,
                 update = TtsPlaybackUpdate(snapshot = null, isAuthoritative = false),
                 storyId = "story-1",
@@ -57,7 +57,7 @@ class TtsPlaybackStateTest {
         val persisted = playbackSnapshot(storyId = "story-1", chapterId = "chapter-1")
 
         val resolved =
-            TtsPlaybackState.readerSnapshotAfterUpdate(
+            TtsPlaybackState.snapshotAfterUpdate(
                 current = persisted,
                 update = TtsPlaybackUpdate(snapshot = null, isAuthoritative = true),
                 storyId = "story-1",

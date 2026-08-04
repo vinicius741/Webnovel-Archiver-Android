@@ -67,6 +67,9 @@ internal class TtsPlaybackPreparer(
     }
 
     suspend fun nextChapter(session: TtsSession): PreparedTtsPlayback? {
+        // Description narration has no following chapter; finish playback instead of marking the
+        // sentinel id as last-read (which would corrupt the story's reading position).
+        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return null
         val target =
             withContext(ioDispatcher) {
                 val story = source.story(session.storyId) ?: return@withContext null
@@ -84,6 +87,18 @@ internal class TtsPlaybackPreparer(
     ): PreparationInput? =
         withContext(ioDispatcher) {
             val story = source.story(storyId) ?: return@withContext null
+            if (TtsDescriptionPlanning.isDescriptionSession(chapterId)) {
+                // Description narration: the sentinel chapter id speaks the story's description
+                // through the same chunking/settings pipeline as chapter playback.
+                val description = story.description?.takeIf { it.isNotBlank() } ?: return@withContext null
+                return@withContext PreparationInput(
+                    story = story,
+                    chapter = TtsDescriptionPlanning.descriptionChapter(),
+                    html = TtsDescriptionPlanning.descriptionToHtml(description),
+                    settings = source.settings(),
+                    rules = source.regexRules(),
+                )
+            }
             val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return@withContext null
             PreparationInput(
                 story = story,

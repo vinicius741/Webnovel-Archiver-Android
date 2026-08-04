@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
@@ -10,9 +11,11 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.reader.readerTtsTransport
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -34,6 +37,8 @@ import kotlinx.coroutines.launch
  * live in [DetailsInfoPanel.kt] and [DetailsChapterList.kt].
  */
 internal fun ScreenHost.showDetails(storyId: String) {
+    // Drop the previous description-TTS collector before its views are torn down or replaced.
+    detachDetailsTtsListener()
     // Seed from the repository's cached library rather than re-parsing the story JSON on each
     // render (Audit Rec 1). The downloaded-flow observer below patches this in place afterward.
     val story = repository.story(storyId) ?: return showLibrary()
@@ -200,10 +205,48 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     )
                     addView(rightPane, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
                 }
-            addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            // Weighted height (not MATCH_PARENT) so the docked description-TTS transport added
+            // below still fits when visible.
+            addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
             addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
+
+        // ---- Description TTS transport ----
+        // Docked below the scrolling surfaces (never inside them) so pause/resume/stop stay
+        // reachable no matter how far the info panel has scrolled. Revealed live while this
+        // story's description session is active; chapter playback keeps using the reader transport
+        // and the system media controls, so only description snapshots drive this bar.
+        var ttsSnapshot = detailsDescriptionSnapshotSeed(repository.getTtsSession(), ttsEngine.playbackState.value, story.id)
+        var ttsPlayPause: ImageView? = null
+        val ttsTransport =
+            readerTtsTransport(
+                snapshot = ttsSnapshot,
+                onPlayPause = { ttsPlayPause = it },
+                onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
+                onPlayPauseTap = {
+                    val action =
+                        if (ttsSnapshot?.isPaused != false) {
+                            TtsForegroundService.ACTION_RESUME_SESSION
+                        } else {
+                            TtsForegroundService.ACTION_PAUSE
+                        }
+                    TtsForegroundService.command(app, action)
+                },
+                onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
+                onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
+            )
+        ttsTransport.visibility = if (ttsSnapshot != null) View.VISIBLE else View.GONE
+        addView(ttsTransport, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        observeDetailsDescriptionTts(
+            story = story,
+            listenButton = panel.descriptionTtsButton,
+            transportBar = ttsTransport,
+            transportPlayPause = ttsPlayPause,
+            initialSnapshot = ttsSnapshot,
+            onSnapshot = { ttsSnapshot = it },
+        )
+
         previousListState?.let { state ->
             chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
         }

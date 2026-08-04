@@ -45,10 +45,11 @@ object TtsPlaybackState {
             ?.chapterId
 
     /**
-     * Keeps a restored Reader snapshot while the engine still exposes its pre-hydration placeholder,
-     * but applies both live snapshots and explicit stops once state is authoritative.
+     * Keeps a restored snapshot while the engine still exposes its pre-hydration placeholder,
+     * but applies both live snapshots and explicit stops once state is authoritative. Shared by the
+     * reader (chapter sessions) and the details screen (description sessions).
      */
-    fun readerSnapshotAfterUpdate(
+    fun snapshotAfterUpdate(
         current: TtsPlaybackSnapshot?,
         update: TtsPlaybackUpdate,
         storyId: String,
