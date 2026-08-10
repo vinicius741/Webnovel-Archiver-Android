@@ -1,0 +1,8 @@
+root = true
+
+[*.{kt,kts}]
+# Preserve the established Kotlin style when upgrading kotlinter/ktlint. These newer optional
+# rules otherwise create a broad, behavior-neutral rewrite of existing when expressions.
+ktlint_standard_blank-line-between-when-conditions = disabled
+ktlint_standard_mixed-condition-operators = disabled
+ktlint_standard_when-entry-bracing = disabled

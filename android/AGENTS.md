@@ -39,8 +39,8 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 ## Build and Validation
 
 - Debug build: `android/gradlew -p android :app:assembleDebug`
-- Targeted test class: `android/gradlew -p android :app:testDebugUnitTest --tests "com.vinicius741.webnovelarchiver.cleanup.TextCleanupTest"`
-- Targeted test method: `android/gradlew -p android :app:testDebugUnitTest --tests "*.TextCleanupTest.cleanupRemovesScripts"`
+- Targeted test class: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "com.vinicius741.webnovelarchiver.cleanup.TextCleanupTest"`
+- Targeted test method: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "*.TextCleanupTest.cleanupRemovesScripts"`
 - Kotlin formatting: `android/gradlew -p android :app:formatKotlin`
 - Kotlin format check: `android/gradlew -p android :app:lintKotlin`
 - Static analysis: `android/gradlew -p android :app:detekt`
