@@ -353,8 +353,6 @@ class StorySyncPlanningTest {
             override val name = "No ID"
             override val baseUrl = "https://example.com"
 
-            override fun isSource(url: String) = true
-
             override fun getStoryId(url: String) = "story"
 
             override fun getChapterId(url: String): String? = null

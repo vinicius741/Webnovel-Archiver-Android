@@ -1,7 +1,7 @@
 // DownloadStatus entries stay lowercase on purpose: Gson serializes the enum by its name() into the
 // persisted Story JSON, and renaming them (e.g. to IDLE) would break existing on-disk libraries and
 // backups. Mirrors the wire-string compat approach used by DownloadJobStatus.
-@file:Suppress("ktlint:standard:enum-entry-name-case")
+@file:Suppress("EnumNaming", "ktlint:standard:enum-entry-name-case")
 
 package com.vinicius741.webnovelarchiver.domain.model
 
@@ -21,6 +21,41 @@ enum class PublicationStatus {
     outdated,
     hiatus,
 }
+
+/** Whether the canonical story page can currently be used for source-backed actions. */
+enum class SourceAvailability {
+    available,
+    not_found,
+    access_restricted,
+}
+
+/** Typed reason for the most recent source check failure, kept separately from availability. */
+enum class SourceFailureKind {
+    not_found,
+    access_restricted,
+    rate_limited,
+    server_error,
+    offline,
+    timeout,
+    parse_error,
+    transport,
+    http_error,
+    unknown,
+}
+
+/**
+ * Persisted health of a story's canonical source page. [availability] changes only for failures
+ * that say something about that page itself; transient failures are retained in [lastFailure]
+ * without hiding an otherwise available story.
+ */
+data class SourceSyncState(
+    var availability: SourceAvailability = SourceAvailability.available,
+    var lastCheckedAt: Long? = null,
+    var unavailableSince: Long? = null,
+    var consecutiveNotFoundCount: Int = 0,
+    var lastFailure: SourceFailureKind? = null,
+    var lastHttpStatus: Int? = null,
+)
 
 /**
  * Typed lifecycle state for a [DownloadJob] (Reliability R4). The [wire] string preserves the
@@ -119,6 +154,7 @@ data class Story(
     var patreonStats: PatreonStats? = null,
     var publicationStatus: PublicationStatus = PublicationStatus.unknown,
     var lastChapterSyncAt: Long? = null,
+    var sourceSyncState: SourceSyncState = SourceSyncState(),
     /** Public, source-authored metadata retained separately from generic tags and local state. */
     var sourceMetadata: SourceMetadata = SourceMetadata(),
 )

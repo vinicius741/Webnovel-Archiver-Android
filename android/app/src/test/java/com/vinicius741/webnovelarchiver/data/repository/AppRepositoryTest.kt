@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.data.repository
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -82,6 +83,30 @@ class AppRepositoryTest {
             assertEquals("Synced", committed.title)
             assertEquals("two", repository.story("story")?.lastReadChapterId)
             assertEquals("Synced", store.story("story")?.title)
+        }
+
+    @Test
+    fun sourceStateMutationPreservesChaptersAndPublishesFailureState() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.story("story")!!)
+
+            repository.updateStory("story") { latest ->
+                latest?.copy(
+                    sourceSyncState =
+                        latest.sourceSyncState.copy(
+                            availability = SourceAvailability.not_found,
+                            lastCheckedAt = 100L,
+                            consecutiveNotFoundCount = 1,
+                        ),
+                )
+            }
+
+            val result = repository.story("story")!!
+            assertEquals(SourceAvailability.not_found, result.sourceSyncState.availability)
+            assertEquals(100L, result.sourceSyncState.lastCheckedAt)
+            assertEquals(listOf("one", "two"), result.chapters.map { it.id })
         }
 
     private class FakeRepositoryStoryStore(

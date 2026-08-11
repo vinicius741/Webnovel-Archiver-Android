@@ -1,11 +1,25 @@
 package com.vinicius741.webnovelarchiver.feature.updates
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
+import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class UpdateTrackerPlanningTest {
+    @Test
+    fun unavailableSummaryUsesCorrectPlural() {
+        assertEquals(
+            "1 unavailable novel will be skipped. Check manually from its details screen.",
+            UpdateTrackerPlanning.unavailableSummary(1),
+        )
+        assertEquals(
+            "2 unavailable novels will be skipped. Check manually from its details screen.",
+            UpdateTrackerPlanning.unavailableSummary(2),
+        )
+    }
+
     @Test
     fun filterStoriesMatchesTitleOrAuthorWithoutChangingOrder() {
         val stories =
@@ -61,6 +75,15 @@ class UpdateTrackerPlanningTest {
         val followed = UpdateTrackerPlanning.followedStories(stories, listOf("b", "a"))
 
         assertEquals(listOf("B", "A"), followed.map { it.title })
+    }
+
+    @Test
+    fun unavailableStoriesStayFollowedButAreSkippedByAutomaticSync() {
+        val stories = listOf(story("available"), story("missing", unavailable = true))
+        val followedIds = listOf("missing", "available")
+
+        assertEquals(listOf("missing", "available"), UpdateTrackerPlanning.followedStories(stories, followedIds).map { it.id })
+        assertEquals(listOf("available"), UpdateTrackerPlanning.syncableFollowedStories(stories, followedIds).map { it.id })
     }
 
     @Test
@@ -146,6 +169,7 @@ class UpdateTrackerPlanningTest {
         chapters: MutableList<Chapter> = mutableListOf(),
         pending: MutableList<String>? = null,
         archived: Boolean = false,
+        unavailable: Boolean = false,
     ): Story =
         Story(
             id = id,
@@ -155,5 +179,9 @@ class UpdateTrackerPlanningTest {
             chapters = chapters,
             pendingNewChapterIds = pending,
             isArchived = archived.takeIf { it },
+            sourceSyncState =
+                SourceSyncState(
+                    availability = if (unavailable) SourceAvailability.not_found else SourceAvailability.available,
+                ),
         )
 }

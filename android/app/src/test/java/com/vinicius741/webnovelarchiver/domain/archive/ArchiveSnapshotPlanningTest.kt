@@ -74,4 +74,17 @@ class ArchiveSnapshotPlanningTest {
 
         assertEquals("/active/one.html", archive.chapters.single().filePath)
     }
+
+    @Test
+    fun buildArchiveSnapshotAcceptsSourceUnavailableReason() {
+        val archive =
+            ArchiveSnapshotPlanning.buildArchiveSnapshot(
+                source = Story(id = "story", chapters = mutableListOf()),
+                archivedAt = 42L,
+                reason = ArchiveSnapshotPlanning.SOURCE_UNAVAILABLE_REASON,
+                randomSuffix = "abc123",
+            ) { _, _, _ -> null }
+
+        assertEquals(ArchiveSnapshotPlanning.SOURCE_UNAVAILABLE_REASON, archive.archiveReason)
+    }
 }

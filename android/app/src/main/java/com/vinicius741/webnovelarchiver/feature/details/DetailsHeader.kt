@@ -25,6 +25,7 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
+import com.vinicius741.webnovelarchiver.ui.sourceAvailabilityBadge
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import kotlinx.coroutines.launch
 
@@ -33,6 +34,7 @@ import kotlinx.coroutines.launch
  *  three duplicate stat pills (Score/Chapters/Saved) — the chapter total is implied by the list —
  *  into one progress summary. The score is now rendered directly in the header via [scoreRow],
  *  matching the library card, instead of only appearing as a tag. */
+@Suppress("CyclomaticComplexMethod") // Header badges and optional metrics are independent presentation branches.
 internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     val col =
         LinearLayout(app).apply {
@@ -61,7 +63,8 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     )
     val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     val publicationStatusBadge = publicationStatusBadge(story)
-    if (provider != null || publicationStatusBadge != null || story.isArchived == true) {
+    val sourceAvailabilityBadge = sourceAvailabilityBadge(story)
+    if (provider != null || publicationStatusBadge != null || sourceAvailabilityBadge != null) {
         val badgeRow =
             LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -84,6 +87,9 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
         publicationStatusBadge?.let {
             addBadgeWithGap(it)
         }
+        sourceAvailabilityBadge?.let {
+            addBadgeWithGap(it)
+        }
         story.sourceMetadata.contentRating?.takeIf { it.isNotBlank() }?.let {
             addBadgeWithGap(makeBadge(app, "Rated $it", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
         }
@@ -92,9 +98,6 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
         }
         story.sourceMetadata.sourceListingState?.takeIf { it.isNotBlank() }?.let {
             addBadgeWithGap(makeBadge(app, it, ThemeManager.colors.surfaceVariant, ThemeManager.colors.onSurfaceVariant))
-        }
-        if (story.isArchived == true) {
-            addBadgeWithGap(makeBadge(app, "Archived", ThemeManager.colors.tertiaryContainer, ThemeManager.colors.onTertiaryContainer))
         }
         col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }

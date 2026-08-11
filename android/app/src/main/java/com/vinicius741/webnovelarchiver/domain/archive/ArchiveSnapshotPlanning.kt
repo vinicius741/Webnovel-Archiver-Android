@@ -6,12 +6,13 @@ import java.util.UUID
 
 object ArchiveSnapshotPlanning {
     const val SOURCE_CHAPTERS_REMOVED_REASON = "source_chapters_removed"
+    const val SOURCE_UNAVAILABLE_REASON = "source_unavailable"
 
     fun buildArchiveSnapshot(
         source: Story,
         archivedAt: Long,
-        randomSuffix: String = UUID.randomUUID().toString().take(6),
         reason: String = SOURCE_CHAPTERS_REMOVED_REASON,
+        randomSuffix: String = UUID.randomUUID().toString().take(6),
         copyChapter: (archiveId: String, index: Int, chapter: Chapter) -> String?,
     ): Story {
         val archiveId = "${source.id}__archive_${archivedAt}_$randomSuffix"

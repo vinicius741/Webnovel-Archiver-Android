@@ -1,43 +1,48 @@
 package com.vinicius741.webnovelarchiver.ui
 
 import android.view.View
-import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.PublicationStatusPlanning
+import com.vinicius741.webnovelarchiver.domain.story.PublicationStatusPlanning.DisplayStatus
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 
-internal fun PublicationStatus.displayName(): String? =
+internal fun DisplayStatus.displayName(): String? =
     when (this) {
-        PublicationStatus.completed -> "Completed"
-        PublicationStatus.ongoing -> "Ongoing"
-        PublicationStatus.outdated -> "Outdated"
-        PublicationStatus.hiatus -> "Hiatus"
-        PublicationStatus.unknown -> null
+        DisplayStatus.Archived -> "Archived"
+        DisplayStatus.Completed -> "Completed"
+        DisplayStatus.Ongoing -> "Ongoing"
+        DisplayStatus.Outdated -> "Outdated"
+        DisplayStatus.Hiatus -> "Hiatus"
+        DisplayStatus.Unknown -> null
     }
 
 internal fun ScreenHost.publicationStatusBadge(story: Story): View? =
     publicationStatusBadge(
-        PublicationStatusPlanning.effectiveStatus(story),
+        PublicationStatusPlanning.displayStatus(story),
     )
 
-internal fun ScreenHost.publicationStatusBadge(status: PublicationStatus): View? {
+private fun ScreenHost.publicationStatusBadge(status: DisplayStatus): View? {
     val label = status.displayName() ?: return null
     val colors = ThemeManager.colors
     val container =
         when (status) {
-            PublicationStatus.completed -> colors.tertiaryContainer
-            PublicationStatus.ongoing -> colors.primaryContainer
-            PublicationStatus.outdated -> colors.errorContainer
-            PublicationStatus.hiatus -> colors.secondaryContainer
-            PublicationStatus.unknown -> colors.surfaceVariant
+            DisplayStatus.Archived,
+            DisplayStatus.Completed,
+            -> colors.tertiaryContainer
+            DisplayStatus.Ongoing -> colors.primaryContainer
+            DisplayStatus.Outdated -> colors.errorContainer
+            DisplayStatus.Hiatus -> colors.secondaryContainer
+            DisplayStatus.Unknown -> colors.surfaceVariant
         }
     val content =
         when (status) {
-            PublicationStatus.completed -> colors.onTertiaryContainer
-            PublicationStatus.ongoing -> colors.onPrimaryContainer
-            PublicationStatus.outdated -> colors.onErrorContainer
-            PublicationStatus.hiatus -> colors.onSecondaryContainer
-            PublicationStatus.unknown -> colors.onSurfaceVariant
+            DisplayStatus.Archived,
+            DisplayStatus.Completed,
+            -> colors.onTertiaryContainer
+            DisplayStatus.Ongoing -> colors.onPrimaryContainer
+            DisplayStatus.Outdated -> colors.onErrorContainer
+            DisplayStatus.Hiatus -> colors.onSecondaryContainer
+            DisplayStatus.Unknown -> colors.onSurfaceVariant
         }
     return makeBadge(app, label, container, content)
 }

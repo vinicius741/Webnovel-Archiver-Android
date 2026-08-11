@@ -3,11 +3,14 @@ package com.vinicius741.webnovelarchiver.sync
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceFailureKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.SourceUrlKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
+import kotlinx.coroutines.CancellationException
 
 enum class StorySyncMode {
     Default,
@@ -22,6 +25,7 @@ class StorySyncEngine(
     private val repository: AppRepository,
     private val network: NetworkClient,
 ) {
+    @Suppress("ThrowsCount", "TooGenericExceptionCaught") // Source-boundary failures become typed persisted outcomes.
     suspend fun fetchOrSync(
         url: String,
         tabId: String? = null,
@@ -39,12 +43,16 @@ class StorySyncEngine(
         val existing = repository.story(storyId)
         status("Fetching from ${provider.name}...")
         val loaded =
-            provider.loadStory(
-                url = normalizedUrl,
-                preferLatestChapters = existing != null && mode != StorySyncMode.Full,
-                network = network,
-                progress = status,
-            )
+            try {
+                provider.loadStory(
+                    url = normalizedUrl,
+                    preferLatestChapters = existing != null && mode != StorySyncMode.Full,
+                    network = network,
+                    progress = status,
+                )
+            } catch (error: Throwable) {
+                throw recordFailure(existing, provider.name, error)
+            }
         val metadata = loaded.metadata
         val latestIncoming =
             loaded.chapters.takeIf { loaded.chaptersAreLatestOnly }
@@ -58,15 +66,21 @@ class StorySyncEngine(
                 )
             }
         val incoming =
-            if (latestIncoming != null && latestMerge == null) {
-                status("Latest chapters did not overlap; running full sync...")
-                loaded.loadFullChapterList(status)
-            } else if (latestIncoming == null) {
-                loaded.chapters
-            } else {
-                latestIncoming
+            try {
+                if (latestIncoming != null && latestMerge == null) {
+                    status("Latest chapters did not overlap; running full sync...")
+                    loaded.loadFullChapterList(status)
+                } else if (latestIncoming == null) {
+                    loaded.chapters
+                } else {
+                    latestIncoming
+                }
+            } catch (error: Throwable) {
+                throw recordFailure(existing, provider.name, error)
             }
-        if (incoming.isEmpty()) error("Source returned no chapters")
+        if (incoming.isEmpty()) {
+            throw recordFailure(existing, provider.name, NetworkParseException("Source returned no chapters"))
+        }
         val syncedAt = System.currentTimeMillis()
         val sourcePublicationStatus =
             StorySyncPlanning.sourceDeclaredStatus(metadata.publicationStatus, existing?.publicationStatus)
@@ -134,6 +148,7 @@ class StorySyncEngine(
                         StorySyncPlanning.latestPublishedAt(incoming),
                         syncedAt,
                     ),
+                sourceSyncState = SourceSyncFailurePlanning.afterSuccess(syncedAt),
             )
         // The repository owns the final read/merge/write/publish transaction. This keeps the
         // concurrent-download/bookmark fence, archive write, metric snapshot, and cached state
@@ -150,5 +165,31 @@ class StorySyncEngine(
                     ),
             ) { current -> StorySyncMergePlanning.foldConcurrentChanges(story, current, provider) }
         return persisted
+    }
+
+    private suspend fun recordFailure(
+        existing: Story?,
+        sourceName: String,
+        error: Throwable,
+    ): Throwable {
+        if (error is CancellationException) return error
+        val failure = SourceSyncFailurePlanning.classify(error)
+        if (existing != null) {
+            val checkedAt = System.currentTimeMillis()
+            repository.updateStory(existing.id) { latest ->
+                latest?.copy(
+                    sourceSyncState = SourceSyncFailurePlanning.afterFailure(latest.sourceSyncState, failure, checkedAt),
+                )
+            }
+        }
+        return if (failure.kind == SourceFailureKind.not_found && existing != null) {
+            StorySourceUnavailableException(
+                sourceName = sourceName,
+                statusCode = requireNotNull(failure.httpStatus),
+                cause = error,
+            )
+        } else {
+            error
+        }
     }
 }

@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -193,6 +194,11 @@ private class FollowStoryAdapter(
             buildString {
                 append("by ${item.story.author}")
                 if (item.story.isArchived == true) append(" · Archived")
+                when (item.story.sourceSyncState.availability) {
+                    SourceAvailability.available -> Unit
+                    SourceAvailability.not_found -> append(" · Source unavailable")
+                    SourceAvailability.access_restricted -> append(" · Source access blocked")
+                }
             }
         holder.checkbox.setOnCheckedChangeListener(null)
         holder.checkbox.isChecked = item.selected

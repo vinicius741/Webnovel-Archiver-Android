@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.domain.story
 
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
 object StoryActionGuards {
@@ -13,5 +14,8 @@ object StoryActionGuards {
     /** Compatibility names for feature callers not yet migrated to the shared policy name. */
     fun canSync(story: Story): Boolean = canModifyStory(story)
 
-    fun canQueueDownloads(story: Story): Boolean = canModifyStory(story)
+    /** Manual checks stay available so a story can recover when its source returns. */
+    fun canAutoSync(story: Story): Boolean = canModifyStory(story) && story.sourceSyncState.availability == SourceAvailability.available
+
+    fun canQueueDownloads(story: Story): Boolean = canAutoSync(story)
 }

@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
+import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -48,6 +50,28 @@ class StoryNormalizationTest {
             result.story.sourceMetadata.metrics
                 .isEmpty(),
         )
+    }
+
+    @Test
+    fun coerceDefaultsCreatesAvailableSourceStateForLegacyStory() {
+        val story = Story(id = "legacy", title = "Legacy")
+        nullField(story, "sourceSyncState")
+
+        val result = StoryNormalization.coerceDefaults(story)
+
+        assertTrue(result.changed)
+        assertEquals(SourceAvailability.available, result.story.sourceSyncState.availability)
+    }
+
+    @Test
+    fun coerceDefaultsRepairsNullAvailabilityInsideSourceState() {
+        val story = Story(id = "legacy", title = "Legacy", sourceSyncState = SourceSyncState())
+        nullField(story.sourceSyncState, "availability")
+
+        val result = StoryNormalization.coerceDefaults(story)
+
+        assertTrue(result.changed)
+        assertEquals(SourceAvailability.available, result.story.sourceSyncState.availability)
     }
 
     @Test

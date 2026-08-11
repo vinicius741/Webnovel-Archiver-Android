@@ -18,7 +18,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, persisted sort controls (including Patreon earnings/members), and archive snapshots.
 - **Trends** — Per-novel metric history captured on every sync (score, Patreon members, monthly earnings) and graphed over time on a Trends sub-screen reached from the detail page's score row, Patreon card, and overflow menu, with current-value/delta/range summaries and same-day coalescing + bounded retention.
 - **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
-- **Smart Updates** — New-chapter detection with intelligent merge and stale-EPUB marking.
+- **Smart Updates** — New-chapter detection with intelligent merge, stale-EPUB marking, and source-availability tracking that preserves local chapters when a fiction disappears upstream.
 - **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
 - **Notifications Settings** — Dedicated screen for Android 13+ notification permission and channel guidance (downloads vs TTS media controls).
 - **Pluggable Theme System** — Obsidian, Midnight, Forest, and Classic Light themes with custom typography.

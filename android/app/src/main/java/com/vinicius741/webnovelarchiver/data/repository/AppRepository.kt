@@ -487,15 +487,11 @@ class AppRepository private constructor(
             StoryMutations.markChapterDownloaded(it, chapterId, path, completedAt)
         }
 
-    /**
-     * Commits a completed sync as one repository transaction. The merge callback runs while the
-     * latest on-disk story is protected by the same lock used by downloads and user mutations, so a
-     * sync cannot publish a stale whole-story snapshot. An optional archive and metric snapshot are
-     * committed alongside the story before the cached state is published.
-     */
+    /** Commits a sync atomically with optional archive and metric snapshots. */
     suspend fun commitSyncedStory(
         story: Story,
         archiveSource: Story? = null,
+        archiveReason: String = ArchiveSnapshotPlanning.SOURCE_CHAPTERS_REMOVED_REASON,
         metricSnapshot: StoryMetricSnapshot? = null,
         merge: (Story?) -> Story = { story },
     ): Story =
@@ -504,7 +500,11 @@ class AppRepository private constructor(
                 val committed = merge(storyStore.story(story.id))
                 val archive =
                     archiveSource?.let { source ->
-                        ArchiveSnapshotPlanning.buildArchiveSnapshot(source, System.currentTimeMillis()) { archiveId, index, chapter ->
+                        ArchiveSnapshotPlanning.buildArchiveSnapshot(
+                            source,
+                            System.currentTimeMillis(),
+                            archiveReason,
+                        ) { archiveId, index, chapter ->
                             requiredStorage.copyChapterToStory(archiveId, index, chapter)
                         }
                     }

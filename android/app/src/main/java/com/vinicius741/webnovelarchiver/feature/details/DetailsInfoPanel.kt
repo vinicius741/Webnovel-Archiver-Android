@@ -7,6 +7,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
@@ -25,7 +26,6 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
-import com.vinicius741.webnovelarchiver.ui.disableButton
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeButton
@@ -46,6 +46,7 @@ import com.vinicius741.webnovelarchiver.ui.truncateDescription
  *   labels and the progress blocks).
  * @param downloadSummary reduced snapshot of this story's queue jobs for the download action + banner.
  */
+@Suppress("CyclomaticComplexMethod") // One linear UI builder intentionally reflects mutually exclusive story states.
 internal fun ScreenHost.buildDetailsInfoPanel(
     story: Story,
     operation: StoryOperationState?,
@@ -71,10 +72,18 @@ internal fun ScreenHost.buildDetailsInfoPanel(
             },
         )
     }
+    if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
+        infoPanel.addView(buildSourceAvailabilityNotice(story))
+    }
     if (StoryActionGuards.canSync(story)) {
         // "Syncing..." label while a SYNC operation is in flight mirrors RN's
         // `{syncing ? "Syncing..." : "Sync Chapters"}`. The inline progress block is added below.
-        val syncLabel = if (operation?.kind == StoryOperationKind.SYNC) "Syncing..." else "Sync Chapters"
+        val syncLabel =
+            when {
+                operation?.kind == StoryOperationKind.SYNC -> "Checking Source..."
+                story.sourceSyncState.availability != SourceAvailability.available -> "Check Source Again"
+                else -> "Sync Chapters"
+            }
         infoPanel.addView(
             makeFullWidthButton(
                 app,
@@ -357,51 +366,6 @@ private fun ScreenHost.addDetailsTags(
         )
     }
 }
-
-/** "EPUB out of date" notice with an inline Regenerate button (D6). */
-private fun ScreenHost.buildStaleEpubNotice(
-    story: Story,
-    isBusy: Boolean,
-): LinearLayout =
-    LinearLayout(app).apply {
-        orientation = LinearLayout.VERTICAL
-        // Center every child horizontally so the stale label (match_parent) and the
-        // wrap-content Regenerate button line up on the same screen-center axis.
-        gravity = Gravity.CENTER_HORIZONTAL
-        addView(
-            // LABEL_MEDIUM keeps BODY_SMALL's 12f size but renders bold, matching the
-            // bold Regenerate button beneath it.
-            makeText(app, "EPUB out of date", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-                // Fill the panel width so the text is truly centered across the screen,
-                // not just within a wrap-content label.
-                gravity = Gravity.CENTER
-                layoutParams =
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                    )
-            },
-        )
-        val regenerateButton =
-            makeButton(app, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
-                val config =
-                    story.epubConfig ?: EpubConfig(
-                        maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
-                        rangeStart = 1,
-                        rangeEnd = story.chapters.size,
-                        startAtBookmark = false,
-                    )
-                generateConfiguredEpub(story, config)
-            }
-        if (isBusy) disableButton(regenerateButton)
-        addView(
-            regenerateButton,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin =
-                    dp(Space.XS)
-            },
-        )
-    }
 
 /**
  * Window (ms) within which two taps on the description copy it to the clipboard (300ms

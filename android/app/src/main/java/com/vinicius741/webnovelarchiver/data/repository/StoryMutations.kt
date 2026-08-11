@@ -96,6 +96,7 @@ internal object StoryMutations {
             epubPaths = story.epubPaths?.toMutableList(),
             pendingNewChapterIds = story.pendingNewChapterIds?.toMutableList(),
             tags = story.tags?.toMutableList(),
+            sourceSyncState = story.sourceSyncState.copy(),
             sourceMetadata =
                 story.sourceMetadata.copy(
                     metrics =

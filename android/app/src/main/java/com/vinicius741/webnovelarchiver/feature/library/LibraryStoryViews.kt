@@ -6,6 +6,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
@@ -31,6 +32,7 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
+import com.vinicius741.webnovelarchiver.ui.sourceAvailabilityBadge
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.updateChapterCoverageSummary
@@ -178,7 +180,8 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
             )
             val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
             val publicationStatusBadge = publicationStatusBadge(story)
-            if (provider != null || publicationStatusBadge != null) {
+            val sourceAvailabilityBadge = sourceAvailabilityBadge(story)
+            if (provider != null || publicationStatusBadge != null || sourceAvailabilityBadge != null) {
                 addView(
                     LinearLayout(app).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -200,6 +203,17 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
                                 it,
                                 badgeLayoutParams,
                             )
+                        }
+                        sourceAvailabilityBadge?.let {
+                            val badgeLayoutParams =
+                                LinearLayout
+                                    .LayoutParams(
+                                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                                    ).apply {
+                                        if (provider != null || publicationStatusBadge != null) marginStart = dp(Space.SM)
+                                    }
+                            addView(it, badgeLayoutParams)
                         }
                     },
                 )
@@ -252,7 +266,15 @@ private fun formatLibraryPatreonStats(stats: PatreonStats): String {
 
 private fun ScreenHost.showStoryActionsDialog(story: Story) {
     val options = mutableListOf<Pair<String, () -> Unit>>("Open" to { showDetails(story.id) })
-    if (StoryActionGuards.canSync(story)) options += "Sync" to { syncStory(story) }
+    if (StoryActionGuards.canSync(story)) {
+        val syncLabel =
+            if (story.sourceSyncState.availability == SourceAvailability.available) {
+                "Sync"
+            } else {
+                "Check Source Again"
+            }
+        options += syncLabel to { syncStory(story) }
+    }
     options += "Move" to { showMoveStoryDialog(story) }
     options += "Select Multiple" to { showLibrarySelection(setOf(story.id)) }
     options += "Delete" to {

@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.domain.story
 
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
+import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +24,19 @@ class StoryActionGuardsTest {
 
         assertFalse(StoryActionGuards.canModifyStory(story))
         assertFalse(StoryActionGuards.canSync(story))
+        assertFalse(StoryActionGuards.canQueueDownloads(story))
+    }
+
+    @Test
+    fun unavailableStoryCanBeCheckedManuallyButNotAutoSyncedOrDownloaded() {
+        val story =
+            Story(
+                id = "unavailable",
+                sourceSyncState = SourceSyncState(availability = SourceAvailability.not_found),
+            )
+
+        assertTrue(StoryActionGuards.canSync(story))
+        assertFalse(StoryActionGuards.canAutoSync(story))
         assertFalse(StoryActionGuards.canQueueDownloads(story))
     }
 

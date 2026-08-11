@@ -8,6 +8,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -34,6 +35,8 @@ internal fun ScreenHost.showUpdates() {
     val followedIds = UpdateTrackerPlanning.normalizeFollowedIds(stories, savedIds)
     if (followedIds != savedIds) scope.launch { repository.saveUpdateFollowedStoryIds(followedIds) }
     val followed = UpdateTrackerPlanning.followedStories(stories, followedIds)
+    val syncableFollowed = followed.filter(StoryActionGuards::canAutoSync)
+    val unavailableCount = followed.size - syncableFollowed.size
     val syncedIds = updateTrackerScreenState.syncedUpdatedChapterIds
     val storyCount = UpdateTrackerPlanning.updatedStoryCount(followed, syncedIds)
     val chapterCount = UpdateTrackerPlanning.updatedChapterCount(followed, syncedIds)
@@ -77,6 +80,13 @@ internal fun ScreenHost.showUpdates() {
                     Type.BODY_MEDIUM,
                     ThemeManager.colors.onSurfaceVariant,
                 )
+                if (unavailableCount > 0) {
+                    text(
+                        UpdateTrackerPlanning.unavailableSummary(unavailableCount),
+                        Type.BODY_SMALL,
+                        ThemeManager.colors.onSurfaceVariant,
+                    )
+                }
                 progressLabel = makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
                 progressLabel.setPadding(0, dp(Space.SM), 0, 0)
                 addView(progressLabel)
@@ -94,23 +104,13 @@ internal fun ScreenHost.showUpdates() {
                     label = if (updateTrackerScreenState.syncing) "Syncing..." else "Sync Followed Novels",
                     variant = Btn.FILLED,
                     icon = R.drawable.wna_refresh,
-                    enabled = followed.isNotEmpty() && !updateTrackerScreenState.syncing,
+                    enabled = syncableFollowed.isNotEmpty() && !updateTrackerScreenState.syncing,
                     topMarginDp = Space.LG,
                 ) { syncFollowedUpdates(::refreshProgress) }
             },
         )
         refreshProgress()
-        updateTrackerScreenState.errors.takeIf { it.isNotEmpty() }?.let { errors ->
-            addView(
-                card {
-                    text("${errors.size} sync error${plural(errors.size)}", Type.TITLE_MEDIUM, ThemeManager.colors.error)
-                    errors.forEach { (storyId, message) ->
-                        val title = stories.firstOrNull { it.id == storyId }?.title ?: storyId
-                        text("$title: $message", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-                    }
-                },
-            )
-        }
+        buildUpdateSyncErrors(updateTrackerScreenState.errors, stories)?.let(::addView)
         when {
             followed.isEmpty() ->
                 addView(

@@ -2,7 +2,9 @@ package com.vinicius741.webnovelarchiver.domain.story
 
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
+import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
 /**
@@ -48,6 +50,13 @@ object StoryNormalization {
         }
         if (story.publicationStatus == null) {
             story.publicationStatus = PublicationStatus.unknown
+            changed = true
+        }
+        if (story.sourceSyncState == null) {
+            story.sourceSyncState = SourceSyncState()
+            changed = true
+        } else if (story.sourceSyncState.availability == null) {
+            story.sourceSyncState.availability = SourceAvailability.available
             changed = true
         }
         if (story.sourceMetadata == null) {

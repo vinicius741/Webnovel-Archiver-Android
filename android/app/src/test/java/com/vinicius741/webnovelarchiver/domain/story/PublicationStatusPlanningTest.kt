@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.domain.story
 
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
+import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -36,6 +38,34 @@ class PublicationStatusPlanningTest {
                 Story(publicationStatus = PublicationStatus.hiatus, lastChapterSyncAt = oldSync),
                 now,
             ),
+        )
+    }
+
+    @Test
+    fun unavailableStoryKeepsPublicationStatusInsteadOfBecomingOutdated() {
+        val now = 10L * DAY_MS
+        val story =
+            Story(
+                publicationStatus = PublicationStatus.ongoing,
+                lastChapterSyncAt = now - PublicationStatusPlanning.OUTDATED_AFTER_MS - 1L,
+                sourceSyncState = SourceSyncState(availability = SourceAvailability.not_found),
+            )
+
+        assertEquals(PublicationStatus.ongoing, PublicationStatusPlanning.effectiveStatus(story, now))
+    }
+
+    @Test
+    fun archivedSnapshotDisplaysArchivedWhilePreservingSourcePublicationStatus() {
+        val story =
+            Story(
+                isArchived = true,
+                publicationStatus = PublicationStatus.ongoing,
+            )
+
+        assertEquals(PublicationStatus.ongoing, story.publicationStatus)
+        assertEquals(
+            PublicationStatusPlanning.DisplayStatus.Archived,
+            PublicationStatusPlanning.displayStatus(story),
         )
     }
 

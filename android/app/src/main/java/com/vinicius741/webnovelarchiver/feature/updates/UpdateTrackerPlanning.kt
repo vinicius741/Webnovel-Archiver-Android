@@ -10,6 +10,9 @@ data class UpdatedChapter(
 )
 
 object UpdateTrackerPlanning {
+    fun unavailableSummary(count: Int): String =
+        "$count unavailable novel${if (count == 1) "" else "s"} will be skipped. Check manually from its details screen."
+
     /** Stories that can participate in update following (archives are read-only snapshots). */
     fun followableStories(stories: List<Story>): List<Story> = stories.filter { StoryActionGuards.canModifyStory(it) }
 
@@ -45,7 +48,7 @@ object UpdateTrackerPlanning {
     fun syncableFollowedStories(
         stories: List<Story>,
         followedIds: List<String>,
-    ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canModifyStory)
+    ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canAutoSync)
 
     fun syncBatches(
         stories: List<Story>,
