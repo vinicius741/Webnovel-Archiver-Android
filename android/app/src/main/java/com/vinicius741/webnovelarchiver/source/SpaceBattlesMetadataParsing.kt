@@ -88,8 +88,7 @@ internal fun threadDiscussionState(doc: Document): String? {
     val bodyClasses =
         doc
             .body()
-            ?.classNames()
-            .orEmpty()
+            .classNames()
             .joinToString(" ")
     discussionStateFromText(bodyClasses)?.let { return it }
 

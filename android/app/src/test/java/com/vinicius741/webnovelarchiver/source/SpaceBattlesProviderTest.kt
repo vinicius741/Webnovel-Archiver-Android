@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
@@ -117,10 +118,14 @@ class SpaceBattlesProviderTest {
     }
 
     @Test
-    fun enrichMetadataFetchesMainCategoryRssOnceAndPersistsMaxUpdate() =
+    fun enrichMetadataFetchesRssAndExactStoryLibraryCard() =
         runBlocking {
             val root = server.url("/threads/fixture-story.1183048/").toString()
-            val storyHtml = "<link rel=\"canonical\" href=\"$root\">"
+            val storyHtml =
+                """
+                <link rel="canonical" href="$root">
+                <div class="p-description"><a class="username">Example Author</a></div>
+                """.trimIndent()
             server.enqueue(
                 MockResponse().setBody(
                     """
@@ -130,6 +135,12 @@ class SpaceBattlesProviderTest {
                       <item><pubDate>Sat, 25 Jul 2026 12:00:00 GMT</pubDate></item>
                     </channel></rss>
                     """.trimIndent(),
+                ),
+            )
+            server.enqueue(
+                MockResponse().setBody(
+                    storyLibraryCard("999", watchers = "999K", replies = "999K", views = "999M", likes = "999K") +
+                        storyLibraryCard("1183048", watchers = "5K", replies = "4K", views = "774K", likes = "59K"),
                 ),
             )
 
@@ -147,12 +158,37 @@ class SpaceBattlesProviderTest {
                     .toEpochMilli(),
                 metadata.sourceMetadata.updatedAt,
             )
-            assertEquals(1, server.requestCount)
+            assertEquals(
+                mapOf(
+                    SourceMetricKind.WORDS to 166_000L,
+                    SourceMetricKind.WATCHERS to 5_000L,
+                    SourceMetricKind.REPLIES to 4_000L,
+                    SourceMetricKind.TOTAL_VIEWS to 774_000L,
+                    SourceMetricKind.LIKES to 59_000L,
+                ),
+                metadata.sourceMetadata.metrics.associate { it.kind to it.value },
+            )
+            assertEquals(2, server.requestCount)
             assertEquals(
                 "/threads/fixture-story.1183048/threadmarks.rss?threadmark_category=1",
                 server.takeRequest().path,
             )
+            assertEquals(
+                "/library/stories/?starter=Example%20Author",
+                server.takeRequest().path,
+            )
         }
+
+    @Test
+    fun storyLibraryParserReturnsNothingWhenExactThreadCardIsAbsent() {
+        val metrics =
+            parseSpaceBattlesLibraryMetrics(
+                storyLibraryCard("999", watchers = "9K", replies = "8K", views = "7M", likes = "6K"),
+                "1183048",
+            )
+
+        assertTrue(metrics.isEmpty())
+    }
 
     @Test
     fun chapterDownloadsReuseReaderPageForSeveralPosts() =
@@ -261,5 +297,25 @@ class SpaceBattlesProviderTest {
             $content<script>removeMe()</script>
           </div></div></div>
         </article>
+        """.trimIndent()
+
+    private fun storyLibraryCard(
+        threadId: String,
+        watchers: String,
+        replies: String,
+        views: String,
+        likes: String,
+    ): String =
+        """
+        <div class="structItem structItem--story js-threadListItem-$threadId">
+          <a href="/threads/fixture-story.$threadId/">Fixture story</a>
+          <div class="structItem-story-stats">
+            <dl><dt>Words</dt><dd>166k</dd></dl>
+            <dl><dt>Watchers</dt><dd>$watchers</dd></dl>
+            <dl><dt>Replies</dt><dd>$replies</dd></dl>
+            <dl><dt>Views</dt><dd>$views</dd></dl>
+            <dl><dt>Likes</dt><dd>$likes</dd></dl>
+          </div>
+        </div>
         """.trimIndent()
 }

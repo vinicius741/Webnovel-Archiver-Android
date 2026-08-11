@@ -334,6 +334,7 @@ enum class SourceMetricKind {
     FAVORITES("Favorites"),
     RATINGS("Ratings"),
     REVIEWS("Reviews"),
+    REPLIES("Replies"),
     LIKES("Likes"),
     WORDS("Words"),
     AVERAGE_WORDS("Average words"),

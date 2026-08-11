@@ -27,7 +27,8 @@ internal val spaceBattlesSourceDescriptor =
         featuredMetrics =
             listOf(
                 SourceMetricKind.WATCHERS,
+                SourceMetricKind.REPLIES,
+                SourceMetricKind.TOTAL_VIEWS,
                 SourceMetricKind.LIKES,
-                SourceMetricKind.WORDS,
             ),
     )

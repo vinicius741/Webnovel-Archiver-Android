@@ -189,17 +189,23 @@ class SourceProviderFixtureTest {
         assertEquals("https://forums.spacebattles.com/threads/fixture-story.1183048/", meta.canonicalUrl)
         assertEquals(PublicationStatus.ongoing, meta.publicationStatus)
         assertEquals(
-            123_456L,
+            166_000L,
             meta.sourceMetadata.metrics
                 .single { it.kind == SourceMetricKind.WORDS }
                 .value,
         )
+        assertEquals(
+            4_975L,
+            meta.sourceMetadata.metrics
+                .single { it.kind == SourceMetricKind.WATCHERS }
+                .value,
+        )
         assertEquals(Instant.parse("2024-01-02T03:04:05Z").toEpochMilli(), meta.sourceMetadata.createdAt)
+        assertEquals(Instant.parse("2025-11-26T13:32:08Z").toEpochMilli(), meta.sourceMetadata.updatedAt)
         assertEquals("Quest", meta.sourceMetadata.sourceType)
         assertEquals("Original Fiction", meta.sourceMetadata.sourceCategory)
         assertEquals("Open", meta.sourceMetadata.sourceListingState)
         assertEquals("Ongoing", meta.sourceMetadata.sourceStatus)
-        assertFalse(meta.sourceMetadata.metrics.any { it.kind == SourceMetricKind.WATCHERS })
         assertFalse(meta.sourceMetadata.metrics.any { it.kind == SourceMetricKind.LIKES })
         assertEquals(
             "https://forums.spacebattles.com/data/attachments/fixture-cover.jpg",

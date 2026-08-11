@@ -11,8 +11,10 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
+import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -92,18 +94,24 @@ object SpaceBattlesProvider : SourceProvider {
                 ?: doc.selectFirst("meta[property=og:url]")?.attr("content")?.ifBlank { null }
         val stats = doc.select(".threadmarkListingHeader-stats dl")
         val words = sourceStatElement(stats, "Words")
+        val watchers = sourceStatElement(stats, "Watchers")
         val created = sourceStatElement(stats, "Created")
         val statusText = sourceStatText(stats, "Status")
         val sourceMetadata =
             SourceMetadata(
                 metrics =
                     buildList {
-                        parseSourceMetricValue(words?.text())?.let { value ->
+                        parseSourceMetricValue(watchers?.text())?.let { value ->
+                            add(SourceMetric(SourceMetricKind.WATCHERS, value))
+                        }
+                        (parseSourceMetricValue(words?.text()) ?: spaceBattlesThreadmarkWordCount(doc))?.let { value ->
                             add(SourceMetric(SourceMetricKind.WORDS, value))
                         }
                     }.toMutableList(),
                 createdAt = created?.sourceDateMillis(),
-                updatedAt = mainCategoryRss?.let { parseThreadmarkRssUpdatedAt(it) },
+                updatedAt =
+                    mainCategoryRss?.let { parseThreadmarkRssUpdatedAt(it) }
+                        ?: spaceBattlesLatestMainThreadmarkAt(doc),
                 sourceType = sourceStatText(stats, "Type") ?: threadPrefix(doc),
                 sourceCategory = sourceStatText(stats, "Category") ?: threadCategory(doc),
                 sourceListingState = threadDiscussionState(doc),
@@ -132,10 +140,34 @@ object SpaceBattlesProvider : SourceProvider {
     ): NovelMetadata {
         val root = storyRoot(Jsoup.parse(html, url), url)
         progress("Fetching main threadmark RSS...")
-        val rss = network.fetch("${root}threadmarks.rss?threadmark_category=$MAIN_CATEGORY")
-        val parsedWithRss = parseMetadata(html, rss)
-        return metadata.copy(sourceMetadata = parsedWithRss.sourceMetadata)
+        val rss = fetchOptional(network, "${root}threadmarks.rss?threadmark_category=$MAIN_CATEGORY")
+        val sourceMetadata = parseMetadata(html, rss).sourceMetadata
+
+        progress("Fetching Story Library engagement...")
+        val origin = ORIGIN.find(root)?.value ?: baseUrl
+        val libraryUrl = "$origin/library/stories/?starter=${PercentEncoding.encodeURIComponent(metadata.author)}"
+        val libraryHtml = fetchOptional(network, libraryUrl)
+        val threadId = THREAD_ID.find(root)?.groupValues?.get(1)
+        val libraryMetrics =
+            if (libraryHtml != null && threadId != null) {
+                parseSpaceBattlesLibraryMetrics(libraryHtml, threadId)
+            } else {
+                emptyList()
+            }
+        return metadata.copy(sourceMetadata = mergeSpaceBattlesMetrics(sourceMetadata, libraryMetrics))
     }
+
+    private suspend fun fetchOptional(
+        network: NetworkClient,
+        url: String,
+    ): String? =
+        try {
+            network.fetch(url)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: NetworkException) {
+            null
+        }
 
     override suspend fun getChapterList(
         html: String,

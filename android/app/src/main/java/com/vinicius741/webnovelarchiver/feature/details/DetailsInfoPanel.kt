@@ -57,6 +57,9 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     val infoPanel = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     val header = buildDetailsHeader(story)
     infoPanel.addView(header.view)
+    // Keep source-native facts in the same top summary area as score/progress. Placing them after a
+    // long synopsis made unscored sources look as though no metadata had been captured at all.
+    buildSourceMetadataFlow(story)?.let(infoPanel::addView)
 
     // Mutable slots the caller patches after download / story-operation progress events; non-null
     // only when rendered.
@@ -181,9 +184,6 @@ internal fun ScreenHost.buildDetailsInfoPanel(
 
     val descriptionTtsButton = addDetailsDescription(infoPanel, story)
     addDetailsTags(infoPanel, story)
-    // Source-native facts render as a flat chip flow alongside the tags, not as a boxed widget, so
-    // they read as supplementary reference content instead of a header stat block.
-    buildSourceMetadataFlow(story)?.let(infoPanel::addView)
 
     return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot, descriptionTtsButton)
 }

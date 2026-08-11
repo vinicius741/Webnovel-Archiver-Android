@@ -18,11 +18,11 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Builds the source-native facts as a flat chip flow on Details, reusing the same badge idiom as the
- * tags row instead of a boxed stat widget. Selected metrics come back as surface-variant chips
- * (e.g. "85.2K followers"), content warnings as error chips, and the source "updated at" date as a
- * single trailing tertiary chip so it no longer needs its own header line. Returns null when there is
- * nothing to show, so the row simply does not render.
+ * Builds the source-native facts as a flat chip flow in the Details summary, reusing the same badge
+ * idiom as the source/status row instead of a boxed stat widget. Selected metrics come back as
+ * surface-variant chips (e.g. "85.2K followers"), content warnings as error chips, and the source
+ * "updated at" date as a single trailing tertiary chip so it no longer needs its own header line.
+ * Returns null when there is nothing to show, so the row simply does not render.
  */
 internal fun ScreenHost.buildSourceMetadataFlow(story: Story): View? {
     val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
@@ -43,7 +43,7 @@ internal fun ScreenHost.buildSourceMetadataFlow(story: Story): View? {
     return WrapLayout(app).apply {
         horizontalSpacingDp = Space.SM
         verticalSpacingDp = Space.SM
-        setPadding(0, dp(Space.MD), 0, dp(Space.XS))
+        setPadding(0, dp(Space.MD), 0, dp(Space.LG))
         // Metric chips use the secondaryContainer tint — the same color the source-name badge uses
         // in the header — so source-native numbers read as a distinct group from the neutral tag
         // chips below the description, instead of blending into one block.
