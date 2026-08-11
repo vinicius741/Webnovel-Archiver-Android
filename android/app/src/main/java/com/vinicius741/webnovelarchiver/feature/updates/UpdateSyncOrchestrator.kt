@@ -2,6 +2,9 @@ package com.vinicius741.webnovelarchiver.feature.updates
 
 import android.view.View
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadAction
+import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlan
+import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.InFlightStorySync
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -60,8 +63,9 @@ private suspend fun ScreenHost.syncStory(
                     }
                 }
             }
-        state.syncedUpdatedChapterIds[story.id] = synced.pendingNewChapterIds.orEmpty().distinct()
-        queuePendingNewDownloads(before, synced)
+        val downloadPlan = SyncDownloadPlanning.plan(before, synced)
+        state.syncedUpdatedChapterIds[story.id] = downloadPlan.chapterIds
+        queueCurrentSyncDownloads(synced, downloadPlan)
     } catch (error: Throwable) {
         if (error is CancellationException) throw error
         Timber.w(error, "Batch update sync failed for %s", story.id)
@@ -73,17 +77,11 @@ private suspend fun ScreenHost.syncStory(
     }
 }
 
-private fun ScreenHost.queuePendingNewDownloads(
-    before: Story?,
+private fun ScreenHost.queueCurrentSyncDownloads(
     synced: Story,
+    plan: SyncDownloadPlan,
 ) {
-    if (before == null || synced.pendingNewChapterIds.isNullOrEmpty()) return
-    val pending = synced.pendingNewChapterIds.orEmpty().toSet()
-    val indexes =
-        synced.chapters.mapIndexedNotNull { index, chapter ->
-            index.takeIf { chapter.id in pending && !chapter.downloaded }
-        }
-    if (indexes.isNotEmpty()) queueDownload(synced, indexes)
+    if (plan.action == SyncDownloadAction.AUTO_QUEUE) queueDownload(synced, plan.chapterIndexes)
 }
 
 internal fun UpdateTrackerScreenState.progressText(): String {

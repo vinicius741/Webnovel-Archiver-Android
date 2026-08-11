@@ -11,8 +11,10 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.details.showChapterSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
+import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -155,7 +157,8 @@ internal class UpdatedItemsAdapter(
             author.text = "by ${group.story.author}"
             open.setOnClickListener { host.showDetails(group.story.id) }
             chaptersContainer.removeAllViews()
-            group.chapters.forEachIndexed { i, updated ->
+            val visibleChapters = group.chapters.take(SyncDownloadPlanning.AUTO_DOWNLOAD_LIMIT)
+            visibleChapters.forEachIndexed { i, updated ->
                 chaptersContainer.addView(
                     buildChapterRow(context, group.story, updated).apply {
                         if (i > 0) {
@@ -163,6 +166,12 @@ internal class UpdatedItemsAdapter(
                         }
                     },
                 )
+            }
+            val hiddenCount = group.chapters.size - visibleChapters.size
+            if (hiddenCount > 0) {
+                chaptersContainer.button("Choose from $hiddenCount more", Btn.TEXT) {
+                    host.showChapterSelection(group.story.id)
+                }
             }
         }
     }

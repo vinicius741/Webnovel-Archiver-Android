@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
@@ -40,6 +41,9 @@ internal fun ScreenHost.showUpdates() {
     val syncedIds = updateTrackerScreenState.syncedUpdatedChapterIds
     val storyCount = UpdateTrackerPlanning.updatedStoryCount(followed, syncedIds)
     val chapterCount = UpdateTrackerPlanning.updatedChapterCount(followed, syncedIds)
+    val updatesRequiringReview = syncedIds.values.filter { it.size > SyncDownloadPlanning.AUTO_DOWNLOAD_LIMIT }
+    val reviewStoryCount = updatesRequiringReview.size
+    val reviewChapterCount = updatesRequiringReview.sumOf { it.size }
 
     screen(
         route = AppRoute.Updates,
@@ -80,6 +84,14 @@ internal fun ScreenHost.showUpdates() {
                     Type.BODY_MEDIUM,
                     ThemeManager.colors.onSurfaceVariant,
                 )
+                if (reviewStoryCount > 0) {
+                    text(
+                        "$reviewChapterCount chapter${plural(reviewChapterCount)} across $reviewStoryCount " +
+                            "novel${plural(reviewStoryCount)} are awaiting download review. Open a novel to choose chapters.",
+                        Type.BODY_SMALL,
+                        ThemeManager.colors.secondary,
+                    )
+                }
                 if (unavailableCount > 0) {
                     text(
                         UpdateTrackerPlanning.unavailableSummary(unavailableCount),

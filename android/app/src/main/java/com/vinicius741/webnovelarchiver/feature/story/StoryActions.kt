@@ -108,17 +108,9 @@ internal fun ScreenHost.syncStory(
                         mode,
                     ) { msg -> app.runOnUiThread { onStatus(msg) } }
                 }
-            if (existingBeforeSync != null && !story.pendingNewChapterIds.isNullOrEmpty()) {
-                val pending = story.pendingNewChapterIds.orEmpty().toSet()
-                val indexes =
-                    story.chapters.mapIndexedNotNull { index, chapter ->
-                        if (chapter.id in pending && !chapter.downloaded) index else null
-                    }
-                if (indexes.isNotEmpty()) {
-                    queueDownload(story, indexes)
-                }
-            }
+            val downloadPlan = SyncDownloadPlanning.plan(existingBeforeSync, story)
             onDone(story)
+            handleManualSyncDownloads(story, downloadPlan)
         } catch (error: Throwable) {
             // E1: structured-concurrency safety — never swallow cancellation. A scope cancellation
             // (Activity destroyed / lifecycleScope cancelled) must propagate, not become an onError.
@@ -166,8 +158,8 @@ internal fun ScreenHost.syncStory(
     setStoryOperation(story.id, StoryOperationKind.SYNC, "Starting...")
     scope.launch {
         try {
-            // Re-read the pre-sync state so the new-chapter auto-download logic below matches the
-            // url-overload path exactly (it keys off pendingNewChapterIds set during the merge).
+            // Re-read the pre-sync state so download planning can distinguish chapters discovered
+            // by this sync from an older cancelled or failed pending backlog.
             val existingBeforeSync =
                 withContext(Dispatchers.IO) {
                     SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { provider ->
@@ -180,18 +172,10 @@ internal fun ScreenHost.syncStory(
                         app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
                     }
                 }
-            if (existingBeforeSync != null && !synced.pendingNewChapterIds.isNullOrEmpty()) {
-                val pending = synced.pendingNewChapterIds.orEmpty().toSet()
-                val indexes =
-                    synced.chapters.mapIndexedNotNull { index, chapter ->
-                        if (chapter.id in pending && !chapter.downloaded) index else null
-                    }
-                if (indexes.isNotEmpty()) {
-                    queueDownload(synced, indexes)
-                }
-            }
+            val downloadPlan = SyncDownloadPlanning.plan(existingBeforeSync, synced)
             clearStoryOperation(synced.id, StoryOperationKind.SYNC, rerender = false)
             showDetails(synced.id)
+            handleManualSyncDownloads(synced, downloadPlan)
         } catch (error: Throwable) {
             // E1: structured-concurrency safety — never swallow cancellation.
             if (error is CancellationException) throw error
