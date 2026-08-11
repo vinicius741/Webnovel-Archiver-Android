@@ -39,7 +39,7 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
         runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
             .onFailure { toast("No app available to open source") }
     }
-    val provider = SourceRegistry.getProvider(story.sourceUrl)
+    val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     if (StoryActionGuards.canSync(story) && provider?.supportsLatestChapterSync == true) {
         options += "Full Sync" to {
             if (isBusy) toast("Please wait for the current operation to finish") else syncStory(story, StorySyncMode.Full)

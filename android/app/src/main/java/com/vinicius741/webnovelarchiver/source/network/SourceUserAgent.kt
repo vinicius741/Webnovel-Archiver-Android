@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebSettings
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.source.SourceUserAgentMode
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -86,14 +88,11 @@ object SourceUserAgent {
         }
     }
 
-    /** FanFiction.net serves a reduced mobile page without its complete chapter selector. */
+    /** Some sources serve incomplete mobile pages and declare that they require a desktop UA. */
     fun forUrl(url: String): String {
-        val parsedUri = runCatching { java.net.URI(url) }.getOrNull()
-        val rawHost = parsedUri?.host ?: ""
-        val normalizedHost = rawHost.lowercase()
-        val withoutWww = normalizedHost.removePrefix("www.")
-        val host = withoutWww.removePrefix("m.")
-        if (host != "fanfiction.net") return resolved
+        val host = runCatching { java.net.URI(url).host }.getOrNull() ?: return resolved
+        val provider = SourceRegistry.providerForHost(host) ?: return resolved
+        if (provider.descriptor.userAgentMode != SourceUserAgentMode.DESKTOP) return resolved
         val chromeVersion =
             Regex("Chrome/([^\\s]+)")
                 .find(resolved)

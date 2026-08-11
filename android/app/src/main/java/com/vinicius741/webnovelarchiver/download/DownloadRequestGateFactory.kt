@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 
 /**
@@ -17,10 +18,11 @@ internal class DownloadRequestGateFactory(
     private val downloadPacer: DownloadRequestPacer,
 ) {
     fun gateFor(
-        providerName: String,
+        sourceId: String,
         job: DownloadJob,
     ): NetworkRequestGate =
         NetworkRequestGate { claimSourcePermission ->
+            val providerName = SourceRegistry.getById(sourceId)?.name ?: sourceId
             downloadPacer.awaitTurn(
                 providerName = providerName,
                 storyId = job.storyId,
@@ -31,7 +33,7 @@ internal class DownloadRequestGateFactory(
                 ensureJobActive(job.id)
                 val settings = storage.getSettings()
                 DownloadScheduler.settingsFor(
-                    providerName = providerName,
+                    providerName = sourceId,
                     globalSettings =
                         SourceDownloadSettings(
                             concurrency = settings.downloadConcurrency,

@@ -6,9 +6,8 @@ import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.source.SourceUrlValidation
+import com.vinicius741.webnovelarchiver.source.SourceUrlKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
-import kotlinx.coroutines.CancellationException
 
 enum class StorySyncMode {
     Default,
@@ -31,29 +30,24 @@ class StorySyncEngine(
         status: (String) -> Unit = {},
     ): Story {
         val submittedUrl = url.trim()
-        val provider = SourceRegistry.getProvider(submittedUrl) ?: error("Unsupported source URL")
-        val normalizedUrl = provider.normalizeStoryUrl(submittedUrl)
-        if (!SourceUrlValidation.isImportableStoryUrl(normalizedUrl)) error("Unsupported source URL")
+        val match =
+            SourceRegistry.resolve(submittedUrl, SourceUrlKind.STORY)
+                ?: error("Unsupported source URL")
+        val provider = match.provider
+        val normalizedUrl = match.normalizedUrl
         val storyId = provider.getStoryId(normalizedUrl)
         val existing = repository.story(storyId)
         status("Fetching from ${provider.name}...")
-        val html = network.fetch(normalizedUrl)
-        val parsedMetadata = provider.parseMetadata(html)
-        val metadata =
-            try {
-                provider.enrichMetadata(parsedMetadata, html, normalizedUrl, network, status)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                parsedMetadata
-            }
-        status("Parsing chapters...")
+        val loaded =
+            provider.loadStory(
+                url = normalizedUrl,
+                preferLatestChapters = existing != null && mode != StorySyncMode.Full,
+                network = network,
+                progress = status,
+            )
+        val metadata = loaded.metadata
         val latestIncoming =
-            if (existing != null && mode != StorySyncMode.Full && provider.supportsLatestChapterSync) {
-                provider.getLatestChapterList(html, normalizedUrl, network, status)
-            } else {
-                null
-            }
+            loaded.chapters.takeIf { loaded.chaptersAreLatestOnly }
         val latestMerge =
             latestIncoming?.let { incoming ->
                 StorySyncPlanning.mergeLatestChapters(
@@ -66,9 +60,9 @@ class StorySyncEngine(
         val incoming =
             if (latestIncoming != null && latestMerge == null) {
                 status("Latest chapters did not overlap; running full sync...")
-                provider.getChapterList(html, normalizedUrl, network, status)
+                loaded.loadFullChapterList(status)
             } else if (latestIncoming == null) {
-                provider.getChapterList(html, normalizedUrl, network, status)
+                loaded.chapters
             } else {
                 latestIncoming
             }
@@ -108,6 +102,7 @@ class StorySyncEngine(
                 coverUrl = metadata.coverUrl ?: existing?.coverUrl,
                 description = metadata.description,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
+                sourceId = provider.id,
                 status =
                     if (existing ==
                         null

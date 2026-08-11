@@ -21,19 +21,21 @@ import java.time.format.DateTimeFormatterBuilder
 import java.time.format.DateTimeParseException
 import java.util.Locale
 
-enum class SourceUrlKind {
-    STORY,
-    CHAPTER,
-}
-
 interface SourceProvider {
-    val name: String
-    val baseUrl: String
-    val supportsLatestChapterSync: Boolean get() = false
-    val supportsBulkDownloadPreflight: Boolean get() = true
-    val maximumDownloadConcurrency: Int? get() = null
+    val descriptor: SourceDescriptor
+        get() =
+            SourceDescriptor(
+                id = "test_source",
+                displayName = "Test Source",
+                browseUrl = "",
+                hosts = emptySet(),
+            )
 
-    fun isSource(url: String): Boolean
+    val id: String get() = descriptor.id
+    val name: String get() = descriptor.displayName
+    val baseUrl: String get() = descriptor.browseUrl
+    val supportsLatestChapterSync: Boolean get() = descriptor.capabilities.latestChapterSync
+    val maximumDownloadConcurrency: Int? get() = descriptor.capabilities.maximumDownloadConcurrency
 
     /** Classifies importable URLs without exposing provider-specific regexes centrally. */
     fun classifyUrl(url: String): SourceUrlKind? = null
@@ -81,6 +83,17 @@ interface SourceProvider {
     fun parseChapterContent(html: String): String
 
     /**
+     * Owns source request orchestration. Simple HTML providers inherit the established single-page
+     * pipeline; API-, authentication-, or JavaScript-backed sources can override it as one unit.
+     */
+    suspend fun loadStory(
+        url: String,
+        preferLatestChapters: Boolean,
+        network: NetworkClient,
+        progress: (String) -> Unit = {},
+    ): LoadedSourceStory = loadHtmlStory(this, url, preferLatestChapters, network, progress)
+
+    /**
      * Fetches one chapter for the download queue. Most sources expose one chapter per URL, while
      * forum-backed sources can override this to reuse a reader page containing several chapters.
      */
@@ -98,20 +111,6 @@ interface SourceProvider {
                 requestGate = requestGate,
             ),
         )
-}
-
-object SourceRegistry {
-    private val providers =
-        listOf(
-            RoyalRoadProvider,
-            ScribbleHubProvider,
-            SpaceBattlesProvider,
-            FanFictionProvider,
-        )
-
-    fun getProvider(url: String): SourceProvider? = providers.firstOrNull { it.isSource(url) }
-
-    fun all(): List<SourceProvider> = providers
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

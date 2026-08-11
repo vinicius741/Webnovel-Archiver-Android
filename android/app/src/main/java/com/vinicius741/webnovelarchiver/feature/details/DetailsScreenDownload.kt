@@ -245,7 +245,8 @@ internal fun detailsPacingStatus(
 ): DownloadPacingUiStatus? =
     DownloadPacingUiPlanning.storyStatus(
         storyId = storyId,
-        providerName = SourceRegistry.getProvider(storySourceUrl)?.name,
+        providerName =
+            SourceRegistry.getProvider(jobsForStory.firstOrNull()?.sourceId, storySourceUrl)?.name,
         storyJobs = jobsForStory,
         snapshots = snapshots,
         nowMillis = nowMillis,

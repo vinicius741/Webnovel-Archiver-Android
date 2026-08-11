@@ -57,6 +57,17 @@ object PreferenceNormalization {
                 )
             }.toMutableMap()
 
+    fun migrateSourceDownloadSettingKeys(
+        settings: Map<String, SourceDownloadSettings>,
+        stableIdForKey: (String) -> String?,
+    ): MutableMap<String, SourceDownloadSettings> {
+        val migrated = linkedMapOf<String, SourceDownloadSettings>()
+        settings.entries
+            .sortedByDescending { (key, _) -> stableIdForKey(key) == key }
+            .forEach { (key, value) -> migrated.putIfAbsent(stableIdForKey(key) ?: key, value) }
+        return sourceDownloadSettings(migrated)
+    }
+
     fun chapterFilterSettings(settings: ChapterFilterSettings): ChapterFilterSettings =
         settings.copy(filterMode = settings.filterMode.takeIf { it in chapterFilterModes } ?: ChapterFilterSettings().filterMode)
 

@@ -49,6 +49,31 @@ class PreferenceNormalizationTest {
     }
 
     @Test
+    fun sourceSettingKeyMigrationPrefersExistingStableIdsAndPreservesUnknownKeys() {
+        val stable = SourceDownloadSettings(concurrency = 2)
+        val legacyDuplicate = SourceDownloadSettings(concurrency = 3)
+        val unknown = SourceDownloadSettings(delay = 900, delayMax = 900)
+
+        val migrated =
+            PreferenceNormalization.migrateSourceDownloadSettingKeys(
+                mapOf(
+                    "Scribble Hub" to legacyDuplicate,
+                    "scribble_hub" to stable,
+                    "future_source" to unknown,
+                ),
+            ) { key ->
+                when (key) {
+                    "Scribble Hub", "scribble_hub" -> "scribble_hub"
+                    else -> null
+                }
+            }
+
+        assertEquals(stable, migrated["scribble_hub"])
+        assertEquals(unknown, migrated["future_source"])
+        assertEquals(2, migrated.size)
+    }
+
+    @Test
     fun invalidChapterFilterAndFoldModesFallbackToDefaults() {
         assertEquals(
             ChapterFilterSettings(filterMode = "all"),

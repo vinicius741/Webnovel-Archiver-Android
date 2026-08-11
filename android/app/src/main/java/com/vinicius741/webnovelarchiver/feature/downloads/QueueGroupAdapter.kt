@@ -141,7 +141,7 @@ private fun ScreenHost.queueGroups(
         .map { jobs ->
             val counts = DownloadCounts.from(jobs)
             val expanded = storyExpandOverride[jobs.first().storyId] ?: (counts.hasActive || counts.hasFailed)
-            val providerName = SourceRegistry.getProvider(jobs.first().chapter.url)?.name
+            val providerName = SourceRegistry.getProvider(jobs.first().sourceId, jobs.first().chapter.url)?.name
             QueueStoryGroupUi(
                 storyId = jobs.first().storyId,
                 jobs =

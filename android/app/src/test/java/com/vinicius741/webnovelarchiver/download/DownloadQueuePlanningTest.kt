@@ -26,6 +26,7 @@ class DownloadQueuePlanningTest {
         assertTrue(plan.hasRunnableWork)
         assertEquals(listOf("story-1_0", "story-1_2"), plan.jobs.map { it.id })
         assertEquals(listOf("One", "Three"), plan.jobs.map { it.chapter.title })
+        assertEquals(listOf("example_source", "example_source"), plan.jobs.map { it.sourceId })
     }
 
     @Test
@@ -181,6 +182,7 @@ class DownloadQueuePlanningTest {
             id = "story-1",
             title = "Native Story",
             sourceUrl = "https://example.com/story",
+            sourceId = "example_source",
             chapters = chapters.toMutableList(),
             totalChapters = chapters.size,
         )

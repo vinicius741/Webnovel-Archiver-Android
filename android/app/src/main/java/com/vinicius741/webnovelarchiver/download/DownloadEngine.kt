@@ -238,7 +238,7 @@ class DownloadEngine(
                         sourceSettings = sourceSettings,
                         activeCounts = emptyMap(),
                         nextAllowedAt = emptyMap(),
-                        providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
+                        providerNameForJob = { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id },
                     )
                 if (pending.isNotEmpty()) {
                     pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
@@ -255,7 +255,7 @@ class DownloadEngine(
                         jobs = queue,
                         now = System.currentTimeMillis(),
                         nextAllowedAt = emptyMap(),
-                        providerNameForJob = { job -> SourceRegistry.getProvider(job.chapter.url)?.name },
+                        providerNameForJob = { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id },
                     )
                 if (sleepUntil != null) {
                     sleepUntilWakeOrTimeout(sleepUntil)
@@ -281,7 +281,7 @@ class DownloadEngine(
             val queue = storage.getQueue()
             val cleanup =
                 DownloadQueueMaintenance.failUnsupportedSourceJobs(queue) { job ->
-                    SourceRegistry.getProvider(job.chapter.url)?.name
+                    SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id
                 }
             if (cleanup.cleanedJobCount == 0) return
             storage.saveQueue(queue)
@@ -309,8 +309,8 @@ class DownloadEngine(
         var providerName: String? = null
         try {
             val story = storage.getStory(job.storyId) ?: error("Story not found")
-            val provider = SourceRegistry.getProvider(job.chapter.url) ?: error("Unsupported source")
-            providerName = provider.name
+            val provider = SourceRegistry.getProvider(job.sourceId, job.chapter.url) ?: error("Unsupported source")
+            providerName = provider.id
             requestGateFactory.ensureJobActive(job.id)
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to the cleanup engine's stateless contract.
@@ -321,7 +321,7 @@ class DownloadEngine(
                         chapter = job.chapter,
                         chapterIndex = job.chapterIndex,
                         network = network,
-                        requestGate = requestGateFactory.gateFor(provider.name, job),
+                        requestGate = requestGateFactory.gateFor(provider.id, job),
                     ),
                     storage.getSentenceRemovalList(),
                     storage.getRegexRules(),

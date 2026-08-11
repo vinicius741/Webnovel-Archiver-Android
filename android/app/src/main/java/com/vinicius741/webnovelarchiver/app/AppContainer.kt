@@ -5,8 +5,10 @@ import android.net.ConnectivityManager
 import android.net.Network
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
@@ -84,6 +86,10 @@ class AppContainer(
             // observing a partially migrated queue or library.
             synchronized(storage) {
                 storage.migrateChapterPathsToRelative()
+                storage.migrateSourceIdentities(
+                    sourceIdForUrl = { url -> SourceRegistry.getProvider(url)?.id },
+                    sourceIdForSettingKey = SourceRegistry::sourceIdForPersistedKey,
+                )
                 storage.recoverInterruptedDownloads()
                 repository.refresh()
             }

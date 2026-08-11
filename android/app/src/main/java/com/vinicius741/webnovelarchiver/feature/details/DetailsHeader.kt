@@ -59,7 +59,7 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         },
     )
-    val provider = SourceRegistry.getProvider(story.sourceUrl)
+    val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     val publicationStatusBadge = publicationStatusBadge(story)
     if (provider != null || publicationStatusBadge != null || story.isArchived == true) {
         val badgeRow =

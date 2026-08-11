@@ -19,11 +19,22 @@ import org.jsoup.nodes.Element
  */
 @Suppress("TooManyFunctions")
 object FanFictionProvider : SourceProvider {
-    override val name = "FanFiction.net"
-    override val baseUrl = "https://www.fanfiction.net"
-    override val maximumDownloadConcurrency = 1
-
-    override fun isSource(url: String): Boolean = STORY_URL.matches(url.trim())
+    override val descriptor =
+        SourceDescriptor(
+            id = "fanfiction_net",
+            displayName = "FanFiction.net",
+            browseUrl = "https://www.fanfiction.net",
+            hosts = setOf("fanfiction.net", "m.fanfiction.net"),
+            capabilities = SourceCapabilities(maximumDownloadConcurrency = 1),
+            userAgentMode = SourceUserAgentMode.DESKTOP,
+            featuredMetrics =
+                listOf(
+                    SourceMetricKind.FAVORITES,
+                    SourceMetricKind.FOLLOWS,
+                    SourceMetricKind.REVIEWS,
+                    SourceMetricKind.WORDS,
+                ),
+        )
 
     override fun classifyUrl(url: String): SourceUrlKind? = if (STORY_URL.matches(url.trim())) SourceUrlKind.STORY else null
 
@@ -37,7 +48,7 @@ object FanFictionProvider : SourceProvider {
             ?.groupValues
             ?.get(1)
             ?.let { "ffn_$it" }
-            ?: "ffn_${System.currentTimeMillis()}"
+            ?: error("FanFiction.net story URL was not recognized")
 
     override fun getChapterId(url: String): String? =
         storyUrlMatch(url)?.let { match ->

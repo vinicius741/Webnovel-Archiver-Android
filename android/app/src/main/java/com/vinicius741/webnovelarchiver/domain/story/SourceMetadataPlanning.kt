@@ -11,26 +11,12 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
  */
 object SourceMetadataPlanning {
     fun detailMetrics(
-        sourceName: String?,
+        preferredKinds: List<SourceMetricKind>,
         metadata: SourceMetadata,
         hasScore: Boolean,
     ): List<SourceMetric> {
-        val preferred =
-            when (sourceName?.lowercase()) {
-                "royalroad" -> listOf(SourceMetricKind.FOLLOWERS, SourceMetricKind.TOTAL_VIEWS, SourceMetricKind.PAGES)
-                "scribble hub" -> listOf(SourceMetricKind.READERS, SourceMetricKind.TOTAL_VIEWS, SourceMetricKind.WORDS)
-                "spacebattles" -> listOf(SourceMetricKind.WATCHERS, SourceMetricKind.LIKES, SourceMetricKind.WORDS)
-                "fanfiction.net" ->
-                    listOf(
-                        SourceMetricKind.FAVORITES,
-                        SourceMetricKind.FOLLOWS,
-                        SourceMetricKind.REVIEWS,
-                        SourceMetricKind.WORDS,
-                    )
-                else -> emptyList()
-            }
         val byKind = metadata.metrics.associateBy { it.kind }
-        return preferred.mapNotNull(byKind::get).take(if (hasScore) 3 else 4)
+        return preferredKinds.mapNotNull(byKind::get).take(if (hasScore) 3 else 4)
     }
 
     fun metric(

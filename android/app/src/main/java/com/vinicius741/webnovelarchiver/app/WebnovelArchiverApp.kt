@@ -7,6 +7,7 @@ import android.webkit.CookieManager
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnosticTree
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +55,7 @@ class WebnovelArchiverApp : Application() {
         SourceUserAgent.resolveAsync(this)
         container = AppContainer(this).apply { init() }
         // CookieManager.getInstance() also lazy-loads the WebView provider, so defer cookie
-        // acceptance + the ScribbleHub toc_show seeding to the background. OkHttp's AndroidCookieJar
+        // acceptance + provider-declared cookie seeding to the background. OkHttp's AndroidCookieJar
         // calls CookieManager lazily per-request, so by the time any request actually runs (after the
         // user navigates) the provider is loaded and the seeded toc_show cookie is in place.
         startupScope.launch { enableAndSeedCookies() }
@@ -84,14 +85,10 @@ class WebnovelArchiverApp : Application() {
             // The OkHttp AndroidCookieJar and the in-app WebViews all funnel through CookieManager,
             // so it must accept cookies app-wide before the first network request fires.
             CookieManager.getInstance().setAcceptCookie(true)
-            // ScribbleHub's TOC pagination needs toc_show=50. It used to be a manual Cookie header
-            // on each AJAX request, but once AndroidCookieJar carries a cf_clearance, OkHttp's
-            // BridgeInterceptor rewrites the Cookie header from the jar and would drop the manual
-            // one. Seeding it into CookieManager makes it part of the same single cookie source.
-            cm().setCookie(
-                "https://www.scribblehub.com",
-                "toc_show=50; Domain=.scribblehub.com; Path=/; Max-Age=31536000",
-            )
+            SourceRegistry
+                .all()
+                .flatMap { it.descriptor.cookieSeeds }
+                .forEach { seed -> cm().setCookie(seed.url, seed.value) }
             cm().flush()
         }
     }

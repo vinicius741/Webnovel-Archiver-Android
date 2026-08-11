@@ -29,7 +29,9 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - Prefer `AppRepository` transactions and its cached flows for library, queue, and settings reads/writes. Do not instantiate additional `AppStorage` owners that race the same JSON files; the activity and foreground services must share the single repository/storage lock.
 - Navigation is route-based (`AppRoute` / `AppNavigator`). Process recreation restores by route identity (persisted ids), not by mutable titles.
 - Keep file-based JSON storage compatible with existing data. Treat migrations, backup formats, chapter paths, and archive IDs as compatibility-sensitive.
-- New novel sites implement `SourceProvider` and must be registered in `SourceRegistry`. Source
+- New novel sites implement `SourceProvider`, declare stable identity/capabilities/network/UI policy
+  in `SourceDescriptor`, and must be registered in `SourceRegistry`. Do not add source-name or host
+  switches outside the provider descriptor; follow `docs/sources/adding-a-source.md`. Source
   metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes and persists public or
   tier-estimated Patreon statistics by default without creator-specific mappings. Bulk update
   tracking can skip the Patreon refresh to keep followed-novel checks fast while preserving existing

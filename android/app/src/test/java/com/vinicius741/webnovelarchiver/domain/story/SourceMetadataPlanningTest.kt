@@ -22,7 +22,12 @@ class SourceMetadataPlanningTest {
 
         assertEquals(
             listOf(SourceMetricKind.FOLLOWERS, SourceMetricKind.TOTAL_VIEWS, SourceMetricKind.PAGES),
-            SourceMetadataPlanning.detailMetrics("RoyalRoad", metadata, hasScore = true).map { it.kind },
+            SourceMetadataPlanning
+                .detailMetrics(
+                    listOf(SourceMetricKind.FOLLOWERS, SourceMetricKind.TOTAL_VIEWS, SourceMetricKind.PAGES),
+                    metadata,
+                    hasScore = true,
+                ).map { it.kind },
         )
     }
 
@@ -47,7 +52,17 @@ class SourceMetadataPlanningTest {
                 SourceMetricKind.REVIEWS,
                 SourceMetricKind.WORDS,
             ),
-            SourceMetadataPlanning.detailMetrics("FanFiction.net", metadata, hasScore = false).map { it.kind },
+            SourceMetadataPlanning
+                .detailMetrics(
+                    listOf(
+                        SourceMetricKind.FAVORITES,
+                        SourceMetricKind.FOLLOWS,
+                        SourceMetricKind.REVIEWS,
+                        SourceMetricKind.WORDS,
+                    ),
+                    metadata,
+                    hasScore = false,
+                ).map { it.kind },
         )
     }
 }

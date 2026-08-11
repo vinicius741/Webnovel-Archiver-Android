@@ -94,6 +94,8 @@ data class Story(
     var coverUrl: String? = null,
     var description: String? = null,
     var sourceUrl: String = "",
+    /** Stable provider identity. Null only for legacy data until startup migration resolves it. */
+    var sourceId: String? = null,
     var status: DownloadStatus = DownloadStatus.idle,
     var totalChapters: Int = 0,
     var downloadedChapters: Int = 0,
@@ -252,6 +254,8 @@ data class DownloadJob(
     var id: String = "",
     var storyId: String = "",
     var storyTitle: String = "",
+    /** Stable provider identity copied from the story when the job is queued. */
+    var sourceId: String? = null,
     var chapterIndex: Int = 0,
     var chapter: Chapter = Chapter(),
     var status: String = "pending",

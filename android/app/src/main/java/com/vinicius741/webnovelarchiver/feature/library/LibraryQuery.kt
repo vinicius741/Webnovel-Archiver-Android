@@ -64,7 +64,7 @@ object LibraryQuery {
         }
         val sources =
             visibleStories
-                .mapNotNull { SourceRegistry.getProvider(it.sourceUrl)?.name }
+                .mapNotNull { SourceRegistry.getProvider(it.sourceId, it.sourceUrl)?.name }
                 .groupingBy { it }
                 .eachCount()
                 .entries
@@ -95,7 +95,7 @@ object LibraryQuery {
                 story.author.contains(query, ignoreCase = true)
         if (!queryMatches) return false
         if (selectedTags.isEmpty()) return true
-        val storySourceName = SourceRegistry.getProvider(story.sourceUrl)?.name
+        val storySourceName = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.name
         return selectedTags.all { tag ->
             if (tag in sourceNames) storySourceName == tag else classificationFilterValues(story).contains(tag)
         }

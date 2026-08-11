@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source.network
 
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import okhttp3.HttpUrl
 
 /** Retry and pacing rules owned by a source policy rather than hardcoded request logic. */
@@ -23,25 +24,7 @@ fun interface NetworkPolicyResolver {
 /** Production host mapping. Tests inject a fixed resolver so MockWebServer uses the same path. */
 object DefaultNetworkPolicyResolver : NetworkPolicyResolver {
     private val default = SourceNetworkPolicy()
-    private val scribbleHub =
-        SourceNetworkPolicy(
-            minimumRequestGapMillis = 3_000L,
-            maximumAttempts = 3,
-            retryableStatusCodes = setOf(403, 429),
-            maximumRequestsPerWindow = 12,
-        )
-    private val spaceBattles =
-        SourceNetworkPolicy(
-            minimumRequestGapMillis = 1_500L,
-            maximumAttempts = 2,
-            retryableStatusCodes = setOf(429, 503),
-            maximumRequestsPerWindow = 30,
-        )
 
     override fun policyFor(url: HttpUrl): SourceNetworkPolicy =
-        when (url.host.lowercase()) {
-            "scribblehub.com", "www.scribblehub.com" -> scribbleHub
-            "spacebattles.com", "forums.spacebattles.com", "forum.spacebattles.com" -> spaceBattles
-            else -> default
-        }
+        SourceRegistry.providerForHost(url.host)?.descriptor?.networkPolicy ?: default
 }

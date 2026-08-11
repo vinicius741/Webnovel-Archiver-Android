@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.feature.settings
 import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebStorage
 import android.webkit.WebView
 import android.widget.CheckBox
 import android.widget.EditText
@@ -21,8 +20,6 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
-import com.vinicius741.webnovelarchiver.source.network.CloudflareWebViewSolver
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -212,11 +209,12 @@ internal fun ScreenHost.showDataBackup() {
             }
         }
         val sourceNetwork = app.appContainer.network
+        val browserSessionSources = SourceRegistry.all().filter { it.descriptor.managesBrowserSession }
         val sourceSnapshots =
             sourceNetwork
                 .reliabilitySnapshots()
                 .filter { snapshot ->
-                    snapshot.host.endsWith("scribblehub.com") || snapshot.host.endsWith("spacebattles.com")
+                    SourceRegistry.providerForHost(snapshot.host)?.descriptor?.managesBrowserSession == true
                 }
         val webViewPackage = WebView.getCurrentWebViewPackage()
         val sourceAccessSummary =
@@ -240,15 +238,7 @@ internal fun ScreenHost.showDataBackup() {
         }
         settingRow(R.drawable.wna_cleaning, "Reset Source Web Session", "Clear source cookies, browser storage, and access cooldowns") {
             confirm("Reset source browser sessions? The next request may require verification.", confirmLabel = "Reset") {
-                CloudflareWebViewSolver.destroySessions()
-                WebStorage.getInstance().deleteAllData()
-                sourceNetwork.clearSourceAccess("https://www.scribblehub.com/", keepBrowserTransport = false)
-                sourceNetwork.clearSourceAccess("https://forums.spacebattles.com/", keepBrowserTransport = false)
-                CloudflareCookies.removeAllFor("https://www.scribblehub.com/") {
-                    CloudflareCookies.removeAllFor("https://forums.spacebattles.com/") {
-                        toast("Source web sessions reset")
-                    }
-                }
+                resetSourceWebSessions(browserSessionSources)
             }
         }
         divider()
@@ -306,7 +296,7 @@ internal fun ScreenHost.showDownloadSettings() {
         spacer(Space.XS)
         val sourceInputs =
             SourceRegistry.all().associate { provider ->
-                val override = sourceSettings[provider.name]
+                val override = sourceSettings[provider.id] ?: sourceSettings[provider.name]
                 var toggle: CheckBox? = null
                 var sourceConcurrency: EditText? = null
                 var sourceDelayMin: EditText? = null
@@ -370,7 +360,7 @@ internal fun ScreenHost.showDownloadSettings() {
                         }
                     },
                 )
-                provider.name to SourceDownloadInputs(toggle!!, sourceConcurrency!!, sourceDelayMin!!, sourceDelayMax!!)
+                provider.id to SourceDownloadInputs(toggle!!, sourceConcurrency!!, sourceDelayMin!!, sourceDelayMax!!)
             }
 
         // Single Save persists both the global defaults and any checked overrides.

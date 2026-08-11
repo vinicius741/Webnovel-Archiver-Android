@@ -24,15 +24,7 @@ import org.jsoup.parser.Parser
  */
 @Suppress("TooManyFunctions")
 object SpaceBattlesProvider : SourceProvider {
-    override val name = "SpaceBattles"
-    override val baseUrl = "https://forums.spacebattles.com"
-    override val supportsLatestChapterSync = true
-    override val supportsBulkDownloadPreflight = false
-    override val maximumDownloadConcurrency = 1
-
-    override fun isSource(url: String): Boolean =
-        SPACEBATTLES_HOST.containsMatchIn(url) &&
-            (THREAD_ID.find(url) != null || POST_ID.find(url) != null)
+    override val descriptor = spaceBattlesSourceDescriptor
 
     override fun classifyUrl(url: String): SourceUrlKind? =
         when {

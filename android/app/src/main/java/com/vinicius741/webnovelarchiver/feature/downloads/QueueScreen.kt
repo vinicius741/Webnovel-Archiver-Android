@@ -301,7 +301,7 @@ internal class QueueGroupCard(
         val expanded = group.expanded
 
         title.text = storyTitle
-        val providerName = SourceRegistry.getProvider(jobs.first().chapter.url)?.name
+        val providerName = SourceRegistry.getProvider(jobs.first().sourceId, jobs.first().chapter.url)?.name
         val pacingStatus =
             DownloadPacingUiPlanning.storyStatus(
                 storyId = storyId,

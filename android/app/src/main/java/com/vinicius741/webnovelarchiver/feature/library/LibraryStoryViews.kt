@@ -176,7 +176,7 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
                     setPadding(0, dp(Space.XS), 0, 0)
                 },
             )
-            val provider = SourceRegistry.getProvider(story.sourceUrl)
+            val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
             val publicationStatusBadge = publicationStatusBadge(story)
             if (provider != null || publicationStatusBadge != null) {
                 addView(

@@ -19,17 +19,29 @@ import kotlin.math.max
 
 @Suppress("TooManyFunctions")
 object RoyalRoadProvider : SourceProvider {
-    override val name = "RoyalRoad"
-    override val baseUrl = "https://www.royalroad.com"
-
-    override fun isSource(url: String) = url.contains("royalroad.com", ignoreCase = true)
+    override val descriptor =
+        SourceDescriptor(
+            id = "royal_road",
+            displayName = "RoyalRoad",
+            browseUrl = "https://www.royalroad.com",
+            hosts = setOf("royalroad.com"),
+            featuredMetrics =
+                listOf(
+                    SourceMetricKind.FOLLOWERS,
+                    SourceMetricKind.TOTAL_VIEWS,
+                    SourceMetricKind.PAGES,
+                ),
+            renderedPageRules =
+                listOf(
+                    SourceRenderedPageRule(pathContains = "/chapter/", requiredSelector = ".chapter-inner"),
+                ),
+        )
 
     override fun classifyUrl(url: String): SourceUrlKind? {
-        val lower = url.lowercase()
+        val path = sourcePath(url)?.lowercase() ?: return null
         return when {
-            Regex("""https?://(?:www\.)?royalroad\.com/fiction/\d+""").containsMatchIn(lower) &&
-                !lower.contains("/chapter/") -> SourceUrlKind.STORY
-            Regex("""/chapter/\d+""").containsMatchIn(lower) -> SourceUrlKind.CHAPTER
+            Regex("""^/fiction/\d+(?:/[^/]+)?/?$""").matches(path) -> SourceUrlKind.STORY
+            Regex("""^/fiction/\d+(?:/[^/]+)?/chapter/\d+(?:/[^/]+)?/?$""").matches(path) -> SourceUrlKind.CHAPTER
             else -> null
         }
     }
@@ -39,7 +51,8 @@ object RoyalRoadProvider : SourceProvider {
             .find(url)
             ?.groupValues
             ?.get(1)
-            ?.let { "rr_$it" } ?: "rr_${System.currentTimeMillis()}"
+            ?.let { "rr_$it" }
+            ?: error("Royal Road story URL was not recognized")
 
     override fun getChapterId(url: String) = Regex("/chapter/(\\d+)").find(url)?.groupValues?.get(1)
 

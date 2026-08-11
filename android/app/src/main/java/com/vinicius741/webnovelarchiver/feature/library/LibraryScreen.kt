@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.GridLayout
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
@@ -69,6 +70,7 @@ internal fun ScreenHost.showLibrary() {
         }
 
         if (stories.isEmpty()) {
+            val sourceNames = SourceRegistry.all().joinToString(", ") { it.name }
             addView(
                 makeLibraryTabBar(context, tabs, stories, initialSelectedTabId) { newTabId ->
                     // The empty state has no filter bar, but tab selection still persists.
@@ -78,7 +80,7 @@ internal fun ScreenHost.showLibrary() {
             addView(
                 makeEmptyState(
                     context,
-                    message = "Import a Royal Road, Scribble Hub, SpaceBattles, or FanFiction.net story to start building your library.",
+                    message = "Import a story from $sourceNames to start building your library.",
                     title = "Your library is empty",
                     iconRes = R.drawable.wna_menu_book,
                     actionLabel = "Add a story",

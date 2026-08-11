@@ -10,6 +10,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import org.json.JSONArray
 import org.jsoup.Jsoup
 import java.util.concurrent.ConcurrentHashMap
@@ -191,7 +192,7 @@ internal object CloudflareRenderedPageValidator {
         finalUrl: String,
         html: String,
     ): Boolean {
-        if (html.isBlank() || SourceAccessBlockDetector.isChallengeHtml(html)) return false
+        if (SourceAccessBlockDetector.isChallengeHtml(html)) return false
         val requestedHost = normalizedHost(request.url) ?: return false
         val finalHost = normalizedHost(finalUrl) ?: return false
         if (requestedHost != finalHost) return false
@@ -204,16 +205,16 @@ internal object CloudflareRenderedPageValidator {
                     .orEmpty()
                     .lowercase()
             }.getOrDefault("")
+        val rule =
+            SourceRegistry
+                .getProvider(request.url)
+                ?.descriptor
+                ?.renderedPageRules
+                ?.firstOrNull { it.matches(requestedPath) }
+        if (html.isBlank()) return rule?.allowEmptyBody == true
         val document = runCatching { Jsoup.parse(html) }.getOrNull() ?: return false
-        return when {
-            requestedPath.contains("/chapter/") && requestedHost == "scribblehub.com" -> document.selectFirst("#chp_raw") != null
-            requestedPath.contains("/chapter/") && requestedHost == "royalroad.com" -> document.selectFirst(".chapter-inner") != null
-            requestedPath.contains("/series/") ->
-                document.selectFirst("#mypostid, .fic_title, .wi_fic_title") != null
-            // An empty AJAX body is a valid "no more TOC pages" response.
-            requestedPath.endsWith("/wp-admin/admin-ajax.php") -> true
-            else -> document.body().html().isNotBlank()
-        }
+        return rule?.requiredSelector?.let { document.selectFirst(it) != null }
+            ?: document.body().html().isNotBlank()
     }
 
     private fun normalizedHost(url: String): String? =

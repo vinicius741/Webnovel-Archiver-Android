@@ -52,3 +52,11 @@ Emulator-based functional QA reports for the native Android app.
 | `native-app-emulator-qa-2026-07-21.html` | Debug-APK emulator QA pass covering Library, Queue, Settings, Updates, Add Story, Details, Reader, TTS, EPUB, and regression verification (0 issues found, fully stable). |
 | `native-app-emulator-qa-2026-07-31.html` | Broad debug-APK emulator QA with live followed-story sync, partial-story download, valid Add Story import, TTS, EPUB, backup, and four ranked findings with screenshot evidence. |
 | `native-app-emulator-qa-2026-07-09.html` | Debug-APK emulator QA covering local library, reader, TTS, settings, EPUB, and empty-state flows; records one P2 reader-settings navigation issue. |
+
+### `sources/`
+
+Provider architecture and the workflow for extending supported novel sites.
+
+| File | Description |
+|------|-------------|
+| `adding-a-source.md` | Stable source descriptors, URL matching, parsing/fetching hooks, registration, fixtures, compatibility rules, and validation checklist for a new provider. |

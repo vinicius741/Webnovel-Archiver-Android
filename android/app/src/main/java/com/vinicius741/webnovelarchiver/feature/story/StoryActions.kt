@@ -170,7 +170,7 @@ internal fun ScreenHost.syncStory(
             // url-overload path exactly (it keys off pendingNewChapterIds set during the merge).
             val existingBeforeSync =
                 withContext(Dispatchers.IO) {
-                    SourceRegistry.getProvider(story.sourceUrl)?.let { provider ->
+                    SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { provider ->
                         runCatching { repository.story(provider.getStoryId(story.sourceUrl)) }.getOrNull()
                     }
                 }

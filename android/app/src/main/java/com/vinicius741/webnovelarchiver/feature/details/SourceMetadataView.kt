@@ -25,10 +25,10 @@ import java.util.Locale
  * nothing to show, so the row simply does not render.
  */
 internal fun ScreenHost.buildSourceMetadataFlow(story: Story): View? {
-    val provider = SourceRegistry.getProvider(story.sourceUrl)
+    val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     val metrics =
         SourceMetadataPlanning.detailMetrics(
-            sourceName = provider?.name,
+            preferredKinds = provider?.descriptor?.featuredMetrics.orEmpty(),
             metadata = story.sourceMetadata,
             hasScore = !story.score.isNullOrBlank(),
         )

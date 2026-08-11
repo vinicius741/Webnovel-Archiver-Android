@@ -36,14 +36,20 @@ internal class DownloadSourceReliability(
         val grouped =
             queue
                 .filter { it.status == DownloadJobStatus.Pending.wire }
-                .groupBy { SourceRegistry.getProvider(it.chapter.url)?.name }
+                .groupBy { SourceRegistry.getProvider(it.sourceId, it.chapter.url)?.id }
         preflightedSources.retainAll(grouped.keys.filterNotNull().toSet())
         val candidate =
             grouped.entries
                 .firstOrNull { (providerName, jobs) ->
                     providerName != null &&
                         providerName !in preflightedSources &&
-                        SourceRegistry.getProvider(jobs.first().chapter.url)?.supportsBulkDownloadPreflight == true &&
+                        SourceRegistry
+                            .getProvider(
+                                jobs.first().sourceId,
+                                jobs.first().chapter.url,
+                            )?.descriptor
+                            ?.capabilities
+                            ?.bulkDownloadPreflight == true &&
                         jobs.size >= BULK_PREFLIGHT_CHAPTERS
                 } ?: return BulkPreflightResult(attempted = false)
         val providerName = candidate.key ?: return BulkPreflightResult(attempted = false)
@@ -161,7 +167,7 @@ internal class DownloadSourceReliability(
         }
     }
 
-    private fun providerNameForJob(job: DownloadJob): String? = SourceRegistry.getProvider(job.chapter.url)?.name
+    private fun providerNameForJob(job: DownloadJob): String? = SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id
 
     private companion object {
         const val BULK_PREFLIGHT_CHAPTERS = 20

@@ -72,6 +72,7 @@ object DownloadQueuePlanning {
             id = "${story.id}_$index",
             storyId = story.id,
             storyTitle = story.title,
+            sourceId = story.sourceId,
             chapterIndex = index,
             chapter = chapter.copy(),
             status = DownloadJobStatus.Pending.wire,

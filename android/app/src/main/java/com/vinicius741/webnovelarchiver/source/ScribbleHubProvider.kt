@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
+import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
 import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -17,23 +18,56 @@ import timber.log.Timber
 
 @Suppress("TooManyFunctions")
 object ScribbleHubProvider : SourceProvider {
-    override val name = "Scribble Hub"
-    override val baseUrl = "https://www.scribblehub.com"
-    override val supportsLatestChapterSync = true
+    override val descriptor =
+        SourceDescriptor(
+            id = "scribble_hub",
+            displayName = "Scribble Hub",
+            browseUrl = "https://www.scribblehub.com",
+            hosts = setOf("scribblehub.com"),
+            capabilities = SourceCapabilities(latestChapterSync = true),
+            networkPolicy =
+                SourceNetworkPolicy(
+                    minimumRequestGapMillis = 3_000L,
+                    maximumAttempts = 3,
+                    retryableStatusCodes = setOf(403, 429),
+                    maximumRequestsPerWindow = 12,
+                ),
+            managesBrowserSession = true,
+            cookieSeeds =
+                listOf(
+                    SourceCookieSeed(
+                        url = "https://www.scribblehub.com",
+                        value = "toc_show=50; Domain=.scribblehub.com; Path=/; Max-Age=31536000",
+                    ),
+                ),
+            renderedPageRules =
+                listOf(
+                    SourceRenderedPageRule(pathContains = "/chapter/", requiredSelector = "#chp_raw"),
+                    SourceRenderedPageRule(
+                        pathContains = "/series/",
+                        requiredSelector = "#mypostid, .fic_title, .wi_fic_title",
+                    ),
+                    SourceRenderedPageRule(pathSuffix = "/wp-admin/admin-ajax.php", allowEmptyBody = true),
+                ),
+            featuredMetrics =
+                listOf(
+                    SourceMetricKind.READERS,
+                    SourceMetricKind.TOTAL_VIEWS,
+                    SourceMetricKind.WORDS,
+                ),
+        )
     private const val AJAX_URL = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
     private const val MAX_TOC_PAGE_SIZE = 50
 
-    override fun isSource(url: String) =
-        Regex("https?://(?:www\\.)?scribblehub\\.com/(series|read)/", RegexOption.IGNORE_CASE).containsMatchIn(url)
-
-    override fun classifyUrl(url: String): SourceUrlKind? =
-        when {
-            Regex("""https?://(?:www\.)?scribblehub\.com/series/\d+""", RegexOption.IGNORE_CASE)
-                .containsMatchIn(url) -> SourceUrlKind.STORY
-            Regex("""https?://(?:www\.)?scribblehub\.com/read/[^/]+/chapter/\d+""", RegexOption.IGNORE_CASE)
-                .containsMatchIn(url) -> SourceUrlKind.CHAPTER
+    override fun classifyUrl(url: String): SourceUrlKind? {
+        val path = sourcePath(url) ?: return null
+        return when {
+            Regex("""^/series/\d+(?:/[^/]+)?/?$""", RegexOption.IGNORE_CASE).matches(path) -> SourceUrlKind.STORY
+            Regex("""^/read/[^/]+/chapter/\d+(?:/[^/]+)?/?$""", RegexOption.IGNORE_CASE).matches(path) ->
+                SourceUrlKind.CHAPTER
             else -> null
         }
+    }
 
     override fun getStoryId(url: String) =
         Regex("/series/(\\d+)", RegexOption.IGNORE_CASE)
