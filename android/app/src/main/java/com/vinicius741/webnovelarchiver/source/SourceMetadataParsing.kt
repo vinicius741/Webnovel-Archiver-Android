@@ -1,6 +1,14 @@
 package com.vinicius741.webnovelarchiver.source
 
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.util.Locale
 
 /** Normalizes visible source labels before matching them across markup variants. */
 internal fun normalizedSourceText(value: String?): String =
@@ -57,7 +65,7 @@ private fun parseSourceDateAtZone(
     localDateTimeFormatters
         .firstNotNullOfOrNull { formatter ->
             runCatching {
-                java.time.LocalDateTime
+                LocalDateTime
                     .parse(normalized, formatter)
                     .atZone(zone)
                     .toInstant()
@@ -67,7 +75,7 @@ private fun parseSourceDateAtZone(
     localDateFormatters
         .firstNotNullOfOrNull { formatter ->
             runCatching {
-                java.time.LocalDate
+                LocalDate
                     .parse(normalized, formatter)
                     .atStartOfDay(zone)
                     .toInstant()
@@ -85,3 +93,71 @@ private fun parseSourceDateAtZone(
             ?.let { parseSourceDateAtZone(it, now, zone) }
     }
 }
+
+private fun parseEpochMillis(value: String): Long? {
+    val numeric = Regex("""^\d{10,13}$""").find(value)?.value ?: return null
+    val raw = numeric.toLongOrNull() ?: return null
+    return if (numeric.length <= 10) raw * 1000L else raw
+}
+
+private fun parseRelativeTime(
+    value: String,
+    now: Long,
+): Long? {
+    val match =
+        Regex("""(?i)\b(an?|one|\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago\b""")
+            .find(value)
+            ?: return null
+    val amount =
+        when (val raw = match.groupValues[1].lowercase()) {
+            "a", "an", "one" -> 1L
+            else -> raw.toLongOrNull() ?: return null
+        }
+    val unitMillis =
+        when (match.groupValues[2].lowercase()) {
+            "second" -> 1_000L
+            "minute" -> 60_000L
+            "hour" -> 3_600_000L
+            "day" -> 86_400_000L
+            "week" -> 604_800_000L
+            "month" -> 2_592_000_000L
+            "year" -> 31_536_000_000L
+            else -> return null
+        }
+    return now - amount * unitMillis
+}
+
+private fun parseInstantMillis(value: String): Long? =
+    listOf<(String) -> Long>(
+        { Instant.parse(it).toEpochMilli() },
+        { OffsetDateTime.parse(it).toInstant().toEpochMilli() },
+        { ZonedDateTime.parse(it).toInstant().toEpochMilli() },
+        { ZonedDateTime.parse(it, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() },
+    ).firstNotNullOfOrNull { parser -> runCatching { parser(value) }.getOrNull() }
+
+private val localDateTimeFormatters =
+    listOf(
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd HH:mm",
+        "MMM d, yyyy h:mm a",
+        "MMMM d, yyyy h:mm a",
+        "MMM d yyyy h:mm a",
+        "MMMM d yyyy h:mm a",
+    ).map(::sourceDateFormatter)
+
+private val localDateFormatters =
+    listOf(
+        "yyyy-MM-dd",
+        "MMM d, yyyy",
+        "MMMM d, yyyy",
+        "MMM d yyyy",
+        "MMMM d yyyy",
+        "d MMM yyyy",
+        "d MMMM yyyy",
+    ).map(::sourceDateFormatter)
+
+private fun sourceDateFormatter(pattern: String): DateTimeFormatter =
+    DateTimeFormatterBuilder()
+        .parseCaseInsensitive()
+        .appendPattern(pattern)
+        .toFormatter(Locale.US)
