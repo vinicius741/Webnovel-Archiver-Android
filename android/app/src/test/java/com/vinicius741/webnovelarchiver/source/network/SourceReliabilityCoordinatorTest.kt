@@ -30,6 +30,36 @@ class SourceReliabilityCoordinatorTest {
         }
 
     @Test
+    fun providerHostAliasesShareOneSourceBudget() =
+        runBlocking {
+            var now = 1_000L
+            val sleeps = mutableListOf<Long>()
+            val coordinator =
+                SourceReliabilityCoordinator(
+                    nowMillis = { now },
+                    sleep = { millis ->
+                        sleeps += millis
+                        now += millis
+                    },
+                )
+            val policy = SourceNetworkPolicy(minimumRequestGapMillis = 1_500L)
+
+            coordinator.awaitPermission(
+                "https://forums.spacebattles.com/threads/a",
+                "forums.spacebattles.com",
+                policy,
+            )
+            coordinator.awaitPermission(
+                "https://forum.spacebattles.com/threads/b",
+                "forum.spacebattles.com",
+                policy,
+            )
+
+            assertEquals(listOf(1_500L), sleeps)
+            assertEquals(2L, coordinator.snapshots().single().requestCount)
+        }
+
+    @Test
     fun rollingWindowStopsBurstEvenWithoutFixedGap() =
         runBlocking {
             var now = 0L

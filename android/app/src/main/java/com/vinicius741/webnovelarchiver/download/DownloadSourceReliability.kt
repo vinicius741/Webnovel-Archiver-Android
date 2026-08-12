@@ -29,49 +29,55 @@ internal class DownloadSourceReliability(
 ) {
     private val preflightedSources = mutableSetOf<String>()
 
-    suspend fun preflightLargeBatch(
+    suspend fun preflightSourceIfNeeded(
+        sourceId: String,
+        activeJob: DownloadJob,
         queue: List<DownloadJob>,
-        requestGateFor: (providerName: String, job: DownloadJob) -> NetworkRequestGate,
+        requestGate: NetworkRequestGate,
     ): BulkPreflightResult {
-        val grouped =
+        val activeSources =
             queue
-                .filter { it.status == DownloadJobStatus.Pending.wire }
-                .groupBy { SourceRegistry.getProvider(it.sourceId, it.chapter.url)?.id }
-        preflightedSources.retainAll(grouped.keys.filterNotNull().toSet())
-        val candidate =
-            grouped.entries
-                .firstOrNull { (providerName, jobs) ->
-                    providerName != null &&
-                        providerName !in preflightedSources &&
-                        SourceRegistry
-                            .getProvider(
-                                jobs.first().sourceId,
-                                jobs.first().chapter.url,
-                            )?.descriptor
-                            ?.capabilities
-                            ?.bulkDownloadPreflight == true &&
-                        jobs.size >= BULK_PREFLIGHT_CHAPTERS
-                } ?: return BulkPreflightResult(attempted = false)
-        val providerName = candidate.key ?: return BulkPreflightResult(attempted = false)
-        preflightedSources += providerName
+                .filter { it.status in DownloadJobStatus.activeWires }
+                .mapNotNull { SourceRegistry.getProvider(it.sourceId, it.chapter.url)?.id }
+                .toSet()
+        val sourceJobs =
+            queue.filter {
+                it.status in DownloadJobStatus.activeWires &&
+                    SourceRegistry.getProvider(it.sourceId, it.chapter.url)?.id == sourceId
+            }
+        val provider = SourceRegistry.getProvider(activeJob.sourceId, activeJob.chapter.url)
+        val shouldPreflight =
+            synchronized(preflightedSources) {
+                preflightedSources.retainAll(activeSources)
+                provider?.descriptor?.capabilities?.bulkDownloadPreflight == true &&
+                    sourceJobs.size >= BULK_PREFLIGHT_CHAPTERS &&
+                    preflightedSources.add(sourceId)
+            }
+        if (!shouldPreflight) return BulkPreflightResult(attempted = false)
         return try {
-            val firstJob = candidate.value.first()
             network.prepareBulkDownload(
-                url = firstJob.chapter.url,
-                requestGate = requestGateFor(providerName, firstJob),
+                url = activeJob.chapter.url,
+                requestGate = requestGate,
             )
             BulkPreflightResult(attempted = true)
         } catch (_: DownloadJobInactiveException) {
-            // The callback runs directly in the process loop rather than in a child job. Treat a
-            // user pause/cancel as a stale candidate, not as cancellation of the entire engine.
-            preflightedSources -= providerName
+            synchronized(preflightedSources) { preflightedSources -= sourceId }
             BulkPreflightResult(attempted = true)
         } catch (error: SourceAccessBlockedException) {
-            BulkPreflightResult(attempted = true, mutation = blockSourceJobs(providerName, error))
+            BulkPreflightResult(attempted = true, mutation = blockSourceJobs(sourceId, error))
         } catch (error: RateLimitNetworkException) {
             BulkPreflightResult(
                 attempted = true,
-                mutation = deferSourceJobs(providerName, error.retryAfterMillis ?: DEFAULT_RATE_LIMIT_DELAY_MILLIS),
+                mutation =
+                    handleJobError(
+                        activeJob,
+                        RateLimitNetworkException(
+                            error.requestedUrl,
+                            error.statusCode,
+                            error.retryAfterMillis ?: DEFAULT_RATE_LIMIT_DELAY_MILLIS,
+                        ),
+                        sourceId,
+                    ),
             )
         }
     }
@@ -121,24 +127,6 @@ internal class DownloadSourceReliability(
             queue = current
             if (!acceptsWorkerResults()) return@mutateQueueInPlace current
             DownloadSourceFailurePlanning.blockActiveJobs(current, providerName, error.message, ::providerNameForJob)
-            accepted = true
-            current
-        }
-        return if (accepted) DownloadQueueMutation(queue) else null
-    }
-
-    private fun deferSourceJobs(
-        providerName: String,
-        delayMillis: Long,
-    ): DownloadQueueMutation? {
-        if (!acceptsWorkerResults()) return null
-        val retryAt = nowMillis() + delayMillis.coerceAtLeast(0L)
-        lateinit var queue: List<DownloadJob>
-        var accepted = false
-        storage.mutateQueueInPlace { current ->
-            queue = current
-            if (!acceptsWorkerResults()) return@mutateQueueInPlace current
-            DownloadSourceFailurePlanning.deferPendingJobs(current, providerName, retryAt, ::providerNameForJob)
             accepted = true
             current
         }

@@ -6,7 +6,6 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
-import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
@@ -19,7 +18,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -37,9 +35,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Single process loop: exactly one engine in the process owns the loop — the foreground service, which
  * constructs with [ownsProcessLoop] = true. The activity constructs with false, so its engine is a
  * control/enqueue handle only: [queue] / [resumeAll] / [retryFailed] / etc. mutate the shared queue but
- * never run a loop. Without this, both engines would each launch up to `downloadConcurrency` jobs per
- * pass against the one queue (the `running` guard is per-instance, not shared), so setting concurrency
- * to 1 still produced ~2× concurrent downloads and per-source delays weren't honored across instances.
+ * never run a loop. Without this, both engines would each launch their own source lanes against the
+ * one queue (the `running` guard is per-instance, not shared), so source limits and delays would not
+ * be honored across instances.
  * The activity instead hands work to the service via `DownloadForegroundService.start`, whose single
  * loop reads the resumed/retried jobs from shared storage.
  */
@@ -55,6 +53,15 @@ class DownloadEngine(
     private val acceptsWorkerResults = AtomicBoolean(true)
     private val requestGateFactory = DownloadRequestGateFactory(storage, downloadPacer)
     private val sourceReliability = DownloadSourceReliability(storage, network, acceptsWorkerResults::get)
+    private val processLoop =
+        DownloadProcessLoop(
+            storage = storage,
+            wakeSignals = processLoopWakeSignals,
+            cleanupUnsupportedSourceJobs = ::cleanupUnsupportedSourceJobs,
+            processJob = ::processJob,
+            publishQueueChanged = { repository.publishDownloadState(queueChanged = true) },
+            emitProgress = ::emitProgress,
+        )
     private var worker: Job? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
 
@@ -172,7 +179,7 @@ class DownloadEngine(
         worker =
             scope.launch {
                 try {
-                    processLoop()
+                    processLoop.run()
                 } finally {
                     running.set(false)
                 }
@@ -206,72 +213,6 @@ class DownloadEngine(
     /** Releases the engine's coroutine scope. Call from the owning service's onDestroy. */
     fun close() {
         stopAndCancel()
-    }
-
-    private suspend fun processLoop() {
-        while (true) {
-            val settings = storage.getSettings()
-            cleanupUnsupportedSourceJobs()
-            val sourceSettings = storage.getSourceDownloadSettings()
-            val globalDownloadSettings =
-                SourceDownloadSettings(
-                    concurrency = settings.downloadConcurrency,
-                    delay = settings.downloadDelay,
-                    delayMax = settings.downloadDelayMax,
-                )
-            val preflightQueue = storage.getQueue()
-            val preflight =
-                sourceReliability.preflightLargeBatch(preflightQueue) { providerName, job ->
-                    requestGateFactory.gateFor(providerName, job)
-                }
-            preflight.mutation?.let(::publishQueueMutation)
-            if (preflight.attempted) continue
-            lateinit var queue: MutableList<DownloadJob>
-            lateinit var pending: List<DownloadJob>
-            synchronized(storage) {
-                queue = storage.getQueue()
-                pending =
-                    DownloadScheduler.selectEligibleJobs(
-                        jobs = queue,
-                        now = System.currentTimeMillis(),
-                        globalSettings = globalDownloadSettings,
-                        sourceSettings = sourceSettings,
-                        activeCounts = emptyMap(),
-                        nextAllowedAt = emptyMap(),
-                        providerNameForJob = { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id },
-                    )
-                if (pending.isNotEmpty()) {
-                    pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
-                    storage.saveQueue(queue)
-                }
-            }
-            if (pending.isNotEmpty()) {
-                repository.publishDownloadState(queueChanged = true)
-            }
-            emitProgress(null, queue)
-            if (pending.isEmpty()) {
-                val sleepUntil =
-                    DownloadScheduler.nextWakeUpAt(
-                        jobs = queue,
-                        now = System.currentTimeMillis(),
-                        nextAllowedAt = emptyMap(),
-                        providerNameForJob = { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id },
-                    )
-                if (sleepUntil != null) {
-                    sleepUntilWakeOrTimeout(sleepUntil)
-                    continue
-                }
-                break
-            }
-            pending.map { job -> scope.launch { processJob(job) } }.forEach { it.join() }
-        }
-    }
-
-    private suspend fun sleepUntilWakeOrTimeout(sleepUntil: Long) {
-        val sleepMs = (sleepUntil - System.currentTimeMillis()).coerceAtLeast(200)
-        withTimeoutOrNull(sleepMs) {
-            processLoopWakeSignals.receive()
-        }
     }
 
     private fun cleanupUnsupportedSourceJobs() {
@@ -312,6 +253,16 @@ class DownloadEngine(
             val provider = SourceRegistry.getProvider(job.sourceId, job.chapter.url) ?: error("Unsupported source")
             providerName = provider.id
             requestGateFactory.ensureJobActive(job.id)
+            val requestGate = requestGateFactory.gateFor(provider.id, job)
+            val preflight =
+                sourceReliability.preflightSourceIfNeeded(
+                    sourceId = provider.id,
+                    activeJob = job,
+                    queue = storage.getQueue(),
+                    requestGate = requestGate,
+                )
+            preflight.mutation?.let(::publishQueueMutation)
+            if (preflight.mutation != null) return
             // S6: use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to the cleanup engine's stateless contract.
             val clean =
@@ -321,7 +272,7 @@ class DownloadEngine(
                         chapter = job.chapter,
                         chapterIndex = job.chapterIndex,
                         network = network,
-                        requestGate = requestGateFactory.gateFor(provider.id, job),
+                        requestGate = requestGate,
                     ),
                     storage.getSentenceRemovalList(),
                     storage.getRegexRules(),

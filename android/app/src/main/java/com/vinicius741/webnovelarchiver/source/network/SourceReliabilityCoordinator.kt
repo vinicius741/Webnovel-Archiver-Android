@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source.network
 
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import kotlinx.coroutines.delay
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -33,6 +34,7 @@ class SourceReliabilityCoordinator(
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
     private data class HostState(
+        val canonicalHost: String,
         var nextAllowedAt: Long = 0L,
         var cooldownUntil: Long = 0L,
         var manualVerificationRequired: Boolean = false,
@@ -192,12 +194,12 @@ class SourceReliabilityCoordinator(
     }
 
     fun snapshots(): List<SourceReliabilitySnapshot> =
-        states.entries
-            .map { (host, state) ->
+        states.values
+            .map { state ->
                 synchronized(state) {
                     val now = nowMillis()
                     SourceReliabilitySnapshot(
-                        host = host,
+                        host = state.canonicalHost,
                         browserTransportActive = state.browserTransportUntil > now,
                         manualVerificationRequired = state.manualVerificationRequired,
                         cooldownRemainingMillis =
@@ -215,7 +217,24 @@ class SourceReliabilityCoordinator(
                 }
             }.sortedBy { it.host }
 
-    private fun stateFor(host: String): HostState = states.getOrPut(host.lowercase(Locale.US).removePrefix("www.")) { HostState() }
+    /**
+     * Known host aliases share the provider's stable source budget. This matches Cloudflare zones
+     * and source-owned origin limits more closely than treating every subdomain as a separate site.
+     */
+    private fun stateFor(host: String): HostState {
+        val normalizedHost = host.lowercase(Locale.US).removePrefix("www.")
+        val provider = SourceRegistry.providerForHost(normalizedHost)
+        val stateKey = provider?.id ?: normalizedHost
+        val canonicalHost =
+            provider
+                ?.descriptor
+                ?.hosts
+                ?.firstOrNull()
+                ?.lowercase(Locale.US)
+                ?.removePrefix("www.")
+                ?: normalizedHost
+        return states.getOrPut(stateKey) { HostState(canonicalHost) }
+    }
 
     private fun effectiveMinimumGap(
         state: HostState,

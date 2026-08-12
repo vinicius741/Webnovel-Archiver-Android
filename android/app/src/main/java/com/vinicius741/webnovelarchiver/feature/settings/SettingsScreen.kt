@@ -50,7 +50,6 @@ import kotlinx.coroutines.launch
 
 private data class SourceDownloadInputs(
     val enabled: CheckBox,
-    val concurrency: EditText,
     val delayMin: EditText,
     val delayMax: EditText,
 )
@@ -254,15 +253,16 @@ internal fun ScreenHost.showDataBackup() {
     }
 }
 
-/** Download settings sub-screen: global defaults plus per-source overrides, reached from Settings. */
+/** Download settings sub-screen: parallel source lanes plus per-source delay overrides. */
 internal fun ScreenHost.showDownloadSettings() {
     val settings = repository.getSettings()
     val sourceSettings = repository.getSourceDownloadSettings()
     screen(route = AppRoute.DownloadSettings, title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
-        // --- Global defaults (apply to any source that isn't overridden below) ---
+        // Parallelism is across independent sources. Each source itself owns one sequential request
+        // lane, with the delay defaults below applied between starts in that lane.
         section("Defaults")
         text(
-            "Used for every source that doesn't have its own override.",
+            "Download from different sources together. Requests to the same source stay sequential and use its own delay.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
@@ -270,13 +270,18 @@ internal fun ScreenHost.showDownloadSettings() {
         // Group the three number fields in one card so they read as a unit and don't sit bare on the
         // background next to the carded source overrides below. `labeledField` adds itself to the card
         // receiver and returns the EditText; capture via nullable vars (same pattern as the source cards).
-        var concurrency: EditText? = null
+        var parallelSources: EditText? = null
         var delayMin: EditText? = null
         var delayMax: EditText? = null
         var maxChapters: EditText? = null
         addView(
             card {
-                concurrency = labeledField("Concurrency", settings.downloadConcurrency.toString(), InputType.TYPE_CLASS_NUMBER)
+                parallelSources =
+                    labeledField(
+                        "Parallel sources",
+                        (settings.maxParallelSources ?: 2).toString(),
+                        InputType.TYPE_CLASS_NUMBER,
+                    )
                 spacer(Space.SM)
                 delayMin = labeledField("Delay min (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
                 spacer(Space.SM)
@@ -286,10 +291,11 @@ internal fun ScreenHost.showDownloadSettings() {
             },
         )
 
-        // --- Per-source overrides (each card mirrors the runtime fallback in DownloadScheduler.settingsFor) ---
-        section("Source Overrides")
+        // Per-source overrides affect pacing only. Source concurrency is deliberately fixed at one;
+        // throughput comes from independent sources rather than parallel requests to one website.
+        section("Source Delay Overrides")
         text(
-            "Replace the defaults for a specific source. Fields appear when you enable an override.",
+            "Replace the delay defaults for a specific source. Fields appear when you enable an override.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
@@ -298,7 +304,6 @@ internal fun ScreenHost.showDownloadSettings() {
             SourceRegistry.all().associate { provider ->
                 val override = sourceSettings[provider.id] ?: sourceSettings[provider.name]
                 var toggle: CheckBox? = null
-                var sourceConcurrency: EditText? = null
                 var sourceDelayMin: EditText? = null
                 var sourceDelayMax: EditText? = null
                 // Build the whole card in one block so the row + fields end up as children of the card,
@@ -330,15 +335,6 @@ internal fun ScreenHost.showDownloadSettings() {
                                 visibility = if (override != null) View.VISIBLE else View.GONE
                             }
                         fieldsContainer.apply {
-                            sourceConcurrency =
-                                labeledField(
-                                    provider.maximumDownloadConcurrency?.let { "Concurrency (max $it)" } ?: "Concurrency",
-                                    minOf(
-                                        override?.concurrency ?: settings.downloadConcurrency,
-                                        provider.maximumDownloadConcurrency ?: Int.MAX_VALUE,
-                                    ).toString(),
-                                    InputType.TYPE_CLASS_NUMBER,
-                                )
                             sourceDelayMin =
                                 labeledField(
                                     "Delay min (ms)",
@@ -360,7 +356,7 @@ internal fun ScreenHost.showDownloadSettings() {
                         }
                     },
                 )
-                provider.id to SourceDownloadInputs(toggle!!, sourceConcurrency!!, sourceDelayMin!!, sourceDelayMax!!)
+                provider.id to SourceDownloadInputs(toggle!!, sourceDelayMin!!, sourceDelayMax!!)
             }
 
         // Single Save persists both the global defaults and any checked overrides.
@@ -374,7 +370,11 @@ internal fun ScreenHost.showDownloadSettings() {
                 )
             val updatedSettings =
                 settings.copy(
-                    downloadConcurrency = SettingsValidation.concurrency(concurrency!!.text.toString(), settings.downloadConcurrency),
+                    maxParallelSources =
+                        SettingsValidation.concurrency(
+                            parallelSources!!.text.toString(),
+                            settings.maxParallelSources ?: 2,
+                        ),
                     downloadDelay = delayRange.first,
                     downloadDelayMax = delayRange.second,
                     maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters!!.text.toString(), settings.maxChaptersPerEpub),
@@ -394,11 +394,7 @@ internal fun ScreenHost.showDownloadSettings() {
                                 )
                             name to
                                 SourceDownloadSettings(
-                                    concurrency =
-                                        SettingsValidation.concurrency(
-                                            inputs.concurrency.text.toString(),
-                                            settings.downloadConcurrency,
-                                        ),
+                                    concurrency = 1,
                                     delay = sourceDelayRange.first,
                                     delayMax = sourceDelayRange.second,
                                 )

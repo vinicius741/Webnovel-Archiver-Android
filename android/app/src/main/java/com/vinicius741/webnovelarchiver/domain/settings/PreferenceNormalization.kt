@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 object PreferenceNormalization {
     private const val CONCURRENCY_MIN = 1
     private const val CONCURRENCY_MAX = 10
+    const val DEFAULT_MAX_PARALLEL_SOURCES = 2
     private const val MAX_CHAPTERS_PER_EPUB_MIN = 10
     private const val MAX_CHAPTERS_PER_EPUB_MAX = 1000
     private const val TTS_MIN = 0.5f
@@ -39,6 +40,9 @@ object PreferenceNormalization {
         val maxDelay = settings.downloadDelayMax.takeIf { it >= minDelay } ?: minDelay
         return settings.copy(
             downloadConcurrency = settings.downloadConcurrency.coerceIn(CONCURRENCY_MIN, CONCURRENCY_MAX),
+            maxParallelSources =
+                (settings.maxParallelSources ?: DEFAULT_MAX_PARALLEL_SOURCES)
+                    .coerceIn(CONCURRENCY_MIN, CONCURRENCY_MAX),
             downloadDelay = minDelay,
             downloadDelayMax = maxDelay,
             maxChaptersPerEpub = settings.maxChaptersPerEpub.coerceIn(MAX_CHAPTERS_PER_EPUB_MIN, MAX_CHAPTERS_PER_EPUB_MAX),

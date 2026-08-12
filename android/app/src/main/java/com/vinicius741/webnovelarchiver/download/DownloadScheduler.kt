@@ -22,38 +22,40 @@ object DownloadScheduler {
     fun selectEligibleJobs(
         jobs: List<DownloadJob>,
         now: Long,
-        globalSettings: SourceDownloadSettings,
-        sourceSettings: Map<String, SourceDownloadSettings>,
+        maxParallelSources: Int,
         activeCounts: Map<String, Int>,
         nextAllowedAt: Map<String, Long>,
+        lastScheduledSource: String?,
         providerNameForJob: (DownloadJob) -> String?,
     ): List<DownloadJob> {
-        val availableGlobalSlots = globalSettings.concurrency.coerceAtLeast(1) - activeCounts.values.sum()
-        if (availableGlobalSlots <= 0) return emptyList()
+        val activeSources = activeCounts.filterValues { it > 0 }.keys
+        val availableSourceSlots = maxParallelSources.coerceAtLeast(1) - activeSources.size
+        if (availableSourceSlots <= 0) return emptyList()
 
-        val selected = mutableListOf<DownloadJob>()
-        val selectedBySource = mutableMapOf<String, Int>()
-        for (job in jobs) {
-            if (selected.size >= availableGlobalSlots) break
-            if (job.status != DownloadJobStatus.Pending.wire) continue
-            if (job.nextRetryAt != null && job.nextRetryAt!! > now) continue
-
-            val providerName = providerNameForJob(job) ?: continue
-            val sourceLimit =
-                settingsFor(
-                    providerName,
-                    globalSettings,
-                    sourceSettings,
-                ).concurrency.coerceAtLeast(1)
-            val activeForSource = activeCounts[providerName] ?: 0
-            val selectedForSource = selectedBySource[providerName] ?: 0
-            if (activeForSource + selectedForSource >= sourceLimit) continue
-            if ((nextAllowedAt[providerName] ?: 0L) > now) continue
-
-            selected.add(job)
-            selectedBySource[providerName] = selectedForSource + 1
+        val queuedSourceOrder = linkedSetOf<String>()
+        val eligibleBySource = linkedMapOf<String, DownloadJob>()
+        jobs.forEach { job ->
+            if (job.status != DownloadJobStatus.Pending.wire) return@forEach
+            val source = providerNameForJob(job) ?: return@forEach
+            queuedSourceOrder += source
+            if (job.nextRetryAt != null && job.nextRetryAt!! > now) return@forEach
+            if (source in activeSources || (nextAllowedAt[source] ?: 0L) > now) return@forEach
+            eligibleBySource.putIfAbsent(source, job)
         }
-        return selected
+        if (eligibleBySource.isEmpty()) return emptyList()
+
+        // Rotate the stable queue-derived source order after the most recently scheduled source.
+        // This prevents two busy sources from permanently starving a third source while still
+        // preserving FIFO order inside each individual source lane.
+        val sourceOrder = queuedSourceOrder.toList()
+        val cursorIndex = sourceOrder.indexOf(lastScheduledSource)
+        val rotatedOrder =
+            if (cursorIndex < 0) {
+                sourceOrder
+            } else {
+                sourceOrder.drop(cursorIndex + 1) + sourceOrder.take(cursorIndex + 1)
+            }
+        return rotatedOrder.filter(eligibleBySource::containsKey).take(availableSourceSlots).map(eligibleBySource::getValue)
     }
 
     fun nextWakeUpAt(

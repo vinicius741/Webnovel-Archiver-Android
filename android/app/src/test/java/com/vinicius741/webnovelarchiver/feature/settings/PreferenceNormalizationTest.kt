@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
+import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -11,20 +12,44 @@ import org.junit.Test
 
 class PreferenceNormalizationTest {
     @Test
+    fun legacySettingsWithoutParallelSourceFieldMigrateToTwoLanes() {
+        val legacy =
+            Gson().fromJson(
+                """{"downloadConcurrency":1,"downloadDelay":500,"downloadDelayMax":500,"maxChaptersPerEpub":150}""",
+                AppSettings::class.java,
+            )
+
+        assertEquals(2, PreferenceNormalization.appSettings(legacy).maxParallelSources)
+    }
+
+    @Test
     fun appSettingsFillInvalidLegacyValuesWithDefaults() {
         val settings =
             PreferenceNormalization.appSettings(
                 AppSettings(downloadConcurrency = 0, downloadDelay = -1, downloadDelayMax = -1, maxChaptersPerEpub = 0),
             )
 
-        assertEquals(AppSettings(downloadConcurrency = 1, downloadDelay = 500, downloadDelayMax = 500, maxChaptersPerEpub = 10), settings)
         assertEquals(
-            AppSettings(downloadDelay = 1200, downloadDelayMax = 1200),
+            AppSettings(
+                downloadConcurrency = 1,
+                maxParallelSources = 2,
+                downloadDelay = 500,
+                downloadDelayMax = 500,
+                maxChaptersPerEpub = 10,
+            ),
+            settings,
+        )
+        assertEquals(
+            AppSettings(maxParallelSources = 2, downloadDelay = 1200, downloadDelayMax = 1200),
             PreferenceNormalization.appSettings(AppSettings(downloadDelay = 1200, downloadDelayMax = 0)),
         )
         assertEquals(
             10,
             PreferenceNormalization.appSettings(AppSettings(downloadConcurrency = 500)).downloadConcurrency,
+        )
+        assertEquals(
+            10,
+            PreferenceNormalization.appSettings(AppSettings(maxParallelSources = 500)).maxParallelSources,
         )
         assertEquals(
             1000,

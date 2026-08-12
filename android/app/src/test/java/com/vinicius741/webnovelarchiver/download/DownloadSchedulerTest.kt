@@ -10,15 +10,15 @@ import kotlin.random.Random
 
 class DownloadSchedulerTest {
     @Test
-    fun respectsGlobalConcurrency() {
+    fun selectsOneJobFromEachParallelSource() {
         val selected =
             DownloadScheduler.selectEligibleJobs(
                 jobs = listOf(job("a1", "RoyalRoad"), job("b1", "Scribble Hub"), job("a2", "RoyalRoad")),
                 now = 1000,
-                globalSettings = SourceDownloadSettings(concurrency = 2, delay = 0, delayMax = 0),
-                sourceSettings = emptyMap(),
+                maxParallelSources = 2,
                 activeCounts = emptyMap(),
                 nextAllowedAt = emptyMap(),
+                lastScheduledSource = null,
                 providerNameForJob = { it.chapter.url },
             )
 
@@ -26,18 +26,15 @@ class DownloadSchedulerTest {
     }
 
     @Test
-    fun respectsPerSourceConcurrencyOverride() {
+    fun neverSelectsASecondJobForTheSameSourceLane() {
         val selected =
             DownloadScheduler.selectEligibleJobs(
                 jobs = listOf(job("a1", "RoyalRoad"), job("a2", "RoyalRoad"), job("b1", "Scribble Hub")),
                 now = 1000,
-                globalSettings = SourceDownloadSettings(concurrency = 3, delay = 0, delayMax = 0),
-                sourceSettings =
-                    mapOf(
-                        "RoyalRoad" to SourceDownloadSettings(concurrency = 1, delay = 0, delayMax = 0),
-                    ),
+                maxParallelSources = 3,
                 activeCounts = emptyMap(),
                 nextAllowedAt = emptyMap(),
+                lastScheduledSource = null,
                 providerNameForJob = { it.chapter.url },
             )
 
@@ -50,10 +47,10 @@ class DownloadSchedulerTest {
             DownloadScheduler.selectEligibleJobs(
                 jobs = listOf(job("a1", "RoyalRoad"), job("b1", "Scribble Hub")),
                 now = 1000,
-                globalSettings = SourceDownloadSettings(concurrency = 2, delay = 0, delayMax = 0),
-                sourceSettings = emptyMap(),
+                maxParallelSources = 2,
                 activeCounts = emptyMap(),
                 nextAllowedAt = mapOf("RoyalRoad" to 2000),
+                lastScheduledSource = null,
                 providerNameForJob = { it.chapter.url },
             )
 
@@ -67,6 +64,28 @@ class DownloadSchedulerTest {
                 providerNameForJob = { it.chapter.url },
             ),
         )
+    }
+
+    @Test
+    fun rotatesPastTheLastScheduledSourceForFairness() {
+        val selected =
+            DownloadScheduler.selectEligibleJobs(
+                jobs =
+                    listOf(
+                        job("a1", "RoyalRoad"),
+                        job("b1", "Scribble Hub"),
+                        job("c1", "SpaceBattles"),
+                        job("a2", "RoyalRoad"),
+                    ),
+                now = 1000,
+                maxParallelSources = 2,
+                activeCounts = mapOf("Scribble Hub" to 1),
+                nextAllowedAt = emptyMap(),
+                lastScheduledSource = "Scribble Hub",
+                providerNameForJob = { it.chapter.url },
+            )
+
+        assertEquals(listOf("c1"), selected.map { it.id })
     }
 
     @Test

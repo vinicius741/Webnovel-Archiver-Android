@@ -30,7 +30,7 @@ class DownloadForegroundService : Service() {
         // the activity; queue read-modify-writes serialize on the AppStorage monitor (R3 single-owner).
         // This is the ONE engine that owns the download process loop (ownsProcessLoop defaults to true);
         // the activity's engine is a control/enqueue handle only, so only this instance ever runs the
-        // loop and honors the configured concurrency cap.
+        // loop and honors the configured parallel-source cap.
         val container = appContainer
         engine = DownloadEngine(container.repository, container.network, container.downloadPacer)
         engine.onProgress = ::updateNotification
