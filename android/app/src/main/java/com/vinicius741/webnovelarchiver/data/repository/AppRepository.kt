@@ -109,6 +109,9 @@ class AppRepository private constructor(
 
     private val requiredStorage: AppStorage get() = storage
 
+    /** Runs a persistence mutation on the I/O dispatcher under the repository's shared lock. */
+    private suspend fun <T> storageTransaction(block: () -> T): T = withContext(ioDispatcher) { synchronized(transactionLock, block) }
+
     private val libraryById = linkedMapOf<String, Story>()
     private val libraryCache = MutableStateFlow<List<Story>>(emptyList())
 
@@ -320,97 +323,75 @@ class AppRepository private constructor(
 
     // ---- Configuration writes (serialized on the injected I/O dispatcher) ----
     suspend fun saveSettings(settings: AppSettings) =
-        withContext(ioDispatcher) {
+        storageTransaction {
             val normalized = PreferenceNormalization.appSettings(settings)
-            synchronized(transactionLock) {
-                requiredStorage.saveSettings(normalized)
-                appSettings = normalized.copy()
-            }
+            requiredStorage.saveSettings(normalized)
+            appSettings = normalized.copy()
         }
 
     suspend fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        withContext(ioDispatcher) {
+        storageTransaction {
             val normalized = PreferenceNormalization.sourceDownloadSettings(settings)
-            synchronized(transactionLock) {
-                requiredStorage.saveSourceDownloadSettings(normalized)
-                sourceDownloadSettings = normalized.toMap()
-            }
+            requiredStorage.saveSourceDownloadSettings(normalized)
+            sourceDownloadSettings = normalized.toMap()
         }
 
     suspend fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        withContext(ioDispatcher) {
+        storageTransaction {
             val normalized = PreferenceNormalization.chapterFilterSettings(settings)
-            synchronized(transactionLock) {
-                requiredStorage.saveChapterFilterSettings(normalized)
-                chapterFilterSettings = normalized.copy()
-            }
+            requiredStorage.saveChapterFilterSettings(normalized)
+            chapterFilterSettings = normalized.copy()
         }
 
     suspend fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        withContext(ioDispatcher) {
+        storageTransaction {
             val normalized = PreferenceNormalization.displayPreferences(preferences)
-            synchronized(transactionLock) {
-                requiredStorage.saveDisplayPreferences(normalized)
-                displayPreferences = normalized.copy()
-            }
+            requiredStorage.saveDisplayPreferences(normalized)
+            displayPreferences = normalized.copy()
         }
 
     suspend fun saveTabs(updated: List<Tab>) =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                requiredStorage.saveTabs(updated)
-                tabs = updated.sortedBy { it.order }.map { it.copy() }
-            }
+        storageTransaction {
+            requiredStorage.saveTabs(updated)
+            tabs = updated.sortedBy { it.order }.map { it.copy() }
         }
 
     suspend fun saveSentenceRemovalList(items: List<String>) =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                requiredStorage.saveSentenceRemovalList(items)
-                sentenceRemovalList = items.toList()
-            }
+        storageTransaction {
+            requiredStorage.saveSentenceRemovalList(items)
+            sentenceRemovalList = items.toList()
         }
 
     suspend fun saveRegexRules(updated: List<RegexCleanupRule>) =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                requiredStorage.saveRegexRules(updated)
-                regexRules = updated.map { it.copy() }
-            }
+        storageTransaction {
+            requiredStorage.saveRegexRules(updated)
+            regexRules = updated.map { it.copy() }
         }
 
     suspend fun saveTtsSettings(settings: TtsSettings) =
-        withContext(ioDispatcher) {
+        storageTransaction {
             val normalized = PreferenceNormalization.ttsSettings(settings)
-            synchronized(transactionLock) {
-                requiredStorage.saveTtsSettings(normalized)
-                ttsSettings = normalized.copy()
-            }
+            requiredStorage.saveTtsSettings(normalized)
+            ttsSettings = normalized.copy()
         }
 
     suspend fun saveTtsSession(session: TtsSession) =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                requiredStorage.saveTtsSession(session)
-                ttsSession = session.copy()
-            }
+        storageTransaction {
+            requiredStorage.saveTtsSession(session)
+            ttsSession = session.copy()
         }
 
     suspend fun clearTtsSession() =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                requiredStorage.clearTtsSession()
-                ttsSession = null
-            }
+        storageTransaction {
+            requiredStorage.clearTtsSession()
+            ttsSession = null
         }
 
     suspend fun saveUpdateFollowedStoryIds(ids: List<String>) =
-        withContext(ioDispatcher) {
+        storageTransaction {
             val normalized = ids.filter(String::isNotBlank).distinct()
-            synchronized(transactionLock) {
-                requiredStorage.saveUpdateFollowedStoryIds(normalized)
-                updateFollowedStoryIds = normalized
-            }
+            requiredStorage.saveUpdateFollowedStoryIds(normalized)
+            updateFollowedStoryIds = normalized
         }
 
     // ---- Transactional library mutations ----
@@ -423,14 +404,12 @@ class AppRepository private constructor(
         storyId: String,
         block: (Story?) -> Story?,
     ): Story? =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                val current = storyStore.story(storyId)
-                val updated = block(current) ?: return@synchronized null
-                storyStore.addOrUpdateStory(updated)
-                publishStoryLocked(updated)
-                StoryMutations.snapshot(updated)
-            }
+        storageTransaction {
+            val current = storyStore.story(storyId)
+            val updated = block(current) ?: return@storageTransaction null
+            storyStore.addOrUpdateStory(updated)
+            publishStoryLocked(updated)
+            StoryMutations.snapshot(updated)
         }
 
     private suspend fun updateExistingStory(
@@ -495,68 +474,60 @@ class AppRepository private constructor(
         metricSnapshot: StoryMetricSnapshot? = null,
         merge: (Story?) -> Story = { story },
     ): Story =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                val committed = merge(storyStore.story(story.id))
-                val archive =
-                    archiveSource?.let { source ->
-                        ArchiveSnapshotPlanning.buildArchiveSnapshot(
-                            source,
-                            System.currentTimeMillis(),
-                            archiveReason,
-                        ) { archiveId, index, chapter ->
-                            requiredStorage.copyChapterToStory(archiveId, index, chapter)
-                        }
+        storageTransaction {
+            val committed = merge(storyStore.story(story.id))
+            val archive =
+                archiveSource?.let { source ->
+                    ArchiveSnapshotPlanning.buildArchiveSnapshot(
+                        source,
+                        System.currentTimeMillis(),
+                        archiveReason,
+                    ) { archiveId, index, chapter ->
+                        requiredStorage.copyChapterToStory(archiveId, index, chapter)
                     }
-                archive?.let {
-                    storyStore.addOrUpdateStory(it)
-                    libraryById[it.id] = StoryMutations.snapshot(it)
                 }
-                storyStore.addOrUpdateStory(committed)
-                libraryById[committed.id] = StoryMutations.snapshot(committed)
-                metricSnapshot?.let { snapshot ->
-                    // Metrics are diagnostic/history data. A fenced metrics document must not make
-                    // the already-committed story disappear from the library after a successful sync.
-                    runCatching { requiredStorage.appendMetricSnapshot(committed.id, snapshot) }
-                        .onFailure { error -> Timber.w(error, "Failed to record metric snapshot for %s", committed.id) }
-                }
-                libraryCache.value = libraryById.values.toList()
-                publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
-                StoryMutations.snapshot(committed)
+            archive?.let {
+                storyStore.addOrUpdateStory(it)
+                libraryById[it.id] = StoryMutations.snapshot(it)
             }
+            storyStore.addOrUpdateStory(committed)
+            libraryById[committed.id] = StoryMutations.snapshot(committed)
+            metricSnapshot?.let { snapshot ->
+                // Metrics are diagnostic/history data. A fenced metrics document must not make
+                // the already-committed story disappear from the library after a successful sync.
+                runCatching { requiredStorage.appendMetricSnapshot(committed.id, snapshot) }
+                    .onFailure { error -> Timber.w(error, "Failed to record metric snapshot for %s", committed.id) }
+            }
+            libraryCache.value = libraryById.values.toList()
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
+            StoryMutations.snapshot(committed)
         }
 
     /** Adds or replaces a story, then refreshes the library flow. */
     suspend fun upsertStory(story: Story) {
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                storyStore.addOrUpdateStory(story)
-                publishStoryLocked(story)
-            }
+        storageTransaction {
+            storyStore.addOrUpdateStory(story)
+            publishStoryLocked(story)
         }
     }
 
     suspend fun deleteStory(id: String) {
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                storyStore.deleteStory(id)
-                libraryById.remove(id)
-                libraryCache.value = libraryById.values.toList()
-                queueCache.value = storyStore.queue().map(::snapshotJob)
-                publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
-            }
+        storageTransaction {
+            storyStore.deleteStory(id)
+            libraryById.remove(id)
+            libraryCache.value = libraryById.values.toList()
+            queueCache.value = storyStore.queue().map(::snapshotJob)
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
         }
     }
 
     suspend fun saveLibrary(stories: List<Story>) {
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                storyStore.saveLibrary(stories)
-                libraryById.clear()
-                stories.map(StoryMutations::snapshot).forEach { libraryById[it.id] = it }
-                libraryCache.value = libraryById.values.toList()
-                publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
-            }
+        storageTransaction {
+            storyStore.saveLibrary(stories)
+            libraryById.clear()
+            stories.map(StoryMutations::snapshot).forEach { libraryById[it.id] = it }
+            libraryCache.value = libraryById.values.toList()
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
         }
     }
 
@@ -567,25 +538,21 @@ class AppRepository private constructor(
      * point used by the download engine and prevents cross-component queue races (Reliability R3).
      */
     suspend fun updateQueue(block: (List<DownloadJob>) -> List<DownloadJob>) {
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                val current = storyStore.queue()
-                val updated = block(current)
-                storyStore.saveQueue(updated)
-                queueCache.value = updated.map(::snapshotJob)
-                publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
-            }
+        storageTransaction {
+            val current = storyStore.queue()
+            val updated = block(current)
+            storyStore.saveQueue(updated)
+            queueCache.value = updated.map(::snapshotJob)
+            publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
         }
     }
 
     /** Replaces the queue wholesale and refreshes the flow (used by enqueue/recovery paths). */
     suspend fun saveQueue(jobs: List<DownloadJob>) {
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) {
-                storyStore.saveQueue(jobs)
-                queueCache.value = jobs.map(::snapshotJob)
-                publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
-            }
+        storageTransaction {
+            storyStore.saveQueue(jobs)
+            queueCache.value = jobs.map(::snapshotJob)
+            publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
         }
     }
 
