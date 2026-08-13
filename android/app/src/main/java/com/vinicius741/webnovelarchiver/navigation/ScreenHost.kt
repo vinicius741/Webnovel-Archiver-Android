@@ -87,14 +87,19 @@ class InFlightStorySync(
 }
 
 /**
- * Transient UI state for the Follow Updates selection screen. `query` is the live search text and
- * `showCovers` mirrors the persisted [com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences.showCoversOnUpdates]
- * toggle. Both live here (rather than only in the EditText) so the screen can re-render the
- * filtered list in place without losing the typed query, and so the toggle survives the
- * navigation/re-render cycle that rebuilding the view tree performs.
+ * Transient UI state for the Follow Updates selection screen. [filter] is the same tab/search/tag/sort
+ * snapshot the Library uses; [showSelectedOnly] reviews the current follow set without dropping ids
+ * when other filters change; [showCovers] mirrors the persisted
+ * [com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences.showCoversOnUpdates] toggle.
+ * Lives here so typed query, chips, and toggles survive the navigation/re-render cycle.
  */
 class UpdateFollowSelectionState {
     var query: String = ""
+    var selectedTabId: String? = "__all__"
+    var selectedTags: Set<String> = emptySet()
+    var sortOption: String = "title"
+    var sortAscending: Boolean = true
+    var showSelectedOnly: Boolean = false
     var showCovers: Boolean = false
 }
 
@@ -167,9 +172,9 @@ interface ScreenHost {
     val backupExportState: BackupExportState
 
     /**
-     * Transient state for the Follow Updates selection screen's search field + show-covers toggle
-     * (see [UpdateFollowSelectionState]). Lives here so the typed query and toggle survive the
-     * screen's in-place list re-renders.
+     * Transient state for the Follow Updates selection screen's library filters, selected-only
+     * review toggle, and show-covers preference (see [UpdateFollowSelectionState]). Lives here so
+     * those choices survive the screen's in-place list re-renders.
      */
     val updateFollowSelectionState: UpdateFollowSelectionState
 

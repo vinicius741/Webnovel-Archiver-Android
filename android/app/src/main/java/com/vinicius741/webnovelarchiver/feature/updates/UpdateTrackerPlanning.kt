@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.updates
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.feature.library.LibraryFilterState
 
 data class UpdatedChapter(
     val index: Int,
@@ -27,6 +28,34 @@ object UpdateTrackerPlanning {
                 story.author.contains(trimmed, ignoreCase = true)
         }
     }
+
+    fun visibleFollowStories(
+        stories: List<Story>,
+        filter: LibraryFilterState,
+        selectedIds: Set<String>,
+        showSelectedOnly: Boolean,
+    ): List<Story> {
+        val filtered = filter.applyTo(stories)
+        return if (showSelectedOnly) filtered.filter { it.id in selectedIds } else filtered
+    }
+
+    fun selectedReviewLabel(
+        selectedCount: Int,
+        showingSelectedOnly: Boolean,
+    ): String = if (showingSelectedOnly) "Show all" else "Selected ($selectedCount)"
+
+    /** List-header label that surfaces how many novels the current filters leave visible. */
+    fun followSelectionNovelsLabel(
+        visibleCount: Int,
+        totalCount: Int,
+    ): String = if (visibleCount == totalCount) "Novels ($visibleCount)" else "Novels ($visibleCount of $totalCount)"
+
+    fun followSelectionEmptyCopy(showSelectedOnly: Boolean): Pair<String, String> =
+        if (showSelectedOnly) {
+            "No selected novels" to "Select novels from the full list, or turn off the selected filter."
+        } else {
+            "No matches" to "Try clearing your search or filters."
+        }
 
     fun normalizeFollowedIds(
         stories: List<Story>,

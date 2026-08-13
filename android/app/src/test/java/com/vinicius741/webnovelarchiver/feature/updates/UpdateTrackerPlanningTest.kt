@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.library.LibraryFilterState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -41,6 +42,89 @@ class UpdateTrackerPlanningTest {
         val normalized = UpdateTrackerPlanning.normalizeFollowedIds(stories, listOf("missing", "b", "a", "b"))
 
         assertEquals(listOf("b", "a"), normalized)
+    }
+
+    @Test
+    fun visibleFollowStoriesApplyLibraryFiltersAndKeepUnselectedHiddenWhenReviewing() {
+        val stories =
+            listOf(
+                story("keep", title = "Alpha Keep", author = "Ann", tabId = "tab-a", tags = listOf("fantasy")),
+                story("other-tab", title = "Alpha Other", author = "Ann", tabId = "tab-b", tags = listOf("fantasy")),
+                story("other-tag", title = "Alpha Tag", author = "Ann", tabId = "tab-a", tags = listOf("romance")),
+                story("unselected", title = "Alpha Unselected", author = "Ann", tabId = "tab-a", tags = listOf("fantasy")),
+            )
+        val filter =
+            LibraryFilterState(
+                query = "alpha",
+                selectedTabId = "tab-a",
+                selectedTags = setOf("fantasy"),
+                sortOption = "title",
+                sortAscending = true,
+            )
+
+        assertEquals(
+            listOf("keep", "unselected"),
+            UpdateTrackerPlanning
+                .visibleFollowStories(
+                    stories,
+                    filter,
+                    selectedIds = setOf("keep"),
+                    showSelectedOnly = false,
+                ).map { it.id },
+        )
+        assertEquals(
+            listOf("keep"),
+            UpdateTrackerPlanning.visibleFollowStories(stories, filter, selectedIds = setOf("keep"), showSelectedOnly = true).map { it.id },
+        )
+    }
+
+    @Test
+    fun clearingSearchKeepsSelectedIdsVisibleInTheUnfilteredList() {
+        val stories =
+            listOf(
+                story("a", title = "Zebra Selected"),
+                story("b", title = "Alpha Other"),
+            )
+        val selected = setOf("a")
+        val searched =
+            UpdateTrackerPlanning.visibleFollowStories(
+                stories,
+                LibraryFilterState(query = "zebra", sortOption = "title", sortAscending = true),
+                selected,
+                showSelectedOnly = false,
+            )
+        val cleared =
+            UpdateTrackerPlanning.visibleFollowStories(
+                stories,
+                LibraryFilterState(query = "", sortOption = "title", sortAscending = true),
+                selected,
+                showSelectedOnly = false,
+            )
+
+        assertEquals(listOf("a"), searched.map { it.id })
+        assertEquals(listOf("b", "a"), cleared.map { it.id })
+        assertEquals(setOf("a"), selected)
+    }
+
+    @Test
+    fun selectedReviewLabelAndEmptyCopyDescribeTheReviewToggle() {
+        assertEquals("Selected (8)", UpdateTrackerPlanning.selectedReviewLabel(8, showingSelectedOnly = false))
+        assertEquals("Show all", UpdateTrackerPlanning.selectedReviewLabel(8, showingSelectedOnly = true))
+        assertEquals(
+            "No selected novels" to "Select novels from the full list, or turn off the selected filter.",
+            UpdateTrackerPlanning.followSelectionEmptyCopy(showSelectedOnly = true),
+        )
+        assertEquals(
+            "No matches" to "Try clearing your search or filters.",
+            UpdateTrackerPlanning.followSelectionEmptyCopy(showSelectedOnly = false),
+        )
+    }
+
+    @Test
+    fun followSelectionNovelsLabelShowsTotalOnlyWhenUnfiltered() {
+        assertEquals("Novels (5)", UpdateTrackerPlanning.followSelectionNovelsLabel(5, 5))
+        assertEquals("Novels (2 of 5)", UpdateTrackerPlanning.followSelectionNovelsLabel(2, 5))
+        assertEquals("Novels (0 of 5)", UpdateTrackerPlanning.followSelectionNovelsLabel(0, 5))
     }
 
     @Test
@@ -170,6 +254,8 @@ class UpdateTrackerPlanningTest {
         pending: MutableList<String>? = null,
         archived: Boolean = false,
         unavailable: Boolean = false,
+        tabId: String? = null,
+        tags: List<String> = emptyList(),
     ): Story =
         Story(
             id = id,
@@ -179,6 +265,8 @@ class UpdateTrackerPlanningTest {
             chapters = chapters,
             pendingNewChapterIds = pending,
             isArchived = archived.takeIf { it },
+            tabId = tabId,
+            tags = tags.toMutableList().takeIf { it.isNotEmpty() },
             sourceSyncState =
                 SourceSyncState(
                     availability = if (unavailable) SourceAvailability.not_found else SourceAvailability.available,
