@@ -44,6 +44,7 @@ object DevLaunchPlanning {
         READER("reader"),
         DETAILS("details"),
         ADD_STORY("addstory"),
+        FOLLOW_UPDATES("followupdates"),
         ;
 
         companion object {
@@ -76,6 +77,7 @@ object DevLaunchPlanning {
             DevStartScreen.NOTIFICATIONS -> AppRoute.Notifications
             DevStartScreen.UPDATES -> AppRoute.Updates
             DevStartScreen.ADD_STORY -> AppRoute.AddStory
+            DevStartScreen.FOLLOW_UPDATES -> AppRoute.UpdateFollowSelection
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
             DevStartScreen.READER -> resolveReader(storyOverride, chapterOverride, libraryProvider)
         }

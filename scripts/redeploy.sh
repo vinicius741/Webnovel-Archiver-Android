@@ -5,7 +5,7 @@
 # Usage: scripts/redeploy.sh [dev_start_screen]
 #   The optional arg is a debug-only intent extra (see android/AGENTS.md "Dev launch screen")
 #   that cold-starts the app directly into a screen — e.g. `reader`, `queue`, `settings`,
-#   `updates`, `details`, `addstory`, `library`. Omit it for the normal library start.
+#   `updates`, `followupdates`, `details`, `addstory`, `library`. Omit it for the normal library start.
 #
 #   To land on a SPECIFIC novel/chapter after the rebuild, set env vars (the values
 #   are forwarded as `--es dev_start_story` / `--es dev_start_chapter`):

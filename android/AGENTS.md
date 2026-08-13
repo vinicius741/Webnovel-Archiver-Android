@@ -75,9 +75,9 @@ The debug variant cold-starts directly into a chosen screen via an `am start --e
 
 **This is the required way to reach a screen for agent QA.** When you have built/installed the debug app and need to verify a change that lives on a screen (reader transport, settings, queue, etc.), cold-start onto that screen via the `dev-launch-screen` skill or the commands below — do NOT launch the app and tap through the UI by hand to get there. Tap/swipe only for interactions *after* you've landed on the target screen. Manual navigation wastes a session and is error-prone (you can end up on the wrong chapter, the wrong story, or fumbling the overflow menu). Skill triggering is heuristic; if the skill isn't auto-loaded for a post-build verification step, invoke it explicitly or run the cold-start command here directly.
 
-Tokens: `library`, `queue` (download manager), `settings`, `notifications`, `updates`, `reader`, `details`, `addstory`.
+Tokens: `library`, `queue` (download manager), `settings`, `notifications`, `updates`, `followupdates`, `reader`, `details`, `addstory`.
 
-- No-arg screens (`library`, `queue`, `settings`, `notifications`, `updates`, `addstory`) need nothing else.
+- No-arg screens (`library`, `queue`, `settings`, `notifications`, `updates`, `followupdates`, `addstory`) need nothing else.
 - `reader` and `details` auto-pick the first story in the persisted library (and the first chapter for `reader`); supply `--es dev_start_story <id>` and (reader only) `--es dev_start_chapter <id>` to target a specific one. If the library is empty or the ids don't resolve, the app falls back to the normal library start rather than rendering a blank screen.
 - To discover ids or open a specific novel/chapter without hand-editing the `am start` line, use `scripts/dev_library.sh`: `list`/filter (`--status`, `--source`, `--tag`, `--jq '<expr>'`, …) the installed novels; `open <row|id|title> [--chapter <row|id|title>]` cold-starts onto that novel's details or that chapter's reader (add `--rebuild` to build+install+open in one shot, `--dry-run` to preview the resolved ids). It is emulator-only and fails closed on a phone serial.
 - The dev target takes precedence over browser-import and TTS-resume, so it reliably lands where asked.

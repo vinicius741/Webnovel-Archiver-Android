@@ -82,6 +82,7 @@ scripts/dev_library.sh open 5 --chapter 1 --rebuild
 | `settings`     | Settings            | no                  |
 | `notifications`| Notifications       | no                  |
 | `updates`      | Updates tracker     | no                  |
+| `followupdates`| Follow Updates picker | no                |
 | `addstory`     | Add Story           | no                  |
 | `reader`       | Chapter reader      | yes (story+chapter) |
 | `details`      | Story details       | yes (story)         |
@@ -102,6 +103,7 @@ A quick lookup so you don't have to reason about where a change surfaces:
 | Settings (TTS voice, chunk size, theme, text-cleanup rules)       | `settings` |
 | Notifications settings                                            | `notifications` |
 | Updates tracker                                                   | `updates`  |
+| Follow Updates novel picker                                       | `followupdates` |
 | Add-story flow                                                    | `addstory` |
 
 Not sure which screen a change affects? Open the changed file's `feature/<x>/` directory — the directory name maps to the token.
@@ -145,7 +147,7 @@ You just built/installed the debug APK (`assembleDebug` / `build-and-install-apk
 
    | Token | Typical settle | Ready signal | Still loading if |
    |-------|----------------|--------------|------------------|
-   | Most (`library`, `queue`, `settings`, `notifications`, `updates`, `addstory`) | 1.5–2s | Correct app-bar title + primary content | blank / wrong title |
+    | Most (`library`, `queue`, `settings`, `notifications`, `updates`, `followupdates`, `addstory`) | 1.5–2s | Correct app-bar title + primary content | blank / wrong title |
    | `details` | 2–3s | Story title + cover or action buttons | empty body |
    | **`reader`** | **4–5s minimum, poll** | App bar `Chapter …` **and** body text / TTS controls | Title is `Reader` + `Preparing chapter…`, spinner only |
 
@@ -184,7 +186,7 @@ ACTIVITY=com.vinicius741.webnovelarchiver.app.MainActivity
 
 adb -s "$SERIAL" shell am force-stop "$PKG"
 adb -s "$SERIAL" shell am start -n "$PKG/$ACTIVITY" --es dev_start_screen reader
-# other tokens: queue, settings, notifications, updates, details, addstory, library
+# other tokens: queue, settings, notifications, updates, followupdates, details, addstory, library
 # then settle (see table above) before screenshot / interaction
 ```
 

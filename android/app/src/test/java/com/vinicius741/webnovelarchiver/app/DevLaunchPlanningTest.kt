@@ -50,6 +50,10 @@ class DevLaunchPlanningTest {
             AppRoute.AddStory,
             DevLaunchPlanning.resolve("addstory", null, null, provider),
         )
+        assertEquals(
+            AppRoute.UpdateFollowSelection,
+            DevLaunchPlanning.resolve("followupdates", null, null, provider),
+        )
     }
 
     @Test

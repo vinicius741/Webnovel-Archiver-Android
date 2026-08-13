@@ -76,7 +76,7 @@ Confirm install time is this session (`dumpsys package … | grep lastUpdateTime
 
 ### 3. Cold-start screens (do not tap-navigate to arrive)
 
-Tokens: `library` · `queue` · `settings` · `updates` · `addstory` · `details` · `reader`
+Tokens: `library` · `queue` · `settings` · `updates` · `followupdates` · `addstory` · `details` · `reader`
 
 Always:
 
@@ -98,6 +98,7 @@ Then **settle** (next section) before any screenshot.
 | `queue` | ~1.5s | `Downloads` + empty state or queue rows | — |
 | `settings` | ~1.5s | `Settings` + `Appearance` / theme chips | — |
 | `updates` | ~2s | `Updates` + followed count or empty state | — |
+| `followupdates` | ~2s | `Follow Updates` + search/filters or empty state | — |
 | `addstory` | ~1.5s | `Add Story` + `Fetch Story` | — |
 | `details` | ~2–3s | Story title in app bar + cover or action buttons | generic "Details" only, blank |
 | **`reader`** | **~4–5s, then poll** | App bar `Chapter …` **and** body text (or WebView text nodes); bottom `N / M` nav | Title `Reader` + `Preparing chapter…`, spinner only, tiny PNG (~40KB) |
