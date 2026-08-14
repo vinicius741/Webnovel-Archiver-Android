@@ -5,7 +5,7 @@
 - Active development targets the native Kotlin app under `android/`.
 - Follow any more-specific `AGENTS.md` found below this directory. Instructions closest to the files being changed take precedence.
 - Product architecture, package map, build/validation commands, and emulator workflows live in `android/AGENTS.md`.
-- Repo agent skills live under `.agents/skills/` (`build-and-install-apk`, `dev-launch-screen`, `emulator-qa`). Prefer those skills over re-deriving build/install/QA steps.
+- Repo agent skills live under `.agents/skills/` (`build-and-install-apk`, `dev-launch-screen`, `emulator-qa`, `restore-library-backup`). Prefer those skills over re-deriving build/install/QA steps.
 
 ## Git Workflow
 
