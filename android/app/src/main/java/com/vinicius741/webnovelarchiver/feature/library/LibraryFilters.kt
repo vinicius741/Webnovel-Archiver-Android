@@ -26,6 +26,7 @@ import com.vinicius741.webnovelarchiver.ui.makeSourceChip
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
@@ -161,7 +162,7 @@ internal fun ScreenHost.makeLibraryFilters(
     filtersContainer.addView(
         tagScroll,
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(Space.SM)
+            topMargin = dp(Space.MD)
         },
     )
 
@@ -327,11 +328,8 @@ internal fun ScreenHost.makeLibraryFilters(
     // the search/sort/tag filters trapped behind View.GONE and the whole filter row unresponsive.
     val toggleIcon =
         context
-            .iconButton(
-                R.drawable.wna_chevron_down,
-                "Toggle filters",
-                style = com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Small,
-            ).apply {
+            .iconButton(R.drawable.wna_chevron_down, "Toggle filters", style = com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Small)
+            .apply {
                 isClickable = false
                 isFocusable = false
             }
@@ -343,17 +341,13 @@ internal fun ScreenHost.makeLibraryFilters(
             layoutParams =
                 FrameLayout.LayoutParams(dp(Space.SM), dp(Space.SM), Gravity.TOP or Gravity.END).apply {
                     topMargin = dp(Space.XS + 2)
-                    rightMargin =
-                        dp(Space.XS + 2)
+                    rightMargin = dp(Space.XS + 2)
                 }
             background = roundedBg(ThemeManager.colors.primary, dp(Space.XS).toFloat())
         }
     val toggleWrap =
         FrameLayout(context).apply {
-            layoutParams =
-                LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                    gravity = Gravity.END
-                }
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { gravity = Gravity.END }
             addView(toggleIcon)
             addView(activeDot)
         }
@@ -370,14 +364,7 @@ internal fun ScreenHost.makeLibraryFilters(
     )
     val activeLabel =
         makeText(context, "•", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(
-                0,
-                0,
-                dp(
-                    Space.XS + 2,
-                ),
-                0,
-            )
+            setPadding(0, 0, dp(Space.XS + 2), 0)
         }
     headerRow.addView(activeLabel)
     headerRow.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
@@ -394,7 +381,7 @@ internal fun ScreenHost.makeLibraryFilters(
 
     var expanded = false
     filtersContainer.visibility = View.GONE
-    toggleWrap.setOnClickListener {
+    val toggleAction = {
         expanded = !expanded
         filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
         toggleIcon
@@ -403,6 +390,11 @@ internal fun ScreenHost.makeLibraryFilters(
             .setDuration(200)
             .start()
     }
+    headerRow.isClickable = true
+    headerRow.isFocusable = true
+    headerRow.background = selectableRipple(ThemeManager.colors.onSurface)
+    headerRow.setOnClickListener { toggleAction() }
+    toggleWrap.setOnClickListener { toggleAction() }
     wrapper.layoutParams = filterTopMargin
     return LibraryFiltersView(wrapper, populateChips, syncActiveFilters)
 }

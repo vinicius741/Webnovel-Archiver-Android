@@ -126,12 +126,15 @@ internal fun ScreenHost.showTtsVoiceDialog(
     dialogView.addView(
         HorizontalScrollView(app).apply {
             isHorizontalScrollBarEnabled = false
-            setPadding(0, app.dp(Space.SM), 0, app.dp(Space.SM))
+            setPadding(0, app.dp(Space.MD), 0, app.dp(Space.SM))
             addView(filterRow)
         },
     )
 
-    val resultCount = makeText(app, "", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
+    val resultCount =
+        makeText(app, "", Type.LABEL_MEDIUM, colors.onSurfaceVariant).apply {
+            setPadding(0, 0, 0, app.dp(Space.SM))
+        }
     dialogView.addView(resultCount)
     val results = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     val maxResultsHeight = minOf(app.dp(380), (app.resources.displayMetrics.heightPixels * 0.48f).toInt())

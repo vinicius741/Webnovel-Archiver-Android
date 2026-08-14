@@ -101,14 +101,18 @@ internal fun ScreenHost.showDetails(storyId: String) {
         detailsOperationSlot = panel.operationSlot
 
         // ---- Chapter filter (search + chips) ----
-        val chapterControls = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val chapterControls =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dp(Space.SM), 0, 0)
+            }
         val search = makeSearchField(context, "Search chapters")
         chapterControls.addView(search)
         val chipsContainer =
             com.vinicius741.webnovelarchiver.ui.WrapLayout(context).apply {
                 horizontalSpacingDp = Space.SM
                 verticalSpacingDp = Space.SM
-                setPadding(0, dp(Space.SM), 0, dp(Space.SM))
+                setPadding(0, dp(Space.MD), 0, dp(Space.MD))
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             }
         chapterControls.addView(chipsContainer)

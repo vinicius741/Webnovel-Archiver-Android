@@ -95,11 +95,17 @@ internal fun ScreenHost.prompt(
     onSave: (String) -> Unit,
 ) {
     val input = makeField(app, value, title, InputType.TYPE_CLASS_TEXT)
+    val container =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(app.dp(24), app.dp(Space.SM), app.dp(24), 0)
+            addView(input)
+        }
     val dialog =
         AlertDialog
             .Builder(app)
             .setTitle(title)
-            .setView(input)
+            .setView(container)
             .setPositiveButton("Save") { _, _ -> onSave(input.text.toString()) }
             .setNegativeButton("Cancel", null)
             .create()
