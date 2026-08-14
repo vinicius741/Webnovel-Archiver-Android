@@ -84,6 +84,6 @@ fi
 echo "▸ Launching $PKG on $EMULATOR_SERIAL"
 # force-stop first so the app cold-starts with the new code (no stale process)
 "$ADB" -s "$EMULATOR_SERIAL" shell am force-stop "$PKG"
-"$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PKG/$ACTIVITY" "${DEV_START_ARGS[@]}" >/dev/null
+"$ADB" -s "$EMULATOR_SERIAL" shell am start -n "$PKG/$ACTIVITY" ${DEV_START_ARGS[@]+"${DEV_START_ARGS[@]}"} >/dev/null
 
 echo "✓ Deployed at $(date +%H:%M:%S)"
