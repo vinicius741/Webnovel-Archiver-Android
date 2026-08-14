@@ -10,9 +10,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import org.json.JSONArray
-import org.jsoup.Jsoup
+import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -33,6 +31,14 @@ import java.util.concurrent.atomic.AtomicReference
  * rendered DOM, and hands it back to [CloudflareBypassInterceptor]. Interactive challenges still
  * time out and fall through to
  * [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity].
+ *
+ * Page inspection runs on its own timer starting when navigation is issued, not from WebView page
+ * callbacks: some physical-device WebView builds omit both `onPageStarted` and `onPageFinished` for
+ * a detached WebView even though the document loads. Waiting for either callback left the renderer
+ * with no DOM poll at all. [CloudflareRenderedPageValidator] checks the requested resource as well
+ * as the host and expected DOM shape, and the outgoing document is marked stale before each
+ * navigation, so polling cannot decide on a previous session document before the fresh navigation
+ * commits.
  */
 object CloudflareWebViewSolver {
     private data class BrowserSession(
@@ -53,6 +59,10 @@ object CloudflareWebViewSolver {
         val latch = CountDownLatch(1)
         val renderedPage = AtomicReference<CloudflareRenderedPage?>(null)
         val requestClosed = AtomicBoolean(false)
+        val failureNote = AtomicReference("")
+        // The 20s poll budget races the 20s await timeout, so the budget-exhaustion note can lose;
+        // the last observed document state carries the reason either way.
+        val lastPollNote = AtomicReference("no poll completed")
         val session = sessions.getOrPut(hostKey(request.url)) { BrowserSession() }
 
         mainHandler.post {
@@ -71,40 +81,66 @@ object CloudflareWebViewSolver {
                 pollsRemaining: Int = MAX_DOM_POLLS,
             ) {
                 if (requestClosed.get()) return
-                view.evaluateJavascript("document.documentElement.outerHTML") { htmlJson ->
+                view.evaluateJavascript(PAGE_STATE_SCRIPT) { json ->
                     if (requestClosed.get()) return@evaluateJavascript
-                    val html = decodeJavascriptString(htmlJson)
-                    when {
-                        SourceAccessBlockDetector.isChallengeHtml(html) && pollsRemaining > 0 ->
-                            view.postDelayed(
-                                { inspectPage(view, view.url ?: effectiveUrl, pollsRemaining - 1) },
-                                DOM_POLL_INTERVAL_MILLIS,
-                            )
-                        CloudflareRenderedPageValidator.isExpectedPage(request, effectiveUrl, html) -> {
-                            if (renderedPage.compareAndSet(null, CloudflareRenderedPage(html, effectiveUrl))) {
+                    val state = CloudflarePageStateDecoder.decode(json)
+                    val documentUrl = state.documentUrl.ifBlank { effectiveUrl }
+                    val isChallenge = SourceAccessBlockDetector.isChallengeHtml(state.html)
+                    lastPollNote.set(
+                        "url=${state.documentUrl} readyState=${state.readyState} stale=${state.stale} " +
+                            "challenge=$isChallenge htmlLen=${state.html.length}",
+                    )
+                    val isRequestedResource =
+                        CloudflareRenderedPageValidator.matchesRequestedResource(request, documentUrl)
+                    val decision =
+                        CloudflareRenderPollPlanning.decide(
+                            isStaleDocument = state.stale,
+                            documentUrl = documentUrl,
+                            readyState = state.readyState,
+                            isChallenge = isChallenge,
+                            isRequestedResource = isRequestedResource,
+                            isExpected = {
+                                CloudflareRenderedPageValidator.isExpectedPage(request, documentUrl, state.html)
+                            },
+                        )
+                    when (decision) {
+                        CloudflareRenderPollDecision.ACCEPT_PAGE ->
+                            if (renderedPage.compareAndSet(null, CloudflareRenderedPage(state.html, documentUrl))) {
                                 CloudflareCookies.flush()
                                 latch.countDown()
                             }
+
+                        CloudflareRenderPollDecision.KEEP_POLLING ->
+                            if (pollsRemaining > 0) {
+                                mainHandler.postDelayed(
+                                    { inspectPage(view, view.url ?: effectiveUrl, pollsRemaining - 1) },
+                                    DOM_POLL_INTERVAL_MILLIS,
+                                )
+                            } else {
+                                when {
+                                    isChallenge -> failureNote.set("challenge still active after polling budget")
+                                    state.stale -> failureNote.set("stale document persisted; navigation never committed")
+                                    !isRequestedResource -> failureNote.set("requested navigation never committed")
+                                    else -> failureNote.set("document never settled (readyState=${state.readyState})")
+                                }
+                                latch.countDown()
+                            }
+
+                        CloudflareRenderPollDecision.REJECT_PAGE -> {
+                            failureNote.set("settled page rejected by validator")
+                            latch.countDown()
                         }
-                        html.isNotBlank() -> latch.countDown()
                     }
                 }
             }
 
             web.webViewClient =
                 object : WebViewClient() {
-                    override fun onPageFinished(
-                        view: WebView?,
-                        pageUrl: String?,
-                    ) {
-                        val effectiveUrl = pageUrl ?: request.url
-                        view?.let { inspectPage(it, effectiveUrl) }
-                    }
-
                     override fun onRenderProcessGone(
                         view: WebView?,
                         detail: RenderProcessGoneDetail?,
                     ): Boolean {
+                        failureNote.set("render process gone")
                         session.webView = null
                         latch.countDown()
                         return true
@@ -115,7 +151,10 @@ object CloudflareWebViewSolver {
                         failingRequest: WebResourceRequest?,
                         error: WebResourceError?,
                     ) {
-                        if (failingRequest?.isForMainFrame == true) latch.countDown()
+                        if (failingRequest?.isForMainFrame == true) {
+                            failureNote.set("main-frame error")
+                            latch.countDown()
+                        }
                     }
 
                     override fun onReceivedHttpError(
@@ -127,14 +166,37 @@ object CloudflareWebViewSolver {
                             failingRequest?.isForMainFrame == true &&
                             errorResponse?.statusCode !in setOf(403, 429, 503)
                         ) {
+                            failureNote.set("main-frame HTTP ${errorResponse?.statusCode}")
                             latch.countDown()
                         }
                     }
                 }
-            when (request.method) {
-                "GET" -> web.loadUrl(request.url, request.headers)
-                "POST" -> web.postUrl(request.url, request.postData ?: byteArrayOf())
-                else -> latch.countDown()
+            // Mark the outgoing document before navigating: the session WebView is persistent, so
+            // it still shows the previous request's page, and the first polls run before this
+            // navigation commits. The marker lives in the old document's window, so any freshly
+            // loaded document starts clean. Navigation is issued from the marker's callback so the
+            // fresh document can never be marked by mistake.
+            web.evaluateJavascript(STALE_MARKER_SCRIPT) {
+                val navigationIssued =
+                    when (request.method) {
+                        "GET" -> {
+                            web.loadUrl(request.url, request.headers)
+                            true
+                        }
+                        "POST" -> {
+                            web.postUrl(request.url, request.postData ?: byteArrayOf())
+                            true
+                        }
+                        else -> false
+                    }
+                if (navigationIssued) {
+                    // Use the main Looper directly. View.post queues work until attachment on Samsung,
+                    // and this renderer is deliberately detached, so a WebView-owned timer never runs.
+                    mainHandler.post { inspectPage(web, request.url) }
+                } else {
+                    failureNote.set("unsupported request method ${request.method}")
+                    latch.countDown()
+                }
             }
         }
 
@@ -148,7 +210,16 @@ object CloudflareWebViewSolver {
         mainHandler.post {
             session.webView?.stopLoading()
         }
-        return renderedPage.get()
+        val rendered = renderedPage.get()
+        if (rendered == null) {
+            Timber.w(
+                "Cloudflare WebView render gave up: url=%s note=%s lastPoll=[%s]",
+                request.url,
+                failureNote.get().ifBlank { "timed out after ${timeoutMs}ms" },
+                lastPollNote.get(),
+            )
+        }
+        return rendered
     }
 
     /** Drops persistent renderer processes; CookieManager/WebStorage reset is owned by Settings. */
@@ -168,8 +239,6 @@ object CloudflareWebViewSolver {
         }
     }
 
-    private fun decodeJavascriptString(value: String?): String = runCatching { JSONArray("[$value]").getString(0) }.getOrDefault("")
-
     private fun hostKey(url: String): String =
         runCatching {
             java.net
@@ -180,52 +249,17 @@ object CloudflareWebViewSolver {
                 .removePrefix("www.")
         }.getOrDefault(url)
 
+    private const val STALE_MARKER_SCRIPT = "window.__wnaRenderStale=true"
+
+    private const val PAGE_STATE_SCRIPT =
+        "(function(){try{return JSON.stringify({documentUrl:location.href,readyState:document.readyState," +
+            "stale:window.__wnaRenderStale===true," +
+            "html:document.documentElement?document.documentElement.outerHTML:''})}" +
+            "catch(e){return '{\"documentUrl\":\"\",\"readyState\":\"\",\"stale\":false,\"html\":\"\"}'}})()"
+
     private const val DEFAULT_TIMEOUT_MS = 20_000L
     private const val DOM_POLL_INTERVAL_MILLIS = 500L
     private const val MAX_DOM_POLLS = 40
-}
-
-/** Pure validation keeps intermediate, error, and wrong-origin DOMs out of the source parsers. */
-internal object CloudflareRenderedPageValidator {
-    fun isExpectedPage(
-        request: CloudflareWebViewRequest,
-        finalUrl: String,
-        html: String,
-    ): Boolean {
-        if (SourceAccessBlockDetector.isChallengeHtml(html)) return false
-        val requestedHost = normalizedHost(request.url) ?: return false
-        val finalHost = normalizedHost(finalUrl) ?: return false
-        if (requestedHost != finalHost) return false
-
-        val requestedPath =
-            runCatching {
-                java.net
-                    .URI(request.url)
-                    .path
-                    .orEmpty()
-                    .lowercase()
-            }.getOrDefault("")
-        val rule =
-            SourceRegistry
-                .getProvider(request.url)
-                ?.descriptor
-                ?.renderedPageRules
-                ?.firstOrNull { it.matches(requestedPath) }
-        if (html.isBlank()) return rule?.allowEmptyBody == true
-        val document = runCatching { Jsoup.parse(html) }.getOrNull() ?: return false
-        return rule?.requiredSelector?.let { document.selectFirst(it) != null }
-            ?: document.body().html().isNotBlank()
-    }
-
-    private fun normalizedHost(url: String): String? =
-        runCatching {
-            java.net
-                .URI(url)
-                .host
-                ?.lowercase()
-                ?.removePrefix("www.")
-                ?.removePrefix("m.")
-        }.getOrNull()
 }
 
 /** Pure guard kept separately so the main-thread fail-fast behavior has a JVM test. */

@@ -203,7 +203,10 @@ class CloudflareSolveActivity : AppCompatActivity() {
         setContentView(root)
         // Pre-emptively clear a stale clearance so a fresh grant is detectable; mirrors the solver.
         CloudflareCookies.clearClearanceAsync(url) {
-            web.post { web.loadUrl(url) }
+            web.post {
+                web.loadUrl(url)
+                scheduleSolvePolling()
+            }
         }
     }
 
@@ -221,6 +224,24 @@ class CloudflareSolveActivity : AppCompatActivity() {
         setResult(Activity.RESULT_OK)
         // Brief delay so the user sees confirmation before the activity closes.
         webView?.postDelayed({ if (!isFinishing) finish() }, 400)
+    }
+
+    /**
+     * onPageFinished alone never fires for some source pages on some WebView builds (the load event
+     * stays pending while subresources stream forever), which used to leave this screen on
+     * "Solving…" even after the page had opened. The page state is therefore also polled on a
+     * timer; see CloudflareWebViewSolver for the same treatment in the background renderer.
+     */
+    private val solvePollRunnable: Runnable =
+        Runnable {
+            val web = webView ?: return@Runnable
+            if (solved || isFinishing || isDestroyed) return@Runnable
+            checkSolved(web, web.url ?: url)
+            web.postDelayed(solvePollRunnable, SOLVE_POLL_INTERVAL_MILLIS)
+        }
+
+    private fun scheduleSolvePolling() {
+        webView?.postDelayed(solvePollRunnable, SOLVE_POLL_INTERVAL_MILLIS)
     }
 
     private fun checkSolved(
@@ -306,6 +327,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         continueWithoutCookieDialog = null
         super.onDestroy()
         webView?.let { web ->
+            web.removeCallbacks(solvePollRunnable)
             (web.parent as? ViewGroup)?.removeView(web)
             WebViewSafety.destroy(web)
         }
@@ -316,6 +338,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         private const val EXTRA_URL = "cloudflare_solve_url"
         private const val MENU_DONE = 1
         private const val MENU_OPEN_BROWSER = 2
+        private const val SOLVE_POLL_INTERVAL_MILLIS = 1500L
 
         /** Launches the solver for [url]. The caller arms its retry via [SourceAccessRetryCoordinator]. */
         fun launch(

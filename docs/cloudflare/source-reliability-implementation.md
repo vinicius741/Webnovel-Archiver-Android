@@ -29,8 +29,26 @@ After a detected challenge:
 
 1. The host enters sticky browser mode.
 2. The original GET or form POST is loaded through a serialized persistent WebView session.
-3. The solver polls challenge DOM changes, rejects wrong-origin/error pages, and requires the source's
-   expected content marker for chapter and story pages.
+3. The solver polls the document state on a main-Looper timer started directly when navigation is
+   issued. It does not use `onPageStarted`/`onPageFinished`, which some physical-device WebView
+   builds can omit for the detached renderer, or `View.post`, which can defer work until a View is
+   attached. A page is accepted only after `document.readyState` reaches
+   `interactive`/`complete` — so a mid-stream DOM cannot be serialized as a truncated chapter —
+   and only when its stable story/chapter identity (or exact non-story path) matches the request, so
+   the persistent session's previous document is never mistaken for the new one. Identity comparison
+   prefers stable provider chapter ids over URL kind, because chapter URLs can classify as a story
+   (FanFiction) or canonicalize to a thread URL (SpaceBattles post → `#post-` fragment). Before each
+   navigation the outgoing document is marked stale in its own window (`window.__wnaRenderStale`), so
+   a retry of the same URL cannot decide on the previous request's page before the fresh navigation
+   commits. A settled previous chapter is treated as navigation still pending and polled again; it
+   is not rejected as a new Cloudflare block while the next sequential chapter is committing.
+   Wrong-origin/error pages and pages missing the source's expected content marker are rejected.
+   Poll payloads arrive JSON string-encoded from the
+   `evaluateJavascript` bridge and are unwrapped by the unit-tested `CloudflarePageStateDecoder`;
+   parsing them as objects directly once collapsed every poll into an eternally-loading document,
+   making every render time out as blocked while the interactive verifier (which decodes
+   correctly) showed the page as fine. Render give-ups log the last observed document state so the
+   branch that stalled is identifiable from logcat.
 4. The validated rendered DOM is returned to the existing Jsoup parser.
 5. Later pages go directly through the same Chromium session without first sending the already
    rejected OkHttp TLS/HTTP fingerprint.
