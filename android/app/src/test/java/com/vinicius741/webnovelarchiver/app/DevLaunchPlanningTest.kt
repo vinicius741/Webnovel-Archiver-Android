@@ -54,6 +54,10 @@ class DevLaunchPlanningTest {
             AppRoute.UpdateFollowSelection,
             DevLaunchPlanning.resolve("followupdates", null, null, provider),
         )
+        assertEquals(
+            AppRoute.AiSettings,
+            DevLaunchPlanning.resolve("aisettings", null, null, provider),
+        )
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
+import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
@@ -43,6 +44,7 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         AppRoute.Notifications -> showNotifications()
         AppRoute.DownloadSettings -> showDownloadSettings()
         AppRoute.TtsSettings -> showTtsSettings()
+        AppRoute.AiSettings -> showAiSettings()
         AppRoute.Tabs -> showTabs()
         AppRoute.CleanupRules -> showCleanupRules()
         AppRoute.DataBackup -> showDataBackup()

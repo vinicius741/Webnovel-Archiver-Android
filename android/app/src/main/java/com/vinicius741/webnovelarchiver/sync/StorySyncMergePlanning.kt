@@ -83,6 +83,16 @@ object StorySyncMergePlanning {
             downloadedChapters = downloadedCount,
             status = status,
             lastReadChapterId = lastRead,
+            // The sync snapshot was captured before the network window. Prefer the current
+            // on-disk AI state so a generation/regeneration or display toggle completed by another
+            // flow (for example Update Tracker running beside Details) is not overwritten here.
+            aiDescription = onDisk.aiDescription ?: synced.aiDescription,
+            showAiDescription =
+                if (onDisk.aiDescription != null) {
+                    onDisk.showAiDescription
+                } else {
+                    synced.showAiDescription
+                },
         )
     }
 

@@ -157,6 +157,7 @@ android/
           epub/                # EPUB generation
           cleanup/             # Text cleanup for download + TTS
           tts/                 # TTS engine + foreground service
+          ai/                  # OpenRouter client + AI description planning/engine
           notification/        # Notification channels + permission helpers
           ui/                  # Programmatic View DSL, themes, widgets
         AndroidManifest.xml

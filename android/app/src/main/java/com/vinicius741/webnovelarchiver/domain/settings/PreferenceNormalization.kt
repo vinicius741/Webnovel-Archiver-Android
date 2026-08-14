@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.domain.settings
 
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -93,5 +94,15 @@ object PreferenceNormalization {
         settings.copy(
             pitch = settings.pitch.coerceIn(TTS_MIN, TTS_MAX),
             rate = settings.rate.coerceIn(TTS_MIN, TTS_MAX),
+        )
+
+    fun aiSettings(settings: AiSettings): AiSettings =
+        settings.copy(
+            apiKey = settings.apiKey?.trim()?.takeIf { it.isNotBlank() },
+            descriptionModel =
+                settings.descriptionModel
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?: AiSettings.DEFAULT_DESCRIPTION_MODEL,
         )
 }

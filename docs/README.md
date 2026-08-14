@@ -7,6 +7,14 @@ Keep this index current whenever the set of documents changes.
 
 ## Folders
 
+### `ai/`
+
+OpenRouter-backed AI features for the native app.
+
+| File | Description |
+|------|-------------|
+| `ai-description-generation.md` | AI-generated novel descriptions: user flow, settings/key handling, cost controls, `ai/` package map, and how to extend the layer to tags and cover art. |
+
 ### `architecture/`
 
 Codebase-wide reviews, audits, and refactoring records covering the native Kotlin app

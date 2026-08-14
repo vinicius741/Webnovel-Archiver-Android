@@ -101,6 +101,8 @@ internal fun storyOperationIndeterminate(operation: StoryOperationState): Boolea
     when (operation.kind) {
         StoryOperationKind.SYNC -> true
         StoryOperationKind.CLEANUP, StoryOperationKind.EPUB -> operation.progress == null
+        // One network round-trip with no fraction; always a spinner.
+        StoryOperationKind.AI_DESCRIPTION -> true
     }
 
 /**

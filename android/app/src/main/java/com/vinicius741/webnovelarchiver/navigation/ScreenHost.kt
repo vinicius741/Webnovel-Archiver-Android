@@ -19,6 +19,7 @@ enum class StoryOperationKind {
     EPUB,
     CLEANUP,
     SYNC,
+    AI_DESCRIPTION,
 }
 
 data class StoryOperationState(

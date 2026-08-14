@@ -128,6 +128,10 @@ data class Story(
     var author: String = "",
     var coverUrl: String? = null,
     var description: String? = null,
+    /** Locally generated AI synopsis; the source description stays untouched in [description]. */
+    var aiDescription: String? = null,
+    /** Which synopsis the Details screen displays: true = [aiDescription], false = [description]. */
+    var showAiDescription: Boolean = false,
     var sourceUrl: String = "",
     /** Stable provider identity. Null only for legacy data until startup migration resolves it. */
     var sourceId: String? = null,
@@ -258,6 +262,21 @@ data class TtsSettings(
     val rate: Float = 1.0f,
     val voiceIdentifier: String? = null,
 )
+
+/**
+ * OpenRouter-backed AI feature settings. Only description generation exists today; future
+ * generators (tags, cover art) add their own model fields here so one API key serves all of
+ * them. The API key is deliberately NOT part of full backups — it stays device-local.
+ */
+data class AiSettings(
+    val apiKey: String? = null,
+    val descriptionModel: String = DEFAULT_DESCRIPTION_MODEL,
+) {
+    companion object {
+        /** Cheap default so a fresh install works without forcing a model choice first. */
+        const val DEFAULT_DESCRIPTION_MODEL = "deepseek/deepseek-v4-flash-0731"
+    }
+}
 
 data class TtsSession(
     var storyId: String = "",

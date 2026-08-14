@@ -49,6 +49,26 @@ internal object StoryMutations {
         config: EpubConfig,
     ): Story = latest.copy(epubConfig = config)
 
+    /**
+     * Stores a generated AI synopsis. Generation always switches the displayed synopsis to the AI
+     * text (the user generated it because the source one was bad); the original stays in
+     * [Story.description] and remains one toggle away.
+     */
+    fun setAiDescription(
+        latest: Story,
+        description: String,
+    ): Story =
+        latest.copy(
+            aiDescription = description,
+            showAiDescription = true,
+        )
+
+    /** Flips which synopsis the Details screen shows without touching either stored text. */
+    fun setShowAiDescription(
+        latest: Story,
+        showAi: Boolean,
+    ): Story? = latest.takeIf { it.aiDescription != null }?.copy(showAiDescription = showAi)
+
     fun retainEpubPaths(
         latest: Story,
         paths: List<String>,

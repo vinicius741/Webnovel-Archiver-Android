@@ -127,6 +127,10 @@ internal class FullBackupRestorer(
         File(raw, "metrics").takeIf(File::exists)?.copyRecursively(File(staged, "metrics").apply { mkdirs() }, overwrite = true)
         File(staged, "epubs").mkdirs()
         stagingWriter.writeConfig(staged, config)
+        // Full backups deliberately exclude the OpenRouter key. The commit replaces the complete
+        // storage root, so explicitly carry the current device-local settings into the staged tree
+        // rather than clearing them as a side effect of restoring the library.
+        stagingWriter.writeDeviceLocalAiSettings(staged, storage.getAiSettings())
         FullBackupRestorePlanning.applyRestoredChapterFiles(stories, payload.chapterFiles) { path ->
             File(staged, path).takeIf(File::exists)?.toRelativeString(staged)
         }

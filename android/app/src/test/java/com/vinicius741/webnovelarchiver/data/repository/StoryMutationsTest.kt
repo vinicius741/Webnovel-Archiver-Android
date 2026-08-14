@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
@@ -155,6 +156,25 @@ class StoryMutationsTest {
 
         @Synchronized
         fun snapshot(): Story = StoryMutations.snapshot(current)
+    }
+
+    @Test
+    fun setAiDescriptionStoresTextAndSwitchesDisplayToIt() {
+        val latest = story().copy(description = "original", aiDescription = "old ai", showAiDescription = false)
+
+        val committed = StoryMutations.setAiDescription(latest, "fresh synopsis")
+
+        assertEquals("fresh synopsis", committed.aiDescription)
+        assertEquals("original", committed.description)
+        assertTrue(committed.showAiDescription)
+    }
+
+    @Test
+    fun setShowAiDescriptionTogglesOnlyWhenAnAiDescriptionExists() {
+        val withAi = story().copy(aiDescription = "ai", showAiDescription = true)
+
+        assertEquals(false, StoryMutations.setShowAiDescription(withAi, false)?.showAiDescription)
+        assertNull(StoryMutations.setShowAiDescription(story(), true))
     }
 
     private fun story(): Story =

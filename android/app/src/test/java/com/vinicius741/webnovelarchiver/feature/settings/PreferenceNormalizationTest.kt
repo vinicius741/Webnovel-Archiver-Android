@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
 import com.google.gson.Gson
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -122,5 +123,21 @@ class PreferenceNormalizationTest {
             TtsSettings(pitch = 2.0f, rate = 2.0f),
             PreferenceNormalization.ttsSettings(TtsSettings(pitch = 10f, rate = 10f)),
         )
+    }
+
+    @Test
+    fun aiSettingsTrimKeyBlankModelFallsBackToDefaultAndLegacyJsonDeserializes() {
+        assertEquals(
+            AiSettings(),
+            PreferenceNormalization.aiSettings(AiSettings(apiKey = "  ", descriptionModel = "   ")),
+        )
+        assertEquals(
+            AiSettings(apiKey = "sk-or-v1-x", descriptionModel = "a/b"),
+            PreferenceNormalization.aiSettings(AiSettings(apiKey = " sk-or-v1-x ", descriptionModel = " a/b ")),
+        )
+        // Persisted documents written before the feature existed keep deserializing.
+        val legacy = Gson().fromJson("""{"apiKey":"sk-or-v1-old"}""", AiSettings::class.java)
+        assertEquals("sk-or-v1-old", legacy.apiKey)
+        assertEquals(AiSettings.DEFAULT_DESCRIPTION_MODEL, PreferenceNormalization.aiSettings(legacy).descriptionModel)
     }
 }

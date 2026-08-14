@@ -115,6 +115,10 @@ class StorySyncEngine(
                 author = metadata.author,
                 coverUrl = metadata.coverUrl ?: existing?.coverUrl,
                 description = metadata.description,
+                // The AI synopsis is local-only state: the source knows nothing about it, so a sync
+                // must carry it forward rather than let the fresh Story reset it.
+                aiDescription = existing?.aiDescription,
+                showAiDescription = existing?.showAiDescription ?: false,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 sourceId = provider.id,
                 status =

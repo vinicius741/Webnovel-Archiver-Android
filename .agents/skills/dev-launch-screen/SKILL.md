@@ -81,6 +81,7 @@ scripts/dev_library.sh open 5 --chapter 1 --rebuild
 | `queue`        | Download manager    | no                  |
 | `settings`     | Settings            | no                  |
 | `notifications`| Notifications       | no                  |
+| `aisettings`   | AI Settings         | no                  |
 | `updates`      | Updates tracker     | no                  |
 | `followupdates`| Follow Updates picker | no                |
 | `addstory`     | Add Story           | no                  |
@@ -101,6 +102,7 @@ A quick lookup so you don't have to reason about where a change surfaces:
 | Story details (download banner, EPUB actions, per-story)          | `details`  |
 | Download manager / queue screen                                   | `queue`    |
 | Settings (TTS voice, chunk size, theme, text-cleanup rules)       | `settings` |
+| AI settings (OpenRouter API key, description model)               | `aisettings` |
 | Notifications settings                                            | `notifications` |
 | Updates tracker                                                   | `updates`  |
 | Follow Updates novel picker                                       | `followupdates` |

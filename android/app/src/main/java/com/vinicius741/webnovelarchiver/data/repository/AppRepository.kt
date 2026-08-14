@@ -4,6 +4,7 @@ import android.net.Uri
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
@@ -150,6 +151,9 @@ class AppRepository private constructor(
     private var ttsSettings = TtsSettings()
 
     @Volatile
+    private var aiSettings = AiSettings()
+
+    @Volatile
     private var ttsSession: TtsSession? = null
 
     @Volatile
@@ -173,6 +177,7 @@ class AppRepository private constructor(
             sentenceRemovalList = storage.getSentenceRemovalList().toList()
             regexRules = storage.getRegexRules().map { it.copy() }
             ttsSettings = storage.getTtsSettings().copy()
+            aiSettings = storage.getAiSettings().copy()
             ttsSession = storage.getTtsSession()?.copy()
             updateFollowedStoryIds = storage.getUpdateFollowedStoryIds().toList()
             _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
@@ -264,6 +269,8 @@ class AppRepository private constructor(
     fun getRegexRules(): List<RegexCleanupRule> = regexRules.map { it.copy() }
 
     fun getTtsSettings(): TtsSettings = ttsSettings.copy()
+
+    fun getAiSettings(): AiSettings = aiSettings.copy()
 
     fun getTtsSession(): TtsSession? = ttsSession?.copy()
 
@@ -375,6 +382,13 @@ class AppRepository private constructor(
             ttsSettings = normalized.copy()
         }
 
+    suspend fun saveAiSettings(settings: AiSettings) =
+        storageTransaction {
+            val normalized = PreferenceNormalization.aiSettings(settings)
+            requiredStorage.saveAiSettings(normalized)
+            aiSettings = normalized.copy()
+        }
+
     suspend fun saveTtsSession(session: TtsSession) =
         storageTransaction {
             requiredStorage.saveTtsSession(session)
@@ -448,6 +462,18 @@ class AppRepository private constructor(
         storyId: String,
         config: EpubConfig,
     ): Story? = updateExistingStory(storyId) { StoryMutations.setEpubConfig(it, config) }
+
+    /** Stores a generated AI synopsis and switches the story to display it. */
+    suspend fun setAiDescription(
+        storyId: String,
+        description: String,
+    ): Story? = updateExistingStory(storyId) { StoryMutations.setAiDescription(it, description) }
+
+    /** Flips which synopsis (source vs AI) the Details screen displays; no-op before one exists. */
+    suspend fun setShowAiDescription(
+        storyId: String,
+        showAi: Boolean,
+    ): Story? = updateExistingStory(storyId) { StoryMutations.setShowAiDescription(it, showAi) }
 
     /** Updates references after missing EPUB files are detected, retaining unrelated story state. */
     suspend fun retainEpubPaths(

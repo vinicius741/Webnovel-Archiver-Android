@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -89,8 +90,11 @@ internal class TtsPlaybackPreparer(
             val story = source.story(storyId) ?: return@withContext null
             if (TtsDescriptionPlanning.isDescriptionSession(chapterId)) {
                 // Description narration: the sentinel chapter id speaks the story's description
-                // through the same chunking/settings pipeline as chapter playback.
-                val description = story.description?.takeIf { it.isNotBlank() } ?: return@withContext null
+                // through the same chunking/settings pipeline as chapter playback. Reads whichever
+                // synopsis the Details screen displays (source or AI-generated).
+                val description =
+                    AiDescriptionPlanning.activeDescription(story)?.takeIf { it.isNotBlank() }
+                        ?: return@withContext null
                 return@withContext PreparationInput(
                     story = story,
                     chapter = TtsDescriptionPlanning.descriptionChapter(),

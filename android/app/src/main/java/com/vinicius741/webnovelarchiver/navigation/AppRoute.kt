@@ -60,6 +60,8 @@ sealed class AppRoute(
 
     data object TtsSettings : AppRoute("tts_settings")
 
+    data object AiSettings : AppRoute("ai_settings")
+
     data object Tabs : AppRoute("tabs")
 
     data object CleanupRules : AppRoute("cleanup_rules")
@@ -112,6 +114,7 @@ object AppRouteCodec {
             "notifications" -> AppRoute.Notifications
             "download_settings" -> AppRoute.DownloadSettings
             "tts_settings" -> AppRoute.TtsSettings
+            "ai_settings" -> AppRoute.AiSettings
             "tabs" -> AppRoute.Tabs
             "cleanup_rules" -> AppRoute.CleanupRules
             "data_backup" -> AppRoute.DataBackup

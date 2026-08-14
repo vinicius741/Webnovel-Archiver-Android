@@ -106,6 +106,7 @@ internal fun ScreenHost.showSettings() {
         section("Reading & Audio")
         settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
+        settingRow(R.drawable.wna_auto_awesome, "AI Settings", "OpenRouter API key and models for AI descriptions") { showAiSettings() }
         divider()
         // Operational destinations live off the Library top bar (Downloads) or are promoted here as
         // ungrouped rows without their own noisy single-row section header.

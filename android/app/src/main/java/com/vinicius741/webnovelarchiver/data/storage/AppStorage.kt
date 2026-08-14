@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
@@ -90,6 +91,7 @@ class AppStorage(
     private val updateFollowedStoriesFile = File(root, "update_followed_story_ids.json")
     private val ttsFile = File(root, "tts_settings.json")
     private val sessionFile = File(root, "tts_session.json")
+    private val aiSettingsFile = File(root, "ai_settings.json")
 
     @Synchronized
     fun getLibrary(): MutableList<Story> {
@@ -229,6 +231,10 @@ class AppStorage(
     fun getTtsSettings(): TtsSettings = PreferenceNormalization.ttsSettings(read(ttsFile) ?: TtsSettings())
 
     fun saveTtsSettings(settings: TtsSettings) = write(ttsFile, PreferenceNormalization.ttsSettings(settings))
+
+    fun getAiSettings(): AiSettings = PreferenceNormalization.aiSettings(read(aiSettingsFile) ?: AiSettings())
+
+    fun saveAiSettings(settings: AiSettings) = write(aiSettingsFile, PreferenceNormalization.aiSettings(settings))
 
     fun getTtsSession(): TtsSession? = read(sessionFile)
 

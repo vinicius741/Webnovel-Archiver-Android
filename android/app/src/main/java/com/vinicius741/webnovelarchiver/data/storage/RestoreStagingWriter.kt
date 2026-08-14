@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -43,6 +44,14 @@ internal class RestoreStagingWriter(
         writePrimaryPreferences(stagedRoot, payload)
         writeCollections(stagedRoot, payload)
         writeTts(stagedRoot, payload)
+    }
+
+    /** Carries device-local secrets across a root swap without adding them to the backup ZIP. */
+    fun writeDeviceLocalAiSettings(
+        stagedRoot: File,
+        settings: AiSettings,
+    ) {
+        writeEnvelope(File(stagedRoot, "ai_settings.json"), PreferenceNormalization.aiSettings(settings))
     }
 
     private fun writePrimaryPreferences(

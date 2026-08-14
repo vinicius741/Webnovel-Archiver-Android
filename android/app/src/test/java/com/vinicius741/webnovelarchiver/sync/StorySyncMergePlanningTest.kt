@@ -49,6 +49,42 @@ class StorySyncMergePlanningTest {
     }
 
     @Test
+    fun foldKeepsLocalAiDescriptionCarriedByTheSyncedStory() {
+        // StorySyncEngine carries the local AI synopsis onto the fresh synced Story; the fold must
+        // not drop it while folding on-disk download state back in.
+        val synced =
+            syncedStory(chapters = listOf(chapter("10", downloaded = false)))
+                .copy(aiDescription = "local ai synopsis", showAiDescription = true)
+        val onDisk =
+            syncedStory(
+                chapters =
+                    listOf(
+                        chapter("10", downloaded = true, filePath = "/chapters/10.html"),
+                    ),
+            )
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
+
+        assertEquals("local ai synopsis", folded.aiDescription)
+        assertTrue(folded.showAiDescription)
+    }
+
+    @Test
+    fun foldPreservesAiDescriptionGeneratedDuringSyncWindow() {
+        val staleSynced =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiDescription = "old synopsis", showAiDescription = false)
+        val currentOnDisk =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiDescription = "newly generated synopsis", showAiDescription = true)
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertEquals("newly generated synopsis", folded.aiDescription)
+        assertTrue(folded.showAiDescription)
+    }
+
+    @Test
     fun foldRecomputesPartialStatusWhenOnlySomeChaptersDownloaded() {
         val synced =
             syncedStory(
