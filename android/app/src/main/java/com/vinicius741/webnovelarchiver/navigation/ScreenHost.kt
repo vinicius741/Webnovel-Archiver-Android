@@ -80,6 +80,16 @@ class BackupExportState {
     var activeKind: BackupExportKind? = null
 }
 
+/**
+ * Transient UI state for the AI Controls screen. Holds the pending (generated but not yet applied)
+ * synopsis drafts keyed by story id, so a preview survives navigating back to Details and returning
+ * to the screen while the user decides. Cleared on Apply/Discard; deliberately not persisted — an
+ * unapplied draft is process-transient.
+ */
+class AiControlsScreenState {
+    val drafts: MutableMap<String, String> = linkedMapOf()
+}
+
 /** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */
 class InFlightStorySync(
     val title: String,
@@ -171,6 +181,9 @@ interface ScreenHost {
     val updateTrackerScreenState: UpdateTrackerScreenState
 
     val backupExportState: BackupExportState
+
+    /** Pending AI-description drafts for the AI Controls screen (see [AiControlsScreenState]). */
+    val aiControlsScreenState: AiControlsScreenState
 
     /**
      * Transient state for the Follow Updates selection screen's library filters, selected-only

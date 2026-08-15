@@ -17,6 +17,7 @@ class AppRouteTest {
                 AppRoute.Reader("story:1", "chapter/2"),
                 AppRoute.ChapterSelection("story", setOf("chapter:2", "chapter 1")),
                 AppRoute.LibrarySelection(setOf("b", "a")),
+                AppRoute.AiControls("story:/ ünicode"),
                 AppRoute.Notifications,
                 AppRoute.CleanupRules,
             )

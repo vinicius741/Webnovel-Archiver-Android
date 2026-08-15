@@ -163,6 +163,34 @@ class DevLaunchPlanningTest {
         assertNull(DevLaunchPlanning.resolve("details", null, null) { emptyList() })
     }
 
+    @Test
+    fun aiControlsPicksFirstStoryByDefault() {
+        val library =
+            listOf(
+                story("s1", "Story One", listOf(chapter("c1", "Chapter 1"))),
+                story("s2", "Story Two", listOf(chapter("c2", "Chapter 2"))),
+            )
+        val target = DevLaunchPlanning.resolve("aicontrols", null, null) { library }
+        assertTrue(target is AppRoute.AiControls)
+        assertEquals("s1", (target as AppRoute.AiControls).storyId)
+    }
+
+    @Test
+    fun aiControlsHonorsValidStoryOverride() {
+        val library =
+            listOf(
+                story("s1", "Story One", listOf(chapter("c1", "Chapter 1"))),
+                story("s2", "Story Two", listOf(chapter("c2", "Chapter 2"))),
+            )
+        val target = DevLaunchPlanning.resolve("aicontrols", "s2", null) { library }
+        assertEquals("s2", (target as AppRoute.AiControls).storyId)
+    }
+
+    @Test
+    fun aiControlsReturnsNullWhenLibraryIsEmpty() {
+        assertNull(DevLaunchPlanning.resolve("aicontrols", null, null) { emptyList() })
+    }
+
     /**
      * A provider that throws if invoked. Used to prove [DevLaunchPlanning.resolve] does not read the
      * library for no-arg screens — if it did, the test would fail on this assertion.

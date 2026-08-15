@@ -230,8 +230,10 @@ internal data class DetailsInfoPanel(
 
 /**
  * Renders the active synopsis (source or AI — see [AiDescriptionPlanning.activeDescription]) with
- * copy gestures, expand/collapse, and Listen, then the AI controls row. Returns the "Listen" button
- * (for the description-TTS observer) and the AI-operation progress slot.
+ * copy gestures, expand/collapse, and Listen. AI actions live on the AI Controls screen; the only AI
+ * UI left here is a slim progress block while an AI description is generating (so a user who backs
+ * out of AI Controls mid-generation still sees why the Details buttons are disabled). Returns the
+ * "Listen" button (for the description-TTS observer) and that progress slot.
  */
 private fun ScreenHost.addDetailsDescription(
     infoPanel: LinearLayout,
@@ -240,9 +242,8 @@ private fun ScreenHost.addDetailsDescription(
 ): DetailsDescriptionViews {
     val activeDescription = AiDescriptionPlanning.activeDescription(story)
     val showingAi = AiDescriptionPlanning.isAiDescriptionActive(story)
-    // Without downloaded chapters there is no text to feed the model; archived snapshots are read-only.
-    val canGenerate = story.isArchived != true && story.chapters.any { it.downloaded }
-    if (activeDescription == null && !canGenerate && !showingAi) return DetailsDescriptionViews(null, null)
+    val generating = operation?.kind == StoryOperationKind.AI_DESCRIPTION
+    if (activeDescription == null && !generating) return DetailsDescriptionViews(null, null)
     val descCol =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -258,10 +259,23 @@ private fun ScreenHost.addDetailsDescription(
         descCol.addView(aiBadge)
     }
     val listenButton = activeDescription?.let { addDescriptionTextAndListen(descCol, story, it) }
-    val aiOperationSlot = addAiDescriptionControls(descCol, story, operation)
+    val aiOperationSlot =
+        if (generating && operation != null) {
+            makeStoryOperationSlot(app, operation).also(descCol::addView)
+        } else {
+            null
+        }
     infoPanel.addView(descCol)
     return DetailsDescriptionViews(listenButton, aiOperationSlot)
 }
+
+/** Views [addDetailsDescription] hands back to the Details screen builder. */
+internal data class DetailsDescriptionViews(
+    /** Description "Listen" button for the TTS observer; null when no description is displayed. */
+    val listenButton: Button?,
+    /** AI-generation progress slot, non-null only while an AI_DESCRIPTION operation is active. */
+    val aiOperationSlot: LinearLayout?,
+)
 
 /** Renders the description text (copy gestures + expand/collapse) and its "Listen" button. */
 private fun ScreenHost.addDescriptionTextAndListen(

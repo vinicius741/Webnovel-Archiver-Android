@@ -11,24 +11,34 @@ the layer is built to grow tag and cover-image generation later.
   (`GET /api/v1/models`, public endpoint) into a searchable dialog with All/Free filters and
   per-million-token pricing labels; a manual-id entry row covers new/offline models. Defaults to
   `deepseek/deepseek-v4-flash-0731` (cheap) so a fresh install works immediately.
-- **Details screen → description block**: a `Generate with AI` button (visible when the story has
-  downloaded chapters and is not an archived snapshot) sends the first **5 downloaded chapters**
-  (plain text, each capped at ~12k chars, ~60k chars total) plus title/author/tags to the selected
-  model, which writes a 120–200-word book-blurb synopsis.
-- Generation **switches the displayed synopsis to the AI text** (an "AI-generated" badge marks it),
-  with a `Show original` / `Show AI description` toggle that remembers the choice per novel.
-  `Regenerate` asks for confirmation first because every generation is a billable call.
-- The source `description` field is never modified. Description TTS (`Listen`) reads whichever
-  synopsis is displayed. Syncing the novel carries `aiDescription` / `showAiDescription` forward
-  (the sync engine rebuilds the `Story`, so these local-only fields are explicitly retained, like
-  `coverUrl`).
+- **Details → More options → AI Controls**: all per-novel AI features live on the AI Controls screen
+  (route `ai_controls`), not on the Details body, so new generators (tags, cover art) join a hub
+  instead of scattering more buttons across Details. Its description card shows the applied AI
+  synopsis (or an explanatory line), the "Show AI description in Details" preference, and the
+  generate action.
+- **Generate → preview → apply**: `Generate Description with AI` sends the first **5 downloaded
+  chapters** (plain text, each capped at ~12k chars, ~60k chars total) plus title/author/tags to the
+  selected model, which writes a 120–200-word book-blurb synopsis. The result is a **draft**: the
+  screen shows a preview card with the draft text and `Apply` / `Discard` actions — nothing is
+  persisted until `Apply` (which stores it and switches the displayed synopsis to the AI text; an
+  "AI-generated" badge marks it on Details). A pending draft survives navigating away and back
+  within the same process. Generating over an applied description or a pending preview asks for
+  confirmation first because every generation is a billable call.
+- The source `description` field is never modified. The `Show original` / `Show AI description`
+  choice (a checkbox on the AI Controls screen) is remembered per novel. Description TTS (`Listen`)
+  reads whichever synopsis Details displays. Syncing the novel carries `aiDescription` /
+  `showAiDescription` forward (the sync engine rebuilds the `Story`, so these local-only fields are
+  explicitly retained, like `coverUrl`).
 
 ## Cost controls
 
 - Context: first 5 downloaded chapters, 12k chars/chapter cap, 60k chars total.
 - Output: `max_tokens = 700`.
-- Regeneration requires a confirm dialog; every other in-flight story operation blocks generation
-  (and vice versa) through the shared `storyOperation` guard.
+- Regenerating (over an applied description or a pending preview) requires a confirm dialog; every
+  other in-flight story operation blocks generation
+  (and vice versa) through the shared `storyOperation` guard. While a draft is generating, Details
+  shows a slim progress block (so backing out of AI Controls mid-generation still explains why its
+  buttons are disabled) and the AI Controls screen shows the live progress message.
 - HTTP failures map to friendly messages: 401 invalid key, 402 insufficient credits, 404 unknown
   model, 429 rate limit.
 
@@ -38,14 +48,14 @@ the layer is built to grow tag and cover-image generation later.
 |------|------|
 | `OpenRouterClient.kt` | Plain OkHttp client for `openrouter.ai` (deliberately NOT the app's `NetworkClient`, whose Cloudflare WebView interceptor is for novel sites). `chatCompletion` + `fetchModels`; `baseUrl` injectable for MockWebServer tests. |
 | `AiDescriptionPlanning.kt` | Pure logic: chapter selection, char caps, prompt assembly, response cleanup, and `activeDescription(story)` (the displayed-synopsis rule shared with the Details UI and description TTS). |
-| `AiDescriptionEngine.kt` | Orchestration: reads chapters via the repository, extracts text (`HtmlCleanup`), calls the client, persists via `AppRepository.setAiDescription`. |
+| `AiDescriptionEngine.kt` | Orchestration: reads chapters via the repository, extracts text (`HtmlCleanup`), calls the client, and returns the draft — persisting is the caller's job (`AppRepository.setAiDescription` on Apply). |
 | `AiModelPresentation.kt` | Pure picker helpers: pricing labels, search/free-only filtering. |
 
 Supporting pieces: `AiSettings` (in `domain/model/Models.kt`) persisted to
 `files/webnovel_archiver/ai_settings.json`; `Story.aiDescription` + `Story.showAiDescription`;
 `StoryMutations.setAiDescription`/`setShowAiDescription`; UI in
-`feature/settings/SettingsAi.kt` and `feature/details/DetailsAiDescription.kt`; wired in
-`AppContainer` (`openRouter`, `aiDescriptionEngine`).
+`feature/settings/SettingsAi.kt` (key + model) and `feature/ai/AiControlsScreen.kt` (per-novel
+generate/preview/apply hub); wired in `AppContainer` (`openRouter`, `aiDescriptionEngine`).
 
 ## Secrets and backups
 
@@ -59,5 +69,7 @@ settings across the storage-root swap.
 Future generators should reuse the same building blocks: add a `tagModel`/`coverModel` field to
 `AiSettings` plus a row on the AI Settings screen (the model-picker dialog is generic); add a
 sibling pure planning object (prompt + response cleanup) beside `AiDescriptionPlanning`; call
-`OpenRouterClient.chatCompletion` (or an image-capable endpoint) from a new engine method; store
-results as new local-only `Story` fields carried across sync like `aiDescription`.
+`OpenRouterClient.chatCompletion` (or an image-capable endpoint) from a new engine method that
+returns a draft; surface it as a new card on `feature/ai/AiControlsScreen.kt` with the same
+preview-then-apply pattern; store results as new local-only `Story` fields carried across sync like
+`aiDescription`.

@@ -32,6 +32,7 @@ import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
+import com.vinicius741.webnovelarchiver.navigation.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportState
@@ -87,6 +88,7 @@ class MainActivity :
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
     override val backupExportState: BackupExportState = BackupExportState()
+    override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
 
     // Lazy: seeded from cached DisplayPreferences after repository startup hydration.
     override val updateFollowSelectionState: UpdateFollowSelectionState by lazy {

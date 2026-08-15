@@ -5,20 +5,21 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import timber.log.Timber
 
 /**
- * Generates AI story descriptions from the first downloaded chapters and persists them through the
- * repository. Progress is reported as short user-facing messages; the Details screen forwards them
- * to its in-flight operation slot.
+ * Generates AI story description drafts from the first downloaded chapters. The draft is returned to
+ * the caller (the AI Controls screen) for preview and is only persisted when the user applies it.
+ * Progress is reported as short user-facing messages forwarded to the screen's progress block.
  */
 class AiDescriptionEngine(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
 ) {
     /**
-     * Reads the story's context chapters, asks the configured model for a synopsis, stores it, and
-     * returns the persisted text. Throws with a user-presentable message when the API key is
-     * missing, no chapters are downloaded, or OpenRouter/the model fails.
+     * Reads the story's context chapters and asks the configured model for a synopsis. The returned
+     * text is a draft: nothing is persisted — the caller decides via [AppRepository.setAiDescription].
+     * Throws with a user-presentable message when the API key is missing, no chapters are downloaded,
+     * or OpenRouter/the model fails.
      */
-    suspend fun generate(
+    suspend fun draft(
         storyId: String,
         onProgress: (String) -> Unit = {},
     ): String {
@@ -56,8 +57,7 @@ class AiDescriptionEngine(
         val description =
             AiDescriptionPlanning.cleanGeneratedDescription(raw)
                 ?: throw IllegalStateException("The model returned an empty description. Try again or pick a different model.")
-        repository.setAiDescription(storyId, description)
-        Timber.i("AI description generated for %s with %s", storyId, settings.descriptionModel)
+        Timber.i("AI description drafted for %s with %s", storyId, settings.descriptionModel)
         return description
     }
 }

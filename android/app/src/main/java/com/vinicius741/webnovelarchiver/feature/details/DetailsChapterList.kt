@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.applyCleanup
 import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
@@ -29,8 +30,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that
- * don't warrant a primary button: opening the source site, chapter selection, EPUB settings, and
- * text cleanup.
+ * don't warrant a primary button: opening the source site, chapter selection, EPUB settings, text
+ * cleanup, and navigation to the sub-screens (Trends, AI Controls).
  */
 internal fun ScreenHost.showDetailsOverflow(story: Story) {
     val isBusy = storyOperation?.storyId == story.id
@@ -58,6 +59,7 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     }
     // Pure navigation (no story mutation), so no busy guard is needed.
     options += "Trends" to { showTrends(story.id, null) }
+    options += "AI Controls" to { showAiControls(story.id) }
     options += "Apply Text Cleanup" to {
         if (isBusy) toast("Please wait for the current operation to finish") else applyCleanup(story)
     }

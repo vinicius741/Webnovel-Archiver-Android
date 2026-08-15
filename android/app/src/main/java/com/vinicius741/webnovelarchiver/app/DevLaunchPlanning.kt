@@ -13,9 +13,9 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
  * dependency) mirroring [com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning] and
  * [com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning].
  *
- * `reader`/`details` need a story (and the reader a chapter). To avoid a disk read on the common
- * no-arg screens, [resolve] only invokes [libraryProvider] for those two targets, auto-picking the
- * first story (and first chapter for the reader) when no explicit override id is supplied. Returns
+ * `reader`/`details`/`aicontrols` need a story (and the reader a chapter). To avoid a disk read on
+ * the common no-arg screens, [resolve] only invokes [libraryProvider] for those targets, auto-picking
+ * the first story (and first chapter for the reader) when no explicit override id is supplied. Returns
  * `null` for a missing/unknown token or an empty library, so [MainActivity] falls back to its normal
  * launch flow rather than rendering a blank screen.
  */
@@ -43,6 +43,7 @@ object DevLaunchPlanning {
         UPDATES("updates"),
         READER("reader"),
         DETAILS("details"),
+        AI_CONTROLS("aicontrols"),
         ADD_STORY("addstory"),
         FOLLOW_UPDATES("followupdates"),
         AI_SETTINGS("aisettings"),
@@ -61,8 +62,8 @@ object DevLaunchPlanning {
      * missing/unknown or the required story/chapter can't be resolved, so the caller falls through
      * to its normal launch flow.
      *
-     * [libraryProvider] is invoked lazily and only for `reader`/`details`, keeping the library disk
-     * read off the path for the no-arg screens.
+     * [libraryProvider] is invoked lazily and only for `reader`/`details`/`aicontrols`, keeping the
+     * library disk read off the path for the no-arg screens.
      */
     fun resolve(
         screenName: String?,
@@ -81,6 +82,7 @@ object DevLaunchPlanning {
             DevStartScreen.ADD_STORY -> AppRoute.AddStory
             DevStartScreen.FOLLOW_UPDATES -> AppRoute.UpdateFollowSelection
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
+            DevStartScreen.AI_CONTROLS -> resolveAiControls(storyOverride, libraryProvider)
             DevStartScreen.READER -> resolveReader(storyOverride, chapterOverride, libraryProvider)
         }
 
@@ -90,6 +92,14 @@ object DevLaunchPlanning {
     ): AppRoute.Details? {
         val story = pickStory(storyOverride, libraryProvider) ?: return null
         return AppRoute.Details(story.id)
+    }
+
+    private fun resolveAiControls(
+        storyOverride: String?,
+        libraryProvider: () -> List<Story>,
+    ): AppRoute.AiControls? {
+        val story = pickStory(storyOverride, libraryProvider) ?: return null
+        return AppRoute.AiControls(story.id)
     }
 
     private fun resolveReader(

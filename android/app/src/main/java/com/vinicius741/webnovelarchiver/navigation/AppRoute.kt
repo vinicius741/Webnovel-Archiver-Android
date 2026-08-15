@@ -32,6 +32,15 @@ sealed class AppRoute(
     ) : AppRoute("legacy_epubs")
 
     /**
+     * Per-novel AI Controls sub-screen: the hub for AI-generated content (description today). Reached
+     * from the Details screen's "More options" menu so the Details body stays free of per-feature AI
+     * buttons as more generators are added.
+     */
+    data class AiControls(
+        val storyId: String,
+    ) : AppRoute("ai_controls")
+
+    /**
      * Per-novel metric Trends sub-screen. [focus] optionally opens the screen scrolled/emphasized to
      * a particular series (`"score"`, `"patreon_members"`, `"patreon_usd"`); `null` opens the generic
      * view (used by the overflow-menu entry).
@@ -77,6 +86,7 @@ sealed class AppRoute(
                 is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
                 is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
+                is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Trends -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${focus ?: ""}"
                 else -> name
@@ -93,6 +103,7 @@ object AppRouteCodec {
                 is AppRoute.Details -> listOf(route.storyId)
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
+                is AppRoute.AiControls -> listOf(route.storyId)
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
                 is AppRoute.LibrarySelection -> route.selectedStoryIds.sorted()
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
@@ -134,6 +145,7 @@ object AppRouteCodec {
             "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
+            "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)
             "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
             else -> null

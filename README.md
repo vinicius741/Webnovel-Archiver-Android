@@ -143,7 +143,7 @@ android/
           app/                 # Application, MainActivity, AppContainer, startup recovery
           navigation/          # AppRoute, AppNavigator, ScreenHost
           feature/             # UI by flow: library, details, reader, browser, downloads,
-                               # updates, settings, cleanup, story actions
+                               # updates, settings, cleanup, ai, story actions
           domain/              # Models + pure domain rules (story, archive)
           data/
             repository/        # AppRepository — single owner of library/queue/settings
