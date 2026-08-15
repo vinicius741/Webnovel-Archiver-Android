@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 /**
  * Lightweight process-wide dependency container (Maintainability M2). Attached to
@@ -133,8 +134,11 @@ class AppContainer(
             }
         }
         // Before the first source request: an open manual circuit or live sticky-transport window
-        // from the previous process must govern scheduling and transport choice again.
-        sourceReliability.restore(reliabilityStore.load())
+        // from the previous process must govern scheduling and transport choice again. The persisted
+        // state is advisory — an unreadable document must degrade to empty state, never crash
+        // Application.onCreate before any UI exists.
+        runCatching { sourceReliability.restore(reliabilityStore.load()) }
+            .onFailure { Timber.e(it, "Failed to restore source reliability state") }
         repositoryStartup.start(applicationScope)
     }
 

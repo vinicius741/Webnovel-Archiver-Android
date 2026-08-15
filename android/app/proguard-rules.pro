@@ -28,6 +28,17 @@
     <init>(...);
     <fields>;
 }
+# Source reliability state is restored eagerly in AppContainer.init(). Unkept, R8 drops the generic
+# signature of PersistedReliabilityDocument.hosts, Gson then yields LinkedTreeMap elements instead
+# of PersistedHostReliability, and the element cast crashes Application.onCreate in release only.
+-keep class com.vinicius741.webnovelarchiver.source.network.PersistedHostReliability {
+    <init>(...);
+    <fields>;
+}
+-keep class com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore$PersistedReliabilityDocument {
+    <init>(...);
+    <fields>;
+}
 
 # Components are named from AndroidManifest.xml and must remain constructible after shrinking.
 -keep public class com.vinicius741.webnovelarchiver.app.WebnovelArchiverApp { public <init>(); }
