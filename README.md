@@ -149,7 +149,7 @@ android/
             repository/        # AppRepository — single owner of library/queue/settings
             storage/           # AppStorage + atomic writes, recovery, backup orchestration
             backup/            # Backup/restore planning and validation
-            diagnostics/       # Local diagnostics export
+            diagnostics/       # Local diagnostics export + shareable Cloudflare bypass event log
           source/              # Provider descriptors, registry, parsers, and source-owned loading
             network/           # OkHttp client, Cloudflare cookie jar + Chromium fallback
           sync/                # Story sync engine + merge planning

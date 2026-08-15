@@ -53,10 +53,24 @@ After a detected challenge:
 5. Later pages go directly through the same Chromium session without first sending the already
    rejected OkHttp TLS/HTTP fingerprint.
 
-If the browser cannot produce a valid page within the timeout, the manual circuit opens. The
-download engine marks all active jobs for that source as `source_blocked` in one transaction, while
-other sources may continue. One successful interactive verification clears the circuit and retries
-the affected queue.
+If the browser cannot produce a valid page within the timeout, the manual circuit opens — but
+render failures escalate by kind, not uniformly. Only an unsolved challenge, a navigation that
+never committed, or a dead renderer opens the circuit. A settled page that fails the source's
+content rules is returned to the parser (one job fails with a typed parse error), an origin HTTP
+status such as a removed chapter's 404 flows through the normal per-source retry policy, and a
+transport-level render failure is a retryable error. Previously any of these opened the circuit,
+so a single dead chapter URL could block the whole source.
+
+While the circuit is open, the download loop pauses the source's lane instead of draining it:
+in-flight jobs fail as `source_blocked` (the retry flow keys off that category), pending jobs are
+deferred to a short recheck, and the scheduler skips the source entirely. The foreground service
+posts a "Source needs verification" notification that opens the in-app solver; one successful
+verification clears the circuit and the whole remaining queue resumes on its own.
+
+Per-host reliability state (open circuit, sticky-transport window, cooldowns, counters) is
+persisted to `source_reliability.json` on every transition and restored at process start, so an
+overnight OS kill resumes with the same access state instead of re-probing the source with the
+already-rejected OkHttp fingerprint.
 
 The WebView-derived User-Agent is frozen on first use so it cannot change mid-session. A network
 change drops prepared page content while retaining server cooldowns, the rolling request budget, and
@@ -80,7 +94,18 @@ Settings shows the active WebView version and aggregate, process-local source co
 challenge, rate-limit, and browser-render counts. It also reports whether Chromium transport,
 cooldown, or manual verification is active.
 
+“Share Source Access Logs” exports the bounded, process-local bypass event log
+(`data/diagnostics/BypassEventLog`) as a JSON Lines file into the app's backups folder and shares
+it through the system sheet. The first line is a self-describing header with app info, the
+aggregate reliability snapshots, a queue summary, and embedded instructions so an AI agent can
+interpret the file cold; each following line is one structured event (request lifecycle, challenge
+detection, sticky-transport window, WebView render polls and outcomes, circuit and cooldown
+transitions, download-queue failures, interactive-solve flow) correlated by attempt, render, and
+job ids. The ring is trimmed to the newest 1500 events and the export to 256 KiB.
+
 “Reset Source Web Session” destroys persistent solver WebViews, clears WebView storage and source
 cookies, closes the circuit, and disables sticky mode. The next request begins a fresh source session.
 
-No URLs, story names, chapter titles, cookies, or response bodies are retained in these diagnostics.
+Aggregates and events carry host names, timings, decisions, and fixed-vocabulary failure notes.
+No URLs, story names, chapter titles, cookies, or response bodies are retained in these
+diagnostics.
