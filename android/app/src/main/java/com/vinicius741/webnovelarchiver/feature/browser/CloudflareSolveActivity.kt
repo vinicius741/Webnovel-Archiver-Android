@@ -24,6 +24,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
 import com.vinicius741.webnovelarchiver.source.network.CloudflareWebViewSolver
@@ -204,6 +206,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         // Pre-emptively clear a stale clearance so a fresh grant is detectable; mirrors the solver.
         CloudflareCookies.clearClearanceAsync(url) {
             web.post {
+                BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "started")
                 web.loadUrl(url)
                 scheduleSolvePolling()
             }
@@ -213,6 +216,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
     private fun onSolved() {
         if (solved) return
         solved = true
+        BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "verified")
         CloudflareCookies.flush()
         // The failed background attempt may have left a hidden WebView on the challenge page.
         // Discard it before the retry so the confirmed browser session is followed by a fresh
@@ -315,6 +319,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         // Secondary escape hatch: a real browser is a supported Cloudflare environment and can solve
         // challenges the WebView cannot. (Its cookies are isolated from this app, so the in-app
         // WebView remains the primary path; this is only for stubborn cases.)
+        BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "opened_external")
         runCatching {
             CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(url))
         }.onFailure {
@@ -335,7 +340,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val EXTRA_URL = "cloudflare_solve_url"
+        const val EXTRA_URL = "cloudflare_solve_url"
         private const val MENU_DONE = 1
         private const val MENU_OPEN_BROWSER = 2
         private const val SOLVE_POLL_INTERVAL_MILLIS = 1500L

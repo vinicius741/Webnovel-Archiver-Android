@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import android.content.Context
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -225,6 +226,7 @@ class NetworkClient(
         var attempt = 1
         val maximumAttempts = (maximumAttemptsOverride ?: policy.maximumAttempts).coerceAtLeast(1)
         while (attempt <= maximumAttempts) {
+            val attemptId = BypassEventLog.nextId("a")
             val claimSourcePermission: suspend () -> Unit = {
                 reliability.awaitPermission(url, request.url.host, policy)
             }
@@ -233,13 +235,28 @@ class NetworkClient(
             } else {
                 requestGate.awaitRequest(claimSourcePermission)
             }
-            val result = executeAttempt(url, request, callTimeoutMillis, read)
+            val result =
+                SourceRequestEvents.recording(request.url.host, attemptId, attempt, request.method, requestGate != null) {
+                    executeAttempt(url, request, callTimeoutMillis, read)
+                }
             when (result) {
                 is AttemptResult.Success -> {
+                    SourceRequestEvents.finished(
+                        host = request.url.host,
+                        attemptId = attemptId,
+                        ok = true,
+                        browserRendered = result.browserRendered,
+                    )
                     reliability.recordSuccess(request.url.host, policy, result.browserRendered)
                     return result.value
                 }
                 is AttemptResult.HttpFailure -> {
+                    SourceRequestEvents.finished(
+                        host = request.url.host,
+                        attemptId = attemptId,
+                        ok = false,
+                        code = result.statusCode,
+                    )
                     val isRateLimited = result.statusCode in policy.retryableStatusCodes
                     if (!isRateLimited || attempt >= maximumAttempts) {
                         if (isRateLimited) {
@@ -326,6 +343,9 @@ class NetworkClient(
         val parsed = url.toHttpUrlOrNull() ?: return
         reliability.clearAccessBlock(parsed.host, keepBrowserTransport)
     }
+
+    /** True while [providerId]'s manual-verification circuit is open; the download loop pauses its lane. */
+    fun isSourceBlocked(providerId: String): Boolean = reliability.isManualVerificationRequired(providerId)
 
     fun onNetworkChanged() {
         preparedPages.clear()

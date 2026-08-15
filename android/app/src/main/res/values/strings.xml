@@ -13,6 +13,8 @@
   <string name="download_channel_desc">Chapter download progress</string>
   <string name="download_notif_active">Downloading chapters</string>
   <string name="download_notif_done">Downloads finished</string>
+  <string name="download_notif_blocked_title">Source needs verification</string>
+  <string name="download_notif_blocked_body">Cloudflare is blocking downloads. Tap to verify access — your queue resumes automatically.</string>
   <string name="download_action_pause">Pause</string>
   <string name="download_action_resume">Resume</string>
   <string name="download_action_stop">Stop</string>

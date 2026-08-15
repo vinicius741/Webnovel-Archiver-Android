@@ -8,7 +8,7 @@ import org.junit.Test
 
 class DownloadSourceFailurePlanningTest {
     @Test
-    fun challengeBlocksEveryActiveJobForOnlyThatSource() {
+    fun challengeFailsActiveJobsAndDefersPendingJobsForOnlyThatSource() {
         val jobs =
             listOf(
                 job("a", "Scribble Hub", "pending"),
@@ -16,10 +16,22 @@ class DownloadSourceFailurePlanningTest {
                 job("c", "RoyalRoad", "pending"),
             )
 
-        DownloadSourceFailurePlanning.blockActiveJobs(jobs, "Scribble Hub", "Verify") { it.chapter.url }
+        DownloadSourceFailurePlanning.blockSource(jobs, "Scribble Hub", "Verify", 9_000L) { it.chapter.url }
 
-        assertEquals(listOf("failed", "failed", "pending"), jobs.map { it.status })
-        assertEquals(listOf("source_blocked", "source_blocked", null), jobs.map { it.errorCategory })
+        assertEquals(listOf("pending", "failed", "pending"), jobs.map { it.status })
+        assertEquals(listOf(null, "source_blocked", null), jobs.map { it.errorCategory })
+        assertEquals(9_000L, jobs[0].nextRetryAt)
+        assertNull(jobs[1].nextRetryAt)
+        assertNull(jobs[2].nextRetryAt)
+    }
+
+    @Test
+    fun blockSourceNeverShortensAnExistingDeferral() {
+        val job = job("a", "Scribble Hub", "pending").apply { nextRetryAt = 120_000L }
+
+        DownloadSourceFailurePlanning.blockSource(listOf(job), "Scribble Hub", "Verify", 9_000L) { it.chapter.url }
+
+        assertEquals(120_000L, job.nextRetryAt)
     }
 
     @Test

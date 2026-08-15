@@ -19,6 +19,17 @@ import kotlin.random.Random
  * the scheduler, classifier, and progress shape are tightly coupled to job lifecycle.
  */
 object DownloadScheduler {
+    /**
+     * How often the process loop re-checks a blocked source's pending jobs. Short enough that a
+     * solved challenge resumes the queue almost immediately no matter which recovery path the user
+     * took (solve activity, queue retry, or a Settings session reset); the scheduler skips the
+     * source while the circuit stays open, so the recheck costs one queue read.
+     */
+    const val BLOCKED_SOURCE_RECHECK_MILLIS = 60_000L
+
+    // The scheduling inputs are individually meaningful and all call sites use named arguments;
+    // bundling them would obscure the pure-function shape the tests exercise directly.
+    @Suppress("LongParameterList")
     fun selectEligibleJobs(
         jobs: List<DownloadJob>,
         now: Long,
@@ -27,6 +38,7 @@ object DownloadScheduler {
         nextAllowedAt: Map<String, Long>,
         lastScheduledSource: String?,
         providerNameForJob: (DownloadJob) -> String?,
+        blockedSources: Set<String> = emptySet(),
     ): List<DownloadJob> {
         val activeSources = activeCounts.filterValues { it > 0 }.keys
         val availableSourceSlots = maxParallelSources.coerceAtLeast(1) - activeSources.size
@@ -39,7 +51,9 @@ object DownloadScheduler {
             val source = providerNameForJob(job) ?: return@forEach
             queuedSourceOrder += source
             if (job.nextRetryAt != null && job.nextRetryAt!! > now) return@forEach
-            if (source in activeSources || (nextAllowedAt[source] ?: 0L) > now) return@forEach
+            // A source under manual verification waits for a human: keep its jobs pending instead of
+            // letting each one start, hit the open circuit, and burn to a terminal failure.
+            if (source in activeSources || source in blockedSources || (nextAllowedAt[source] ?: 0L) > now) return@forEach
             eligibleBySource.putIfAbsent(source, job)
         }
         if (eligibleBySource.isEmpty()) return emptyList()
@@ -215,19 +229,32 @@ object DownloadErrorClassifier {
 
 /** Source-wide queue transitions used by the Cloudflare circuit breaker and rate-limit cooldown. */
 object DownloadSourceFailurePlanning {
-    fun blockActiveJobs(
+    /**
+     * One transaction when the manual-verification circuit opens: in-flight jobs fail as
+     * `source_blocked` (the solve flow keys off that category), and pending jobs are deferred to a
+     * near-term recheck instead of being scheduled against the open circuit one by one. The
+     * scheduler skips blocked sources entirely, so the recheck only has to notice that verification
+     * succeeded and the whole remaining queue resumes on its own. Note [DownloadJobStatus.activeWires]
+     * includes Pending — matching it here would fail the whole queue, which is exactly the drain
+     * this function exists to prevent.
+     */
+    fun blockSource(
         jobs: List<DownloadJob>,
         providerName: String,
         message: String?,
+        recheckAtMillis: Long,
         providerNameForJob: (DownloadJob) -> String?,
     ): List<DownloadJob> =
         jobs.onEach { job ->
-            if (job.status in DownloadJobStatus.activeWires && providerNameForJob(job) == providerName) {
+            if (providerNameForJob(job) != providerName) return@onEach
+            if (job.status == DownloadJobStatus.Downloading.wire) {
                 job.status = DownloadJobStatus.Failed.wire
                 job.error = message
                 job.errorCategory = "source_blocked"
                 job.errorCode = "SOURCE_BLOCKED"
                 job.nextRetryAt = null
+            } else if (job.status == DownloadJobStatus.Pending.wire) {
+                job.nextRetryAt = maxOf(job.nextRetryAt ?: 0L, recheckAtMillis)
             }
         }
 
@@ -253,6 +280,8 @@ data class DownloadProgress(
     val paused: Int,
     val total: Int,
     val activeTitle: String?,
+    /** Jobs failed as source_blocked right now; 0 means the manual circuit is closed or cleared. */
+    val sourceBlocked: Int = 0,
 ) {
     val unfinished: Int
         get() = pending + active

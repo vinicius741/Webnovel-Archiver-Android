@@ -42,6 +42,23 @@ class DownloadSchedulerTest {
     }
 
     @Test
+    fun blockedSourcesKeepTheirJobsPendingInsteadOfFailingAgainstTheCircuit() {
+        val selected =
+            DownloadScheduler.selectEligibleJobs(
+                jobs = listOf(job("a1", "RoyalRoad"), job("a2", "RoyalRoad"), job("b1", "Scribble Hub")),
+                now = 1000,
+                maxParallelSources = 2,
+                activeCounts = emptyMap(),
+                nextAllowedAt = emptyMap(),
+                lastScheduledSource = null,
+                providerNameForJob = { it.chapter.url },
+                blockedSources = setOf("RoyalRoad"),
+            )
+
+        assertEquals(listOf("b1"), selected.map { it.id })
+    }
+
+    @Test
     fun skipsSourceUntilDelayExpires() {
         val selected =
             DownloadScheduler.selectEligibleJobs(

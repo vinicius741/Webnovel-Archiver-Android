@@ -2,6 +2,8 @@ package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.app.AppContainer
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
@@ -52,7 +54,10 @@ class DownloadEngine(
     private val running = AtomicBoolean(false)
     private val acceptsWorkerResults = AtomicBoolean(true)
     private val requestGateFactory = DownloadRequestGateFactory(storage, downloadPacer)
-    private val sourceReliability = DownloadSourceReliability(storage, network, acceptsWorkerResults::get)
+    private val sourceReliability =
+        DownloadSourceReliability(storage, network, acceptsWorkerResults::get) { providerId, url ->
+            onSourceBlocked?.invoke(providerId, url)
+        }
     private val processLoop =
         DownloadProcessLoop(
             storage = storage,
@@ -61,9 +66,16 @@ class DownloadEngine(
             processJob = ::processJob,
             publishQueueChanged = { repository.publishDownloadState(queueChanged = true) },
             emitProgress = ::emitProgress,
+            isSourceBlocked = network::isSourceBlocked,
         )
     private var worker: Job? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
+
+    /**
+     * Fired when the manual-verification circuit opens for a source mid-download. The foreground
+     * service uses it to tell the user their queue is paused pending an in-app verification.
+     */
+    var onSourceBlocked: ((providerId: String, blockedUrl: String) -> Unit)? = null
 
     private companion object {
         /**
@@ -176,6 +188,7 @@ class DownloadEngine(
             wakeProcessLoop()
             return
         }
+        BypassEventLog.record(BypassEventCategory.DL, "download_run_started")
         worker =
             scope.launch {
                 try {
@@ -373,6 +386,7 @@ class DownloadEngine(
             paused = counts.paused,
             total = counts.total,
             activeTitle = activeJob?.let { "${it.storyTitle}: ${it.chapter.title}" },
+            sourceBlocked = queue.count { it.errorCategory == "source_blocked" },
         )
     }
 }

@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.download
 
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
@@ -26,6 +28,7 @@ internal class DownloadSourceReliability(
     private val network: NetworkClient,
     private val acceptsWorkerResults: () -> Boolean,
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val onSourceBlocked: (providerId: String, blockedUrl: String) -> Unit = { _, _ -> },
 ) {
     private val preflightedSources = mutableSetOf<String>()
 
@@ -89,6 +92,15 @@ internal class DownloadSourceReliability(
     ): DownloadQueueMutation? {
         if (!acceptsWorkerResults()) return null
         val classified = DownloadErrorClassifier.classify(error)
+        BypassEventLog.record(
+            BypassEventCategory.DL,
+            "job_failed",
+            providerName,
+            "category" to classified.category,
+            "code" to classified.code,
+            "retryCount" to job.retryCount,
+            "willRetry" to DownloadErrorClassifier.shouldAutoRetry(job, classified),
+        )
         Timber.w(
             error,
             "Download job %s failed (category=%s, code=%s, retry=%s)",
@@ -126,9 +138,19 @@ internal class DownloadSourceReliability(
         storage.mutateQueueInPlace { current ->
             queue = current
             if (!acceptsWorkerResults()) return@mutateQueueInPlace current
-            DownloadSourceFailurePlanning.blockActiveJobs(current, providerName, error.message, ::providerNameForJob)
+            DownloadSourceFailurePlanning.blockSource(
+                jobs = current,
+                providerName = providerName,
+                message = error.message,
+                recheckAtMillis = nowMillis() + DownloadScheduler.BLOCKED_SOURCE_RECHECK_MILLIS,
+                providerNameForJob = ::providerNameForJob,
+            )
             accepted = true
             current
+        }
+        if (accepted) {
+            BypassEventLog.record(BypassEventCategory.DL, "source_blocked_batch", providerName)
+            onSourceBlocked(providerName, error.blockedUrl)
         }
         return if (accepted) DownloadQueueMutation(queue) else null
     }

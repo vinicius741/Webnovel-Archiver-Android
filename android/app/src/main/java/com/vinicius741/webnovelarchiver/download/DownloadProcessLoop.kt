@@ -13,6 +13,7 @@ import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Completion-driven coordinator for fair, independent source download lanes. */
+@Suppress("LongParameterList")
 internal class DownloadProcessLoop(
     private val storage: AppStorage,
     private val wakeSignals: ReceiveChannel<Unit>,
@@ -20,6 +21,7 @@ internal class DownloadProcessLoop(
     private val processJob: suspend (DownloadJob) -> Unit,
     private val publishQueueChanged: () -> Unit,
     private val emitProgress: (DownloadJob?, List<DownloadJob>) -> Unit,
+    private val isSourceBlocked: (String) -> Boolean = { false },
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
     private data class ActiveWorker(
@@ -39,16 +41,44 @@ internal class DownloadProcessLoop(
                 lateinit var pending: List<DownloadJob>
                 synchronized(storage) {
                     queue = storage.getQueue()
+                    val now = nowMillis()
                     val activeCounts = activeWorkers.values.groupingBy(ActiveWorker::sourceId).eachCount()
+                    // Sources under manual verification keep their jobs pending; without this the
+                    // loop would start each one, hit the open circuit, and fail it without any
+                    // network attempt.
+                    val blockedSources =
+                        queue
+                            .asSequence()
+                            .filter { it.status == DownloadJobStatus.Pending.wire }
+                            .mapNotNull(::sourceIdForJob)
+                            .toSet()
+                            .filter(isSourceBlocked)
+                            .toSet()
+                    // Re-defer blocked jobs whose recheck elapsed so the loop keeps a wake-up while
+                    // the circuit is open; when verification succeeds the deferral simply expires
+                    // and the queue resumes. Without this, the passed recheck time would look like
+                    // no scheduled work and the loop would exit with jobs stranded as pending.
+                    var redeferredBlockedJobs = false
+                    queue.forEach { job ->
+                        val source = sourceIdForJob(job) ?: return@forEach
+                        if (job.status == DownloadJobStatus.Pending.wire && source in blockedSources &&
+                            (job.nextRetryAt == null || job.nextRetryAt!! <= now)
+                        ) {
+                            job.nextRetryAt = now + DownloadScheduler.BLOCKED_SOURCE_RECHECK_MILLIS
+                            redeferredBlockedJobs = true
+                        }
+                    }
+                    if (redeferredBlockedJobs) storage.saveQueue(queue)
                     pending =
                         DownloadScheduler.selectEligibleJobs(
                             jobs = queue,
-                            now = nowMillis(),
+                            now = now,
                             maxParallelSources = settings.maxParallelSources ?: 2,
                             activeCounts = activeCounts,
                             nextAllowedAt = emptyMap(),
                             lastScheduledSource = lastScheduledSource,
                             providerNameForJob = ::sourceIdForJob,
+                            blockedSources = blockedSources,
                         )
                     if (pending.isNotEmpty()) {
                         pending.forEach { it.status = DownloadJobStatus.Downloading.wire }

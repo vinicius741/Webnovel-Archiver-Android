@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import timber.log.Timber
@@ -34,6 +35,7 @@ class DownloadForegroundService : Service() {
         val container = appContainer
         engine = DownloadEngine(container.repository, container.network, container.downloadPacer)
         engine.onProgress = ::updateNotification
+        engine.onSourceBlocked = { _, url -> showSourceBlockedNotification(url) }
         AppNotificationChannels.ensureCreated(this)
     }
 
@@ -133,10 +135,51 @@ class DownloadForegroundService : Service() {
                 NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(progress))
             }
         }
+        // The manual circuit closed and the blocked job(s) were retried or cleared: drop the
+        // verification prompt so it cannot outlive the state it describes.
+        if (progress.sourceBlocked == 0) cancelSourceBlockedNotification()
         if (progress.unfinished == 0) {
             stopForeground(STOP_FOREGROUND_DETACH)
             stopSelf()
         }
+    }
+
+    /**
+     * Tells the user their queue is paused because a source needs one interactive Cloudflare
+     * verification. Tapping it opens the in-app solver; success resumes the queue automatically.
+     */
+    private fun showSourceBlockedNotification(blockedUrl: String) {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val solveIntent =
+            PendingIntent.getActivity(
+                this,
+                5,
+                Intent(this, CloudflareSolveActivity::class.java)
+                    .putExtra(CloudflareSolveActivity.EXTRA_URL, blockedUrl),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        val notification =
+            NotificationCompat
+                .Builder(this, AppNotificationCategory.DOWNLOADS.channelId)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(getString(R.string.download_notif_blocked_title))
+                .setContentText(getString(R.string.download_notif_blocked_body))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.download_notif_blocked_body)))
+                .setContentIntent(solveIntent)
+                .setAutoCancel(true)
+                .build()
+        runCatching {
+            NotificationManagerCompat.from(this).notify(SOURCE_BLOCKED_NOTIFICATION_ID, notification)
+        }.onFailure { Timber.w(it, "Could not post source-blocked notification") }
+    }
+
+    private fun cancelSourceBlockedNotification() {
+        runCatching { NotificationManagerCompat.from(this).cancel(SOURCE_BLOCKED_NOTIFICATION_ID) }
     }
 
     private fun buildNotification(progress: DownloadProgress): Notification {
@@ -197,6 +240,7 @@ class DownloadForegroundService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1001
+        private const val SOURCE_BLOCKED_NOTIFICATION_ID = 1002
         const val ACTION_START = "com.vinicius741.webnovelarchiver.download.START"
         const val ACTION_PREPARE = "com.vinicius741.webnovelarchiver.download.PREPARE"
         const val ACTION_ABORT_PREPARE = "com.vinicius741.webnovelarchiver.download.ABORT_PREPARE"
