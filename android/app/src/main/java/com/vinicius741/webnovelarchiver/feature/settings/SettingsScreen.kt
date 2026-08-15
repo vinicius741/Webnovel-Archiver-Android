@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatDelegate
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
@@ -235,6 +236,13 @@ internal fun ScreenHost.showDataBackup() {
                     }
                 }
             toast(detail)
+        }
+        settingRow(
+            R.drawable.wna_share,
+            "Share Source Access Logs",
+            "Export a diagnostic log of source-access events (no URLs, titles, or cookies)",
+        ) {
+            exportAndShare({ BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue()) })
         }
         settingRow(R.drawable.wna_cleaning, "Reset Source Web Session", "Clear source cookies, browser storage, and access cooldowns") {
             confirm("Reset source browser sessions? The next request may require verification.", confirmLabel = "Reset") {
