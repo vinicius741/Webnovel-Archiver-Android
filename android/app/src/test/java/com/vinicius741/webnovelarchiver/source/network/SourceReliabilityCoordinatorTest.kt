@@ -119,4 +119,48 @@ class SourceReliabilityCoordinatorTest {
             coordinator.clearAccessBlock("example.test", keepBrowserTransport = false)
             assertFalse(coordinator.snapshots().single().manualVerificationRequired)
         }
+
+    @Test
+    fun manualCircuitPredicateMatchesBothHostAndProviderIdKeys() {
+        val coordinator = SourceReliabilityCoordinator()
+        coordinator.recordChallengeDetected("www.scribblehub.com")
+        coordinator.requireManualVerification("scribblehub.com")
+
+        assertTrue(coordinator.isManualVerificationRequired("scribblehub.com"))
+        assertTrue(coordinator.isManualVerificationRequired("www.scribblehub.com"))
+        assertTrue(coordinator.isManualVerificationRequired("scribble_hub"))
+        assertFalse(coordinator.isManualVerificationRequired("royalroad.com"))
+
+        coordinator.clearAccessBlock("www.scribblehub.com", keepBrowserTransport = true)
+        assertFalse(coordinator.isManualVerificationRequired("scribble_hub"))
+    }
+
+    @Test
+    fun stateTransitionsInvokeThePersistenceHook() {
+        val transitions = mutableListOf<String>()
+        val coordinator =
+            SourceReliabilityCoordinator(onStateChanged = { transitions += "changed" })
+
+        coordinator.recordChallengeDetected("example.test")
+        coordinator.requireManualVerification("example.test")
+        coordinator.clearAccessBlock("example.test")
+
+        assertEquals(3, transitions.size)
+    }
+
+    @Test
+    fun manualCircuitAndStickyWindowSurviveRestoreIntoAFreshProcess() {
+        val previous = SourceReliabilityCoordinator()
+        previous.recordChallengeDetected("www.scribblehub.com")
+        previous.requireManualVerification("scribblehub.com")
+
+        val persisted = previous.persistableStates().single()
+
+        val restored = SourceReliabilityCoordinator()
+        restored.restore(listOf(persisted))
+
+        assertTrue(restored.isManualVerificationRequired("scribble_hub"))
+        assertTrue(restored.browserTransportActive("scribblehub.com"))
+        assertEquals(persisted.challengeCount, restored.snapshots().single().challengeCount)
+    }
 }

@@ -13,11 +13,14 @@ import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
+import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 
 /**
  * Lightweight process-wide dependency container (Maintainability M2). Attached to
@@ -45,12 +48,24 @@ class AppContainer(
     /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
-    private val sourceReliability = SourceReliabilityCoordinator()
+    private val storage = AppStorage(context)
+    private val reliabilityStore = SourceReliabilityStore(storage.root)
+
+    // Conflated so bursts of state changes coalesce into one save; the drain coroutine always
+    // persists the *current* state, so the latest signal can never be satisfied with stale data.
+    private val reliabilityPersistSignals = Channel<Unit>(Channel.CONFLATED)
+
+    private val sourceReliability = SourceReliabilityCoordinator(onStateChanged = ::persistSourceReliability)
     val network: NetworkClient =
         NetworkClient(
             client = NetworkClient.buildDefault(appContext, sourceReliability),
             reliabilityCoordinator = sourceReliability,
         )
+
+    /** Never writes synchronously: state changes fire on OkHttp/coroutine threads and from main-thread UI paths (solve activity, Settings reset). */
+    private fun persistSourceReliability() {
+        reliabilityPersistSignals.trySend(Unit)
+    }
 
     @Volatile private var activeNetwork: Network? = null
 
@@ -76,7 +91,6 @@ class AppContainer(
                 }
             }
         }
-    private val storage = AppStorage(context)
     val repository: AppRepository = AppRepository(storage)
     internal val downloadPacer = DownloadRequestPacer()
     val syncEngine: StorySyncEngine = StorySyncEngine(repository, network)
@@ -111,6 +125,16 @@ class AppContainer(
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                 .registerDefaultNetworkCallback(networkCallback)
         }
+        // Drains persistence signals serially on the process IO scope: every state change is
+        // written by exactly one coroutine, so an older snapshot can never rename over a newer one.
+        applicationScope.launch {
+            for (ignored in reliabilityPersistSignals) {
+                reliabilityStore.save(sourceReliability.persistableStates())
+            }
+        }
+        // Before the first source request: an open manual circuit or live sticky-transport window
+        // from the previous process must govern scheduling and transport choice again.
+        sourceReliability.restore(reliabilityStore.load())
         repositoryStartup.start(applicationScope)
     }
 

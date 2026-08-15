@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.source.network
 
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -32,6 +34,7 @@ data class SourceReliabilitySnapshot(
 class SourceReliabilityCoordinator(
     private val nowMillis: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    private val onStateChanged: () -> Unit = {},
 ) {
     private data class HostState(
         val canonicalHost: String,
@@ -49,6 +52,53 @@ class SourceReliabilityCoordinator(
     )
 
     private val states = ConcurrentHashMap<String, HostState>()
+
+    /**
+     * Snapshot of the state that must survive process death: an open manual circuit would
+     * otherwise be forgotten while the download queue still resumes via its durable jobs, and a
+     * sticky Chromium-transport window would be lost to a fresh OkHttp probe that Cloudflare has
+     * already rejected. Rolling-window and consecutive-success bookkeeping are intentionally not
+     * persisted — they self-heal within one request window.
+     */
+    fun persistableStates(): List<PersistedHostReliability> =
+        states.entries
+            .map { (key, state) ->
+                synchronized(state) {
+                    PersistedHostReliability(
+                        key = key,
+                        canonicalHost = state.canonicalHost,
+                        manualVerificationRequired = state.manualVerificationRequired,
+                        cooldownUntil = state.cooldownUntil,
+                        browserTransportUntil = state.browserTransportUntil,
+                        adaptiveMinimumGapMillis = state.adaptiveMinimumGapMillis,
+                        requestCount = state.requestCount,
+                        challengeCount = state.challengeCount,
+                        rateLimitCount = state.rateLimitCount,
+                        browserRenderCount = state.browserRenderCount,
+                    )
+                }
+            }.sortedBy { it.key }
+
+    /**
+     * Restores persisted state; timestamps already in the past simply expire on their own.
+     * Deliberately does not fire [onStateChanged]: the store already describes this state, so
+     * persisting it back would be a redundant write (on the main thread, from startup).
+     */
+    fun restore(persisted: List<PersistedHostReliability>) {
+        persisted.forEach { host ->
+            val state = stateFor(host.key)
+            synchronized(state) {
+                state.manualVerificationRequired = host.manualVerificationRequired
+                state.cooldownUntil = if (host.manualVerificationRequired) Long.MAX_VALUE else host.cooldownUntil
+                state.browserTransportUntil = maxOf(state.browserTransportUntil, host.browserTransportUntil)
+                state.adaptiveMinimumGapMillis = host.adaptiveMinimumGapMillis
+                state.requestCount = host.requestCount
+                state.challengeCount = host.challengeCount
+                state.rateLimitCount = host.rateLimitCount
+                state.browserRenderCount = host.browserRenderCount
+            }
+        }
+    }
 
     /** Waits for both the cooldown and rolling request budget, then atomically claims one slot. */
     suspend fun awaitPermission(
@@ -82,6 +132,7 @@ class SourceReliabilityCoordinator(
                     0L
                 }
             if (manualBlock) {
+                BypassEventLog.record(BypassEventCategory.CF, "manual_block_throw", state.canonicalHost)
                 throw SourceAccessBlockedException(url, manualVerificationRequired = true)
             }
             if (waitMillis <= 0L) return
@@ -102,6 +153,7 @@ class SourceReliabilityCoordinator(
                 state.browserTransportUntil = nowMillis() + BROWSER_TRANSPORT_TTL_MILLIS
                 state.manualVerificationRequired = false
                 state.cooldownUntil = 0L
+                BypassEventLog.record(BypassEventCategory.CF, "transport_sticky_refresh", state.canonicalHost)
             }
             if (state.consecutiveSuccesses >= SUCCESSES_BEFORE_RECOVERY) {
                 state.adaptiveMinimumGapMillis =
@@ -110,6 +162,7 @@ class SourceReliabilityCoordinator(
                 state.consecutiveSuccesses = 0
             }
         }
+        if (browserRendered) onStateChanged()
     }
 
     /** Opens a timed circuit and returns the queue-level cooldown that should be persisted. */
@@ -119,19 +172,29 @@ class SourceReliabilityCoordinator(
         retryAfterMillis: Long?,
     ): Long {
         val state = stateFor(host)
-        synchronized(state) {
-            state.rateLimitCount += 1L
-            state.consecutiveSuccesses = 0
-            val currentFloor = effectiveMinimumGap(state, policy).coerceAtLeast(policy.baseRetryDelayMillis)
-            state.adaptiveMinimumGapMillis =
-                (currentFloor * 2L).coerceAtMost(policy.maximumAdaptiveGapMillis.coerceAtLeast(currentFloor))
-            val cooldown =
-                max(retryAfterMillis ?: 0L, state.adaptiveMinimumGapMillis * 2L)
-                    .coerceAtLeast(policy.baseRetryDelayMillis)
-                    .coerceAtMost(policy.maximumRetryAfterMillis)
-            state.cooldownUntil = max(state.cooldownUntil, nowMillis() + cooldown)
-            return cooldown
-        }
+        val cooldown =
+            synchronized(state) {
+                state.rateLimitCount += 1L
+                state.consecutiveSuccesses = 0
+                val currentFloor = effectiveMinimumGap(state, policy).coerceAtLeast(policy.baseRetryDelayMillis)
+                state.adaptiveMinimumGapMillis =
+                    (currentFloor * 2L).coerceAtMost(policy.maximumAdaptiveGapMillis.coerceAtLeast(currentFloor))
+                val computed =
+                    max(retryAfterMillis ?: 0L, state.adaptiveMinimumGapMillis * 2L)
+                        .coerceAtLeast(policy.baseRetryDelayMillis)
+                        .coerceAtMost(policy.maximumRetryAfterMillis)
+                state.cooldownUntil = max(state.cooldownUntil, nowMillis() + computed)
+                BypassEventLog.record(
+                    BypassEventCategory.CF,
+                    "rate_limit_recorded",
+                    state.canonicalHost,
+                    "cooldownMs" to computed,
+                    "retryAfterMs" to retryAfterMillis,
+                )
+                computed
+            }
+        onStateChanged()
+        return cooldown
     }
 
     /** A detected challenge immediately switches future requests to Chromium for this session. */
@@ -141,15 +204,35 @@ class SourceReliabilityCoordinator(
             state.challengeCount += 1L
             state.browserTransportUntil = nowMillis() + BROWSER_TRANSPORT_TTL_MILLIS
             state.consecutiveSuccesses = 0
+            BypassEventLog.record(BypassEventCategory.CF, "challenge_detected", state.canonicalHost)
+            BypassEventLog.record(BypassEventCategory.CF, "transport_sticky_enter", state.canonicalHost)
         }
+        onStateChanged()
     }
 
     /** A browser render that still cannot pass requires one user-mediated verification for the host. */
     fun requireManualVerification(host: String) {
         val state = stateFor(host)
         synchronized(state) {
+            if (!state.manualVerificationRequired) {
+                BypassEventLog.record(BypassEventCategory.CF, "circuit_opened", state.canonicalHost)
+            }
             state.manualVerificationRequired = true
             state.cooldownUntil = Long.MAX_VALUE
+        }
+        onStateChanged()
+    }
+
+    /**
+     * True while the manual-verification circuit is open for this host. Download scheduling uses
+     * this to stop offering jobs for the source (waiting for a human) instead of letting every
+     * queued job burn itself to a terminal failure against the open circuit. [key] may be a host
+     * name or a provider id — state keys are provider ids.
+     */
+    fun isManualVerificationRequired(key: String): Boolean {
+        val state = stateFor(key)
+        synchronized(state) {
+            return state.manualVerificationRequired
         }
     }
 
@@ -170,12 +253,19 @@ class SourceReliabilityCoordinator(
             state.manualVerificationRequired = false
             state.cooldownUntil = 0L
             state.consecutiveSuccesses = 0
+            BypassEventLog.record(
+                BypassEventCategory.CF,
+                "access_cleared",
+                state.canonicalHost,
+                "keepBrowserTransport" to keepBrowserTransport,
+            )
             if (keepBrowserTransport) {
                 state.browserTransportUntil = nowMillis() + BROWSER_TRANSPORT_TTL_MILLIS
             } else {
                 state.browserTransportUntil = 0L
             }
         }
+        onStateChanged()
     }
 
     /**
