@@ -9,6 +9,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
@@ -51,7 +53,7 @@ object CloudflareWebViewSolver {
         context: Context,
         request: CloudflareWebViewRequest,
         timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-    ): CloudflareRenderedPage? {
+    ): CloudflareRenderOutcome {
         CloudflareSolverThreadGuard.requireBackgroundThread(
             Looper.myLooper() == Looper.getMainLooper(),
         )
@@ -59,11 +61,24 @@ object CloudflareWebViewSolver {
         val latch = CountDownLatch(1)
         val renderedPage = AtomicReference<CloudflareRenderedPage?>(null)
         val requestClosed = AtomicBoolean(false)
-        val failureNote = AtomicReference("")
-        // The 20s poll budget races the 20s await timeout, so the budget-exhaustion note can lose;
+        val failure = AtomicReference<CloudflareRenderFailure?>(null)
+        // The 20s poll budget races the 20s await timeout, so the budget-exhaustion failure can lose;
         // the last observed document state carries the reason either way.
         val lastPollNote = AtomicReference("no poll completed")
         val session = sessions.getOrPut(hostKey(request.url)) { BrowserSession() }
+        val renderId = BypassEventLog.nextId("r")
+        BypassEventLog.record(
+            BypassEventCategory.CF,
+            "render_start",
+            hostKey(request.url),
+            "renderId" to renderId,
+            "method" to request.method,
+        )
+
+        fun finishWith(failed: CloudflareRenderFailure) {
+            failure.compareAndSet(null, failed)
+            latch.countDown()
+        }
 
         mainHandler.post {
             val web =
@@ -103,6 +118,7 @@ object CloudflareWebViewSolver {
                                 CloudflareRenderedPageValidator.isExpectedPage(request, documentUrl, state.html)
                             },
                         )
+                    recordPoll(renderId, hostKey(request.url), pollsRemaining, state, isChallenge, isRequestedResource, decision)
                     when (decision) {
                         CloudflareRenderPollDecision.ACCEPT_PAGE ->
                             if (renderedPage.compareAndSet(null, CloudflareRenderedPage(state.html, documentUrl))) {
@@ -118,59 +134,27 @@ object CloudflareWebViewSolver {
                                 )
                             } else {
                                 when {
-                                    isChallenge -> failureNote.set("challenge still active after polling budget")
-                                    state.stale -> failureNote.set("stale document persisted; navigation never committed")
-                                    !isRequestedResource -> failureNote.set("requested navigation never committed")
-                                    else -> failureNote.set("document never settled (readyState=${state.readyState})")
+                                    isChallenge -> finishWith(CloudflareRenderFailure.ChallengeActive)
+                                    state.stale -> finishWith(CloudflareRenderFailure.StaleDocumentPersisted)
+                                    !isRequestedResource -> finishWith(CloudflareRenderFailure.NavigationNeverCommitted)
+                                    else -> finishWith(CloudflareRenderFailure.NeverSettled)
                                 }
-                                latch.countDown()
                             }
 
-                        CloudflareRenderPollDecision.REJECT_PAGE -> {
-                            failureNote.set("settled page rejected by validator")
-                            latch.countDown()
-                        }
+                        CloudflareRenderPollDecision.REJECT_PAGE ->
+                            // The right page settled but failed the content rules. Return it: the
+                            // source parser's own selector check fails the single job with a typed
+                            // parse error instead of blocking the whole source.
+                            finishWith(
+                                CloudflareRenderFailure.PageContentUnexpected(
+                                    CloudflareRenderedPage(state.html, documentUrl),
+                                ),
+                            )
                     }
                 }
             }
 
-            web.webViewClient =
-                object : WebViewClient() {
-                    override fun onRenderProcessGone(
-                        view: WebView?,
-                        detail: RenderProcessGoneDetail?,
-                    ): Boolean {
-                        failureNote.set("render process gone")
-                        session.webView = null
-                        latch.countDown()
-                        return true
-                    }
-
-                    override fun onReceivedError(
-                        view: WebView?,
-                        failingRequest: WebResourceRequest?,
-                        error: WebResourceError?,
-                    ) {
-                        if (failingRequest?.isForMainFrame == true) {
-                            failureNote.set("main-frame error")
-                            latch.countDown()
-                        }
-                    }
-
-                    override fun onReceivedHttpError(
-                        view: WebView?,
-                        failingRequest: WebResourceRequest?,
-                        errorResponse: WebResourceResponse?,
-                    ) {
-                        if (
-                            failingRequest?.isForMainFrame == true &&
-                            errorResponse?.statusCode !in setOf(403, 429, 503)
-                        ) {
-                            failureNote.set("main-frame HTTP ${errorResponse?.statusCode}")
-                            latch.countDown()
-                        }
-                    }
-                }
+            web.webViewClient = renderClient(session, ::finishWith)
             // Mark the outgoing document before navigating: the session WebView is persistent, so
             // it still shows the previous request's page, and the first polls run before this
             // navigation commits. The marker lives in the old document's window, so any freshly
@@ -194,8 +178,7 @@ object CloudflareWebViewSolver {
                     // and this renderer is deliberately detached, so a WebView-owned timer never runs.
                     mainHandler.post { inspectPage(web, request.url) }
                 } else {
-                    failureNote.set("unsupported request method ${request.method}")
-                    latch.countDown()
+                    finishWith(CloudflareRenderFailure.UnsupportedMethod)
                 }
             }
         }
@@ -210,16 +193,116 @@ object CloudflareWebViewSolver {
         mainHandler.post {
             session.webView?.stopLoading()
         }
-        val rendered = renderedPage.get()
-        if (rendered == null) {
+        return completedOutcome(request, renderId, renderedPage, failure, lastPollNote)
+    }
+
+    /** Typed failure reporting for main-frame events during one render. */
+    private fun renderClient(
+        session: BrowserSession,
+        finishWith: (CloudflareRenderFailure) -> Unit,
+    ): WebViewClient =
+        object : WebViewClient() {
+            override fun onRenderProcessGone(
+                view: WebView?,
+                detail: RenderProcessGoneDetail?,
+            ): Boolean {
+                finishWith(CloudflareRenderFailure.RenderProcessGone)
+                session.webView = null
+                return true
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                failingRequest: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                if (failingRequest?.isForMainFrame == true) {
+                    finishWith(CloudflareRenderFailure.MainFrameTransportError)
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                failingRequest: WebResourceRequest?,
+                errorResponse: WebResourceResponse?,
+            ) {
+                if (
+                    failingRequest?.isForMainFrame == true &&
+                    errorResponse?.statusCode !in setOf(403, 429, 503)
+                ) {
+                    finishWith(
+                        CloudflareRenderFailure.MainFrameHttpError(errorResponse?.statusCode ?: 500),
+                    )
+                }
+            }
+        }
+
+    /** Assembles the render's final outcome and records/logs the non-success reasons. */
+    private fun completedOutcome(
+        request: CloudflareWebViewRequest,
+        renderId: String,
+        renderedPage: AtomicReference<CloudflareRenderedPage?>,
+        failure: AtomicReference<CloudflareRenderFailure?>,
+        lastPollNote: AtomicReference<String>,
+    ): CloudflareRenderOutcome {
+        val outcome =
+            renderedPage.get()?.let(CloudflareRenderOutcome::Rendered)
+                ?: CloudflareRenderOutcomePlanning.outcome(failure.get())
+        val failed = failure.get() ?: CloudflareRenderFailure.TimedOut
+        val outcomeName =
+            when (outcome) {
+                is CloudflareRenderOutcome.Rendered -> "rendered"
+                is CloudflareRenderOutcome.PageContentUnexpected -> "page_content_unexpected"
+                is CloudflareRenderOutcome.OriginHttpError -> "origin_http_${outcome.statusCode}"
+                CloudflareRenderOutcome.TransportError -> "transport_error"
+                is CloudflareRenderOutcome.NeedsManualVerification -> "needs_manual:${failed.note}"
+            }
+        BypassEventLog.record(
+            BypassEventCategory.CF,
+            "render_finished",
+            hostKey(request.url),
+            "renderId" to renderId,
+            "outcome" to outcomeName,
+        )
+        if (outcome !is CloudflareRenderOutcome.Rendered) {
+            val reason =
+                if (failed is CloudflareRenderFailure.MainFrameHttpError) {
+                    "main_frame_http_${failed.statusCode}"
+                } else {
+                    failed.note
+                }
             Timber.w(
                 "Cloudflare WebView render gave up: url=%s note=%s lastPoll=[%s]",
                 request.url,
-                failureNote.get().ifBlank { "timed out after ${timeoutMs}ms" },
+                reason,
                 lastPollNote.get(),
             )
         }
-        return rendered
+        return outcome
+    }
+
+    /** One structured log line per DOM poll — the diagnostic core of a render. */
+    private fun recordPoll(
+        renderId: String,
+        host: String,
+        pollsRemaining: Int,
+        state: CloudflarePageState,
+        isChallenge: Boolean,
+        isRequestedResource: Boolean,
+        decision: CloudflareRenderPollDecision,
+    ) {
+        BypassEventLog.record(
+            BypassEventCategory.CF,
+            "render_poll",
+            host,
+            "renderId" to renderId,
+            "pollN" to (MAX_DOM_POLLS - pollsRemaining),
+            "readyState" to state.readyState,
+            "stale" to state.stale,
+            "challenge" to isChallenge,
+            "resource" to isRequestedResource,
+            "decision" to decision.name.substringBefore("_").lowercase(),
+        )
     }
 
     /** Drops persistent renderer processes; CookieManager/WebStorage reset is owned by Settings. */

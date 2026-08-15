@@ -51,6 +51,116 @@ internal data class CloudflarePageState(
     val stale: Boolean = false,
 )
 
+/**
+ * Why a Chromium render ended without an accepted page. The distinction is escalation policy:
+ * only some of these mean Cloudflare needs a human; the rest are per-request outcomes the
+ * ordinary error paths (parser, HTTP status, retryable transport) already handle per job.
+ * [note] is a fixed snake_case vocabulary for logs and diagnostics.
+ */
+internal sealed interface CloudflareRenderFailure {
+    val note: String
+
+    /** An interactive challenge stayed unsolved for the whole poll budget. */
+    data object ChallengeActive : CloudflareRenderFailure {
+        override val note = "challenge_still_active"
+    }
+
+    /** The previous request's document was still in place; navigation never committed. */
+    data object StaleDocumentPersisted : CloudflareRenderFailure {
+        override val note = "stale_document_persisted"
+    }
+
+    /** Navigation committed to a resource other than the one requested. */
+    data object NavigationNeverCommitted : CloudflareRenderFailure {
+        override val note = "navigation_never_committed"
+    }
+
+    /** The document never reached interactive/complete before the poll budget ran out. */
+    data object NeverSettled : CloudflareRenderFailure {
+        override val note = "never_settled"
+    }
+
+    /** The right page settled but failed the source's content rules; the parser owns the verdict. */
+    data class PageContentUnexpected(
+        val page: CloudflareRenderedPage,
+    ) : CloudflareRenderFailure {
+        override val note = "page_content_unexpected"
+    }
+
+    /** The origin answered a definitive non-challenge HTTP status on the main frame. */
+    data class MainFrameHttpError(
+        val statusCode: Int,
+    ) : CloudflareRenderFailure {
+        override val note = "main_frame_http_error"
+    }
+
+    /** The main frame failed at the transport level; a retry may succeed. */
+    data object MainFrameTransportError : CloudflareRenderFailure {
+        override val note = "main_frame_transport_error"
+    }
+
+    /** The Chromium renderer process died. */
+    data object RenderProcessGone : CloudflareRenderFailure {
+        override val note = "render_process_gone"
+    }
+
+    /** The request shape cannot be loaded through WebView's top-level APIs. */
+    data object UnsupportedMethod : CloudflareRenderFailure {
+        override val note = "unsupported_method"
+    }
+
+    /** The await timeout elapsed before any poll decided. */
+    data object TimedOut : CloudflareRenderFailure {
+        override val note = "timed_out"
+    }
+}
+
+/** What [CloudflareBypassInterceptor] should do with a finished render. */
+internal sealed interface CloudflareRenderOutcome {
+    data class Rendered(
+        val page: CloudflareRenderedPage,
+    ) : CloudflareRenderOutcome
+
+    /** Cloudflare passed but the page failed content rules: return it and let the parser fail the job. */
+    data class PageContentUnexpected(
+        val page: CloudflareRenderedPage,
+    ) : CloudflareRenderOutcome
+
+    /** The origin's own non-challenge status: existing per-source retry policy applies. */
+    data class OriginHttpError(
+        val statusCode: Int,
+    ) : CloudflareRenderOutcome
+
+    /** Transient render failure: surfaces as a retryable transport error. */
+    data object TransportError : CloudflareRenderOutcome
+
+    /** The challenge needs a human: open the manual-verification circuit. */
+    data class NeedsManualVerification(
+        val failure: CloudflareRenderFailure,
+    ) : CloudflareRenderOutcome
+}
+
+/** Pure mapping from a render failure to the interceptor's escalation decision. */
+internal object CloudflareRenderOutcomePlanning {
+    fun outcome(failure: CloudflareRenderFailure?): CloudflareRenderOutcome =
+        when (failure) {
+            null -> CloudflareRenderOutcome.NeedsManualVerification(CloudflareRenderFailure.TimedOut)
+            is CloudflareRenderFailure.PageContentUnexpected ->
+                CloudflareRenderOutcome.PageContentUnexpected(failure.page)
+            is CloudflareRenderFailure.MainFrameHttpError ->
+                CloudflareRenderOutcome.OriginHttpError(failure.statusCode)
+            CloudflareRenderFailure.MainFrameTransportError -> CloudflareRenderOutcome.TransportError
+            CloudflareRenderFailure.ChallengeActive,
+            CloudflareRenderFailure.StaleDocumentPersisted,
+            CloudflareRenderFailure.NavigationNeverCommitted,
+            CloudflareRenderFailure.NeverSettled,
+            CloudflareRenderFailure.RenderProcessGone,
+            CloudflareRenderFailure.UnsupportedMethod,
+            CloudflareRenderFailure.TimedOut,
+            -> CloudflareRenderOutcome.NeedsManualVerification(failure)
+        }
+}
+
 /** Decodes the JSON string wrapper returned by `WebView.evaluateJavascript`. */
 internal object CloudflarePageStateDecoder {
     fun decode(raw: String?): CloudflarePageState {

@@ -58,13 +58,13 @@ internal data class CloudflareWebViewRequest(
 }
 
 internal fun interface CloudflarePageRenderer {
-    fun render(request: CloudflareWebViewRequest): CloudflareRenderedPage?
+    fun render(request: CloudflareWebViewRequest): CloudflareRenderOutcome
 }
 
 private class AndroidCloudflarePageRenderer(
     private val context: Context,
 ) : CloudflarePageRenderer {
-    override fun render(request: CloudflareWebViewRequest): CloudflareRenderedPage? = CloudflareWebViewSolver.render(context, request)
+    override fun render(request: CloudflareWebViewRequest): CloudflareRenderOutcome = CloudflareWebViewSolver.render(context, request)
 }
 
 /**
@@ -75,6 +75,13 @@ private class AndroidCloudflarePageRenderer(
  * the existing source parsers remain unchanged. Crucially, the browser response is not discarded in
  * favor of another OkHttp retry; doing that caused a permanent verification loop when Cloudflare
  * accepted Chromium's session but rejected OkHttp's different browser/TLS fingerprint.
+ *
+ * Render failures escalate by kind, not uniformly: an unsolved challenge or a dead renderer opens
+ * the manual-verification circuit, but a settled page that fails the source's content rules is
+ * returned for the parser to fail as a per-job error, an origin HTTP status (e.g. a removed
+ * chapter's 404) is surfaced to the normal retry policy, and a transport-level render failure is a
+ * retryable error. Previously every one of these opened the circuit, so a single dead chapter URL
+ * could block the whole source.
  */
 class CloudflareBypassInterceptor internal constructor(
     private val renderer: CloudflarePageRenderer,
@@ -105,10 +112,7 @@ class CloudflareBypassInterceptor internal constructor(
             val gate = hostGates.getOrPut(hostKey(request)) { HostGate() }
             lockGate(gate)
             try {
-                val rendered = renderer.render(browserRequest)
-                if (rendered != null) return renderedResponse(request, rendered)
-                reliability.requireManualVerification(request.url.host)
-                throw SourceAccessBlockedException(request.url.toString())
+                return respondToRender(request, renderer.render(browserRequest))
             } finally {
                 gate.lock.unlock()
             }
@@ -122,17 +126,40 @@ class CloudflareBypassInterceptor internal constructor(
         val gate = hostGates.getOrPut(hostKey(request)) { HostGate() }
         lockGate(gate, response)
         try {
-            val rendered =
-                renderer.render(webViewRequest) ?: run {
-                    reliability.requireManualVerification(request.url.host)
-                    return response
-                }
-            response.close()
-            return renderedResponse(request, rendered)
+            return respondToRender(request, renderer.render(webViewRequest), response)
         } finally {
             gate.lock.unlock()
         }
     }
+
+    /** Converts a render outcome into the response the caller sees; may open the circuit. */
+    private fun respondToRender(
+        request: Request,
+        outcome: CloudflareRenderOutcome,
+        challengedResponse: Response? = null,
+    ): Response =
+        when (outcome) {
+            is CloudflareRenderOutcome.Rendered -> {
+                challengedResponse?.close()
+                renderedResponse(request, outcome.page)
+            }
+            is CloudflareRenderOutcome.PageContentUnexpected -> {
+                challengedResponse?.close()
+                renderedResponse(request, outcome.page)
+            }
+            is CloudflareRenderOutcome.OriginHttpError -> {
+                challengedResponse?.close()
+                statusResponse(request, outcome.statusCode)
+            }
+            CloudflareRenderOutcome.TransportError -> {
+                challengedResponse?.close()
+                throw IOException("Browser render failed at the transport level for ${request.url.host}")
+            }
+            is CloudflareRenderOutcome.NeedsManualVerification -> {
+                reliability.requireManualVerification(request.url.host)
+                challengedResponse ?: throw SourceAccessBlockedException(request.url.toString())
+            }
+        }
 
     private fun lockGate(
         gate: HostGate,
@@ -161,6 +188,20 @@ class CloudflareBypassInterceptor internal constructor(
             .header(BROWSER_RENDERED_HEADER, "1")
             .header(BROWSER_FINAL_URL_HEADER, rendered.finalUrl)
             .body(rendered.html.toResponseBody(HTML_CONTENT_TYPE))
+            .build()
+
+    /** A browser-observed origin status (e.g. a removed chapter's 404) surfaced to normal retry policy. */
+    private fun statusResponse(
+        request: Request,
+        statusCode: Int,
+    ): Response =
+        Response
+            .Builder()
+            .request(request)
+            .protocol(Protocol.HTTP_1_1)
+            .code(statusCode)
+            .message("Browser Rendered")
+            .body(ByteArray(0).toResponseBody(null))
             .build()
 
     private fun isChallengeResponse(response: Response): Boolean {

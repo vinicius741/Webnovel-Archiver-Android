@@ -12,6 +12,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 
 class CloudflareBypassInterceptorTest {
     private lateinit var server: MockWebServer
@@ -32,7 +33,9 @@ class CloudflareBypassInterceptorTest {
         val client =
             clientWithRenderer { request ->
                 renderedRequest = request
-                CloudflareRenderedPage("<html><body>browser result</body></html>", request.url)
+                CloudflareRenderOutcome.Rendered(
+                    CloudflareRenderedPage("<html><body>browser result</body></html>", request.url),
+                )
             }
         val request =
             Request
@@ -62,7 +65,9 @@ class CloudflareBypassInterceptorTest {
         val client =
             clientWithRenderer { request ->
                 renderedRequest = request
-                CloudflareRenderedPage("<html><body><li>chapter</li></body></html>", request.url)
+                CloudflareRenderOutcome.Rendered(
+                    CloudflareRenderedPage("<html><body><li>chapter</li></body></html>", request.url),
+                )
             }
         val request =
             Request
@@ -87,7 +92,7 @@ class CloudflareBypassInterceptorTest {
     @Test
     fun failedBrowserRenderPreservesOriginalChallenge() {
         server.enqueue(cloudflareChallenge())
-        val client = clientWithRenderer { null }
+        val client = clientWithRenderer { CloudflareRenderOutcome.NeedsManualVerification(CloudflareRenderFailure.ChallengeActive) }
 
         client
             .newCall(Request.Builder().url(server.url("/protected")).build())
@@ -100,13 +105,81 @@ class CloudflareBypassInterceptorTest {
     }
 
     @Test
+    fun needsManualVerificationOpensTheCircuit() {
+        server.enqueue(cloudflareChallenge())
+        val reliability = SourceReliabilityCoordinator()
+        val client =
+            OkHttpClient
+                .Builder()
+                .addInterceptor(
+                    CloudflareBypassInterceptor(
+                        CloudflarePageRenderer {
+                            CloudflareRenderOutcome.NeedsManualVerification(CloudflareRenderFailure.ChallengeActive)
+                        },
+                        reliability,
+                    ),
+                ).build()
+
+        client.newCall(Request.Builder().url(server.url("/protected")).build()).execute().close()
+
+        assertTrue(reliability.isManualVerificationRequired(server.hostName))
+    }
+
+    @Test
+    fun pageContentUnexpectedReturnsHtmlForTheParser() {
+        server.enqueue(cloudflareChallenge())
+        val client =
+            clientWithRenderer {
+                CloudflareRenderOutcome.PageContentUnexpected(
+                    CloudflareRenderedPage("<html><body>settled but wrong shape</body></html>", it.url),
+                )
+            }
+
+        client.newCall(Request.Builder().url(server.url("/chapter/9")).build()).execute().use { response ->
+            assertEquals(200, response.code)
+            assertEquals(
+                "settled but wrong shape",
+                response.body
+                    ?.string()
+                    ?.substringAfter("<body>")
+                    ?.substringBefore("</body>"),
+            )
+            assertEquals("1", response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER))
+        }
+    }
+
+    @Test
+    fun originHttpErrorSurfacesTheStatusForPerJobFailure() {
+        server.enqueue(cloudflareChallenge())
+        val client = clientWithRenderer { CloudflareRenderOutcome.OriginHttpError(404) }
+
+        client.newCall(Request.Builder().url(server.url("/chapter/removed")).build()).execute().use { response ->
+            assertEquals(404, response.code)
+        }
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun transportErrorThrowsRetryableIoException() {
+        server.enqueue(cloudflareChallenge())
+        val client = clientWithRenderer { CloudflareRenderOutcome.TransportError }
+
+        val error =
+            runCatching {
+                client.newCall(Request.Builder().url(server.url("/chapter/1")).build()).execute()
+            }.exceptionOrNull()
+
+        assertTrue(error is IOException)
+    }
+
+    @Test
     fun normalResponseNeverStartsBrowserRenderer() {
         server.enqueue(MockResponse().setBody("normal"))
         var rendererCalled = false
         val client =
             clientWithRenderer {
                 rendererCalled = true
-                null
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<html></html>", it.url))
             }
 
         client
@@ -125,7 +198,10 @@ class CloudflareBypassInterceptorTest {
                 .setHeader("cf-mitigated", "challenge")
                 .setBody("<html><title>Just a moment...</title></html>"),
         )
-        val client = clientWithRenderer { request -> CloudflareRenderedPage("<html><body>browser</body></html>", request.url) }
+        val client =
+            clientWithRenderer {
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<html><body>browser</body></html>", it.url))
+            }
 
         client.newCall(Request.Builder().url(server.url("/protected")).build()).execute().use { response ->
             assertEquals(
@@ -148,8 +224,10 @@ class CloudflareBypassInterceptorTest {
                 .Builder()
                 .addInterceptor(
                     CloudflareBypassInterceptor(
-                        CloudflarePageRenderer { request ->
-                            CloudflareRenderedPage("<html><body>sticky browser</body></html>", request.url)
+                        CloudflarePageRenderer {
+                            CloudflareRenderOutcome.Rendered(
+                                CloudflareRenderedPage("<html><body>sticky browser</body></html>", it.url),
+                            )
                         },
                         reliability,
                     ),
@@ -160,7 +238,27 @@ class CloudflareBypassInterceptorTest {
         assertEquals(0, server.requestCount)
     }
 
-    private fun clientWithRenderer(render: (CloudflareWebViewRequest) -> CloudflareRenderedPage?): OkHttpClient =
+    @Test
+    fun stickyTransportOriginErrorSurfacesStatusWithoutOkHttpProbe() {
+        val reliability = SourceReliabilityCoordinator()
+        reliability.recordChallengeDetected(server.hostName)
+        val client =
+            OkHttpClient
+                .Builder()
+                .addInterceptor(
+                    CloudflareBypassInterceptor(
+                        CloudflarePageRenderer { CloudflareRenderOutcome.OriginHttpError(410) },
+                        reliability,
+                    ),
+                ).build()
+
+        client.newCall(Request.Builder().url(server.url("/chapter/gone")).build()).execute().use { response ->
+            assertEquals(410, response.code)
+        }
+        assertEquals(0, server.requestCount)
+    }
+
+    private fun clientWithRenderer(render: (CloudflareWebViewRequest) -> CloudflareRenderOutcome): OkHttpClient =
         OkHttpClient
             .Builder()
             .addInterceptor(CloudflareBypassInterceptor(CloudflarePageRenderer(render)))
