@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.download.DownloadCounts
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadVerificationPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
 import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
@@ -25,6 +26,7 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
+import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -37,6 +39,7 @@ import com.vinicius741.webnovelarchiver.ui.formatRelativeTime
 import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.jobStatusDot
 import com.vinicius741.webnovelarchiver.ui.layout.queueMaxWidth
+import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeCountChip
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
@@ -214,8 +217,54 @@ private fun ScreenHost.updateQueueContent(
             addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
             addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
         }
+        appendBlockedVerificationBanner(summarySlot, queue)
     }
     adapter.submitQueue(queue, pacingSnapshots, nowMillis)
+}
+
+/**
+ * The all-pending blocked state has no failed jobs, so none of the retry-keyed solve triggers can
+ * fire: the queue looks stalled with no way out. Answer it with an explicit verify action here.
+ */
+private fun ScreenHost.appendBlockedVerificationBanner(
+    summarySlot: LinearLayout,
+    queue: List<DownloadJob>,
+) {
+    val evidence =
+        DownloadVerificationPlanning.blockedPendingEvidence(
+            jobs = queue,
+            isSourceBlocked = app.appContainer.network::isSourceBlocked,
+        ) { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id }
+    if (evidence.pendingCount == 0 || evidence.sampleUrl == null) return
+    summarySlot.addView(
+        LinearLayout(app).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(Space.MD), 0, 0)
+            addView(
+                makeText(app, "Source verification required", Type.TITLE_SMALL, ThemeManager.colors.error),
+            )
+            addView(
+                makeText(
+                    app,
+                    "Cloudflare is blocking automated access to this source; ${evidence.pendingCount} " +
+                        "queued downloads are waiting for one verification.",
+                    Type.BODY_MEDIUM,
+                    ThemeManager.colors.onSurfaceVariant,
+                ).apply { setPadding(0, dp(Space.XS), 0, 0) },
+            )
+            val verifyButton =
+                makeButton(app, "Verify access", Btn.TONAL) {
+                    showSourceAccessBlockedDialog(evidence.sampleUrl) {
+                        startDownloadForegroundService()
+                    }
+                }
+            verifyButton.layoutParams =
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(Space.SM)
+                }
+            addView(verifyButton)
+        },
+    )
 }
 
 /** Global (whole-queue) actions rendered as a stable app-bar icon strip. */

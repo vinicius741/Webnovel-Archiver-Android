@@ -377,6 +377,11 @@ class DownloadEngine(
         queue: List<DownloadJob>,
     ): DownloadProgress {
         val counts = queue.downloadCounts()
+        val blockedEvidence =
+            DownloadVerificationPlanning.blockedPendingEvidence(
+                jobs = queue,
+                isSourceBlocked = network::isSourceBlocked,
+            ) { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id }
         return DownloadProgress(
             pending = counts.pending,
             active = counts.downloading,
@@ -387,6 +392,8 @@ class DownloadEngine(
             total = counts.total,
             activeTitle = activeJob?.let { "${it.storyTitle}: ${it.chapter.title}" },
             sourceBlocked = queue.count { it.errorCategory == "source_blocked" },
+            blockedPending = blockedEvidence.pendingCount,
+            blockedPendingUrl = blockedEvidence.sampleUrl,
         )
     }
 }

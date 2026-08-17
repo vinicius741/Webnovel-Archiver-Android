@@ -282,6 +282,10 @@ data class DownloadProgress(
     val activeTitle: String?,
     /** Jobs failed as source_blocked right now; 0 means the manual circuit is closed or cleared. */
     val sourceBlocked: Int = 0,
+    /** Pending jobs held by an open manual circuit (no failed jobs left to key the solve flow off). */
+    val blockedPending: Int = 0,
+    /** A representative chapter URL for the pending-held blocked source; null when none are held. */
+    val blockedPendingUrl: String? = null,
 ) {
     val unfinished: Int
         get() = pending + active

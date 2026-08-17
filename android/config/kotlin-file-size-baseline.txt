@@ -9,7 +9,7 @@ src/main/java/com/vinicius741/webnovelarchiver/data/storage/BackupRestoreCoordin
 src/main/java/com/vinicius741/webnovelarchiver/domain/model/Models.kt=406
 src/main/java/com/vinicius741/webnovelarchiver/download/DownloadEngine.kt=427
 src/main/java/com/vinicius741/webnovelarchiver/feature/cleanup/CleanupScreen.kt=193
-src/main/java/com/vinicius741/webnovelarchiver/feature/downloads/QueueScreen.kt=527
+src/main/java/com/vinicius741/webnovelarchiver/feature/downloads/QueueScreen.kt=576
 src/main/java/com/vinicius741/webnovelarchiver/feature/reader/ReaderScreen.kt=329
 src/main/java/com/vinicius741/webnovelarchiver/feature/settings/SettingsScreen.kt=443
 src/main/java/com/vinicius741/webnovelarchiver/feature/story/StoryActions.kt=212

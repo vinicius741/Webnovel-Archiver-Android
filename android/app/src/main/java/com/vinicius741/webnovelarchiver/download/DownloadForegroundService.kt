@@ -136,8 +136,14 @@ class DownloadForegroundService : Service() {
             }
         }
         // The manual circuit closed and the blocked job(s) were retried or cleared: drop the
-        // verification prompt so it cannot outlive the state it describes.
-        if (progress.sourceBlocked == 0) cancelSourceBlockedNotification()
+        // verification prompt so it cannot outlive the state it describes. The reverse state —
+        // circuit open but only pending jobs (after a retry or a restart into persisted circuit
+        // state) — never fires the mid-download blocked callback, so re-surface the prompt here.
+        when {
+            progress.sourceBlocked == 0 && progress.blockedPending == 0 -> cancelSourceBlockedNotification()
+            progress.sourceBlocked == 0 && progress.blockedPending > 0 ->
+                progress.blockedPendingUrl?.let(::showSourceBlockedNotification)
+        }
         if (progress.unfinished == 0) {
             stopForeground(STOP_FOREGROUND_DETACH)
             stopSelf()
@@ -172,6 +178,9 @@ class DownloadForegroundService : Service() {
                 .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.download_notif_blocked_body)))
                 .setContentIntent(solveIntent)
                 .setAutoCancel(true)
+                // The pending-only block state re-posts this on every progress emission (the
+                // circuit stays open across rechecks); never alert more than the first time.
+                .setOnlyAlertOnce(true)
                 .build()
         runCatching {
             NotificationManagerCompat.from(this).notify(SOURCE_BLOCKED_NOTIFICATION_ID, notification)
