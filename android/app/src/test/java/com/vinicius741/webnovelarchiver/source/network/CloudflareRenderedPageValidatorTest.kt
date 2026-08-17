@@ -72,6 +72,32 @@ class CloudflareRenderedPageValidatorTest {
     }
 
     @Test
+    fun acceptsXenForoReaderDefaultPageRedirectToCanonicalReader() {
+        // Reader URLs are unclassified (no chapter id), so the generic path comparison decides;
+        // XenForo redirects /reader/page-1 to the bare /reader/ canonical. Regression: the loaded
+        // page was rejected as a different resource and every render timed out into the manual
+        // circuit even though the page had loaded completely and unchallenged.
+        assertTrue(
+            CloudflareRenderedPageValidator.isExpectedPage(
+                request("https://forums.spacebattles.com/threads/story-slug.1299177/reader/page-1?threadmark_category=1"),
+                "https://forums.spacebattles.com/threads/story-slug.1299177/reader/?threadmark_category=1",
+                "<html><body><article>Chapter one content</article></body></html>",
+            ),
+        )
+    }
+
+    @Test
+    fun rejectsReaderRedirectToADifferentPage() {
+        assertFalse(
+            CloudflareRenderedPageValidator.isExpectedPage(
+                request("https://forums.spacebattles.com/threads/story-slug.1299177/reader/page-2?threadmark_category=1"),
+                "https://forums.spacebattles.com/threads/story-slug.1299177/reader/?threadmark_category=1",
+                "<html><body><article>First page content</article></body></html>",
+            ),
+        )
+    }
+
+    @Test
     fun rejectsWrongOriginAndChallengeDom() {
         val request = request("https://www.scribblehub.com/series/123/story/")
 

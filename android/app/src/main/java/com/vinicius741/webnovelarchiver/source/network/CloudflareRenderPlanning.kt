@@ -266,5 +266,11 @@ internal object CloudflareRenderedPageValidator {
                 .removeSuffix("/")
                 .ifBlank { "/" }
                 .lowercase()
+                // XenForo-style pagination redirects the default first page (/reader/page-1) to the
+                // unpaginated canonical (/reader/). Equate the two, or a successfully loaded reader
+                // page is rejected as a different resource and the render times out into the manual
+                // circuit. Non-default pages (/page-2+) keep their distinguishing segment.
+                .removeSuffix("/page-1")
+                .ifBlank { "/" }
         }.getOrNull()
 }
