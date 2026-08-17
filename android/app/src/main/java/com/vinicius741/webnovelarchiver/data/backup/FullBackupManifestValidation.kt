@@ -11,6 +11,7 @@ data class FullBackupManifest(
     val config: Map<String, Any>,
     val chapterFiles: List<RestoredChapterFileIndex>,
     val metricFiles: List<RestoredMetricFileIndex>,
+    val coverFiles: List<RestoredCoverFileIndex>,
 )
 
 object FullBackupManifestValidation {
@@ -69,7 +70,8 @@ object FullBackupManifestValidation {
         if (chapterKeys.distinct().size != chapterKeys.size) {
             return "Invalid full backup: duplicate chapter entries"
         }
-        return validateMetricFiles(manifest["metricFiles"], ids.toSet())
+        validateMetricFiles(manifest["metricFiles"], ids.toSet())?.let { return it }
+        return validateCoverFiles(manifest["coverFiles"], ids.toSet())
     }
 
     /**
@@ -104,12 +106,21 @@ object FullBackupManifestValidation {
                     path = entry.getString("path"),
                 )
             }
+        val coverFiles =
+            (manifest["coverFiles"] as? List<*>).orEmpty().map { raw ->
+                val entry = raw as Map<*, *>
+                RestoredCoverFileIndex(
+                    storyId = entry.getString("storyId"),
+                    path = entry.getString("path"),
+                )
+            }
         return FullBackupManifest(
             version = BackupInputLimits.exactInt(manifest["version"]) ?: error("Invalid full backup: missing version"),
             library = stories,
             config = config,
             chapterFiles = chapterFiles,
             metricFiles = metricFiles,
+            coverFiles = coverFiles,
         )
     }
 
@@ -141,6 +152,39 @@ object FullBackupManifestValidation {
         if (metricPaths.distinct().size != metricPaths.size) return "Invalid full backup: duplicate metric paths"
         val metricStoryIds = metricEntries.map { it["storyId"] as String }
         if (metricStoryIds.distinct().size != metricStoryIds.size) return "Invalid full backup: duplicate metric entries"
+        return null
+    }
+
+    /** coverFiles is optional, mirroring metricFiles: backups written before AI covers shipped omit
+     *  it, and a restore then falls back to each story's source cover URL. */
+    private fun validateCoverFiles(
+        coverFiles: Any?,
+        ids: Set<String>,
+    ): String? {
+        if (coverFiles == null) return null
+        if (coverFiles !is List<*>) return "Invalid full backup: malformed cover file index"
+        if (coverFiles.size > ids.size) return "Invalid full backup: too many cover files"
+        val coverEntries = coverFiles.map { it as? Map<*, *> ?: return "Invalid full backup: malformed cover file index" }
+        if (
+            coverEntries.any { entry ->
+                val storyId = entry["storyId"] as? String
+                val path = entry["path"] as? String
+                storyId.isNullOrBlank() ||
+                    storyId !in ids ||
+                    path.isNullOrBlank() ||
+                    // The exporter only ever records covers under their own covers/ path, and the
+                    // staged copy relies on that tree — entries pointing elsewhere are rejected even
+                    // when the general entry allowlist would accept them (e.g. a novels/ chapter).
+                    !path.startsWith("covers/") ||
+                    !BackupInputLimits.isAllowedFullBackupEntry(path, directory = false)
+            }
+        ) {
+            return "Invalid full backup: malformed cover file index"
+        }
+        val coverPaths = coverEntries.map { it["path"] as String }
+        if (coverPaths.distinct().size != coverPaths.size) return "Invalid full backup: duplicate cover paths"
+        val coverStoryIds = coverEntries.map { it["storyId"] as String }
+        if (coverStoryIds.distinct().size != coverStoryIds.size) return "Invalid full backup: duplicate cover entries"
         return null
     }
 }

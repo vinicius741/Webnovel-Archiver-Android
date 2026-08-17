@@ -46,29 +46,45 @@ object BackupInputLimits {
         name: String,
         directory: Boolean,
     ): Boolean {
-        if (
-            name.isBlank() ||
-            name != name.trim() ||
-            name.startsWith('/') ||
-            '\\' in name ||
-            '\u0000' in name
-        ) {
-            return false
-        }
+        if (isMalformedEntryName(name)) return false
         val normalized = name.trimEnd('/')
         val parts = normalized.split('/')
         if (parts.any { it.isBlank() || it == "." || it == ".." }) return false
         if (normalized == "manifest.json") return !directory
         if (normalized == "novels") return directory
         if (normalized == "metrics") return directory
-        if (!normalized.startsWith("novels/") && !normalized.startsWith("metrics/")) return false
+        if (normalized == "covers") return directory
+        if (!normalized.startsWith("novels/") && !normalized.startsWith("metrics/") && !normalized.startsWith("covers/")) return false
         if (directory) return parts.size == 2 && parts[1].isNotBlank()
-        // novels/<story>/<chapter>.html or metrics/<story>.json — depth distinguishes the two trees.
+        // novels/<story>/<chapter>.html, metrics/<story>.json, or covers/<story>.<img> — depth
+        // and extension distinguish the three trees.
         return when {
             normalized.startsWith("novels/") -> parts.size == 3 && parts[1].isNotBlank() && parts[2].endsWith(".html", ignoreCase = true)
+            normalized.startsWith("covers/") -> isAllowedCoverFile(parts)
             else -> parts.size == 2 && parts[1].isNotBlank() && parts[1].endsWith(".json", ignoreCase = true)
         }
     }
+
+    /** Names that are blank, padded, or contain path tricks never name a real zip entry. */
+    private fun isMalformedEntryName(name: String): Boolean =
+        name.isBlank() ||
+            name != name.trim() ||
+            name.startsWith('/') ||
+            '\\' in name ||
+            '\u0000' in name
+
+    /** Cover entries sit flat at `covers/<name>` with a known image extension. */
+    private fun isAllowedCoverFile(parts: List<String>): Boolean {
+        // The size check matters: without it a dotted directory component (`covers/a.jpg/b.txt`)
+        // would validate against the directory's extension and smuggle a nested entry past the
+        // one-level tree invariant the manifest validation and cover cleanup rely on.
+        if (parts.size != 2) return false
+        val name = parts[1]
+        return name.isNotBlank() && name.substringAfterLast('.', "").lowercase() in COVER_EXTENSIONS
+    }
+
+    /** File extensions accepted for generated cover entries inside a full backup. */
+    private val COVER_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp")
 
     fun readUtf8(
         input: InputStream,

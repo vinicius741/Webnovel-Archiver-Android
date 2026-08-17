@@ -24,6 +24,7 @@ class FullBackupManifestValidationTest {
                         ),
                     ),
                 "metricFiles" to listOf(mapOf("storyId" to "story-1", "path" to "metrics/story-1.json")),
+                "coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "covers/story-1.png")),
             )
 
         val parsed = FullBackupManifestValidation.parseValidated(Gson(), manifest)
@@ -32,6 +33,7 @@ class FullBackupManifestValidationTest {
         assertEquals("story-1", parsed.library.single().id)
         assertEquals(RestoredChapterFileIndex("story-1", "chapter-1", "novels/story-1/chapter-1.html"), parsed.chapterFiles.single())
         assertEquals(RestoredMetricFileIndex("story-1", "metrics/story-1.json"), parsed.metricFiles.single())
+        assertEquals(RestoredCoverFileIndex("story-1", "covers/story-1.png"), parsed.coverFiles.single())
     }
 
     @Test
@@ -162,6 +164,58 @@ class FullBackupManifestValidationTest {
                 validManifest(
                     "library" to twoStoryLibrary,
                     "metricFiles" to listOf(metricEntry, mapOf("storyId" to "story-2", "path" to "metrics/story-1.json")),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun coverFilesOptionalAndValidatedWhenPresent() {
+        // Absent key (backups predating AI covers) is accepted — stories fall back to the source cover.
+        assertNull(FullBackupManifestValidation.validate(validManifest().minus("coverFiles")))
+        // A well-formed entry is accepted, including jpg/webp extensions the storage layer writes.
+        assertNull(
+            FullBackupManifestValidation.validate(
+                validManifest(
+                    "coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "covers/story-1.webp")),
+                ),
+            ),
+        )
+        assertEquals(
+            "Invalid full backup: malformed cover file index",
+            FullBackupManifestValidation.validate(
+                validManifest("coverFiles" to listOf(mapOf("storyId" to "missing-story", "path" to "covers/missing-story.png"))),
+            ),
+        )
+        assertEquals(
+            "Invalid full backup: malformed cover file index",
+            FullBackupManifestValidation.validate(validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1")))),
+        )
+        // Chapter-tree paths are not valid cover entries.
+        assertEquals(
+            "Invalid full backup: malformed cover file index",
+            FullBackupManifestValidation.validate(
+                validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "novels/story-1/cover.html"))),
+            ),
+        )
+        // Unknown image extensions are rejected.
+        assertEquals(
+            "Invalid full backup: malformed cover file index",
+            FullBackupManifestValidation.validate(
+                validManifest("coverFiles" to listOf(mapOf("storyId" to "story-1", "path" to "covers/story-1.gif"))),
+            ),
+        )
+        val coverEntry = mapOf("storyId" to "story-1", "path" to "covers/story-1.png")
+        // Two entries for the same story (different paths) trips the duplicate-story check; the
+        // two-story library keeps the "too many cover files" guard (size > library size) from
+        // firing first, mirroring the metric duplicate test.
+        val twoStoryLibrary = listOf(mapOf("id" to "story-1"), mapOf("id" to "story-2"))
+        assertEquals(
+            "Invalid full backup: duplicate cover entries",
+            FullBackupManifestValidation.validate(
+                validManifest(
+                    "library" to twoStoryLibrary,
+                    "coverFiles" to listOf(coverEntry, mapOf("storyId" to "story-1", "path" to "covers/story-1.webp")),
                 ),
             ),
         )

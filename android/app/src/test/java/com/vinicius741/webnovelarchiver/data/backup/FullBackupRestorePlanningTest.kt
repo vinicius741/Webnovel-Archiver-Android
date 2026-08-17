@@ -85,6 +85,33 @@ class FullBackupRestorePlanningTest {
     }
 
     @Test
+    fun retainRestoredCoverPathsKeepsOnlyManifestListedPaths() {
+        val stories =
+            mutableListOf(
+                // Matches its manifest entry: kept.
+                Story(id = "s1", aiCoverPath = "covers/s1.png"),
+                // Not in the manifest at all (hostile or hand-edited backup): dropped.
+                Story(id = "s2", aiCoverPath = "../../shared_prefs/keys.xml"),
+                // Points at a real file that is not its cover entry: dropped, never probed.
+                Story(id = "s3", aiCoverPath = "ai_settings.json"),
+                // Backups predating AI covers: null stays null.
+                Story(id = "s4"),
+            )
+        val coverFiles =
+            listOf(
+                RestoredCoverFileIndex("s1", "covers/s1.png"),
+                RestoredCoverFileIndex("s3", "covers/s3.jpg"),
+            )
+
+        FullBackupRestorePlanning.retainRestoredCoverPaths(stories, coverFiles)
+
+        assertEquals("covers/s1.png", stories[0].aiCoverPath)
+        assertNull(stories[1].aiCoverPath)
+        assertNull(stories[2].aiCoverPath)
+        assertNull(stories[3].aiCoverPath)
+    }
+
+    @Test
     fun restoreSummaryReportsNovelsAndDownloadedChapters() {
         val stories =
             listOf(

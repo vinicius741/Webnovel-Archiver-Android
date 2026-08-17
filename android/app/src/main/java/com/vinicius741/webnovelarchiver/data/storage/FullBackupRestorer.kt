@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifest
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupManifestValidation
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterFileIndex
+import com.vinicius741.webnovelarchiver.data.backup.RestoredCoverFileIndex
 import com.vinicius741.webnovelarchiver.data.backup.RestoredMetricFileIndex
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.CancellationException
@@ -61,7 +62,7 @@ internal class FullBackupRestorer(
             val staged = freshDirectory(restoreDir, "staged_root")
             val extracted = FullBackupZipExtractor.extract(zipFile, raw, restoreDir.usableSpace)
             val manifest = readAndValidateManifest(raw)
-            verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles)
+            verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles, manifest.coverFiles)
             val stories = buildStagedRoot(raw, staged, manifest)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
@@ -95,11 +96,13 @@ internal class FullBackupRestorer(
         extractedFiles: Set<String>,
         chapterFiles: List<RestoredChapterFileIndex>,
         metricFiles: List<RestoredMetricFileIndex>,
+        coverFiles: List<RestoredCoverFileIndex>,
     ) {
         val expected =
             chapterFiles.mapTo(mutableSetOf()) { it.path }.apply {
                 add("manifest.json")
                 metricFiles.forEach { add(it.path) }
+                coverFiles.forEach { add(it.path) }
             }
         check(extractedFiles == expected) {
             val unexpected = extractedFiles - expected
@@ -125,7 +128,14 @@ internal class FullBackupRestorer(
         // so restore preserves per-novel score/Patreon history. The commit step moves the entire
         // staged root into place, and initializeStorageDirectories() recreates metrics/ if absent.
         File(raw, "metrics").takeIf(File::exists)?.copyRecursively(File(staged, "metrics").apply { mkdirs() }, overwrite = true)
+        // Generated AI covers extract under raw/covers/<name>.<ext> at the story's own relative
+        // aiCoverPath; copy the tree verbatim like metrics/. initializeStorageDirectories()
+        // recreates covers/ when the backup has none.
+        File(raw, "covers").takeIf(File::exists)?.copyRecursively(File(staged, "covers").apply { mkdirs() }, overwrite = true)
         File(staged, "epubs").mkdirs()
+        // Reconcile aiCoverPath against the manifest's cover index (not the filesystem — the
+        // path comes from untrusted backup JSON; see retainRestoredCoverPaths).
+        FullBackupRestorePlanning.retainRestoredCoverPaths(stories, payload.coverFiles)
         stagingWriter.writeConfig(staged, config)
         // Full backups deliberately exclude the OpenRouter key. The commit replaces the complete
         // storage root, so explicitly carry the current device-local settings into the staged tree

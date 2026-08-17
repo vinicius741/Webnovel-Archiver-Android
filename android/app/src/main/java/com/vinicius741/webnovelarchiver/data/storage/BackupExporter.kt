@@ -48,7 +48,8 @@ internal class BackupExporter(
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
         val chapterFiles = collectChapterFiles(library)
         val metricFiles = collectMetricFiles(library)
-        val manifest = fullManifest(library, chapterFiles, metricFiles)
+        val coverFiles = collectCoverFiles(library)
+        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles)
         return File(storage.backupRoot, "webnovel_full_backup_${System.currentTimeMillis()}.zip").also { output ->
             AtomicFileWrites.writeAtomically(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
@@ -65,6 +66,11 @@ internal class BackupExporter(
                         metric.source.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
                     }
+                    coverFiles.forEach { cover ->
+                        zip.putNextEntry(ZipEntry(cover.path))
+                        cover.source.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
                 }
             }
         }
@@ -74,6 +80,7 @@ internal class BackupExporter(
         library: List<Story>,
         chapterFiles: List<FullBackupChapterFile>,
         metricFiles: List<FullBackupMetricFile>,
+        coverFiles: List<FullBackupCoverFile>,
     ): Map<String, Any?> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",
@@ -94,6 +101,10 @@ internal class BackupExporter(
             // Per-story trend history (`metrics/<id>.json`). Optional on restore: older backups omit
             // the key and restore with empty history (the storage layer's missing-file path).
             "metricFiles" to metricFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
+            // Generated AI covers. Also optional on restore: older backups omit the key and their
+            // stories fall back to the source cover URL. The path is the story's own relative
+            // aiCoverPath so the zip layout matches the on-disk covers/ tree exactly.
+            "coverFiles" to coverFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
         )
 
     private fun fullConfig(): Map<String, Any?> {
@@ -118,6 +129,7 @@ internal class BackupExporter(
         story.copy(
             epubPath = null,
             epubPaths = null,
+            aiCoverPath = null,
             chapters =
                 story.chapters
                     .map { it.copy(content = null, filePath = null, downloaded = false, downloadedAt = null) }
@@ -157,6 +169,14 @@ internal class BackupExporter(
             val source = storage.metricFile(story.id).takeIf(File::exists) ?: return@mapNotNull null
             FullBackupMetricFile(storyId = story.id, path = FullBackupPaths.metricPath(story.id), source = source)
         }
+
+    /** Collects each story's generated AI cover that is recorded and present on disk. */
+    private fun collectCoverFiles(library: List<Story>): List<FullBackupCoverFile> =
+        library.mapNotNull { story ->
+            val path = story.aiCoverPath?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val source = storage.resolveAbsolutePath(path) ?: return@mapNotNull null
+            FullBackupCoverFile(storyId = story.id, path = path, source = source)
+        }
 }
 
 private data class FullBackupChapterFile(
@@ -169,6 +189,12 @@ private data class FullBackupChapterFile(
 )
 
 private data class FullBackupMetricFile(
+    val storyId: String,
+    val path: String,
+    val source: File,
+)
+
+private data class FullBackupCoverFile(
     val storyId: String,
     val path: String,
     val source: File,

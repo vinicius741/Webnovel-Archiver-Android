@@ -32,6 +32,21 @@ class BackupInputLimitsTest {
     }
 
     @Test
+    fun allowlistAcceptsCoverTreeWithImageExtensionsOnly() {
+        // Generated AI covers live under covers/<name>.<png|jpg|jpeg|webp>.
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("covers", directory = true))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("covers/story-1.png", directory = false))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("covers/story-1.JPG", directory = false))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("covers/story%2Fid.webp", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("covers/story-1.gif", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("covers/nested/story-1.png", directory = false))
+        // A dotted directory component must not pass via the directory's own extension.
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("covers/a.jpg/b.txt", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("covers/../escape.png", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("covers/", directory = false))
+    }
+
+    @Test
     fun streamingInputLimitStopsBeforeUnboundedRead() {
         val failure =
             assertThrows(IllegalStateException::class.java) {

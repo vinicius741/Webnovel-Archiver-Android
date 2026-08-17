@@ -16,6 +16,13 @@ data class RestoredMetricFileIndex(
     val path: String,
 )
 
+/** A generated AI cover listed in a full-backup manifest, restored verbatim into `covers/` under the
+ *  story's own relative `aiCoverPath` — so the story JSON keeps resolving without rewriting it. */
+data class RestoredCoverFileIndex(
+    val storyId: String,
+    val path: String,
+)
+
 object FullBackupRestorePlanning {
     fun scrubTransientState(stories: MutableList<Story>): MutableList<Story> {
         stories.forEach { story ->
@@ -28,6 +35,28 @@ object FullBackupRestorePlanning {
                 chapter.content = null
                 chapter.filePath = null
                 chapter.downloaded = false
+            }
+        }
+        return stories
+    }
+
+    /**
+     * Keeps each story's [Story.aiCoverPath] only when it is exactly that story's validated
+     * `coverFiles` entry from the backup manifest. The path arrives inside untrusted backup JSON
+     * and is re-resolved against the live storage root after the swap, so it must never be probed
+     * on the filesystem (`File(staged, path).isFile` follows `../` traversal) — anything that is
+     * not the manifest's already-constrained flat `covers/<name>.<image>` entry falls back to the
+     * source cover URL instead. Legit backups satisfy the equality by construction (the exporter
+     * records `path = story.aiCoverPath`); backups predating AI covers carry null on both sides.
+     */
+    fun retainRestoredCoverPaths(
+        stories: MutableList<Story>,
+        coverFiles: List<RestoredCoverFileIndex>,
+    ): MutableList<Story> {
+        val restoredPaths = coverFiles.associate { it.storyId to it.path }
+        stories.forEach { story ->
+            if (story.aiCoverPath != null && story.aiCoverPath != restoredPaths[story.id]) {
+                story.aiCoverPath = null
             }
         }
         return stories
