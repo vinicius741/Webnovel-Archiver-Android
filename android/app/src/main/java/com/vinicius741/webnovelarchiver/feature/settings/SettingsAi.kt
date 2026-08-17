@@ -46,8 +46,8 @@ private var modelCatalogCache: List<OpenRouterModel>? = null
 
 /**
  * OpenRouter-backed AI feature settings: the shared API key plus the per-feature model choices
- * (description today; tags and cover art will join here). The API key is device-local and never
- * included in backups.
+ * (description and cover art today; more generators may join). The API key is device-local and
+ * never included in backups.
  */
 internal fun ScreenHost.showAiSettings() {
     val settings = repository.getAiSettings()
@@ -60,12 +60,14 @@ internal fun ScreenHost.showAiSettings() {
             ThemeManager.colors.onSurfaceVariant,
         )
         spacer(Space.MD)
-        // The model choice lives in a local var so picking from the dialog (or manual entry)
+        // The model choices live in local vars so picking from the dialog (or manual entry)
         // updates the row in place without re-rendering the screen — an unsaved API key draft
         // typed into the field must survive model selection.
         var selectedModel = settings.descriptionModel
+        var selectedImageModel = settings.imageModel
         var apiKeyField: EditText? = null
         var modelButton: android.widget.Button? = null
+        var imageModelButton: android.widget.Button? = null
         addView(
             card {
                 apiKeyField =
@@ -102,6 +104,21 @@ internal fun ScreenHost.showAiSettings() {
                         setPadding(0, dp(Space.XS), 0, dp(Space.XS))
                     },
                 )
+                spacer(Space.MD)
+                text("Cover image model", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+                spacer(Space.XS)
+                imageModelButton =
+                    makeButton(context, selectedImageModel, Btn.TONAL, R.drawable.wna_auto_awesome) {
+                        showAiImageModelPicker(selectedImageModel) { picked ->
+                            selectedImageModel = picked
+                            imageModelButton?.text = picked
+                        }
+                    }.also { button ->
+                        button.layoutParams =
+                            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                        button.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                        addView(button)
+                    }
             },
         )
         fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.MD) {
@@ -110,6 +127,7 @@ internal fun ScreenHost.showAiSettings() {
                     settings.copy(
                         apiKey = apiKeyField?.text?.toString(),
                         descriptionModel = selectedModel,
+                        imageModel = selectedImageModel,
                     ),
                 )
                 toast("AI settings saved")

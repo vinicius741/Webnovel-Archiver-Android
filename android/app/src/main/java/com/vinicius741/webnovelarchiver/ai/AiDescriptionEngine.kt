@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.ai
 
-import com.vinicius741.webnovelarchiver.cleanup.HtmlCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import timber.log.Timber
 
@@ -31,22 +30,12 @@ class AiDescriptionEngine(
             repository.story(storyId)
                 ?: throw IllegalArgumentException("Story not found")
         if (story.isArchived == true) throw IllegalStateException("Archived snapshots are read-only")
-        val contextIndices = AiDescriptionPlanning.selectContextChapters(story)
-        if (contextIndices.isEmpty()) {
+        if (AiDescriptionPlanning.selectContextChapters(story).isEmpty()) {
             throw IllegalStateException("Download at least one chapter before generating an AI description")
         }
 
         onProgress("Reading chapters...")
-        val chapters =
-            contextIndices.mapNotNull { index ->
-                val chapter = story.chapters[index]
-                val html = repository.readChapter(chapter) ?: chapter.content ?: return@mapNotNull null
-                AiDescriptionPlanning.ChapterText(
-                    number = index + 1,
-                    title = chapter.title,
-                    text = AiDescriptionPlanning.capChapterText(HtmlCleanup.htmlToFormattedText(html)),
-                )
-            }
+        val chapters = AiContextChapters.read(repository, story)
         if (chapters.isEmpty()) {
             throw IllegalStateException("Downloaded chapter files are missing; re-download the novel's chapters")
         }

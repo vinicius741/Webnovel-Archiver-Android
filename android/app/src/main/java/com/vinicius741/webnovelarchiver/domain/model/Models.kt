@@ -132,6 +132,8 @@ data class Story(
     var aiDescription: String? = null,
     /** Which synopsis the Details screen displays: true = [aiDescription], false = [description]. */
     var showAiDescription: Boolean = false,
+    /** Locally generated AI cover (storage-relative path like [epubPath]); null = source cover in use. */
+    var aiCoverPath: String? = null,
     var sourceUrl: String = "",
     /** Stable provider identity. Null only for legacy data until startup migration resolves it. */
     var sourceId: String? = null,
@@ -271,10 +273,14 @@ data class TtsSettings(
 data class AiSettings(
     val apiKey: String? = null,
     val descriptionModel: String = DEFAULT_DESCRIPTION_MODEL,
+    val imageModel: String = DEFAULT_IMAGE_MODEL,
 ) {
     companion object {
         /** Cheap default so a fresh install works without forcing a model choice first. */
         const val DEFAULT_DESCRIPTION_MODEL = "deepseek/deepseek-v4-flash-0731"
+
+        /** Default image generator for AI covers. */
+        const val DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
     }
 }
 

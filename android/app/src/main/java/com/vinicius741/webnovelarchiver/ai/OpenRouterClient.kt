@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
@@ -9,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /** One chat message in an OpenRouter chat-completions request. */
@@ -32,10 +34,38 @@ data class OpenRouterModel(
     private fun priceIsZero(price: String?): Boolean = price?.toDoubleOrNull() == 0.0
 }
 
+/**
+ * One image model from OpenRouter's image catalog (`GET /api/v1/images/models`). Unlike the chat
+ * catalog this endpoint ships no pricing, but it does list the request parameters each model
+ * accepts and the values each parameter allows — the caller uses that to send only supported
+ * parameters with in-enum values.
+ */
+data class OpenRouterImageModel(
+    val id: String,
+    val name: String,
+    /** Supported parameter name → its allowed values when the catalog enumerates them (null = unconstrained). */
+    val supportedParameters: Map<String, List<String>?> = emptyMap(),
+)
+
+/** One generated image from `POST /api/v1/images`, already base64-decoded. */
+data class OpenRouterImage(
+    val bytes: ByteArray,
+    val mediaType: String?,
+)
+
 /** OpenRouter API failure carrying a user-presentable message (mapped from HTTP status + body). */
-class OpenRouterException(
+open class OpenRouterException(
     message: String,
 ) : Exception(message)
+
+/**
+ * A chat completion that returned no text — usually a truncation flake when the model spends the
+ * whole token budget on reasoning. Distinct type so callers can retry once without retrying
+ * genuine HTTP failures (auth, credits, rate limit), where a retry cannot help.
+ */
+class OpenRouterEmptyCompletionException(
+    message: String,
+) : OpenRouterException(message)
 
 /**
  * Thin OpenRouter REST client shared by all AI features (description generation today; tags and
@@ -50,6 +80,7 @@ class OpenRouterException(
  * reflection: R8 renames wire DTO fields in release builds, which silently corrupts the payload
  * (messages lose role/content and the model returns an empty completion).
  */
+@Suppress("TooManyFunctions") // Deliberately one thin client for every AI feature's endpoints.
 class OpenRouterClient(
     private val baseUrl: String = PRODUCTION_BASE_URL,
     private val client: OkHttpClient = defaultClient(),
@@ -118,6 +149,107 @@ class OpenRouterClient(
         }
     }
 
+    /**
+     * POST /api/v1/images — generates one image from a prompt. The optional parameters
+     * ([aspectRatio], [resolution], [quality]) are included in the request only when non-null;
+     * callers pass null for anything the selected model does not support (the image catalog's
+     * `supported_parameters` decides) so the API never rejects an unknown parameter. Throws
+     * [OpenRouterException] with a friendly message for auth/credit/model/rate-limit failures.
+     */
+    suspend fun generateImage(
+        apiKey: String,
+        model: String,
+        prompt: String,
+        aspectRatio: String? = null,
+        resolution: String? = null,
+        quality: String? = null,
+    ): OpenRouterImage {
+        val body =
+            JsonObject().apply {
+                addProperty("model", model)
+                addProperty("prompt", prompt)
+                aspectRatio?.let { addProperty("aspect_ratio", it) }
+                resolution?.let { addProperty("resolution", it) }
+                quality?.let { addProperty("quality", it) }
+            }
+        val request =
+            Request
+                .Builder()
+                .url("$rootUrl/api/v1/images")
+                .header("Authorization", "Bearer $apiKey")
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+        return execute(request) { responseJson, httpCode ->
+            if (httpCode != 200) throw imageFailure(responseJson, httpCode, model)
+            parseImage(responseJson, model)
+        }
+    }
+
+    /** GET /api/v1/images/models — public image-model catalog, no auth required. Used by the cover model picker. */
+    suspend fun fetchImageModels(): List<OpenRouterImageModel> {
+        val request =
+            Request
+                .Builder()
+                .url("$rootUrl/api/v1/images/models")
+                .get()
+                .build()
+        return execute(request) { responseJson, httpCode ->
+            if (httpCode != 200) throw OpenRouterException("Could not load the OpenRouter image model list (HTTP $httpCode).")
+            val data = responseJson.getAsJsonArray("data")
+            // A 200 without a usable list (unexpected body, empty catalog) must fail loudly: the
+            // picker caches successes, so a silent empty would stick for the whole process.
+            if (data == null || data.size() == 0) {
+                throw OpenRouterException("OpenRouter returned an empty image model list. Try again in a moment.")
+            }
+            data
+                .mapNotNull { element ->
+                    val model = element.asJsonObject
+                    val id = model.string("id") ?: return@mapNotNull null
+                    OpenRouterImageModel(
+                        id = id,
+                        name = model.string("name") ?: id,
+                        supportedParameters = model.supportedParameters(),
+                    )
+                }.sortedBy { it.id }
+        }
+    }
+
+    /**
+     * The request parameters an image model supports, mapped to each parameter's allowed values
+     * when the catalog enumerates them. The image catalog ships each parameter as a map entry
+     * (`"aspect_ratio": {"type": "enum", "values": [...]}`) — so the parameter names are the map's
+     * keys, NOT a string array (treating it as an array was a release bug: Gson's
+     * [JsonObject.getAsJsonArray] casts, so every fetch crashed). The values matter as much as the
+     * names: many models accept a parameter with a narrower enum than the endpoint's global one
+     * (e.g. recraft models offer `3:4` but not `2:3`), and an out-of-enum value is rejected. A
+     * plain string array is also accepted for forward compatibility; spec entries without a
+     * `values` array mean the parameter is accepted but unconstrained.
+     */
+    private fun JsonObject.supportedParameters(): Map<String, List<String>?> {
+        val member = get("supported_parameters") ?: return emptyMap()
+        return when {
+            member.isJsonObject ->
+                member.asJsonObject.entrySet().associate { (name, spec) ->
+                    name to spec.enumeratedValues()
+                }
+            member.isJsonArray ->
+                member
+                    .asJsonArray
+                    .mapNotNull { parameter -> parameter.takeIf { it.isJsonPrimitive }?.asString }
+                    .associateWith { null }
+            else -> emptyMap()
+        }
+    }
+
+    private fun JsonElement.enumeratedValues(): List<String>? =
+        takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.get("values")
+            ?.takeIf { it.isJsonArray }
+            ?.asJsonArray
+            ?.mapNotNull { value -> value.takeIf { it.isJsonPrimitive }?.asString }
+            ?.takeIf { it.isNotEmpty() }
+
     private suspend fun <T> execute(
         request: Request,
         parse: (JsonObject, Int) -> T,
@@ -141,9 +273,45 @@ class OpenRouterClient(
                 ?.trim()
                 .orEmpty()
         if (content.isEmpty()) {
-            throw OpenRouterException("The model returned an empty description. Try again or pick a different model.")
+            throw OpenRouterEmptyCompletionException("The model returned an empty description. Try again or pick a different model.")
         }
         return content
+    }
+
+    /** The friendly [OpenRouterException] for a failed image call; the caller throws it. */
+    private fun imageFailure(
+        responseJson: JsonObject,
+        httpCode: Int,
+        model: String,
+    ): OpenRouterException =
+        when (httpCode) {
+            401 -> OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.")
+            402 -> OpenRouterException("OpenRouter reports insufficient credits for this API key.")
+            404 -> OpenRouterException("Model not found on OpenRouter: $model")
+            429 -> OpenRouterException("OpenRouter rate limit reached. Try again in a moment.")
+            else -> OpenRouterException("OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}")
+        }
+
+    private fun parseImage(
+        responseJson: JsonObject,
+        model: String,
+    ): OpenRouterImage {
+        val image =
+            responseJson
+                .getAsJsonArray("data")
+                ?.firstOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+        val base64 =
+            image
+                ?.string("b64_json")
+                ?.takeIf { it.isNotBlank() }
+                ?: throw OpenRouterException("$model returned no image. Try again or pick a different model.")
+        // One throw covers both an undecodable payload and a zero-byte decode.
+        val bytes =
+            runCatching { Base64.getDecoder().decode(base64) }.getOrNull()?.takeIf { it.isNotEmpty() }
+                ?: throw OpenRouterException("$model returned an unreadable image. Try again or pick a different model.")
+        return OpenRouterImage(bytes = bytes, mediaType = image.string("media_type"))
     }
 
     private fun serverMessage(responseJson: JsonObject): String =
@@ -176,8 +344,9 @@ class OpenRouterClient(
             OkHttpClient
                 .Builder()
                 .connectTimeout(20, TimeUnit.SECONDS)
-                // Generation on slower models can take tens of seconds; keep the read budget generous.
-                .readTimeout(90, TimeUnit.SECONDS)
+                // Text generation can take tens of seconds; image generation at 2:3 + medium
+                // quality can exceed 90s, so keep the read budget generous.
+                .readTimeout(180, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build()
     }

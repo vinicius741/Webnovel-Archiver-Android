@@ -140,4 +140,19 @@ class PreferenceNormalizationTest {
         assertEquals("sk-or-v1-old", legacy.apiKey)
         assertEquals(AiSettings.DEFAULT_DESCRIPTION_MODEL, PreferenceNormalization.aiSettings(legacy).descriptionModel)
     }
+
+    @Test
+    fun aiSettingsNormalizesImageModelWithDefaultFallback() {
+        assertEquals(
+            AiSettings.DEFAULT_IMAGE_MODEL,
+            PreferenceNormalization.aiSettings(AiSettings(imageModel = "   ")).imageModel,
+        )
+        assertEquals(
+            "x-ai/grok-imagine-image-2.0",
+            PreferenceNormalization.aiSettings(AiSettings(imageModel = " x-ai/grok-imagine-image-2.0 ")).imageModel,
+        )
+        // Documents persisted before cover generation shipped have no field: Gson supplies the default.
+        val legacy = Gson().fromJson("""{"apiKey":"k"}""", AiSettings::class.java)
+        assertEquals(AiSettings.DEFAULT_IMAGE_MODEL, legacy.imageModel)
+    }
 }

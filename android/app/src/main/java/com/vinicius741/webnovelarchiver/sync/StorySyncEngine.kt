@@ -119,6 +119,8 @@ class StorySyncEngine(
                 // must carry it forward rather than let the fresh Story reset it.
                 aiDescription = existing?.aiDescription,
                 showAiDescription = existing?.showAiDescription ?: false,
+                // Same for the locally generated cover: the source's coverUrl stays as fallback.
+                aiCoverPath = existing?.aiCoverPath,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 sourceId = provider.id,
                 status =

@@ -64,12 +64,12 @@ The API key lives only in `ai_settings.json` on the device. It is **not** part o
 requires re-entering the key. Restoring a backup on the same device preserves its existing local AI
 settings across the storage-root swap.
 
-## Extending to tags / cover art
+## Extending to other generators
 
-Future generators should reuse the same building blocks: add a `tagModel`/`coverModel` field to
-`AiSettings` plus a row on the AI Settings screen (the model-picker dialog is generic); add a
-sibling pure planning object (prompt + response cleanup) beside `AiDescriptionPlanning`; call
-`OpenRouterClient.chatCompletion` (or an image-capable endpoint) from a new engine method that
-returns a draft; surface it as a new card on `feature/ai/AiControlsScreen.kt` with the same
-preview-then-apply pattern; store results as new local-only `Story` fields carried across sync like
-`aiDescription`.
+Cover art has since shipped on this template — see `ai-cover-generation.md` for the concrete
+two-stage (text + image) variant. Future generators (e.g. tags) reuse the same building blocks:
+add a model field to `AiSettings` plus a row on the AI Settings screen (the model-picker dialog is
+generic); add a sibling pure planning object (prompt + response cleanup) beside
+`AiDescriptionPlanning`; call `OpenRouterClient` from a new engine method that returns a draft;
+surface it as a new card on the AI Controls screen with the same preview-then-apply pattern; store
+results as new local-only `Story` fields carried across sync like `aiDescription`.

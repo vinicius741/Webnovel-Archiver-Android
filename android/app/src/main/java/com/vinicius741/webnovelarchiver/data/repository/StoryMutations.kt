@@ -69,6 +69,15 @@ internal object StoryMutations {
         showAi: Boolean,
     ): Story? = latest.takeIf { it.aiDescription != null }?.copy(showAiDescription = showAi)
 
+    /** Points the story at a freshly generated cover file (path relative to the storage root). */
+    fun setAiCoverPath(
+        latest: Story,
+        path: String,
+    ): Story = latest.copy(aiCoverPath = path)
+
+    /** Drops the generated cover so the story falls back to its source [Story.coverUrl]. */
+    fun clearAiCover(latest: Story): Story = latest.copy(aiCoverPath = null)
+
     fun retainEpubPaths(
         latest: Story,
         paths: List<String>,

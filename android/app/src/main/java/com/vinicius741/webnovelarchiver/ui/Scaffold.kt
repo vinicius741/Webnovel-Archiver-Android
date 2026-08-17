@@ -12,6 +12,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -231,16 +232,17 @@ internal fun ScreenHost.coverImage(
     heightDp: Int,
     tapToOpen: Boolean,
 ): View {
-    val url = story.coverUrl?.takeIf { it.isNotBlank() }
+    // The locally generated AI cover wins over the source URL whenever its file is on disk.
+    val source: Any? = repository.coverFile(story) ?: story.coverUrl?.takeIf { it.isNotBlank() }
     val coverView: View =
-        if (url == null) {
+        if (source == null) {
             makeCoverPlaceholder(app, widthDp, heightDp)
         } else {
             makeCover(app, widthDp, heightDp)
         }
-    if (url != null) {
+    if (source != null) {
         if (tapToOpen) coverView.setOnClickListener { showCoverDialog(story) }
-        loadImage(url, coverView as ImageView)
+        loadImage(source, coverView as ImageView)
     }
     return coverView
 }

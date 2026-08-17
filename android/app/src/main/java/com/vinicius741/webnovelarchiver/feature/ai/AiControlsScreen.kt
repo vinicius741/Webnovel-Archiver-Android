@@ -38,7 +38,7 @@ import timber.log.Timber
 /*
  * Per-novel AI Controls screen: the hub for AI-generated content, reached from the Details screen's
  * "More options" menu so the Details body stays free of per-feature AI buttons as more generators
- * (tags, cover art) join. Today it hosts description generation as a preview-then-apply flow: the
+ * (e.g. tags) join. It hosts description and cover-art generation as preview-then-apply flows: an
  * engine returns a draft, the user previews it here, and only "Apply" persists it through the
  * repository. It also owns the show-AI/original synopsis preference the Details screen renders.
  */
@@ -46,6 +46,7 @@ import timber.log.Timber
 internal fun ScreenHost.showAiControls(storyId: String) {
     val story = repository.story(storyId) ?: return showDetails(storyId)
     val generating = storyOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
+    val generatingCover = storyOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_COVER }
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {
@@ -60,6 +61,18 @@ internal fun ScreenHost.showAiControls(storyId: String) {
         addAiDescriptionCard(this, story, generating)
         if (generating != null) addView(makeStoryOperationSlot(app, generating))
         aiControlsScreenState.drafts[story.id]?.let { draft -> addAiDraftPreviewCard(this, story, draft) }
+
+        section("Cover Art")
+        text(
+            "Generate a replacement cover from the novel's material. The source cover is kept " +
+                "and can be restored at any time.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
+        spacer(Space.SM)
+        addAiCoverCard(this, story, generatingCover)
+        if (generatingCover != null) addView(makeStoryOperationSlot(app, generatingCover))
+        aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
     }
     rerender = { showAiControls(storyId) }
 }
@@ -283,9 +296,9 @@ internal fun ScreenHost.discardAiDescriptionDraft(story: Story) {
     showAiControls(story.id)
 }
 
-private fun ScreenHost.frameIsAiControls(storyId: String): Boolean = frame.tag == AppRoute.AiControls(storyId).stableKey
+internal fun ScreenHost.frameIsAiControls(storyId: String): Boolean = frame.tag == AppRoute.AiControls(storyId).stableKey
 
 /** Re-renders Details when it is the visible screen, so buttons disabled by the operation re-enable. */
-private fun ScreenHost.rerenderDetailsIfVisible(storyId: String) {
+internal fun ScreenHost.rerenderDetailsIfVisible(storyId: String) {
     if (frame.tag == AppRoute.Details(storyId).stableKey) showDetails(storyId)
 }

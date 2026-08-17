@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.epub
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveUtils
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
@@ -68,10 +69,15 @@ class EpubEngine(
                 val end = chapterNumberById[chunk.last().id] ?: (chapters.indexOf(chunk.last()) + 1)
                 val filename = EpubFilename.forRange(story.title, start, end)
                 // Fetch the cover (suspend) before streaming the EPUB to its final file via a
-                // temp+rename, keeping one chapter's XHTML resident at a time. When chaptersOnly
-                // is set we skip the fetch entirely — no network round-trip, and no failed-fetch
-                // risk on a missing cover URL.
-                val coverAsset = if (chaptersOnly) null else story.coverUrl?.let { fetchCover(it) }
+                // temp+rename, keeping one chapter's XHTML resident at a time. A locally generated
+                // AI cover wins over the source URL; when chaptersOnly is set we skip both — no
+                // network round-trip, and no failed-fetch risk on a missing cover URL.
+                val coverAsset =
+                    if (chaptersOnly) {
+                        null
+                    } else {
+                        localCoverAsset(story) ?: story.coverUrl?.let { fetchCover(it) }
+                    }
                 val file =
                     storage.saveEpubStreamed(story.id, filename) { out ->
                         writeEpub(ZipOutputStream(out), story, chunk, coverAsset, chaptersOnly)
@@ -159,6 +165,21 @@ class EpubEngine(
             val extension = getCoverExtension(url, mediaType)
             CoverAsset(data, "images/cover.$extension", mediaType)
         }.getOrNull()
+
+    /** The story's generated AI cover as an EPUB asset; null when none is on disk. */
+    private fun localCoverAsset(story: Story): CoverAsset? {
+        val file = repository.coverFile(story) ?: return null
+        val data =
+            runCatching { file.readBytes() }.getOrNull() ?: return null
+        val extension = file.extension.lowercase().ifBlank { "png" }
+        val mediaType =
+            when (extension) {
+                "jpg" -> "image/jpeg"
+                "webp" -> "image/webp"
+                else -> "image/png"
+            }
+        return CoverAsset(data, "images/cover.$extension", mediaType)
+    }
 
     private fun entry(
         zip: ZipOutputStream,

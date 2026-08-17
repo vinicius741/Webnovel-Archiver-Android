@@ -469,6 +469,9 @@ class AppRepository private constructor(
         description: String,
     ): Story? = updateExistingStory(storyId) { StoryMutations.setAiDescription(it, description) }
 
+    // Cover-art transactions (setAiCover / clearAiCover / coverFile) live in AppRepositoryCovers.kt
+    // as extensions of this class, sharing the same storage monitor.
+
     /** Flips which synopsis (source vs AI) the Details screen displays; no-op before one exists. */
     suspend fun setShowAiDescription(
         storyId: String,

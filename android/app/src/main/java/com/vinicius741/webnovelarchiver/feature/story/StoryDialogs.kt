@@ -18,6 +18,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
@@ -214,17 +215,27 @@ internal fun ScreenHost.showDescriptionDialog(
 }
 
 internal fun ScreenHost.showCoverDialog(story: Story) {
-    val url = story.coverUrl?.takeIf { it.isNotBlank() } ?: return
+    // Prefer the locally generated AI cover; fall back to the source URL. Stories that had no
+    // source cover at all become zoomable once an AI cover is applied.
+    val source: Any? = repository.coverFile(story) ?: story.coverUrl?.takeIf { it.isNotBlank() } ?: return
+    showCoverZoomDialog(source, story.title)
+}
+
+/** Full-screen pinch-zoom viewer for a cover; [source] is a URL string, File, or Bitmap. */
+internal fun ScreenHost.showCoverZoomDialog(
+    source: Any?,
+    title: String,
+) {
     val dialog =
         Dialog(app).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
         }
     val image =
         ZoomableImageView(app).apply {
-            contentDescription = "${story.title} cover"
+            contentDescription = "$title cover"
             setBackgroundColor(Color.BLACK)
         }
-    loadImage(url, image)
+    loadImage(source, image)
 
     val closeButton =
         ImageView(app).apply {
@@ -241,9 +252,9 @@ internal fun ScreenHost.showCoverDialog(story: Story) {
                 )
             setOnClickListener { dialog.dismiss() }
         }
-    val title =
+    val titleView =
         TextView(app).apply {
-            text = story.title
+            text = title
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.TITLE_MEDIUM.size())
             typeface = Typeface.create(typeface, Typeface.BOLD)
@@ -257,7 +268,7 @@ internal fun ScreenHost.showCoverDialog(story: Story) {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(16), dp(12), dp(8), dp(12))
             setBackgroundColor(Color.argb(196, 0, 0, 0))
-            addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(
                 closeButton,
                 LinearLayout.LayoutParams(dp(48), dp(48)).apply {

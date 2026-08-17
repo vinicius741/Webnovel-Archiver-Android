@@ -104,5 +104,10 @@ object PreferenceNormalization {
                     .trim()
                     .takeIf { it.isNotBlank() }
                     ?: AiSettings.DEFAULT_DESCRIPTION_MODEL,
+            imageModel =
+                settings.imageModel
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?: AiSettings.DEFAULT_IMAGE_MODEL,
         )
 }

@@ -4,6 +4,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
+import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -20,6 +21,7 @@ enum class StoryOperationKind {
     CLEANUP,
     SYNC,
     AI_DESCRIPTION,
+    AI_COVER,
 }
 
 data class StoryOperationState(
@@ -84,10 +86,11 @@ class BackupExportState {
  * Transient UI state for the AI Controls screen. Holds the pending (generated but not yet applied)
  * synopsis drafts keyed by story id, so a preview survives navigating back to Details and returning
  * to the screen while the user decides. Cleared on Apply/Discard; deliberately not persisted — an
- * unapplied draft is process-transient.
+ * unapplied draft is process-transient. Cover-art drafts get their own map of image bytes.
  */
 class AiControlsScreenState {
     val drafts: MutableMap<String, String> = linkedMapOf()
+    val coverDrafts: MutableMap<String, AiCoverDraft> = linkedMapOf()
 }
 
 /** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */

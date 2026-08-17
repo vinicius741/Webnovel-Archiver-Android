@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.app
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -98,6 +99,7 @@ class AppContainer(
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     val openRouter: OpenRouterClient = OpenRouterClient()
     val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
+    val aiCoverArtEngine: AiCoverArtEngine = AiCoverArtEngine(repository, openRouter)
     private val repositoryStartup =
         RepositoryStartup {
             // One storage monitor covers the complete migration/recovery/hydration transaction.
