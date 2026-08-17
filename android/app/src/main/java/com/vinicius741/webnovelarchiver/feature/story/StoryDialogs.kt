@@ -18,7 +18,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
@@ -27,6 +26,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.ZoomableImageView
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.dp
@@ -215,9 +215,9 @@ internal fun ScreenHost.showDescriptionDialog(
 }
 
 internal fun ScreenHost.showCoverDialog(story: Story) {
-    // Prefer the locally generated AI cover; fall back to the source URL. Stories that had no
-    // source cover at all become zoomable once an AI cover is applied.
-    val source: Any? = repository.coverFile(story) ?: story.coverUrl?.takeIf { it.isNotBlank() } ?: return
+    // Whichever cover the app is currently showing (AI when active, else the source URL). Stories
+    // that had no source cover at all become zoomable once an AI cover is applied.
+    val source: Any? = activeCoverSource(story) ?: return
     showCoverZoomDialog(source, story.title)
 }
 

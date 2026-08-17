@@ -76,6 +76,17 @@ object AiCoverPlanning {
     }
 
     /**
+     * Whether the app should display the locally generated cover rather than the source one,
+     * mirroring [AiDescriptionPlanning.isAiDescriptionActive]: the toggle decides while both
+     * covers exist, and the AI cover stays active on its own when the source has none.
+     */
+    fun isAiCoverActive(story: Story): Boolean {
+        val hasAiCover = !story.aiCoverPath.isNullOrBlank()
+        val hasSourceCover = !story.coverUrl.isNullOrBlank()
+        return hasAiCover && (story.showAiCover || !hasSourceCover)
+    }
+
+    /**
      * The optional parameters for the image call. `supportedParameters` is the selected model's
      * entry from the image catalog (`GET /api/v1/images/models`); each optional parameter is sent
      * only when the model lists it, and — when the catalog also enumerates the parameter's allowed

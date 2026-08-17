@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.domain.story
 
 import com.google.gson.Gson
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
@@ -35,6 +36,33 @@ class StoryNormalizationTest {
         val snap = result.story.copy(title = result.story.title)
         assertEquals("Legacy", snap.title)
         assertEquals(PublicationStatus.unknown, snap.publicationStatus)
+    }
+
+    @Test
+    fun legacyStoryJsonKeepsAppliedAiCoverDisplayed() {
+        // Story JSON written before showAiCover existed: a recorded aiCoverPath meant the AI cover
+        // was in use, so the field's default must keep showing it instead of flipping to the
+        // source cover on upgrade (Gson applies the ctor default for absent keys).
+        val story =
+            gson.fromJson(
+                """{"id":"s1","title":"T","coverUrl":"https://x/c.jpg","aiCoverPath":"covers/s1.png","chapters":[]}""",
+                Story::class.java,
+            )
+
+        assertTrue(story.showAiCover)
+        assertTrue(AiCoverPlanning.isAiCoverActive(story))
+    }
+
+    @Test
+    fun explicitShowAiCoverPreferenceFromNewerJsonIsHonored() {
+        val story =
+            gson.fromJson(
+                """{"id":"s1","title":"T","coverUrl":"https://x/c.jpg","aiCoverPath":"covers/s1.png","showAiCover":false,"chapters":[]}""",
+                Story::class.java,
+            )
+
+        assertFalse(story.showAiCover)
+        assertFalse(AiCoverPlanning.isAiCoverActive(story))
     }
 
     @Test

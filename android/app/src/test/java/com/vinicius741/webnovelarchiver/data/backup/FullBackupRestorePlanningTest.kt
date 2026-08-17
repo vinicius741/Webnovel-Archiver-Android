@@ -89,11 +89,11 @@ class FullBackupRestorePlanningTest {
         val stories =
             mutableListOf(
                 // Matches its manifest entry: kept.
-                Story(id = "s1", aiCoverPath = "covers/s1.png"),
+                Story(id = "s1", aiCoverPath = "covers/s1.png", showAiCover = true),
                 // Not in the manifest at all (hostile or hand-edited backup): dropped.
-                Story(id = "s2", aiCoverPath = "../../shared_prefs/keys.xml"),
+                Story(id = "s2", aiCoverPath = "../../shared_prefs/keys.xml", showAiCover = true),
                 // Points at a real file that is not its cover entry: dropped, never probed.
-                Story(id = "s3", aiCoverPath = "ai_settings.json"),
+                Story(id = "s3", aiCoverPath = "ai_settings.json", showAiCover = true),
                 // Backups predating AI covers: null stays null.
                 Story(id = "s4"),
             )
@@ -106,8 +106,11 @@ class FullBackupRestorePlanningTest {
         FullBackupRestorePlanning.retainRestoredCoverPaths(stories, coverFiles)
 
         assertEquals("covers/s1.png", stories[0].aiCoverPath)
+        assertTrue(stories[0].showAiCover)
         assertNull(stories[1].aiCoverPath)
+        assertFalse(stories[1].showAiCover)
         assertNull(stories[2].aiCoverPath)
+        assertFalse(stories[2].showAiCover)
         assertNull(stories[3].aiCoverPath)
     }
 

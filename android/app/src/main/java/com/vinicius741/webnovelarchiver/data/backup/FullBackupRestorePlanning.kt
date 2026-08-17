@@ -57,6 +57,7 @@ object FullBackupRestorePlanning {
         stories.forEach { story ->
             if (story.aiCoverPath != null && story.aiCoverPath != restoredPaths[story.id]) {
                 story.aiCoverPath = null
+                story.showAiCover = false
             }
         }
         return stories

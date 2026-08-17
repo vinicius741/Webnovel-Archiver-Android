@@ -177,6 +177,36 @@ class StoryMutationsTest {
         assertNull(StoryMutations.setShowAiDescription(story(), true))
     }
 
+    @Test
+    fun setAiCoverPathSwitchesDisplayToTheGeneratedCover() {
+        val latest = story().copy(coverUrl = "https://example/cover.jpg")
+
+        val committed = StoryMutations.setAiCoverPath(latest, "covers/s.png")
+
+        assertEquals("covers/s.png", committed.aiCoverPath)
+        assertEquals("https://example/cover.jpg", committed.coverUrl)
+        assertTrue(committed.showAiCover)
+    }
+
+    @Test
+    fun setShowAiCoverTogglesOnlyWhenAnAiCoverExists() {
+        val withCover = story().copy(aiCoverPath = "covers/s.png", showAiCover = true)
+
+        assertEquals(false, StoryMutations.setShowAiCover(withCover, false)?.showAiCover)
+        assertNull(StoryMutations.setShowAiCover(story(), true))
+    }
+
+    @Test
+    fun clearAiCoverDropsTheRecordAndResetsThePreference() {
+        val latest = story().copy(coverUrl = "https://example/cover.jpg", aiCoverPath = "covers/s.png", showAiCover = true)
+
+        val committed = StoryMutations.clearAiCover(latest)
+
+        assertNull(committed.aiCoverPath)
+        assertFalse(committed.showAiCover)
+        assertEquals("https://example/cover.jpg", committed.coverUrl)
+    }
+
     private fun story(): Story =
         Story(
             id = "s",

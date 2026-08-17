@@ -93,6 +93,15 @@ object StorySyncMergePlanning {
                 } else {
                     synced.showAiDescription
                 },
+            // The AI cover gets the same protection: an apply or display-toggle completed by
+            // another flow during the network window must survive the fold.
+            aiCoverPath = onDisk.aiCoverPath ?: synced.aiCoverPath,
+            showAiCover =
+                if (onDisk.aiCoverPath != null) {
+                    onDisk.showAiCover
+                } else {
+                    synced.showAiCover
+                },
         )
     }
 

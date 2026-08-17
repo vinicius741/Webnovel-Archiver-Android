@@ -6,7 +6,7 @@
 src/main/java/com/vinicius741/webnovelarchiver/data/repository/AppRepository.kt=599
 src/main/java/com/vinicius741/webnovelarchiver/data/storage/AppStorage.kt=812
 src/main/java/com/vinicius741/webnovelarchiver/data/storage/BackupRestoreCoordinator.kt=33
-src/main/java/com/vinicius741/webnovelarchiver/domain/model/Models.kt=406
+src/main/java/com/vinicius741/webnovelarchiver/domain/model/Models.kt=415
 src/main/java/com/vinicius741/webnovelarchiver/download/DownloadEngine.kt=427
 src/main/java/com/vinicius741/webnovelarchiver/feature/cleanup/CleanupScreen.kt=193
 src/main/java/com/vinicius741/webnovelarchiver/feature/downloads/QueueScreen.kt=576

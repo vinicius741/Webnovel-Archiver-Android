@@ -3,19 +3,18 @@ package com.vinicius741.webnovelarchiver.feature.ai
 import android.graphics.BitmapFactory
 import android.view.Gravity
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
-import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.clearAiCover
+import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
+import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.details.makeStoryOperationSlot
-import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.story.showCoverZoomDialog
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -24,27 +23,30 @@ import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
+import com.vinicius741.webnovelarchiver.ui.loadImage
 import com.vinicius741.webnovelarchiver.ui.makeBadge
+import com.vinicius741.webnovelarchiver.ui.makeCover
+import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.spacer
+import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import timber.log.Timber
 
 /*
- * Cover Art section of the AI Controls screen. Mirrors the description flow: a billable two-stage
- * draft (the description model writes an image prompt from the novel's material, the image model
- * paints it) that is previewed here and persisted only on Apply. The source cover URL is never
- * modified, so "Use source cover" can always restore it.
+ * Cover Art section of the AI Controls screen: the current-state card, the show-AI/source cover
+ * preference, the generation-mode checkbox, and the preview/apply/discard/delete actions. The
+ * billable generation flows themselves (one-shot and staged, with the editable prompt in between)
+ * live in AiCoverGeneration.kt. The source cover URL is never modified, and once an AI cover is
+ * applied the user can switch between it and the source cover at any time — deleting the
+ * generated image is only for reclaiming the choice entirely.
  */
 
-/** Current-state card: the applied AI cover (or an explanatory line), plus generate/revert actions. */
+/** Current-state card: the applied AI cover, the show-AI/source preference, and the generate/delete actions. */
 internal fun ScreenHost.addAiCoverCard(
     container: LinearLayout,
     story: Story,
@@ -53,6 +55,8 @@ internal fun ScreenHost.addAiCoverCard(
     val colors = ThemeManager.colors
     val hasAiCover = !story.aiCoverPath.isNullOrBlank()
     val hasSourceCover = !story.coverUrl.isNullOrBlank()
+    val oneStep = repository.getAiSettings().coverOneStep
+    val hasPromptDraft = aiControlsScreenState.coverPrompts[story.id] != null
     // Same gating as descriptions: no context chapters means nothing to feed the text model.
     val canGenerate = story.isArchived != true && story.chapters.any { it.downloaded }
     val isBusy = storyOperation?.storyId == story.id
@@ -65,12 +69,7 @@ internal fun ScreenHost.addAiCoverCard(
                         bottomMargin = dp(Space.SM)
                     },
                 )
-                addView(
-                    coverImage(story, widthDp = 120, heightDp = 180, tapToOpen = true).apply {
-                        (layoutParams as LinearLayout.LayoutParams).marginEnd = 0
-                        (layoutParams as LinearLayout.LayoutParams).gravity = Gravity.CENTER_HORIZONTAL
-                    },
-                )
+                addAppliedAiCoverThumbnail(this, story)
             } else {
                 text(
                     if (hasSourceCover) {
@@ -82,14 +81,29 @@ internal fun ScreenHost.addAiCoverCard(
                     colors.onSurfaceVariant,
                 )
             }
+            if (hasAiCover && hasSourceCover) {
+                spacer(Space.SM)
+                addAiCoverDisplayToggleRow(this, story)
+            }
             if (canGenerate) {
+                spacer(Space.SM)
+                addAiCoverModeRow(this, story, oneStep)
+                if (!oneStep) {
+                    text(
+                        "Staged: the prompt is written first and can be edited before the image call.",
+                        Type.BODY_SMALL,
+                        colors.onSurfaceVariant,
+                    ).apply { setPadding(0, dp(Space.XS), 0, 0) }
+                }
                 spacer(Space.SM)
                 fullButton(
                     label =
                         when {
                             generating != null -> "Generating..."
-                            hasAiCover -> "Regenerate Cover"
-                            else -> "Generate Cover with AI"
+                            oneStep ->
+                                if (hasAiCover) "Regenerate Cover" else "Generate Cover with AI"
+                            hasPromptDraft -> "Regenerate Prompt"
+                            else -> "Generate Prompt with AI"
                         },
                     variant = Btn.FILLED,
                     icon = R.drawable.wna_auto_awesome,
@@ -97,10 +111,7 @@ internal fun ScreenHost.addAiCoverCard(
                     bottomMarginDp = 0,
                 ) { generateAiCoverDraft(story) }
                 if (hasAiCover) {
-                    button(
-                        if (hasSourceCover) "Use source cover" else "Remove AI cover",
-                        Btn.TEXT,
-                    ) { revertAiCover(story) }
+                    button("Delete AI cover", Btn.TEXT) { revertAiCover(story) }
                 }
             } else {
                 text(
@@ -115,6 +126,86 @@ internal fun ScreenHost.addAiCoverCard(
             }
         }
     container.addView(cardView)
+}
+
+/**
+ * The applied AI cover thumbnail — always the generated file itself, never the toggle-aware
+ * [com.vinicius741.webnovelarchiver.ui.coverImage], so this card keeps showing the AI cover even
+ * while the app displays the source one.
+ */
+private fun ScreenHost.addAppliedAiCoverThumbnail(
+    container: LinearLayout,
+    story: Story,
+) {
+    val file = repository.coverFile(story) ?: return
+    val cover = makeCover(app, 120, 180)
+    cover.layoutParams =
+        (cover.layoutParams as LinearLayout.LayoutParams).apply {
+            marginEnd = 0
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+    loadImage(file, cover)
+    cover.setOnClickListener { showCoverZoomDialog(file, story.title) }
+    container.addView(cover)
+}
+
+/** "Show AI cover" preference row; persists via [com.vinicius741.webnovelarchiver.data.repository.setShowAiCover]. */
+private fun ScreenHost.addAiCoverDisplayToggleRow(
+    container: LinearLayout,
+    story: Story,
+) {
+    var toggle: CheckBox? = null
+    container.row {
+        addView(
+            makeText(context, "Show AI cover", Type.BODY_MEDIUM, ThemeManager.colors.onSurface),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        val checkBox =
+            CheckBox(context).apply {
+                text = ""
+                isChecked = story.showAiCover
+            }
+        styledCheckBox(checkBox)
+        addView(checkBox)
+        toggle = checkBox
+    }
+    toggle!!.setOnCheckedChangeListener { _, checked ->
+        scope.launch { repository.setShowAiCover(story.id, checked) }
+    }
+}
+
+/**
+ * "Generate prompt + image in one step" preference row; persists into
+ * [com.vinicius741.webnovelarchiver.domain.model.AiSettings.coverOneStep] and re-renders so the
+ * generate button and staged hint follow the new mode immediately. Unchecked = staged generation,
+ * whose prompt editor lives in AiCoverGeneration.kt.
+ */
+private fun ScreenHost.addAiCoverModeRow(
+    container: LinearLayout,
+    story: Story,
+    oneStep: Boolean,
+) {
+    var toggle: CheckBox? = null
+    container.row {
+        addView(
+            makeText(context, "Generate prompt + image in one step", Type.BODY_MEDIUM, ThemeManager.colors.onSurface),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        val checkBox =
+            CheckBox(context).apply {
+                text = ""
+                isChecked = oneStep
+            }
+        styledCheckBox(checkBox)
+        addView(checkBox)
+        toggle = checkBox
+    }
+    toggle!!.setOnCheckedChangeListener { _, checked ->
+        scope.launch {
+            repository.saveAiSettings(repository.getAiSettings().copy(coverOneStep = checked))
+            if (frameIsAiControls(story.id)) showAiControls(story.id)
+        }
+    }
 }
 
 /** The generated cover draft (image + the prompt that produced it) with Apply/Discard actions. */
@@ -175,81 +266,6 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
     container.addView(cardView)
 }
 
-/**
- * Starts cover draft generation. Generating over an applied AI cover or a pending preview asks for
- * confirmation first — every generation makes two billable OpenRouter calls on the user's key.
- */
-internal fun ScreenHost.generateAiCoverDraft(story: Story) {
-    val model = repository.getAiSettings().imageModel
-    val hasApplied = story.aiCoverPath != null
-    val hasPendingDraft = aiControlsScreenState.coverDrafts[story.id] != null
-    if (!hasApplied && !hasPendingDraft) {
-        startAiCoverDraft(story)
-        return
-    }
-    val message =
-        "Generate a new AI cover with $model? This makes two OpenRouter calls (image prompt + image) and uses your API credits." +
-            (if (hasPendingDraft) " The pending preview will be replaced." else "")
-    confirm(message, confirmLabel = "Generate") { startAiCoverDraft(story) }
-}
-
-@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
-private fun ScreenHost.startAiCoverDraft(story: Story) {
-    if (storyOperation != null) {
-        toast("Please wait for the current operation to finish")
-        return
-    }
-    storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, "Generating cover...")
-    detailsOperationSlot = null
-    showAiControls(story.id)
-    scope.launch {
-        try {
-            val draft =
-                app.appContainer.aiCoverArtEngine.draft(story.id) { message ->
-                    app.runOnUiThread { patchAiCoverProgress(story.id, message) }
-                }
-            aiControlsScreenState.coverDrafts[story.id] = draft
-            finishAiCoverOperation(story.id)
-            if (frameIsAiControls(story.id)) {
-                showAiControls(story.id)
-            } else {
-                toast("AI cover ready — preview it under More options → AI Controls")
-                rerenderDetailsIfVisible(story.id)
-            }
-        } catch (error: Throwable) {
-            // The engine throws user-presentable messages; rethrow cancellation untouched.
-            if (error is CancellationException) throw error
-            Timber.w(error, "AI cover generation failed for %s", story.id)
-            finishAiCoverOperation(story.id)
-            toast(error.message ?: "AI cover failed")
-            if (frameIsAiControls(story.id)) showAiControls(story.id) else rerenderDetailsIfVisible(story.id)
-        }
-    }
-}
-
-/**
- * Writes the progress message straight into [storyOperation] and patches whichever progress surface
- * is visible — same in-place strategy as the description flow so the user is never pulled off this
- * screen by a full Details rebuild.
- */
-private fun ScreenHost.patchAiCoverProgress(
-    storyId: String,
-    message: String,
-) {
-    val operation = storyOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_COVER } ?: return
-    val next = operation.copy(message = message)
-    storyOperation = next
-    detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
-    if (frameIsAiControls(storyId)) showAiControls(storyId)
-}
-
-private fun ScreenHost.finishAiCoverOperation(storyId: String) {
-    if (storyOperation?.storyId == storyId && storyOperation?.kind == StoryOperationKind.AI_COVER) {
-        storyOperation = null
-        detailsOperationSlot = null
-    }
-}
-
 internal fun ScreenHost.applyAiCoverDraft(
     story: Story,
     draft: AiCoverDraft,
@@ -257,6 +273,7 @@ internal fun ScreenHost.applyAiCoverDraft(
     scope.launch {
         repository.setAiCover(story.id, draft.bytes, draft.mediaType)
         aiControlsScreenState.coverDrafts.remove(story.id)
+        aiControlsScreenState.coverPrompts.remove(story.id)
         toast("AI cover applied")
         showAiControls(story.id)
     }
@@ -268,20 +285,25 @@ internal fun ScreenHost.discardAiCoverDraft(story: Story) {
     showAiControls(story.id)
 }
 
-/** Deletes the generated cover so the story falls back to its (untouched) source cover URL. */
+/**
+ * Deletes the generated cover file and record. Switching which cover the app shows is the
+ * "Show AI cover" toggle; this is only for giving up the generated image entirely — the untouched
+ * source [Story.coverUrl] then applies again.
+ */
 internal fun ScreenHost.revertAiCover(story: Story) {
     val hasSourceCover = !story.coverUrl.isNullOrBlank()
     val message =
         if (hasSourceCover) {
-            "Use the novel's source cover again? The generated cover image will be deleted."
+            "Delete the generated cover image? The novel will go back to its source cover."
         } else {
             "Remove the generated cover? The novel will have no cover."
         }
-    confirm(message, confirmLabel = if (hasSourceCover) "Use source cover" else "Remove") {
+    confirm(message, confirmLabel = "Delete") {
         scope.launch {
             repository.clearAiCover(story.id)
             aiControlsScreenState.coverDrafts.remove(story.id)
-            toast(if (hasSourceCover) "Source cover restored" else "AI cover removed")
+            aiControlsScreenState.coverPrompts.remove(story.id)
+            toast("AI cover deleted")
             showAiControls(story.id)
         }
     }

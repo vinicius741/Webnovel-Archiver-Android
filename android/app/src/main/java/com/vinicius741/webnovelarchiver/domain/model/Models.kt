@@ -134,6 +134,13 @@ data class Story(
     var showAiDescription: Boolean = false,
     /** Locally generated AI cover (storage-relative path like [epubPath]); null = source cover in use. */
     var aiCoverPath: String? = null,
+    /**
+     * Which cover the app displays: true = [aiCoverPath], false = [coverUrl]. Defaults to true
+     * because story JSON written before this field existed showed the AI cover whenever one was
+     * recorded — display is still gated on a non-blank [aiCoverPath], same trick as
+     * [PatreonStats.membersIsEstimated].
+     */
+    var showAiCover: Boolean = true,
     var sourceUrl: String = "",
     /** Stable provider identity. Null only for legacy data until startup migration resolves it. */
     var sourceId: String? = null,
@@ -266,14 +273,16 @@ data class TtsSettings(
 )
 
 /**
- * OpenRouter-backed AI feature settings. Only description generation exists today; future
- * generators (tags, cover art) add their own model fields here so one API key serves all of
- * them. The API key is deliberately NOT part of full backups — it stays device-local.
+ * OpenRouter-backed AI feature settings: description and cover-art generation share one API key;
+ * future generators (tags) add their own model fields here. The API key is deliberately NOT part
+ * of full backups — it stays device-local.
  */
 data class AiSettings(
     val apiKey: String? = null,
     val descriptionModel: String = DEFAULT_DESCRIPTION_MODEL,
     val imageModel: String = DEFAULT_IMAGE_MODEL,
+    /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
+    val coverOneStep: Boolean = true,
 ) {
     companion object {
         /** Cheap default so a fresh install works without forcing a model choice first. */

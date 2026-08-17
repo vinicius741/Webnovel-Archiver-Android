@@ -34,5 +34,14 @@ internal suspend fun AppRepository.clearAiCover(storyId: String): Story? =
         }
     }
 
+/** Flips which cover the app displays (AI vs source) without touching either stored image. */
+internal suspend fun AppRepository.setShowAiCover(
+    storyId: String,
+    showAi: Boolean,
+): Story? =
+    updateStory(storyId) { latest ->
+        latest?.let { StoryMutations.setShowAiCover(it, showAi) }
+    }
+
 /** The story's locally generated cover file, when one is recorded and present on disk. */
 internal fun AppRepository.coverFile(story: Story): File? = storage.resolveAbsolutePath(story.aiCoverPath)

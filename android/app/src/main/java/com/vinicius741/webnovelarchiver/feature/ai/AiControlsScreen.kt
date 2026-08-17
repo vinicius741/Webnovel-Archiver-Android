@@ -50,6 +50,19 @@ internal fun ScreenHost.showAiControls(storyId: String) {
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {
+        section("Cover Art")
+        text(
+            "Generate a replacement cover from the novel's material. The source cover is kept " +
+                "and can be restored at any time.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
+        spacer(Space.SM)
+        addAiCoverCard(this, story, generatingCover)
+        if (generatingCover != null) addView(makeStoryOperationSlot(app, generatingCover))
+        aiControlsScreenState.coverPrompts[story.id]?.let { prompt -> addAiCoverPromptDraftCard(this, story, prompt) }
+        aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
+
         section("Description")
         text(
             "Generate a fresh synopsis from the novel's first downloaded chapters. The source " +
@@ -61,18 +74,6 @@ internal fun ScreenHost.showAiControls(storyId: String) {
         addAiDescriptionCard(this, story, generating)
         if (generating != null) addView(makeStoryOperationSlot(app, generating))
         aiControlsScreenState.drafts[story.id]?.let { draft -> addAiDraftPreviewCard(this, story, draft) }
-
-        section("Cover Art")
-        text(
-            "Generate a replacement cover from the novel's material. The source cover is kept " +
-                "and can be restored at any time.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
-        addAiCoverCard(this, story, generatingCover)
-        if (generatingCover != null) addView(makeStoryOperationSlot(app, generatingCover))
-        aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
     }
     rerender = { showAiControls(storyId) }
 }

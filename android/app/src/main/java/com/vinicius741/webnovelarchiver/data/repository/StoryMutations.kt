@@ -69,14 +69,32 @@ internal object StoryMutations {
         showAi: Boolean,
     ): Story? = latest.takeIf { it.aiDescription != null }?.copy(showAiDescription = showAi)
 
-    /** Points the story at a freshly generated cover file (path relative to the storage root). */
+    /**
+     * Points the story at a freshly generated cover file (path relative to the storage root).
+     * Generation always switches the display to the AI cover (the user generated it because the
+     * source one was disliked); the source stays in [Story.coverUrl] and remains one toggle away.
+     */
     fun setAiCoverPath(
         latest: Story,
         path: String,
-    ): Story = latest.copy(aiCoverPath = path)
+    ): Story =
+        latest.copy(
+            aiCoverPath = path,
+            showAiCover = true,
+        )
+
+    /** Flips which cover the app shows without deleting either stored image. */
+    fun setShowAiCover(
+        latest: Story,
+        showAi: Boolean,
+    ): Story? = latest.takeIf { !it.aiCoverPath.isNullOrBlank() }?.copy(showAiCover = showAi)
 
     /** Drops the generated cover so the story falls back to its source [Story.coverUrl]. */
-    fun clearAiCover(latest: Story): Story = latest.copy(aiCoverPath = null)
+    fun clearAiCover(latest: Story): Story =
+        latest.copy(
+            aiCoverPath = null,
+            showAiCover = false,
+        )
 
     fun retainEpubPaths(
         latest: Story,

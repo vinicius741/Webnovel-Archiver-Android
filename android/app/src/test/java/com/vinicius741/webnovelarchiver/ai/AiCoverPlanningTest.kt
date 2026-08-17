@@ -77,6 +77,33 @@ class AiCoverPlanningTest {
     }
 
     @Test
+    fun `isAiCoverActive follows the preference while both covers exist`() {
+        val story =
+            Story(
+                id = "s1",
+                title = "T",
+                coverUrl = "https://example/cover.jpg",
+                aiCoverPath = "covers/s1.png",
+            )
+
+        assert(AiCoverPlanning.isAiCoverActive(story.copy(showAiCover = true)))
+        assert(!AiCoverPlanning.isAiCoverActive(story.copy(showAiCover = false)))
+    }
+
+    @Test
+    fun `isAiCoverActive keeps the AI cover on its own when the source has none`() {
+        val story = Story(id = "s1", title = "T", aiCoverPath = "covers/s1.png", showAiCover = false)
+
+        assert(AiCoverPlanning.isAiCoverActive(story))
+    }
+
+    @Test
+    fun `isAiCoverActive is false without a generated cover`() {
+        assert(!AiCoverPlanning.isAiCoverActive(Story(id = "s1", title = "T", showAiCover = true)))
+        assert(!AiCoverPlanning.isAiCoverActive(Story(id = "s1", title = "T", aiCoverPath = " ", showAiCover = true)))
+    }
+
+    @Test
     fun `buildImageRequestParams sends every option the model supports`() {
         val params =
             AiCoverPlanning.buildImageRequestParams(

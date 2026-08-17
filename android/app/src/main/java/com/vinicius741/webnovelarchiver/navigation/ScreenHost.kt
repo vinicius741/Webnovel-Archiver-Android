@@ -86,11 +86,13 @@ class BackupExportState {
  * Transient UI state for the AI Controls screen. Holds the pending (generated but not yet applied)
  * synopsis drafts keyed by story id, so a preview survives navigating back to Details and returning
  * to the screen while the user decides. Cleared on Apply/Discard; deliberately not persisted — an
- * unapplied draft is process-transient. Cover-art drafts get their own map of image bytes.
+ * unapplied draft is process-transient. Cover-art drafts get their own map of image bytes, and
+ * staged cover generation adds an editable prompt draft between the two billable calls.
  */
 class AiControlsScreenState {
     val drafts: MutableMap<String, String> = linkedMapOf()
     val coverDrafts: MutableMap<String, AiCoverDraft> = linkedMapOf()
+    val coverPrompts: MutableMap<String, String> = linkedMapOf()
 }
 
 /** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */

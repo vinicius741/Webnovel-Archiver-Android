@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.epub
 
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveUtils
@@ -166,9 +167,11 @@ class EpubEngine(
             CoverAsset(data, "images/cover.$extension", mediaType)
         }.getOrNull()
 
-    /** The story's generated AI cover as an EPUB asset; null when none is on disk. */
+    /** The story's generated AI cover as an EPUB asset when it is the active display choice. */
     private fun localCoverAsset(story: Story): CoverAsset? {
-        val file = repository.coverFile(story) ?: return null
+        // Same active-cover rule as the UI (ui/Scaffold.kt): a source-cover preference must hold
+        // for EPUBs too, so exports embed what the app is actually showing.
+        val file = repository.coverFile(story)?.takeIf { AiCoverPlanning.isAiCoverActive(story) } ?: return null
         val data =
             runCatching { file.readBytes() }.getOrNull() ?: return null
         val extension = file.extension.lowercase().ifBlank { "png" }

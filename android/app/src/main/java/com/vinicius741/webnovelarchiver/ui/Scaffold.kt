@@ -12,6 +12,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Space
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
@@ -223,6 +224,16 @@ internal fun ScreenHost.systemBarBottom(): Int {
 }
 
 /**
+ * The cover the app should display right now: the locally generated AI cover when it is active
+ * ([AiCoverPlanning.isAiCoverActive] — the user's AI/original preference) and its file is on disk,
+ * else the source cover URL. Shared by every cover surface (cards, headers, zoom viewer) so the
+ * preference reads identically everywhere.
+ */
+internal fun ScreenHost.activeCoverSource(story: Story): Any? =
+    repository.coverFile(story)?.takeIf { AiCoverPlanning.isAiCoverActive(story) }
+        ?: story.coverUrl?.takeIf { it.isNotBlank() }
+
+/**
  * Builds a cover image (or placeholder). Returns the view without attaching it — callers
  * `addView` it into the current container, matching how `card {}` etc. behave.
  */
@@ -232,8 +243,7 @@ internal fun ScreenHost.coverImage(
     heightDp: Int,
     tapToOpen: Boolean,
 ): View {
-    // The locally generated AI cover wins over the source URL whenever its file is on disk.
-    val source: Any? = repository.coverFile(story) ?: story.coverUrl?.takeIf { it.isNotBlank() }
+    val source: Any? = activeCoverSource(story)
     val coverView: View =
         if (source == null) {
             makeCoverPlaceholder(app, widthDp, heightDp)

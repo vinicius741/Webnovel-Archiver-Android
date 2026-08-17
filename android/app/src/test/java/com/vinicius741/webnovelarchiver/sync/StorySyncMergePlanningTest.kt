@@ -85,6 +85,42 @@ class StorySyncMergePlanningTest {
     }
 
     @Test
+    fun foldKeepsAiCoverCarriedByTheSyncedStory() {
+        // StorySyncEngine carries the local AI cover onto the fresh synced Story; the fold must not
+        // drop it while folding on-disk download state back in.
+        val synced =
+            syncedStory(chapters = listOf(chapter("10", downloaded = false)))
+                .copy(aiCoverPath = "covers/s.png", showAiCover = true)
+        val onDisk =
+            syncedStory(
+                chapters =
+                    listOf(
+                        chapter("10", downloaded = true, filePath = "/chapters/10.html"),
+                    ),
+            )
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
+
+        assertEquals("covers/s.png", folded.aiCoverPath)
+        assertTrue(folded.showAiCover)
+    }
+
+    @Test
+    fun foldPreservesAiCoverAppliedOrToggledDuringSyncWindow() {
+        val staleSynced =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiCoverPath = null, showAiCover = false)
+        val currentOnDisk =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiCoverPath = "covers/s.png", showAiCover = false)
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertEquals("covers/s.png", folded.aiCoverPath)
+        assertEquals(false, folded.showAiCover)
+    }
+
+    @Test
     fun foldRecomputesPartialStatusWhenOnlySomeChaptersDownloaded() {
         val synced =
             syncedStory(

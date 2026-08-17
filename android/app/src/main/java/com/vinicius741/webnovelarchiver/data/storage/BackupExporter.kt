@@ -130,6 +130,7 @@ internal class BackupExporter(
             epubPath = null,
             epubPaths = null,
             aiCoverPath = null,
+            showAiCover = false,
             chapters =
                 story.chapters
                     .map { it.copy(content = null, filePath = null, downloaded = false, downloadedAt = null) }
