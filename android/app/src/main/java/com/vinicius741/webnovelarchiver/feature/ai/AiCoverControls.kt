@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.clearAiCover
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
+import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
 import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -272,6 +273,7 @@ internal fun ScreenHost.applyAiCoverDraft(
 ) {
     scope.launch {
         repository.setAiCover(story.id, draft.bytes, draft.mediaType)
+        repository.deleteAiCoverDraft(story.id)
         aiControlsScreenState.coverDrafts.remove(story.id)
         aiControlsScreenState.coverPrompts.remove(story.id)
         toast("AI cover applied")
@@ -281,6 +283,7 @@ internal fun ScreenHost.applyAiCoverDraft(
 
 internal fun ScreenHost.discardAiCoverDraft(story: Story) {
     aiControlsScreenState.coverDrafts.remove(story.id)
+    scope.launch { repository.deleteAiCoverDraft(story.id) }
     toast("Draft discarded")
     showAiControls(story.id)
 }
@@ -301,6 +304,7 @@ internal fun ScreenHost.revertAiCover(story: Story) {
     confirm(message, confirmLabel = "Delete") {
         scope.launch {
             repository.clearAiCover(story.id)
+            repository.deleteAiCoverDraft(story.id)
             aiControlsScreenState.coverDrafts.remove(story.id)
             aiControlsScreenState.coverPrompts.remove(story.id)
             toast("AI cover deleted")

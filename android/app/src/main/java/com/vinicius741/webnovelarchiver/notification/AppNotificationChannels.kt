@@ -31,6 +31,12 @@ internal enum class AppNotificationCategory(
         descriptionRes = R.string.tts_channel_desc,
         permissionExempt = true,
     ),
+    AI_GENERATION(
+        channelId = "webnovel_ai",
+        nameRes = R.string.ai_channel_name,
+        descriptionRes = R.string.ai_channel_desc,
+        permissionExempt = false,
+    ),
 }
 
 internal enum class NotificationCategoryStatus(

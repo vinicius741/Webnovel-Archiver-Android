@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
+import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -100,6 +101,14 @@ class AppContainer(
     val openRouter: OpenRouterClient = OpenRouterClient()
     val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
     val aiCoverArtEngine: AiCoverArtEngine = AiCoverArtEngine(repository, openRouter)
+
+    /**
+     * Cover generation on the process scope: jobs keep running through navigation and app exit,
+     * and results are persisted as drafts before anyone is told they are ready. The activity
+     * bridges this into its UI surfaces; the AI cover foreground service mirrors it in a
+     * notification so the system keeps the process alive mid-call.
+     */
+    val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
     private val repositoryStartup =
         RepositoryStartup {
             // One storage monitor covers the complete migration/recovery/hydration transaction.

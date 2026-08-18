@@ -75,10 +75,17 @@ internal fun ScreenHost.showNotifications() {
             title = "Text to Speech",
             description = "Playback controls while the app reads a chapter aloud.",
         )
+        notificationCategoryRow(
+            host = host,
+            category = AppNotificationCategory.AI_GENERATION,
+            icon = R.drawable.wna_auto_awesome,
+            title = "AI Generation",
+            description = "Progress and results while AI covers are generated in the background.",
+        )
 
         spacer(Space.SM)
         text(
-            "Turning off a category hides its notification; it does not disable downloads or text-to-speech. " +
+            "Turning off a category hides its notification; it does not disable downloads, text-to-speech, or AI generation. " +
                 "Android may still show foreground work in its running-apps panel.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,

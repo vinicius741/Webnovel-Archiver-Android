@@ -174,6 +174,10 @@ class MainActivity :
         ttsEngine = container.ttsEngine
         frame = FrameLayout(this)
         setContentView(frame)
+        // Background AI cover jobs outlive this activity; this keeps their progress + results visible.
+        // Attach only after `frame` exists: the collectors run inline on Main.immediate, and their
+        // first pass reads frame.tag when a job is already running (activity relaunch mid-generation).
+        attachAiCoverJobBridge()
         onBackPressedDispatcher.addCallback(this, backCallback)
         showStartupLoading()
         scope.launch {

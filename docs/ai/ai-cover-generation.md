@@ -44,6 +44,18 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   nouns, no "book cover" mockup, no watermark/border — and the **text model itself decides**
   whether the title fits on the cover: short titles may be typeset, long ones are shortened or
   dropped, and no other text is ever invented.
+- **Background generation**: cover jobs do not belong to the screen that started them. They run on
+  the process-wide application scope (`AiCoverJobCoordinator`) and keep running while the user
+  navigates between screens, minimizes, or leaves the app; `AiCoverForegroundService` (a
+  `dataSync` foreground service, channel `webnovel_ai` in Settings → Notifications) holds the
+  process alive for the duration and shows live progress, then posts a tappable **AI cover
+  ready / failed** notification. Each stage's result is persisted to
+  `ai_cover_drafts/<safeName(id)>.{json,<ext>}` (prompt first, image bytes before the JSON meta
+  that marks completeness) the moment it arrives, so even a process death after the API replied
+  cannot lose a billed image. Reopening AI Controls rehydrates the persisted draft (prompt-only
+  or full preview) into its card; `Apply`/`Discard`/`Delete AI cover` clear the files. Starting
+  the image stage persists the edited prompt with it, so a mid-paint death recovers the prompt
+  for a retry.
 - **Show AI cover toggle**: when both a source cover and an applied AI cover exist, a `Show AI
   cover` checkbox (mirroring the synopsis toggle) switches which one the app displays — nothing is
   deleted either way. Applying a new AI cover always switches the display to it; a story whose
@@ -97,9 +109,13 @@ applied or toggled during a sync's network window.
 | `ai/OpenRouterClient.kt` | `generateImage` (`POST /api/v1/images`, hand-built JSON per the R8 rule, base64-decoded result) and `fetchImageModels` (image catalog with `supported_parameters`). |
 | `ai/AiCoverPlanning.kt` | Pure logic: prompt-writing messages (metadata + description + chapters), prompt cleanup, image-request parameter gating on the catalog, the `isAiCoverActive` display rule, and media-type → file-extension mapping. |
 | `ai/AiCoverArtEngine.kt` | Stage orchestration: `draft` (one-shot), `draftPrompt` (stage 1), `draftImage` (stage 2, cleans the possibly user-edited prompt); caches the image-model parameter catalog per process. |
+| `ai/AiCoverJobCoordinator.kt` | Background job runner on the application scope: one cover job at a time, running state (`jobs` StateFlow) for progress surfaces, terminal `events` (result persisted before the success event fires). |
+| `ai/AiCoverForegroundService.kt` | `dataSync` foreground service mirroring job progress in a notification and posting ready/failed outcome notifications; stops itself when the coordinator goes idle. |
 | `ai/AiContextChapters.kt` | Shared capped chapter reading used by both the description and cover engines. |
+| `app/AiCoverJobUiBridge.kt` | Activity-side bridge: mirrors coordinator state into the shared `storyOperation` slot (Details progress, AI Controls gating) and surfaces terminal events as toasts/draft cards. |
+| `data/storage/AiCoverDraftStore.kt` | Pending-draft persistence under `ai_cover_drafts/` (prompt JSON + image bytes, image-first completeness marker); excluded from backups by design. |
 | `feature/ai/AiCoverControls.kt` | Cover Art section UI: state card (thumbnail, show-AI toggle, mode checkbox), draft preview, apply/discard/delete actions. |
-| `feature/ai/AiCoverGeneration.kt` | Generation flows: mode dispatch, the one-shot run, the staged prompt card + stage-1/stage-2 actions, shared progress patching. |
+| `feature/ai/AiCoverGeneration.kt` | Generation flows: mode dispatch, job launches through the coordinator + service, the staged prompt card, draft rehydration from disk. |
 | `feature/settings/SettingsAiImageModel.kt` | Image-model picker dialog + catalog cache for the AI Settings row. |
 
 Supporting pieces: `Story.aiCoverPath` + `Story.showAiCover`; `AiSettings.imageModel` +

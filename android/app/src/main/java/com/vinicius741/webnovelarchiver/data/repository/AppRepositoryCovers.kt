@@ -1,7 +1,11 @@
 package com.vinicius741.webnovelarchiver.data.repository
 
+import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
+import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /*
@@ -45,3 +49,34 @@ internal suspend fun AppRepository.setShowAiCover(
 
 /** The story's locally generated cover file, when one is recorded and present on disk. */
 internal fun AppRepository.coverFile(story: Story): File? = storage.resolveAbsolutePath(story.aiCoverPath)
+
+/*
+ * Pending (preview-only) AI cover drafts. Unlike the cover transactions above these do not mutate
+ * library state — they persist the background generation result so it survives navigation and
+ * process death until the user applies or discards it.
+ */
+
+/** Persists the staged flow's editable image prompt (stage 1 result), dropping any painted preview. */
+internal suspend fun AppRepository.saveAiCoverPromptDraft(
+    storyId: String,
+    prompt: String,
+) {
+    withContext(Dispatchers.IO) { storage.aiCoverDrafts.savePrompt(storyId, prompt) }
+}
+
+/** Persists a painted preview (with the prompt that produced it) as the story's pending draft. */
+internal suspend fun AppRepository.saveAiCoverImageDraft(
+    storyId: String,
+    draft: AiCoverDraft,
+) {
+    withContext(Dispatchers.IO) { storage.aiCoverDrafts.saveImage(storyId, draft) }
+}
+
+/** The story's persisted pending draft, or null when there is none. */
+internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDraftRecord? =
+    withContext(Dispatchers.IO) { storage.aiCoverDrafts.load(storyId) }
+
+/** Deletes the story's pending draft; called on Apply, Discard, and AI-cover deletion. */
+internal suspend fun AppRepository.deleteAiCoverDraft(storyId: String) {
+    withContext(Dispatchers.IO) { storage.aiCoverDrafts.delete(storyId) }
+}

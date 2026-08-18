@@ -53,6 +53,10 @@
       android:exported="false"
       android:foregroundServiceType="dataSync" />
     <service
+      android:name=".ai.AiCoverForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
+    <service
       android:name=".tts.TtsForegroundService"
       android:exported="false"
       android:foregroundServiceType="mediaPlayback" />

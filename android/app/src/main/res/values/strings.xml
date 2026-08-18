@@ -46,6 +46,11 @@
   <string name="tts_error_stalled">TTS playback stalled</string>
   <string name="tts_error_unknown">TTS playback failed</string>
 
+  <!-- AI cover generation notification (AiCoverForegroundService). -->
+  <string name="ai_channel_name">AI Generation</string>
+  <string name="ai_channel_desc">AI cover generation progress and results</string>
+  <string name="ai_cover_notif_active">Generating AI cover</string>
+
   <!-- Centralized user-facing error messages (Maintainability M6). -->
   <string name="error_no_file_selected">No file selected</string>
   <string name="error_invalid_backup_json">Invalid backup file: not valid JSON</string>

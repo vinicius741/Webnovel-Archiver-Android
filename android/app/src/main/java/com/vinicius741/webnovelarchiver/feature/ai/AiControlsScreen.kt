@@ -46,7 +46,12 @@ import timber.log.Timber
 internal fun ScreenHost.showAiControls(storyId: String) {
     val story = repository.story(storyId) ?: return showDetails(storyId)
     val generating = storyOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
-    val generatingCover = storyOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_COVER }
+    // Cover jobs run on the process-wide coordinator: the lookup falls back to it so a job that
+    // outlived this activity (recreated mid-run) still gates the buttons and shows its progress.
+    val generatingCover = aiCoverOperationFor(story.id)
+    // A draft generated in the background (or under a previous activity) lives on disk; pull it
+    // into the screen state so its prompt/preview card renders. No-op when state is hydrated.
+    hydrateAiCoverDraftFromStorage(story.id)
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {
