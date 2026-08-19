@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.EditText
@@ -76,7 +77,11 @@ internal fun ScreenHost.showAiSettings() {
                         settings.apiKey.orEmpty(),
                         InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
                         hint = "sk-or-v1-...",
-                    )
+                    ).apply {
+                        // setSingleLine can drop the password transformation on some Android
+                        // builds even when TYPE_TEXT_VARIATION_PASSWORD remains in inputType.
+                        transformationMethod = PasswordTransformationMethod.getInstance()
+                    }
                 spacer(Space.MD)
                 text("Description model", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
                 spacer(Space.XS)
