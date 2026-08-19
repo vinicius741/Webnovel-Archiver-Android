@@ -1,9 +1,13 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
+import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
+import java.util.UUID
 
 /**
  * A generated-but-unapplied cover draft. Nothing is persisted — the caller decides via
@@ -24,6 +28,7 @@ data class AiCoverDraft(
  * between. The returned draft is preview-only; progress is reported as short user-facing
  * messages, mirroring [AiDescriptionEngine].
  */
+@Suppress("TooGenericExceptionCaught") // Track any terminal request failure; receipt persistence remains best effort.
 class AiCoverArtEngine(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
@@ -44,7 +49,11 @@ class AiCoverArtEngine(
     suspend fun draft(
         storyId: String,
         onProgress: (String) -> Unit = {},
-    ): AiCoverDraft = draftImage(storyId, draftPrompt(storyId, onProgress), onProgress)
+    ): AiCoverDraft {
+        val operationId = UUID.randomUUID().toString()
+        val prompt = draftPrompt(storyId, onProgress, operationId)
+        return draftImage(storyId, prompt, onProgress, operationId)
+    }
 
     /**
      * Stage 1 (staged mode): reads the story's context and asks the description model for an
@@ -55,6 +64,12 @@ class AiCoverArtEngine(
     suspend fun draftPrompt(
         storyId: String,
         onProgress: (String) -> Unit = {},
+    ): String = draftPrompt(storyId, onProgress, UUID.randomUUID().toString())
+
+    private suspend fun draftPrompt(
+        storyId: String,
+        onProgress: (String) -> Unit,
+        operationId: String,
     ): String {
         val context = coverContext(storyId)
         if (AiDescriptionPlanning.selectContextChapters(context.story).isEmpty()) {
@@ -75,6 +90,7 @@ class AiCoverArtEngine(
                 context.story,
                 chapters,
                 onProgress,
+                operationId,
             )
         return AiCoverPlanning.cleanGeneratedPrompt(rawPrompt)
             ?: error("The model returned an empty image prompt. Try again or pick a different model.")
@@ -89,6 +105,13 @@ class AiCoverArtEngine(
         storyId: String,
         prompt: String,
         onProgress: (String) -> Unit = {},
+    ): AiCoverDraft = draftImage(storyId, prompt, onProgress, UUID.randomUUID().toString())
+
+    private suspend fun draftImage(
+        storyId: String,
+        prompt: String,
+        onProgress: (String) -> Unit,
+        operationId: String,
     ): AiCoverDraft {
         val context = coverContext(storyId)
         val cleanedPrompt =
@@ -97,14 +120,36 @@ class AiCoverArtEngine(
         onProgress("Painting cover with ${context.settings.imageModel}...")
         val params = AiCoverPlanning.buildImageRequestParams(imageModelParameters(context.settings.imageModel))
         val image =
-            client.generateImage(
-                context.apiKey,
-                context.settings.imageModel,
-                cleanedPrompt,
-                aspectRatio = params.aspectRatio,
-                resolution = params.resolution,
-                quality = params.quality,
-            )
+            try {
+                client.generateImage(
+                    context.apiKey,
+                    context.settings.imageModel,
+                    cleanedPrompt,
+                    aspectRatio = params.aspectRatio,
+                    resolution = params.resolution,
+                    quality = params.quality,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                recordUsage(
+                    storyId = storyId,
+                    operationId = operationId,
+                    feature = FEATURE_COVER_IMAGE,
+                    requestedModel = context.settings.imageModel,
+                    receipt = (error as? OpenRouterException)?.receipt ?: OpenRouterResponseReceipt(),
+                    outcome = OUTCOME_FAILED,
+                )
+                throw error
+            }
+        recordUsage(
+            storyId = storyId,
+            operationId = operationId,
+            feature = FEATURE_COVER_IMAGE,
+            requestedModel = context.settings.imageModel,
+            receipt = image.receipt,
+            outcome = OUTCOME_COMPLETED,
+        )
         Timber.i("AI cover drafted for %s with %s", storyId, context.settings.imageModel)
         return AiCoverDraft(prompt = cleanedPrompt, bytes = image.bytes, mediaType = image.mediaType)
     }
@@ -140,14 +185,80 @@ class AiCoverArtEngine(
         story: Story,
         chapters: List<AiDescriptionPlanning.ChapterText>,
         onProgress: (String) -> Unit,
+        operationId: String,
     ): String {
         val messages = AiCoverPlanning.buildPromptMessages(story, chapters)
         return try {
-            client.chatCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS)
+            trackedPromptCompletion(apiKey, model, messages, story.id, operationId)
         } catch (error: OpenRouterEmptyCompletionException) {
             Timber.d(error, "Empty image-prompt completion; retrying once")
             onProgress("Empty reply from the model — retrying the image prompt...")
-            client.chatCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS)
+            trackedPromptCompletion(apiKey, model, messages, story.id, operationId)
+        }
+    }
+
+    /** Runs one prompt attempt and records every terminal outcome before returning or throwing. */
+    private suspend fun trackedPromptCompletion(
+        apiKey: String,
+        model: String,
+        messages: List<OpenRouterMessage>,
+        storyId: String,
+        operationId: String,
+    ): String =
+        try {
+            client
+                .chatCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS)
+                .also { result ->
+                    recordUsage(
+                        storyId = storyId,
+                        operationId = operationId,
+                        feature = FEATURE_COVER_PROMPT,
+                        requestedModel = model,
+                        receipt = result.receipt,
+                        outcome = OUTCOME_COMPLETED,
+                    )
+                }.content
+        } catch (error: OpenRouterEmptyCompletionException) {
+            recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, error.receipt, OUTCOME_EMPTY)
+            throw error
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            val receipt = (error as? OpenRouterException)?.receipt ?: OpenRouterResponseReceipt()
+            recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, receipt, OUTCOME_FAILED)
+            throw error
+        }
+
+    private suspend fun recordUsage(
+        storyId: String,
+        operationId: String,
+        feature: String,
+        requestedModel: String,
+        receipt: OpenRouterResponseReceipt,
+        outcome: String,
+    ) {
+        try {
+            repository.recordAiUsage(
+                AiUsageRecord(
+                    id = UUID.randomUUID().toString(),
+                    operationId = operationId,
+                    storyId = storyId,
+                    feature = feature,
+                    model = receipt.model ?: requestedModel,
+                    generationId = receipt.generationId,
+                    promptTokens = receipt.promptTokens,
+                    completionTokens = receipt.completionTokens,
+                    totalTokens = receipt.totalTokens,
+                    reasoningTokens = receipt.reasoningTokens,
+                    cachedTokens = receipt.cachedTokens,
+                    costUsd = receipt.costUsd,
+                    outcome = outcome,
+                ),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Timber.w(error, "Could not persist AI cover usage receipt")
         }
     }
 
@@ -157,5 +268,13 @@ class AiCoverArtEngine(
         val parameters = catalog.associate { it.id to it.supportedParameters }
         imageModelParametersCache = parameters
         return parameters[model]
+    }
+
+    private companion object {
+        const val FEATURE_COVER_PROMPT = "cover_prompt"
+        const val FEATURE_COVER_IMAGE = "cover_image"
+        const val OUTCOME_COMPLETED = "completed"
+        const val OUTCOME_EMPTY = "empty"
+        const val OUTCOME_FAILED = "failed"
     }
 }

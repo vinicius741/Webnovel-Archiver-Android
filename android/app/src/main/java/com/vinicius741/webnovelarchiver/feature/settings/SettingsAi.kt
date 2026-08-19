@@ -121,6 +121,7 @@ internal fun ScreenHost.showAiSettings() {
                     }
             },
         )
+        showAiUsageSection(this) { apiKeyField?.text?.toString() }
         fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.MD) {
             scope.launch {
                 repository.saveAiSettings(

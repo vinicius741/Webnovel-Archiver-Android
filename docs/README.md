@@ -15,6 +15,7 @@ OpenRouter-backed AI features for the native app.
 |------|-------------|
 | `ai-description-generation.md` | AI-generated novel descriptions: user flow, settings/key handling, cost controls, `ai/` package map, and how to extend the layer to more generators. |
 | `ai-cover-generation.md` | AI-generated cover art: two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
+| `ai-cost-tracking.md` | Exact OpenRouter receipt capture, device-local per-request history and aggregates, live current-key counters, preview cost labels, and privacy/backup behavior. |
 
 ### `architecture/`
 

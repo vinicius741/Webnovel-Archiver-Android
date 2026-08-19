@@ -1,13 +1,18 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
+import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
+import java.util.UUID
 
 /**
  * Generates AI story description drafts from the first downloaded chapters. The draft is returned to
  * the caller (the AI Controls screen) for preview and is only persisted when the user applies it.
  * Progress is reported as short user-facing messages forwarded to the screen's progress block.
  */
+@Suppress("TooGenericExceptionCaught") // Usage must record network/runtime failures and never mask successful generation on write errors.
 class AiDescriptionEngine(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
@@ -42,11 +47,87 @@ class AiDescriptionEngine(
 
         onProgress("Writing synopsis with ${settings.descriptionModel}...")
         val messages = AiDescriptionPlanning.buildMessages(story, chapters)
-        val raw = client.chatCompletion(apiKey, settings.descriptionModel, messages, AiDescriptionPlanning.MAX_OUTPUT_TOKENS)
+        val operationId = UUID.randomUUID().toString()
+        val result =
+            try {
+                client.chatCompletion(apiKey, settings.descriptionModel, messages, AiDescriptionPlanning.MAX_OUTPUT_TOKENS)
+            } catch (error: OpenRouterEmptyCompletionException) {
+                recordUsage(
+                    storyId = storyId,
+                    operationId = operationId,
+                    feature = FEATURE_DESCRIPTION,
+                    requestedModel = settings.descriptionModel,
+                    receipt = error.receipt,
+                    outcome = OUTCOME_EMPTY,
+                )
+                throw error
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                recordUsage(
+                    storyId = storyId,
+                    operationId = operationId,
+                    feature = FEATURE_DESCRIPTION,
+                    requestedModel = settings.descriptionModel,
+                    receipt = (error as? OpenRouterException)?.receipt ?: OpenRouterResponseReceipt(),
+                    outcome = OUTCOME_FAILED,
+                )
+                throw error
+            }
+        recordUsage(
+            storyId = storyId,
+            operationId = operationId,
+            feature = FEATURE_DESCRIPTION,
+            requestedModel = settings.descriptionModel,
+            receipt = result.receipt,
+            outcome = OUTCOME_COMPLETED,
+        )
         val description =
-            AiDescriptionPlanning.cleanGeneratedDescription(raw)
+            AiDescriptionPlanning.cleanGeneratedDescription(result.content)
                 ?: throw IllegalStateException("The model returned an empty description. Try again or pick a different model.")
         Timber.i("AI description drafted for %s with %s", storyId, settings.descriptionModel)
         return description
+    }
+
+    private suspend fun recordUsage(
+        storyId: String,
+        operationId: String,
+        feature: String,
+        requestedModel: String,
+        receipt: OpenRouterResponseReceipt,
+        outcome: String,
+    ) {
+        try {
+            repository.recordAiUsage(
+                AiUsageRecord(
+                    id = UUID.randomUUID().toString(),
+                    operationId = operationId,
+                    storyId = storyId,
+                    feature = feature,
+                    model = receipt.model ?: requestedModel,
+                    generationId = receipt.generationId,
+                    promptTokens = receipt.promptTokens,
+                    completionTokens = receipt.completionTokens,
+                    totalTokens = receipt.totalTokens,
+                    reasoningTokens = receipt.reasoningTokens,
+                    cachedTokens = receipt.cachedTokens,
+                    costUsd = receipt.costUsd,
+                    outcome = outcome,
+                ),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            // A full or unavailable disk must not turn an already-billed, successful generation
+            // into an apparent model failure. Live key totals remain available in Settings.
+            Timber.w(error, "Could not persist AI description usage receipt")
+        }
+    }
+
+    private companion object {
+        const val FEATURE_DESCRIPTION = "description"
+        const val OUTCOME_COMPLETED = "completed"
+        const val OUTCOME_EMPTY = "empty"
+        const val OUTCOME_FAILED = "failed"
     }
 }

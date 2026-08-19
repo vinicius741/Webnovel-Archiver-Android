@@ -36,12 +36,12 @@ class OpenRouterClientTest {
             server.enqueue(
                 MockResponse().setBody(
                     """
-                    {"choices":[{"message":{"role":"assistant","content":"  A cursed blade, a stubborn farmer.  "}}]}
+                    {"id":"gen-chat-1","model":"deepseek/deepseek-v4-flash-0731:free","choices":[{"message":{"role":"assistant","content":"  A cursed blade, a stubborn farmer.  "}}],"usage":{"prompt_tokens":123,"completion_tokens":17,"total_tokens":140,"reasoning_tokens":4,"prompt_tokens_details":{"cached_tokens":9},"cost":0.0000012300000000000001}}
                     """.trimIndent(),
                 ),
             )
 
-            val content =
+            val result =
                 client.chatCompletion(
                     apiKey = "sk-or-v1-test",
                     model = "deepseek/deepseek-v4-flash-0731",
@@ -49,7 +49,15 @@ class OpenRouterClientTest {
                     maxTokens = 700,
                 )
 
-            assertEquals("A cursed blade, a stubborn farmer.", content)
+            assertEquals("A cursed blade, a stubborn farmer.", result.content)
+            assertEquals("gen-chat-1", result.receipt.generationId)
+            assertEquals("deepseek/deepseek-v4-flash-0731:free", result.receipt.model)
+            assertEquals(123L, result.receipt.promptTokens)
+            assertEquals(17L, result.receipt.completionTokens)
+            assertEquals(140L, result.receipt.totalTokens)
+            assertEquals(4L, result.receipt.reasoningTokens)
+            assertEquals(9L, result.receipt.cachedTokens)
+            assertEquals("0.0000012300000000000001", result.receipt.costUsd)
             val recorded = server.takeRequest()
             assertEquals("/api/v1/chat/completions", recorded.path)
             assertEquals("Bearer sk-or-v1-test", recorded.getHeader("Authorization"))
@@ -81,9 +89,34 @@ class OpenRouterClientTest {
         }
 
     @Test
+    fun `chatCompletion keeps a billing receipt attached to an HTTP failure`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(429)
+                    .setBody(
+                        """{"id":"gen-failed","error":{"message":"upstream stopped"},"usage":{"prompt_tokens":12,"total_tokens":12,"cost":"0.00003"}}""",
+                    ),
+            )
+
+            val error =
+                runCatching {
+                    client.chatCompletion("key", "m", listOf(OpenRouterMessage("user", "hi")), 10)
+                }.exceptionOrNull() as OpenRouterException
+
+            assertEquals("gen-failed", error.receipt?.generationId)
+            assertEquals(12L, error.receipt?.promptTokens)
+            assertEquals("0.00003", error.receipt?.costUsd)
+        }
+
+    @Test
     fun `chatCompletion rejects an empty completion`() =
         runBlocking {
-            server.enqueue(MockResponse().setBody("""{"choices":[{"message":{"content":"   "}}]}"""))
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"id":"gen-empty-1","model":"m:provider","choices":[{"message":{"content":"   "}}],"usage":{"prompt_tokens":8,"completion_tokens":0,"total_tokens":8,"cost":"0.00000007"}}""",
+                ),
+            )
 
             val error =
                 runCatching {
@@ -93,6 +126,11 @@ class OpenRouterClientTest {
             // The dedicated type marks empty completions as retryable flakes, unlike HTTP failures.
             assertTrue(error is OpenRouterEmptyCompletionException)
             assertTrue(error?.message?.contains("empty") == true)
+            val empty = error as OpenRouterEmptyCompletionException
+            assertEquals("gen-empty-1", empty.receipt.generationId)
+            assertEquals("m:provider", empty.receipt.model)
+            assertEquals(8L, empty.receipt.promptTokens)
+            assertEquals("0.00000007", empty.receipt.costUsd)
         }
 
     @Test
@@ -137,7 +175,7 @@ class OpenRouterClientTest {
             val base64 = Base64.getEncoder().encodeToString(imageBytes)
             server.enqueue(
                 MockResponse().setBody(
-                    """{"created":1,"data":[{"b64_json":"$base64","media_type":"image/png"}],"usage":{"cost":0.04}}""",
+                    """{"id":"gen-image-1","model":"x-ai/grok-imagine-image-2.0:provider","created":1,"data":[{"b64_json":"$base64","media_type":"image/png"}],"usage":{"prompt_tokens":31,"completion_tokens":1,"total_tokens":32,"cost":0.04000000000000001}}""",
                 ),
             )
 
@@ -153,6 +191,12 @@ class OpenRouterClientTest {
 
             assertTrue(image.bytes.contentEquals(imageBytes))
             assertEquals("image/png", image.mediaType)
+            assertEquals("gen-image-1", image.receipt.generationId)
+            assertEquals("x-ai/grok-imagine-image-2.0:provider", image.receipt.model)
+            assertEquals(31L, image.receipt.promptTokens)
+            assertEquals(1L, image.receipt.completionTokens)
+            assertEquals(32L, image.receipt.totalTokens)
+            assertEquals("0.04000000000000001", image.receipt.costUsd)
             val recorded = server.takeRequest()
             assertEquals("/api/v1/images", recorded.path)
             assertEquals("Bearer sk-or-v1-test", recorded.getHeader("Authorization"))
@@ -177,6 +221,31 @@ class OpenRouterClientTest {
             assert(!body.contains("aspect_ratio"))
             assert(!body.contains("resolution"))
             assert(!body.contains("quality"))
+        }
+
+    @Test
+    fun `fetchCurrentKeyUsage parses exact decimal counters and reset`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"data":{"usage":0.12345678901234567890,"usage_daily":"0.01000000000000000001","usage_weekly":1.25,"usage_monthly":2.50000000000000000009,"limit":10.00000000000000000001,"limit_remaining":9.87654321098765432109,"limit_reset":"2026-08-20T00:00:00Z"}}
+                    """.trimIndent(),
+                ),
+            )
+
+            val usage = client.fetchCurrentKeyUsage("sk-or-v1-test")
+
+            assertEquals("0.12345678901234567890", usage.usage)
+            assertEquals("0.01000000000000000001", usage.usageDaily)
+            assertEquals("1.25", usage.usageWeekly)
+            assertEquals("2.50000000000000000009", usage.usageMonthly)
+            assertEquals("10.00000000000000000001", usage.limit)
+            assertEquals("9.87654321098765432109", usage.limitRemaining)
+            assertEquals("2026-08-20T00:00:00Z", usage.limitReset)
+            val request = server.takeRequest()
+            assertEquals("/api/v1/key", request.path)
+            assertEquals("Bearer sk-or-v1-test", request.getHeader("Authorization"))
         }
 
     @Test

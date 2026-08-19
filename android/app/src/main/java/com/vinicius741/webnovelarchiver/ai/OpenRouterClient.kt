@@ -13,60 +13,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
-/** One chat message in an OpenRouter chat-completions request. */
-data class OpenRouterMessage(
-    val role: String,
-    val content: String,
-)
-
-/** One model from OpenRouter's public catalog (`GET /api/v1/models`). */
-data class OpenRouterModel(
-    val id: String,
-    val name: String,
-    /** USD price per prompt token, as a string (the catalog ships decimal strings). Null when absent. */
-    val promptPricePerToken: String?,
-    /** USD price per completion token, as a string. Null when absent. */
-    val completionPricePerToken: String?,
-) {
-    val isFree: Boolean
-        get() = priceIsZero(promptPricePerToken) && priceIsZero(completionPricePerToken)
-
-    private fun priceIsZero(price: String?): Boolean = price?.toDoubleOrNull() == 0.0
-}
-
-/**
- * One image model from OpenRouter's image catalog (`GET /api/v1/images/models`). Unlike the chat
- * catalog this endpoint ships no pricing, but it does list the request parameters each model
- * accepts and the values each parameter allows — the caller uses that to send only supported
- * parameters with in-enum values.
- */
-data class OpenRouterImageModel(
-    val id: String,
-    val name: String,
-    /** Supported parameter name → its allowed values when the catalog enumerates them (null = unconstrained). */
-    val supportedParameters: Map<String, List<String>?> = emptyMap(),
-)
-
-/** One generated image from `POST /api/v1/images`, already base64-decoded. */
-data class OpenRouterImage(
-    val bytes: ByteArray,
-    val mediaType: String?,
-)
-
-/** OpenRouter API failure carrying a user-presentable message (mapped from HTTP status + body). */
-open class OpenRouterException(
-    message: String,
-) : Exception(message)
-
-/**
- * A chat completion that returned no text — usually a truncation flake when the model spends the
- * whole token budget on reasoning. Distinct type so callers can retry once without retrying
- * genuine HTTP failures (auth, credits, rate limit), where a retry cannot help.
- */
-class OpenRouterEmptyCompletionException(
-    message: String,
-) : OpenRouterException(message)
-
 /**
  * Thin OpenRouter REST client shared by all AI features (description generation today; tags and
  * cover art later). Deliberately does NOT ride the app's [com.vinicius741.webnovelarchiver.source.network.NetworkClient]:
@@ -88,7 +34,8 @@ class OpenRouterClient(
     private val rootUrl = baseUrl.trimEnd('/')
 
     /**
-     * POST /api/v1/chat/completions. Returns the first choice's message content; throws
+     * POST /api/v1/chat/completions. Returns the first choice's message content and provider
+     * receipt; throws
      * [OpenRouterException] with a friendly message for auth/credit/model/rate-limit failures.
      */
     suspend fun chatCompletion(
@@ -96,7 +43,7 @@ class OpenRouterClient(
         model: String,
         messages: List<OpenRouterMessage>,
         maxTokens: Int,
-    ): String {
+    ): OpenRouterChatCompletionResult {
         val body =
             JsonObject().apply {
                 addProperty("model", model)
@@ -111,14 +58,46 @@ class OpenRouterClient(
                 .post(body.toString().toRequestBody(JSON))
                 .build()
         return execute(request) { responseJson, httpCode ->
+            val receipt = responseReceipt(responseJson, requestedModel = model)
             when {
-                httpCode == 200 -> parseContent(responseJson)
-                httpCode == 401 -> throw OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.")
-                httpCode == 402 -> throw OpenRouterException("OpenRouter reports insufficient credits for this API key.")
-                httpCode == 404 -> throw OpenRouterException("Model not found on OpenRouter: $model")
-                httpCode == 429 -> throw OpenRouterException("OpenRouter rate limit reached. Try again in a moment.")
-                else -> throw OpenRouterException("OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}")
+                httpCode == 200 -> parseChatCompletion(responseJson, requestedModel = model)
+                httpCode == 401 -> throw OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.", receipt)
+                httpCode == 402 -> throw OpenRouterException("OpenRouter reports insufficient credits for this API key.", receipt)
+                httpCode == 404 -> throw OpenRouterException("Model not found on OpenRouter: $model", receipt)
+                httpCode == 429 -> throw OpenRouterException("OpenRouter rate limit reached. Try again in a moment.", receipt)
+                else -> throw OpenRouterException("OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}", receipt)
             }
+        }
+    }
+
+    /** GET /api/v1/key — current usage and limit counters for [apiKey]. */
+    suspend fun fetchCurrentKeyUsage(apiKey: String): OpenRouterKeyUsage {
+        val request =
+            Request
+                .Builder()
+                .url("$rootUrl/api/v1/key")
+                .header("Authorization", "Bearer $apiKey")
+                .get()
+                .build()
+        return execute(request) { responseJson, httpCode ->
+            if (httpCode != 200) {
+                when (httpCode) {
+                    401 -> throw OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.")
+                    else -> throw OpenRouterException(
+                        "Could not load OpenRouter key usage (HTTP $httpCode): ${serverMessage(responseJson)}",
+                    )
+                }
+            }
+            val data = responseJson.getAsJsonObject("data") ?: responseJson
+            OpenRouterKeyUsage(
+                usage = data.decimalString("usage"),
+                usageDaily = data.decimalString("usage_daily"),
+                usageWeekly = data.decimalString("usage_weekly"),
+                usageMonthly = data.decimalString("usage_monthly"),
+                limit = data.decimalString("limit"),
+                limitRemaining = data.decimalString("limit_remaining"),
+                limitReset = data.scalarString("limit_reset"),
+            )
         }
     }
 
@@ -256,13 +235,17 @@ class OpenRouterClient(
     ): T =
         withContext(Dispatchers.IO) {
             client.newCall(request).execute().use { response ->
-                val responseJson = runCatching { JsonParser.parseString(response.body?.string().orEmpty()) }.getOrNull()
+                val responseJson = runCatching { JsonParser.parseString(response.body.string()) }.getOrNull()
                 val root = responseJson?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
                 parse(root, response.code)
             }
         }
 
-    private fun parseContent(responseJson: JsonObject): String {
+    private fun parseChatCompletion(
+        responseJson: JsonObject,
+        requestedModel: String,
+    ): OpenRouterChatCompletionResult {
+        val receipt = responseReceipt(responseJson, requestedModel)
         val content =
             responseJson
                 .getAsJsonArray("choices")
@@ -273,9 +256,12 @@ class OpenRouterClient(
                 ?.trim()
                 .orEmpty()
         if (content.isEmpty()) {
-            throw OpenRouterEmptyCompletionException("The model returned an empty description. Try again or pick a different model.")
+            throw OpenRouterEmptyCompletionException(
+                "The model returned an empty description. Try again or pick a different model.",
+                receipt = receipt,
+            )
         }
-        return content
+        return OpenRouterChatCompletionResult(content = content, receipt = receipt)
     }
 
     /** The friendly [OpenRouterException] for a failed image call; the caller throws it. */
@@ -285,17 +271,22 @@ class OpenRouterClient(
         model: String,
     ): OpenRouterException =
         when (httpCode) {
-            401 -> OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.")
-            402 -> OpenRouterException("OpenRouter reports insufficient credits for this API key.")
-            404 -> OpenRouterException("Model not found on OpenRouter: $model")
-            429 -> OpenRouterException("OpenRouter rate limit reached. Try again in a moment.")
-            else -> OpenRouterException("OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}")
+            401 -> OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.", responseReceipt(responseJson, model))
+            402 -> OpenRouterException("OpenRouter reports insufficient credits for this API key.", responseReceipt(responseJson, model))
+            404 -> OpenRouterException("Model not found on OpenRouter: $model", responseReceipt(responseJson, model))
+            429 -> OpenRouterException("OpenRouter rate limit reached. Try again in a moment.", responseReceipt(responseJson, model))
+            else ->
+                OpenRouterException(
+                    "OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}",
+                    responseReceipt(responseJson, model),
+                )
         }
 
     private fun parseImage(
         responseJson: JsonObject,
         model: String,
     ): OpenRouterImage {
+        val receipt = responseReceipt(responseJson, requestedModel = model)
         val image =
             responseJson
                 .getAsJsonArray("data")
@@ -306,12 +297,43 @@ class OpenRouterClient(
             image
                 ?.string("b64_json")
                 ?.takeIf { it.isNotBlank() }
-                ?: throw OpenRouterException("$model returned no image. Try again or pick a different model.")
+                ?: throw OpenRouterException("$model returned no image. Try again or pick a different model.", receipt)
         // One throw covers both an undecodable payload and a zero-byte decode.
         val bytes =
             runCatching { Base64.getDecoder().decode(base64) }.getOrNull()?.takeIf { it.isNotEmpty() }
-                ?: throw OpenRouterException("$model returned an unreadable image. Try again or pick a different model.")
-        return OpenRouterImage(bytes = bytes, mediaType = image.string("media_type"))
+                ?: throw OpenRouterException("$model returned an unreadable image. Try again or pick a different model.", receipt)
+        return OpenRouterImage(
+            bytes = bytes,
+            mediaType = image.string("media_type"),
+            receipt = receipt,
+        )
+    }
+
+    /** Parses receipt fields without routing provider decimals through floating-point arithmetic. */
+    private fun responseReceipt(
+        responseJson: JsonObject,
+        requestedModel: String,
+    ): OpenRouterResponseReceipt {
+        val usage = responseJson.getAsJsonObject("usage")
+        val completionDetails = usage?.getAsJsonObject("completion_tokens_details")
+        val promptDetails = usage?.getAsJsonObject("prompt_tokens_details")
+        val costDetails = usage?.getAsJsonObject("cost_details")
+        return OpenRouterResponseReceipt(
+            generationId = responseJson.scalarString("id"),
+            model = responseJson.scalarString("model") ?: requestedModel,
+            promptTokens = usage?.longValue("prompt_tokens"),
+            completionTokens = usage?.longValue("completion_tokens"),
+            totalTokens = usage?.longValue("total_tokens"),
+            reasoningTokens = usage?.longValue("reasoning_tokens") ?: completionDetails?.longValue("reasoning_tokens"),
+            cachedTokens =
+                usage?.longValue("cached_tokens")
+                    ?: promptDetails?.longValue("cached_tokens")
+                    ?: promptDetails?.longValue("cache_read_input_tokens"),
+            costUsd =
+                usage?.decimalString("cost")
+                    ?: costDetails?.decimalString("total_cost")
+                    ?: costDetails?.decimalString("upstream_inference_cost"),
+        )
     }
 
     private fun serverMessage(responseJson: JsonObject): String =
@@ -321,7 +343,18 @@ class OpenRouterClient(
             ?.takeIf { it.isNotBlank() }
             ?: "no error detail"
 
+    /** Returns a string-valued JSON primitive, including numeric primitives without Double conversion. */
+    private fun JsonObject.scalarString(key: String): String? {
+        val primitive = get(key)?.takeIf { it.isJsonPrimitive && !it.isJsonNull }?.asJsonPrimitive ?: return null
+        if (!primitive.isString && !primitive.isNumber) return null
+        return primitive.asString
+    }
+
     private fun JsonObject.string(key: String): String? = get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+
+    private fun JsonObject.decimalString(key: String): String? = scalarString(key)
+
+    private fun JsonObject.longValue(key: String): Long? = scalarString(key)?.toLongOrNull()
 
     private fun List<OpenRouterMessage>.toJsonArray(): JsonArray =
         JsonArray().apply {

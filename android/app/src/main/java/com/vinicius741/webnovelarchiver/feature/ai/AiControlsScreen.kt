@@ -5,6 +5,7 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.makeStoryOperationSlot
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
@@ -202,6 +203,11 @@ private fun ScreenHost.addAiDraftPreviewCard(
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
+            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_DESCRIPTION)?.let { cost ->
+                text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
+                    setPadding(0, 0, 0, dp(Space.SM))
+                }
+            }
             row {
                 button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiDescriptionDraft(story, draft) }
                 button("Discard", Btn.TEXT) { discardAiDescriptionDraft(story) }

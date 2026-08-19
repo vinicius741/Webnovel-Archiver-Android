@@ -4,6 +4,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
+import com.vinicius741.webnovelarchiver.domain.model.AiUsageLedger
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -52,6 +53,14 @@ internal class RestoreStagingWriter(
         settings: AiSettings,
     ) {
         writeEnvelope(File(stagedRoot, "ai_settings.json"), PreferenceNormalization.aiSettings(settings))
+    }
+
+    /** Carries the local AI spend ledger across a same-device root swap without exporting it. */
+    fun writeDeviceLocalAiUsage(
+        stagedRoot: File,
+        ledger: AiUsageLedger,
+    ) {
+        writeEnvelope(File(stagedRoot, "ai_usage.json"), ledger)
     }
 
     private fun writePrimaryPreferences(

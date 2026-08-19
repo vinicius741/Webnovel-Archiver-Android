@@ -141,6 +141,7 @@ internal class FullBackupRestorer(
         // storage root, so explicitly carry the current device-local settings into the staged tree
         // rather than clearing them as a side effect of restoring the library.
         stagingWriter.writeDeviceLocalAiSettings(staged, storage.getAiSettings())
+        stagingWriter.writeDeviceLocalAiUsage(staged, storage.aiUsage.readOrThrow())
         FullBackupRestorePlanning.applyRestoredChapterFiles(stories, payload.chapterFiles) { path ->
             File(staged, path).takeIf(File::exists)?.toRelativeString(staged)
         }

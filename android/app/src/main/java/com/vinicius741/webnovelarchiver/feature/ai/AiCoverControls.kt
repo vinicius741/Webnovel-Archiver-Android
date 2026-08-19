@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.clearAiCover
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
+import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
 import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -250,6 +251,11 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
                     Type.BODY_SMALL,
                     colors.onSurfaceVariant,
                 ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
+                latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)?.let { cost ->
+                    text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
+                        setPadding(0, 0, 0, dp(Space.SM))
+                    }
+                }
                 row {
                     button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiCoverDraft(story, draft) }
                     button("Discard", Btn.TEXT) { discardAiCoverDraft(story) }

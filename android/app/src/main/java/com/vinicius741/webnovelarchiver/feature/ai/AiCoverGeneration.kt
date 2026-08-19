@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverForegroundService
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
+import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.loadAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
@@ -148,6 +149,11 @@ internal fun ScreenHost.addAiCoverPromptDraftCard(
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
+            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_PROMPT)?.let { cost ->
+                text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
+                    setPadding(0, 0, 0, dp(Space.SM))
+                }
+            }
             row {
                 button("Generate Image", Btn.FILLED, R.drawable.wna_auto_awesome, enabled = !isBusy) {
                     generateAiCoverImageDraft(story, field.text.toString())

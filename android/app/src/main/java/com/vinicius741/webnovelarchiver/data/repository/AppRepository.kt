@@ -111,7 +111,7 @@ class AppRepository private constructor(
     private val requiredStorage: AppStorage get() = storage
 
     /** Runs a persistence mutation on the I/O dispatcher under the repository's shared lock. */
-    private suspend fun <T> storageTransaction(block: () -> T): T = withContext(ioDispatcher) { synchronized(transactionLock, block) }
+    internal suspend fun <T> storageTransaction(block: () -> T): T = withContext(ioDispatcher) { synchronized(transactionLock, block) }
 
     private val libraryById = linkedMapOf<String, Story>()
     private val libraryCache = MutableStateFlow<List<Story>>(emptyList())
@@ -153,6 +153,8 @@ class AppRepository private constructor(
     @Volatile
     private var aiSettings = AiSettings()
 
+    internal val aiUsage = AiUsageStore()
+
     @Volatile
     private var ttsSession: TtsSession? = null
 
@@ -178,6 +180,7 @@ class AppRepository private constructor(
             regexRules = storage.getRegexRules().map { it.copy() }
             ttsSettings = storage.getTtsSettings().copy()
             aiSettings = storage.getAiSettings().copy()
+            aiUsage.reload(storage.aiUsage::load)
             ttsSession = storage.getTtsSession()?.copy()
             updateFollowedStoryIds = storage.getUpdateFollowedStoryIds().toList()
             _downloadState.value = _downloadState.value.copy(library = library, queue = queue)

@@ -67,11 +67,11 @@ class AppStorage(
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
     internal val coverFiles = CoverFileStore(root, ::safeName)
     internal val aiCoverDrafts = AiCoverDraftStore(root, ::safeName)
+    internal val aiUsage = AiUsageFileStore(root, gson, appVersion)
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
     internal val restoreRoot = File(this.context.cacheDir, "webnovel_restore").apply { mkdirs() }
 
     internal val preRestoreSnapshotDir = File(this.context.cacheDir, "webnovel_restore_snapshot")
-
     internal val maintenanceCoordinator = MaintenanceCoordinator()
     val maintenanceState: StateFlow<MaintenanceState> = maintenanceCoordinator.state
 
