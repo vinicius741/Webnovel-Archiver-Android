@@ -36,13 +36,17 @@ internal fun MainActivity.attachAiCoverJobBridge() {
         coordinator.jobs.collect { jobs ->
             val job = jobs.values.firstOrNull()
             if (job != null) {
+                val promptChanged =
+                    job.persistedPrompt?.let { prompt ->
+                        aiControlsScreenState.replaceCoverPreviewWithPrompt(job.storyId, prompt)
+                    } ?: false
                 val current = storyOperation
                 val ownsSlot =
                     current == null || (current.storyId == job.storyId && current.kind == StoryOperationKind.AI_COVER)
                 if (ownsSlot) {
                     val next = StoryOperationState(job.storyId, StoryOperationKind.AI_COVER, job.message)
                     storyOperation = next
-                    if (renderedMessages[job.storyId] != job.message) {
+                    if (promptChanged || renderedMessages[job.storyId] != job.message) {
                         detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
                         if (frameIsAiControls(job.storyId)) showAiControls(job.storyId)
                     }
@@ -101,6 +105,9 @@ private fun MainActivity.presentAiCoverJobEvent(event: AiCoverJobEvent) {
             }
         }
         is AiCoverJobEvent.Failed -> {
+            event.persistedPrompt?.let { prompt ->
+                aiControlsScreenState.replaceCoverPreviewWithPrompt(event.storyId, prompt)
+            }
             toast(event.message)
             if (frameIsAiControls(event.storyId)) showAiControls(event.storyId) else rerenderDetailsIfVisible(event.storyId)
         }

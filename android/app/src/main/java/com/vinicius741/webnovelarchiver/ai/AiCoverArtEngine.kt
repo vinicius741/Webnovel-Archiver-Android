@@ -10,7 +10,7 @@ import timber.log.Timber
 import java.util.UUID
 
 /**
- * A generated-but-unapplied cover draft. Nothing is persisted — the caller decides via
+ * A generated-but-unapplied cover draft. The applied cover is not changed; the caller decides via
  * [AppRepository.setAiCover]. [prompt] is kept alongside the image so the UI can show the user
  * exactly what was sent to the image model.
  */
@@ -43,15 +43,17 @@ class AiCoverArtEngine(
     private var imageModelParametersCache: Map<String, Map<String, List<String>?>>? = null
 
     /**
-     * One-shot flow: writes the image prompt and paints it in a single uninterrupted run, for the
-     * "generate in one step" mode on AI Controls.
+     * One-shot flow: writes the image prompt and paints it in a single uninterrupted run. The
+     * optional callback lets the background coordinator persist the billed prompt before painting.
      */
     suspend fun draft(
         storyId: String,
         onProgress: (String) -> Unit = {},
+        onPromptReady: suspend (String) -> Unit = {},
     ): AiCoverDraft {
         val operationId = UUID.randomUUID().toString()
         val prompt = draftPrompt(storyId, onProgress, operationId)
+        onPromptReady(prompt)
         return draftImage(storyId, prompt, onProgress, operationId)
     }
 

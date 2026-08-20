@@ -93,6 +93,16 @@ class AiControlsScreenState {
     val drafts: MutableMap<String, String> = linkedMapOf()
     val coverDrafts: MutableMap<String, AiCoverDraft> = linkedMapOf()
     val coverPrompts: MutableMap<String, String> = linkedMapOf()
+
+    /** Replaces a painted preview after the one-step flow has persisted its newer prompt. */
+    internal fun replaceCoverPreviewWithPrompt(
+        storyId: String,
+        prompt: String,
+    ): Boolean {
+        val removedPreview = coverDrafts.remove(storyId) != null
+        val changedPrompt = coverPrompts.put(storyId, prompt) != prompt
+        return removedPreview || changedPrompt
+    }
 }
 
 /** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */

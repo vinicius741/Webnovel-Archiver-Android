@@ -29,6 +29,8 @@ data class AiCoverJobState(
     val storyId: String,
     val kind: AiCoverJobKind,
     val message: String,
+    /** One-step prompt already persisted to disk while the image stage is still running. */
+    val persistedPrompt: String? = null,
 )
 
 /** Terminal outcome of a cover job, emitted once the result is already persisted. */
@@ -46,6 +48,8 @@ sealed interface AiCoverJobEvent {
         override val storyId: String,
         override val kind: AiCoverJobKind,
         val message: String,
+        /** Prompt already persisted before a later one-step image failure. */
+        val persistedPrompt: String? = null,
     ) : AiCoverJobEvent
 }
 
@@ -89,7 +93,18 @@ class AiCoverJobCoordinator(
     /** One-shot flow: image prompt + image in a single uninterrupted run. */
     fun startOneShot(storyId: String): Boolean =
         start(storyId, AiCoverJobKind.ONE_STEP, "Generating cover...") {
-            AiCoverDraftRecord.Image(engine.draft(storyId, progressReporter(storyId)))
+            AiCoverDraftRecord.Image(
+                engine.draft(storyId, progressReporter(storyId)) { prompt ->
+                    if (repository.story(storyId) != null) {
+                        repository.saveAiCoverPromptDraft(storyId, prompt)
+                        _jobs.update { current ->
+                            current[storyId]?.let {
+                                current + (storyId to it.copy(persistedPrompt = prompt))
+                            } ?: current
+                        }
+                    }
+                },
+            )
         }
 
     /** Staged flow, stage 1: writes the editable image prompt only. */
@@ -154,8 +169,16 @@ class AiCoverJobCoordinator(
             } catch (error: Throwable) {
                 // The engine throws user-presentable messages; cancellation is rethrown untouched.
                 Timber.w(error, "AI cover job failed for %s (kind=%s)", storyId, kind)
+                val persistedPrompt = _jobs.value[storyId]?.persistedPrompt
                 _jobs.update { it - storyId }
-                _events.tryEmit(AiCoverJobEvent.Failed(storyId, kind, error.message ?: "AI cover failed"))
+                _events.tryEmit(
+                    AiCoverJobEvent.Failed(
+                        storyId,
+                        kind,
+                        error.message ?: "AI cover failed",
+                        persistedPrompt,
+                    ),
+                )
             }
         }
         return true
