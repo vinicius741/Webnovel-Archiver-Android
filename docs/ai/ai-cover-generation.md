@@ -26,7 +26,7 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
 - **Two billable stages** (both on the user's key):
   1. The **description model** (the same model chosen for synopses) writes an image-generation
      prompt from the novel's material: title, author, tags, the currently displayed description
-     (AI synopsis when active, else source), and the same capped first-5-downloaded-chapters
+     (AI synopsis when active, else source), and the same capped earliest-5-downloaded-chapters
      context the description flow uses.
   2. The **image model** paints the prompt via `POST /api/v1/images` with `aspect_ratio 2:3`
      (matches the app's 80×120dp / 150×225dp cover cards), `resolution 1K`, `quality medium`.
@@ -35,15 +35,16 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
      when the default is out of enum (recraft offers `3:4` but not `2:3`; seedream-lite starts at
      `2K`) the nearest supported stand-in is sent instead, and a parameter with no acceptable
      value is omitted (the model's own default applies). An unknown catalog falls back to a
-     minimal model+prompt request.
+     minimal model+prompt request. When supported, the request explicitly asks for PNG or another
+     raster format. SVG-only models are hidden from the picker and blocked before the paid image
+     call; an explicit vector response is never stored as a bitmap.
 - **Preview → apply**: the draft card shows the decoded image (tap to zoom), the exact prompt sent
   to the image model (for transparency), and `Apply` / `Discard`. Nothing is persisted until
   `Apply`, which writes the image to `covers/<safeName(id)>.<ext>` and points the story at it.
-  The prompt-writing system prompt follows image-model best practices: layered description
-  (subject → setting → art style/medium → portrait composition → lighting → color/mood), concrete
-  nouns, no "book cover" mockup, no watermark/border — and the **text model itself decides**
-  whether the title fits on the cover: short titles may be typeset, long ones are shortened or
-  dropped, and no other text is ever invented.
+  The prompt-writing system prompt treats all novel fields as untrusted data, requires supported
+  visual facts, asks for a concrete portrait composition, and excludes lettering, logos,
+  watermarks, borders, and mockups. The generated image contains no title lettering because image
+  models render text unreliably; the story title remains visible in the app UI.
 - **Background generation**: cover jobs do not belong to the screen that started them. They run on
   the process-wide application scope (`AiCoverJobCoordinator`) and keep running while the user
   navigates between screens, minimizes, or leaves the app; `AiCoverForegroundService` (a
@@ -52,10 +53,11 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   ready / failed** notification. Each stage's result is persisted to
   `ai_cover_drafts/<safeName(id)>.{json,<ext>}` (prompt first, image bytes before the JSON meta
   that marks completeness) the moment it arrives, so even a process death after the API replied
-  cannot lose a billed image. Reopening AI Controls rehydrates the persisted draft (prompt-only
-  or full preview) into its card; `Apply`/`Discard`/`Delete AI cover` clear the files. Starting
-  the image stage persists the edited prompt with it, so a mid-paint death recovers the prompt
-  for a retry.
+  cannot lose a billed image. The one-step flow persists its prompt immediately after the first
+  billable stage, before starting the image request. Reopening AI Controls rehydrates the persisted
+  draft (prompt-only or full preview) into its card; `Apply`/`Discard`/`Delete AI cover` clear the
+  files. Starting the image stage persists the edited prompt with it, so a mid-paint death recovers
+  the prompt for a retry.
 - **Show AI cover toggle**: when both a source cover and an applied AI cover exist, a `Show AI
   cover` checkbox (mirroring the synopsis toggle) switches which one the app displays — nothing is
   deleted either way. Applying a new AI cover always switches the display to it; a story whose
@@ -80,15 +82,16 @@ applied or toggled during a sync's network window.
 - One file per story under `files/webnovel_archiver/covers/`, written atomically; a regenerate
   overwrites it (removing any earlier file saved under a different extension). Deleting the story
   removes its cover.
-- Cost controls: the text call reuses the description budgets (5 chapters, 12k chars each, 60k
-  total, `max_tokens 1000`); the image call requests one 1K image. Generating over an applied cover
+- Cost controls: the text call reuses the description context budgets (5 chapters, 12k chars each,
+  60k total, `max_tokens 1600`, low reasoning); the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
   repainting an edited prompt over a pending preview; the shared `storyOperation` guard
   (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited
   prompt is re-cleaned (trimmed, whitespace-collapsed, capped at 1,500 chars) exactly like a model
   reply.
 - HTTP failures reuse the friendly mapping (401 key / 402 credits / 404 model / 429 rate limit);
-  a missing, empty, or undecodable image yields a "try again or pick a different model" message.
+  a missing, empty, undecodable, or vector image yields a direct corrective message. Truncated text
+  replies are rejected instead of being passed to the image model.
 
 ## Backups
 

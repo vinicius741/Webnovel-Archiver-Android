@@ -16,9 +16,11 @@ the layer is built to grow tag and cover-image generation later.
   instead of scattering more buttons across Details. Its description card shows the applied AI
   synopsis (or an explanatory line), the "Show AI description in Details" preference, and the
   generate action.
-- **Generate → preview → apply**: `Generate Description with AI` sends the first **5 downloaded
+- **Generate → preview → apply**: `Generate Description with AI` sends the earliest **5 downloaded
   chapters** (plain text, each capped at ~12k chars, ~60k chars total) plus title/author/tags to the
-  selected model, which writes a 120–200-word book-blurb synopsis. The result is a **draft**: the
+  selected model, which writes a 120 to 180 word synopsis. The source payload is delimited JSON,
+  and the system prompt treats every source field as untrusted story data rather than instructions.
+  The result is a **draft**: the
   screen shows a preview card with the draft text and `Apply` / `Discard` actions — nothing is
   persisted until `Apply` (which stores it and switches the displayed synopsis to the AI text; an
   "AI-generated" badge marks it on Details). A pending draft survives navigating away and back
@@ -32,15 +34,17 @@ the layer is built to grow tag and cover-image generation later.
 
 ## Cost controls
 
-- Context: first 5 downloaded chapters, 12k chars/chapter cap, 60k chars total.
-- Output: `max_tokens = 700`.
+- Context: earliest 5 downloaded chapters, 12k chars/chapter cap, 60k chars total.
+- Output: `max_tokens = 2000`, with OpenRouter reasoning set to low and excluded from the reply.
+  Replies stopped by the output limit, over 2,400 characters, or over 260 words are rejected rather
+  than shown as complete.
 - Regenerating (over an applied description or a pending preview) requires a confirm dialog; every
   other in-flight story operation blocks generation
   (and vice versa) through the shared `storyOperation` guard. While a draft is generating, Details
   shows a slim progress block (so backing out of AI Controls mid-generation still explains why its
   buttons are disabled) and the AI Controls screen shows the live progress message.
 - HTTP failures map to friendly messages: 401 invalid key, 402 insufficient credits, 404 unknown
-  model, 429 rate limit.
+  model, 429 rate limit. Cancelling the coroutine also cancels the active OkHttp call.
 
 ## Code map (package `ai/`)
 
@@ -63,6 +67,10 @@ The API key lives only in `ai_settings.json` on the device. It is **not** part o
 (`BackupExporter.fullConfig` does not include the document) — restoring a backup on a new device
 requires re-entering the key. Restoring a backup on the same device preserves its existing local AI
 settings across the storage-root swap.
+
+AI Settings discloses that generation sends story metadata and up to five downloaded excerpts to
+OpenRouter and the selected provider. Provider retention follows the user's OpenRouter privacy
+settings.
 
 ## Extending to other generators
 
