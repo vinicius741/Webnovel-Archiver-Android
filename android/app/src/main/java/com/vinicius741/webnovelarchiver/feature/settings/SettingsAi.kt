@@ -60,6 +60,14 @@ internal fun ScreenHost.showAiSettings() {
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
+        spacer(Space.SM)
+        text(
+            "Description and cover generation send the novel title, author, tags, current " +
+                "description, and up to five downloaded chapter excerpts to OpenRouter and the " +
+                "selected model provider. Provider retention depends on your OpenRouter privacy settings.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
         spacer(Space.MD)
         // The model choices live in local vars so picking from the dialog (or manual entry)
         // updates the row in place without re-rendering the screen — an unsaved API key draft

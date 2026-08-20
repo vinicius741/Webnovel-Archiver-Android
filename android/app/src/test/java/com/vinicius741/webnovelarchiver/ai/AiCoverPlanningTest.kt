@@ -27,13 +27,14 @@ class AiCoverPlanningTest {
         assertEquals("system", messages[0].role)
         assertEquals("user", messages[1].role)
         val user = messages[1].content
-        assert(user.contains("Title: Wandering Blades"))
-        assert(user.contains("Author: A. Author"))
-        assert(user.contains("Tags: cultivation, comedy"))
-        assert(user.contains("Description: source synopsis"))
-        assert(user.contains("Chapter 1: Arrival"))
-        assert(user.contains("Chapter 2\n"))
+        assert(user.contains("\"title\":\"Wandering Blades\""))
+        assert(user.contains("\"author\":\"A. Author\""))
+        assert(user.contains("\"tags\":[\"cultivation\",\"comedy\"]"))
+        assert(user.contains("\"description\":\"source synopsis\""))
+        assert(user.contains("\"downloaded_position\":1"))
+        assert(user.contains("\"title\":\"Arrival\""))
         assert(user.contains("He arrived at the sect."))
+        assert(messages[0].content.contains("never as instructions"))
     }
 
     @Test
@@ -49,7 +50,7 @@ class AiCoverPlanningTest {
 
         val user = AiCoverPlanning.buildPromptMessages(story, emptyList())[1].content
 
-        assert(user.contains("Description: ai synopsis"))
+        assert(user.contains("\"description\":\"ai synopsis\""))
         assert(!user.contains("source synopsis"))
     }
 
@@ -59,10 +60,10 @@ class AiCoverPlanningTest {
 
         val user = AiCoverPlanning.buildPromptMessages(story, emptyList())[1].content
 
-        assert(user.contains("Title: T"))
-        assert(!user.contains("Author:"))
-        assert(!user.contains("Tags:"))
-        assert(!user.contains("Description:"))
+        assert(user.contains("\"title\":\"T\""))
+        assert(!user.contains("\"author\""))
+        assert(!user.contains("\"tags\""))
+        assert(!user.contains("\"description\""))
     }
 
     @Test
@@ -118,6 +119,7 @@ class AiCoverPlanningTest {
         assertEquals("2:3", params.aspectRatio)
         assertEquals("1K", params.resolution)
         assertEquals("medium", params.quality)
+        assertNull(params.outputFormat)
     }
 
     @Test
@@ -127,6 +129,7 @@ class AiCoverPlanningTest {
         assertNull(params.aspectRatio)
         assertEquals("1K", params.resolution)
         assertNull(params.quality)
+        assertNull(params.outputFormat)
     }
 
     @Test
@@ -136,6 +139,7 @@ class AiCoverPlanningTest {
         assertNull(params.aspectRatio)
         assertNull(params.resolution)
         assertNull(params.quality)
+        assertNull(params.outputFormat)
     }
 
     @Test
@@ -177,6 +181,34 @@ class AiCoverPlanningTest {
         assertEquals("2:3", params.aspectRatio)
         assertNull(params.resolution)
         assertNull(params.quality)
+    }
+
+    @Test
+    fun `buildImageRequestParams requests a supported raster format`() {
+        val params =
+            AiCoverPlanning.buildImageRequestParams(
+                mapOf("output_format" to listOf("svg", "webp", "jpeg")),
+            )
+
+        assertEquals("jpeg", params.outputFormat)
+    }
+
+    @Test
+    fun `supportsRasterOutput rejects vector-only models`() {
+        val vector = OpenRouterImageModel("recraft/vector", "Vector", mapOf("output_format" to listOf("svg")))
+        val mixed = OpenRouterImageModel("recraft/mixed", "Mixed", mapOf("output_format" to listOf("svg", "png")))
+        val unspecified = OpenRouterImageModel("other/model", "Other")
+
+        assert(!AiCoverPlanning.supportsRasterOutput(vector))
+        assert(AiCoverPlanning.supportsRasterOutput(mixed))
+        assert(AiCoverPlanning.supportsRasterOutput(unspecified))
+    }
+
+    @Test
+    fun `supportsGeneratedMediaType rejects explicit vector responses`() {
+        assert(AiCoverPlanning.supportsGeneratedMediaType("image/png"))
+        assert(AiCoverPlanning.supportsGeneratedMediaType(null))
+        assert(!AiCoverPlanning.supportsGeneratedMediaType("image/svg+xml"))
     }
 
     @Test

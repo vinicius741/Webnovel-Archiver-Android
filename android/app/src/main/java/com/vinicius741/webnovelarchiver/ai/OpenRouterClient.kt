@@ -3,9 +3,6 @@ package com.vinicius741.webnovelarchiver.ai
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import com.google.gson.JsonParser
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -49,6 +46,13 @@ class OpenRouterClient(
                 addProperty("model", model)
                 addProperty("max_tokens", maxTokens)
                 add("messages", messages.toJsonArray())
+                add(
+                    "reasoning",
+                    JsonObject().apply {
+                        addProperty("effort", "low")
+                        addProperty("exclude", true)
+                    },
+                )
             }
         val request =
             Request
@@ -130,7 +134,7 @@ class OpenRouterClient(
 
     /**
      * POST /api/v1/images — generates one image from a prompt. The optional parameters
-     * ([aspectRatio], [resolution], [quality]) are included in the request only when non-null;
+     * ([aspectRatio], [resolution], [quality], [outputFormat]) are included only when non-null;
      * callers pass null for anything the selected model does not support (the image catalog's
      * `supported_parameters` decides) so the API never rejects an unknown parameter. Throws
      * [OpenRouterException] with a friendly message for auth/credit/model/rate-limit failures.
@@ -142,6 +146,7 @@ class OpenRouterClient(
         aspectRatio: String? = null,
         resolution: String? = null,
         quality: String? = null,
+        outputFormat: String? = null,
     ): OpenRouterImage {
         val body =
             JsonObject().apply {
@@ -150,6 +155,7 @@ class OpenRouterClient(
                 aspectRatio?.let { addProperty("aspect_ratio", it) }
                 resolution?.let { addProperty("resolution", it) }
                 quality?.let { addProperty("quality", it) }
+                outputFormat?.let { addProperty("output_format", it) }
             }
         val request =
             Request
@@ -232,36 +238,32 @@ class OpenRouterClient(
     private suspend fun <T> execute(
         request: Request,
         parse: (JsonObject, Int) -> T,
-    ): T =
-        withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { response ->
-                val responseJson = runCatching { JsonParser.parseString(response.body.string()) }.getOrNull()
-                val root = responseJson?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
-                parse(root, response.code)
-            }
-        }
+    ): T = client.executeOpenRouterJson(request, parse)
 
     private fun parseChatCompletion(
         responseJson: JsonObject,
         requestedModel: String,
     ): OpenRouterChatCompletionResult {
         val receipt = responseReceipt(responseJson, requestedModel)
+        val choice = responseJson.getAsJsonArray("choices")?.firstOrNull()?.asJsonObject
         val content =
-            responseJson
-                .getAsJsonArray("choices")
-                ?.firstOrNull()
-                ?.asJsonObject
+            choice
                 ?.getAsJsonObject("message")
                 ?.string("content")
                 ?.trim()
                 .orEmpty()
-        if (content.isEmpty()) {
+        val finishReason = choice?.string("finish_reason")
+        if (content.isEmpty() && finishReason != "length") {
             throw OpenRouterEmptyCompletionException(
                 "The model returned an empty description. Try again or pick a different model.",
                 receipt = receipt,
             )
         }
-        return OpenRouterChatCompletionResult(content = content, receipt = receipt)
+        return OpenRouterChatCompletionResult(
+            content = content,
+            receipt = receipt,
+            finishReason = finishReason,
+        )
     }
 
     /** The friendly [OpenRouterException] for a failed image call; the caller throws it. */

@@ -8,7 +8,7 @@ import timber.log.Timber
 import java.util.UUID
 
 /**
- * Generates AI story description drafts from the first downloaded chapters. The draft is returned to
+ * Generates AI story description drafts from the earliest downloaded chapters. The draft is returned to
  * the caller (the AI Controls screen) for preview and is only persisted when the user applies it.
  * Progress is reported as short user-facing messages forwarded to the screen's progress block.
  */
@@ -74,6 +74,33 @@ class AiDescriptionEngine(
                 )
                 throw error
             }
+        if (result.finishReason == "length") {
+            recordUsage(
+                storyId = storyId,
+                operationId = operationId,
+                feature = FEATURE_DESCRIPTION,
+                requestedModel = settings.descriptionModel,
+                receipt = result.receipt,
+                outcome = OUTCOME_TRUNCATED,
+            )
+            throw OpenRouterException(
+                "The model reached its response limit before finishing. Try again or pick a different model.",
+                result.receipt,
+            )
+        }
+        val description =
+            AiDescriptionPlanning.cleanGeneratedDescription(result.content)
+                ?: run {
+                    recordUsage(
+                        storyId = storyId,
+                        operationId = operationId,
+                        feature = FEATURE_DESCRIPTION,
+                        requestedModel = settings.descriptionModel,
+                        receipt = result.receipt,
+                        outcome = OUTCOME_INVALID,
+                    )
+                    throw IllegalStateException("The model returned an unusable description. Try again or pick a different model.")
+                }
         recordUsage(
             storyId = storyId,
             operationId = operationId,
@@ -82,9 +109,6 @@ class AiDescriptionEngine(
             receipt = result.receipt,
             outcome = OUTCOME_COMPLETED,
         )
-        val description =
-            AiDescriptionPlanning.cleanGeneratedDescription(result.content)
-                ?: throw IllegalStateException("The model returned an empty description. Try again or pick a different model.")
         Timber.i("AI description drafted for %s with %s", storyId, settings.descriptionModel)
         return description
     }
@@ -129,5 +153,7 @@ class AiDescriptionEngine(
         const val OUTCOME_COMPLETED = "completed"
         const val OUTCOME_EMPTY = "empty"
         const val OUTCOME_FAILED = "failed"
+        const val OUTCOME_TRUNCATED = "truncated"
+        const val OUTCOME_INVALID = "invalid_output"
     }
 }

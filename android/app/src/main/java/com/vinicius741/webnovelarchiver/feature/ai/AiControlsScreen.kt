@@ -71,7 +71,7 @@ internal fun ScreenHost.showAiControls(storyId: String) {
 
         section("Description")
         text(
-            "Generate a fresh synopsis from the novel's first downloaded chapters. The source " +
+            "Generate a fresh synopsis from the novel's earliest downloaded chapters. The source " +
                 "description is never modified.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,

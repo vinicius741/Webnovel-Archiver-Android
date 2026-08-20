@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.ai.OpenRouterImageModel
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -58,8 +59,9 @@ internal fun ScreenHost.showAiImageModelPicker(
             toast(result.exceptionOrNull()?.message ?: "Could not load image models")
             return@launch
         }
-        imageModelCatalogCache = models
-        app.runOnUiThread { showAiImageModelDialog(models, currentModel, onPicked) }
+        val rasterModels = models.filter(AiCoverPlanning::supportsRasterOutput)
+        imageModelCatalogCache = rasterModels
+        app.runOnUiThread { showAiImageModelDialog(rasterModels, currentModel, onPicked) }
     }
 }
 

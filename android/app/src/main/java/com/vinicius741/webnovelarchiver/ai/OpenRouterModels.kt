@@ -41,6 +41,7 @@ data class OpenRouterResponseReceipt(
 data class OpenRouterChatCompletionResult(
     val content: String,
     val receipt: OpenRouterResponseReceipt,
+    val finishReason: String? = null,
 )
 
 data class OpenRouterImage(

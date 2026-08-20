@@ -1,16 +1,23 @@
 package com.vinicius741.webnovelarchiver.ai
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 
 /**
  * MockWebServer tests for [OpenRouterClient]: request shape (auth header, JSON body) and the
@@ -19,11 +26,13 @@ import java.util.Base64
 class OpenRouterClientTest {
     private lateinit var server: MockWebServer
     private lateinit var client: OpenRouterClient
+    private lateinit var httpClient: OkHttpClient
 
     @Before fun setUp() {
         server = MockWebServer()
         server.start()
-        client = OpenRouterClient(baseUrl = server.url("/").toString(), client = OkHttpClient())
+        httpClient = OkHttpClient()
+        client = OpenRouterClient(baseUrl = server.url("/").toString(), client = httpClient)
     }
 
     @After fun tearDown() {
@@ -36,7 +45,7 @@ class OpenRouterClientTest {
             server.enqueue(
                 MockResponse().setBody(
                     """
-                    {"id":"gen-chat-1","model":"deepseek/deepseek-v4-flash-0731:free","choices":[{"message":{"role":"assistant","content":"  A cursed blade, a stubborn farmer.  "}}],"usage":{"prompt_tokens":123,"completion_tokens":17,"total_tokens":140,"reasoning_tokens":4,"prompt_tokens_details":{"cached_tokens":9},"cost":0.0000012300000000000001}}
+                    {"id":"gen-chat-1","model":"deepseek/deepseek-v4-flash-0731:free","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"  A cursed blade, a stubborn farmer.  "}}],"usage":{"prompt_tokens":123,"completion_tokens":17,"total_tokens":140,"reasoning_tokens":4,"prompt_tokens_details":{"cached_tokens":9},"cost":0.0000012300000000000001}}
                     """.trimIndent(),
                 ),
             )
@@ -58,6 +67,7 @@ class OpenRouterClientTest {
             assertEquals(4L, result.receipt.reasoningTokens)
             assertEquals(9L, result.receipt.cachedTokens)
             assertEquals("0.0000012300000000000001", result.receipt.costUsd)
+            assertEquals("stop", result.finishReason)
             val recorded = server.takeRequest()
             assertEquals("/api/v1/chat/completions", recorded.path)
             assertEquals("Bearer sk-or-v1-test", recorded.getHeader("Authorization"))
@@ -65,6 +75,7 @@ class OpenRouterClientTest {
             assert(body.contains("\"model\":\"deepseek/deepseek-v4-flash-0731\""))
             assert(body.contains("\"max_tokens\":700"))
             assert(body.contains("\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]"))
+            assert(body.contains("\"reasoning\":{\"effort\":\"low\",\"exclude\":true}"))
         }
 
     @Test
@@ -134,6 +145,44 @@ class OpenRouterClientTest {
         }
 
     @Test
+    fun `chatCompletion exposes a length-limited empty completion without marking it retryable`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"id":"gen-truncated-1","model":"m:provider","choices":[{"finish_reason":"length","message":{"content":"   "}}],"usage":{"prompt_tokens":8,"completion_tokens":10,"total_tokens":18,"cost":"0.00000009"}}""",
+                ),
+            )
+
+            val result =
+                client.chatCompletion("key", "m", listOf(OpenRouterMessage("user", "hi")), 10)
+
+            assertEquals("", result.content)
+            assertEquals("length", result.finishReason)
+            assertEquals("gen-truncated-1", result.receipt.generationId)
+            assertEquals("0.00000009", result.receipt.costUsd)
+        }
+
+    @Test
+    fun `cancelling the coroutine cancels the active HTTP call`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse()
+                    .setHeadersDelay(5, TimeUnit.SECONDS)
+                    .setBody("""{"data":[]}"""),
+            )
+            val job = launch(Dispatchers.Default) { client.fetchModels() }
+            assertNotNull(server.takeRequest(1, TimeUnit.SECONDS))
+
+            job.cancelAndJoin()
+
+            withTimeout(1_000) {
+                while (httpClient.dispatcher.runningCallsCount() != 0) yield()
+            }
+            assertTrue(job.isCancelled)
+            assertEquals(0, httpClient.dispatcher.runningCallsCount())
+        }
+
+    @Test
     fun `fetchModels parses catalog pricing and sorts by id`() =
         runBlocking {
             server.enqueue(
@@ -187,6 +236,7 @@ class OpenRouterClientTest {
                     aspectRatio = "2:3",
                     resolution = "1K",
                     quality = "medium",
+                    outputFormat = "png",
                 )
 
             assertTrue(image.bytes.contentEquals(imageBytes))
@@ -206,6 +256,7 @@ class OpenRouterClientTest {
             assert(body.contains("\"aspect_ratio\":\"2:3\""))
             assert(body.contains("\"resolution\":\"1K\""))
             assert(body.contains("\"quality\":\"medium\""))
+            assert(body.contains("\"output_format\":\"png\""))
         }
 
     @Test
@@ -221,6 +272,7 @@ class OpenRouterClientTest {
             assert(!body.contains("aspect_ratio"))
             assert(!body.contains("resolution"))
             assert(!body.contains("quality"))
+            assert(!body.contains("output_format"))
         }
 
     @Test

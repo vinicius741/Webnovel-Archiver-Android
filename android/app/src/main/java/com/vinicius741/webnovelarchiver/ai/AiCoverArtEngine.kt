@@ -120,7 +120,11 @@ class AiCoverArtEngine(
             AiCoverPlanning.cleanGeneratedPrompt(prompt)
                 ?: error("The image prompt is empty. Edit it or generate a new one before painting the cover.")
         onProgress("Painting cover with ${context.settings.imageModel}...")
-        val params = AiCoverPlanning.buildImageRequestParams(imageModelParameters(context.settings.imageModel))
+        val imageModel = imageModel(context.settings.imageModel)
+        if (imageModel != null && !AiCoverPlanning.supportsRasterOutput(imageModel)) {
+            error("${context.settings.imageModel} only produces SVG images, which the app cannot display. Pick a raster image model.")
+        }
+        val params = AiCoverPlanning.buildImageRequestParams(imageModel?.supportedParameters)
         val image =
             try {
                 client.generateImage(
@@ -130,6 +134,7 @@ class AiCoverArtEngine(
                     aspectRatio = params.aspectRatio,
                     resolution = params.resolution,
                     quality = params.quality,
+                    outputFormat = params.outputFormat,
                 )
             } catch (error: CancellationException) {
                 throw error
@@ -144,6 +149,17 @@ class AiCoverArtEngine(
                 )
                 throw error
             }
+        if (!AiCoverPlanning.supportsGeneratedMediaType(image.mediaType)) {
+            recordUsage(
+                storyId = storyId,
+                operationId = operationId,
+                feature = FEATURE_COVER_IMAGE,
+                requestedModel = context.settings.imageModel,
+                receipt = image.receipt,
+                outcome = OUTCOME_UNSUPPORTED,
+            )
+            error("${context.settings.imageModel} returned a vector image, which the app cannot display. Pick a raster image model.")
+        }
         recordUsage(
             storyId = storyId,
             operationId = operationId,
@@ -200,36 +216,37 @@ class AiCoverArtEngine(
     }
 
     /** Runs one prompt attempt and records every terminal outcome before returning or throwing. */
+    @Suppress("ThrowsCount") // Distinct terminal outcomes are recorded before propagating the original failure.
     private suspend fun trackedPromptCompletion(
         apiKey: String,
         model: String,
         messages: List<OpenRouterMessage>,
         storyId: String,
         operationId: String,
-    ): String =
-        try {
-            client
-                .chatCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS)
-                .also { result ->
-                    recordUsage(
-                        storyId = storyId,
-                        operationId = operationId,
-                        feature = FEATURE_COVER_PROMPT,
-                        requestedModel = model,
-                        receipt = result.receipt,
-                        outcome = OUTCOME_COMPLETED,
-                    )
-                }.content
-        } catch (error: OpenRouterEmptyCompletionException) {
-            recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, error.receipt, OUTCOME_EMPTY)
-            throw error
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            val receipt = (error as? OpenRouterException)?.receipt ?: OpenRouterResponseReceipt()
-            recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, receipt, OUTCOME_FAILED)
-            throw error
+    ): String {
+        val result =
+            try {
+                client.chatCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS)
+            } catch (error: OpenRouterEmptyCompletionException) {
+                recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, error.receipt, OUTCOME_EMPTY)
+                throw error
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                val receipt = (error as? OpenRouterException)?.receipt ?: OpenRouterResponseReceipt()
+                recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, receipt, OUTCOME_FAILED)
+                throw error
+            }
+        if (result.finishReason == "length") {
+            recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, result.receipt, OUTCOME_TRUNCATED)
+            throw OpenRouterException(
+                "The model reached its response limit before finishing the image prompt. Try again or pick a different model.",
+                result.receipt,
+            )
         }
+        recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, result.receipt, OUTCOME_COMPLETED)
+        return result.content
+    }
 
     private suspend fun recordUsage(
         storyId: String,
@@ -264,12 +281,12 @@ class AiCoverArtEngine(
         }
     }
 
-    private suspend fun imageModelParameters(model: String): Map<String, List<String>?>? {
-        imageModelParametersCache?.let { return it[model] }
+    private suspend fun imageModel(model: String): OpenRouterImageModel? {
+        imageModelParametersCache?.get(model)?.let { return OpenRouterImageModel(model, model, it) }
         val catalog = runCatching { client.fetchImageModels() }.getOrNull() ?: return null
         val parameters = catalog.associate { it.id to it.supportedParameters }
         imageModelParametersCache = parameters
-        return parameters[model]
+        return catalog.firstOrNull { it.id == model }
     }
 
     private companion object {
@@ -278,5 +295,7 @@ class AiCoverArtEngine(
         const val OUTCOME_COMPLETED = "completed"
         const val OUTCOME_EMPTY = "empty"
         const val OUTCOME_FAILED = "failed"
+        const val OUTCOME_TRUNCATED = "truncated"
+        const val OUTCOME_UNSUPPORTED = "unsupported_output"
     }
 }
