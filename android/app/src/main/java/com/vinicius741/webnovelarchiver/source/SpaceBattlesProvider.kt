@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.source
 
-import com.vinicius741.webnovelarchiver.cleanup.LooseHtmlStructure
 import com.vinicius741.webnovelarchiver.domain.archive.PercentEncoding
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
@@ -34,7 +33,7 @@ object SpaceBattlesProvider : SourceProvider {
                 """^https?://(?:(?:forum|forums)\.)?spacebattles\.com/threads/(?:[^/?#]*\.)?\d+/?(?:[?#].*)?$""",
                 RegexOption.IGNORE_CASE,
             ).matches(url) -> SourceUrlKind.STORY
-            SPACEBATTLES_HOST.containsMatchIn(url) && POST_ID.find(url) != null -> SourceUrlKind.CHAPTER
+            SPACEBATTLES_HOST.containsMatchIn(url) && rawPostId(url) != null -> SourceUrlKind.CHAPTER
             else -> null
         }
 
@@ -212,7 +211,7 @@ object SpaceBattlesProvider : SourceProvider {
         val content =
             doc.selectFirst("article.message--post .message-body .bbWrapper, .message-userContent .bbWrapper")
                 ?: throw NetworkParseException("SpaceBattles chapter post was not found")
-        return sanitizePost(content)
+        return sanitizeSpaceBattlesPost(content)
     }
 
     override suspend fun fetchChapterContent(
@@ -240,7 +239,7 @@ object SpaceBattlesProvider : SourceProvider {
                     if (error.statusCode == 404) return@forEach
                     throw error
                 }
-            parsePost(html, postId, readerUrl)?.let { return it }
+            parseSpaceBattlesPost(html, postId, readerUrl)?.let { return it }
         }
 
         val fallbackHtml =
@@ -249,7 +248,7 @@ object SpaceBattlesProvider : SourceProvider {
                 maximumAttemptsOverride = 1,
                 requestGate = requestGate,
             )
-        return parsePost(fallbackHtml, postId, chapter.url)
+        return parseSpaceBattlesPost(fallbackHtml, postId, chapter.url)
             ?: throw NetworkParseException("SpaceBattles chapter post $postId was not found")
     }
 
@@ -307,39 +306,6 @@ object SpaceBattlesProvider : SourceProvider {
     internal fun parseThreadmarkRssUpdatedAt(xml: String): Long? {
         val doc = Jsoup.parse(xml, baseUrl, Parser.xmlParser())
         return doc.select("item").mapNotNull { it.rssPublishedAt() }.maxOrNull()
-    }
-
-    private fun parsePost(
-        html: String,
-        postId: String,
-        pageUrl: String,
-    ): String? {
-        val doc = Jsoup.parse(html, pageUrl)
-        val article =
-            doc.selectFirst("article.message--post[data-content=post-$postId], article#js-post-$postId")
-                ?: return null
-        val content =
-            article.selectFirst(".message-userContent .message-body .bbWrapper, .message-body .bbWrapper")
-                ?: return null
-        return sanitizePost(content)
-    }
-
-    private fun sanitizePost(source: Element): String {
-        val content = source.clone()
-        content.select("script, style, noscript, iframe, .bbCodeBlock-expandLink, .bbCodeBlock-shrinkLink").remove()
-        content.select("img").forEach { image ->
-            image
-                .attr("data-url")
-                .ifBlank { image.attr("data-src") }
-                .takeIf(String::isNotBlank)
-                ?.let { image.attr("src", it) }
-            safeAbsoluteUrl(image, "src")?.let { image.attr("src", it) }
-        }
-        content.select("a[href]").forEach { link ->
-            safeAbsoluteUrl(link, "href")?.let { link.attr("href", it) }
-        }
-        LooseHtmlStructure.wrapBreakSeparatedParagraphs(content)
-        return content.html().trim()
     }
 
     private fun storyRoot(
@@ -402,8 +368,6 @@ object SpaceBattlesProvider : SourceProvider {
             ?.takeIf(String::isNotBlank)
             ?.let(::parseSourceDateMillis)
 
-    private fun rawPostId(value: String): String? = POST_ID.find(value)?.groupValues?.get(1)
-
     private const val MAIN_CATEGORY = 1
     private const val THREADMARKS_PER_PAGE = 200
     private const val READER_POSTS_PER_PAGE = 10
@@ -413,7 +377,6 @@ object SpaceBattlesProvider : SourceProvider {
     private val THREAD_ID = Regex("""/threads/(?:[^/?#]*\.)?(\d+)(?:[/?#]|$)""", RegexOption.IGNORE_CASE)
     private val THREAD_ROOT =
         Regex("""^https?://[^/]+/threads/(?:[^/?#]*\.)?\d+""", RegexOption.IGNORE_CASE)
-    private val POST_ID = Regex("""(?:/posts/|#post-|/post-)(\d+)""", RegexOption.IGNORE_CASE)
     private val ORIGIN = Regex("""^https?://[^/]+""", RegexOption.IGNORE_CASE)
     private val PAGE_QUERY = Regex("""[?&]page=(\d+)""", RegexOption.IGNORE_CASE)
 }

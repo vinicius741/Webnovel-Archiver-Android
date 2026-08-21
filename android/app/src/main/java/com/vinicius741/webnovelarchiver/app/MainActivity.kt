@@ -3,12 +3,9 @@ package com.vinicius741.webnovelarchiver.app
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ProgressBar
-import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -47,12 +44,8 @@ import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import timber.log.Timber
-import java.io.File
 import com.vinicius741.webnovelarchiver.app.notificationPermissionActionLabel as notificationPermissionActionLabelExt
 import com.vinicius741.webnovelarchiver.app.performNotificationPermissionAction as performNotificationPermissionActionExt
 import com.vinicius741.webnovelarchiver.app.requestNotificationPermissionForDownload as requestNotificationPermissionForDownloadExt
@@ -244,60 +237,6 @@ class MainActivity :
         routeInitialIntent(intent, startupState)
     }
 
-    /**
-     * Debug-only: restores a full-backup ZIP staged inside the app's own cache (pushed there with
-     * adb + `run-as cp`) through the production pipeline, which also refreshes the repository
-     * cache. The staged zip is removed afterwards so a later relaunch can never re-run the
-     * restore. Returns true when a restore was requested (even if it failed — the report and the
-     * log line then say so). See [DevRestorePlanning] for the extra and the path contract.
-     */
-    private suspend fun maybeRestoreFullBackupForDev(): Boolean {
-        val zip =
-            DevRestorePlanning.resolveSandboxZipPath(
-                cacheDir,
-                intent.getStringExtra(DevRestorePlanning.EXTRA_DEV_RESTORE_FULL_BACKUP),
-            ) ?: return false
-        try {
-            if (!zip.isFile) {
-                Timber.e("Dev full-backup restore: %s not found in cacheDir", zip.path)
-                return true
-            }
-            val summary = repository.importFullBackupUri(Uri.fromFile(zip))
-            Timber.i("Dev full-backup restore: %s", summary)
-        } finally {
-            if (!zip.delete()) Timber.w("Dev full-backup restore: could not remove staged zip %s", zip.name)
-        }
-        return true
-    }
-
-    /**
-     * Snapshots the hydrated library (what the storage layer actually parsed, including quarantine
-     * events) to `cache/dev_library_report.json` for agent verification of restores/imports.
-     * Debug-launch-only; see [DevLibraryReportPlanning] for the extra and the report contract.
-     */
-    private suspend fun writeDevLibraryReport() {
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val report =
-                    DevLibraryReportPlanning.build(
-                        library = repository.library(),
-                        tabs = repository.getTabs(),
-                        storageIssues = repository.getStorageHealth().issues,
-                        appVersion = BuildConfig.VERSION_NAME,
-                    )
-                val output = File(cacheDir, DevLibraryReportPlanning.REPORT_FILENAME)
-                output.writeText(DevLibraryReportPlanning.toJson(report))
-                Timber.i(
-                    "Dev library report: %d stories, ids sha256 %s, %d storage issue(s) -> %s",
-                    report.librarySize,
-                    report.storyIdsSha256,
-                    report.storageIssues.size,
-                    output.absolutePath,
-                )
-            }.onFailure { error -> Timber.e(error, "Dev library report failed") }
-        }
-    }
-
     private fun routeInitialIntent(
         intent: Intent,
         startupState: InitialStartupState,
@@ -421,32 +360,4 @@ class MainActivity :
         const val STATE_SCROLL_KEYS = "navigation.scroll_keys"
         const val STATE_SCROLL_VALUES = "navigation.scroll_values"
     }
-}
-
-private fun MainActivity.showStartupLoading() {
-    frame.removeAllViews()
-    frame.addView(
-        ProgressBar(this),
-        FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            android.view.Gravity.CENTER,
-        ),
-    )
-}
-
-private fun MainActivity.showStartupFailure(error: Throwable) {
-    Timber.e(error, "Repository startup failed")
-    frame.removeAllViews()
-    frame.addView(
-        TextView(this).apply {
-            text = "The library could not be loaded. Restart the app to try again."
-            gravity = android.view.Gravity.CENTER
-            setPadding(48, 48, 48, 48)
-        },
-        FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-        ),
-    )
 }

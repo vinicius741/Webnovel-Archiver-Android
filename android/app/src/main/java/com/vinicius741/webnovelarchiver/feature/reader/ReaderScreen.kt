@@ -20,18 +20,14 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
-import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutPlanning
 import com.vinicius741.webnovelarchiver.ui.layout.readerSidePadding
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showReaderSettingsPanel
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
@@ -255,57 +251,15 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
         )
 
-        // Slim docked chapter navigation: keep the controls thumb-reachable without taking a large
-        // bite out of the reading viewport.
-        val navBar =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setBackgroundColor(ThemeManager.colors.elevation2)
-                setPadding(dp(Spacing.MD), dp(Spacing.XS), dp(Spacing.MD), dp(Spacing.XS))
-            }
-        val hasPrev = currentIndex > 0
-        val hasNext = currentIndex < story.chapters.lastIndex
-        val progress =
-            makeText(
+        addView(
+            readerChapterNav(
                 context,
-                "${currentIndex + 1} / ${story.chapters.size}",
-                Type.LABEL_MEDIUM,
-                ThemeManager.colors.onSurfaceVariant,
-            ).apply {
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-
-        fun navButton(
-            desc: String,
-            icon: Int,
-            enabled: Boolean,
-            action: () -> Unit,
-        ) = ImageView(context).apply {
-            contentDescription = desc
-            val tint = if (enabled) ThemeManager.colors.primary else ThemeManager.colors.onSurfaceVariant
-            setImageDrawable(context.tintedIcon(icon, tint))
-            alpha = if (enabled) 1f else 0.38f
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            val pad = dp(Spacing.SM)
-            setPadding(pad, pad, pad, pad)
-            background = selectableRipple(ThemeManager.colors.onSurface)
-            isEnabled = enabled
-            isClickable = enabled
-            isFocusable = enabled
-            if (enabled) setOnClickListener { action() }
-            layoutParams =
-                LinearLayout.LayoutParams(dp(44), dp(44)).apply {
-                    marginStart = dp(Spacing.XS)
-                    marginEnd = dp(Spacing.XS)
-                }
-        }
-        navBar.addView(navButton("Previous chapter", R.drawable.wna_skip_prev, hasPrev) { navigateChapter(story, chapter, -1) })
-        navBar.addView(progress)
-        navBar.addView(navButton("Next chapter", R.drawable.wna_skip_next, hasNext) { navigateChapter(story, chapter, 1) })
-        addView(navBar)
+                story.chapters.size,
+                currentIndex,
+                onPrevious = { navigateChapter(story, chapter, -1) },
+                onNext = { navigateChapter(story, chapter, 1) },
+            ),
+        )
 
         // Gap 4: floating TTS transport, docked just above the chapter nav. The bar is ALWAYS added
         // to the tree and its visibility is toggled (VISIBLE while a session for THIS chapter exists,

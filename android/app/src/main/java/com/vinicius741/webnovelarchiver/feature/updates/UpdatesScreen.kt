@@ -1,10 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.updates
 
-import android.content.res.ColorStateList
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.ProgressBar
-import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
@@ -14,17 +10,8 @@ import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.card
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.launch
 
@@ -66,61 +53,21 @@ internal fun ScreenHost.showUpdates() {
             return@screen
         }
 
-        lateinit var progressLabel: TextView
-        lateinit var progressBar: ProgressBar
-
-        fun refreshProgress() {
-            val state = updateTrackerScreenState
-            progressLabel.text = state.progressText()
-            progressBar.visibility = if (state.syncing) View.VISIBLE else View.GONE
-            progressBar.max = state.total.coerceAtLeast(1)
-            progressBar.progress = state.completed.coerceAtMost(progressBar.max)
-        }
-        addView(
-            card {
-                text("Following ${followed.size} novel${plural(followed.size)}", Type.TITLE_MEDIUM)
-                text(
-                    "$storyCount novel${plural(storyCount)} with $chapterCount updated chapter${plural(chapterCount)}",
-                    Type.BODY_MEDIUM,
-                    ThemeManager.colors.onSurfaceVariant,
-                )
-                if (reviewStoryCount > 0) {
-                    text(
-                        "$reviewChapterCount chapter${plural(reviewChapterCount)} across $reviewStoryCount " +
-                            "novel${plural(reviewStoryCount)} are awaiting download review. Open a novel to choose chapters.",
-                        Type.BODY_SMALL,
-                        ThemeManager.colors.secondary,
-                    )
-                }
-                if (unavailableCount > 0) {
-                    text(
-                        UpdateTrackerPlanning.unavailableSummary(unavailableCount),
-                        Type.BODY_SMALL,
-                        ThemeManager.colors.onSurfaceVariant,
-                    )
-                }
-                progressLabel = makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-                progressLabel.setPadding(0, dp(Space.SM), 0, 0)
-                addView(progressLabel)
-                progressBar =
-                    ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-                        progressTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
-                        progressBackgroundTintList = ColorStateList.valueOf(ThemeManager.colors.outlineVariant)
-                        layoutParams =
-                            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(6)).apply {
-                                topMargin = dp(Space.SM)
-                            }
-                    }
-                addView(progressBar)
-                fullButton(
-                    label = if (updateTrackerScreenState.syncing) "Syncing..." else "Sync Followed Novels",
-                    variant = Btn.FILLED,
-                    icon = R.drawable.wna_refresh,
-                    enabled = syncableFollowed.isNotEmpty() && !updateTrackerScreenState.syncing,
-                    topMarginDp = Space.LG,
-                ) { syncFollowedUpdates(::refreshProgress) }
-            },
-        )
+        val refreshProgress =
+            addUpdatesSummaryCard(
+                state = updateTrackerScreenState,
+                counts =
+                    UpdatesSummaryCounts(
+                        followedCount = followed.size,
+                        storyCount = storyCount,
+                        chapterCount = chapterCount,
+                        reviewStoryCount = reviewStoryCount,
+                        reviewChapterCount = reviewChapterCount,
+                        unavailableCount = unavailableCount,
+                    ),
+                canSync = syncableFollowed.isNotEmpty(),
+                onSync = { onProgress -> syncFollowedUpdates(onProgress) },
+            )
         refreshProgress()
         buildUpdateSyncErrors(updateTrackerScreenState.errors, stories)?.let(::addView)
         when {

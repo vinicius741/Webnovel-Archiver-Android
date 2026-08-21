@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.tts
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -116,25 +115,10 @@ class TtsEngine(
                 }
                 ttsInitialized = true
                 tts?.setOnUtteranceProgressListener(
-                    object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) = Unit
-
-                        @Deprecated("Deprecated in Java")
-                        override fun onError(utteranceId: String?) {
-                            routeUtteranceError(utteranceId, TextToSpeech.ERROR)
-                        }
-
-                        override fun onError(
-                            utteranceId: String?,
-                            errorCode: Int,
-                        ) {
-                            routeUtteranceError(utteranceId, errorCode)
-                        }
-
-                        override fun onDone(utteranceId: String?) {
-                            routeUtteranceDone(utteranceId)
-                        }
-                    },
+                    TtsUtteranceProgressListener(
+                        onUtteranceError = ::routeUtteranceError,
+                        onUtteranceDone = ::routeUtteranceDone,
+                    ),
                 )
                 val settingsApplied = activeSettings?.let(::applySettingsLocked) ?: true
                 notifyVoiceAvailabilityListeners()
