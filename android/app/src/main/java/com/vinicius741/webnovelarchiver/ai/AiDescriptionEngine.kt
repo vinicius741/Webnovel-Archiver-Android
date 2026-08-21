@@ -34,15 +34,15 @@ class AiDescriptionEngine(
         val story =
             repository.story(storyId)
                 ?: throw IllegalArgumentException("Story not found")
-        if (story.isArchived == true) throw IllegalStateException("Archived snapshots are read-only")
+        if (story.isArchived == true) error("Archived snapshots are read-only")
         if (AiDescriptionPlanning.selectContextChapters(story).isEmpty()) {
-            throw IllegalStateException("Download at least one chapter before generating an AI description")
+            error("Download at least one chapter before generating an AI description")
         }
 
         onProgress("Reading chapters...")
         val chapters = AiContextChapters.read(repository, story)
         if (chapters.isEmpty()) {
-            throw IllegalStateException("Downloaded chapter files are missing; re-download the novel's chapters")
+            error("Downloaded chapter files are missing; re-download the novel's chapters")
         }
 
         onProgress("Writing synopsis with ${settings.descriptionModel}...")
@@ -99,7 +99,7 @@ class AiDescriptionEngine(
                         receipt = result.receipt,
                         outcome = OUTCOME_INVALID,
                     )
-                    throw IllegalStateException("The model returned an unusable description. Try again or pick a different model.")
+                    error("The model returned an unusable description. Try again or pick a different model.")
                 }
         recordUsage(
             storyId = storyId,

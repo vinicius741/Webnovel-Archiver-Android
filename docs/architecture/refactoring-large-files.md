@@ -16,7 +16,7 @@ not spread across the tree.
 - Total main-source Kotlin: ~18,900 lines. Only **one** file is near the 1,000-line mark;
   the rest are in the 450–680 range.
 - The soft ceiling this plan targets is **~600 lines** per file, matched against the existing
-  proven splits (e.g. `LibraryScreen.kt` + `LibraryStoryViews.kt` + `LibraryFilters.kt`, and
+  proven splits (e.g. `LibraryScreen.kt` + `LibraryStoryViews.kt` + `LibraryFiltersView.kt`, and
   the `data/backup/*Planning.kt` family).
 - Priorities below are ordered by leverage (size reduction + risk isolation + navigability),
   not strictly by line count.
@@ -125,7 +125,7 @@ composable), plus `showDetailsOverflow`, `renderChapterList`, `renderFilterChips
       (single-pane vs two-pane). Target ~200–250 lines.
 
 **Pattern reference.** This mirrors the decomposition already proven by
-`LibraryScreen.kt` (300) + `LibraryStoryViews.kt` (227) + `LibraryFilters.kt` (418).
+`LibraryScreen.kt` (300) + `LibraryStoryViews.kt` (227) + `LibraryFiltersView.kt` (418).
 
 **Done (2026-07-02).** The 430-line `showDetails` composable is gone. `DetailsScreen.kt`
 (674 → 304) is now the orchestrator: state setup, the `screen(...)` shell, chapter-controls

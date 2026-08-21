@@ -235,6 +235,9 @@ internal fun ScreenHost.generateAiDescriptionDraft(story: Story) {
     confirm(message, confirmLabel = "Generate") { startAiDescriptionDraft(story) }
 }
 
+// User-facing operation handler: funnel any failure into a toast + state cleanup after
+// re-throwing CancellationException (the documented per-site opt-in for broad catches).
+@Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
 private fun ScreenHost.startAiDescriptionDraft(story: Story) {
     if (storyOperation != null) {
         toast("Please wait for the current operation to finish")
