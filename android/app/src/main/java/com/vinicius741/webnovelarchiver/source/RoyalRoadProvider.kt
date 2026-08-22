@@ -23,6 +23,11 @@ object RoyalRoadProvider : SourceProvider {
             displayName = "RoyalRoad",
             browseUrl = "https://www.royalroad.com",
             hosts = setOf("royalroad.com"),
+            // Royal Road sits behind Cloudflare and renders through the shared WebView session
+            // (challenge solving + sticky Chromium transport). Without this flag the Settings
+            // "Reset Source Web Session" row skipped it and "Source Access Status" hid its state,
+            // leaving an open manual circuit that no user action could clear.
+            managesBrowserSession = true,
             featuredMetrics =
                 listOf(
                     SourceMetricKind.FOLLOWERS,
@@ -135,22 +140,7 @@ object RoyalRoadProvider : SourceProvider {
         progress: (String) -> Unit,
     ): List<ChapterInfo> {
         progress("Parsing chapter list...")
-        val doc = Jsoup.parse(html, url)
-        val chapterNumbers = royalRoadChapterNumbers(doc)
-        return doc.select(".chapter-row").mapNotNull { row ->
-            val link = row.selectFirst("a[href*=/fiction/]") ?: return@mapNotNull null
-            val href = link.absUrl("href").ifBlank { link.attr("href") }
-            ChapterInfo(
-                id = getChapterId(href),
-                title = sanitizeTitle(link.text()),
-                url = href,
-                chapterNumber =
-                    royalRoadChapterNumber(row, link)
-                        ?: chapterNumbers[getChapterId(href)]
-                        ?: chapterNumberFromTitle(link.text()),
-                publishedAt = row.chapterPublishedAt(),
-            )
-        }
+        return royalRoadChapters(Jsoup.parse(html, url))
     }
 
     override fun parseChapterContent(html: String): String {
@@ -303,47 +293,4 @@ object RoyalRoadProvider : SourceProvider {
             ?.takeIf { it.isJsonPrimitive }
             ?.asString
             ?.let(::parseSourceDateMillis)
-
-    private fun royalRoadChapterNumbers(doc: Document): Map<String, Int> {
-        val result = mutableMapOf<String, Int>()
-        val objectPattern = Regex("(?s)\\{[^{}]*\\}")
-        val idPattern = Regex("(?i)[\"']?(?:id|chapterId|chapter_id)[\"']?\\s*[:=]\\s*[\"']?(\\d+)")
-        val numberPattern = Regex("(?i)[\"']?(?:order|chapterNumber|chapter_number|number)[\"']?\\s*[:=]\\s*[\"']?(\\d+)")
-        doc.select("script").forEach { script ->
-            val source = script.data().ifBlank { script.html() }
-            if (!source.contains("chapters", ignoreCase = true)) return@forEach
-            objectPattern.findAll(source).forEach { match ->
-                val objectText = match.value
-                val id = idPattern.find(objectText)?.groupValues?.get(1) ?: return@forEach
-                val numberMatch = numberPattern.find(objectText) ?: return@forEach
-                val number = numberMatch.groupValues.getOrNull(1)?.toIntOrNull() ?: return@forEach
-                result[id] = max(0, number)
-            }
-        }
-        return result
-    }
-
-    private fun royalRoadChapterNumber(
-        row: Element,
-        link: Element,
-    ): Int? {
-        val attrs = listOf("data-chapter-number", "data-chapter", "data-order", "data-number")
-        val rowValues = attrs.mapNotNull { attr -> row.attr(attr).takeIf { it.isNotBlank() } }
-        val linkValues = attrs.mapNotNull { attr -> link.attr(attr).takeIf { it.isNotBlank() } }
-        val attributeValue = (rowValues + linkValues).firstNotNullOfOrNull { it.toIntOrNull() }
-        if (attributeValue != null) return max(0, attributeValue)
-        val chapterNumberElement =
-            row.selectFirst(".chapter-number, [data-chapter-number], [data-chapter], [data-order], [data-number]")
-        val text = chapterNumberElement?.text()
-        val normalized = text?.trim()
-        val number = normalized?.toIntOrNull()
-        return number?.let { max(0, it) }
-    }
-
-    private fun chapterNumberFromTitle(title: String): Int? =
-        Regex("(?i)^\\s*chapter\\s*#?\\s*(\\d+)\\b")
-            .find(title)
-            ?.groupValues
-            ?.get(1)
-            ?.toIntOrNull()
 }

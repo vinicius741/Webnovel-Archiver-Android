@@ -102,5 +102,33 @@ class SourceAccessBlockDetectorTest {
                 "<html><head><title>Just a moment...</title></head></html>",
             ),
         )
+        // The interstitial's inline config object is a strong marker on its own.
+        assertTrue(
+            SourceAccessBlockDetector.isChallengeResponse(
+                headersOf("server", "cloudflare"),
+                "<script>window._cf_chl_opt={CVId:'2',cType:'managed',cRay:'8f4'}</script>",
+            ),
+        )
+    }
+
+    @Test
+    fun challengeRedirectTokenInsideContentUrlIsNotABlock() {
+        // Regression: an author pasted a link to their fiction on another Cloudflare-proxied site,
+        // and that link carried a __cf_chl_rt_tk query token. The bare cf_chl substring matched it
+        // in the served page's head, so a 200 fiction page was classified as an active challenge,
+        // opening the manual-verification circuit and blocking the whole source. The token is a
+        // URL fragment, not an interstitial structure, and must not fire the detector.
+        val descriptionLink =
+            "<a href=\"https://www.scribblehub.com/series/2313883/hodoku/" +
+                "?__cf_chl_rt_tk=uXwpdTg08UsRQ_l5impa5tIiyd7At9yVByLqDWDzyrA-1786094895-1.0.1.1\">" +
+                "ScribbleHub</a>"
+        assertFalse(SourceAccessBlockDetector.isChallengeHtml(descriptionLink))
+        assertFalse(
+            SourceAccessBlockDetector.isChallengeResponse(
+                headersOf("server", "cloudflare"),
+                "<html><head><title>Hodoku: My Ordinary Life As a Kunoichi | Royal Road</title></head>" +
+                    "<body>$descriptionLink</body></html>",
+            ),
+        )
     }
 }
