@@ -86,6 +86,83 @@ class SourceProviderFixtureTest {
         }
 
     @Test
+    fun royalRoadChapterListUsesWindowChaptersWhenTableIsTruncated() =
+        runBlocking {
+            // Reproduces the WebView-rendered fiction page after Royal Road's React table
+            // pagination: the DOM keeps one page of `.chapter-row` rows while window.chapters
+            // still lists every chapter. Titles with brackets/quotes must not break extraction.
+            val html =
+                """
+                <html><head>
+                  <script>
+                    window.fictionCover = "https://www.royalroad.com/covers/1.jpg";
+                    window.chapters = [
+                      {"id":101,"volumeId":null,"title":"Chapter 1: The [Opening] \"Arrival\"","slug":"one","date":"2026-01-01T00:00:00Z","order":0,"visible":1,"url":"/fiction/12345/x/chapter/101/one"},
+                      {"id":102,"volumeId":null,"title":"Chapter 2: Hidden","slug":"two","date":"2026-01-02T00:00:00Z","order":1,"visible":0,"url":"/fiction/12345/x/chapter/102/two"},
+                      {"id":103,"volumeId":null,"title":"Chapter 3","slug":"three","date":"2026-01-03T00:00:00Z","order":2,"visible":1,"url":"/fiction/12345/x/chapter/103/three"}
+                    ];
+                    window.fictionId = 12345;
+                  </script>
+                </head><body>
+                  <table><tr class="chapter-row">
+                    <td><a href="/fiction/12345/chapter/101/one">Chapter 1: The [Opening] "Arrival"</a></td>
+                  </tr></table>
+                </body></html>
+                """.trimIndent()
+
+            val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/12345/x", noopNetwork)
+
+            // The visible:0 entry is skipped; chapters missing from the table still come through.
+            assertEquals(listOf("101", "103"), chapters.map { it.id })
+            assertEquals("Chapter 1: The [Opening] \"Arrival\"", chapters.first().title)
+            assertTrue(chapters.last().url.startsWith("https://www.royalroad.com/fiction/12345/x/chapter/103/"))
+            assertEquals("Chapter 3", chapters.last().title)
+            assertEquals(2, chapters.last().chapterNumber)
+            assertEquals(Instant.parse("2026-01-03T00:00:00Z").toEpochMilli(), chapters.last().publishedAt)
+        }
+
+    @Test
+    fun royalRoadChapterListAppendsTableRowsMissingFromWindowChapters() =
+        runBlocking {
+            val html =
+                """
+                <html><head>
+                  <script>
+                    window.chapters = [
+                      {"id":201,"order":0,"title":"Chapter 1","visible":1,"url":"/fiction/12345/x/chapter/201/one"}
+                    ];
+                  </script>
+                </head><body>
+                  <table>
+                    <tr class="chapter-row"><td><a href="/fiction/12345/chapter/201/one">Chapter 1</a></td></tr>
+                    <tr class="chapter-row"><td><a href="/fiction/12345/chapter/202/two">Chapter 2</a></td></tr>
+                  </table>
+                </body></html>
+                """.trimIndent()
+
+            val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/12345/x", noopNetwork)
+
+            assertEquals(listOf("201", "202"), chapters.map { it.id })
+        }
+
+    @Test
+    fun royalRoadChapterListFallsBackToTableRowsWithoutWindowChapters() =
+        runBlocking {
+            val html =
+                """
+                <html><body>
+                  <table><tr class="chapter-row">
+                    <td><a href="/fiction/12345/chapter/301/one">Chapter One</a></td>
+                  </tr></table>
+                </body></html>
+                """.trimIndent()
+
+            val chapters = RoyalRoadProvider.getChapterList(html, "https://www.royalroad.com/fiction/12345/x", noopNetwork)
+
+            assertEquals(listOf("301"), chapters.map { it.id })
+        }
+
+    @Test
     fun royalRoadListingStateIsSeparateFromPublicationStatus() {
         val metadata =
             RoyalRoadProvider.parseMetadata(

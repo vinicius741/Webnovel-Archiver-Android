@@ -13,9 +13,7 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import java.util.Locale
-import kotlin.math.max
 
 @Suppress("TooManyFunctions")
 object RoyalRoadProvider : SourceProvider {
