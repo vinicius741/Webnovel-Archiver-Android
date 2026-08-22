@@ -155,7 +155,16 @@ private fun ScreenHost.appBar(
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(Spacing.XS + 2), 0, dp(Spacing.SM), 0)
             }
-        titleCol.addView(makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply { includeFontPadding = false })
+        // Header-only clamp: source titles can be arbitrarily long (tag-stuffed RoyalRoad names
+        // wrap 3+ lines and balloon the bar); cap at 2 lines with an end ellipsis. The full title
+        // stays available on the story screen body.
+        titleCol.addView(
+            makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply {
+                includeFontPadding = false
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            },
+        )
         subtitle?.let {
             titleCol.addView(
                 makeText(app, it, Type.BODY_SMALL, t.colors.onSurfaceVariant).apply {
