@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
  * generated image is only for reclaiming the choice entirely.
  */
 
-/** Current-state card: the applied AI cover, the show-AI/source preference, and the generate/delete actions. */
+/** Current-state card: the image model selector, applied AI cover, show-AI preference, and generate/delete actions. */
 internal fun ScreenHost.addAiCoverCard(
     container: LinearLayout,
     story: Story,
@@ -64,6 +64,8 @@ internal fun ScreenHost.addAiCoverCard(
     val isBusy = storyOperation?.storyId == story.id
     val cardView =
         container.card {
+            addAiCoverModelRow(this, story)
+            spacer(Space.MD)
             if (hasAiCover) {
                 addView(
                     makeBadge(context, "AI-generated", colors.tertiaryContainer, colors.onTertiaryContainer),
@@ -95,7 +97,7 @@ internal fun ScreenHost.addAiCoverCard(
                         "Staged: the prompt is written first and can be edited before the image call.",
                         Type.BODY_SMALL,
                         colors.onSurfaceVariant,
-                    ).apply { setPadding(0, dp(Space.XS), 0, 0) }
+                    ).apply { setPadding(dp(2), dp(Space.XS), dp(2), 0) }
                 }
                 spacer(Space.SM)
                 fullButton(
@@ -110,10 +112,15 @@ internal fun ScreenHost.addAiCoverCard(
                     variant = Btn.FILLED,
                     icon = R.drawable.wna_auto_awesome,
                     enabled = generating == null && !isBusy,
-                    bottomMarginDp = 0,
+                    bottomMarginDp = if (hasAiCover) Space.XS else 0,
                 ) { generateAiCoverDraft(story) }
                 if (hasAiCover) {
-                    button("Delete AI cover", Btn.TEXT) { revertAiCover(story) }
+                    fullButton(
+                        label = "Delete AI cover",
+                        variant = Btn.TEXT,
+                        enabled = generating == null && !isBusy,
+                        bottomMarginDp = 0,
+                    ) { revertAiCover(story) }
                 }
             } else {
                 text(

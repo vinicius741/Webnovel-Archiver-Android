@@ -71,7 +71,7 @@ internal fun ScreenHost.showAiControls(storyId: String) {
 
         section("Description")
         text(
-            "Generate a fresh synopsis from the novel's earliest downloaded chapters. The source " +
+            "Generate a fresh synopsis from the novel's downloaded chapters. The source " +
                 "description is never modified.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
@@ -85,8 +85,8 @@ internal fun ScreenHost.showAiControls(storyId: String) {
 }
 
 /**
- * Current-state card: the applied AI synopsis (or an explanatory line when there is none), the
- * show-AI/original preference, and the generate/regenerate action.
+ * Current-state card: the model selector, context chapters, the applied AI synopsis,
+ * the show-AI preference, and the generate/regenerate action.
  */
 private fun ScreenHost.addAiDescriptionCard(
     container: LinearLayout,
@@ -101,6 +101,10 @@ private fun ScreenHost.addAiDescriptionCard(
     val isBusy = storyOperation?.storyId == story.id
     val cardView =
         container.card {
+            addAiDescriptionModelRow(this, story)
+            spacer(Space.MD)
+            addAiContextChaptersRow(this, story)
+            spacer(Space.MD)
             if (hasAi) {
                 addView(
                     makeBadge(context, "AI-generated", colors.tertiaryContainer, colors.onTertiaryContainer),
@@ -253,7 +257,10 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
                     app.runOnUiThread { patchAiDraftProgress(story.id, message) }
                 }
             aiControlsScreenState.drafts[story.id] = draft
-            finishAiDraftOperation(story.id)
+            if (storyOperation?.storyId == story.id && storyOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
+                storyOperation = null
+                detailsOperationSlot = null
+            }
             if (frameIsAiControls(story.id)) {
                 showAiControls(story.id)
             } else {
@@ -263,7 +270,10 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             Timber.w(error, "AI description generation failed for %s", story.id)
-            finishAiDraftOperation(story.id)
+            if (storyOperation?.storyId == story.id && storyOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
+                storyOperation = null
+                detailsOperationSlot = null
+            }
             toast(error.message ?: "AI description failed")
             if (frameIsAiControls(story.id)) showAiControls(story.id) else rerenderDetailsIfVisible(story.id)
         }
@@ -284,13 +294,6 @@ private fun ScreenHost.patchAiDraftProgress(
     storyOperation = next
     detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
     if (frameIsAiControls(storyId)) showAiControls(storyId)
-}
-
-private fun ScreenHost.finishAiDraftOperation(storyId: String) {
-    if (storyOperation?.storyId == storyId && storyOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-        storyOperation = null
-        detailsOperationSlot = null
-    }
 }
 
 internal fun ScreenHost.applyAiDescriptionDraft(

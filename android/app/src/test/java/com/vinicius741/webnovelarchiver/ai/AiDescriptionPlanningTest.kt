@@ -25,6 +25,66 @@ class AiDescriptionPlanningTest {
     }
 
     @Test
+    fun `resolveContextChapters without explicit selection matches the default`() {
+        val story = storyWithDownloads(downloaded = listOf(false) + List(7) { true })
+
+        assertEquals(
+            AiDescriptionPlanning.selectContextChapters(story),
+            AiDescriptionPlanning.resolveContextChapters(story),
+        )
+        // Null and empty explicit selections both mean "no user choice" — the default applies.
+        assertEquals(
+            AiDescriptionPlanning.selectContextChapters(story),
+            AiDescriptionPlanning.resolveContextChapters(story, emptyList()),
+        )
+    }
+
+    @Test
+    fun `resolveContextChapters keeps any number of explicitly chosen chapters in order`() {
+        val story = storyWithDownloads(downloaded = List(8) { true })
+
+        val resolved = AiDescriptionPlanning.resolveContextChapters(story, listOf(6, 1, 3))
+
+        assertEquals(listOf(1, 3, 6), resolved)
+        // More than the default five is allowed.
+        assertEquals(
+            listOf(0, 1, 2, 3, 4, 5, 6),
+            AiDescriptionPlanning.resolveContextChapters(story, listOf(0, 1, 2, 3, 4, 5, 6)),
+        )
+    }
+
+    @Test
+    fun `resolveContextChapters drops stale indices and duplicates`() {
+        // Index 2 is not downloaded and 9 no longer exists after a sync.
+        val story = storyWithDownloads(downloaded = listOf(true, true, false, true))
+
+        assertEquals(
+            listOf(1, 3),
+            AiDescriptionPlanning.resolveContextChapters(story, listOf(9, 1, 2, 3, 1)),
+        )
+        // A selection that fully rotted resolves to nothing.
+        assertEquals(
+            emptyList<Int>(),
+            AiDescriptionPlanning.resolveContextChapters(story, listOf(2)),
+        )
+    }
+
+    @Test
+    fun `contextChaptersLabel distinguishes default explicit and stale selections`() {
+        val story = storyWithDownloads(downloaded = List(6) { true })
+
+        assertEquals(
+            "First ${AiDescriptionPlanning.CONTEXT_CHAPTER_COUNT} downloaded (default)",
+            AiDescriptionPlanning.contextChaptersLabel(story),
+        )
+        assertEquals("2 selected", AiDescriptionPlanning.contextChaptersLabel(story.copy(aiContextChapterIndices = mutableListOf(1, 4))))
+        assertEquals(
+            "None — selection is stale",
+            AiDescriptionPlanning.contextChaptersLabel(story.copy(aiContextChapterIndices = mutableListOf(99))),
+        )
+    }
+
+    @Test
     fun `capChapterText keeps short text and truncates long text with a marker`() {
         val short = "A short chapter.\n\nSecond paragraph."
         assertEquals(short, AiDescriptionPlanning.capChapterText(short))

@@ -63,6 +63,39 @@ object AiDescriptionPlanning {
             .take(CONTEXT_CHAPTER_COUNT)
             .map { it.index }
 
+    /**
+     * Resolves the chapter indices an AI generation should use. A null (or empty) [explicit]
+     * selection means no user choice exists and the default applies — exactly the first
+     * [CONTEXT_CHAPTER_COUNT] downloaded chapters. An explicit selection is kept only where it
+     * still points at a downloaded chapter (sync may have replaced the list since it was saved),
+     * is de-duplicated, and is returned in chapter order so prompts stay deterministic.
+     */
+    fun resolveContextChapters(
+        story: Story,
+        explicit: List<Int>? = null,
+    ): List<Int> {
+        if (explicit == null || explicit.isEmpty()) return selectContextChapters(story)
+        val downloaded = story.chapters.indices.filter { story.chapters[it].downloaded }
+        return explicit.filter { it in downloaded }.distinct().sorted()
+    }
+
+    /**
+     * UI label for the AI Controls context-chapter row: the default wording when no explicit
+     * selection exists, otherwise the resolved selection size (which may be smaller than what was
+     * saved if chapters stopped being downloaded).
+     */
+    fun contextChaptersLabel(story: Story): String =
+        if (story.aiContextChapterIndices == null) {
+            "First $CONTEXT_CHAPTER_COUNT downloaded (default)"
+        } else {
+            val resolved = resolveContextChapters(story, story.aiContextChapterIndices)
+            if (resolved.isEmpty()) {
+                "None — selection is stale"
+            } else {
+                "${resolved.size} selected"
+            }
+        }
+
     /** Caps one chapter's plain text, marking the cut so the model knows the text continues. */
     fun capChapterText(text: String): String =
         if (text.length <= MAX_CHARS_PER_CHAPTER) {
@@ -78,8 +111,8 @@ object AiDescriptionPlanning {
     ): List<OpenRouterMessage> {
         val sourceData = AiPromptSourceData.build(story, enforceTotalContextCap(chapters))
         val userContent =
-            "Write the synopsis from SOURCE_DATA. The excerpts are the earliest downloaded " +
-                "chapters available and may not begin at chapter 1.\n\n$sourceData"
+            "Write the synopsis from SOURCE_DATA. The excerpts are downloaded chapters chosen as " +
+                "context and may not begin at chapter 1.\n\n$sourceData"
         return listOf(
             OpenRouterMessage(role = "system", content = SYSTEM_PROMPT),
             OpenRouterMessage(role = "user", content = userContent),

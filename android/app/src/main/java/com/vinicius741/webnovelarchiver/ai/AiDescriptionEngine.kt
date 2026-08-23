@@ -35,12 +35,19 @@ class AiDescriptionEngine(
             repository.story(storyId)
                 ?: throw IllegalArgumentException("Story not found")
         if (story.isArchived == true) error("Archived snapshots are read-only")
-        if (AiDescriptionPlanning.selectContextChapters(story).isEmpty()) {
-            error("Download at least one chapter before generating an AI description")
+        val contextIndices = AiDescriptionPlanning.resolveContextChapters(story, story.aiContextChapterIndices)
+        if (contextIndices.isEmpty()) {
+            error(
+                if (story.aiContextChapterIndices != null) {
+                    "The selected chapters are no longer downloaded — pick chapters again in AI Controls"
+                } else {
+                    "Download at least one chapter before generating an AI description"
+                },
+            )
         }
 
         onProgress("Reading chapters...")
-        val chapters = AiContextChapters.read(repository, story)
+        val chapters = AiContextChapters.read(repository, story, contextIndices)
         if (chapters.isEmpty()) {
             error("Downloaded chapter files are missing; re-download the novel's chapters")
         }

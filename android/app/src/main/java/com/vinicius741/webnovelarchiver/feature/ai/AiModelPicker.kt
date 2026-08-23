@@ -1,15 +1,15 @@
-package com.vinicius741.webnovelarchiver.feature.settings
+package com.vinicius741.webnovelarchiver.feature.ai
 
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import androidx.core.widget.doAfterTextChanged
-import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
-import com.vinicius741.webnovelarchiver.ai.OpenRouterImageModel
+import com.vinicius741.webnovelarchiver.ai.AiModelPresentation
+import com.vinicius741.webnovelarchiver.ai.OpenRouterModel
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -18,6 +18,7 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -29,45 +30,40 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Cover-image model picker for Settings → AI Settings. Mirrors the description-model picker
- * (search + capped list + pinned manual entry) but rides the dedicated image-model catalog
- * (`GET /api/v1/images/models`), which ships no pricing — so there are no price labels and no
- * Free filter here, and each row notes the request parameters the model supports.
+ * Description-model picker for the AI Controls screen (moved from AI Settings — the model is
+ * changed where generation happens, not in global settings). Bounded, searchable catalog dialog
+ * mirroring the TTS voice dialog (search + chips + scroll) with manual entry pinned first.
  */
 
-/** Process-lifetime image-model-catalog cache so the picker reopens instantly after the first fetch. */
+/** Process-lifetime model-catalog cache so the picker reopens instantly after the first fetch. */
 @Volatile
-private var imageModelCatalogCache: List<OpenRouterImageModel>? = null
+internal var modelCatalogCache: List<OpenRouterModel>? = null
 
-/** Opens the image model picker, fetching OpenRouter's image catalog on first use. */
-internal fun ScreenHost.showAiImageModelPicker(
+/** Opens the searchable model picker, fetching OpenRouter's catalog on first use. */
+internal fun ScreenHost.showAiModelPicker(
     currentModel: String,
     onPicked: (String) -> Unit,
 ) {
-    val cached = imageModelCatalogCache
+    val cached = modelCatalogCache
     if (cached != null) {
-        showAiImageModelDialog(cached, currentModel, onPicked)
+        showAiModelDialog(cached, currentModel, onPicked)
         return
     }
-    toast("Loading OpenRouter image models...")
+    toast("Loading OpenRouter models...")
     scope.launch {
-        val result = runCatching { app.appContainer.openRouter.fetchImageModels() }
-        val models = result.getOrNull()
-        if (models == null) {
-            // A failed fetch must not open an empty picker — surface the reason and leave the
-            // cache empty so the next open retries (nothing is cached on failure).
-            toast(result.exceptionOrNull()?.message ?: "Could not load image models")
-            return@launch
-        }
-        val rasterModels = models.filter(AiCoverPlanning::supportsRasterOutput)
-        imageModelCatalogCache = rasterModels
-        app.runOnUiThread { showAiImageModelDialog(rasterModels, currentModel, onPicked) }
+        val result = runCatching { app.appContainer.openRouter.fetchModels() }
+        result.onFailure { toast(it.message ?: "Could not load models") }
+        val models = result.getOrNull().orEmpty()
+        // An empty successful catalog is cacheable, but a transient network/API failure must remain
+        // retryable when the picker is reopened during the same process.
+        result.getOrNull()?.let { modelCatalogCache = it }
+        app.runOnUiThread { showAiModelDialog(models, currentModel, onPicked) }
     }
 }
 
-/** Bounded, searchable image model picker; manual entry stays pinned for ids missing from the catalog. */
-private fun ScreenHost.showAiImageModelDialog(
-    models: List<OpenRouterImageModel>,
+/** Bounded, searchable model picker mirroring the TTS voice dialog (search + chips + scroll). */
+private fun ScreenHost.showAiModelDialog(
+    models: List<OpenRouterModel>,
     selectedId: String,
     onPicked: (String) -> Unit,
 ) {
@@ -80,18 +76,28 @@ private fun ScreenHost.showAiImageModelDialog(
             background = roundedBg(colors.surface, app.dp(shapes.dialogRadius).toFloat())
             roundCorners(shapes.dialogRadius.toFloat())
         }
-    dialogView.addView(makeText(app, "AI Image Model", Type.TITLE_LARGE, colors.onSurface))
+    dialogView.addView(makeText(app, "AI Model", Type.TITLE_LARGE, colors.onSurface))
     dialogView.addView(
         makeText(app, "Search by name or id", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
             setPadding(0, app.dp(Space.XS), 0, app.dp(Space.MD))
         },
     )
-    val search = makeSearchField(app, "Search image models")
+    val search = makeSearchField(app, "Search models")
     dialogView.addView(search)
+
+    var freeOnly = false
+    val filterRow = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
+    dialogView.addView(
+        android.widget.HorizontalScrollView(app).apply {
+            isHorizontalScrollBarEnabled = false
+            setPadding(0, app.dp(Space.MD), 0, app.dp(Space.SM))
+            addView(filterRow)
+        },
+    )
 
     val resultCount =
         makeText(app, "", Type.LABEL_MEDIUM, colors.onSurfaceVariant).apply {
-            setPadding(0, app.dp(Space.MD), 0, app.dp(Space.SM))
+            setPadding(0, 0, 0, app.dp(Space.SM))
         }
     dialogView.addView(resultCount)
     val results = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
@@ -107,17 +113,11 @@ private fun ScreenHost.showAiImageModelDialog(
     var dialogRef: AlertDialog? = null
 
     fun renderResults() {
-        val query =
-            search.text
-                .toString()
-                .trim()
-                .lowercase()
-        val filtered =
-            models.filter { model ->
-                query.isEmpty() || model.id.lowercase().contains(query) || model.name.lowercase().contains(query)
-            }
+        val filtered = AiModelPresentation.filter(models, search.text.toString(), freeOnly)
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "model" else "models"}"
         results.removeAllViews()
+        // Manual entry stays pinned as the first row so it is reachable even when the catalog
+        // failed to load (offline) or nothing matches the search.
         results.addView(
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
@@ -129,19 +129,19 @@ private fun ScreenHost.showAiImageModelDialog(
                 addView(
                     makeText(
                         app,
-                        "Use any OpenRouter image model id, e.g. a new release missing from the list",
+                        "Use any OpenRouter model id, e.g. a new release missing from the list",
                         Type.BODY_SMALL,
                         colors.onSurfaceVariant,
                     ).apply { setPadding(0, app.dp(Space.XS), 0, 0) },
                 )
                 setOnClickListener {
                     dialogRef?.dismiss()
-                    showImageManualModelDialog(selectedId, onPicked)
+                    showManualModelDialog(selectedId, onPicked)
                 }
             },
         )
         results.addView(makeDivider(app))
-        filtered.take(MAX_RENDERED_IMAGE_MODELS).forEach { model ->
+        filtered.take(MAX_RENDERED_MODELS).forEach { model ->
             results.addView(
                 LinearLayout(app).apply {
                     orientation = LinearLayout.VERTICAL
@@ -158,9 +158,8 @@ private fun ScreenHost.showAiImageModelDialog(
                         ),
                     )
                     addView(
-                        makeText(app, model.id, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-                            setPadding(0, app.dp(Space.XS), 0, 0)
-                        },
+                        makeText(app, "${model.id} · ${AiModelPresentation.priceLabel(model)}", Type.BODY_SMALL, colors.onSurfaceVariant)
+                            .apply { setPadding(0, app.dp(Space.XS), 0, 0) },
                     )
                     setOnClickListener {
                         dialogRef?.dismiss()
@@ -169,29 +168,52 @@ private fun ScreenHost.showAiImageModelDialog(
                 },
             )
         }
-        if (filtered.size > MAX_RENDERED_IMAGE_MODELS) {
+        if (filtered.size > MAX_RENDERED_MODELS) {
             results.addView(
                 makeText(
                     app,
-                    "...and ${filtered.size - MAX_RENDERED_IMAGE_MODELS} more — refine your search",
+                    "...and ${filtered.size - MAX_RENDERED_MODELS} more — refine your search",
                     Type.BODY_SMALL,
                     colors.onSurfaceVariant,
                 ).apply { setPadding(0, app.dp(Space.SM), 0, app.dp(Space.SM)) },
             )
         } else if (filtered.isEmpty()) {
             results.addView(
-                makeText(app, "No image models match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
+                makeText(app, "No models match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
                     .apply { setPadding(0, app.dp(Space.LG), 0, app.dp(Space.LG)) },
             )
         }
     }
 
+    fun renderFilters() {
+        filterRow.removeAllViews()
+        filterRow.addView(
+            makeChip(app, "All", !freeOnly) {
+                freeOnly = false
+                renderFilters()
+                renderResults()
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = app.dp(Space.SM)
+            },
+        )
+        filterRow.addView(
+            makeChip(app, "Free", freeOnly) {
+                freeOnly = true
+                renderFilters()
+                renderResults()
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
+    }
+
     search.doAfterTextChanged { renderResults() }
+    renderFilters()
     renderResults()
 
     dialogView.addView(
         LinearLayout(app).apply {
-            gravity = android.view.Gravity.END
+            gravity = Gravity.END
             setPadding(0, app.dp(Space.MD), 0, 0)
             addView(makeButton(app, "Cancel", Btn.TEXT) { dialogRef?.dismiss() })
         },
@@ -201,13 +223,13 @@ private fun ScreenHost.showAiImageModelDialog(
     dialogRef.show()
 }
 
-/** Plain text-input dialog for image model ids that are not (or not yet) in the catalog. */
-private fun ScreenHost.showImageManualModelDialog(
+/** Plain text-input dialog for model ids that are not (or not yet) in the catalog. */
+internal fun ScreenHost.showManualModelDialog(
     currentModel: String,
     onPicked: (String) -> Unit,
-) = prompt("Image model id (e.g. x-ai/grok-imagine-image-2.0)", currentModel) { value ->
+) = prompt("Model id (e.g. deepseek/deepseek-v4-flash-0731)", currentModel) { value ->
     value.trim().takeIf { it.isNotBlank() }?.let(onPicked)
 }
 
-/** Render cap for the dialog list; scrolling many rows on a phone dialog gets sluggish. */
-private const val MAX_RENDERED_IMAGE_MODELS = 80
+// Render cap for the dialog list; scrolling hundreds of rows on a phone dialog gets sluggish.
+private const val MAX_RENDERED_MODELS = 80

@@ -481,6 +481,15 @@ class AppRepository private constructor(
         showAi: Boolean,
     ): Story? = updateExistingStory(storyId) { StoryMutations.setShowAiDescription(it, showAi) }
 
+    /**
+     * Stores the story's explicit AI context-chapter selection; null resets to the default
+     * (first downloaded chapters).
+     */
+    suspend fun setAiContextChapters(
+        storyId: String,
+        indices: List<Int>?,
+    ): Story? = updateExistingStory(storyId) { StoryMutations.setAiContextChapters(it, indices) }
+
     /** Updates references after missing EPUB files are detected, retaining unrelated story state. */
     suspend fun retainEpubPaths(
         storyId: String,

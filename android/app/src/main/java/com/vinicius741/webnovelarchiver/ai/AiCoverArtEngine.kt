@@ -74,12 +74,20 @@ class AiCoverArtEngine(
         operationId: String,
     ): String {
         val context = coverContext(storyId)
-        if (AiDescriptionPlanning.selectContextChapters(context.story).isEmpty()) {
-            error("Download at least one chapter before generating an AI cover")
+        val contextIndices =
+            AiDescriptionPlanning.resolveContextChapters(context.story, context.story.aiContextChapterIndices)
+        if (contextIndices.isEmpty()) {
+            error(
+                if (context.story.aiContextChapterIndices != null) {
+                    "The selected chapters are no longer downloaded — pick chapters again in AI Controls"
+                } else {
+                    "Download at least one chapter before generating an AI cover"
+                },
+            )
         }
 
         onProgress("Reading chapters...")
-        val chapters = AiContextChapters.read(repository, context.story)
+        val chapters = AiContextChapters.read(repository, context.story, contextIndices)
         if (chapters.isEmpty()) {
             error("Downloaded chapter files are missing; re-download the novel's chapters")
         }

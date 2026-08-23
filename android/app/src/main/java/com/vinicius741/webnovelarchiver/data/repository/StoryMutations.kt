@@ -70,6 +70,15 @@ internal object StoryMutations {
     ): Story? = latest.takeIf { it.aiDescription != null }?.copy(showAiDescription = showAi)
 
     /**
+     * Stores the explicit AI context-chapter selection. Null resets to the default (first downloaded
+     * chapters); invalid indices are ignored at read time, not here, so no validation races sync.
+     */
+    fun setAiContextChapters(
+        latest: Story,
+        indices: List<Int>?,
+    ): Story = latest.copy(aiContextChapterIndices = indices?.sorted()?.toMutableList())
+
+    /**
      * Points the story at a freshly generated cover file (path relative to the storage root).
      * Generation always switches the display to the AI cover (the user generated it because the
      * source one was disliked); the source stays in [Story.coverUrl] and remains one toggle away.

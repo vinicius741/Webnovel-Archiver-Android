@@ -102,6 +102,9 @@ object StorySyncMergePlanning {
                 } else {
                     synced.showAiCover
                 },
+            // The AI context-chapter selection gets the same protection: a pick saved by another
+            // flow during the network window must survive the fold.
+            aiContextChapterIndices = onDisk.aiContextChapterIndices ?: synced.aiContextChapterIndices,
         )
     }
 

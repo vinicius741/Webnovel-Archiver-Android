@@ -170,6 +170,13 @@ data class Story(
     var sourceSyncState: SourceSyncState = SourceSyncState(),
     /** Public, source-authored metadata retained separately from generic tags and local state. */
     var sourceMetadata: SourceMetadata = SourceMetadata(),
+    /**
+     * Explicit indices (into [chapters]) of the chapters sent to AI generation. Null = default
+     * behaviour (first downloaded chapters, per AiDescriptionPlanning.CONTEXT_CHAPTER_COUNT).
+     * Stale indices (not-downloaded or removed chapters) are ignored at read time, so sync churn
+     * never breaks generation. Not saveable empty: the picker requires one chapter; empty = null.
+     */
+    var aiContextChapterIndices: MutableList<Int>? = null,
 )
 
 data class PatreonStats(

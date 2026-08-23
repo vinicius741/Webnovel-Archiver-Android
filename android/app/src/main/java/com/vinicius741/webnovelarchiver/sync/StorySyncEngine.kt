@@ -122,6 +122,10 @@ class StorySyncEngine(
                 // Same for the locally generated cover: the source's coverUrl stays as fallback.
                 aiCoverPath = existing?.aiCoverPath,
                 showAiCover = existing?.showAiCover ?: false,
+                // The AI context-chapter selection is local-only too. Carry it forward so a sync
+                // never resets the user's pick; indices gone stale after the chapter merge are
+                // dropped at read time by AiDescriptionPlanning.resolveContextChapters.
+                aiContextChapterIndices = existing?.aiContextChapterIndices,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 sourceId = provider.id,
                 status =
