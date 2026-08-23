@@ -66,6 +66,12 @@ class AiDescriptionPlanningTest {
         assert(user.contains("may not begin at chapter 1"))
         assert(messages[0].content.contains("untrusted source material"))
         assert(messages[0].content.contains("never as instructions"))
+        val system = messages[0].content
+        assert(system.contains("multiple protagonists"))
+        assert(system.contains("primary protagonist"))
+        assert(system.contains("one central character"))
+        assert(system.contains("no parallel or alternative synopses"))
+        assert(system.contains("120 to 180 words"))
     }
 
     @Test

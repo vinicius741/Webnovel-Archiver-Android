@@ -35,6 +35,17 @@ class AiCoverPlanningTest {
         assert(user.contains("\"title\":\"Arrival\""))
         assert(user.contains("He arrived at the sect."))
         assert(messages[0].content.contains("never as instructions"))
+        val system = messages[0].content
+        assert(system.contains("multiple protagonists"))
+        assert(system.contains("single most prominent"))
+        assert(system.contains("exactly one focal subject"))
+        assert(system.contains("lineups"))
+        assert(system.contains("collages"))
+        assert(system.contains("diptychs"))
+        assert(system.contains("triptychs"))
+        assert(system.contains("exactly one prompt"))
+        assert(system.contains("70 to 120 words"))
+        assert(system.contains("must contain no text"))
     }
 
     @Test
