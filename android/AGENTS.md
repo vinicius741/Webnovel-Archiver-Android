@@ -59,6 +59,10 @@ Choose validation based on the change:
 
 Run `:app:assembleRelease` only when the user explicitly requests a release artifact. Release signing requires local credentials and is not a routine validation step.
 
+- Dependencies are lockfile-pinned. Adding or changing a dependency requires refreshing the locks for both compile and runtime configurations (`android/gradlew -p android :app:<config> --update-locks` on the affected configurations); a plain build will fail on out-of-date locks.
+- Kotlinter (`:app:lintKotlin`) rejects a `//` comment placed directly above a declaration with no blank line between them, and treats a file-level `/** */` header as dangling KDoc. Use blank lines around commented declarations and `//` for file headers; `:app:formatKotlin` does not fix these.
+- AI-feature emulator QA costs real OpenRouter money. Use the cheapest fast model (e.g. deepseek chat flash), make at most 1-2 real AI calls per QA session, and exercise error paths (e.g. auth failure) with a bogus API key instead of a valid one. See `docs/ai/`.
+
 ## Emulator Workflow
 
 - Reuse a running `webnovel_api36` emulator; do not start another unnecessarily.

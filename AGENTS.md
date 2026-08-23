@@ -7,6 +7,11 @@
 - Product architecture, package map, build/validation commands, and emulator workflows live in `android/AGENTS.md`.
 - Repo agent skills live under `.agents/skills/` (`build-and-install-apk`, `dev-launch-screen`, `emulator-qa`, `restore-library-backup`). Prefer those skills over re-deriving build/install/QA steps.
 
+## Prompt Input via Text-to-Speech
+
+- The user frequently dictates prompts through a text-to-speech model, so messages may contain transcription artifacts — misrecognized words, odd casing, or extra letters (e.g. "AI" transcribed as "AIA").
+- Treat such glitches as transcription noise, not intentional. When a word, identifier, or name in a prompt doesn't quite parse, infer the most likely intended term from context before acting or asking.
+
 ## Git Workflow
 
 - Work in the current branch, normally `main`.
