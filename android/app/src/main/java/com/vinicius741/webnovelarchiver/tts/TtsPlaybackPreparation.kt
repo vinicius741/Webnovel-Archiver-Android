@@ -98,7 +98,7 @@ internal class TtsPlaybackPreparer(
                 return@withContext PreparationInput(
                     story = story,
                     chapter = TtsDescriptionPlanning.descriptionChapter(),
-                    html = TtsDescriptionPlanning.descriptionToHtml(description),
+                    html = TtsDescriptionPlanning.descriptionSessionHtml(story.title, description),
                     settings = source.settings(),
                     rules = source.regexRules(),
                 )

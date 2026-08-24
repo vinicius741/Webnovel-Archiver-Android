@@ -62,6 +62,7 @@ class TtsPlaybackPreparerTest {
             val story =
                 Story(
                     id = "story",
+                    title = "Titled Story",
                     description = "A humble beginning. Then adventure.\n\nA second paragraph.",
                     chapters = mutableListOf(Chapter(id = "one", content = "<p>Never spoken.</p>")),
                 )
@@ -74,7 +75,10 @@ class TtsPlaybackPreparerTest {
                     ?: error("Expected description playback")
 
             assertEquals(TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID, prepared.chapter.id)
-            assertEquals(listOf("A humble beginning.", "Then adventure.", "A second paragraph."), prepared.chunks)
+            assertEquals(
+                listOf("Titled Story", "A humble beginning.", "Then adventure.", "A second paragraph."),
+                prepared.chunks,
+            )
             assertEquals(0, prepared.startIndex)
         }
 

@@ -31,31 +31,53 @@ class TtsDescriptionPlanningTest {
     }
 
     @Test
-    fun descriptionToHtmlWrapsParagraphsAndNormalizesWhitespace() {
-        val html = TtsDescriptionPlanning.descriptionToHtml("First paragraph\ncontinued.\n\nSecond paragraph.")
-        assertEquals("<p>First paragraph continued.</p><p>Second paragraph.</p>", html)
+    fun descriptionSessionHtmlLeadsWithTitleThenWrapsParagraphs() {
+        val html = TtsDescriptionPlanning.descriptionSessionHtml("My Story", "First paragraph\ncontinued.\n\nSecond paragraph.")
+        assertEquals("<p>My Story</p><p>First paragraph continued.</p><p>Second paragraph.</p>", html)
     }
 
     @Test
-    fun descriptionToHtmlEscapesMarkupCharacters() {
-        val html = TtsDescriptionPlanning.descriptionToHtml("Power < 10 & \"quotes\" aren't parsed.")
-        assertEquals("<p>Power &lt; 10 &amp; &quot;quotes&quot; aren&#39;t parsed.</p>", html)
+    fun descriptionSessionHtmlEscapesMarkupCharacters() {
+        val html = TtsDescriptionPlanning.descriptionSessionHtml("R&amp;R", "Power < 10 & \"quotes\" aren't parsed.")
+        assertEquals("<p>R&amp;amp;R</p><p>Power &lt; 10 &amp; &quot;quotes&quot; aren&#39;t parsed.</p>", html)
     }
 
     @Test
-    fun descriptionToHtmlFallsBackToSingleParagraphWithoutBlankLineSeparators() {
-        val html = TtsDescriptionPlanning.descriptionToHtml("One line\nnext line.")
+    fun descriptionSessionHtmlSkipsTheTitleParagraphWhenBlank() {
+        val html = TtsDescriptionPlanning.descriptionSessionHtml("  ", "One line\nnext line.")
         assertEquals("<p>One line next line.</p>", html)
     }
 
     @Test
-    fun descriptionChunksAlignWithParagraphSentences() {
-        // End-to-end with the shared chunker: each sentence of the description becomes a chunk,
-        // exactly like chapter playback.
-        val html = TtsDescriptionPlanning.descriptionToHtml("A young hero rises. The journey begins.\n\nWar follows.")
+    fun descriptionChunksAlignWithTitleAndParagraphSentences() {
+        // End-to-end with the shared chunker: the title and each sentence of the description
+        // become chunks, exactly like chapter playback.
+        val html = TtsDescriptionPlanning.descriptionSessionHtml("My Story", "A young hero rises. The journey begins.\n\nWar follows.")
         assertEquals(
-            listOf("A young hero rises.", "The journey begins.", "War follows."),
+            listOf("My Story", "A young hero rises.", "The journey begins.", "War follows."),
             TtsTextPreparation.prepareTtsChunks(html, emptyList()),
+        )
+    }
+
+    @Test
+    fun descriptionProseFollowsTheTitleChunkVerbatim() {
+        // Regression guard for "TTS misses the first words of descriptions": the title chunk is
+        // the sacrificial session head, so the real synopsis must begin immediately after it with
+        // its opening sentence intact.
+        val description =
+            "When Eric Swallow received his first quest from the System, he certainly didn’t expect " +
+                "to end up in the netherworld. And he definitely didn’t plan to become a witch called Sylvia.\n\n" +
+                "What to expect:\n- Adventures across multiple planes\n- Politics, economics, and kingdom building"
+        val chunks =
+            TtsTextPreparation.prepareTtsChunks(
+                TtsDescriptionPlanning.descriptionSessionHtml("Netherwitch", description),
+                emptyList(),
+            )
+        assertEquals("Netherwitch", chunks[0])
+        assertTrue(chunks[1].startsWith("When Eric Swallow received his first quest from the System"))
+        assertEquals(
+            "And he definitely didn’t plan to become a witch called Sylvia.",
+            chunks[2],
         )
     }
 }

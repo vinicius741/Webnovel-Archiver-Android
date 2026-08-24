@@ -36,20 +36,33 @@ object TtsDescriptionPlanning {
         )
 
     /**
-     * Converts the plain-text description into the HTML the shared chunker
+     * Converts the story title and plain-text description into the HTML the shared chunker
      * ([com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation.prepareTtsChunks]) consumes.
      * Blank-line-separated paragraphs become `<p>` elements so paragraph boundaries survive
      * chunking; the text is HTML-escaped so descriptions containing markup characters are spoken
      * verbatim instead of being parsed as tags.
+     *
+     * The title leads as its own paragraph (audiobook convention) and doubles as a sacrificial
+     * head for the session's first utterance: audio routes spin up on the first synthesized
+     * frames (Bluetooth negotiation, speaker-amp ramp, engine cold start), and that spin-up can
+     * swallow the start of the first utterance. Chapters lose nothing there — their stored HTML
+     * opens with title boilerplate — but a description's first chunk used to be real prose, so
+     * listeners heard the synopsis open mid-sentence. With the title first, a clipped head costs
+     * at most part of the title, never the description's first words.
      */
-    fun descriptionToHtml(description: String): String {
+    fun descriptionSessionHtml(
+        title: String,
+        description: String,
+    ): String {
         val paragraphs =
             description
                 .split(Regex("\n\\s*\n"))
                 .map(::normalizeWhitespace)
                 .filter { it.isNotEmpty() }
         val effective = paragraphs.ifEmpty { listOf(normalizeWhitespace(description)) }.filter { it.isNotEmpty() }
-        return effective.joinToString("") { "<p>${escapeHtml(it)}</p>" }
+        val titleParagraph = normalizeWhitespace(title).takeIf { it.isNotEmpty() }
+        return (listOfNotNull(titleParagraph) + effective)
+            .joinToString("") { "<p>${escapeHtml(it)}</p>" }
     }
 
     private fun normalizeWhitespace(text: String): String = text.replace(Regex("\\s+"), " ").trim()
