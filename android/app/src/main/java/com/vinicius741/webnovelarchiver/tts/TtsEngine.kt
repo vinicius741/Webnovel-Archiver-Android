@@ -13,9 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -62,16 +60,10 @@ class TtsEngine(
     private var activeSettings: TtsSettings? = null
     private val commandVersion = AtomicLong(0L)
     private val listeners = TtsEventListeners()
-    private val mutablePlaybackState =
-        MutableStateFlow(
-            TtsPlaybackUpdate(
-                snapshot = null,
-                isAuthoritative = false,
-            ),
-        )
+    private val playbackPublisher = TtsPlaybackPublisher()
 
     /** Canonical observable playback state; authoritative `null` means playback explicitly stopped. */
-    val playbackState: StateFlow<TtsPlaybackUpdate> = mutablePlaybackState.asStateFlow()
+    val playbackState: StateFlow<TtsPlaybackUpdate> get() = playbackPublisher.playbackState
 
     fun addErrorListener(listener: (TtsPlaybackError) -> Unit) = listeners.addError(listener)
 
@@ -84,15 +76,6 @@ class TtsEngine(
 
     fun removeVoiceAvailabilityListener(listener: (List<VoiceInfo>) -> Unit) = listeners.removeVoices(listener)
 
-    /** Publishes the canonical playback snapshot to readers and the foreground service. */
-    private fun publishPlaybackState(snapshot: TtsPlaybackSnapshot?) {
-        mutablePlaybackState.value =
-            TtsPlaybackUpdate(
-                snapshot = snapshot,
-                isAuthoritative = true,
-            )
-    }
-
     private fun notifyErrorListeners(error: TtsPlaybackError) {
         Timber.w(TtsErrorPlanning.logMessage(error))
         listeners.dispatchError(error)
@@ -104,6 +87,7 @@ class TtsEngine(
     }
 
     override fun onInit(status: Int) {
+        TtsEngineLogging.engineInit(status, pendingSpeakOnInit, playbackActive)
         scope.launch {
             stateMutex.withLock {
                 if (status != TextToSpeech.SUCCESS) {
@@ -195,6 +179,7 @@ class TtsEngine(
     }
 
     private fun startPreparedPlaybackLocked(prepared: PreparedTtsPlayback) {
+        TtsEngineLogging.sessionStart(prepared.story.id, prepared.chapter.id, prepared.chunks.size, prepared.startIndex, ttsInitialized)
         activeSettings = prepared.settings
         ensureEngineLocked()
         if (!applySettingsLocked(prepared.settings) && ttsInitialized) return
@@ -277,7 +262,7 @@ class TtsEngine(
         session = null
         chunks = emptyList()
         // Playback has ended — signal observers to clear MediaSession state + hide the transport.
-        publishPlaybackState(null)
+        playbackPublisher.stop()
     }
 
     /** In-memory snapshot for notification refreshes; never decodes the session JSON on main. */
@@ -405,6 +390,7 @@ class TtsEngine(
             watchdogRetryCount = 0
         }
         val speakResult = engine.speak(current, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        TtsEngineLogging.speak(currentChunkIndex, chunks.size, utteranceId, current, speakResult)
         if (speakResult == TextToSpeech.ERROR) {
             handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.SpeakFailed))
             return
@@ -415,23 +401,13 @@ class TtsEngine(
         emitState(isPlaying = true)
     }
 
-    /**
-     * Builds a [TtsPlaybackSnapshot] from the live in-memory session + chunk list. `isPlaying`
-     * distinguishes "actively speaking" from "paused mid-chapter".
-     */
-    private fun emitState(isPlaying: Boolean) {
-        val snapshot =
-            TtsPlaybackState.snapshotForSession(
-                session = session,
-                totalChunks = chunks.size,
-                isPlaying = isPlaying,
-            )
-        publishPlaybackState(snapshot)
-    }
+    /** Publishes the live session; `isPlaying` distinguishes speaking from paused mid-chapter. */
+    private fun emitState(isPlaying: Boolean) = playbackPublisher.publish(session, chunks.size, isPlaying)
 
     private fun routeUtteranceDone(utteranceId: String?) {
         scope.launch {
             stateMutex.withLock {
+                TtsEngineLogging.utteranceDone(utteranceId, currentUtteranceId)
                 if (utteranceId != currentUtteranceId) return@withLock
                 currentUtteranceId = null
                 cancelStallWatchdog()
@@ -508,7 +484,7 @@ class TtsEngine(
             session = updated
             sessionStore.schedule(updated)
             emitState(isPlaying = false)
-        } ?: publishPlaybackState(null)
+        } ?: playbackPublisher.stop()
         notifyErrorListeners(error)
     }
 
@@ -557,7 +533,7 @@ class TtsEngine(
             runCatching { sessionStore.clear() }
                 .onFailure { Timber.e(it, "TTS completion clear failed") }
         }
-        publishPlaybackState(null)
+        playbackPublisher.stop()
     }
 
     fun shutdown() {
