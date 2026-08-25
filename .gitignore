@@ -20,6 +20,9 @@
 # macOS
 .DS_Store
 
+# Python
+__pycache__/
+
 # local env files
 .env*.local
 
@@ -30,6 +33,11 @@
 
 # Test coverage
 coverage/
+
+# Chapter-polish spike: API key, copyrighted corpus chapters, model outputs, caches
+/scripts/chapter_polish_spike/local/
+/scripts/chapter_polish_spike/results/
+/scripts/chapter_polish_spike/corpus/local/
 
 # ZCode session scratch (e.g. plan-sess_*.md); commands/skills under .zcode/ are tracked
 .zcode/plans/

@@ -17,6 +17,8 @@ OpenRouter-backed AI features for the native app.
 | `ai-cover-generation.md` | AI-generated cover art: two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
 | `ai-cost-tracking.md` | Exact OpenRouter receipt capture, device-local per-request history and aggregates, live current-key counters, preview cost labels, and privacy/backup behavior. |
 | `ai-chapter-rewrite-plan.html` | Research-backed product and implementation plan for reversible, verified AI chapter polishing that preserves source chapters, story canon, formatting, Reader/TTS parity, cost visibility, and provider privacy controls. |
+| `ai-chapter-rewrite-spike.md` | Phase 1 go/no-go spike results: prompt v1 vs v1.1 (merge semantics), three-model comparison incl. frontier, verifier holdout, cadence-report evidence, cost/privacy findings, and the blind-ballot verdict (harness: `scripts/chapter_polish_spike/`). |
+| `ai-chapter-rewrite-handoff.md` | Implementation handoff for building the full Chapter polish feature in-app (plan phases 2–5): spike-proven decisions to port, scope, prompt-strength guidance from the ballot, and QA requirements. |
 
 ### `architecture/`
 

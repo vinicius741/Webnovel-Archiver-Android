@@ -1,0 +1,33 @@
+{
+  "corpus_version": 1,
+  "entries": [
+    {
+      "id": "synthetic_litrpg_ch1",
+      "file": "synthetic_litrpg_ch1.html",
+      "kind": "synthetic",
+      "title": "Chapter 1 — Arrival",
+      "author": "spike-authored",
+      "rights": "Written for this evaluation. No third-party rights; safe to commit and polish.",
+      "notes": "Exercises protected blocks (System notices, stat table, dividers, heading, spacers), fragment clusters, triplets, punchline isolation, and concrete facts/numbers for verifier checks."
+    },
+    {
+      "id": "austen_pp_ch1",
+      "file": "local/austen_pp_ch1.html",
+      "kind": "public_domain",
+      "title": "Pride and Prejudice — Chapter I",
+      "author": "Jane Austen",
+      "rights": "Public domain (Project Gutenberg). Safe to commit and polish.",
+      "notes": "Control: mature human prose with strong voice. A good rewrite should be light-touch here; heavy drift is a red flag."
+    },
+    {
+      "id": "foxkin_ch1",
+      "file": "local/foxkin_ch1.html",
+      "kind": "problem_novel",
+      "title": "Chapter 1 — Not So Humble Beginnings",
+      "author": "Royal Road author (fiction 165465)",
+      "source_url": "https://www.royalroad.com/fiction/165465/foxkin-of-the-night-sky/chapter/3342012/chapter-1-not-so-humble-beginnings",
+      "rights": "Downloaded for personal reading via the app. Never committed. Source and polished outputs stay in gitignored local/results dirs; personal-use only, do not republish.",
+      "notes": "The plan's example chapter: 187 paragraph nodes, 91 fragments of five words or fewer, 11 fragment clusters. The primary problem-novel sample."
+    }
+  ]
+}
