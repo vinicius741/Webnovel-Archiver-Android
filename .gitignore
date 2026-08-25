@@ -39,5 +39,9 @@ coverage/
 /scripts/chapter_polish_spike/results/
 /scripts/chapter_polish_spike/corpus/local/
 
+# Copyrighted reference chapter for the block-parsing/cadence regression tests; never published.
+# Clones without it skip those tests (see ChapterBlockParsingTest / ChapterCadenceReportTest).
+/android/app/src/test/resources/fixtures/chapterpolish/foxkin_ch1.html
+
 # ZCode session scratch (e.g. plan-sess_*.md); commands/skills under .zcode/ are tracked
 .zcode/plans/

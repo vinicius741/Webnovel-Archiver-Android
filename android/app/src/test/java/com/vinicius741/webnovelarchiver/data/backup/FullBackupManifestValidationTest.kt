@@ -221,6 +221,57 @@ class FullBackupManifestValidationTest {
         )
     }
 
+    @Test
+    fun rewriteFilesOptionalAndValidatedWhenPresent() {
+        fun rewriteEntry(vararg fields: Pair<String, String>): Map<String, String> = mapOf(*fields)
+
+        fun rejects(entry: Map<String, String>): String? =
+            FullBackupManifestValidation.validate(validManifest("rewriteFiles" to listOf(entry)))
+
+        // Absent key (backups predating Chapter polish) is accepted — stories restore with no variants.
+        assertNull(FullBackupManifestValidation.validate(validManifest().minus("rewriteFiles")))
+        // Well-formed entries pass: many per story are legitimate (manifest + one applied.html
+        // per polished chapter).
+        assertNull(
+            FullBackupManifestValidation.validate(
+                validManifest(
+                    "rewriteFiles" to
+                        listOf(
+                            mapOf("storyId" to "story-1", "path" to "chapter_rewrites/story-1/manifest.json"),
+                            mapOf("storyId" to "story-1", "path" to "chapter_rewrites/story-1/ch1-1a2b3c4d/applied.html"),
+                        ),
+                ),
+            ),
+        )
+        assertEquals(
+            "Invalid full backup: malformed rewrite file index",
+            rejects(rewriteEntry("storyId" to "missing-story", "path" to "chapter_rewrites/missing-story/manifest.json")),
+        )
+        // Entries outside the chapter_rewrites/ tree are rejected even though the general
+        // entry allowlist accepts them (e.g. a novels/ chapter).
+        assertEquals(
+            "Invalid full backup: malformed rewrite file index",
+            rejects(rewriteEntry("storyId" to "story-1", "path" to "novels/story-1/0001_ch1.html")),
+        )
+        // Drafts never ship in backups; a draft.html entry is malformed.
+        assertEquals(
+            "Invalid full backup: malformed rewrite file index",
+            rejects(rewriteEntry("storyId" to "story-1", "path" to "chapter_rewrites/story-1/ch1-1a2b3c4d/draft.html")),
+        )
+        assertEquals(
+            "Invalid full backup: duplicate rewrite paths",
+            FullBackupManifestValidation.validate(
+                validManifest(
+                    "rewriteFiles" to
+                        listOf(
+                            mapOf("storyId" to "story-1", "path" to "chapter_rewrites/story-1/manifest.json"),
+                            mapOf("storyId" to "story-1", "path" to "chapter_rewrites/story-1/manifest.json"),
+                        ),
+                ),
+            ),
+        )
+    }
+
     private fun validManifest(vararg replacements: Pair<String, Any>): Map<String, Any> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",

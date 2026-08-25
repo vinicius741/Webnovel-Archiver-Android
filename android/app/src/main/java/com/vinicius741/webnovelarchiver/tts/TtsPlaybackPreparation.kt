@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.feature.reader.ChapterContentResolver
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,7 +24,11 @@ internal data class PreparedTtsPlayback(
 internal interface TtsPlaybackSource {
     fun story(id: String): Story?
 
-    suspend fun chapterHtml(chapter: Chapter): String?
+    /** Variant-aware chapter read (Source vs Polished) so narration never diverges from Reader. */
+    suspend fun chapterHtml(
+        storyId: String,
+        chapter: Chapter,
+    ): String?
 
     fun settings(): TtsSettings
 
@@ -107,7 +112,7 @@ internal class TtsPlaybackPreparer(
             PreparationInput(
                 story = story,
                 chapter = chapter,
-                html = source.chapterHtml(chapter) ?: chapter.content,
+                html = source.chapterHtml(storyId, chapter) ?: chapter.content,
                 settings = source.settings(),
                 rules = source.regexRules(),
             )
@@ -143,9 +148,14 @@ private data class PreparationInput(
 private class RepositoryTtsPlaybackSource(
     private val repository: AppRepository,
 ) : TtsPlaybackSource {
+    private val contentResolver = ChapterContentResolver(repository)
+
     override fun story(id: String): Story? = repository.story(id)
 
-    override suspend fun chapterHtml(chapter: Chapter): String? = repository.readChapter(chapter)
+    override suspend fun chapterHtml(
+        storyId: String,
+        chapter: Chapter,
+    ): String? = contentResolver.resolve(storyId, chapter).html
 
     override fun settings(): TtsSettings = repository.getTtsSettings()
 

@@ -23,6 +23,14 @@ data class RestoredCoverFileIndex(
     val path: String,
 )
 
+/** An applied chapter-rewrite file listed in a full-backup manifest, restored verbatim into
+ *  `chapter_rewrites/` — the per-story `manifest.json` inside that tree carries all rewrite state,
+ *  so (like metrics) there is no `apply…` step mutating any `Story` field. */
+data class RestoredRewriteFileIndex(
+    val storyId: String,
+    val path: String,
+)
+
 object FullBackupRestorePlanning {
     fun scrubTransientState(stories: MutableList<Story>): MutableList<Story> {
         stories.forEach { story ->

@@ -69,6 +69,24 @@ internal fun ScreenHost.showAiControls(storyId: String) {
         aiControlsScreenState.coverPrompts[story.id]?.let { prompt -> addAiCoverPromptDraftCard(this, story, prompt) }
         aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
 
+        section("Chapter Polish")
+        text(
+            "Rewrite a downloaded chapter's prose to remove repetitive habits. The source file " +
+                "is never modified; every draft is verified before it can be applied.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
+        spacer(Space.SM)
+        addAiChapterPolishCard(this, story)
+        aiChapterRewriteOperationFor(story.id)?.let { rewriteJob ->
+            addView(
+                makeStoryOperationSlot(
+                    app,
+                    StoryOperationState(story.id, StoryOperationKind.AI_CHAPTER_REWRITE, rewriteJob.message),
+                ),
+            )
+        }
+
         section("Description")
         text(
             "Generate a fresh synopsis from the novel's downloaded chapters. The source " +

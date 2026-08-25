@@ -8,6 +8,9 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.setChapterRewriteActive
+import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
+import com.vinicius741.webnovelarchiver.feature.ai.confirmChapterPolish
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
@@ -20,6 +23,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
+import com.vinicius741.webnovelarchiver.ui.ReaderChapterPolishControls
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
@@ -43,6 +47,26 @@ internal var activeReaderTtsStateJob: Job? = null
 internal fun ScreenHost.detachReaderTtsListener() {
     activeReaderTtsStateJob?.cancel()
     activeReaderTtsStateJob = null
+}
+
+/**
+ * Keeps TTS coherent after the chapter's active content variant changed (version switch or
+ * applying a rewrite): chunk indices refer to different text, so a live session is restarted from
+ * the top, and a paused or persisted-only session is stopped — its index would otherwise resume
+ * mid-paragraph inside the new variant.
+ */
+internal fun ScreenHost.restartTtsForChapterVariant(
+    storyId: String,
+    chapterId: String,
+) {
+    val snapshot = ttsEngine.playbackState.value.snapshot
+    val liveMatches = snapshot?.storyId == storyId && snapshot?.chapterId == chapterId
+    val persisted = repository.getTtsSession()
+    val persistedMatches = persisted?.storyId == storyId && persisted?.chapterId == chapterId
+    when {
+        liveMatches && snapshot?.isPaused == false -> TtsForegroundService.start(app, storyId, chapterId)
+        liveMatches || persistedMatches -> TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP)
+    }
 }
 
 internal fun ScreenHost.showReader(
@@ -128,6 +152,29 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
 
     fun rebuild() = showReader(story.id, chapter.id)
 
+    /**
+     * Chapter-content version switch: flips the manifest's active variant, restarts an in-flight
+     * TTS session from the top (chunk indices refer to different text after a switch), and
+     * rebuilds the reader with the new content. The source chapter file is never modified.
+     */
+    fun switchContentVersion() {
+        val currentlyPolished = document.contentVersion == ChapterContentVersion.POLISHED
+        scope.launch {
+            repository.setChapterRewriteActive(story.id, chapter.id, !currentlyPolished)
+            restartTtsForChapterVariant(story.id, chapter.id)
+            toast(if (currentlyPolished) "Switched to source version" else "Switched to polished version")
+            rebuild()
+        }
+    }
+
+    val versionSuffix =
+        when {
+            document.contentVersion == ChapterContentVersion.POLISHED && document.contentStale -> " · Polished (out of date)"
+            document.contentVersion == ChapterContentVersion.POLISHED -> " · Polished"
+            document.hasAppliedRewrite -> " · Polished available"
+            else -> ""
+        }
+
     val bookmarkActive = story.lastReadChapterId == chapter.id
     val actions =
         listOf(
@@ -159,6 +206,20 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     onOpenVoiceSettings = {
                         showTtsSettings(onBack = { showReader(story.id, chapter.id) })
                     },
+                    polishControls =
+                        ReaderChapterPolishControls(
+                            versionSwitchLabel =
+                                if (document.contentVersion ==
+                                    ChapterContentVersion.POLISHED
+                                ) {
+                                    "Switch to source version"
+                                } else {
+                                    "Switch to polished version"
+                                },
+                            onSwitchVersion = { switchContentVersion() },
+                            polishLabel = "Polish this chapter…",
+                            onPolish = { confirmChapterPolish(story, chapter) },
+                        ).takeIf { document.hasAppliedRewrite },
                 )
             },
         )
@@ -214,7 +275,8 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     screen(
         route = AppRoute.Reader(story.id, chapter.id),
         title = sanitizeTitle(chapter.title),
-        subtitle = "${currentIndex + 1} / ${story.chapters.size}",
+        subtitle = "${currentIndex + 1} / ${story.chapters.size}$versionSuffix",
+        onSubtitleClick = if (document.hasAppliedRewrite) ({ switchContentVersion() }) else null,
         onBack = {
             // Leaving the reader: detach our TTS listener so it can't call evaluateJavascript on a
             // WebView that the next screen's disposeWebViews() will tear down. Playback itself

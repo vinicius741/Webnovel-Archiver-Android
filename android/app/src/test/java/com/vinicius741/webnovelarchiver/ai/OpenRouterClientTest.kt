@@ -40,6 +40,52 @@ class OpenRouterClientTest {
     }
 
     @Test
+    fun `chatCompletion includes optional temperature response format and provider only when set`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"id":"gen-2","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+                    """.trimIndent(),
+                ),
+            )
+
+            client.chatCompletion(
+                apiKey = "sk-or-v1-test",
+                model = "openai/gpt-5.6-terra",
+                messages = listOf(OpenRouterMessage("system", "s"), OpenRouterMessage("user", "u")),
+                maxTokens = 12000,
+                temperature = 0.6,
+                responseFormat =
+                    com.google.gson.JsonParser
+                        .parseString(
+                            """{"type":"json_schema","json_schema":{"name":"chapter_rewrite","strict":true}}""",
+                        ).asJsonObject,
+                provider =
+                    com.google.gson.JsonParser
+                        .parseString("""{"zdr":true,"data_collection":"deny"}""")
+                        .asJsonObject,
+            )
+
+            val body = server.takeRequest().body.readUtf8()
+            assert(body.contains("\"temperature\":0.6"))
+            assert(body.contains("\"response_format\":{\"type\":\"json_schema\""))
+            assert(body.contains("\"provider\":{\"zdr\":true,\"data_collection\":\"deny\"}"))
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"id":"gen-3","choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+                    """.trimIndent(),
+                ),
+            )
+            client.chatCompletion("sk-or-v1-test", "openai/gpt-5.6-terra", listOf(OpenRouterMessage("user", "u")), 100)
+            val bareBody = server.takeRequest().body.readUtf8()
+            assert(!bareBody.contains("temperature"))
+            assert(!bareBody.contains("response_format"))
+            assert(!bareBody.contains("provider"))
+        }
+
+    @Test
     fun `chatCompletion sends bearer key and parses first choice content`() =
         runBlocking {
             server.enqueue(

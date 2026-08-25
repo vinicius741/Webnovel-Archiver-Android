@@ -177,6 +177,12 @@ data class Story(
      * never breaks generation. Not saveable empty: the picker requires one chapter; empty = null.
      */
     var aiContextChapterIndices: MutableList<Int>? = null,
+    /**
+     * Per-novel Chapter polish edit strength ("light" | "balanced"; null = light, the product
+     * default after the blind ballot favored least-intervention rewrites). Local-only like the
+     * other AI fields: sync must carry it forward, never reset it.
+     */
+    var chapterRewriteStrength: String? = null,
 )
 
 data class PatreonStats(
@@ -290,6 +296,10 @@ data class AiSettings(
     val imageModel: String = DEFAULT_IMAGE_MODEL,
     /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
     val coverOneStep: Boolean = true,
+    /** Chapter polish (rewrite) model; global like the other AI models, chosen for rewrite quality. */
+    val chapterRewriteModel: String = DEFAULT_CHAPTER_REWRITE_MODEL,
+    /** Independent preservation verifier; must differ from the rewriter (spike rule). */
+    val chapterVerifierModel: String = DEFAULT_CHAPTER_VERIFIER_MODEL,
 ) {
     companion object {
         /** Cheap default so a fresh install works without forcing a model choice first. */
@@ -297,6 +307,18 @@ data class AiSettings(
 
         /** Default image generator for AI covers. */
         const val DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
+
+        /**
+         * Default chapter-rewrite model. gpt-5.6-terra was spike-verified clean on the problem
+         * chapter with the lowest triplet drift of the verified set, and costs ~$0.16/chapter.
+         */
+        const val DEFAULT_CHAPTER_REWRITE_MODEL = "openai/gpt-5.6-terra"
+
+        /** Default verifier; grok-4.6 returned short clean verdicts on correctly aligned pairs in the spike. */
+        const val DEFAULT_CHAPTER_VERIFIER_MODEL = "x-ai/grok-4.6"
+
+        /** Alternate verifier used when the user picks verifier == rewriter; also spike-verified. */
+        const val ALTERNATE_CHAPTER_VERIFIER_MODEL = "openai/gpt-5.6-sol"
     }
 }
 

@@ -126,6 +126,8 @@ class StorySyncEngine(
                 // never resets the user's pick; indices gone stale after the chapter merge are
                 // dropped at read time by AiDescriptionPlanning.resolveContextChapters.
                 aiContextChapterIndices = existing?.aiContextChapterIndices,
+                // The per-novel Chapter polish strength is local-only state; carry it forward.
+                chapterRewriteStrength = existing?.chapterRewriteStrength,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 sourceId = provider.id,
                 status =

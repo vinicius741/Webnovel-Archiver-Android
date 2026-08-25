@@ -19,6 +19,7 @@ OpenRouter-backed AI features for the native app.
 | `ai-chapter-rewrite-plan.html` | Research-backed product and implementation plan for reversible, verified AI chapter polishing that preserves source chapters, story canon, formatting, Reader/TTS parity, cost visibility, and provider privacy controls. |
 | `ai-chapter-rewrite-spike.md` | Phase 1 go/no-go spike results: prompt v1 vs v1.1 (merge semantics), three-model comparison incl. frontier, verifier holdout, cadence-report evidence, cost/privacy findings, and the blind-ballot verdict (harness: `scripts/chapter_polish_spike/`). |
 | `ai-chapter-rewrite-handoff.md` | Implementation handoff for building the full Chapter polish feature in-app (plan phases 2–5): spike-proven decisions to port, scope, prompt-strength guidance from the ballot, and QA requirements. |
+| `ai-chapter-rewrite-feature.md` | The shipped Chapter polish feature: user flow (Reader + AI Controls + comparison), storage layout, code map, enforced spike rules (merge contract, verifier pairing, routing tiers), and emulator QA notes. |
 
 ### `architecture/`
 

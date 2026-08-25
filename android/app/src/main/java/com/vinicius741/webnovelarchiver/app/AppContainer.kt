@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.app
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
@@ -109,6 +110,15 @@ class AppContainer(
      * notification so the system keeps the process alive mid-call.
      */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
+    val aiChapterRewriteEngine: AiChapterRewriteEngine = AiChapterRewriteEngine(repository, openRouter)
+
+    /**
+     * Chapter polish on the process scope (same contract as covers): the rewrite keeps running
+     * through navigation and app exit, and the validated draft is persisted before any listener
+     * is told it is ready.
+     */
+    val aiChapterRewriteJobCoordinator: AiChapterRewriteJobCoordinator =
+        AiChapterRewriteJobCoordinator(applicationScope, repository, aiChapterRewriteEngine)
     private val repositoryStartup =
         RepositoryStartup {
             // One storage monitor covers the complete migration/recovery/hydration transaction.

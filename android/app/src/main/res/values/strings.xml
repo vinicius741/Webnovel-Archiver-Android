@@ -50,6 +50,7 @@
   <string name="ai_channel_name">AI Generation</string>
   <string name="ai_channel_desc">AI cover generation progress and results</string>
   <string name="ai_cover_notif_active">Generating AI cover</string>
+  <string name="ai_chapter_rewrite_notif_active">Polishing chapter</string>
 
   <!-- Centralized user-facing error messages (Maintainability M6). -->
   <string name="error_no_file_selected">No file selected</string>

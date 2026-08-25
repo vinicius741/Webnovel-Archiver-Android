@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.backup.RestoredChapterFileIndex
 import com.vinicius741.webnovelarchiver.data.backup.RestoredCoverFileIndex
 import com.vinicius741.webnovelarchiver.data.backup.RestoredMetricFileIndex
+import com.vinicius741.webnovelarchiver.data.backup.RestoredRewriteFileIndex
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
@@ -62,7 +63,7 @@ internal class FullBackupRestorer(
             val staged = freshDirectory(restoreDir, "staged_root")
             val extracted = FullBackupZipExtractor.extract(zipFile, raw, restoreDir.usableSpace)
             val manifest = readAndValidateManifest(raw)
-            verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles, manifest.coverFiles)
+            verifyZipIndex(extracted.files, manifest.chapterFiles, manifest.metricFiles, manifest.coverFiles, manifest.rewriteFiles)
             val stories = buildStagedRoot(raw, staged, manifest)
             verifyStagedTree(staged, stories)?.let { return it }
             swapCandidate = committer.stageBesideLiveRoot(staged)
@@ -97,12 +98,14 @@ internal class FullBackupRestorer(
         chapterFiles: List<RestoredChapterFileIndex>,
         metricFiles: List<RestoredMetricFileIndex>,
         coverFiles: List<RestoredCoverFileIndex>,
+        rewriteFiles: List<RestoredRewriteFileIndex>,
     ) {
         val expected =
             chapterFiles.mapTo(mutableSetOf()) { it.path }.apply {
                 add("manifest.json")
                 metricFiles.forEach { add(it.path) }
                 coverFiles.forEach { add(it.path) }
+                rewriteFiles.forEach { add(it.path) }
             }
         check(extractedFiles == expected) {
             val unexpected = extractedFiles - expected
@@ -132,6 +135,13 @@ internal class FullBackupRestorer(
         // aiCoverPath; copy the tree verbatim like metrics/. initializeStorageDirectories()
         // recreates covers/ when the backup has none.
         File(raw, "covers").takeIf(File::exists)?.copyRecursively(File(staged, "covers").apply { mkdirs() }, overwrite = true)
+        // Applied chapter rewrites extract under raw/chapter_rewrites/<story>/<stem>/…; copy the
+        // tree verbatim like metrics/. The per-story manifest.json inside it (drafts stripped at
+        // export) carries all rewrite state — no Story field references it, so nothing to reconcile.
+        File(raw, AiChapterRewriteStore.DIRECTORY_NAME).takeIf(File::exists)?.copyRecursively(
+            File(staged, AiChapterRewriteStore.DIRECTORY_NAME).apply { mkdirs() },
+            overwrite = true,
+        )
         File(staged, "epubs").mkdirs()
         // Reconcile aiCoverPath against the manifest's cover index (not the filesystem — the
         // path comes from untrusted backup JSON; see retainRestoredCoverPaths).

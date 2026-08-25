@@ -47,6 +47,20 @@ class BackupInputLimitsTest {
     }
 
     @Test
+    fun allowlistAcceptsOnlyTheChapterRewriteStoreLayout() {
+        // Applied rewrites live at chapter_rewrites/<story>/<stem>/applied.html with one
+        // manifest.json per story; draft.html is excluded from backups by design.
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites", directory = true))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/manifest.json", directory = false))
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/ch1-1a2b3c4d/applied.html", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/ch1-1a2b3c4d/draft.html", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/other.json", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/nested/deeper/applied.html", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/../escape.html", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/", directory = false))
+    }
+
+    @Test
     fun streamingInputLimitStopsBeforeUnboundedRead() {
         val failure =
             assertThrows(IllegalStateException::class.java) {

@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.cleanup.HtmlCleanup
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -30,12 +31,21 @@ internal data class ReaderDocument(
     val persistedSession: TtsSession?,
     val colors: ReaderDocumentColors,
     val webViewHtml: String,
+    /** Which local variant [annotated]/[formattedText]/[webViewHtml] were built from. */
+    val contentVersion: ChapterContentVersion = ChapterContentVersion.SOURCE,
+    val contentStale: Boolean = false,
+    /** An applied rewrite exists even when the source variant is being shown (badge/toggle). */
+    val hasAppliedRewrite: Boolean = false,
 )
 
 internal interface ReaderDocumentSource {
     fun story(id: String): Story?
 
-    suspend fun chapterHtml(chapter: Chapter): String?
+    /** The variant-aware chapter content; production resolves Source vs Polished here. */
+    suspend fun resolvedContent(
+        storyId: String,
+        chapter: Chapter,
+    ): ResolvedChapterContent
 
     fun ttsSettings(): TtsSettings
 
@@ -69,11 +79,15 @@ internal class ReaderDocumentPreparer(
                 val chapterIndex = story.chapters.indexOfFirst { it.id == chapterId }
                 if (chapterIndex < 0) return@withContext null
                 val chapter = story.chapters[chapterIndex]
+                val resolved = source.resolvedContent(storyId, chapter)
                 ReaderDocumentInput(
                     story = story,
                     chapter = chapter,
                     chapterIndex = chapterIndex,
-                    rawContent = source.chapterHtml(chapter) ?: chapter.content,
+                    rawContent = resolved.html ?: chapter.content,
+                    contentVersion = resolved.version,
+                    contentStale = resolved.stale,
+                    hasAppliedRewrite = resolved.availableApplied != null,
                     settings = source.ttsSettings(),
                     rules = source.regexRules(),
                     display = source.displayPreferences(),
@@ -106,6 +120,9 @@ internal class ReaderDocumentPreparer(
                         colors,
                         includeTtsScript = true,
                     ),
+                contentVersion = input.contentVersion,
+                contentStale = input.contentStale,
+                hasAppliedRewrite = input.hasAppliedRewrite,
             )
         }
     }
@@ -116,6 +133,9 @@ private data class ReaderDocumentInput(
     val chapter: Chapter,
     val chapterIndex: Int,
     val rawContent: String?,
+    val contentVersion: ChapterContentVersion,
+    val contentStale: Boolean,
+    val hasAppliedRewrite: Boolean,
     val settings: TtsSettings,
     val rules: List<RegexCleanupRule>,
     val display: DisplayPreferences,
@@ -125,9 +145,14 @@ private data class ReaderDocumentInput(
 private class RepositoryReaderDocumentSource(
     private val repository: AppRepository,
 ) : ReaderDocumentSource {
+    private val contentResolver = ChapterContentResolver(repository)
+
     override fun story(id: String): Story? = repository.story(id)
 
-    override suspend fun chapterHtml(chapter: Chapter): String? = repository.readChapter(chapter)
+    override suspend fun resolvedContent(
+        storyId: String,
+        chapter: Chapter,
+    ): ResolvedChapterContent = contentResolver.resolve(storyId, chapter)
 
     override fun ttsSettings(): TtsSettings = repository.getTtsSettings()
 

@@ -171,6 +171,7 @@ class MainActivity :
         // Attach only after `frame` exists: the collectors run inline on Main.immediate, and their
         // first pass reads frame.tag when a job is already running (activity relaunch mid-generation).
         attachAiCoverJobBridge()
+        attachAiChapterRewriteJobBridge()
         onBackPressedDispatcher.addCallback(this, backCallback)
         showStartupLoading()
         scope.launch {

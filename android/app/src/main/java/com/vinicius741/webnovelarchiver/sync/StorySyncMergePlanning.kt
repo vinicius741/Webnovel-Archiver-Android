@@ -105,6 +105,8 @@ object StorySyncMergePlanning {
             // The AI context-chapter selection gets the same protection: a pick saved by another
             // flow during the network window must survive the fold.
             aiContextChapterIndices = onDisk.aiContextChapterIndices ?: synced.aiContextChapterIndices,
+            // The per-novel Chapter polish strength gets the same protection.
+            chapterRewriteStrength = onDisk.chapterRewriteStrength ?: synced.chapterRewriteStrength,
         )
     }
 

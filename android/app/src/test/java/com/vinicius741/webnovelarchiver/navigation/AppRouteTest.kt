@@ -15,6 +15,7 @@ class AppRouteTest {
                 AppRoute.Library,
                 AppRoute.Details("story:/ ünicode"),
                 AppRoute.Reader("story:1", "chapter/2"),
+                AppRoute.ChapterRewritePreview("story:1", "chapter/2"),
                 AppRoute.ChapterSelection("story", setOf("chapter:2", "chapter 1")),
                 AppRoute.LibrarySelection(setOf("b", "a")),
                 AppRoute.AiControls("story:/ ünicode"),

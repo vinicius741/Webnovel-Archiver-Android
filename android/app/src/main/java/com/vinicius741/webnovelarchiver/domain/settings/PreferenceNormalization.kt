@@ -109,5 +109,15 @@ object PreferenceNormalization {
                     .trim()
                     .takeIf { it.isNotBlank() }
                     ?: AiSettings.DEFAULT_IMAGE_MODEL,
+            chapterRewriteModel =
+                settings.chapterRewriteModel
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?: AiSettings.DEFAULT_CHAPTER_REWRITE_MODEL,
+            chapterVerifierModel =
+                settings.chapterVerifierModel
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?: AiSettings.DEFAULT_CHAPTER_VERIFIER_MODEL,
         )
 }

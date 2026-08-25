@@ -54,13 +54,19 @@ object BackupInputLimits {
         if (normalized == "novels") return directory
         if (normalized == "metrics") return directory
         if (normalized == "covers") return directory
-        if (!normalized.startsWith("novels/") && !normalized.startsWith("metrics/") && !normalized.startsWith("covers/")) return false
+        if (normalized == "chapter_rewrites") return directory
+        if (!normalized.startsWith("novels/") && !normalized.startsWith("metrics/") &&
+            !normalized.startsWith("covers/") && !normalized.startsWith("chapter_rewrites/")
+        ) {
+            return false
+        }
         if (directory) return parts.size == 2 && parts[1].isNotBlank()
-        // novels/<story>/<chapter>.html, metrics/<story>.json, or covers/<story>.<img> — depth
-        // and extension distinguish the three trees.
+        // novels/<story>/<chapter>.html, metrics/<story>.json, covers/<story>.<img>, or
+        // chapter_rewrites/<story>/<stem>/applied.html — depth and extension distinguish the trees.
         return when {
             normalized.startsWith("novels/") -> parts.size == 3 && parts[1].isNotBlank() && parts[2].endsWith(".html", ignoreCase = true)
             normalized.startsWith("covers/") -> isAllowedCoverFile(parts)
+            normalized.startsWith("chapter_rewrites/") -> isAllowedRewriteFile(parts)
             else -> parts.size == 2 && parts[1].isNotBlank() && parts[1].endsWith(".json", ignoreCase = true)
         }
     }
@@ -82,6 +88,17 @@ object BackupInputLimits {
         val name = parts[1]
         return name.isNotBlank() && name.substringAfterLast('.', "").lowercase() in COVER_EXTENSIONS
     }
+
+    /**
+     * Rewrite entries follow the store's exact layout: `chapter_rewrites/<story>/manifest.json` or
+     * `chapter_rewrites/<story>/<stem>/applied.html`. Drafts are excluded from backups by design,
+     * so `draft.html` (and everything else) is rejected.
+     */
+    private fun isAllowedRewriteFile(parts: List<String>): Boolean =
+        (
+            parts.size == 3 && parts[1].isNotBlank() && parts[2] == "manifest.json"
+        ) ||
+            (parts.size == 4 && parts[1].isNotBlank() && parts[2].isNotBlank() && parts[3] == "applied.html")
 
     /** File extensions accepted for generated cover entries inside a full backup. */
     private val COVER_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp")

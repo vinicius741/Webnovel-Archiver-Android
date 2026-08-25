@@ -34,17 +34,27 @@ class OpenRouterClient(
      * POST /api/v1/chat/completions. Returns the first choice's message content and provider
      * receipt; throws
      * [OpenRouterException] with a friendly message for auth/credit/model/rate-limit failures.
+     *
+     * The optional [temperature], [responseFormat] (structured outputs), and [provider] (privacy
+     * routing) fields are included only when non-null; callers pass null for anything the selected
+     * model must not receive.
      */
     suspend fun chatCompletion(
         apiKey: String,
         model: String,
         messages: List<OpenRouterMessage>,
         maxTokens: Int,
+        temperature: Double? = null,
+        responseFormat: JsonObject? = null,
+        provider: JsonObject? = null,
     ): OpenRouterChatCompletionResult {
         val body =
             JsonObject().apply {
                 addProperty("model", model)
                 addProperty("max_tokens", maxTokens)
+                temperature?.let { addProperty("temperature", it) }
+                responseFormat?.let { add("response_format", it) }
+                provider?.let { add("provider", it) }
                 add("messages", messages.toJsonArray())
                 add(
                     "reasoning",
@@ -67,7 +77,12 @@ class OpenRouterClient(
                 httpCode == 200 -> parseChatCompletion(responseJson, requestedModel = model)
                 httpCode == 401 -> throw OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.", receipt)
                 httpCode == 402 -> throw OpenRouterException("OpenRouter reports insufficient credits for this API key.", receipt)
-                httpCode == 404 -> throw OpenRouterException("Model not found on OpenRouter: $model", receipt)
+                // Routing failures also land here (provider block no endpoint satisfies); the
+                // server detail lets callers tell "model not found" from "no allowed providers".
+                httpCode == 404 -> throw OpenRouterException(
+                    "Model not found on OpenRouter: $model (${serverMessage(responseJson)})",
+                    receipt,
+                )
                 httpCode == 429 -> throw OpenRouterException("OpenRouter rate limit reached. Try again in a moment.", receipt)
                 else -> throw OpenRouterException("OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}", receipt)
             }
@@ -126,6 +141,9 @@ class OpenRouterClient(
                         name = model.string("name") ?: id,
                         promptPricePerToken = pricing?.string("prompt"),
                         completionPricePerToken = pricing?.string("completion"),
+                        contextLength = model.longValue("context_length"),
+                        maxCompletionTokens = model.getAsJsonObject("top_provider")?.longValue("max_completion_tokens"),
+                        supportedParameters = model.chatSupportedParameters(),
                     )
                 }.orEmpty()
                 .sortedBy { it.id }
@@ -193,47 +211,11 @@ class OpenRouterClient(
                     OpenRouterImageModel(
                         id = id,
                         name = model.string("name") ?: id,
-                        supportedParameters = model.supportedParameters(),
+                        supportedParameters = model.imageSupportedParameters(),
                     )
                 }.sortedBy { it.id }
         }
     }
-
-    /**
-     * The request parameters an image model supports, mapped to each parameter's allowed values
-     * when the catalog enumerates them. The image catalog ships each parameter as a map entry
-     * (`"aspect_ratio": {"type": "enum", "values": [...]}`) — so the parameter names are the map's
-     * keys, NOT a string array (treating it as an array was a release bug: Gson's
-     * [JsonObject.getAsJsonArray] casts, so every fetch crashed). The values matter as much as the
-     * names: many models accept a parameter with a narrower enum than the endpoint's global one
-     * (e.g. recraft models offer `3:4` but not `2:3`), and an out-of-enum value is rejected. A
-     * plain string array is also accepted for forward compatibility; spec entries without a
-     * `values` array mean the parameter is accepted but unconstrained.
-     */
-    private fun JsonObject.supportedParameters(): Map<String, List<String>?> {
-        val member = get("supported_parameters") ?: return emptyMap()
-        return when {
-            member.isJsonObject ->
-                member.asJsonObject.entrySet().associate { (name, spec) ->
-                    name to spec.enumeratedValues()
-                }
-            member.isJsonArray ->
-                member
-                    .asJsonArray
-                    .mapNotNull { parameter -> parameter.takeIf { it.isJsonPrimitive }?.asString }
-                    .associateWith { null }
-            else -> emptyMap()
-        }
-    }
-
-    private fun JsonElement.enumeratedValues(): List<String>? =
-        takeIf { it.isJsonObject }
-            ?.asJsonObject
-            ?.get("values")
-            ?.takeIf { it.isJsonArray }
-            ?.asJsonArray
-            ?.mapNotNull { value -> value.takeIf { it.isJsonPrimitive }?.asString }
-            ?.takeIf { it.isNotEmpty() }
 
     private suspend fun <T> execute(
         request: Request,

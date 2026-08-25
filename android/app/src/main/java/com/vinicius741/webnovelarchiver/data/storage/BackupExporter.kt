@@ -49,7 +49,8 @@ internal class BackupExporter(
         val chapterFiles = collectChapterFiles(library)
         val metricFiles = collectMetricFiles(library)
         val coverFiles = collectCoverFiles(library)
-        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles)
+        val rewritePayloads = collectRewritePayloads(library)
+        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, rewritePayloads)
         return File(storage.backupRoot, "webnovel_full_backup_${System.currentTimeMillis()}.zip").also { output ->
             AtomicFileWrites.writeAtomically(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
@@ -71,6 +72,18 @@ internal class BackupExporter(
                         cover.source.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
                     }
+                    rewritePayloads.forEach { payload ->
+                        // The manifest entry is rewritten content (drafts stripped), so it is
+                        // written from bytes rather than streamed from the on-disk file.
+                        zip.putNextEntry(ZipEntry(payload.manifestPath))
+                        zip.write(payload.manifestJson.toByteArray(Charsets.UTF_8))
+                        zip.closeEntry()
+                        payload.appliedFiles.forEach { (path, source) ->
+                            zip.putNextEntry(ZipEntry(path))
+                            source.inputStream().use { it.copyTo(zip) }
+                            zip.closeEntry()
+                        }
+                    }
                 }
             }
         }
@@ -81,6 +94,7 @@ internal class BackupExporter(
         chapterFiles: List<FullBackupChapterFile>,
         metricFiles: List<FullBackupMetricFile>,
         coverFiles: List<FullBackupCoverFile>,
+        rewritePayloads: List<StoryRewriteBackup>,
     ): Map<String, Any?> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",
@@ -105,6 +119,15 @@ internal class BackupExporter(
             // stories fall back to the source cover URL. The path is the story's own relative
             // aiCoverPath so the zip layout matches the on-disk covers/ tree exactly.
             "coverFiles" to coverFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
+            // Applied chapter rewrites under `chapter_rewrites/…`, mirroring the on-disk tree; the
+            // per-story manifest.json is rewritten here with in-flight drafts stripped. Optional on
+            // restore like the indexes above: older backups restore with no polished variants.
+            "rewriteFiles" to
+                rewritePayloads.flatMap { payload ->
+                    (listOf(payload.manifestPath) + payload.appliedFiles.map { it.first }).map { path ->
+                        mapOf("storyId" to payload.storyId, "path" to path)
+                    }
+                },
         )
 
     private fun fullConfig(): Map<String, Any?> {
@@ -178,6 +201,10 @@ internal class BackupExporter(
             val source = storage.resolveAbsolutePath(path) ?: return@mapNotNull null
             FullBackupCoverFile(storyId = story.id, path = path, source = source)
         }
+
+    /** Collects each story's applied chapter rewrites (manifest with drafts stripped + applied files). */
+    private fun collectRewritePayloads(library: List<Story>): List<StoryRewriteBackup> =
+        library.mapNotNull { story -> storage.chapterRewrites.backupPayloadForStory(story.id) }
 }
 
 private data class FullBackupChapterFile(

@@ -12,6 +12,7 @@ data class FullBackupManifest(
     val chapterFiles: List<RestoredChapterFileIndex>,
     val metricFiles: List<RestoredMetricFileIndex>,
     val coverFiles: List<RestoredCoverFileIndex>,
+    val rewriteFiles: List<RestoredRewriteFileIndex>,
 )
 
 object FullBackupManifestValidation {
@@ -71,7 +72,8 @@ object FullBackupManifestValidation {
             return "Invalid full backup: duplicate chapter entries"
         }
         validateMetricFiles(manifest["metricFiles"], ids.toSet())?.let { return it }
-        return validateCoverFiles(manifest["coverFiles"], ids.toSet())
+        validateCoverFiles(manifest["coverFiles"], ids.toSet())?.let { return it }
+        return validateRewriteFiles(manifest["rewriteFiles"], ids.toSet())
     }
 
     /**
@@ -114,6 +116,14 @@ object FullBackupManifestValidation {
                     path = entry.getString("path"),
                 )
             }
+        val rewriteFiles =
+            (manifest["rewriteFiles"] as? List<*>).orEmpty().map { raw ->
+                val entry = raw as Map<*, *>
+                RestoredRewriteFileIndex(
+                    storyId = entry.getString("storyId"),
+                    path = entry.getString("path"),
+                )
+            }
         return FullBackupManifest(
             version = BackupInputLimits.exactInt(manifest["version"]) ?: error("Invalid full backup: missing version"),
             library = stories,
@@ -121,6 +131,7 @@ object FullBackupManifestValidation {
             chapterFiles = chapterFiles,
             metricFiles = metricFiles,
             coverFiles = coverFiles,
+            rewriteFiles = rewriteFiles,
         )
     }
 
@@ -185,6 +196,38 @@ object FullBackupManifestValidation {
         if (coverPaths.distinct().size != coverPaths.size) return "Invalid full backup: duplicate cover paths"
         val coverStoryIds = coverEntries.map { it["storyId"] as String }
         if (coverStoryIds.distinct().size != coverStoryIds.size) return "Invalid full backup: duplicate cover entries"
+        return null
+    }
+
+    /** rewriteFiles is optional, mirroring metric/cover files: backups written before Chapter
+     *  polish shipped omit it, and a restore then has no polished variants. Many entries per story
+     *  are legitimate — one applied.html per polished chapter plus the per-story manifest. */
+    private fun validateRewriteFiles(
+        rewriteFiles: Any?,
+        ids: Set<String>,
+    ): String? {
+        if (rewriteFiles == null) return null
+        if (rewriteFiles !is List<*>) return "Invalid full backup: malformed rewrite file index"
+        if (rewriteFiles.size > BackupInputLimits.MAX_CHAPTER_FILES) return "Invalid full backup: too many rewrite files"
+        val rewriteEntries = rewriteFiles.map { it as? Map<*, *> ?: return "Invalid full backup: malformed rewrite file index" }
+        if (
+            rewriteEntries.any { entry ->
+                val storyId = entry["storyId"] as? String
+                val path = entry["path"] as? String
+                storyId.isNullOrBlank() ||
+                    storyId !in ids ||
+                    path.isNullOrBlank() ||
+                    // The exporter only ever records rewrites under their own chapter_rewrites/ tree;
+                    // entries pointing elsewhere are rejected even when the general entry allowlist
+                    // would accept them (e.g. a novels/ chapter).
+                    !path.startsWith("chapter_rewrites/") ||
+                    !BackupInputLimits.isAllowedFullBackupEntry(path, directory = false)
+            }
+        ) {
+            return "Invalid full backup: malformed rewrite file index"
+        }
+        val rewritePaths = rewriteEntries.map { it["path"] as String }
+        if (rewritePaths.distinct().size != rewritePaths.size) return "Invalid full backup: duplicate rewrite paths"
         return null
     }
 }

@@ -91,22 +91,38 @@ private fun LinearLayout.panelRow(
     addView(row)
 }
 
-/**
- * Reader settings panel: font-size stepper, dark-reader toggle, voice settings, and Copy chapter.
- * Display controls mutate [display], persist it, and re-render the WebView via [onRerender] so
- * changes preview live behind the dialog.
- *
- * [onOpenVoiceSettings] is invoked after the panel dismisses so the Voice & Speech screen is not
- * buried under the dialog. Callers should return to the reader on TTS Back.
- */
+// Reader settings panel: font-size stepper, dark-reader toggle, voice settings, and Copy chapter.
+// Display controls mutate [display], persist it, and re-render the WebView via [onRerender] so
+// changes preview live behind the dialog. [onOpenVoiceSettings] is invoked after the panel
+// dismisses so the Voice & Speech screen is not buried under the dialog.
+
+/** Chapter-polish rows shown at the top of the reader settings panel; null hides them. */
+data class ReaderChapterPolishControls(
+    val versionSwitchLabel: String,
+    val onSwitchVersion: () -> Unit,
+    val polishLabel: String,
+    val onPolish: () -> Unit,
+)
+
 internal fun ScreenHost.showReaderSettingsPanel(
     display: DisplayPreferences,
     onRerender: () -> Unit,
     onCopy: () -> Unit,
     onOpenVoiceSettings: () -> Unit,
+    polishControls: ReaderChapterPolishControls? = null,
 ) {
     val colors = ThemeManager.colors
     styledPanelSurface("Reader Settings") { dismiss ->
+        polishControls?.let { controls ->
+            panelRow(controls.versionSwitchLabel, this@showReaderSettingsPanel) {
+                dismiss()
+                controls.onSwitchVersion()
+            }
+            panelRow(controls.polishLabel, this@showReaderSettingsPanel) {
+                dismiss()
+                controls.onPolish()
+            }
+        }
         // Font size: A− / label / A+ in a single row. The label updates in place so the stepper
         // reflects the new size without dismissing the panel.
         val fontRow =

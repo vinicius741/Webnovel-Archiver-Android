@@ -144,6 +144,32 @@ class TtsPlaybackPreparerTest {
             assertEquals(null, story.lastReadChapterId)
         }
 
+    @Test
+    fun `chapter narration reads the active polished variant when the source resolves it`() =
+        runTest {
+            // Production routes chapterHtml through ChapterContentResolver: when an applied rewrite
+            // is active, TTS must read the same polished text the Reader shows — never a divergent copy.
+            val story =
+                Story(
+                    id = "story",
+                    chapters = mutableListOf(Chapter(id = "one", content = "<p>Source prose only.</p>")),
+                )
+            val base = FakeTtsPlaybackSource(story, null)
+            val source =
+                object : TtsPlaybackSource by base {
+                    override suspend fun chapterHtml(
+                        storyId: String,
+                        chapter: Chapter,
+                    ): String? = "<p>Polished prose that narration must read.</p>"
+                }
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val preparer = TtsPlaybackPreparer(source, dispatcher, dispatcher)
+
+            val prepared = preparer.prepare("story", "one") ?: error("Expected prepared playback")
+
+            assertEquals(listOf("Polished prose that narration must read."), prepared.chunks)
+        }
+
     private class FakeTtsPlaybackSource(
         private val story: Story,
         private val persisted: TtsSession?,
@@ -153,7 +179,10 @@ class TtsPlaybackPreparerTest {
 
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
-        override suspend fun chapterHtml(chapter: Chapter): String? = chapter.content
+        override suspend fun chapterHtml(
+            storyId: String,
+            chapter: Chapter,
+        ): String? = chapter.content
 
         override fun settings() = TtsSettings()
 

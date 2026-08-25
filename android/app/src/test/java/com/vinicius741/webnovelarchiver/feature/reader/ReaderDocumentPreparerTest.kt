@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.reader
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -85,7 +86,10 @@ class ReaderDocumentPreparerTest {
     ) : ReaderDocumentSource {
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
-        override suspend fun chapterHtml(chapter: Chapter): String? = chapter.content
+        override suspend fun resolvedContent(
+            storyId: String,
+            chapter: Chapter,
+        ): ResolvedChapterContent = ResolvedChapterContent(chapter.content, ChapterContentVersion.SOURCE, false, null)
 
         override fun ttsSettings() = TtsSettings()
 

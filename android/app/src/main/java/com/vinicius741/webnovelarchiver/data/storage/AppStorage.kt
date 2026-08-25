@@ -67,6 +67,7 @@ class AppStorage(
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
     internal val coverFiles = CoverFileStore(root, ::safeName)
     internal val aiCoverDrafts = AiCoverDraftStore(root, ::safeName)
+    internal val chapterRewrites = AiChapterRewriteStore(root, ::safeName)
     internal val aiUsage = AiUsageFileStore(root, gson, appVersion)
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
     internal val restoreRoot = File(this.context.cacheDir, "webnovel_restore").apply { mkdirs() }
@@ -178,6 +179,8 @@ class AppStorage(
         coverFiles.delete(id)
         // Pending AI cover drafts (with their preview images) are per-story as well.
         aiCoverDrafts.delete(id)
+        // Applied chapter rewrites and pending polish drafts are per-story as well.
+        chapterRewrites.delete(id)
         // Drop the per-story trend history too so its file does not outlive the story.
         metricFile(id).delete()
         saveQueue(getQueue().filterNot { it.storyId == id })

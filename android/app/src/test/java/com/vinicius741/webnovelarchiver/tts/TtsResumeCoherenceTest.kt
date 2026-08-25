@@ -90,7 +90,10 @@ class TtsResumeCoherenceTest {
         TtsSessionPersistence {
         override fun story(id: String): Story? = story.takeIf { it.id == id }
 
-        override suspend fun chapterHtml(chapter: Chapter): String? = chapter.content
+        override suspend fun chapterHtml(
+            storyId: String,
+            chapter: Chapter,
+        ): String? = chapter.content
 
         override fun settings(): TtsSettings = TtsSettings()
 

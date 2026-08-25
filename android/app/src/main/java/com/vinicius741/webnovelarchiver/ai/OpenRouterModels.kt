@@ -12,6 +12,12 @@ data class OpenRouterModel(
     val promptPricePerToken: String?,
     /** USD price per completion token, as a catalog decimal string. */
     val completionPricePerToken: String?,
+    /** Context window in tokens when the catalog reports it. */
+    val contextLength: Long? = null,
+    /** Provider ceiling for max_tokens when the catalog reports it (top_provider). */
+    val maxCompletionTokens: Long? = null,
+    /** Request parameters the chat model supports (chat catalog reports a string array). */
+    val supportedParameters: List<String> = emptyList(),
 ) {
     val isFree: Boolean
         get() = priceIsZero(promptPricePerToken) && priceIsZero(completionPricePerToken)
