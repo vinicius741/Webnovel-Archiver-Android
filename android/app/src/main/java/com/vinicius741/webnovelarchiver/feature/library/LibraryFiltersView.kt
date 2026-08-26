@@ -34,10 +34,10 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 /**
  * Holds the built filter [view] plus a [rebuildChips] hook the screen calls whenever the active
  * tab, search query, or tag selection changes. The available tag/source chips follow that filter
- * context (All = union, a specific tab = only that tab's labels), mirroring the legacy RN
- * `useLibrary` `useMemo` keyed on `activeTabId`. Each rebuild also preserves the chip row's scroll
- * context — the tapped chip is pinned at its on-screen position and the surviving chips keep their
- * order — so narrowing the row never makes it jump away from where the user is looking.
+ * context (All = union, a specific tab = only that tab's labels). Each rebuild also preserves the
+ * chip row's scroll context — the tapped chip is pinned at its on-screen position and the surviving
+ * chips keep their order — so narrowing the row never makes it jump away from where the user is
+ * looking.
  */
 internal class LibraryFiltersView(
     val view: View,
@@ -74,10 +74,8 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     searchRow.addView(search, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-    // Live sort state for this filter bar. The function parameters above are only the *initial*
-    // snapshot; without mutable locals the sort-chip click listener and its label would keep
-    // replaying the values from first construction, so picking "Default (Smart)" looked like a
-    // dead click (dialog reopened still on Last Updated, chip never updated).
+    // Live sort state for this filter bar. The parameters above are only the *initial* snapshot;
+    // the chip's label and click listener must read these mutable locals to track dialog picks.
     var currentSortOption = LibraryFiltersPlanning.normalizeSortOption(sortOption)
     var currentSortAscending = sortAscending
 
@@ -85,7 +83,6 @@ internal fun ScreenHost.makeLibraryFilters(
 
     fun sortChipIconRes(): Int = if (currentSortAscending) R.drawable.wna_sort_ascending else R.drawable.wna_sort_descending
 
-    // L2: a labeled chip communicates the active sort + direction instead of a bare, stateless icon.
     val sortIconView =
         ImageView(context).apply {
             setImageDrawable(context.tintedIcon(sortChipIconRes(), ThemeManager.colors.onSurfaceVariant))
@@ -145,11 +142,8 @@ internal fun ScreenHost.makeLibraryFilters(
     )
     filtersContainer.addView(searchRow)
 
-    // Tag chips — L4: render source filters (globe icon, filled) separately from genre tags so the
-    // two filter kinds are visually distinguishable instead of one flat row of identical chips.
-    // The chips follow the active tab (All = every label, a specific tab = only that tab's labels),
-    // so the scroll + row are allocated up front and [populateChips] rebuilds them whenever the tab
-    // changes. Allocated unconditionally so a refresh can show chips even if the entry tab had none.
+    // Tag chips. [populateChips] rebuilds them whenever the active tab or search changes; they are
+    // allocated up front (unconditionally) so a refresh can show chips even if the entry tab had none.
     val tagScroll =
         HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
@@ -221,7 +215,6 @@ internal fun ScreenHost.makeLibraryFilters(
                 null
             }
         if (!rowHasChips || (pinnedChip == null && (tabChanged || previousScrollX <= 0))) return
-        // Replace any still-pending listener from an earlier rebuild instead of stacking a new one.
         pendingScrollListener?.let { tagScroll.viewTreeObserver.removeOnGlobalLayoutListener(it) }
         val listener =
             object : ViewTreeObserver.OnGlobalLayoutListener {
@@ -356,7 +349,6 @@ internal fun ScreenHost.makeLibraryFilters(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-    // L3: pair the chevron with a "Filters" label so the toggle is discoverable instead of a lone arrow.
     headerRow.addView(
         makeText(context, "Filters", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
             setPadding(0, 0, dp(Space.XS + 2), 0)

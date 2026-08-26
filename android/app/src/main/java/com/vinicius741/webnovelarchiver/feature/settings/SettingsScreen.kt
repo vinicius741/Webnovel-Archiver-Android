@@ -71,9 +71,6 @@ internal fun ScreenHost.showSettings() {
         }
         spacer(Space.MD)
         text("Large Screen Layout", Type.TITLE_SMALL)
-        // Controls how the app treats the screen on foldables/large displays. "Auto" detects the fold
-        // sensor + window size, "Cover" forces a single-column phone layout, "Inner" forces the
-        // multi-column tablet layout. This is the native equivalent of the RN app's FoldLayoutMode.
         text(
             "How multi-column layouts behave on large/folded screens. Auto detects the display.",
             Type.BODY_SMALL,
@@ -115,9 +112,6 @@ internal fun ScreenHost.showSettings() {
             showNotifications()
         }
         settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
-        // Organize Novels (bulk select / move / delete) used to live on the Library top bar. Moved
-        // here next to Manage Tabs so both library-organization actions share a home; the per-story
-        // "Select Multiple" overflow on each novel card remains as a contextual shortcut.
         settingRow(R.drawable.wna_check, "Organize Novels", "Select, move, or delete novels in your library") {
             showLibrarySelection()
         }
@@ -150,9 +144,9 @@ internal fun ScreenHost.showSettings() {
 }
 
 /**
- * Aggregated home for the heavy, rarely-used action rows that previously cluttered the main Settings
- * screen: backup/restore (JSON + ZIP), source-session maintenance, storage notices, and destructive
- * reset. Lifted verbatim from the old Settings body; only the parent screen changed.
+ * Aggregated home for the heavy, rarely-used action rows that would clutter the main Settings
+ * screen: backup/restore (JSON + ZIP), source-session maintenance, storage notices, and
+ * destructive reset.
  */
 internal fun ScreenHost.showDataBackup() {
     screen(route = AppRoute.DataBackup, title = "Data & Backup", onBack = { showSettings() }, scrollable = true) {
@@ -325,8 +319,8 @@ internal fun ScreenHost.showDownloadSettings() {
                                 makeText(context, provider.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface),
                                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                             )
-                            // SwitchMaterial would be nicer, but the app has no switch component — reuse the
-                            // themed checkbox as the per-source toggle, with no label (the card title covers it).
+                            // No switch component exists; the themed checkbox acts as the per-source toggle
+                            // (no label — the card title covers it).
                             val cb =
                                 CheckBox(context).apply {
                                     text = ""
@@ -336,8 +330,6 @@ internal fun ScreenHost.showDownloadSettings() {
                             addView(cb)
                             toggle = cb
                         }
-                        // Holds the per-source fields; hidden unless the override checkbox is ticked, so an
-                        // off override is a compact one-line card instead of four redundant rows.
                         val fieldsContainer =
                             LinearLayout(context).apply {
                                 orientation = LinearLayout.VERTICAL
@@ -368,7 +360,6 @@ internal fun ScreenHost.showDownloadSettings() {
                 provider.id to SourceDownloadInputs(toggle!!, sourceDelayMin!!, sourceDelayMax!!)
             }
 
-        // Single Save persists both the global defaults and any checked overrides.
         fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.SM) {
             val delayRange =
                 SettingsValidation.delayRange(

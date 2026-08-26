@@ -31,9 +31,8 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
- * RecyclerView adapter for the Details chapter list (Speed S1). Replaces the per-render
- * `LinearLayout.addView` loop with view recycling, so novels with hundreds/thousands of chapters
- * no longer inflate one row each on every render/filter tick.
+ * RecyclerView adapter for the Details chapter list. Uses view recycling, so novels with
+ * hundreds/thousands of chapters no longer inflate one row each on every render/filter tick.
  *
  * Row layout: status leading · title + compact index/state metadata · bookmark. Removing the
  * separate index column gives numeric source titles (e.g. "13.11 …") one clear visual anchor, while
@@ -62,7 +61,7 @@ class ChapterListAdapter(
     private val onPick: (String) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     init {
-        // U1: stable ids let RecyclerView track rows across DiffUtil updates (and animations) by
+        // Stable ids let RecyclerView track rows across DiffUtil updates (and animations) by
         // chapter id instead of position, so a filter/download tick no longer invalidates everything.
         setHasStableIds(true)
     }
@@ -108,7 +107,7 @@ class ChapterListAdapter(
         this.filter = filter
         this.chapterStatuses = chapterStatuses
         this.waitingChapterIds = waitingChapterIds
-        // U1: prefer a DiffUtil pass keyed by chapter id so insertions/removals/reorders animate and
+        // Prefer a DiffUtil pass keyed by chapter id so insertions/removals/reorders animate and
         // only changed rows rebind. When the empty-state toggles, the whole tree changes shape, so
         // fall back to a full notifyDataSetChanged in that one transition.
         if (previousEmpty != isEmptyState) {
@@ -163,7 +162,7 @@ class ChapterListAdapter(
     override fun getItemViewType(position: Int): Int = if (isEmptyState) typeEmpty else typeChapter
 
     override fun getItemId(position: Int): Long {
-        // U1: stable id keyed by chapter id; the empty-state row uses a fixed sentinel.
+        // Stable id keyed by chapter id; the empty-state row uses NO_ID.
         return if (isEmptyState) {
             RecyclerView.NO_ID
         } else {
@@ -222,10 +221,9 @@ class ChapterListAdapter(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                         ).apply { bottomMargin = context.dp(Space.XS) }
             }
-        // U1: build the row skeleton ONCE here. The status slot is a fixed FrameLayout whose child
-        // is swapped in bind; the title column carries the title + a compact metadata line; the
-        // bookmark icon is
-        // reused and only re-tinted in bind.
+        // Build the row skeleton ONCE here. The status slot is a fixed FrameLayout whose child
+        // is swapped in bind; the title column carries the title + a compact metadata line;
+        // the bookmark icon is reused and only re-tinted in bind.
         val statusSlot = chapterStatusSlot(context, host.dot(ThemeManager.colors.outlineVariant))
         val title =
             makeText(context, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
@@ -301,7 +299,7 @@ class ChapterListAdapter(
         // an in-flight/queued/failed chapter shows real-time feedback rather than "not downloaded".
         val liveStatus = chapterStatuses[chapter.id]
         val waitingForDelay = chapter.id in waitingChapterIds
-        // U1: swap only the leading child of the fixed status slot instead of rebuilding the row.
+        // Swap only the leading child of the fixed status slot instead of rebuilding the row.
         setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, waitingForDelay, context)
         holder.title.text = ChapterRowPlanning.displayTitle(chapter.title)
         // Dim the title when the chapter can't be opened so the row reads as disabled, matching the
@@ -309,7 +307,6 @@ class ChapterListAdapter(
         holder.title.setTextColor(if (openable) ThemeManager.colors.onSurface else ThemeManager.colors.onSurfaceVariant)
         holder.row.contentDescription =
             "Chapter ${ChapterRowPlanning.indexLabel(index)}, ${ChapterRowPlanning.displayTitle(chapter.title)}"
-        // U1: rebuild only the single subtitle TextView (cheap) inside the reused subtitle slot.
         holder.subtitleSlot.removeAllViews()
         holder.subtitleSlot.addView(
             subtitleText(index, liveStatus, chapter.downloaded, chapter.downloadedAt, waitingForDelay, context),
@@ -329,7 +326,7 @@ class ChapterListAdapter(
         }
     }
 
-    /** U1: replace the leading child of the fixed [statusSlot] with the view for [liveStatus]. Cheaper
+    /** Replace the leading child of the fixed [statusSlot] with the view for [liveStatus]. Cheaper
      *  than rebuilding the row; the dot/spinner color is baked into the View so it must be swapped. */
     private fun setStatusLeading(
         statusSlot: FrameLayout,

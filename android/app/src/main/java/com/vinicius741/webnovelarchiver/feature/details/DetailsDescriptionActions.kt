@@ -52,8 +52,7 @@ internal fun ScreenHost.addDescriptionTextAndListen(
             // real gap instead of a single break.
             setLineSpacing(dp(Space.XS).toFloat(), 1f)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            // Copy the description on a double-tap (mirrors RN StoryDescription's 300ms
-            // double-press → Clipboard.setStringAsync) or on a long press. A ripple gives
+            // Copy the description on a double-tap, or on a long press. A ripple gives
             // touch feedback that the text is tappable.
             isClickable = true
             isLongClickable = true

@@ -16,12 +16,12 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * Application entry point. Owns the process-wide [AppContainer] (Maintainability M2) so that the
+ * Application entry point. Owns the process-wide [AppContainer] so that the
  * activity and the download/TTS foreground services share a single [com.vinicius741.webnovelarchiver.data.storage.AppStorage],
  * [com.vinicius741.webnovelarchiver.source.network.NetworkClient], and set of engines — preventing duplicate
  * engines from racing on the same JSON files.
  *
- * Observability (Tier 1, T1): plants a [Timber.DebugTree] in debug builds so diagnostics flow to
+ * Observability: plants a [Timber.DebugTree] in debug builds so diagnostics flow to
  * logcat. In release a minimal tree keeps warnings+ so serious failures (caught in catch blocks, or
  * unexpected throwables) are still recorded for bug reports, without leaking verbose debug logs.
  */

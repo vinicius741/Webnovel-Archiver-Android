@@ -395,9 +395,8 @@ class AppStorage(
      * Non-suspending and fast (one small JSON file), so callers on the main thread don't block on a
      * coroutine mutex. [AppRepository] uses this same `storage` monitor for its multi-document RMW
      * (story + queue together) via `synchronized(storage)`, so this method, the repository, and the
-     * download engine all share one serialization point — there is no separate transaction mutex.
-     * (Audit gap 1: a previous version of this comment referenced a `txMutex` field that did not
-     * exist; the JVM monitor on this [AppStorage] instance is the real lock.)
+     * download engine all share one serialization point — there is no separate transaction mutex;
+     * the JVM monitor on this [AppStorage] instance is the real lock.
      */
     @Synchronized
     fun mutateQueueInPlace(transform: (MutableList<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> {
@@ -542,7 +541,7 @@ class AppStorage(
     }
 
     // ──────────────────────────────────────────────────────────────────────────────
-    // Backup / restore (Reliability R1.2 + R7). The full implementation lives in
+    // Backup / restore. The full implementation lives in
     // [BackupRestoreCoordinator] so this class stays focused on JSON CRUD + path resolution.
     // These methods keep the original public surface so callers (SettingsScreen, MainActivity,
     // CleanupScreen) are unchanged.

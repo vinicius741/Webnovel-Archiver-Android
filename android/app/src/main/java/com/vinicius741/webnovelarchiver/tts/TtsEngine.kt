@@ -537,7 +537,7 @@ class TtsEngine(
     }
 
     fun shutdown() {
-        // R8: stop playback, release the TTS engine, and cancel the engine scope so no lingering
+        // Stop playback, release the TTS engine, and cancel the engine scope so no lingering
         // callback continuation can mutate storage after the service is torn down.
         scope.cancel()
         cancelStallWatchdog()

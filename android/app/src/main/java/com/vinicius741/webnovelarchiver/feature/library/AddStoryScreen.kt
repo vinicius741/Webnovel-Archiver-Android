@@ -118,7 +118,6 @@ internal fun ScreenHost.showAddStory() {
                 )
             }
         addView(urlRow)
-        // A1: only render the "Save to tab" section when there are tabs to choose from.
         var tabSpinner: Spinner? = null
         if (tabs.isNotEmpty()) {
             section("Save to tab")
@@ -126,9 +125,6 @@ internal fun ScreenHost.showAddStory() {
             tabSpinner = makeThemedSpinner(context, tabLabels)
             addView(tabSpinner)
         }
-        // A2: the primary action is full-width for a consistent, large tap target. While a fetch is
-        // in flight, the button is disabled and relabelled so the user can't kick off a second one
-        // and the in-context loading state is unambiguous.
         val fetching = status != null
         val fetchButton =
             fullButton(
@@ -166,9 +162,8 @@ internal fun ScreenHost.showAddStory() {
         status?.let { msg ->
             addView(makeAddStoryProgress(context, msg))
         }
-        // "Or browse a source": the source rows formerly behind the Library app-bar "Browser" action.
-        // Same rows that were on the standalone "Browse Sources" picker — each opens a Custom Tab at the
-        // source's baseUrl where the user can sign in, browse, and use the in-tab Import action.
+        // Each source row opens a Custom Tab at the source's baseUrl where the user can sign in,
+        // browse, and use the in-tab Import action.
         section("Or browse a source")
         sourcePickerRows(context) { provider -> showBrowser(provider.baseUrl) }
             .forEach { addView(it) }

@@ -91,8 +91,7 @@ internal fun ScreenHost.renderTabGrid(
     }
     // The library always uses the horizontal story card (80×120 cover on the left, text on the right)
     // regardless of column count — the same layout as phone mode, just reflowed into N columns on
-    // wider windows. The previous vertical "compact" card cropped portrait covers badly and looked
-    // inconsistent with the single-column view.
+    // wider windows.
     visible.forEach { story ->
         list.addView(
             list.card {
@@ -108,9 +107,6 @@ internal fun ScreenHost.renderTabGrid(
                 }
                 addView(content)
                 if (story.totalChapters > 0) {
-                    // L5: show the download-count text alongside a chapter-coverage bar that fills
-                    // only where chapters are actually on disk (so the last 7 of 100 read at the
-                    // right end, not the left) and marks the bookmarked chapter with a pin.
                     addView(
                         makeChapterCoverageSummary(
                             context,

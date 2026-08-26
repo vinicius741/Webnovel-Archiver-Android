@@ -106,11 +106,7 @@ internal fun ScreenHost.showLibrary() {
                 add(LibraryTabSelection.ALL_TAB_ID)
             }
 
-        // Restore the last-selected sort from persisted prefs (survives navigating away AND app
-        // restarts). Mirrors the persisted tab handling above; the normalization layer maps the
-        // legacy "updated" key onto the canonical "lastUpdated" and clamps unknown values.
         val persistedSort = repository.getDisplayPreferences()
-        // Canonical key matches the Sort dialog option list ("lastUpdated", not the legacy "updated").
         var filterState =
             LibraryFilterState(
                 selectedTabId = initialSelectedTabId,
@@ -160,14 +156,13 @@ internal fun ScreenHost.showLibrary() {
                     val nextTags = filterState.selectedTags.toMutableSet()
                     if (!nextTags.add(tag)) nextTags.remove(tag)
                     filterState = filterState.copy(selectedTags = nextTags)
-                    // Re-render the chip row so the tapped chip actually shows its selected state —
-                    // previously the grid re-filtered but the chip visuals never updated.
+                    // Re-render the chip row so the tapped chip actually shows its selected state.
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
             )
         // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
-        // tab (All = union, a specific tab = only that tab's labels) — matching the legacy RN app.
+        // tab (All = union, a specific tab = only that tab's labels).
         // Declared before the tab bar so the bar's selection lambda can close over it.
         refreshFilters = filters.rebuildChips
 
@@ -178,14 +173,11 @@ internal fun ScreenHost.showLibrary() {
                 refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                 applyFilters()
             }
-        // Tab bar renders above the filter row, matching the original layout.
         addView(tabBar.view)
         addView(filters.view)
 
         // One watcher drives BOTH the single-grid and pager paths through the shared `applyFilters`
-        // closure, so a keystroke re-filters whichever surface is showing. Previously this was wired
-        // only inside the single-tab branch, which left the swipeable multi-tab pager unfiltered on
-        // typing — `applyFilters` was reachable only via tag/sort callbacks and page swipes.
+        // closure, so a keystroke re-filters whichever surface is showing.
         search.doAfterTextChanged {
             filterState = filterState.copy(query = it?.toString().orEmpty())
             // The collapsible header's active-filter indicators track live search text too, and the
@@ -196,7 +188,7 @@ internal fun ScreenHost.showLibrary() {
         }
 
         if (pageTabs.size >= 2) {
-            // Swipe-between-tabs (Gap #6 parity with the legacy RN PagerView). Each page owns its own
+            // Swipe-between-tabs. Each page owns its own
             // scrolling grid mirroring the single-grid shell below, so a swipe switches tabs exactly as
             // tapping the bar does. Tab bar ⇄ pager stay two-way synced: a swipe updates the bar's
             // active indicator, a bar tap animates the pager to that page.
@@ -208,7 +200,6 @@ internal fun ScreenHost.showLibrary() {
                     // the affordance that a swipe changed the active tab.
                     getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
                 }
-            // Land on the persisted tab without animating on first show.
             val initialPage = pageTabs.indexOf(filterState.selectedTabId).coerceAtLeast(0)
             pager.setCurrentItem(initialPage, false)
 
@@ -222,8 +213,8 @@ internal fun ScreenHost.showLibrary() {
                 adapter.replaceStories(latest)
                 changed.forEach { patchLibraryProgress(frame, it) }
             }
-            // Swipe → tab. Mirrors RN's `tabId !== activeTabId` guard so the two-way wiring never
-            // feeds back into itself.
+            // Swipe → tab. The changed-id check keeps a bar-initiated page switch from feeding
+            // back into itself.
             var suppressingPageCallback = false
             pager.registerOnPageChangeCallback(
                 object : ViewPager2.OnPageChangeCallback() {
@@ -234,8 +225,6 @@ internal fun ScreenHost.showLibrary() {
                             filterState = filterState.copy(selectedTabId = newTabId)
                             persistTab(newTabId)
                             tabBar.selectVisual(newTabId)
-                            // Refresh the chip set + re-filter so the newly visible page reflects the
-                            // active tab's tags/sources plus the active search/tags/sort.
                             refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                             applyFilters()
                         }
@@ -255,8 +244,7 @@ internal fun ScreenHost.showLibrary() {
             addView(pager, verticalFill().apply { topMargin = dp(Space.LG) })
             applyFilters()
         } else {
-            // Single-tab path (the common case: no custom tabs and nothing unassigned). This is the
-            // original layout — one scrolling grid — untouched in behaviour.
+            // Single-tab path (the common case: no custom tabs and nothing unassigned).
             val list =
                 GridLayout(context).apply {
                     columnCount = layoutResult.numColumns.coerceAtLeast(1)
@@ -286,8 +274,8 @@ internal fun ScreenHost.showLibrary() {
             }
             val gridShell =
                 MaxWidthFrameLayout(context).apply {
-                    // Center the grid and cap its width at the size-class content max (760/1040/1320dp) so it
-                    // never stretches edge-to-edge on tablets, matching the RN library layout.
+                    // Cap the grid's width at the size-class content max (760/1040/1320dp) so it
+                    // never stretches edge-to-edge on tablets.
                     maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
                     addView(
                         list,

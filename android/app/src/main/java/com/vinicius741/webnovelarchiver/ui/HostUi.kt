@@ -134,7 +134,7 @@ internal fun ScreenHost.loadImage(
     source: Any?,
     image: ImageView,
 ) {
-    // S4: route cover loads through Coil instead of hand-rolled URL.openStream +
+    // Route cover loads through Coil instead of hand-rolled URL.openStream +
     // BitmapFactory.decodeStream. Coil adds a memory + disk cache, downsampling to the target size,
     // request cancellation when the view is detached, and a placeholder/error drawable.
     // `source` is a remote URL string or a local java.io.File (generated AI cover).

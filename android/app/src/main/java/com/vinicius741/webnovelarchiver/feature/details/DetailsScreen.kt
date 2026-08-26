@@ -30,8 +30,7 @@ import com.vinicius741.webnovelarchiver.ui.scroll
 import kotlinx.coroutines.launch
 
 /**
- * Details screen orchestrator (Maintainability M1: decomposed out of a single ~430-line composable).
- * Wires story + download state, builds the info panel ([buildDetailsInfoPanel]) and the chapter
+ * Details screen orchestrator. Wires story + download state, builds the info panel
  * list ([renderChapterList] / [renderFilterChips]), selects the single-pane vs two-pane layout, and
  * subscribes the in-place download-refresh loop. The info-panel and chapter-list building blocks
  * live in [DetailsInfoPanel.kt] and [DetailsChapterList.kt].
@@ -40,7 +39,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // Drop the previous description-TTS collector before its views are torn down or replaced.
     detachDetailsTtsListener()
     // Seed from the repository's cached library rather than re-parsing the story JSON on each
-    // render (Audit Rec 1). The downloaded-flow observer below patches this in place afterward.
+    // render. The downloaded-flow observer below patches this in place afterward.
     val story = repository.story(storyId) ?: return showLibrary()
     val screenKey = AppRoute.Details(story.id).stableKey
     val previousListState =
@@ -117,8 +116,8 @@ internal fun ScreenHost.showDetails(storyId: String) {
             }
         chapterControls.addView(chipsContainer)
 
-        // ---- Chapter List (S1: RecyclerView so novels with hundreds/thousands of chapters recycle
-        // views instead of inflating one row each on every render/filter tick) ----
+        // ---- Chapter list: a RecyclerView so novels with hundreds/thousands of chapters recycle
+        // views instead of inflating one row each on every render/filter tick ----
         val chaptersContainer =
             androidx.recyclerview.widget.RecyclerView(context).apply {
                 layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
@@ -139,8 +138,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         var chapterFilter = repository.getChapterFilterSettings().filterMode
         var chapterQuery = ""
 
-        // Chips are rebuilt on every pick so the active one re-highlights (the original bug was
-        // that chips were built once and never reflected the tapped selection). The "From Bookmark"
+        // Chips are rebuilt on every pick so the active one re-highlights. The "From Bookmark"
         // chip also carries the live (N) count of chapters remaining from the bookmark.
         var pick: (String) -> Unit = {}
         pick = { mode ->
@@ -188,7 +186,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
 
         if (layout.isTwoPane) {
             // Two-pane: info scrolls on the left, chapter list scrolls on the right. The info
-            // pane stays pinned at a fixed width (RN StoryDetailsLayout: 280–440dp) while the chapter
+            // pane stays pinned at a fixed width while the chapter
             // list takes the remaining space, each with its own scroll surface. No divider is drawn
             // between the panes — a marginEnd on the info pane keeps the columns from touching.
             val leftScroll = scroll(infoPanel)
@@ -332,9 +330,8 @@ internal fun ScreenHost.renderDetailsDownloadAction(
     )
 }
 
-/** Fixed width (dp) of the left info pane in the two-pane details layout, within the RN range. */
+/** Fixed width (dp) of the left info pane in the two-pane details layout. */
 private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 
-/** Gap (dp) between the info pane and the chapter list in the two-pane layout, replacing the old
- *  1dp divider with clear whitespace. */
+/** Gap (dp) of clear whitespace between the info pane and the chapter list in the two-pane layout. */
 private const val DETAILS_TWO_PANE_GAP_DP = Space.MD

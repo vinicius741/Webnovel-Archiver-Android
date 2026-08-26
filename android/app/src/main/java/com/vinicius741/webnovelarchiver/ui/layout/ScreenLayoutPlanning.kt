@@ -20,7 +20,7 @@ object ScreenLayoutPlanning {
 
     val screenLayoutModes = setOf(SCREEN_LAYOUT_MODE_AUTO, SCREEN_LAYOUT_MODE_COVER, SCREEN_LAYOUT_MODE_INNER)
 
-    // Width breakpoints (dp), matching Material 3 window-size classes + the RN hook.
+    // Width breakpoints (dp), matching Material 3 window-size classes.
     const val WIDTH_EXPANDED = 840
     const val WIDTH_MEDIUM = 600
 

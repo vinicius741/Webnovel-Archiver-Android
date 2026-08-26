@@ -60,7 +60,7 @@ class ReaderContentRendererTest {
 
     @Test
     fun ttsHighlightCssUsesConfiguredAccent() {
-        // Gap 3: when the document is rendered with a highlight accent, the .tts-active rule must
+        // When the document is rendered with a highlight accent, the .tts-active rule must
         // carry that accent as a translucent background tint.
         val html =
             ReaderContentRenderer.document(
@@ -82,7 +82,7 @@ class ReaderContentRendererTest {
 
     @Test
     fun includeTtsScriptInjectsTheWnaTtsBridge() {
-        // Gap 3: the highlight + tap-to-start script is only injected when requested.
+        // The highlight + tap-to-start script is only injected when requested.
         val withScript =
             ReaderContentRenderer.document(
                 "T",

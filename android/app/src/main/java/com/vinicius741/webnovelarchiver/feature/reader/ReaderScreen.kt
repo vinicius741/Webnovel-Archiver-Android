@@ -107,14 +107,14 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     val layout = currentScreenLayout()
     val reader =
         WebView(app).apply {
-            // R9 + gap 3: JS is enabled ONLY because the HTML was just sanitized; file/content access
+            // JS is enabled ONLY because the HTML was just sanitized; file/content access
             // stays locked down so the only script that runs is the highlight + tap-to-start one we
             // inject via [ReaderContentRenderer.document].
             WebViewSafety.applyReaderSettings(this, enableTtsHighlight = true)
         }
 
     /**
-     * Single-method JavascriptInterface (gap 3 tap-to-start): the reader's injected script calls
+     * Single-method JavascriptInterface: the reader's injected script calls
      * `AndroidBridge.onTtsStart(groupIndex)` on a double-tap, and we hand the chunk index to the TTS
      * engine via [TtsForegroundService]. Kept deliberately minimal — one int parameter, no return —
      * so the JS↔native surface is as small as possible.
@@ -251,10 +251,9 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                         chapterId = chapter.id,
                     )
                 transportSnapshot = relevant
-                // Gap 4 transport refresh. The bar is always present in the tree; we toggle its
-                // visibility rather than adding/removing it, so a TTS session that starts after the
-                // reader was built (the common case: open chapter → tap "Read aloud") reveals the bar
-                // without needing a full screen rebuild.
+                // The bar stays in the tree; visibility is toggled instead of add/remove so a TTS
+                // session that starts after this screen was built (open chapter → "Read aloud")
+                // reveals the bar without a full rebuild.
                 transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
                 transportPlayPause?.let { button ->
                     val isPaused = relevant?.isPaused != false
@@ -266,7 +265,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     )
                     button.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
                 }
-                // Gap 3 highlight refresh — evaluateJavascript is async + non-reloading, so the page
+                // Highlight refresh — evaluateJavascript is async + non-reloading, so the page
                 // doesn't flash. Only applied when there is a relevant snapshot (clear on stop/leave).
                 applyHighlight(reader, relevant?.chunkIndex, relevant?.totalChunks ?: 0)
             }
@@ -323,7 +322,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             ),
         )
 
-        // Gap 4: floating TTS transport, docked just above the chapter nav. The bar is ALWAYS added
+        // Floating TTS transport, docked just above the chapter nav. The bar is ALWAYS added
         // to the tree and its visibility is toggled (VISIBLE while a session for THIS chapter exists,
         // GONE otherwise). Toggling — rather than add/remove — is what lets a TTS session that starts
         // AFTER the reader was built (open chapter → tap "Read aloud") reveal

@@ -13,18 +13,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.ui.layout.ChapterCoveragePlanning
 
-// ------------------------------------------------------------------
-// Chapter coverage bar — fills only where chapters are actually downloaded
-// ------------------------------------------------------------------
-//
-// The legacy [makeProgressSummary] only knows a count, so 7/100 always fills the
-// first 7% from the left even when those chapters are the LAST seven. This widget
-// takes the per-chapter `downloaded` flags and fills only the slots whose chapter is
-// on disk — so a "last 7 of 100" download shows as fill at the RIGHT end. Contiguous
-// downloads are drawn as ONE rounded segment (no per-chapter hairline seams), and the
-// bookmarked chapter gets a pin marker raised above the bar so it can't blend into
-// the fill.
-
 /**
  * Horizontal capsule that shows which chapters of a novel are downloaded, plus a bookmark
  * marker. Each chapter occupies one equal-width slot; contiguous runs of downloaded chapters
@@ -144,8 +132,7 @@ class ChapterCoverageBar(
         if (width <= 0 || height <= 0) return
         applyTheme()
         // The capsule bar is pinned to the BOTTOM of the view; the strip above it is reserved
-        // for the bookmark pin, so the marker never has to compete with the fill for the same
-        // few pixels (which is what made the old in-bar tick blend in).
+        // for the bookmark pin so it never competes with the fill for the same few pixels.
         val barHeight = BAR_HEIGHT_DP * density
         val barTop = height - barHeight
         val radius = barHeight / 2f
@@ -172,8 +159,7 @@ class ChapterCoverageBar(
     /**
      * Draws the bookmark as a pin raised above the bar: a downward triangle whose apex dips into
      * the capsule, with a slim stem through the capsule's full height. A surface-coloured halo is
-     * stroked under the red fill first, so the marker is outlined against whatever is behind it —
-     * this is what keeps it prominent where the old flat tick blended into the fill.
+     * stroked under the red fill first, so the marker is outlined against whatever is behind it.
      */
     private fun drawBookmarkPin(
         canvas: Canvas,

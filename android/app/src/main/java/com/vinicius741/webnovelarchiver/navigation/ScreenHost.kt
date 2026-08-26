@@ -146,9 +146,9 @@ interface ScreenHost {
     val scope: CoroutineScope
 
     /**
-     * Single-owner repository (R2). Screens read observable/cached state (library, queue, settings)
-     * through this rather than re-reading JSON on every render (Speed S3 — disk reads off the render
-     * path).
+     * Single-owner repository. Screens read observable/cached state (library, queue, settings)
+     * through this rather than re-reading JSON on every render — disk reads stay off the render
+     * path.
      */
     val repository: AppRepository
     val syncEngine: StorySyncEngine

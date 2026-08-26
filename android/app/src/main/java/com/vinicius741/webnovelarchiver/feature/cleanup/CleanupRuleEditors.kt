@@ -116,7 +116,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         }
     view.addView(quickRow)
 
-    // Gap 5: live "test your rule" pane — mirrors the legacy RN RuleDialog. The user pastes sample
+    // Live "test your rule" pane. The user pastes sample
     // text and the in-progress rule (pattern + flags) is applied to it in real time via
     // [RegexRuleCleanup.previewRegexRule], so they see what the rule removes before saving. Reuses the
     // same monospace preview styling as [showQuickRegexBuilder]'s pattern preview.

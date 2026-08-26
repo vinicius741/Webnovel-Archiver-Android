@@ -8,8 +8,8 @@ import java.text.BreakIterator
 import java.util.Locale
 
 /**
- * TTS text preparation consumed by the TTS engine and the reader (Maintainability M1: split out of
- * the cleanup facade. Produces both the flat chunk list the engine speaks and the chunk-tagged HTML
+ * TTS text preparation consumed by the TTS engine and the reader. Produces both the flat chunk list
+ * the engine speaks and the chunk-tagged HTML
  * the reader highlights. Kept under `cleanup/` (rather than `tts/`) so it shares the package-private
  * [RegexRuleCleanup.regexRunner] with the rest of the cleanup domain.
  */

@@ -276,7 +276,7 @@ class DownloadEngine(
                 )
             preflight.mutation?.let(::publishQueueMutation)
             if (preflight.mutation != null) return
-            // S6: use the shared cached cleanup so regexes compile once per settings change, not once
+            // Use the shared cached cleanup so regexes compile once per settings change, not once
             // per chapter. Output is identical to the cleanup engine's stateless contract.
             val clean =
                 CleanupEngine.shared.applyDownload(

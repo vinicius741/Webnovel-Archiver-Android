@@ -27,18 +27,18 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * Lightweight process-wide dependency container (Maintainability M2). Attached to
+ * Lightweight process-wide dependency container. Attached to
  * [WebnovelArchiverApp] and reachable from any Android component via
  * `(applicationContext as WebnovelArchiverApp).container`. Holds exactly one instance of each
  * process-wide dependency:
  *
- *  - [repository] → owns the single [AppStorage] and the queue/story transaction lock (R2/R3).
- *  - [network] → shared OkHttp client + source-safety limits and server cooldowns (R6).
+ *  - [repository] → owns the single [AppStorage] and the queue/story transaction lock.
+ *  - [network] → shared OkHttp client + source-safety limits and server cooldowns.
  *  - [downloadPacer] → user-configured download-only delays; sync never reads this state.
  *  - [syncEngine] / [epubEngine] → stateful engines built on the shared repository + network.
  *  - [ttsEngine] → the single TTS playback engine, shared by [MainActivity] (reader highlight +
- *    transport, parity gaps 3 & 4) and [com.vinicius741.webnovelarchiver.tts.TtsForegroundService]
- *    (MediaSession + notification, parity gaps 1 & 2). Sharing one instance means the reader's
+ *    transport) and [com.vinicius741.webnovelarchiver.tts.TtsForegroundService]
+ *    (MediaSession + notification). Sharing one instance means the reader's
  *    multicast state listener fires for playback the service drives, instead of each component
  *    racing with its own TextToSpeech handle against the same session JSON.
  *

@@ -58,7 +58,7 @@ internal fun ScreenHost.screen(
         findScrollView(frame)?.let { routeScrollPositions[previousScreenKey] = it.scrollY }
     }
     val savedScrollY = if (scrollable) routeScrollPositions[screenKey] ?: 0 else 0
-    // R9: destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
+    // Destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
     WebViewSafety.disposeAll(frame)
     frame.removeAllViews()

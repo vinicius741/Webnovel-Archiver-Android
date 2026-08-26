@@ -31,7 +31,7 @@ import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 
 /**
- * Info-panel builder for the Details screen (Maintainability M1: split out of DetailsScreen.kt).
+ * Info-panel builder for the Details screen.
  * Assembles the single vertical column above the chapter list: header, primary actions (sync /
  * download / generate EPUB / read EPUB), the live download banner slot, Patreon card, expandable
  * description, and tags. Returns the panel plus the stable views the download-refresh loop in
@@ -74,8 +74,6 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         infoPanel.addView(buildSourceAvailabilityNotice(story))
     }
     if (StoryActionGuards.canSync(story)) {
-        // "Syncing..." label while a SYNC operation is in flight mirrors RN's
-        // `{syncing ? "Syncing..." : "Sync Chapters"}`. The inline progress block is added below.
         val syncLabel =
             when {
                 operation?.kind == StoryOperationKind.SYNC -> "Checking Source..."

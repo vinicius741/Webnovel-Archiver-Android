@@ -27,8 +27,8 @@ class DownloadForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // Use the process-wide container (M2) so this service shares one AppStorage + network with
-        // the activity; queue read-modify-writes serialize on the AppStorage monitor (R3 single-owner).
+        // Uses the process-wide container so this service shares one AppStorage + network with
+        // the activity; queue read-modify-writes serialize on the AppStorage monitor.
         // This is the ONE engine that owns the download process loop (ownsProcessLoop defaults to true);
         // the activity's engine is a control/enqueue handle only, so only this instance ever runs the
         // loop and honors the configured parallel-source cap.

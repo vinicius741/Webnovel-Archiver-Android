@@ -64,7 +64,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
         val search = makeSearchField(context, "Search novels")
 
         // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
-        // tab (All = union, a specific tab = only that tab's labels) — matching the legacy RN app.
+        // tab (All = union, a specific tab = only that tab's labels).
         // Declared before the tab bar so the bar's selection lambda can close over it.
         var refreshFilters: (String?, Set<String>) -> Unit = { _, _ -> }
 

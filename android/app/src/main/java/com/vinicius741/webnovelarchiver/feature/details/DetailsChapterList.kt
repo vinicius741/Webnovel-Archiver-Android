@@ -22,7 +22,7 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Chapter-list rendering for the Details screen (Maintainability M1: split out of DetailsScreen.kt).
+ * Chapter-list rendering for the Details screen.
  * Holds the chapter list adapter wiring, the filter-chip group, the pure chapter filter, the
  * per-row bookmark toggle, and the app-bar overflow menu — the chapter-list concerns — so
  * [showDetails] stays a layout orchestrator.

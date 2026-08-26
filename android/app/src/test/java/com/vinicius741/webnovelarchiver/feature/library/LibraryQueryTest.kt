@@ -102,7 +102,7 @@ class LibraryQueryTest {
     @Test
     fun availableFilterLabelsFollowTheActiveTab() {
         // Two custom tabs hold disjoint sources/tags; "All" should surface the union, a specific
-        // tab only its own. Mirrors the legacy RN `matchesTab` gate on tag collection.
+        // tab only its own. "All" surfaces the union; a specific tab gates on its tag collection.
         val stories =
             listOf(
                 story(

@@ -104,9 +104,8 @@ interface SourceProvider {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Shared source-parsing helpers (Maintainability M1: split out of Sources.kt). These are kept
-// package-internal so the per-provider files in this package can use them without exposing them
-// as a public API. Previously file-private inside Sources.kt.
+// Shared source-parsing helpers. Package-internal so the per-provider files in this package can
+// use them without exposing them as a public API.
 // ──────────────────────────────────────────────────────────────────────────────
 
 internal val descriptionBlockTags =

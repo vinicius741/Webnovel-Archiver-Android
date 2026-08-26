@@ -77,13 +77,13 @@ data class DownloadUiSnapshot(
 )
 
 /**
- * Single owner of [AppStorage] (Reliability R2). All read-modify-write transactions on the library,
+ * Single owner of [AppStorage]. All read-modify-write transactions on the library,
  * download queue, and settings synchronize on [storage], the same monitor used by [AppStorage] and
  * the download engine. The activity and foreground service therefore cannot race on
  * `download_queue.json` or per-story files, and there is one lock around every multi-step mutation.
  *
  * Exposes one coherent cached [downloadState] that is refreshed after each successful download or
- * story transaction, so screens can observe state without re-reading JSON on every render (Speed S3).
+ * story transaction, so screens can observe state without re-reading JSON on every render.
  * The low-level [storage] is still accessible to engines for direct file I/O (chapter
  * HTML, EPUB bytes) — only the stateful read-modify-write mutations are centralized here.
  */

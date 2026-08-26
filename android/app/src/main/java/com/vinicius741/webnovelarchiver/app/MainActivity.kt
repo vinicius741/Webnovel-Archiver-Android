@@ -62,7 +62,7 @@ class MainActivity :
     override val app: AppCompatActivity get() = this
 
     /**
-     * UI coroutine scope (Maintainability M3). A single [CoroutineScope] wrapping the activity's
+     * UI coroutine scope. A single [CoroutineScope] wrapping the activity's
      * [lifecycleScope] job/context, so all screen-launched coroutines (fold observation, backup
      * import, sync) are cancelled automatically when the activity is destroyed — no leaked work.
      */
@@ -144,8 +144,8 @@ class MainActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
-        // Pull process-wide dependencies from the AppContainer (M2): one AppStorage, one network
-        // client, one set of engines shared with the foreground services (R3 single-owner).
+        // Pull process-wide dependencies from the shared AppContainer: one AppStorage, one network
+        // client, one set of engines shared with the foreground services.
         val container = appContainer
         repository = container.repository
         syncEngine = container.syncEngine
@@ -162,7 +162,7 @@ class MainActivity :
                 container.downloadPacer,
                 ownsProcessLoop = false,
             )
-        // Shared process-wide TTS engine (M2): the same instance the TtsForegroundService plays
+        // Shared process-wide TTS engine: the same instance the TtsForegroundService plays
         // through, so the reader's multicast state listener fires for service-driven playback.
         ttsEngine = container.ttsEngine
         frame = FrameLayout(this)
@@ -277,7 +277,7 @@ class MainActivity :
 
     override fun onDestroy() {
         screenObserver?.cancel()
-        // R9: destroy any lingering reader WebView in the frame so it can't leak the activity
+        // Destroy any lingering reader WebView in the frame so it can't leak the activity
         // reference. Third-party browsing uses a browser-owned Custom Tab rather than this frame.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety
             .disposeAll(frame)

@@ -51,7 +51,7 @@ class TtsForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // Process-wide shared engine (M2): the same instance the activity's reader observes, so a
+        // Process-wide shared engine: the same instance the activity's reader observes, so a
         // playback the service drives fires the reader's highlight/transport listener too.
         engine = appContainer.ttsEngine
         audioFocus =
@@ -92,7 +92,7 @@ class TtsForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        // Gap 2: hardware media buttons (headset hook, Bluetooth) arrive as ACTION_MEDIA_BUTTON.
+        // Hardware media buttons (headset hook, Bluetooth) arrive as ACTION_MEDIA_BUTTON.
         // Hand them to the MediaSession's callback, which maps them onto engine play/pause/skip.
         if (Intent.ACTION_MEDIA_BUTTON == intent?.action) {
             MediaButtonReceiver.handleIntent(mediaSession, intent)
@@ -333,7 +333,7 @@ class TtsForegroundService : Service() {
         TtsNotificationActions.actions(isPaused).forEachIndexed { index, action ->
             builder.addAction(0, getString(action.labelResId), serviceAction(12 + index, action.action))
         }
-        // Gap 1: MediaStyle ties the notification to the MediaSession so the system renders the
+        // MediaStyle ties the notification to the MediaSession so the system renders the
         // standard media card (lock screen + quick-settings shade) with the transport controls.
         builder.setStyle(
             MediaStyle()
@@ -351,7 +351,7 @@ class TtsForegroundService : Service() {
                     MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                         MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS,
                 )
-                // Gap 2: a hardware media button press (headset hook / Bluetooth) is delivered to the
+                // A hardware media button press (headset hook / Bluetooth) is delivered to the
                 // service as ACTION_MEDIA_BUTTON; the MediaButtonReceiver hands it to this pending
                 // intent's session, whose callback (below) maps it to play/pause/skip.
                 setMediaButtonReceiver(
