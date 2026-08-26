@@ -104,8 +104,9 @@ class WrapLayout(
 
 // ------------------------------------------------------------------
 // GridLayout — arranges children in a fixed number of equal-width
-// columns. Use for button groups where a predictable grid is cleaner
-// than a wrapping flow.
+// columns. Siblings in the same row are stretched to that row's tallest
+// member, so paired cards always line up. Use for card grids and button
+// groups where a predictable grid is cleaner than a wrapping flow.
 // ------------------------------------------------------------------
 
 class GridLayout(
@@ -118,6 +119,53 @@ class GridLayout(
     private fun hd(): Int = context.dp(horizontalSpacingDp)
 
     private fun vd(): Int = context.dp(verticalSpacingDp)
+
+    /** Measures every visible child at [cellWidth] and returns each visual row's height (child margins included). */
+    private fun measureRows(
+        cellWidth: Int,
+        heightMeasureSpec: Int,
+    ): List<Int> {
+        val rowHeights = mutableListOf<Int>()
+        var rowHeight = 0
+        var colIndex = 0
+        for (i in 0 until childCount) {
+            val child = getChildAt(i)
+            if (child.visibility == GONE) continue
+
+            val lp = child.layoutParams as MarginLayoutParams
+            val childWidthMeasure = (cellWidth - lp.leftMargin - lp.rightMargin).coerceAtLeast(0)
+            val cellWidthSpec = MeasureSpec.makeMeasureSpec(childWidthMeasure, MeasureSpec.EXACTLY)
+            measureChildWithMargins(child, cellWidthSpec, 0, heightMeasureSpec, 0)
+
+            rowHeight = maxOf(rowHeight, child.measuredHeight + lp.topMargin + lp.bottomMargin)
+            colIndex++
+
+            if (colIndex >= columnCount) {
+                rowHeights.add(rowHeight)
+                colIndex = 0
+                rowHeight = 0
+            }
+        }
+        if (colIndex > 0) rowHeights.add(rowHeight)
+        return rowHeights
+    }
+
+    /** Re-measures a wrap-content child against its full row height so it matches its tallest sibling.
+     * Measures directly with EXACT specs: measureChildWithMargins would downgrade an EXACT parent
+     * height to AT_MOST for a wrap-content child, leaving the shorter card un-stretched. */
+    private fun stretchToRow(
+        child: android.view.View,
+        cellWidth: Int,
+        rowHeight: Int,
+    ) {
+        val lp = child.layoutParams as MarginLayoutParams
+        val targetWidth = (cellWidth - lp.leftMargin - lp.rightMargin).coerceAtLeast(0)
+        val targetHeight = (rowHeight - lp.topMargin - lp.bottomMargin).coerceAtLeast(0)
+        child.measure(
+            MeasureSpec.makeMeasureSpec(targetWidth, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(targetHeight, MeasureSpec.EXACTLY),
+        )
+    }
 
     override fun onMeasure(
         widthMeasureSpec: Int,
@@ -132,33 +180,26 @@ class GridLayout(
                 availableWidth
             }
 
-        var totalHeight = paddingTop + paddingBottom
-        var rowHeight = 0
+        // First measure everything at its natural height to learn how tall each row must be...
+        val rowHeights = measureRows(cellWidth, heightMeasureSpec)
+        // ...then re-measure wrap-content children against their full row height; without this a
+        // shorter card ends mid-air beside its taller sibling instead of sharing the row bounds.
+        var rowIndex = 0
         var colIndex = 0
-
         for (i in 0 until childCount) {
             val child = getChildAt(i)
             if (child.visibility == GONE) continue
-
-            val lp = child.layoutParams as MarginLayoutParams
-            val childWidthMeasure = (cellWidth - lp.leftMargin - lp.rightMargin).coerceAtLeast(0)
-            val cellWidthSpec = MeasureSpec.makeMeasureSpec(childWidthMeasure, MeasureSpec.EXACTLY)
-            measureChildWithMargins(child, cellWidthSpec, 0, heightMeasureSpec, 0)
-
-            rowHeight = maxOf(rowHeight, child.measuredHeight + lp.topMargin + lp.bottomMargin)
-            colIndex++
-
             if (colIndex >= columnCount) {
-                totalHeight += rowHeight
-                if (i < childCount - 1) totalHeight += vd()
                 colIndex = 0
-                rowHeight = 0
+                rowIndex++
             }
+            if ((child.layoutParams as MarginLayoutParams).height == WRAP_CONTENT) {
+                stretchToRow(child, cellWidth, rowHeights[rowIndex])
+            }
+            colIndex++
         }
 
-        if (colIndex > 0) {
-            totalHeight += rowHeight
-        }
+        val totalHeight = paddingTop + paddingBottom + rowHeights.sum() + (rowHeights.size - 1).coerceAtLeast(0) * vd()
 
         val resolvedWidth =
             when (MeasureSpec.getMode(widthMeasureSpec)) {
