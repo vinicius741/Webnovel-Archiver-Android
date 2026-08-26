@@ -30,10 +30,12 @@ import java.util.Locale
 
 /*
  * Per-novel metric Trends sub-screen. Reached from the Details screen (tappable score row, tappable
- * Patreon card, or the overflow "Trends" entry). Renders one MPAndroidChart line chart per available
- * series (score, Patreon members, Patreon monthly USD) plus a current-value / delta / range summary
- * line above each chart. Each sync records one point; see [MetricSnapshotPlanning] for the retention
- * (same-day coalescing + 60-day-then-downsample + 1000-point cap).
+ * Patreon card, tappable engagement chips, or the overflow "Trends" entry). Renders one MPAndroidChart
+ * line chart per available series (score, Patreon members, Patreon monthly USD, plus the source's
+ * featured engagement metrics — watchers/favorites/… for sources without a rating) plus a
+ * current-value / delta / range summary line above each chart. Each sync records one point; see
+ * [MetricSnapshotPlanning] for the retention (same-day coalescing + 60-day-then-downsample +
+ * 1000-point cap).
  *
  * `showTrends` mirrors the `showLegacyEpubs` pattern: render a loading empty state, then a coroutine
  * reads the history off the IO dispatcher and re-renders into `renderTrends`.
@@ -51,9 +53,10 @@ internal const val FOCUS_PATREON_USD = "patreon_usd"
 /**
  * Per-card configuration for one trend chart, bundled so [ScreenHost.addChartCard] stays under the
  * parameter-count budget. [chartProvider] is invoked lazily and only when [showChart] is true, so a
- * series with too few points never constructs its chart.
+ * series with too few points never constructs its chart. Internal so the source-metric cards in
+ * TrendMetricCards.kt can reuse the same card scaffolding.
  */
-private data class TrendChartCard(
+internal data class TrendChartCard(
     val title: String,
     val focusTag: String,
     val emphasize: Boolean,
@@ -104,7 +107,7 @@ private fun ScreenHost.renderTrends(
                 makeEmptyState(
                     app,
                     title = "No trend data yet",
-                    message = "Sync this novel to start recording its score and Patreon figures over time.",
+                    message = "Sync this novel to start recording its score, engagement metrics, and Patreon figures over time.",
                     iconRes = R.drawable.wna_chart,
                 ),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -179,12 +182,13 @@ private fun ScreenHost.renderTrends(
                 ),
             )
         }
-        if (scorePoints.isEmpty() && memberPoints.isEmpty() && usdPoints.isEmpty()) {
+        val metricCardsAdded = addSourceMetricChartCards(this, story, history, focus)
+        if (scorePoints.isEmpty() && memberPoints.isEmpty() && usdPoints.isEmpty() && metricCardsAdded == 0) {
             addView(
                 makeText(
                     app,
-                    "This novel has synced, but no score or Patreon values were recorded. " +
-                        "Score and Patreon are only captured for sources that expose them.",
+                    "This novel has synced, but no score, Patreon, or engagement values were recorded. " +
+                        "Those are only captured for sources that expose them.",
                     Type.BODY_MEDIUM,
                     ThemeManager.colors.onSurfaceVariant,
                 ),
@@ -236,7 +240,7 @@ private fun ScreenHost.addTrendsHeader(
 }
 
 /** A titled card holding a summary line and (when there are enough points) a chart. */
-private fun ScreenHost.addChartCard(
+internal fun ScreenHost.addChartCard(
     content: LinearLayout,
     card: TrendChartCard,
 ) {
@@ -337,7 +341,7 @@ private fun patreonSummary(
 ): String = seriesSummary(points = points, suffix = suffix, formatValue = formatValue, formatDelta = formatDelta)
 
 /** Shared "Current <value> (<signed delta> since last sync)" line for any series. */
-private fun seriesSummary(
+internal fun seriesSummary(
     points: List<Pair<Long, Double>>,
     suffix: String = "",
     formatValue: (Double) -> String,

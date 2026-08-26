@@ -1,7 +1,11 @@
 package com.vinicius741.webnovelarchiver.domain.metrics
 
+import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
@@ -68,6 +72,94 @@ class MetricSnapshotPlanningTest {
         val snap = MetricSnapshotPlanning.fromStory(story, patreonRefreshed = true)
         assertNull(snap.patreonPaidMembers)
         assertNull(snap.patreonMonthlyUsdCents)
+    }
+
+    @Test
+    fun fromStoryCopiesSourceMetricsOnEverySync() {
+        // Unlike the Patreon fields, source metrics (watchers, favorites…) are captured on every
+        // sync — they come from the story page parse itself, not a separate optional refresh.
+        val story =
+            Story(
+                id = "sb1",
+                sourceMetadata =
+                    SourceMetadata(
+                        metrics =
+                            mutableListOf(
+                                SourceMetric(SourceMetricKind.WATCHERS, 4_900),
+                                SourceMetric(SourceMetricKind.REPLIES, 1_204),
+                            ),
+                    ),
+            )
+        val snap = MetricSnapshotPlanning.fromStory(story, patreonRefreshed = false, capturedAt = 9L)
+        assertEquals(
+            listOf(SourceMetric(SourceMetricKind.WATCHERS, 4_900), SourceMetric(SourceMetricKind.REPLIES, 1_204)),
+            snap.metrics.toList(),
+        )
+    }
+
+    @Test
+    fun metricSeriesExtractsRequestedKindAndSkipsSnapshotsWithoutIt() {
+        val history =
+            StoryMetricHistory(
+                snapshots =
+                    mutableListOf(
+                        StoryMetricSnapshot(
+                            capturedAt = 1L,
+                            metrics =
+                                mutableListOf(
+                                    SourceMetric(SourceMetricKind.WATCHERS, 100),
+                                    SourceMetric(SourceMetricKind.LIKES, 5),
+                                ),
+                        ),
+                        StoryMetricSnapshot(capturedAt = 2L), // sync before the field existed
+                        StoryMetricSnapshot(capturedAt = 3L, metrics = mutableListOf(SourceMetric(SourceMetricKind.WATCHERS, 112))),
+                    ),
+            )
+        assertEquals(
+            listOf(1L to 100.0, 3L to 112.0),
+            MetricSnapshotPlanning.metricSeries(history, SourceMetricKind.WATCHERS),
+        )
+        // A kind the source never reported has no points — "missing", not "zero".
+        assertEquals(
+            emptyList<Pair<Long, Double>>(),
+            MetricSnapshotPlanning.metricSeries(history, SourceMetricKind.FAVORITES),
+        )
+    }
+
+    @Test
+    fun legacySnapshotJsonWithoutMetricsRestoresWithEmptyList() {
+        // History JSON written before the metrics field existed (every history recorded to date).
+        // Gson applies the no-arg-ctor default for the absent key, so old files load without a
+        // format migration and simply start accruing metric points on later syncs.
+        val history =
+            Gson().fromJson(
+                """{"storyId":"rr_123","snapshots":[{"capturedAt":1000,"score":"4.5","totalChapters":10,"publicationStatus":"ongoing"}]}""",
+                StoryMetricHistory::class.java,
+            )
+        assertEquals("rr_123", history.storyId)
+        assertTrue(
+            history.snapshots
+                .single()
+                .metrics
+                .isEmpty(),
+        )
+    }
+
+    @Test
+    fun snapshotWithMetricsRoundTripsThroughGson() {
+        val history =
+            StoryMetricHistory(
+                storyId = "sb_9",
+                snapshots =
+                    mutableListOf(
+                        StoryMetricSnapshot(
+                            capturedAt = 5L,
+                            metrics = mutableListOf(SourceMetric(SourceMetricKind.WATCHERS, 4_900, isEstimated = true)),
+                        ),
+                    ),
+            )
+        val restored = Gson().fromJson(Gson().toJson(history), StoryMetricHistory::class.java)
+        assertEquals(history.snapshots, restored.snapshots)
     }
 
     @Test

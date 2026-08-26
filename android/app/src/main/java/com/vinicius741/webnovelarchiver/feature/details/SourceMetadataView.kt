@@ -13,7 +13,6 @@ import com.vinicius741.webnovelarchiver.ui.WrapLayout
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import java.text.DateFormat
-import java.text.NumberFormat
 import java.util.Date
 import java.util.Locale
 
@@ -54,7 +53,12 @@ internal fun ScreenHost.buildSourceMetadataFlow(story: Story): View? {
                     "${formatSourceMetric(metric)} ${metric.kind.label}",
                     colors.secondaryContainer,
                     colors.onSecondaryContainer,
-                ),
+                ).apply {
+                    // Every metric shown here is a featured kind, i.e. one the Trends screen charts;
+                    // tapping jumps to that metric's chart (same shortcut as the score row).
+                    setOnClickListener { showTrends(story.id, metricFocusTag(metric.kind)) }
+                    contentDescription = "${formatSourceMetric(metric)} ${metric.kind.label}. Tap to view trends."
+                },
             )
         }
         warnings.forEach { warning ->
@@ -67,33 +71,6 @@ internal fun ScreenHost.buildSourceMetadataFlow(story: Story): View? {
     }
 }
 
-private fun formatSourceMetric(metric: SourceMetric): String {
-    val value = metric.value
-    val suffix =
-        when {
-            value >= 1_000_000_000L -> "B"
-            value >= 1_000_000L -> "M"
-            value >= 1_000L -> "K"
-            else -> ""
-        }
-    if (suffix.isBlank()) return NumberFormat.getIntegerInstance(Locale.US).format(value)
-    val divisor =
-        when (suffix) {
-            "B" -> 1_000_000_000.0
-            "M" -> 1_000_000.0
-            else -> 1_000.0
-        }
-    val scaled = value / divisor
-    val decimals =
-        if (scaled >= 100) {
-            0
-        } else if (scaled >= 10) {
-            1
-        } else {
-            2
-        }
-    val formatted = String.format(Locale.US, "%.${decimals}f", scaled).trimEnd('0').trimEnd('.')
-    return "$formatted$suffix"
-}
+private fun formatSourceMetric(metric: SourceMetric): String = formatCompactCount(metric.value)
 
 internal fun formatSourceDate(value: Long): String = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(Date(value))

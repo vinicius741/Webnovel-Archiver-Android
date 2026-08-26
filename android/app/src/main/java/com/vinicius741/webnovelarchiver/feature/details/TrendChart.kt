@@ -96,8 +96,8 @@ internal fun buildTrendChart(
     // A fitted (narrow) range makes the default label count draw duplicate, overlapping labels;
     // cap it and let the chart pick clean intervals instead of forcing an exact count.
     yAxis.setLabelCount(Y_AXIS_LABEL_COUNT, false)
-    if (kind == TrendMetricKind.PATREON_MEMBERS) {
-        // Members are whole counts: fractional grid lines would format to duplicate integers.
+    if (kind == TrendMetricKind.PATREON_MEMBERS || kind == TrendMetricKind.COUNT) {
+        // These are whole counts: fractional grid lines would format to duplicate integers.
         yAxis.granularity = 1f
     }
     // Fit the axis to the recorded data (clamped to the metric's valid domain) so small movements
@@ -161,6 +161,8 @@ private class YAxisFormatter(
             TrendMetricKind.PATREON_MEMBERS -> intFormat.format(value.toInt())
             // Stored as cents; show compact dollars ($1.20k, $12.5k).
             TrendMetricKind.PATREON_USD -> compactUsd(value.toLong())
+            // Engagement counts (views reach the millions) share the Details chip formatting.
+            TrendMetricKind.COUNT -> formatCompactCount(value.toLong())
         }
 
     private fun compactUsd(cents: Long): String {
@@ -173,4 +175,33 @@ private class YAxisFormatter(
             else -> String.format(Locale.US, "$%.0f", dollars)
         }
     }
+}
+
+/**
+ * Compact whole-count formatting shared by the Trends COUNT axis and the Details metric chips, so a
+ * value reads identically in both places ("85.2K"). Decimal count scales down as the value grows so
+ * adjacent axis labels stay distinct.
+ */
+internal fun formatCompactCount(value: Long): String {
+    val suffix =
+        when {
+            value >= 1_000_000_000L -> "B"
+            value >= 1_000_000L -> "M"
+            value >= 1_000L -> "K"
+            else -> return NumberFormat.getIntegerInstance(Locale.US).format(value)
+        }
+    val scaled =
+        when (suffix) {
+            "B" -> value / 1_000_000_000.0
+            "M" -> value / 1_000_000.0
+            else -> value / 1_000.0
+        }
+    val decimals =
+        when {
+            scaled >= 100 -> 0
+            scaled >= 10 -> 1
+            else -> 2
+        }
+    val formatted = String.format(Locale.US, "%.${decimals}f", scaled).trimEnd('0').trimEnd('.')
+    return "$formatted$suffix"
 }

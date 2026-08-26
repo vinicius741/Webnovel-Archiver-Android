@@ -1,8 +1,9 @@
 # Per-Novel Metric Trends
 
-Records a per-novel time series of score and Patreon figures on every sync, and graphs them on a
-Trends sub-screen reached from the novel's detail page. This is the app's first time-series store;
-before this feature every sync overwrote `Story.score` and `Story.patreonStats` in place and the
+Records a per-novel time series of score, Patreon figures, and source-reported engagement metrics
+(watchers, favorites, follows, …) on every sync, and graphs them on a Trends sub-screen reached from
+the novel's detail page. This is the app's first time-series store; before this feature every sync
+overwrote `Story.score`, `Story.patreonStats`, and `Story.sourceMetadata.metrics` in place and the
 previous values were discarded.
 
 ## What gets recorded
@@ -16,6 +17,7 @@ transaction:
 | `score` | every sync | raw source score string (e.g. `"4.84 / 5"`); parsed to a number at chart time |
 | `totalChapters` | every sync | derived chapter count |
 | `publicationStatus` | every sync | enum |
+| `metrics` | every sync | copy of the sync's `Story.sourceMetadata.metrics` (`SourceMetric` list — watchers, replies, views, likes, favorites, follows, …, with `isEstimated` flags). Empty for histories recorded before the field existed. |
 | `patreonPaidMembers` | only when Patreon was refreshed | `null` otherwise |
 | `patreonMonthlyUsdCents` | only when Patreon was refreshed | `null` otherwise |
 | `patreonAmountIsEstimated`, `patreonMembersIsEstimated` | only when Patreon was refreshed | estimation flags |
@@ -88,18 +90,25 @@ storage.appendMetricSnapshot(
 ## The Trends screen
 
 Route `AppRoute.Trends(storyId, focus)`; `focus` optionally opens the screen scrolled/emphasized to a
-series (`"score"`, `"patreon_members"`, `"patreon_usd"`), or `null` for the generic view. Reached
-from three places on the detail screen:
+series (`"score"`, `"patreon_members"`, `"patreon_usd"`, or `"metric_<SourceMetricKind>"` such as
+`"metric_WATCHERS"`), or `null` for the generic view. Reached from four places on the detail screen:
 
 - **Tappable score row** — opens focused on the score chart.
 - **Tappable Patreon stats body** — opens focused on the Patreon USD chart (the header's
   open-external glyph keeps its open-in-browser handler, so the two tap targets stay distinct).
+- **Tappable engagement chips** (source metric badges like "4.13K Watchers") — open focused on that
+  metric's chart. This is the primary entry point for sources without a rating (SpaceBattles,
+  FanFiction.net), whose detail page has no score row.
 - **Overflow menu → "Trends"** — opens the generic view.
 
 The screen renders one MPAndroidChart `LineChart` per available series, each in a card with a
-summary line ("Current 4.84 (+0.12 since last sync) · range 4.2–4.9"). A series needs at least two
-points to draw a line; with fewer it shows an explanatory card. The empty state ("No trend data yet")
-appears for a novel that has never been synced since the feature shipped.
+summary line ("Current 4.84 (+0.12 since last sync) · range 4.2–4.9"). Beyond score and the two
+Patreon series, `TrendMetricCards.addSourceMetricChartCards` appends one card per metric in the
+story's source `descriptor.featuredMetrics` that has recorded points — so SpaceBattles charts
+Watchers/Replies/Views/Likes, FanFiction.net charts Favorites/Follows/Reviews/Words, and
+RoyalRoad/ScribbleHub additionally chart Followers/Views/Pages and Readers/Views/Words. A series
+needs at least two points to draw a line; with fewer it shows an explanatory card. The empty state
+("No trend data yet") appears for a novel that has never been synced since the feature shipped.
 
 Chart axes are fitted to the recorded data, not pinned to the metric's full domain: week-to-week
 movement in these metrics is small (a score wobbling 4.6→4.8, members creeping 1200→1250), and a
@@ -122,11 +131,17 @@ in memory) and the arrow is patched in place once loaded.
 
 ## Adding new metrics
 
-Future metrics (rating count, favorites, ranking, Patreon tier breakdown) require small extensions to
-the source providers (`NovelMetadata` gains new fields; `RoyalRoadProvider` / `ScribbleHubProvider`
-parse them). `StoryMetricSnapshot` then gains matching **nullable** fields. Because the snapshot is
-forward/backward-compatible (Gson fills missing fields with defaults), no history-format migration is
-needed — old history files simply read as `null` for the new field until the next sync populates it.
+Two paths exist:
+
+- **New engagement count** — add a `SourceMetricKind` enum value, parse it into
+  `NovelMetadata.sourceMetadata.metrics` in the provider, and list it in the source descriptor's
+  `featuredMetrics`. It is then snapshotted (the `metrics` list is copied wholesale), charted, and
+  shown as a tappable chip with no model or UI changes.
+- **Non-count metric** (ranking, Patreon tier breakdown, …) — `StoryMetricSnapshot` gains a matching
+  **nullable** field plus a series extractor next to `scoreSeries`/`patreonSeries`. Because the
+  snapshot is forward/backward-compatible (Gson fills missing fields with defaults), no
+  history-format migration is needed — old history files simply read as `null` for the new field
+  until the next sync populates it.
 
 The chart helper (`buildTrendChart` / `TrendMetricKind`), the axis-range planner
 (`TrendAxisPlanning`), and the series extractors in `MetricSnapshotPlanning` are the only other

@@ -13,4 +13,7 @@ enum class TrendMetricKind {
 
     /** Patreon monthly earnings. Y is in USD cents, formatted as compact currency. */
     PATREON_USD,
+
+    /** Source-reported engagement count (watchers, favorites, views…). Y is a count, compact-formatted. */
+    COUNT,
 }

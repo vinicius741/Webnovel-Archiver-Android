@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.domain.metrics
 
+import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
@@ -54,6 +55,7 @@ object MetricSnapshotPlanning {
             patreonMonthlyUsdCents = patreon?.monthlyUsdCents,
             patreonAmountIsEstimated = patreon?.amountIsEstimated ?: false,
             patreonMembersIsEstimated = patreon?.membersIsEstimated ?: false,
+            metrics = story.sourceMetadata.metrics.toMutableList(),
         )
     }
 
@@ -100,8 +102,16 @@ object MetricSnapshotPlanning {
 
     /** Pulls the parsed score from every snapshot that has a parseable score, oldest-first. */
     fun scoreSeries(history: StoryMetricHistory): List<MetricPoint> =
-        history.snapshots
-            .mapNotNull { snap -> parseScore(snap.score)?.let { snap.capturedAt to it } }
+        history.snapshots.mapNotNull { snap ->
+            // Mirrors the HostUi.formatScore extraction so a snapshot's raw score ("4.8", "4.84 / 5")
+            // is reduced to the same numeric value that is displayed elsewhere.
+            SCORE_REGEX
+                .find(snap.score.orEmpty())
+                ?.groupValues
+                ?.get(1)
+                ?.toDoubleOrNull()
+                ?.let { snap.capturedAt to it }
+        }
 
     /** Pulls the requested Patreon field, skipping snapshots where it wasn't measured. */
     fun patreonSeries(
@@ -113,6 +123,21 @@ object MetricSnapshotPlanning {
                 PatreonField.MEMBERS -> snap.patreonPaidMembers?.toDouble()?.let { snap.capturedAt to it }
                 PatreonField.MONTHLY_USD -> snap.patreonMonthlyUsdCents?.toDouble()?.let { snap.capturedAt to it }
             }
+        }
+
+    /** Pulls the requested source metric (watchers, favorites, …), skipping snapshots without it. */
+    fun metricSeries(
+        history: StoryMetricHistory,
+        kind: SourceMetricKind,
+    ): List<MetricPoint> =
+        history.snapshots.mapNotNull { snap ->
+            // orEmpty: pre-metrics JSON decoded through the Unsafe path could leave the list null.
+            snap.metrics
+                .orEmpty()
+                .firstOrNull { it.kind == kind }
+                ?.value
+                ?.toDouble()
+                ?.let { snap.capturedAt to it }
         }
 
     /** Last value minus the previous value, or `null` when there are fewer than two points. */
@@ -189,15 +214,7 @@ object MetricSnapshotPlanning {
     private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
     private const val FLAT_EPSILON = 1e-9
 
-    // Mirrors the HostUi.formatScore extraction so a snapshot's raw score ("4.8", "4.84 / 5") is
-    // reduced to the same numeric value that is displayed elsewhere. Kept here (not imported from
-    // the ui package) so the planning module stays free of Android dependencies.
-    private fun parseScore(score: String?): Double? {
-        val raw = score?.takeIf { it.isNotBlank() } ?: return null
-        return Regex("""(\d+(?:\.\d+)?)""")
-            .find(raw)
-            ?.groupValues
-            ?.get(1)
-            ?.toDoubleOrNull()
-    }
+    // Extracts the leading numeric value of a raw score ("4.8", "4.84 / 5") — same reduction the
+    // UI applies before display.
+    private val SCORE_REGEX = Regex("""(\d+(?:\.\d+)?)""")
 }
