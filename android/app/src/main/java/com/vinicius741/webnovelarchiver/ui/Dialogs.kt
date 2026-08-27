@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.ui
 
 import android.app.AlertDialog
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
 import android.view.View
@@ -32,12 +33,43 @@ internal fun AlertDialog.applyAppTheme() {
 }
 
 /**
+ * One row, group label, or divider inside a [showStyledOptionsDialog] sheet. Lets long menus chunk
+ * related options under a [OptionsDialogItem.Section] and isolate a destructive option behind an
+ * [OptionsDialogItem.Divider] instead of presenting a flat wall of rows.
+ */
+internal sealed interface OptionsDialogItem {
+    /** Tappable option row; [destructive] renders the label in the error color. */
+    data class Option(
+        val label: String,
+        val destructive: Boolean = false,
+        val action: () -> Unit,
+    ) : OptionsDialogItem
+
+    /** Non-tappable group label rendered above a block of related options. */
+    data class Section(
+        val label: String,
+    ) : OptionsDialogItem
+
+    /** Hairline separating unrelated groups, e.g. a destructive option from the rest. */
+    data object Divider : OptionsDialogItem
+}
+
+/** Convenience for callers whose options need no sections or destructive styling. */
+@JvmName("showSimpleStyledOptionsDialog")
+internal fun ScreenHost.showStyledOptionsDialog(
+    title: String,
+    options: List<Pair<String, () -> Unit>>,
+) {
+    showStyledOptionsDialog(title, options.map { (label, action) -> OptionsDialogItem.Option(label, action = action) })
+}
+
+/**
  * Custom options sheet matching the Library sort-by dialog styling:
  * rounded surface, title, selectable rows with ripple, and a text Cancel button.
  */
 internal fun ScreenHost.showStyledOptionsDialog(
     title: String,
-    options: List<Pair<String, () -> Unit>>,
+    items: List<OptionsDialogItem>,
 ) {
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
@@ -60,23 +92,45 @@ internal fun ScreenHost.showStyledOptionsDialog(
 
     var dialogRef: AlertDialog? = null
 
-    options.forEach { (label, action) ->
-        val row =
-            LinearLayout(app).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, app.dp(12), 0, app.dp(12))
-                isClickable = true
-                isFocusable = true
-                background = selectableRipple(colors.onSurface)
+    items.forEach { item ->
+        when (item) {
+            is OptionsDialogItem.Section ->
+                dialogView.addView(
+                    makeText(app, item.label, Type.LABEL_MEDIUM, colors.primary).apply {
+                        typeface = Typeface.create(typeface, Typeface.BOLD)
+                        includeFontPadding = false
+                        setPadding(0, app.dp(8), 0, app.dp(2))
+                    },
+                )
+            is OptionsDialogItem.Divider ->
+                dialogView.addView(
+                    View(app).apply {
+                        setBackgroundColor(colors.outline)
+                        layoutParams =
+                            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(1)).apply {
+                                setMargins(0, app.dp(8), 0, app.dp(4))
+                            }
+                    },
+                )
+            is OptionsDialogItem.Option -> {
+                val row =
+                    LinearLayout(app).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, app.dp(12), 0, app.dp(12))
+                        isClickable = true
+                        isFocusable = true
+                        background = selectableRipple(colors.onSurface)
+                    }
+                val text = makeText(app, item.label, Type.BODY_LARGE, if (item.destructive) colors.error else colors.onSurface)
+                row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                row.setOnClickListener {
+                    dialogRef?.dismiss()
+                    item.action()
+                }
+                dialogView.addView(row)
             }
-        val text = makeText(app, label, Type.BODY_LARGE, colors.onSurface)
-        row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row.setOnClickListener {
-            dialogRef?.dismiss()
-            action()
         }
-        dialogView.addView(row)
     }
 
     val cancelButton = makeButton(app, "Cancel", Btn.TEXT) { dialogRef?.dismiss() }

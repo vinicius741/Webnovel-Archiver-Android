@@ -1,10 +1,13 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import android.content.Intent
+import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning.TrendDirection
@@ -23,10 +26,13 @@ import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
+import com.vinicius741.webnovelarchiver.ui.ripple
+import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.sourceAvailabilityBadge
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /** Centered story header — cover, title, author, source/archived chips, an optional score row, and
@@ -81,9 +87,7 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
             }
             badgeRow.addView(view)
         }
-        provider?.let {
-            addBadgeWithGap(makeBadge(app, it.name, ThemeManager.colors.secondaryContainer, ThemeManager.colors.onSecondaryContainer))
-        }
+        provider?.let { addBadgeWithGap(buildSourceSiteBadge(story, it.name)) }
         publicationStatusBadge?.let {
             addBadgeWithGap(it)
         }
@@ -210,6 +214,35 @@ internal data class DetailsHeader(
     val view: LinearLayout,
     val progressSummary: View?,
 )
+
+/**
+ * Tappable source-site badge: opens the story's source page in the browser (moved out of the
+ * Details overflow). The external-link glyph signals the outbound hop; the ripple is clipped to
+ * the badge shape so press feedback matches the badge silhouette.
+ */
+private fun ScreenHost.buildSourceSiteBadge(
+    story: Story,
+    sourceName: String,
+): TextView {
+    val colors = ThemeManager.colors
+    val radius = app.dp(Space.SM + 2).toFloat()
+    return makeBadge(
+        app,
+        sourceName,
+        colors.secondaryContainer,
+        colors.onSecondaryContainer,
+        endIcon = app.tintedIcon(R.drawable.wna_open_external, colors.onSecondaryContainer),
+    ).apply {
+        background = ripple(roundedBg(colors.secondaryContainer, radius), radius, colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "Open this novel's $sourceName page in the browser"
+        setOnClickListener {
+            runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
+                .onFailure { toast("No app available to open source") }
+        }
+    }
+}
 
 /** Size (dp) of the score trend arrow; slightly smaller than the 24dp star so it reads as secondary. */
 private const val TREND_ARROW_SIZE_DP = 20

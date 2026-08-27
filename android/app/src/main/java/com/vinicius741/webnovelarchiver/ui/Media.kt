@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -89,6 +90,7 @@ fun makeBadge(
     text: String,
     bgColor: Int,
     fgColor: Int,
+    endIcon: Drawable? = null,
 ): TextView {
     val radius = context.dp(Space.SM + 2).toFloat()
     return TextView(context).apply {
@@ -99,6 +101,14 @@ fun makeBadge(
         setPadding(context.dp(Space.SM), context.dp(3), context.dp(Space.SM), context.dp(3))
         includeFontPadding = false
         background = roundedBg(bgColor, radius)
+        // Sized explicitly: a vector's intrinsic 24dp would inflate the badge height well past
+        // the small label text.
+        endIcon?.let {
+            val size = context.dp(11)
+            it.setBounds(0, 0, size, size)
+            setCompoundDrawables(null, null, it, null)
+            compoundDrawablePadding = context.dp(3)
+        }
     }
 }
 

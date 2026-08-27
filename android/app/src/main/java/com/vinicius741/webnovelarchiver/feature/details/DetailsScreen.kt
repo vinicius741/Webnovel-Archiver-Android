@@ -311,6 +311,7 @@ internal fun ScreenHost.renderDetailsDownloadAction(
     ) {
         return
     }
+    val enabled = !isBusy && !summary.isActive
     val label = if (remainingChapters == story.chapters.size) "Download All" else "Download Remaining ($remainingChapters)"
     slot.addView(
         makeFullWidthButton(
@@ -319,13 +320,19 @@ internal fun ScreenHost.renderDetailsDownloadAction(
             Btn.FILLED,
             R.drawable.wna_download,
             dp(Space.SM + 2),
-            enabled = !isBusy && !summary.isActive,
+            enabled = enabled,
         ) {
             val latest = repository.story(story.id) ?: return@makeFullWidthButton
             queueDownload(
                 latest,
                 latest.chapters.mapIndexedNotNull { index, chapter -> if (!chapter.downloaded) index else null },
             )
+        },
+    )
+    // Manual counterpart of the bulk download above; hidden together with it by the guard returns.
+    slot.addView(
+        makeFullWidthButton(app, "Select Chapters", Btn.TEXT, R.drawable.wna_list) {
+            showChapterSelection(story.id)
         },
     )
 }

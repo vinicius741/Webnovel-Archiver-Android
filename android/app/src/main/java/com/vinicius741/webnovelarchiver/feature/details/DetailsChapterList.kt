@@ -1,7 +1,5 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
-import android.content.Intent
-import android.net.Uri
 import android.view.View
 import android.view.ViewGroup
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -15,6 +13,7 @@ import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
+import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
@@ -29,53 +28,54 @@ import kotlinx.coroutines.launch
  */
 
 /**
- * Overflow menu behind the app-bar "more" icon. Holds the secondary/tertiary story actions that
- * don't warrant a primary button: opening the source site, chapter selection, EPUB settings, text
- * cleanup, and navigation to the sub-screens (Trends, AI Controls).
+ * Overflow menu behind the app-bar "more" icon. The two actions that live closest to what they act
+ * on are NOT here: opening the source site is the tappable source badge in the header
+ * ([DetailsHeader.kt]), and chapter selection sits under the download button. The rest are grouped
+ * EPUB-pipeline options, the sub-screen navigation hubs, and the destructive delete, isolated last.
  */
 internal fun ScreenHost.showDetailsOverflow(story: Story) {
     val isBusy = storyOperation?.storyId == story.id
-    val options = mutableListOf<Pair<String, () -> Unit>>()
-    options += "Open Source" to {
-        runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(story.sourceUrl))) }
-            .onFailure { toast("No app available to open source") }
-    }
+    val busyMessage = { toast("Please wait for the current operation to finish") }
+    val items = mutableListOf<OptionsDialogItem>()
     val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     if (StoryActionGuards.canSync(story) && provider?.supportsLatestChapterSync == true) {
-        options += "Full Sync" to {
-            if (isBusy) toast("Please wait for the current operation to finish") else syncStory(story, StorySyncMode.Full)
+        items +=
+            OptionsDialogItem.Option("Full Sync") {
+                if (isBusy) busyMessage() else syncStory(story, StorySyncMode.Full)
+            }
+    }
+    items += OptionsDialogItem.Section("EPUB")
+    items +=
+        OptionsDialogItem.Option("EPUB Settings") {
+            if (isBusy) busyMessage() else showEpubConfigDialog(story)
         }
-    }
-    if (StoryActionGuards.canQueueDownloads(story)) {
-        options += "Select Chapters" to {
-            if (isBusy) toast("Please wait for the current operation to finish") else showChapterSelection(story.id)
+    items +=
+        OptionsDialogItem.Option("EPUB Files") {
+            if (isBusy) busyMessage() else showLegacyEpubs(story.id)
         }
-    }
-    options += "EPUB Settings" to {
-        if (isBusy) toast("Please wait for the current operation to finish") else showEpubConfigDialog(story)
-    }
-    options += "Legacy EPUBs" to {
-        if (isBusy) toast("Please wait for the current operation to finish") else showLegacyEpubs(story.id)
-    }
+    items +=
+        OptionsDialogItem.Option("Apply Text Cleanup") {
+            if (isBusy) busyMessage() else applyCleanup(story)
+        }
+    items += OptionsDialogItem.Section("Explore")
     // Pure navigation (no story mutation), so no busy guard is needed.
-    options += "Trends" to { showTrends(story.id, null) }
-    options += "AI Controls" to { showAiControls(story.id) }
-    options += "Apply Text Cleanup" to {
-        if (isBusy) toast("Please wait for the current operation to finish") else applyCleanup(story)
-    }
-    options += "Delete Novel" to {
-        if (isBusy) {
-            toast("Please wait for the current operation to finish")
-        } else {
-            confirm("Delete \"${story.title}\"? This action cannot be undone.") {
-                scope.launch {
-                    repository.deleteStory(story.id)
-                    showLibrary()
+    items += OptionsDialogItem.Option("Trends") { showTrends(story.id, null) }
+    items += OptionsDialogItem.Option("AI Controls") { showAiControls(story.id) }
+    items += OptionsDialogItem.Divider
+    items +=
+        OptionsDialogItem.Option("Delete Novel", destructive = true) {
+            if (isBusy) {
+                busyMessage()
+            } else {
+                confirm("Delete \"${story.title}\"? This action cannot be undone.") {
+                    scope.launch {
+                        repository.deleteStory(story.id)
+                        showLibrary()
+                    }
                 }
             }
         }
-    }
-    showStyledOptionsDialog("More options", options)
+    showStyledOptionsDialog("More options", items)
 }
 
 @Suppress("LongParameterList") // chapter status + waiting-state overlay are always passed together
