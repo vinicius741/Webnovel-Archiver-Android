@@ -9,6 +9,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatDelegate
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.StartupThemeHint
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -416,6 +417,7 @@ internal fun ScreenHost.saveThemePreference(themeId: String) {
 
 internal fun ScreenHost.applyThemePreference(themeId: String) {
     ThemeManager.apply(themeId)
+    StartupThemeHint.write(app, themeId)
     val nightMode =
         when (themeId) {
             "classic-light" -> AppCompatDelegate.MODE_NIGHT_NO

@@ -167,12 +167,16 @@ class MainActivity :
         ttsEngine = container.ttsEngine
         frame = FrameLayout(this)
         setContentView(frame)
+        holdSplashScreenUntilFirstContent { uiReady }
         // Background AI cover jobs outlive this activity; this keeps their progress + results visible.
         // Attach only after `frame` exists: the collectors run inline on Main.immediate, and their
         // first pass reads frame.tag when a job is already running (activity relaunch mid-generation).
         attachAiCoverJobBridge()
         attachAiChapterRewriteJobBridge()
         onBackPressedDispatcher.addCallback(this, backCallback)
+        // The startup state paints before hydration can read the persisted DisplayPreferences, so
+        // seed the theme from the tiny hint written on every theme change / successful start.
+        StartupThemeHint.read(this)?.let(ThemeManager::apply)
         showStartupLoading()
         scope.launch {
             val startup =
@@ -218,6 +222,7 @@ class MainActivity :
                 )
             }
         ThemeManager.apply(startupState.activeThemeId)
+        StartupThemeHint.write(this, startupState.activeThemeId)
         applyWindowTheme()
         if (BuildConfig.DEBUG &&
             (

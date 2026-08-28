@@ -1,6 +1,12 @@
 <resources>
   <string name="app_name">Webnovel Archiver Native</string>
 
+  <!-- Branded cold-start state (app/StartupViews.kt). -->
+  <string name="startup_app_name">Webnovel Archiver</string>
+  <string name="startup_loading_library">Loading your library…</string>
+  <string name="startup_failed_title">Couldn\'t load your library</string>
+  <string name="startup_failed_message">Restart the app to try again.</string>
+
   <!-- Screen titles (Maintainability M6: user-facing strings centralized for localization). -->
   <string name="title_library">Library</string>
   <string name="title_browser">Browser</string>
