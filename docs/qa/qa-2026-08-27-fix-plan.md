@@ -9,7 +9,7 @@ Each P2 proposal below names the files involved so implementation sessions can s
 | Finding | Severity | Stakes | Fix cost | Order |
 |---------|----------|--------|----------|-------|
 | F2 — Full backup feedback opaque, `.tmp` leak, dead taps | P2 | Data safety: backups run *before* disasters; success invisible, failure silent | Medium | **1 — in progress** |
-| F1 — Cold-start spinner 5–7s (+ 24–84s episode) | P2 | Every session, every user | Split: cheap UX fix + larger storage work | 2 |
+| F1 — Cold-start spinner 5–7s (+ 24–84s episode) | P2 | Every session, every user | Split: cheap UX fix + larger storage work | 2 — F1a done 2026-08-28, F1b open |
 | F3 — AI Controls expert-knob overload | P2 | Core "way too complicated" complaint | Medium (screen restructure) | 3 |
 | F4 — Voice & Speech free-text decimals | P2 | Daily-reader usability | Small-medium | 3 (same pass as F3) |
 | F5–F12 — polish batch | P3 | Death by a thousand cuts | Small each | 4 |
@@ -63,6 +63,33 @@ Proposed fix, two tiers:
    paint the grid, swap in the full library when hydration lands. Turns 5–7 s of nothing into
    sub-second first content without touching the write path.
 3. Profile the 24–84 s episode separately *after* F2 lands — it may literally be backup I/O.
+
+### F1a branded startup + skeleton — implemented 2026-08-28
+
+Tier 1 shipped (uncommitted). What the code now does:
+
+1. **Branded startup state** (`app/StartupViews.kt`): theme background, "Webnovel Archiver",
+   "Loading your library…", a primary-tinted spinner, and skeleton story cards (80×120 cover block,
+   title/meta strips, coverage bar) laid out with the Library's own column rule, spacing, and
+   content max-width, with a soft alpha pulse. The startup failure state is themed to match.
+2. **Theme before hydration** (`app/StartupThemeHint.kt`): the user's theme lives in the JSON that
+   hydration loads, so a tiny SharedPreferences hint (written on every theme change in Settings and
+   on every successful start from the authoritative `DisplayPreferences`) seeds
+   `ThemeManager` before the first frame. Drift self-heals within one start.
+3. **Splash hold** (`holdSplashScreenUntilFirstContent`): an `OnPreDraw` gate keeps the platform
+   splash over the window until `uiReady` (fast starts go splash → first screen directly) or a
+   600 ms grace, whichever comes first. Two API-31+ gotchas found on the emulator: the gate must
+   self-schedule an invalidate at the grace deadline, because the system only reveals the window on
+   the traversal *after* the gate opens — otherwise the splash covers the whole hydration however
+   long it takes; and `uiautomator` dumps show the not-yet-drawn view tree, so pixel captures are
+   the only trustworthy evidence during the hold.
+4. Pure decisions live in `app/StartupPlanning.kt` (grace release, skeleton card count) with
+   `StartupPlanningTest`.
+
+Emulator QA: fast path settles straight to Library; during slow-hydration episodes (one organic
+6 s and one ~60 s run) the branded state showed in the *correct* user theme for the entire wait and
+the Library rendered when hydration landed. Remaining under F1b: the snapshot fast-path and the
+24–84 s episode profiling.
 
 ## F3 — AI Controls complexity overload (P2)
 
