@@ -63,6 +63,8 @@ Emulator-based functional QA reports for the native Android app.
 
 | File | Description |
 |------|-------------|
+| `native-app-emulator-qa-2026-08-27.html` | Full-screen dogfood & UX pass with self-contained screenshot/video evidence: 4 P2 findings (cold-start spinner with transient 24–84s degradation, opaque full-backup feedback + .tmp leak, AI Controls complexity overload, free-text Voice & Speech fields) and 8 P3 polish items; clean crash sweep; all prior regressions still fixed. |
+| `qa-2026-08-27-fix-plan.md` | Analysis of the 2026-08-27 QA findings with prioritized fix proposals per finding (code sites included), the shipped F2 full-backup fixes, and an execution order for F1/F3/F4 and the P3 batch. |
 | `native-app-emulator-qa-2026-07-21.html` | Debug-APK emulator QA pass covering Library, Queue, Settings, Updates, Add Story, Details, Reader, TTS, EPUB, and regression verification (0 issues found, fully stable). |
 | `native-app-emulator-qa-2026-07-31.html` | Broad debug-APK emulator QA with live followed-story sync, partial-story download, valid Add Story import, TTS, EPUB, backup, and four ranked findings with screenshot evidence. |
 | `native-app-emulator-qa-2026-07-09.html` | Debug-APK emulator QA covering local library, reader, TTS, settings, EPUB, and empty-state flows; records one P2 reader-settings navigation issue. |
