@@ -551,7 +551,7 @@ class AppStorage(
 
     fun exportCleanupRules(): File = backupRestore.exportCleanupRules()
 
-    fun exportFullBackup(): File = backupRestore.exportFullBackup()
+    fun exportFullBackup(onProgress: (String) -> Unit = {}): File = backupRestore.exportFullBackup(onProgress)
 
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 

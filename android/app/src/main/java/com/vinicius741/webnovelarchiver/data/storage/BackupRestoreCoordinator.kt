@@ -1,13 +1,13 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import android.net.Uri
+import com.vinicius741.webnovelarchiver.data.storage.MaintenanceOperation.ExportFull
 import java.io.File
 
 /**
- * Process-wide entry point for backup and restore operations.
- *
- * The coordinator owns the maintenance boundary; format-specific I/O lives in focused collaborators
- * so the lock cannot accidentally be bypassed as those implementations evolve.
+ * Process-wide entry point for backup and restore operations. The coordinator owns the
+ * maintenance boundary; format-specific I/O lives in focused collaborators so the lock cannot
+ * accidentally be bypassed as those implementations evolve.
  */
 class BackupRestoreCoordinator(
     private val storage: AppStorage,
@@ -20,7 +20,7 @@ class BackupRestoreCoordinator(
 
     fun exportCleanupRules(): File = runMaintenance(MaintenanceOperation.ExportCleanupRules, exporter::exportCleanupRules)
 
-    fun exportFullBackup(): File = runMaintenance(MaintenanceOperation.ExportFull, exporter::exportFull)
+    fun exportFullBackup(onProgress: (String) -> Unit = {}): File = runMaintenance(ExportFull) { exporter.exportFull(onProgress) }
 
     fun importBackupUri(uri: Uri): String = runMaintenance(MaintenanceOperation.ImportJson) { jsonImporter.import(uri) }
 

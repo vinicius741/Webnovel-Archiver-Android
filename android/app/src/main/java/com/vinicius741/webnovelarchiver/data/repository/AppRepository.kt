@@ -312,7 +312,8 @@ class AppRepository private constructor(
 
     suspend fun exportCleanupRules(): File = withContext(ioDispatcher) { requiredStorage.exportCleanupRules() }
 
-    suspend fun exportFullBackup(): File = withContext(ioDispatcher) { requiredStorage.exportFullBackup() }
+    suspend fun exportFullBackup(onProgress: (String) -> Unit = {}): File =
+        withContext(ioDispatcher) { requiredStorage.exportFullBackup(onProgress) }
 
     suspend fun importBackupUri(uri: Uri): String =
         withContext(ioDispatcher) {

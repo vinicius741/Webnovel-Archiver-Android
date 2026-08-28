@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.navigation
 
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
@@ -78,9 +79,29 @@ enum class BackupExportKind {
     FULL,
 }
 
-/** In-flight settings export state, retained across configuration-driven screen rebuilds. */
+/**
+ * In-flight settings export state, retained across configuration-driven screen rebuilds. Holds the
+ * running export [Job] so a stale `activeKind` flag (coroutine dead with the scope cancelled or
+ * killed mid-run) can be told apart from a live export — see [reconcile].
+ */
 class BackupExportState {
     var activeKind: BackupExportKind? = null
+    var activeJob: Job? = null
+
+    /** Latest full-backup progress message; patched into [progressSlot] between renders. */
+    var progressMessage: String? = null
+
+    /** The progress card's message view, captured at render so progress ticks skip full re-renders. */
+    var progressSlot: TextView? = null
+
+    /** Clears a run whose job is no longer alive; called on Data & Backup entry so stuck flags cannot eat taps. */
+    fun reconcile() {
+        if (activeKind != null && activeJob?.isActive != true) {
+            activeKind = null
+            progressMessage = null
+            progressSlot = null
+        }
+    }
 }
 
 /**

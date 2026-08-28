@@ -149,6 +149,7 @@ internal fun ScreenHost.showSettings() {
  * destructive reset.
  */
 internal fun ScreenHost.showDataBackup() {
+    backupExportState.reconcile()
     screen(route = AppRoute.DataBackup, title = "Data & Backup", onBack = { showSettings() }, scrollable = true) {
         section("Backup")
         // The host-owned state prevents concurrent exports and survives configuration re-renders.
@@ -163,34 +164,29 @@ internal fun ScreenHost.showDataBackup() {
             if (backupExportState.activeKind == null) {
                 backupExportState.activeKind = BackupExportKind.JSON
                 exportRow?.render(isLoading = true)
-                exportAndShare({ repository.exportBackup() }) {
-                    backupExportState.activeKind = null
-                    if (navigator.current == AppRoute.DataBackup) showDataBackup()
-                }
+                backupExportState.activeJob =
+                    exportAndShare({ repository.exportBackup() }) {
+                        backupExportState.activeKind = null
+                        if (navigator.current == AppRoute.DataBackup) showDataBackup()
+                    }
             }
         }.also { exportRow = it }
         settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") {
             importBackupLauncher.launch(arrayOf("application/json", "text/*"))
         }
-        var fullBackupRow: com.vinicius741.webnovelarchiver.ui.SettingActionRow? = null
         settingRowWithLoading(
             R.drawable.wna_archive,
             "Create Full Backup",
             "Save settings, tabs, library, and chapters to a local ZIP file",
             loading = backupExportState.activeKind == BackupExportKind.FULL,
         ) {
-            if (backupExportState.activeKind == null) {
-                backupExportState.activeKind = BackupExportKind.FULL
-                fullBackupRow?.render(isLoading = true)
-                exportAndShare({ repository.exportFullBackup() }) {
-                    backupExportState.activeKind = null
-                    if (navigator.current == AppRoute.DataBackup) showDataBackup()
-                }
-            }
-        }.also { fullBackupRow = it }
+            startFullBackupExport()
+        }
+        addFullBackupProgressCard(this)
         settingRow(R.drawable.wna_unarchive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
             importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
         }
+        addBackupFilesSection(this)
         divider()
         section("Sources & Storage")
         val storageHealth = repository.getStorageHealth()

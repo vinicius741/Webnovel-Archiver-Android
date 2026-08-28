@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
+import com.vinicius741.webnovelarchiver.data.backup.BackupProgressPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.io.File
@@ -43,7 +44,12 @@ internal class BackupExporter(
         }
     }
 
-    fun exportFull(): File {
+    /**
+     * Writes the full-backup ZIP. [onProgress] receives user-facing messages from the zip loop
+     * (called on the caller's dispatcher, not the UI thread); it is invoked only at throttled
+     * milestones — see [BackupProgressPlanning.shouldReport].
+     */
+    fun exportFull(onProgress: (String) -> Unit = {}): File {
         val library = storage.getLibrary()
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
         val chapterFiles = collectChapterFiles(library)
@@ -51,26 +57,43 @@ internal class BackupExporter(
         val coverFiles = collectCoverFiles(library)
         val rewritePayloads = collectRewritePayloads(library)
         val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, rewritePayloads)
+        val totalFiles =
+            1 + chapterFiles.size + metricFiles.size + coverFiles.size +
+                rewritePayloads.sumOf { 1 + it.appliedFiles.size }
+        var filesWritten = 0
+
+        fun markFileWritten() {
+            filesWritten += 1
+            if (BackupProgressPlanning.shouldReport(filesWritten, totalFiles)) {
+                onProgress(BackupProgressPlanning.fileMessage(filesWritten, totalFiles))
+            }
+        }
+
+        onProgress(BackupProgressPlanning.startMessage(library.size))
         return File(storage.backupRoot, "webnovel_full_backup_${System.currentTimeMillis()}.zip").also { output ->
             AtomicFileWrites.writeAtomically(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
                     zip.putNextEntry(ZipEntry("manifest.json"))
                     zip.write(gson.toJson(manifest).toByteArray())
                     zip.closeEntry()
+                    markFileWritten()
                     chapterFiles.forEach { chapter ->
                         zip.putNextEntry(ZipEntry(chapter.path))
                         chapter.source.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
+                        markFileWritten()
                     }
                     metricFiles.forEach { metric ->
                         zip.putNextEntry(ZipEntry(metric.path))
                         metric.source.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
+                        markFileWritten()
                     }
                     coverFiles.forEach { cover ->
                         zip.putNextEntry(ZipEntry(cover.path))
                         cover.source.inputStream().use { it.copyTo(zip) }
                         zip.closeEntry()
+                        markFileWritten()
                     }
                     rewritePayloads.forEach { payload ->
                         // The manifest entry is rewritten content (drafts stripped), so it is
@@ -78,10 +101,12 @@ internal class BackupExporter(
                         zip.putNextEntry(ZipEntry(payload.manifestPath))
                         zip.write(payload.manifestJson.toByteArray(Charsets.UTF_8))
                         zip.closeEntry()
+                        markFileWritten()
                         payload.appliedFiles.forEach { (path, source) ->
                             zip.putNextEntry(ZipEntry(path))
                             source.inputStream().use { it.copyTo(zip) }
                             zip.closeEntry()
+                            markFileWritten()
                         }
                     }
                 }

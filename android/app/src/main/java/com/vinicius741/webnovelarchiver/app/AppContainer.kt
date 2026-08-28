@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
+import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
@@ -52,7 +53,12 @@ class AppContainer(
     /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
-    private val storage = AppStorage(context)
+
+    // Container construction = process start, when no export can be writing: orphaned .tmp.N
+    // backup temps are leftovers of a process death mid-write and safe to sweep here.
+    private val storage =
+        AppStorage(context).also { BackupFilePlanning.sweepOrphanTempFiles(it.backupRoot) }
+
     private val reliabilityStore = SourceReliabilityStore(storage.root)
 
     // Conflated so bursts of state changes coalesce into one save; the drain coroutine always

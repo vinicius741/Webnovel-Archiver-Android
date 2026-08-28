@@ -12,6 +12,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -94,7 +95,7 @@ internal fun ScreenHost.share(file: File) {
 internal fun ScreenHost.exportAndShare(
     exporter: suspend () -> File,
     onFinally: (() -> Unit)? = null,
-) {
+): Job =
     scope.launch {
         try {
             runCatching { share(exporter()) }
@@ -103,6 +104,5 @@ internal fun ScreenHost.exportAndShare(
             onFinally?.invoke()
         }
     }
-}
 
 internal fun ScreenHost.fileUri(file: File): Uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
