@@ -1,21 +1,17 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
 import android.graphics.BitmapFactory
-import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.CheckBox
-import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.clearAiCover
-import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
 import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.story.showCoverZoomDialog
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -27,11 +23,8 @@ import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
-import com.vinicius741.webnovelarchiver.ui.loadImage
 import com.vinicius741.webnovelarchiver.ui.makeBadge
-import com.vinicius741.webnovelarchiver.ui.makeCover
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
@@ -40,12 +33,13 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Cover Art section of the AI Controls screen: the current-state card, the show-AI/source cover
- * preference, the generation-mode checkbox, and the preview/apply/discard/delete actions. The
- * billable generation flows themselves (one-shot and staged, with the editable prompt in between)
- * live in AiCoverGeneration.kt. The source cover URL is never modified, and once an AI cover is
- * applied the user can switch between it and the source cover at any time — deleting the
- * generated image is only for reclaiming the choice entirely.
+ * Cover Art section of the AI Controls screen: the applied state as a Source | AI comparison with
+ * the show-AI preference between them, the generation-mode checkbox, and the preview/apply/discard/
+ * delete actions. The billable generation flows themselves (one-shot and staged, with the editable
+ * prompt in between) live in AiCoverGeneration.kt; the before/after thumbnails live in
+ * AiCoverCompareUi.kt. The source cover URL is never modified, and once an AI cover is applied the
+ * user can switch between it and the source cover at any time — deleting the generated image is
+ * only for reclaiming the choice entirely.
  */
 
 /** Current-state card: the image model selector, applied AI cover, show-AI preference, and generate/delete actions. */
@@ -64,16 +58,8 @@ internal fun ScreenHost.addAiCoverCard(
     val isBusy = storyOperation?.storyId == story.id
     val cardView =
         container.card {
-            addAiCoverModelRow(this, story)
-            spacer(Space.MD)
             if (hasAiCover) {
-                addView(
-                    makeBadge(context, "AI-generated", colors.tertiaryContainer, colors.onTertiaryContainer),
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        bottomMargin = dp(Space.SM)
-                    },
-                )
-                addAppliedAiCoverThumbnail(this, story)
+                addAppliedCoverCompareRow(this, story)
             } else {
                 text(
                     if (hasSourceCover) {
@@ -92,13 +78,6 @@ internal fun ScreenHost.addAiCoverCard(
             if (canGenerate) {
                 spacer(Space.SM)
                 addAiCoverModeRow(this, story, oneStep)
-                if (!oneStep) {
-                    text(
-                        "Staged: the prompt is written first and can be edited before the image call.",
-                        Type.BODY_SMALL,
-                        colors.onSurfaceVariant,
-                    ).apply { setPadding(dp(2), dp(Space.XS), dp(2), 0) }
-                }
                 spacer(Space.SM)
                 fullButton(
                     label =
@@ -112,7 +91,7 @@ internal fun ScreenHost.addAiCoverCard(
                     variant = Btn.FILLED,
                     icon = R.drawable.wna_auto_awesome,
                     enabled = generating == null && !isBusy,
-                    bottomMarginDp = if (hasAiCover) Space.XS else 0,
+                    bottomMarginDp = if (hasAiCover) Space.MD else 0,
                 ) { generateAiCoverDraft(story) }
                 if (hasAiCover) {
                     fullButton(
@@ -135,27 +114,6 @@ internal fun ScreenHost.addAiCoverCard(
             }
         }
     container.addView(cardView)
-}
-
-/**
- * The applied AI cover thumbnail — always the generated file itself, never the toggle-aware
- * [com.vinicius741.webnovelarchiver.ui.coverImage], so this card keeps showing the AI cover even
- * while the app displays the source one.
- */
-private fun ScreenHost.addAppliedAiCoverThumbnail(
-    container: LinearLayout,
-    story: Story,
-) {
-    val file = repository.coverFile(story) ?: return
-    val cover = makeCover(app, 120, 180)
-    cover.layoutParams =
-        (cover.layoutParams as LinearLayout.LayoutParams).apply {
-            marginEnd = 0
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-    loadImage(file, cover)
-    cover.setOnClickListener { showCoverZoomDialog(file, story.title) }
-    container.addView(cover)
 }
 
 /** "Show AI cover" preference row; persists via [com.vinicius741.webnovelarchiver.data.repository.setShowAiCover]. */
@@ -217,7 +175,10 @@ private fun ScreenHost.addAiCoverModeRow(
     }
 }
 
-/** The generated cover draft (image + the prompt that produced it) with Apply/Discard actions. */
+/**
+ * The generated cover draft shown as a Current | New comparison with the prompt that produced it,
+ * plus Apply/Discard actions. Nothing is persisted until Apply.
+ */
 internal fun ScreenHost.addAiCoverDraftPreviewCard(
     container: LinearLayout,
     story: Story,
@@ -234,27 +195,14 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
             )
             val bitmap = BitmapFactory.decodeByteArray(draft.bytes, 0, draft.bytes.size)
             if (bitmap != null) {
-                addView(
-                    ImageView(context).apply {
-                        contentDescription = "Generated cover preview"
-                        setImageBitmap(bitmap)
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                        setBackgroundColor(colors.surfaceVariant)
-                        roundCorners(ThemeManager.shapes.cardRadius.toFloat() * 0.7f)
-                        layoutParams =
-                            LinearLayout.LayoutParams(dp(150), dp(225)).apply {
-                                gravity = Gravity.CENTER_HORIZONTAL
-                            }
-                        setOnClickListener { showCoverZoomDialog(bitmap, story.title) }
-                    },
-                )
+                addAiCoverDraftCompareRow(this, story, bitmap)
                 spacer(Space.SM)
                 text("Image prompt", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
                 text(draft.prompt, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
                     setLineSpacing(dp(Space.XS).toFloat(), 1f)
                 }
                 text(
-                    "Preview — nothing is saved yet. Apply replaces the novel's current cover.",
+                    "Preview — not saved yet",
                     Type.BODY_SMALL,
                     colors.onSurfaceVariant,
                 ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
