@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
 import android.app.AlertDialog
+import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
@@ -39,14 +40,20 @@ import kotlinx.coroutines.launch
 @Volatile
 internal var modelCatalogCache: List<OpenRouterModel>? = null
 
-/** Opens the searchable model picker, fetching OpenRouter's catalog on first use. */
+/**
+ * Opens the searchable model picker, fetching OpenRouter's catalog on first use. [recommended]
+ * adds a "Known good" filter and row marks; [excluded] hides one id entirely (e.g. the verifier
+ * picker hiding the model already chosen as the rewriter).
+ */
 internal fun ScreenHost.showAiModelPicker(
     currentModel: String,
     onPicked: (String) -> Unit,
+    recommended: ((OpenRouterModel) -> Boolean)? = null,
+    excluded: String? = null,
 ) {
     val cached = modelCatalogCache
     if (cached != null) {
-        showAiModelDialog(cached, currentModel, onPicked)
+        showAiModelDialog(cached, currentModel, onPicked, recommended, excluded)
         return
     }
     toast("Loading OpenRouter models...")
@@ -57,7 +64,7 @@ internal fun ScreenHost.showAiModelPicker(
         // An empty successful catalog is cacheable, but a transient network/API failure must remain
         // retryable when the picker is reopened during the same process.
         result.getOrNull()?.let { modelCatalogCache = it }
-        app.runOnUiThread { showAiModelDialog(models, currentModel, onPicked) }
+        app.runOnUiThread { showAiModelDialog(models, currentModel, onPicked, recommended, excluded) }
     }
 }
 
@@ -66,6 +73,8 @@ private fun ScreenHost.showAiModelDialog(
     models: List<OpenRouterModel>,
     selectedId: String,
     onPicked: (String) -> Unit,
+    recommended: ((OpenRouterModel) -> Boolean)?,
+    excluded: String?,
 ) {
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
@@ -86,6 +95,7 @@ private fun ScreenHost.showAiModelDialog(
     dialogView.addView(search)
 
     var freeOnly = false
+    var knownGoodOnly = false
     val filterRow = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
     dialogView.addView(
         android.widget.HorizontalScrollView(app).apply {
@@ -113,98 +123,66 @@ private fun ScreenHost.showAiModelDialog(
     var dialogRef: AlertDialog? = null
 
     fun renderResults() {
-        val filtered = AiModelPresentation.filter(models, search.text.toString(), freeOnly)
+        val filtered =
+            AiModelPresentation
+                .filter(models, search.text.toString(), freeOnly)
+                .filter { it.id != excluded }
+                .filter { knownGoodOnly != true || recommended?.invoke(it) == true }
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "model" else "models"}"
         results.removeAllViews()
         // Manual entry stays pinned as the first row so it is reachable even when the catalog
         // failed to load (offline) or nothing matches the search.
         results.addView(
-            LinearLayout(app).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, app.dp(Space.MD), 0, app.dp(Space.MD))
-                isClickable = true
-                isFocusable = true
-                background = selectableRipple(colors.onSurface)
-                addView(makeText(app, "Enter model id manually…", Type.BODY_LARGE, colors.primary))
-                addView(
-                    makeText(
-                        app,
-                        "Use any OpenRouter model id, e.g. a new release missing from the list",
-                        Type.BODY_SMALL,
-                        colors.onSurfaceVariant,
-                    ).apply { setPadding(0, app.dp(Space.XS), 0, 0) },
-                )
-                setOnClickListener {
-                    dialogRef?.dismiss()
-                    showManualModelDialog(selectedId, onPicked)
-                }
+            manualEntryRow(app) {
+                dialogRef?.dismiss()
+                showManualModelDialog(selectedId, onPicked)
             },
         )
         results.addView(makeDivider(app))
         filtered.take(MAX_RENDERED_MODELS).forEach { model ->
             results.addView(
-                LinearLayout(app).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(0, app.dp(Space.MD), 0, app.dp(Space.MD))
-                    isClickable = true
-                    isFocusable = true
-                    background = selectableRipple(colors.onSurface)
-                    addView(
-                        makeText(
-                            app,
-                            if (model.id == selectedId) "✓  ${model.name}" else model.name,
-                            Type.BODY_LARGE,
-                            colors.onSurface,
-                        ),
-                    )
-                    addView(
-                        makeText(app, "${model.id} · ${AiModelPresentation.priceLabel(model)}", Type.BODY_SMALL, colors.onSurfaceVariant)
-                            .apply { setPadding(0, app.dp(Space.XS), 0, 0) },
-                    )
-                    setOnClickListener {
-                        dialogRef?.dismiss()
-                        onPicked(model.id)
-                    }
+                modelResultRow(app, model, selectedId, recommended) {
+                    dialogRef?.dismiss()
+                    onPicked(model.id)
                 },
             )
         }
-        if (filtered.size > MAX_RENDERED_MODELS) {
-            results.addView(
-                makeText(
-                    app,
-                    "...and ${filtered.size - MAX_RENDERED_MODELS} more — refine your search",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ).apply { setPadding(0, app.dp(Space.SM), 0, app.dp(Space.SM)) },
-            )
-        } else if (filtered.isEmpty()) {
-            results.addView(
-                makeText(app, "No models match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
-                    .apply { setPadding(0, app.dp(Space.LG), 0, app.dp(Space.LG)) },
-            )
-        }
+        appendResultTail(app, results, filtered.size)
     }
 
     fun renderFilters() {
         filterRow.removeAllViews()
-        filterRow.addView(
-            makeChip(app, "All", !freeOnly) {
+
+        fun chip(
+            label: String,
+            selected: Boolean,
+            onPick: () -> Unit,
+        ) {
+            filterRow.addView(
+                makeChip(app, label, selected) {
+                    onPick()
+                    renderFilters()
+                    renderResults()
+                },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginEnd = app.dp(Space.SM)
+                },
+            )
+        }
+        chip("All", !freeOnly && !knownGoodOnly) {
+            freeOnly = false
+            knownGoodOnly = false
+        }
+        chip("Free", freeOnly) {
+            freeOnly = true
+            knownGoodOnly = false
+        }
+        if (recommended != null) {
+            chip("Known good", knownGoodOnly) {
+                knownGoodOnly = true
                 freeOnly = false
-                renderFilters()
-                renderResults()
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                marginEnd = app.dp(Space.SM)
-            },
-        )
-        filterRow.addView(
-            makeChip(app, "Free", freeOnly) {
-                freeOnly = true
-                renderFilters()
-                renderResults()
-            },
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-        )
+            }
+        }
     }
 
     search.doAfterTextChanged { renderResults() }
@@ -229,6 +207,81 @@ internal fun ScreenHost.showManualModelDialog(
     onPicked: (String) -> Unit,
 ) = prompt("Model id (e.g. deepseek/deepseek-v4-flash-0731)", currentModel) { value ->
     value.trim().takeIf { it.isNotBlank() }?.let(onPicked)
+}
+
+/** The pinned "enter id manually" row: reachable even when the catalog is empty or filtered out. */
+private fun manualEntryRow(
+    context: Context,
+    onClick: () -> Unit,
+): LinearLayout =
+    LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, context.dp(Space.MD), 0, context.dp(Space.MD))
+        isClickable = true
+        isFocusable = true
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        addView(makeText(context, "Enter model id manually…", Type.BODY_LARGE, ThemeManager.colors.primary))
+        addView(
+            makeText(
+                context,
+                "Use any OpenRouter model id, e.g. a new release missing from the list",
+                Type.BODY_SMALL,
+                ThemeManager.colors.onSurfaceVariant,
+            ).apply { setPadding(0, context.dp(Space.XS), 0, 0) },
+        )
+        setOnClickListener { onClick() }
+    }
+
+/** One catalog row: display name, id + price (+"known good" for spike-validated rewriters). */
+private fun modelResultRow(
+    context: Context,
+    model: OpenRouterModel,
+    selectedId: String,
+    recommended: ((OpenRouterModel) -> Boolean)?,
+    onPick: () -> Unit,
+): LinearLayout =
+    LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, context.dp(Space.MD), 0, context.dp(Space.MD))
+        isClickable = true
+        isFocusable = true
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        val name = if (model.id == selectedId) "✓  ${model.name}" else model.name
+        addView(makeText(context, name, Type.BODY_LARGE, ThemeManager.colors.onSurface))
+        val knownGood = if (recommended?.invoke(model) == true) " · known good" else ""
+        addView(
+            makeText(
+                context,
+                "${model.id} · ${AiModelPresentation.priceLabel(model)}$knownGood",
+                Type.BODY_SMALL,
+                ThemeManager.colors.onSurfaceVariant,
+            ).apply { setPadding(0, context.dp(Space.XS), 0, 0) },
+        )
+        setOnClickListener { onPick() }
+    }
+
+/** "N more — refine your search" tail, or the empty state when nothing matched. */
+private fun appendResultTail(
+    context: Context,
+    results: LinearLayout,
+    matchCount: Int,
+) {
+    val colors = ThemeManager.colors
+    if (matchCount > MAX_RENDERED_MODELS) {
+        results.addView(
+            makeText(
+                context,
+                "...and ${matchCount - MAX_RENDERED_MODELS} more — refine your search",
+                Type.BODY_SMALL,
+                colors.onSurfaceVariant,
+            ).apply { setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM)) },
+        )
+    } else if (matchCount == 0) {
+        results.addView(
+            makeText(context, "No models match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
+                .apply { setPadding(0, context.dp(Space.LG), 0, context.dp(Space.LG)) },
+        )
+    }
 }
 
 // Render cap for the dialog list; scrolling hundreds of rows on a phone dialog gets sluggish.

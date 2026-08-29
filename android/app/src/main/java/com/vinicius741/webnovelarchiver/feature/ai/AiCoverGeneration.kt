@@ -145,7 +145,7 @@ internal fun ScreenHost.addAiCoverPromptDraftCard(
                 }
             addView(field)
             text(
-                "Edit the prompt, then generate the image — repainting after an edit re-bills only the image call.",
+                "Repainting after an edit re-bills only the image call.",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }

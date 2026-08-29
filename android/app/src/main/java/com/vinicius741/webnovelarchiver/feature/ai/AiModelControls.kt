@@ -10,65 +10,104 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiModelPresentation
+import com.vinicius741.webnovelarchiver.ai.OpenRouterModel
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.size
+import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.strokeBg
+import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Model-selection controls for the AI Controls screen (moved from AI Settings — the user changes
- * the model where generation happens). Each row presents an interactive selector field showing
- * the active model and opens the shared picker dialog; a pick is saved immediately into AiSettings
- * and mirrored into the field label. Manual model-id entry stays reachable from inside each picker.
+ * Model-selection controls for the AI Controls screen. All four global model choices live in one
+ * "Models" card at the top of the screen — they apply to every novel, so presenting them inline
+ * with per-feature actions made them look per-novel. A pick is saved immediately into AiSettings
+ * and mirrored into the field label; manual model-id entry stays reachable from inside each picker.
  */
 
-/** Description-section row: which text model writes synopses and image prompts. */
-internal fun ScreenHost.addAiDescriptionModelRow(
+/**
+ * The single Models card: description, cover image, rewrite, and verifier selectors. The verifier
+ * must differ from the rewrite model — each picker hides the other row's current model and the
+ * save path rejects a manual-entry collision, so no explanatory prose is needed.
+ */
+internal fun ScreenHost.addAiModelsCard(
     container: LinearLayout,
     story: Story,
 ) {
-    addAiModelRow(
-        container,
-        label = "Description model",
-        currentModel = { repository.getAiSettings().descriptionModel },
-    ) { picked ->
-        repository.saveAiSettings(repository.getAiSettings().copy(descriptionModel = picked))
-        toast("Description model set to $picked")
-        if (frameIsAiControls(story.id)) showAiControls(story.id)
-    }
+    val cardView =
+        container.card {
+            addAiModelRow(
+                container = this,
+                label = "Description model",
+                currentModel = { repository.getAiSettings().descriptionModel },
+            ) { picked ->
+                repository.saveAiSettings(repository.getAiSettings().copy(descriptionModel = picked))
+            }
+            spacer(Space.SM)
+            addAiModelRow(
+                container = this,
+                label = "Cover image model",
+                currentModel = { repository.getAiSettings().imageModel },
+                image = true,
+            ) { picked ->
+                repository.saveAiSettings(repository.getAiSettings().copy(imageModel = picked))
+            }
+            spacer(Space.SM)
+            addAiModelRow(
+                container = this,
+                label = "Rewrite model",
+                currentModel = { repository.getAiSettings().chapterRewriteModel },
+                recommended = { AiModelPresentation.isKnownGoodRewriteModel(it.id) },
+                excluded = { repository.getAiSettings().chapterVerifierModel },
+            ) { picked ->
+                if (picked == repository.getAiSettings().chapterVerifierModel) {
+                    toast("The rewrite model must differ from the verifier")
+                    if (frameIsAiControls(story.id)) showAiControls(story.id)
+                    return@addAiModelRow
+                }
+                repository.saveAiSettings(repository.getAiSettings().copy(chapterRewriteModel = picked))
+            }
+            spacer(Space.SM)
+            addAiModelRow(
+                container = this,
+                label = "Verifier model",
+                currentModel = { repository.getAiSettings().chapterVerifierModel },
+                excluded = { repository.getAiSettings().chapterRewriteModel },
+            ) { picked ->
+                if (picked == repository.getAiSettings().chapterRewriteModel) {
+                    toast("The verifier must differ from the rewrite model")
+                    if (frameIsAiControls(story.id)) showAiControls(story.id)
+                    return@addAiModelRow
+                }
+                repository.saveAiSettings(repository.getAiSettings().copy(chapterVerifierModel = picked))
+            }
+        }
+    container.addView(cardView)
+    container.text(
+        "Models apply to every novel; the API key lives in Settings → AI.",
+        Type.BODY_SMALL,
+        ThemeManager.colors.onSurfaceVariant,
+    )
 }
 
-/** Cover-Art-section row: which image model paints covers. */
-internal fun ScreenHost.addAiCoverModelRow(
-    container: LinearLayout,
-    story: Story,
-) {
-    addAiModelRow(
-        container,
-        label = "Cover image model",
-        currentModel = { repository.getAiSettings().imageModel },
-        image = true,
-    ) { picked ->
-        repository.saveAiSettings(repository.getAiSettings().copy(imageModel = picked))
-        toast("Cover image model set to $picked")
-        if (frameIsAiControls(story.id)) showAiControls(story.id)
-    }
-}
-
-internal fun ScreenHost.addAiModelRow(
+private fun ScreenHost.addAiModelRow(
     container: LinearLayout,
     label: String,
     currentModel: () -> String,
     image: Boolean = false,
+    recommended: ((OpenRouterModel) -> Boolean)? = null,
+    excluded: () -> String? = { null },
     onPicked: suspend (String) -> Unit,
 ) {
     var pick: ((String) -> Unit)? = null
@@ -81,23 +120,12 @@ internal fun ScreenHost.addAiModelRow(
             if (image) {
                 showAiImageModelPicker(currentModel()) { picked -> pick?.invoke(picked) }
             } else {
-                showAiModelPicker(currentModel()) { picked -> pick?.invoke(picked) }
+                showAiModelPicker(currentModel(), { picked -> pick?.invoke(picked) }, recommended, excluded())
             }
         }
     selectorView.layoutParams =
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     container.addView(selectorView)
-
-    val footnote =
-        makeText(
-            container.context,
-            "Picking a model here saves it immediately for every novel — the API key stays in Settings.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        ).apply {
-            setPadding(container.context.dp(2), container.context.dp(Space.XS), container.context.dp(2), 0)
-        }
-    container.addView(footnote)
 
     pick = { picked ->
         valueView.text = picked

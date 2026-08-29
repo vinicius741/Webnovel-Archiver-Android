@@ -56,27 +56,16 @@ internal fun ScreenHost.showAiControls(storyId: String) {
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {
+        section("Models")
+        addAiModelsCard(this, story)
+
         section("Cover Art")
-        text(
-            "Generate a replacement cover from the novel's material. The source cover is kept " +
-                "and can be restored at any time.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
         addAiCoverCard(this, story, generatingCover)
         if (generatingCover != null) addView(makeStoryOperationSlot(app, generatingCover))
         aiControlsScreenState.coverPrompts[story.id]?.let { prompt -> addAiCoverPromptDraftCard(this, story, prompt) }
         aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
 
         section("Chapter Polish")
-        text(
-            "Rewrite a downloaded chapter's prose to remove repetitive habits. The source file " +
-                "is never modified; every draft is verified before it can be applied.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
         addAiChapterPolishCard(this, story)
         aiChapterRewriteOperationFor(story.id)?.let { rewriteJob ->
             addView(
@@ -88,13 +77,6 @@ internal fun ScreenHost.showAiControls(storyId: String) {
         }
 
         section("Description")
-        text(
-            "Generate a fresh synopsis from the novel's downloaded chapters. The source " +
-                "description is never modified.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
         addAiDescriptionCard(this, story, generating)
         if (generating != null) addView(makeStoryOperationSlot(app, generating))
         aiControlsScreenState.drafts[story.id]?.let { draft -> addAiDraftPreviewCard(this, story, draft) }
@@ -119,8 +101,6 @@ private fun ScreenHost.addAiDescriptionCard(
     val isBusy = storyOperation?.storyId == story.id
     val cardView =
         container.card {
-            addAiDescriptionModelRow(this, story)
-            spacer(Space.MD)
             addAiContextChaptersRow(this, story)
             spacer(Space.MD)
             if (hasAi) {
@@ -221,7 +201,7 @@ private fun ScreenHost.addAiDraftPreviewCard(
                 setLineSpacing(dp(Space.XS).toFloat(), 1f)
             }
             text(
-                "Preview — nothing is saved yet. Apply replaces the novel's current AI description.",
+                "Preview — not saved yet",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }

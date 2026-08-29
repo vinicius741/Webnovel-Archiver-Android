@@ -59,17 +59,6 @@ internal fun ScreenHost.addAiContextChaptersRow(
     selectorView.layoutParams =
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     container.addView(selectorView)
-
-    val footnote =
-        makeText(
-            container.context,
-            "These chapters feed both the synopsis and the cover's image prompt.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        ).apply {
-            setPadding(container.context.dp(2), container.context.dp(Space.XS), container.context.dp(2), 0)
-        }
-    container.addView(footnote)
 }
 
 /** Multi-select dialog over the story's downloaded chapters, with a Reset-to-default action. */
