@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -41,12 +42,15 @@ class AiChapterRewriteForegroundService : Service() {
         super.onCreate()
         AppNotificationChannels.ensureCreated(this)
         serviceScope.launch {
-            coordinator.jobs.collect { jobs ->
-                when {
-                    jobs.isEmpty() -> if (foregroundStarted) stopAfterFinish()
-                    else -> updateOngoingNotification(jobs.values.first())
+            combine(coordinator.jobs, coordinator.queue) { jobs, queue -> jobs to queue }
+                .collect { (jobs, queue) ->
+                    when {
+                        jobs.isNotEmpty() -> updateOngoingNotification(jobs.values.first(), queue.size)
+                        queue.isEmpty() -> if (foregroundStarted) stopAfterFinish()
+                        // Jobs drained but the queue still holds chapters: a handoff is in
+                        // flight — hold the service until the next job registers.
+                    }
                 }
-            }
         }
         serviceScope.launch {
             coordinator.events.collect { event -> showOutcomeNotification(event) }
@@ -68,13 +72,16 @@ class AiChapterRewriteForegroundService : Service() {
                 val job =
                     coordinator.jobs.value.values
                         .firstOrNull()
-                if (job == null) {
+                if (job == null && coordinator.queue.value.isEmpty()) {
                     // startForegroundService demands startForeground even on an immediate stop.
-                    startForeground(ONGOING_NOTIFICATION_ID, buildOngoingNotification("Polishing chapter..."))
+                    startForeground(ONGOING_NOTIFICATION_ID, buildOngoingNotification("Polishing chapter...", 0))
                     foregroundStarted = true
                     stopAfterFinish()
+                } else if (job == null) {
+                    startForeground(ONGOING_NOTIFICATION_ID, buildOngoingNotification("Polishing chapter...", coordinator.queue.value.size))
+                    foregroundStarted = true
                 } else {
-                    startForegroundIfNeeded(job)
+                    startForegroundIfNeeded(job, coordinator.queue.value.size)
                 }
             }
         }
@@ -93,15 +100,21 @@ class AiChapterRewriteForegroundService : Service() {
         stopAfterFinish()
     }
 
-    private fun startForegroundIfNeeded(job: AiChapterRewriteJobState) {
+    private fun startForegroundIfNeeded(
+        job: AiChapterRewriteJobState,
+        queuedCount: Int,
+    ) {
         if (foregroundStarted) return
-        startForeground(ONGOING_NOTIFICATION_ID, buildOngoingNotification(job.message))
+        startForeground(ONGOING_NOTIFICATION_ID, buildOngoingNotification(job.message, queuedCount))
         foregroundStarted = true
     }
 
-    private fun updateOngoingNotification(job: AiChapterRewriteJobState) {
+    private fun updateOngoingNotification(
+        job: AiChapterRewriteJobState,
+        queuedCount: Int,
+    ) {
         if (!foregroundStarted) {
-            startForegroundIfNeeded(job)
+            startForegroundIfNeeded(job, queuedCount)
             return
         }
         // Inlined like DownloadForegroundService so lint sees the permission guard.
@@ -110,7 +123,7 @@ class AiChapterRewriteForegroundService : Service() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
             runCatching {
-                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, buildOngoingNotification(job.message))
+                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, buildOngoingNotification(job.message, queuedCount))
             }
         }
     }
@@ -164,7 +177,11 @@ class AiChapterRewriteForegroundService : Service() {
         }.onFailure { Timber.w(it, "Could not post chapter rewrite outcome notification") }
     }
 
-    private fun buildOngoingNotification(message: String): Notification {
+    private fun buildOngoingNotification(
+        message: String,
+        queuedCount: Int,
+    ): Notification {
+        val text = if (queuedCount > 0) "$message · $queuedCount queued" else message
         val openIntent =
             PendingIntent.getActivity(
                 this,
@@ -176,8 +193,8 @@ class AiChapterRewriteForegroundService : Service() {
             .Builder(this, AppNotificationCategory.AI_GENERATION.channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(getString(R.string.ai_chapter_rewrite_notif_active))
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(openIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

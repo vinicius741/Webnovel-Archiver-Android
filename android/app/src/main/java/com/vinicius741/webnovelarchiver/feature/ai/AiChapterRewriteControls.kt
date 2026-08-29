@@ -3,19 +3,24 @@ package com.vinicius741.webnovelarchiver.feature.ai
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiChapterPolishPlanning
 import com.vinicius741.webnovelarchiver.app.AiChapterRewriteJobState
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setChapterRewriteStrength
-import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteManifestModel
 import com.vinicius741.webnovelarchiver.domain.model.RewriteStrength
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeBadge
+import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.spacer
@@ -24,9 +29,10 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * The Chapter Polish section of AI Controls (plan §07 "From AI Controls"): global rewrite and
- * verifier models, the per-novel strength, and the downloaded-chapter list with each chapter's
- * polish status. Generating always goes through the billable preflight confirm.
+ * The Chapter Polish section of AI Controls (plan §07 "From AI Controls"). No inline chapter list:
+ * a per-novel strength setting, a status summary, and two actions — Browse chapters (searchable,
+ * status-filtered picker) and Batch polish (queue the next unpolished chapters with one confirm).
+ * Generating always goes through the billable preflight confirm.
  */
 
 internal fun ScreenHost.addAiChapterPolishCard(
@@ -34,39 +40,11 @@ internal fun ScreenHost.addAiChapterPolishCard(
     story: Story,
 ) {
     val colors = ThemeManager.colors
-    val settings = repository.getAiSettings()
     val cardView =
         container.card {
-            addAiModelRow(
-                container = this,
-                label = "Rewrite model",
-                currentModel = { settings.chapterRewriteModel },
-            ) { picked ->
-                repository.saveAiSettings(repository.getAiSettings().copy(chapterRewriteModel = picked))
-            }
-            text(
-                "Verified in the spike: gpt-5.6-terra/sol (lowest drift), grok-4.6, glm-5.3, " +
-                    "deepseek-v4-pro-0813, kimi-k2-0905. Any model works — these are known-good.",
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            ).apply { setPadding(dp(2), dp(Space.XS), dp(2), 0) }
-            spacer(Space.SM)
-            addAiModelRow(
-                container = this,
-                label = "Verifier model",
-                currentModel = { settings.chapterVerifierModel },
-            ) { picked ->
-                repository.saveAiSettings(repository.getAiSettings().copy(chapterVerifierModel = picked))
-            }
-            text(
-                "Must differ from the rewriter; an independent check is what makes a draft appliable.",
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            ).apply { setPadding(dp(2), dp(Space.XS), dp(2), 0) }
-            spacer(Space.SM)
             addStrengthRow(this, story)
             spacer(Space.SM)
-            addPolishChapterList(this, story)
+            addPolishSummaryAndActions(this, story)
         }
     container.addView(cardView)
 }
@@ -98,14 +76,9 @@ private fun ScreenHost.addStrengthRow(
                 )
             }
         }
-    strengthRow.addView(makeText(container.context, "Edit strength", Type.LABEL_LARGE, colors.onSurface))
+    strengthRow.addView(makeText(container.context, "Strength", Type.LABEL_LARGE, colors.onSurface))
     strengthRow.addView(
-        makeText(
-            container.context,
-            "${current.label} — applies to this novel's chapters; Light is the default.",
-            Type.BODY_SMALL,
-            colors.onSurfaceVariant,
-        ),
+        makeText(container.context, current.label, Type.BODY_SMALL, colors.onSurfaceVariant),
     )
     container.addView(strengthRow)
 }
@@ -120,7 +93,11 @@ private fun ScreenHost.saveStrength(
     }
 }
 
-private fun ScreenHost.addPolishChapterList(
+/**
+ * The status summary plus the two navigation actions. One manifest read (inside
+ * [polishStatusIndex]) feeds the summary, the batch candidate count, and the browse dialog.
+ */
+private fun ScreenHost.addPolishSummaryAndActions(
     container: LinearLayout,
     story: Story,
 ) {
@@ -134,79 +111,63 @@ private fun ScreenHost.addPolishChapterList(
         )
         return
     }
-    container.text("Chapters", Type.LABEL_LARGE, colors.onSurface)
-    container
-        .text(
-            "Tap a chapter to preview or polish it. The source file is never modified.",
-            Type.BODY_SMALL,
-            colors.onSurfaceVariant,
-        ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.XS)) }
-    downloaded.take(200).forEach { chapter ->
-        addPolishChapterRow(container, story, chapter)
+    val index = polishStatusIndex(story.id)
+    val statuses = index.tags
+    summaryLineOf(index.manifest)?.let { summary ->
+        container.text(summary, Type.BODY_MEDIUM, colors.onSurface)
+        container.spacer(Space.SM)
     }
-    if (downloaded.size > 200) {
-        container.text("…and ${downloaded.size - 200} more chapters", Type.BODY_SMALL, colors.onSurfaceVariant)
+    container.fullButton(
+        label = "Browse chapters",
+        variant = Btn.FILLED,
+        icon = R.drawable.wna_menu_book,
+        bottomMarginDp = Space.MD,
+    ) { showPolishChapterBrowser(story, statuses) }
+
+    val unpolishedCount =
+        AiChapterPolishPlanning.nextUnpolished(story.chapters, { id -> statuses[id] }, BATCH_POLISH_MAX).size
+    val queued = app.appContainer.aiChapterRewriteJobCoordinator.queuedFor(story.id)
+    if (unpolishedCount > 1 || queued.isNotEmpty()) {
+        container.row {
+            if (unpolishedCount > 1) {
+                button("Batch polish…", Btn.THEME_DEFAULT) { onBatchPolishTapped(story, statuses, unpolishedCount) }
+            }
+            if (queued.isNotEmpty()) {
+                button("Cancel pending (${queued.size})", Btn.TEXT) {
+                    val removed = app.appContainer.aiChapterRewriteJobCoordinator.cancelQueued(story.id)
+                    toast(if (removed > 0) "Cancelled $removed queued chapter${if (removed == 1) "" else "s"}" else "Nothing queued")
+                    if (frameIsAiControls(story.id)) showAiControls(story.id)
+                }
+            }
+        }
     }
 }
 
-private fun ScreenHost.addPolishChapterRow(
-    container: LinearLayout,
+/** "3 polished · 1 draft ready · 1 flagged", or null when there is nothing to report. */
+private fun summaryLineOf(manifest: ChapterRewriteManifestModel): String? =
+    AiChapterPolishPlanning.summarize(manifest.drafts, manifest.applied).line()
+
+/** Batch-size chooser; the selected set then goes through the shared billable preflight confirm. */
+private fun ScreenHost.onBatchPolishTapped(
     story: Story,
-    chapter: Chapter,
+    statuses: Map<String, String>,
+    unpolishedCount: Int,
 ) {
-    val colors = ThemeManager.colors
-    val status = polishRowStatus(story.id, chapter.id)
-    val busy = jobBusyFor(story.id)
-    val row =
-        LinearLayout(container.context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, dp(Space.SM), 0, dp(Space.SM))
-            isClickable = true
-            isFocusable = true
-            background = selectableRipple(colors.onSurface)
-            setOnClickListener { onPolishChapterTapped(story, chapter, status) }
-        }
-    row.addView(
-        makeText(container.context, chapter.title.ifBlank { chapter.id }, Type.BODY_MEDIUM, colors.onSurface),
-        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginEnd = dp(Space.SM)
+    val counts = (listOf(5, 10, 25).filter { it < unpolishedCount } + unpolishedCount).distinct().sorted()
+    showStyledOptionsDialog(
+        "Batch polish",
+        counts.map { count ->
+            "Next $count unpolished chapter${if (count == 1) "" else "s"}" to {
+                val chapters =
+                    AiChapterPolishPlanning.nextUnpolished(story.chapters, { id -> statuses[id] }, count)
+                confirmBatchPolish(story, chapters)
+            }
         },
     )
-    when (status) {
-        ChapterPolishRowStatus.Generating ->
-            row.addView(makeBadge(container.context, "Polishing…", colors.tertiaryContainer, colors.onTertiaryContainer))
-        ChapterPolishRowStatus.DraftReady ->
-            row.addView(makeBadge(container.context, "Draft ready", colors.tertiaryContainer, colors.onTertiaryContainer))
-        ChapterPolishRowStatus.DraftBlocked ->
-            row.addView(makeBadge(container.context, "Flagged", colors.errorContainer, colors.onErrorContainer))
-        ChapterPolishRowStatus.AppliedActive ->
-            row.addView(makeBadge(container.context, "Polished", colors.tertiaryContainer, colors.onTertiaryContainer))
-        ChapterPolishRowStatus.AppliedInactive ->
-            row.addView(makeBadge(container.context, "Polished (off)", colors.surfaceVariant, colors.onSurfaceVariant))
-        null -> Unit
-    }
-    if (busy != null && busy.chapterId != chapter.id) {
-        row.alpha = 0.5f
-    }
-    container.addView(row)
 }
 
-private fun ScreenHost.onPolishChapterTapped(
-    story: Story,
-    chapter: Chapter,
-    status: ChapterPolishRowStatus?,
-) {
-    when (status) {
-        // A draft or applied rewrite exists: open the comparison screen.
-        ChapterPolishRowStatus.DraftReady, ChapterPolishRowStatus.DraftBlocked,
-        ChapterPolishRowStatus.AppliedActive, ChapterPolishRowStatus.AppliedInactive,
-        -> showChapterRewritePreview(story.id, chapter.id)
-        // Nothing yet (or mid-generation): run the preflight for a fresh rewrite.
-        ChapterPolishRowStatus.Generating -> toast("Already polishing this chapter")
-        null -> confirmChapterPolish(story, chapter)
-    }
-}
+// Upper bound on one batch-polish selection, keeping the preflight parse-and-estimate bounded.
+private const val BATCH_POLISH_MAX = 25
 
 /** The rewrite job for this story, if any — shown as a progress slot under the card. */
 internal fun ScreenHost.aiChapterRewriteOperationFor(storyId: String): AiChapterRewriteJobState? = jobBusyFor(storyId)

@@ -36,6 +36,26 @@ object AiModelPresentation {
         }
     }
 
+    /**
+     * Rewrite models validated in the drift spike, matched by id substring so publisher prefixes
+     * (openai/, deepseek/, …) do not have to be pinned exactly. Surfaced as a "Known good" filter
+     * in the rewrite-model picker instead of prose on the screen.
+     */
+    private val KNOWN_GOOD_REWRITE_MODEL_FRAGMENTS =
+        listOf(
+            "gpt-5.6-terra",
+            "gpt-5.6-sol",
+            "grok-4.6",
+            "glm-5.3",
+            "deepseek-v4-pro-0813",
+            "kimi-k2-0905",
+        )
+
+    fun isKnownGoodRewriteModel(modelId: String): Boolean {
+        val id = modelId.lowercase(Locale.US)
+        return KNOWN_GOOD_REWRITE_MODEL_FRAGMENTS.any(id::contains)
+    }
+
     private fun formatPricePerMillion(pricePerToken: Double): String {
         val perMillion = pricePerToken * 1_000_000
         val formatted =

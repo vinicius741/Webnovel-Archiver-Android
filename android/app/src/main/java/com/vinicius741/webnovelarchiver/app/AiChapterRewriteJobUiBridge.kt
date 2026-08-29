@@ -52,6 +52,17 @@ internal fun MainActivity.attachAiChapterRewriteJobBridge() {
         }
     }
     scope.launch {
+        // Queue changes (batch polish enqueues, cancels, drain) refresh the visible AI Controls
+        // screen so its queued count and cancel action stay current. The previous set joins the
+        // check so the drain-to-empty transition also triggers exactly one final refresh.
+        var lastQueuedStories: Set<String> = emptySet()
+        coordinator.queue.collect { queue ->
+            val stories = queue.map { it.storyId }.toSet()
+            (stories + lastQueuedStories).firstOrNull { frameIsAiControls(it) }?.let { showAiControls(it) }
+            lastQueuedStories = stories
+        }
+    }
+    scope.launch {
         coordinator.events.collect { event ->
             when (event) {
                 is AiChapterRewriteJobEvent.Succeeded -> {
