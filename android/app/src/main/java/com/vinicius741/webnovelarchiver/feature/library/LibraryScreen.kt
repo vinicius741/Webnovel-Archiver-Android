@@ -28,11 +28,9 @@ import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrary() {
     activeStory = null
-    // Capture the host outside the `screen(...) { }` block: inside that block `this` is the body
-    // LinearLayout, so the pager adapter (which needs a ScreenHost to render grids) takes this ref.
+    // Capture the ScreenHost here; inside screen{} `this` is the body LinearLayout.
     val host = this
-    // Re-render this screen when the window changes (fold/unfold/rotation) or the Large Screen Layout
-    // setting toggles, so the column count reflows 1 → 2 → 3 live.
+    // Re-render on window/setting changes so the column count reflows live.
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
     var stories: List<Story> = repository.library()
@@ -51,8 +49,7 @@ internal fun ScreenHost.showLibrary() {
             ),
         fab = { showAddStory() },
     ) {
-        // Resolve and persist tab selection even when the library is empty. Configured tabs are
-        // still useful before the first import, and hiding them makes tab creation look ineffective.
+        // Tabs stay visible when the library is empty; hiding them makes tab creation look ineffective.
         val hasUnassigned = stories.any { it.tabId == null }
         val initialSelectedTabId: String? =
             LibraryTabSelection.resolve(
@@ -73,7 +70,6 @@ internal fun ScreenHost.showLibrary() {
             val sourceNames = SourceRegistry.all().joinToString(", ") { it.name }
             addView(
                 makeLibraryTabBar(context, tabs, stories, initialSelectedTabId) { newTabId ->
-                    // The empty state has no filter bar, but tab selection still persists.
                     persistTab(newTabId)
                 }.view,
             )
@@ -92,13 +88,7 @@ internal fun ScreenHost.showLibrary() {
 
         val search = makeSearchField(context, "Search stories")
 
-        // Restore the last-selected tab from persisted prefs (survives navigating away AND app restarts).
-        // Resolve against the live tabs so a deleted tab's stale id falls back to All instead of an
-        // empty, un-selectable view.
-        // The single source of truth for "what is a swipeable tab", shared by the tab bar and the
-        // pager so their ordering can never drift. The synthetic Unassigned tab (only when stories
-        // are unassigned) comes first, then real tabs in their configured order, then All last.
-        // `null` is the runtime sentinel for Unassigned.
+        // Shared bar+pager tab ordering: Unassigned (null sentinel) first when present, then tabs, then All.
         val pageTabs: List<String?> =
             buildList {
                 if (hasUnassigned) add(null)
@@ -128,13 +118,9 @@ internal fun ScreenHost.showLibrary() {
             }
         }
 
-        // Apply the current filter snapshot to whichever grid surface is showing: the single shared
-        // [GridLayout] in single-tab mode, or every page's grid via the adapter in pager mode. Kept as
-        // one closure so search/sort/tag callbacks never have to know which mode is active.
+        // One closure applies filters to whichever grid surface (shared grid or pager adapter) is showing.
         var applyFilters: () -> Unit = {}
-        // Rebuilds the tag/source chip row from the active selection. Declared before [makeLibraryFilters]
-        // so the tag-toggle callback can re-highlight the tapped chip; assigned to `filters.rebuildChips`
-        // right after the filter bar is built (mirrors how `applyFilters` is hoisted above).
+        // Hoisted so the tag-toggle callback can re-highlight chips; assigned filters.rebuildChips below.
         var refreshFilters: (String?, Set<String>) -> Unit = { _, _ -> }
 
         val filters =
@@ -156,14 +142,11 @@ internal fun ScreenHost.showLibrary() {
                     val nextTags = filterState.selectedTags.toMutableSet()
                     if (!nextTags.add(tag)) nextTags.remove(tag)
                     filterState = filterState.copy(selectedTags = nextTags)
-                    // Re-render the chip row so the tapped chip actually shows its selected state.
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
             )
-        // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
-        // tab (All = union, a specific tab = only that tab's labels).
-        // Declared before the tab bar so the bar's selection lambda can close over it.
+        // Chips follow the active tab: All = union, a specific tab = only its labels.
         refreshFilters = filters.rebuildChips
 
         val tabBar =
@@ -176,28 +159,21 @@ internal fun ScreenHost.showLibrary() {
         addView(tabBar.view)
         addView(filters.view)
 
-        // One watcher drives BOTH the single-grid and pager paths through the shared `applyFilters`
-        // closure, so a keystroke re-filters whichever surface is showing.
         search.doAfterTextChanged {
             filterState = filterState.copy(query = it?.toString().orEmpty())
-            // The collapsible header's active-filter indicators track live search text too, and the
-            // chip row recomputes so it keeps offering only tags reachable under the typed query.
+            // Indicators and chip options track the live query too.
             filters.syncActiveFilters(filterState.selectedTags)
             refreshFilters(filterState.selectedTabId, filterState.selectedTags)
             applyFilters()
         }
 
         if (pageTabs.size >= 2) {
-            // Swipe-between-tabs. Each page owns its own
-            // scrolling grid mirroring the single-grid shell below, so a swipe switches tabs exactly as
-            // tapping the bar does. Tab bar ⇄ pager stay two-way synced: a swipe updates the bar's
-            // active indicator, a bar tap animates the pager to that page.
+            // Each page owns a scrolling grid; bar and pager stay two-way synced.
             val adapter = LibraryPagesAdapter(host, stories, pageTabs, layoutResult)
             val pager =
                 ViewPager2(context).apply {
                     this.adapter = adapter
-                    // Disable the (default horizontal) page-over-scroll glow; the tab bar's indicator is
-                    // the affordance that a swipe changed the active tab.
+                    // No over-scroll glow; the tab bar's indicator signals the swipe.
                     getChildAt(0).overScrollMode = android.view.View.OVER_SCROLL_NEVER
                 }
             val initialPage = pageTabs.indexOf(filterState.selectedTabId).coerceAtLeast(0)
@@ -213,8 +189,7 @@ internal fun ScreenHost.showLibrary() {
                 adapter.replaceStories(latest)
                 changed.forEach { patchLibraryProgress(frame, it) }
             }
-            // Swipe → tab. The changed-id check keeps a bar-initiated page switch from feeding
-            // back into itself.
+            // The changed-id check stops bar-initiated switches from feeding back.
             var suppressingPageCallback = false
             pager.registerOnPageChangeCallback(
                 object : ViewPager2.OnPageChangeCallback() {
@@ -231,8 +206,7 @@ internal fun ScreenHost.showLibrary() {
                     }
                 },
             )
-            // Bar tap → page (animate), in addition to the selection/persist/filter work the bar already
-            // does above. Routed through a flag so setCurrentItem's resulting onPageSelected is a no-op.
+            // Animate to the page; the flag makes the resulting onPageSelected a no-op.
             tabBar.onSelectFromBar = { id ->
                 val idx = pageTabs.indexOf(id)
                 if (idx in 0 until pager.adapter!!.itemCount && idx != pager.currentItem) {
@@ -244,14 +218,11 @@ internal fun ScreenHost.showLibrary() {
             addView(pager, verticalFill().apply { topMargin = dp(Space.LG) })
             applyFilters()
         } else {
-            // Single-tab path (the common case: no custom tabs and nothing unassigned).
             val list =
                 GridLayout(context).apply {
                     columnCount = layoutResult.numColumns.coerceAtLeast(1)
                     horizontalSpacingDp = Space.LG
-                    // Story cards carry their own bottom margin (Space.MD from the `card` helper), so the
-                    // grid adds only a small gap on top — otherwise the vertical spacing (margin + grid)
-                    // balloons past the horizontal gap and rows look stretched apart.
+                    // Cards carry their own bottom margin; a larger grid gap would stretch rows apart.
                     verticalSpacingDp = Space.XS
                 }
             applyFilters = {
@@ -274,8 +245,6 @@ internal fun ScreenHost.showLibrary() {
             }
             val gridShell =
                 MaxWidthFrameLayout(context).apply {
-                    // Cap the grid's width at the size-class content max (760/1040/1320dp) so it
-                    // never stretches edge-to-edge on tablets.
                     maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
                     addView(
                         list,
@@ -292,8 +261,7 @@ internal fun ScreenHost.showLibrary() {
     }
     refreshLibraryContent?.let { refresh ->
         val renderedRoot = frame.getChildAt(0)
-        // Capture before launching: unlike drop(1), this still handles a publish that races between
-        // the capture and collector registration because StateFlow then emits a different version.
+        // Captured before launch: still catches a racing publish because StateFlow re-emits a new version.
         var observedLibraryVersion = repository.downloadState.value.libraryVersion
         screenObserver =
             scope.launch {

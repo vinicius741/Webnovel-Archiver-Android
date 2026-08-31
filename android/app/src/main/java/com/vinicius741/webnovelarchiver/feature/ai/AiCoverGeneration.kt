@@ -33,26 +33,15 @@ import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-/*
- * The billable cover-art generation flows of the AI Controls screen, split out of
- * AiCoverControls.kt to respect the file-size budget. The one-shot flow runs both OpenRouter
- * stages (prompt + image) in a single run; the staged flow stops after the prompt, shows it in an
- * editable draft card, and paints only when the user asks — re-painting after an edit re-bills
- * just the image call. Both modes share the AI_COVER story operation slot, so they can never run
- * concurrently for a story.
- *
- * The calls themselves run on the process-wide AiCoverJobCoordinator, not the activity scope:
- * navigating away, minimizing, or leaving the app no longer cancels an in-flight image call or
- * discards its result. The coordinator persists each result as a draft before announcing it, the
- * activity bridge mirrors progress into the shared operation slot, and the AI cover foreground
- * service keeps the process alive while a job runs.
- */
+// Billable cover-art generation: one-shot runs both OpenRouter stages in a single run; staged
+// stops after the prompt and paints only on request (a repaint re-bills just the image call).
+// Jobs run on the process-wide AiCoverJobCoordinator, not the activity scope, so navigating away
+// never cancels an in-flight call; both modes share the AI_COVER operation slot and can never run
+// concurrently for a story.
 
 /**
- * Starts cover generation in the configured mode. One-step runs both billable calls together;
- * staged mode writes only the image prompt here (the image is painted from the editable prompt
- * card below). Generating over an applied AI cover or pending drafts asks for confirmation
- * first — every call bills the user's OpenRouter key.
+ * Starts generation in the configured mode; asks before overwriting an applied cover or pending
+ * drafts — every call bills the user's OpenRouter key.
  */
 internal fun ScreenHost.generateAiCoverDraft(story: Story) {
     val settings = repository.getAiSettings()
@@ -87,11 +76,7 @@ internal fun ScreenHost.startAiCoverDraft(story: Story) {
     startAiCoverJob(story, "Generating cover...") { coordinator -> coordinator.startOneShot(story.id) }
 }
 
-/**
- * Shared launch path. Hands the call to the process-wide coordinator (so it survives this
- * activity), mirrors the start into the shared operation slot for the first frame, and starts the
- * foreground service while the app is still foregrounded so the system keeps the process alive.
- */
+/** Shared launch path: coordinator-backed job (survives this activity) + foreground service. */
 private fun ScreenHost.startAiCoverJob(
     story: Story,
     initialMessage: String,
@@ -108,15 +93,14 @@ private fun ScreenHost.startAiCoverJob(
         return
     }
     onAccepted()
-    // The activity bridge keeps this slot in sync on every coordinator emission; the optimistic
-    // set covers the first re-render before the collector's first pass.
+    // Optimistic set for the first re-render; the activity bridge syncs the slot on every emission.
     storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
     detailsOperationSlot = null
     showAiControls(story.id)
     AiCoverForegroundService.start(app)
 }
 
-/** The editable prompt draft (stage 1 result / stage 2 input) with Generate Image / Discard actions. */
+/** The editable prompt draft (stage 1 result / stage 2 input). */
 internal fun ScreenHost.addAiCoverPromptDraftCard(
     container: LinearLayout,
     story: Story,
@@ -164,18 +148,14 @@ internal fun ScreenHost.addAiCoverPromptDraftCard(
     container.addView(cardView)
 }
 
-/**
- * Starts stage 1: writes the image prompt only. Generating over pending work was already
- * confirmed in [generateAiCoverDraft]; a fresh prompt invalidates any preview painted from the
- * previous one.
- */
+/** Stage 1: writes the image prompt only; a fresh prompt invalidates any painted preview. */
 internal fun ScreenHost.startAiCoverPromptDraft(story: Story) {
     startAiCoverJob(story, "Writing image prompt...") { coordinator -> coordinator.startPromptDraft(story.id) }
 }
 
 /**
- * Starts stage 2 with confirmation when it replaces a pending preview — the image call is the
- * billable one. [prompt] is the field's current content, so edits survive the re-render.
+ * Stage 2 — the billable image call; confirms when replacing a pending preview. [prompt] is the
+ * field's current text so edits survive re-renders.
  */
 internal fun ScreenHost.generateAiCoverImageDraft(
     story: Story,
@@ -201,10 +181,8 @@ internal fun ScreenHost.startAiCoverImageDraft(
         story,
         "Painting cover...",
         onAccepted = {
-            // The field content — not the stored draft — is the source of truth while the user edits;
-            // persisting it with the job keeps the prompt recoverable if the process dies mid-paint.
-            // Persisting the prompt drops the disk preview, so drop its in-memory mirror too: a
-            // failed paint must leave the replaced preview neither shown nor applicable.
+            // Persist the field content with the job so the prompt survives a mid-paint process
+            // death. Persisting the prompt drops the disk preview, so drop its in-memory mirror too.
             aiControlsScreenState.coverPrompts[story.id] = prompt
             aiControlsScreenState.coverDrafts.remove(story.id)
             scope.launch { repository.saveAiCoverPromptDraft(story.id, prompt) }
@@ -220,11 +198,9 @@ internal fun ScreenHost.discardAiCoverPromptDraft(story: Story) {
 }
 
 /**
- * Loads the story's persisted pending draft into the screen state, so a cover generated while
- * this screen was closed — possibly under a previous activity instance — still shows its prompt or
- * preview card. In-memory state always wins: disk is only consulted when the maps have no entry,
- * and the re-render fires only when hydration actually added something (every render calls this,
- * so an unconditional re-render would loop).
+ * Shows a draft persisted while this screen was closed (possibly a previous activity instance).
+ * Memory wins over disk; re-renders only when hydration added something, since every render
+ * calls this — an unconditional re-render would loop.
  */
 internal fun ScreenHost.hydrateAiCoverDraftFromStorage(storyId: String) {
     if (aiControlsScreenState.coverDrafts[storyId] != null) return
@@ -237,8 +213,7 @@ internal fun ScreenHost.hydrateAiCoverDraftFromStorage(storyId: String) {
                     aiControlsScreenState.coverPrompts[storyId] = record.prompt
                     hydrated = true
                 }
-            // The preview card shows the prompt alongside the image, so the editor card is not
-            // re-seeded once a preview exists.
+            // The preview card shows the prompt too, so don't re-seed the editor once a preview exists.
             is AiCoverDraftRecord.Image ->
                 if (aiControlsScreenState.coverDrafts[storyId] == null) {
                     aiControlsScreenState.coverDrafts[storyId] = record.draft
@@ -250,9 +225,8 @@ internal fun ScreenHost.hydrateAiCoverDraftFromStorage(storyId: String) {
 }
 
 /**
- * The AI-cover operation to render for a story: the shared slot when this activity already shows
- * it, otherwise a background job the bridge has not reflected yet (e.g. right after an activity
- * recreation while a job keeps running).
+ * The AI-cover operation for a story: the shared slot, or a background job the bridge has not
+ * reflected yet (e.g. after activity recreation).
  */
 internal fun ScreenHost.aiCoverOperationFor(storyId: String): StoryOperationState? {
     storyOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_COVER }?.let { return it }

@@ -5,7 +5,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
-/** A validation problem or warning; [code] matches the Phase-1 spike's codes so runs stay comparable. */
+/** A validation problem or warning; [code] values are kept stable for cross-run comparability. */
 data class RewriteIssue(
     val code: String,
     val detail: String,
@@ -23,27 +23,19 @@ data class RewriteValidationResult(
 )
 
 /**
- * Deterministic validation of a rewrite reply against its source chapter — the merge-semantics
- * contract proven in the Phase-1 spike:
- *
- *  - every input block id exactly once, in order;
- *  - protected blocks byte-identical after whitespace normalization;
- *  - `""` only for addressable blocks with a non-empty addressable carrier above (never across a
- *    protected block or divider);
- *  - more than [MAX_CONSECUTIVE_EMPTY_MERGES] consecutive empty merges is pathological dumping
- *    (dense fragment clusters legitimately produce runs of 4–8, so do not lower this).
- *
- * Truncated or malformed replies must never become drafts: that is enforced by the caller treating
- * `finish_reason == "length"` as a hard reject and by the schema/ids issues returned here.
+ * Deterministic validation of a rewrite reply against its source chapter: every input block id
+ * exactly once, in order; protected blocks byte-identical after whitespace normalization; `""`
+ * only for addressable blocks with a non-empty addressable carrier above (never across a protected
+ * block or divider); more than [MAX_CONSECUTIVE_EMPTY_MERGES] consecutive empty merges is
+ * pathological dumping (dense fragment clusters legitimately produce 4–8). Truncated or malformed
+ * replies must never become drafts — the caller hard-rejects `finish_reason == "length"`.
  */
 object ChapterRewriteValidation {
     const val MAX_CONSECUTIVE_EMPTY_MERGES = 12
     private const val MAX_OUTPUT_FACTOR = 3.0
 
-    /**
-     * Parses a model reply. Returns null when the body is not a JSON object — an unparseable reply
-     * is a validation failure (repairable once), never a crash. Code fences are tolerated.
-     */
+    /** Parses a model reply; null when the body is not a JSON object — an unparseable reply is a
+     *  validation failure, never a crash. Code fences are tolerated. */
     fun parseModelReply(content: String): JsonObject? {
         val stripped = stripJsonFences(content)
         val parsed = runCatching { JsonParser.parseString(stripped) }.getOrNull() ?: return null
@@ -215,10 +207,8 @@ object ChapterRewriteValidation {
         val evidence: String,
     )
 
-    /**
-     * Parsed verifier verdict; [parseError] is non-null when the reply was unparseable or not the
-     * expected shape (a failure, never a pass — a schema-ignoring reply must not read as "clean").
-     */
+    /** Verifier verdict; [parseError] is non-null when the reply was unparseable or malformed —
+     *  such a reply must never read as "clean". */
     data class VerifierVerdict(
         val findings: List<VerifierFinding>,
         val parseError: String? = null,

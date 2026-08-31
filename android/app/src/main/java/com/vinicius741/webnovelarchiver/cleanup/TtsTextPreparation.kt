@@ -8,10 +8,8 @@ import java.text.BreakIterator
 import java.util.Locale
 
 /**
- * TTS text preparation consumed by the TTS engine and the reader. Produces both the flat chunk list
- * the engine speaks and the chunk-tagged HTML
- * the reader highlights. Kept under `cleanup/` (rather than `tts/`) so it shares the package-private
- * [RegexRuleCleanup.regexRunner] with the rest of the cleanup domain.
+ * TTS text preparation: the flat chunk list the engine speaks and the chunk-tagged HTML the reader
+ * highlights. Kept under `cleanup/` to share [RegexRuleCleanup.regexRunner].
  */
 object TtsTextPreparation {
     private const val MIN_CHUNK_SIZE = 100
@@ -35,20 +33,9 @@ object TtsTextPreparation {
     )
 
     /**
-     * Produces TTS-aware reader HTML (parity gap 3): a port of the legacy RN `prepareTTSContent`.
-     *
-     * Walks the same block elements as [prepareTtsChunks] using the identical grouping rule, and the
-     * returned [chunks] list is byte-for-byte aligned with [prepareTtsChunks]'s output — meaning a
-     * chunk index the engine reports (e.g. via [TtsEngine.playFromChunk] / the playback snapshot)
-     * maps 1:1 to the `data-tts-group` the reader's highlight script highlights.
-     *
-     * Because each chunk is a single sentence, the reader can highlight exactly the sentence being
-     * spoken: a single-sentence block element is tagged directly (its inline formatting is kept),
-     * while a multi-sentence element is rebuilt as per-sentence `<span data-tts-group>` children so
-     * each sentence highlights independently (inline formatting within it is dropped).
-     *
-     * When no block elements match, falls back to escaped inline spans with matching group indices,
-     * so plain-text fragments still highlight and support tap-to-start.
+     * Produces TTS-aware reader HTML; [chunks] aligns 1:1 with [prepareTtsChunks], so an engine
+     * chunk index maps directly to a `data-tts-group`. Single-sentence elements are tagged in place
+     * (inline formatting kept); multi-sentence ones become per-sentence spans (formatting dropped).
      */
     fun prepareTtsAnnotatedHtml(
         html: String,
@@ -61,8 +48,7 @@ object TtsTextPreparation {
         val elements = contributingElements(doc)
         val units = buildUnits(doc, regexRules, elements)
         val plan = planChunks(units)
-        // Collect the chunk group(s) each contributing element owns. With one-sentence-per-chunk, a
-        // multi-sentence element owns several groups.
+        // Collect the chunk groups each element owns; multi-sentence elements own several.
         val groupsByElement = linkedMapOf<Int, MutableList<Int>>()
         units.forEachIndexed { unitIndex, unit ->
             val elementIndex = unit.elementIndex ?: return@forEachIndexed
@@ -77,18 +63,14 @@ object TtsTextPreparation {
             groupsByElement.forEach { (elementIndex, groups) ->
                 val element = elements[elementIndex]
                 if (groups.size == 1) {
-                    // Single sentence in this element: tag the element directly and keep its inline
-                    // formatting (bold/italic/links). Highlighting tints the whole element.
+                    // Single sentence: tag the element directly, keeping inline formatting.
                     val group = groups.first()
                     element
                         .attr("data-tts-group", group.toString())
                         .attr("data-tts-groups", group.toString())
                         .addClass("tts-chunk")
                 } else if (groups.all { displayTextByGroup[it] != null }) {
-                    // Multiple sentences: rebuild the element as per-sentence spans so the reader can
-                    // highlight each sentence independently. The element's tag is preserved, but its
-                    // inline formatting is dropped (each span holds plain display text, not the
-                    // TTS-cleaned spoken chunk).
+                    // Multiple sentences: per-sentence spans; inline formatting is dropped.
                     element.empty()
                     groups.forEachIndexed { position, group ->
                         element
@@ -102,8 +84,7 @@ object TtsTextPreparation {
                         }
                     }
                 } else {
-                    // If TTS-only cleanup changes the sentence structure, preserve the original
-                    // reader HTML rather than rewriting visible prose from spoken chunks.
+                    // Sentence mismatch: keep original HTML; never rewrite visible prose from spoken chunks.
                     element
                         .attr("data-tts-groups", groups.joinToString(" "))
                         .addClass("tts-chunk")
@@ -145,11 +126,8 @@ object TtsTextPreparation {
 
     private fun contributingElements(doc: org.jsoup.nodes.Document): List<Element> {
         doc.select("script,style,noscript,iframe").remove()
-        // A container (`div`/`blockquote`/`li`) that itself holds block-level prose children would
-        // contribute duplicated text — its `.text()` flattens the same descendants the inner elements
-        // already cover. Drop such containers so only the innermost elements contribute; this also
-        // keeps the per-sentence rebuild below from `empty()`ing a parent and detaching those inner
-        // nodes, whose `data-tts-group` would then never reach the rendered reader HTML.
+        // Drop containers with block children: their .text() duplicates the inner elements, and
+        // rebuilding them would detach the inner nodes' data-tts-group from the rendered HTML.
         val containers = setOf("div", "blockquote", "li")
         return doc
             .select("p,h1,h2,h3,h4,h5,h6,li,blockquote,div")
@@ -196,10 +174,7 @@ object TtsTextPreparation {
         }
     }
 
-    /**
-     * One sentence per chunk. Each [TtsUnit] built by [buildUnits] is already a single sentence, so a
-     * chunk maps 1:1 to a sentence — the reader can then highlight exactly the sentence being spoken.
-     */
+    /** One sentence per chunk, so the reader can highlight exactly the sentence being spoken. */
     private fun planChunks(units: List<TtsUnit>): ChunkPlan {
         if (units.isEmpty()) return ChunkPlan(emptyList(), emptyList())
         val chunks = units.map { it.text }

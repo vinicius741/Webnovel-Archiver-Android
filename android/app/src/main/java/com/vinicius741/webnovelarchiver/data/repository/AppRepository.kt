@@ -77,15 +77,12 @@ data class DownloadUiSnapshot(
 )
 
 /**
- * Single owner of [AppStorage]. All read-modify-write transactions on the library,
- * download queue, and settings synchronize on [storage], the same monitor used by [AppStorage] and
- * the download engine. The activity and foreground service therefore cannot race on
- * `download_queue.json` or per-story files, and there is one lock around every multi-step mutation.
+ * Single owner of [AppStorage]. Library, queue, and settings transactions synchronize on [storage],
+ * the same monitor [AppStorage] and the download engine use, so the activity and the foreground
+ * service cannot race on `download_queue.json` or per-story files.
  *
- * Exposes one coherent cached [downloadState] that is refreshed after each successful download or
- * story transaction, so screens can observe state without re-reading JSON on every render.
- * The low-level [storage] is still accessible to engines for direct file I/O (chapter
- * HTML, EPUB bytes) — only the stateful read-modify-write mutations are centralized here.
+ * [downloadState] is refreshed after each transaction so screens never re-read JSON per render.
+ * Engines still use [storage] directly for raw file I/O; only read-modify-write mutations live here.
  */
 class AppRepository private constructor(
     private val storyStore: RepositoryStoryStore,
@@ -120,10 +117,7 @@ class AppRepository private constructor(
 
     private val _downloadState = MutableStateFlow(DownloadUiSnapshot())
 
-    /**
-     * Typed process-wide download snapshot carrying the coherent library + queue state that UI
-     * surfaces bind to directly.
-     */
+    /** Typed process-wide snapshot of coherent library and queue state that UI surfaces bind to. */
     val downloadState: StateFlow<DownloadUiSnapshot> = _downloadState.asStateFlow()
 
     @Volatile
@@ -187,11 +181,7 @@ class AppRepository private constructor(
         }
     }
 
-    /**
-     * Publishes download-owned storage changes as one coherent observable update. The foreground
-     * service and Activity share this repository, so every visible screen receives the same event
-     * immediately without timers or cross-component callbacks.
-     */
+    /** Publishes one coherent update; the service and Activity share this repository, so every screen stays in sync. */
     internal fun publishDownloadState(
         changedStoryIds: Set<String> = emptySet(),
         queueChanged: Boolean,
@@ -232,10 +222,7 @@ class AppRepository private constructor(
             )
     }
 
-    /**
-     * Publishes one committed story without re-parsing every story file. A detached copy prevents a
-     * caller that still holds the persisted instance from mutating StateFlow state in place.
-     */
+    /** Publishes one story without re-parsing the library; the snapshot copy prevents in-place StateFlow mutation. */
     private fun publishStoryLocked(story: Story) {
         val published = StoryMutations.snapshot(story)
         libraryById[published.id] = published
@@ -244,7 +231,7 @@ class AppRepository private constructor(
         publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
     }
 
-    /** Cached library snapshot; reads from memory rather than re-parsing every story JSON. */
+    /** Cached library snapshot, served from memory. */
     fun library(): List<Story> = libraryCache.value.map(StoryMutations::snapshot)
 
     /** Cached queue snapshot. */
@@ -256,7 +243,6 @@ class AppRepository private constructor(
     /** Adds or replaces one story without rebuilding/re-parsing the rest of the library. */
     suspend fun addOrUpdateStory(story: Story) = upsertStory(story)
 
-    // ---- In-memory configuration snapshots (hydrated by refresh) ----
     fun getSettings(): AppSettings = appSettings.copy()
 
     fun getSourceDownloadSettings(): Map<String, SourceDownloadSettings> = sourceDownloadSettings.toMap()
@@ -279,7 +265,6 @@ class AppRepository private constructor(
 
     fun getUpdateFollowedStoryIds(): List<String> = updateFollowedStoryIds.toList()
 
-    /** Current in-memory storage health reported by the persistence layer. */
     fun getStorageHealth(): StorageHealthSnapshot = requiredStorage.storageHealth.value
 
     suspend fun readChapter(chapter: Chapter): String? = withContext(ioDispatcher) { requiredStorage.readChapter(chapter) }
@@ -332,7 +317,6 @@ class AppRepository private constructor(
         }
     }
 
-    // ---- Configuration writes (serialized on the injected I/O dispatcher) ----
     suspend fun saveSettings(settings: AppSettings) =
         storageTransaction {
             val normalized = PreferenceNormalization.appSettings(settings)
@@ -412,12 +396,7 @@ class AppRepository private constructor(
             updateFollowedStoryIds = normalized
         }
 
-    // ---- Transactional library mutations ----
-
-    /**
-     * Read-modify-write a story under the shared [storage] monitor. The block receives the current
-     * story (or null) and returns the replacement; the result is persisted and the flow refreshed.
-     */
+    /** Read-modify-write a story under the shared storage monitor; a null return from [block] aborts. */
     suspend fun updateStory(
         storyId: String,
         block: (Story?) -> Story?,
@@ -456,7 +435,6 @@ class AppRepository private constructor(
         chapterId: String,
     ): Story? = updateExistingStory(storyId) { StoryMutations.setBookmark(it, chapterId) }
 
-    /** Records last-read chapter progress and publishes the updated story to cached flows. */
     suspend fun setLastReadChapter(
         storyId: String,
         chapterId: String,
@@ -473,8 +451,7 @@ class AppRepository private constructor(
         description: String,
     ): Story? = updateExistingStory(storyId) { StoryMutations.setAiDescription(it, description) }
 
-    // Cover-art transactions (setAiCover / clearAiCover / coverFile) live in AppRepositoryCovers.kt
-    // as extensions of this class, sharing the same storage monitor.
+    // Cover-art transactions live in AppRepositoryCovers.kt as extensions sharing this storage monitor.
 
     /** Flips which synopsis (source vs AI) the Details screen displays; no-op before one exists. */
     suspend fun setShowAiDescription(
@@ -482,10 +459,7 @@ class AppRepository private constructor(
         showAi: Boolean,
     ): Story? = updateExistingStory(storyId) { StoryMutations.setShowAiDescription(it, showAi) }
 
-    /**
-     * Stores the story's explicit AI context-chapter selection; null resets to the default
-     * (first downloaded chapters).
-     */
+    /** Stores the explicit AI context-chapter selection; null resets to the first downloaded chapters. */
     suspend fun setAiContextChapters(
         storyId: String,
         indices: List<Int>?,
@@ -535,8 +509,7 @@ class AppRepository private constructor(
             storyStore.addOrUpdateStory(committed)
             libraryById[committed.id] = StoryMutations.snapshot(committed)
             metricSnapshot?.let { snapshot ->
-                // Metrics are diagnostic/history data. A fenced metrics document must not make
-                // the already-committed story disappear from the library after a successful sync.
+                // Metrics are diagnostic; a fenced metrics write must not drop the committed story.
                 runCatching { requiredStorage.appendMetricSnapshot(committed.id, snapshot) }
                     .onFailure { error -> Timber.w(error, "Failed to record metric snapshot for %s", committed.id) }
             }
@@ -545,7 +518,6 @@ class AppRepository private constructor(
             StoryMutations.snapshot(committed)
         }
 
-    /** Adds or replaces a story, then refreshes the library flow. */
     suspend fun upsertStory(story: Story) {
         storageTransaction {
             storyStore.addOrUpdateStory(story)
@@ -573,12 +545,7 @@ class AppRepository private constructor(
         }
     }
 
-    // ---- Transactional queue mutations ----
-
-    /**
-     * Read-modify-write the queue under the shared [storage] monitor. This is the same serialization
-     * point used by the download engine and prevents cross-component queue races (Reliability R3).
-     */
+    /** Read-modify-write the queue under the shared storage monitor, the same serialization point the download engine uses. */
     suspend fun updateQueue(block: (List<DownloadJob>) -> List<DownloadJob>) {
         storageTransaction {
             val current = storyStore.queue()
@@ -598,10 +565,7 @@ class AppRepository private constructor(
         }
     }
 
-    /**
-     * Direct disk read of the queue for worker loops that must not depend on StateFlow equality.
-     * UI code should observe [queue] / [downloadState] instead so it stays coherent with publishes.
-     */
+    /** Direct disk read for worker loops that must not depend on StateFlow equality; UI observes [queue] or [downloadState]. */
     internal fun readQueueFromDiskForWorker(): List<DownloadJob> = storyStore.queue()
 
     private fun snapshotJob(job: DownloadJob): DownloadJob = job.copy(chapter = job.chapter.copy())

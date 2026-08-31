@@ -25,7 +25,7 @@ internal data class PatreonCampaignSnapshot(
     val tiers: List<PatreonTierSnapshot>,
 )
 
-/** Reads the creator's public Patreon page. No creator names or novel ids are special-cased. */
+/** Reads the creator's public Patreon page; no creator names or novel ids are special-cased. */
 class PatreonStatsFetcher internal constructor(
     private val fetchPage: suspend (String) -> String,
     private val now: () -> Long = System::currentTimeMillis,
@@ -41,11 +41,9 @@ class PatreonStatsFetcher internal constructor(
     suspend fun fetch(creatorUrl: String): PatreonStats? {
         val aboutUrl = aboutUrl(creatorUrl)
         val aboutHtml = fetchPage(aboutUrl)
-        // The public campaign API is the richest source for member counts (it returns paid/total
-        // counts even for hidden-earnings campaigns, where the about-page HTML exposes nothing
-        // usable). The about-page HTML is still parsed too: it reliably carries tier prices even
-        // when the API's `included` array omits them, so the two are merged — counts from the API,
-        // tiers from whichever source has them.
+        // The campaign API returns member counts even for hidden-earnings campaigns; the about-page
+        // HTML reliably carries tier prices the API may omit. Merge: counts from the API, tiers
+        // from whichever source has them.
         val apiCampaign =
             runCatching { extractCampaignId(aboutHtml) }
                 .getOrNull()
@@ -78,9 +76,7 @@ class PatreonStatsFetcher internal constructor(
                 updatedAt = now(),
             )
         }
-        // Earnings are hidden: estimate revenue from members × tier prices. We always show a number
-        // when a Patreon exists, even if paid-member counts are hidden — falling back to an
-        // assumption about how many of the public total members are paid.
+        // Earnings hidden: estimate revenue from members × tier prices so the card still shows a number.
         val (paidMembers, membersEstimated) = resolvePaidMembers(campaign) ?: return null
         val monthlyUsdCents = estimateMonthlyUsd(campaign, paidMembers) ?: return null
         return PatreonStats(
@@ -92,11 +88,7 @@ class PatreonStatsFetcher internal constructor(
         )
     }
 
-    /**
-     * Resolves the paid-member count to display. Returns null only when no member signal exists at
-     * all (paid, per-tier, or total). Otherwise returns `(count, estimated)` — [estimated] is true
-     * when the count is derived from a total-members assumption rather than read directly.
-     */
+    /** Returns (count, estimated), or null when no member signal exists; estimated = assumed, not read. */
     private fun resolvePaidMembers(campaign: PatreonCampaignSnapshot): Pair<Int, Boolean>? {
         campaign.paidMembers?.let { return it to false }
         val tierSum =
@@ -105,9 +97,7 @@ class PatreonStatsFetcher internal constructor(
                 .sum()
                 .takeIf { it > 0 }
         tierSum?.let { return it to false }
-        // Last resort: assume a share of the public total member count are paying members. Used only
-        // for campaigns that hide both earnings and per-tier counts, so the card still shows an
-        // approximate figure instead of nothing.
+        // Last resort for campaigns hiding earnings and per-tier counts: assume a share of the public total.
         campaign.totalMembers?.let { return (it * PAID_MEMBER_ASSUMPTION).roundToInt() to true }
         return null
     }
@@ -127,15 +117,13 @@ class PatreonStatsFetcher internal constructor(
                 val convertedMembers = converted.sumOf { (tier, _) -> tier.members ?: 0 }
                 if (convertedMembers == paidMembers) knownGross else (knownGross.toDouble() / convertedMembers * paidMembers).roundToLong()
             } else {
-                // No per-tier member split available: take the mean of the paid tier prices. A simple
-                // median over-counts when a cheap tier dominates and under-counts when a pricey one
-                // does; the mean is the least-biased single number for an unknown distribution.
+                // No per-tier split: the mean of tier prices — the least-biased single number for an
+                // unknown distribution.
                 val prices = paidTiers.mapNotNull { tier -> convertToUsd(tier.amountCents, tier.currency) }
                 if (prices.isEmpty()) return null
                 (prices.sum() / prices.size) * paidMembers
             }
-        // Patreon public earnings are an approximation after platform/payment fees. Apply the same
-        // conservative 10% deduction when only tier-derived gross revenue is available.
+        // Patreon public earnings are post-fee approximations; apply the same 10% deduction.
         return (grossUsdCents * 0.9).roundToLong()
     }
 
@@ -176,15 +164,12 @@ class PatreonStatsFetcher internal constructor(
         internal fun campaignApiUrl(campaignId: String): String = "https://www.patreon.com/api/campaigns/$campaignId"
 
         /**
-         * Extracts the numeric Patreon campaign id from an about page. Patreon embeds it in the
-         * `og:image` URL (`/creator/15734387.png`) and inside escaped JSON blobs
-         * (`\"campaign\":{\"data\":{\"id\":\"15734387\"}`); the og:image form is the most stable
-         * across page revisions.
+         * Extracts the numeric campaign id from an about page. The og:image URL (`/creator/<id>.png`)
+         * is the most stable form across revisions; escaped JSON blobs are the fallback.
          */
         internal fun extractCampaignId(html: String): String? {
             Regex("/creator/(\\d+)\\b").find(html)?.let { return it.groupValues[1] }
-            // Escaped JSON (about-page inline scripts) may nest the id under campaign.data.id or
-            // expose it directly; try both escaped and unescaped forms.
+            // Escaped JSON may nest the id under campaign.data.id or expose it directly; try both forms.
             Regex(
                 "\\\\\"campaign\\\\\":\\{(?:\\\\\"data\\\\\":\\{)?\\\\\"id\\\\\":\\\\\"(\\d+)\\\\\"",
             ).find(html)?.let { return it.groupValues[1] }
@@ -193,10 +178,9 @@ class PatreonStatsFetcher internal constructor(
         }
 
         /**
-         * Parses Patreon's public JSON:API campaign response (`/api/campaigns/{id}`). Returns null
-         * when the payload doesn't carry the attributes we rely on. Tiers travel in the `included`
-         * array as `reward` resources; we prefer the real charge price
-         * (`patron_amount_cents`/`patron_currency`) over the USD-normalized `amount_cents`.
+         * Parses `/api/campaigns/{id}`; null when the payload lacks the attributes we rely on. Tiers
+         * travel in `included` as `reward` resources; prefer the charge price (`patron_amount_cents`)
+         * over the USD-normalized `amount_cents`.
          */
         internal fun parseCampaignApi(json: String): PatreonCampaignSnapshot? {
             val root =
@@ -214,9 +198,7 @@ class PatreonStatsFetcher internal constructor(
                 val resource = item.asJsonObject
                 if (resource.string("type") == "reward") {
                     val attrs = resource.getAsJsonObject("attributes") ?: return@forEach
-                    // Skip free tiers: they carry a default `patron_amount_cents` (the suggested
-                    // pledge) even though members on them pay nothing, so they must not be treated
-                    // as revenue tiers.
+                    // Skip free tiers: they carry a suggested patron_amount_cents but members pay nothing.
                     if (attrs.boolean("is_free_tier") == true) return@forEach
                     val amount =
                         attrs.long("patron_amount_cents") ?: attrs.long("amount_cents") ?: return@forEach

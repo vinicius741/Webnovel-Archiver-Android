@@ -37,17 +37,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Surfaces every `.epub` file physically stored for a story, so files abandoned by write-only
- * EPUB regeneration (see [com.vinicius741.webnovelarchiver.epub.EpubEngine.generate]) can be
- * reviewed and reclaimed. Files are grouped into two sections:
- *  - **Current EPUBs** — still referenced by [com.vinicius741.webnovelarchiver.domain.model.Story.epubPaths],
- *    i.e. what the "Read EPUB" button opens. These may be viewed but not deleted here (deleting a
- *    referenced file would dangle the active EPUB; deleting is blocked at both the UI and
- *    [com.vinicius741.webnovelarchiver.data.repository.AppRepository.deleteEpubFile] boundary).
- *  - **Leftover files** — present on disk but no longer referenced. These are safe to delete.
- *
- * Every row offers **See** (opens the EPUB via the existing FileProvider path) and, for leftovers,
- * **Delete** (confirm then remove from disk).
+ * Lists every `.epub` stored for a story. Current files are still referenced by the story and are
+ * view-only here; leftovers are unreferenced and safe to delete.
  */
 internal fun ScreenHost.showLegacyEpubs(storyId: String) {
     val story = repository.story(storyId) ?: return showLibrary()
@@ -73,19 +64,13 @@ private fun ScreenHost.renderLegacyEpubs(
     story: com.vinicius741.webnovelarchiver.domain.model.Story,
     onDisk: List<File>,
 ) {
-    // story.epubPaths may hold absolute OR relative paths (relative is the on-disk norm after
-    // migrateChapterPaths relativizes them). Resolve each to an absolute File via the storage layer
-    // so the comparison against on-disk absolute paths is apples-to-apples — otherwise a stored
-    // "epubs/<id>/x.epub" would never match "/data/.../epubs/<id>/x.epub" and every file would read
-    // as a leftover.
+    // epubPaths may be absolute or relative (the on-disk norm); resolve before comparing, or every file reads as a leftover.
     val referenced =
         (story.epubPaths?.filter { it.isNotBlank() } ?: listOfNotNull(story.epubPath))
             .mapNotNull { repository.resolveAbsolutePath(it)?.absolutePath }
             .toSet()
     val current = onDisk.filter { it.absolutePath in referenced }
-    // Leftovers are shown newest-first (inverse of listEpubs' oldest-first order) so the most
-    // recently abandoned files — usually the ones a user just regenerated past — surface at the top
-    // for cleanup. Current EPUBs keep oldest-first to match the "Read EPUB" reading order.
+    // Leftovers newest-first (inverse of listEpubs) so recently abandoned files surface first; current keeps reading order.
     val leftover = onDisk.filter { it.absolutePath !in referenced }.asReversed()
 
     screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
@@ -120,7 +105,6 @@ private fun ScreenHost.renderLegacyEpubs(
     }
 }
 
-/** Confirms and deletes a leftover EPUB, then re-renders the screen so counts and rows update. */
 private fun ScreenHost.deleteEpub(
     storyId: String,
     file: File,
@@ -141,7 +125,6 @@ private fun ScreenHost.deleteEpub(
     }
 }
 
-/** A single file shown in the list, tagged with whether the story still references it. */
 internal data class LegacyEpubItem(
     val file: File,
     val isReferenced: Boolean,
@@ -156,8 +139,6 @@ internal class LegacyEpubsAdapter(
     private val onSee: (File) -> Unit,
     private val onDelete: (File) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-    // Build a flat list of rows: a section header followed by its files. Sections with no files are
-    // omitted (so a story with only referenced files shows just the Current section, and vice-versa).
     private val rows: List<Row> =
         buildList {
             if (current.isNotEmpty()) {
@@ -236,9 +217,7 @@ internal class LegacyEpubsAdapter(
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
             }
-        // Dedicated line for the file's created/modified timestamp (same source listEpubs sorts by),
-        // kept on its own row so the Active/Leftover · size subtitle never has to truncate it on
-        // narrow screens.
+        // Timestamp on its own row so the subtitle never has to truncate it on narrow screens.
         val created =
             TextView(context).apply {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
@@ -247,8 +226,6 @@ internal class LegacyEpubsAdapter(
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
             }
-        // See is always available (both referenced and leftover files can be opened). Delete is added
-        // per-row in bind() for leftovers only — referenced files must not be deletable here.
         val seeButton =
             makeButton(context, "See", Btn.TEXT, R.drawable.wna_book_open) { }
         val deleteButton = makeButton(context, "Delete", Btn.TEXT, R.drawable.wna_delete) { }
@@ -263,7 +240,6 @@ internal class LegacyEpubsAdapter(
                 RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                     bottomMargin = context.dp(Space.SM)
                 }
-            // Card surface matching ChapterSelectionAdapter's leftover/neutral rows.
             background = ripple(roundedBg(ThemeManager.colors.elevation1, radius), radius, ThemeManager.colors.onSurface)
             addView(title)
             addView(
@@ -346,8 +322,7 @@ internal class LegacyEpubsAdapter(
             val badge = if (item.isReferenced) "Active" else "Leftover"
             tags.subtitle.text = "$badge · ${formatBytes(file.length())}"
             tags.created.text = "Created ${formatEpubDate(file.lastModified())}"
-            // Referenced files keep the neutral card; leftovers get an outlined surface so they read
-            // as actionable clean-up candidates (mirrors ChapterSelectionAdapter's selected stroke).
+            // Leftovers get an outlined surface to read as clean-up candidates.
             root.background =
                 if (item.isReferenced) {
                     ripple(roundedBg(colors.elevation1, radius), radius, colors.onSurface)
@@ -355,8 +330,7 @@ internal class LegacyEpubsAdapter(
                     ripple(strokeBg(colors.elevation1, radius, colors.outline, root.context.dp(1)), radius, colors.onSurface)
                 }
             tags.seeButton.setOnClickListener { onSee(file) }
-            // Delete is only wired/enabled for leftover files. Referenced files must never be deleted
-            // from here — that would dangle the story's active EPUB.
+            // Referenced files must never be deleted here — that would dangle the story's active EPUB.
             if (item.isReferenced) {
                 tags.deleteButton.visibility = android.view.View.GONE
                 tags.deleteButton.setOnClickListener(null)
@@ -369,7 +343,6 @@ internal class LegacyEpubsAdapter(
     }
 }
 
-/** Human-readable file size for the row subtitle (e.g. "1.4 MB", "640 KB"). File-local helper. */
 private fun formatBytes(bytes: Long): String {
     if (bytes <= 0) return "0 B"
     val kb = bytes / 1024.0
@@ -381,11 +354,6 @@ private fun formatBytes(bytes: Long): String {
     }
 }
 
-/**
- * Formats the EPUB's last-modified timestamp as "MMM d, yyyy · h:mm a" (e.g. "Jul 4, 2026 · 3:45 PM")
- * for the row. Uses the same [DateTimeFormatter]/system-zone approach as [formatPatreonDate].
- * File-local helper.
- */
 private fun formatEpubDate(timestampMillis: Long): String {
     val instant = Instant.ofEpochMilli(timestampMillis)
     val datePart = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).format(instant.atZone(ZoneId.systemDefault()))

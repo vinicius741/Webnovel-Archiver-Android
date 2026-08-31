@@ -13,22 +13,11 @@ import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import kotlin.random.Random
 
-/**
- * Download scheduling, error classification, and progress.
- * These are the pure helpers the [DownloadEngine] process loop relies on; they stay together because
- * the scheduler, classifier, and progress shape are tightly coupled to job lifecycle.
- */
 object DownloadScheduler {
-    /**
-     * How often the process loop re-checks a blocked source's pending jobs. Short enough that a
-     * solved challenge resumes the queue almost immediately no matter which recovery path the user
-     * took (solve activity, queue retry, or a Settings session reset); the scheduler skips the
-     * source while the circuit stays open, so the recheck costs one queue read.
-     */
+    /** Blocked-source recheck interval: a solved challenge resumes the queue, and the recheck costs one queue read. */
     const val BLOCKED_SOURCE_RECHECK_MILLIS = 60_000L
 
-    // The scheduling inputs are individually meaningful and all call sites use named arguments;
-    // bundling them would obscure the pure-function shape the tests exercise directly.
+    // Inputs are individually meaningful; call sites use named arguments.
     @Suppress("LongParameterList")
     fun selectEligibleJobs(
         jobs: List<DownloadJob>,
@@ -51,16 +40,13 @@ object DownloadScheduler {
             val source = providerNameForJob(job) ?: return@forEach
             queuedSourceOrder += source
             if (job.nextRetryAt != null && job.nextRetryAt!! > now) return@forEach
-            // A source under manual verification waits for a human: keep its jobs pending instead of
-            // letting each one start, hit the open circuit, and burn to a terminal failure.
+            // Blocked sources keep jobs pending rather than letting each start, hit the open circuit, and fail terminally.
             if (source in activeSources || source in blockedSources || (nextAllowedAt[source] ?: 0L) > now) return@forEach
             eligibleBySource.putIfAbsent(source, job)
         }
         if (eligibleBySource.isEmpty()) return emptyList()
 
-        // Rotate the stable queue-derived source order after the most recently scheduled source.
-        // This prevents two busy sources from permanently starving a third source while still
-        // preserving FIFO order inside each individual source lane.
+        // Rotate source order after the last scheduled source so busy sources can't starve others; FIFO within each lane.
         val sourceOrder = queuedSourceOrder.toList()
         val cursorIndex = sourceOrder.indexOf(lastScheduledSource)
         val rotatedOrder =
@@ -227,16 +213,11 @@ object DownloadErrorClassifier {
     ): Long = maxOf(retryDelayMs(job), error.retryAfterMillis ?: 0L)
 }
 
-/** Source-wide queue transitions used by the Cloudflare circuit breaker and rate-limit cooldown. */
 object DownloadSourceFailurePlanning {
     /**
-     * One transaction when the manual-verification circuit opens: in-flight jobs fail as
-     * `source_blocked` (the solve flow keys off that category), and pending jobs are deferred to a
-     * near-term recheck instead of being scheduled against the open circuit one by one. The
-     * scheduler skips blocked sources entirely, so the recheck only has to notice that verification
-     * succeeded and the whole remaining queue resumes on its own. Note [DownloadJobStatus.activeWires]
-     * includes Pending — matching it here would fail the whole queue, which is exactly the drain
-     * this function exists to prevent.
+     * Opening the manual-verification circuit: in-flight jobs fail as `source_blocked` (the solve
+     * flow keys off that category) and pending jobs defer to a recheck. Not
+     * [DownloadJobStatus.activeWires] — it includes Pending, which would fail the whole queue.
      */
     fun blockSource(
         jobs: List<DownloadJob>,

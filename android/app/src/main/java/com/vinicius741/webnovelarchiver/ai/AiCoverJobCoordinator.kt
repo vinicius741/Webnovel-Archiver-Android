@@ -17,23 +17,22 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-/** Which billable flow a running cover job is executing. */
 enum class AiCoverJobKind {
     ONE_STEP,
     PROMPT,
     IMAGE,
 }
 
-/** A cover job currently running on the process scope; [AiCoverJobState.message] is user-facing. */
+/** A running cover job; [message] is user-facing. */
 data class AiCoverJobState(
     val storyId: String,
     val kind: AiCoverJobKind,
     val message: String,
-    /** One-step prompt already persisted to disk while the image stage is still running. */
+    /** One-step prompt persisted while the image stage still runs. */
     val persistedPrompt: String? = null,
 )
 
-/** Terminal outcome of a cover job, emitted once the result is already persisted. */
+/** Terminal outcome, emitted once the result is already persisted. */
 sealed interface AiCoverJobEvent {
     val storyId: String
     val kind: AiCoverJobKind
@@ -54,17 +53,11 @@ sealed interface AiCoverJobEvent {
 }
 
 /**
- * Runs the billable AI cover generation flows on the process-wide application scope so they keep
- * running while the user navigates between screens, minimizes, or leaves the app — the activity
- * used to own the coroutine, so backing out cancelled an in-flight (already billed) image call and
- * discarded its result.
- *
- * [jobs] carries the running state (one cover job at a time, keyed by story id) for progress
- * surfaces; [events] carries terminal outcomes to whichever listeners are attached — the UI bridge
- * (toasts, preview cards) and the foreground service (result notifications). Both may be absent:
- * the job runs and persists its result regardless. The persisted draft
- * ([AppRepository.saveAiCoverImageDraft] / [AppRepository.saveAiCoverPromptDraft]) is written
- * before the success event fires, so any UI reacting to the event can also rehydrate from disk.
+ * Runs billable AI cover generation on the process-wide application scope so jobs survive
+ * navigation and app exit. [jobs] holds the running state (one job at a time, keyed by story id);
+ * [events] carries terminal outcomes to whichever listeners are attached (UI bridge, foreground
+ * service) — both may be absent. The draft is persisted before the success event fires, so
+ * listeners can rehydrate from disk.
  */
 class AiCoverJobCoordinator(
     private val scope: CoroutineScope,
@@ -87,7 +80,7 @@ class AiCoverJobCoordinator(
 
     fun jobFor(storyId: String): AiCoverJobState? = _jobs.value[storyId]
 
-    /** False while any cover job is running — the same one-at-a-time contract the UI slot enforced. */
+    /** True while any cover job is running. */
     fun isBusy(): Boolean = _jobs.value.isNotEmpty()
 
     /** One-shot flow: image prompt + image in a single uninterrupted run. */
@@ -122,8 +115,7 @@ class AiCoverJobCoordinator(
             AiCoverDraftRecord.Image(engine.draftImage(storyId, prompt, progressReporter(storyId)))
         }
 
-    // Any failure of a billable background call must land in the Failed event, never crash the
-    // process scope.
+    // A billable-call failure must land in the Failed event, never crash the process scope.
     @Suppress("TooGenericExceptionCaught")
     private fun start(
         storyId: String,
@@ -145,8 +137,8 @@ class AiCoverJobCoordinator(
             try {
                 val record = run()
                 if (repository.story(storyId) == null) {
-                    // The story was deleted mid-run; deleteStory already cleaned its drafts, so
-                    // persisting this result would orphan files nothing will ever clean up.
+                    // Story deleted mid-run; deleteStory already cleaned its drafts — persisting
+                    // would orphan files.
                     Timber.i("AI cover job finished for deleted story %s; discarding result", storyId)
                     _jobs.update { it - storyId }
                     return@launch

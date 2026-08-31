@@ -38,9 +38,8 @@ internal fun ScreenHost.queueDownload(
         toast(servicePrepared.exceptionOrNull()?.message ?: "Could not start downloads")
         return
     }
-    // Queue planning and durable JSON writes scale with the number of chapters, so keep them off
-    // the main thread. Process scope ensures persistence and service handoff survive Activity
-    // recreation after the user initiated the operation.
+    // Planning + durable JSON writes scale with chapter count — keep them off the main thread.
+    // Process scope keeps persistence and service handoff alive across Activity recreation.
     app.appContainer.applicationScope.launch {
         val result =
             runCatching {
@@ -72,7 +71,7 @@ internal fun ScreenHost.queueDownload(
     "TooGenericExceptionCaught",
     "InstanceOfCheckForException",
 )
-// E1: route non-cancellation failures through the user-facing error path.
+// Route non-cancellation failures through the user-facing error path.
 internal fun ScreenHost.syncStory(
     url: String,
     tabId: String?,
@@ -88,9 +87,8 @@ internal fun ScreenHost.syncStory(
     },
 ) {
     if (url.isBlank()) return toast("Enter a URL")
-    // Surface the very first status before any work begins so the caller can flip its UI to a
-    // loading state immediately, instead of leaving the user with no feedback until the network
-    // request resolves. Callers that render inline (Add Story) rely on this to disable the button.
+    // Emit the first status before any work so callers can flip to a loading state immediately;
+    // inline-rendering callers (Add Story) rely on this to disable their button.
     app.runOnUiThread { onStatus("Starting...") }
     scope.launch {
         try {
@@ -112,8 +110,7 @@ internal fun ScreenHost.syncStory(
             onDone(story)
             handleManualSyncDownloads(story, downloadPlan)
         } catch (error: Throwable) {
-            // E1: structured-concurrency safety — never swallow cancellation. A scope cancellation
-            // (Activity destroyed / lifecycleScope cancelled) must propagate, not become an onError.
+            // Never swallow cancellation — scope cancellation must propagate, not become onError.
             if (error is CancellationException) throw error
             Timber.w(error, "Sync failed for %s", url)
             if (error is SourceAccessBlockedException) {
@@ -129,21 +126,15 @@ internal fun ScreenHost.syncStory(
 }
 
 /**
- * Sync an *existing* story in place — mirrors the RN `StoryActions` pattern: instead of navigating
- * away to a full-screen "Working" page, it drives the Details screen's inline operation UI (the same
- * `StoryOperationState` mechanism EPUB/CLEANUP use) so the button flips to "Syncing..." and a spinner
- * + status line appears right where the user tapped. Status callbacks from [StorySyncEngine.fetchOrSync]
- * ("Fetching from…", "Parsing chapters…") update that line live without leaving the screen.
- *
- * This intentionally does **not** reuse [syncStory]`s `(url, tabId)` overload, whose first line
- * navigates to a `screen(title = "Working")` — that full-screen flow is reserved for brand-new
- * fetches (Library "Fetch Story", Browser "Add") where no Details screen exists yet.
+ * Syncs an existing story in place, driving the Details screen's inline operation UI (button flips
+ * to "Syncing..." + a live status line) instead of navigating to a full-screen "Working" page —
+ * that flow is reserved for brand-new fetches where no Details screen exists yet.
  */
 @Suppress(
     "TooGenericExceptionCaught",
     "InstanceOfCheckForException",
 )
-// E1: route non-cancellation failures through the user-facing error path.
+// Route non-cancellation failures through the user-facing error path.
 internal fun ScreenHost.syncStory(
     story: Story,
     mode: StorySyncMode = StorySyncMode.Default,
@@ -152,14 +143,14 @@ internal fun ScreenHost.syncStory(
         toast(StoryActionGuards.archivedActionMessage("Sync"))
         return
     }
-    // Make sure we're on the Details screen so the inline spinner is visible — Sync can also be
-    // triggered from the Library's story-action dialog, where activeStory may differ or be null.
+    // Ensure Details is showing so the inline spinner is visible (Sync can be triggered from the
+    // Library dialog, where activeStory may differ or be null).
     if (activeStory?.id != story.id) showDetails(story.id)
     setStoryOperation(story.id, StoryOperationKind.SYNC, "Starting...")
     scope.launch {
         try {
-            // Re-read the pre-sync state so download planning can distinguish chapters discovered
-            // by this sync from an older cancelled or failed pending backlog.
+            // Pre-sync state lets download planning distinguish chapters discovered by this sync
+            // from an older cancelled/failed backlog.
             val existingBeforeSync =
                 withContext(Dispatchers.IO) {
                     SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { provider ->
@@ -177,7 +168,7 @@ internal fun ScreenHost.syncStory(
             showDetails(synced.id)
             handleManualSyncDownloads(synced, downloadPlan)
         } catch (error: Throwable) {
-            // E1: structured-concurrency safety — never swallow cancellation.
+            // Never swallow cancellation.
             if (error is CancellationException) throw error
             Timber.w(error, "In-place sync failed for %s", story.id)
             clearStoryOperation(story.id, StoryOperationKind.SYNC, rerender = false)

@@ -2,18 +2,9 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
-/**
- * Pure planning for AI-generated cover art. Builds the two-stage request: the chat messages that
- * ask the description model to write an image-generation prompt from the novel's material, and the
- * parameter set for the image call itself (gated on what the selected model supports). All
- * unit-testable without Android or network, mirroring [AiDescriptionPlanning].
- */
+/** Pure planning for the two-stage cover request: prompt-writing messages and image parameters. */
 object AiCoverPlanning {
-    /**
-     * Output budget for the image prompt: 60–120 words plus preambles. Generous on purpose — a
-     * tight budget makes reasoning-style models occasionally spend it all before writing any
-     * text, returning an empty completion (the engine also retries that flake once).
-     */
+    /** Generous on purpose: tight budgets make reasoning-style models occasionally return an empty completion. */
     const val MAX_OUTPUT_TOKENS = 1_600
 
     /** Hard cap on the cleaned prompt sent to the image model. */
@@ -27,12 +18,7 @@ object AiCoverPlanning {
 
     const val QUALITY = "medium"
 
-    /**
-     * Chat messages for the prompt-writing call. Sends everything known about the novel — title,
-     * author, tags, the description currently displayed (AI synopsis when active, else source),
-     * and the same capped opening-chapter context the description generator uses — so the model
-     * can ground the cover in concrete story imagery.
-     */
+    /** Sends everything known about the novel so the model can ground the cover in concrete imagery. */
     fun buildPromptMessages(
         story: Story,
         chapters: List<AiDescriptionPlanning.ChapterText>,
@@ -52,11 +38,6 @@ object AiCoverPlanning {
         )
     }
 
-    /**
-     * Post-processes the model's reply into a single flowing paragraph: trims, drops wrapping
-     * quotes some models add, collapses all whitespace runs to single spaces, and caps the length.
-     * Returns null when nothing presentable remains.
-     */
     fun cleanGeneratedPrompt(raw: String): String? {
         var text = raw.trim()
         if (text.startsWith("\"")) text = text.removePrefix("\"")
@@ -68,11 +49,6 @@ object AiCoverPlanning {
         return text.takeIf { it.isNotBlank() }
     }
 
-    /**
-     * Whether the app should display the locally generated cover rather than the source one,
-     * mirroring [AiDescriptionPlanning.isAiDescriptionActive]: the toggle decides while both
-     * covers exist, and the AI cover stays active on its own when the source has none.
-     */
     fun isAiCoverActive(story: Story): Boolean {
         val hasAiCover = !story.aiCoverPath.isNullOrBlank()
         val hasSourceCover = !story.coverUrl.isNullOrBlank()
@@ -80,14 +56,10 @@ object AiCoverPlanning {
     }
 
     /**
-     * The optional parameters for the image call. `supportedParameters` is the selected model's
-     * entry from the image catalog (`GET /api/v1/images/models`); each optional parameter is sent
-     * only when the model lists it, and — when the catalog also enumerates the parameter's allowed
-     * values — only with a value that enum accepts: several models take a parameter the app wants
-     * but with a narrower value set (recraft offers `3:4` but not `2:3`; seedream-lite starts at
-     * `2K`), and an out-of-enum value fails the whole call with HTTP 400 after the prompt-writing
-     * stage has already been billed. Null (catalog unavailable) means a minimal `model` + `prompt`
-     * request — the safest shape for any model.
+     * Optional image parameters from the model's catalog entry (`GET /api/v1/images/models`):
+     * each is sent only when the model lists it, and only with a value its enum accepts — an
+     * out-of-enum value fails the call with HTTP 400 after the prompt stage was already billed.
+     * Null catalog = minimal `model` + `prompt` request.
      */
     fun buildImageRequestParams(supportedParameters: Map<String, List<String>?>?): ImageRequestParams =
         ImageRequestParams(
@@ -110,18 +82,15 @@ object AiCoverPlanning {
     }
 
     /**
-     * The value to send for one optional parameter: the app default when the model accepts it (or
-     * when its accepted values are unknown), the first preferred stand-in from [fallbacks] the
-     * model does accept when it does not, and null — send nothing — when the model lists no
-     * acceptable value (its own default then applies).
+     * Default when accepted (or constraints unknown), else the first acceptable [fallbacks] entry,
+     * else null — send nothing and let the model's own default apply.
      */
     private fun Map<String, List<String>?>?.preferredValue(
         parameter: String,
         default: String,
         fallbacks: List<String>,
     ): String? {
-        // A missing key means the parameter is unsupported (omit); a present-but-null value means
-        // supported with unknown constraints (send the default). The two must not be conflated.
+        // Missing key = unsupported (omit); present-but-null = supported with unknown constraints.
         if (this == null || !containsKey(parameter)) return null
         val allowed = get(parameter)
         if (allowed == null || default in allowed) return default

@@ -40,21 +40,15 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-/** The single reader collector is replaced whenever the screen is rebuilt. */
 internal var activeReaderTtsStateJob: Job? = null
 
-/** Cancels the active reader collector before its WebView is torn down or replaced. */
 internal fun ScreenHost.detachReaderTtsListener() {
     activeReaderTtsStateJob?.cancel()
     activeReaderTtsStateJob = null
 }
 
-/**
- * Keeps TTS coherent after the chapter's active content variant changed (version switch or
- * applying a rewrite): chunk indices refer to different text, so a live session is restarted from
- * the top, and a paused or persisted-only session is stopped — its index would otherwise resume
- * mid-paragraph inside the new variant.
- */
+// Chunk indices refer to different text after a variant switch: restart a live session from the
+// top; stop a paused/persisted one so it cannot resume mid-paragraph in the new variant.
 internal fun ScreenHost.restartTtsForChapterVariant(
     storyId: String,
     chapterId: String,
@@ -107,22 +101,14 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     val layout = currentScreenLayout()
     val reader =
         WebView(app).apply {
-            // JS is enabled ONLY because the HTML was just sanitized; file/content access
-            // stays locked down so the only script that runs is the highlight + tap-to-start one we
-            // inject via [ReaderContentRenderer.document].
+            // JS is safe only because the HTML was sanitized; file/content access stays locked down.
             WebViewSafety.applyReaderSettings(this, enableTtsHighlight = true)
         }
 
-    /**
-     * Single-method JavascriptInterface: the reader's injected script calls
-     * `AndroidBridge.onTtsStart(groupIndex)` on a double-tap, and we hand the chunk index to the TTS
-     * engine via [TtsForegroundService]. Kept deliberately minimal — one int parameter, no return —
-     * so the JS↔native surface is as small as possible.
-     */
+    // Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap.
     class ReaderTtsBridge {
         @JavascriptInterface
         fun onTtsStart(index: Int) {
-            // Defensive: clamp + ignore taps when the index is out of the annotated chunk range.
             val clamped = index.coerceAtLeast(0)
             app.runOnUiThread {
                 val latest = repository.story(story.id) ?: story
@@ -152,11 +138,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
 
     fun rebuild() = showReader(story.id, chapter.id)
 
-    /**
-     * Chapter-content version switch: flips the manifest's active variant, restarts an in-flight
-     * TTS session from the top (chunk indices refer to different text after a switch), and
-     * rebuilds the reader with the new content. The source chapter file is never modified.
-     */
+    // Flips the manifest's active variant; the source chapter file is never modified.
     fun switchContentVersion() {
         val currentlyPolished = document.contentVersion == ChapterContentVersion.POLISHED
         scope.launch {
@@ -193,9 +175,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                 TtsForegroundService.start(app, story.id, chapter.id)
             },
             AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
-                // The panel mutates the shared `display` and calls back into `renderReader`, so
-                // font-size / dark-reader changes preview live on the WebView behind the dialog.
-                // Voice settings dismisses the panel first and returns here on Back (not Settings).
+                // The panel mutates `display` and re-renders for live preview; voice settings returns here on Back.
                 showReaderSettingsPanel(
                     display = display,
                     onRerender = { showReader(story.id, chapter.id) },
@@ -224,9 +204,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             },
         )
 
-    // Collect the replaying state stream while this reader screen is alive to move the
-    // in-document highlight and refresh the floating transport. Only snapshots for this chapter
-    // are acted on, so navigating between chapters never cross-talks.
+    // Replay + live snapshots drive the highlight and transport; other chapters' snapshots are ignored.
     var transportSnapshot: TtsPlaybackSnapshot? =
         currentReaderSnapshot(document.persistedSession, story.id, chapter.id, annotated.chunks.size)
     var transportPlayPause: ImageView? = null
@@ -238,8 +216,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                 val snapshot = update.snapshot
                 val chapterToOpen = TtsPlaybackState.readerChapterTransition(story.id, chapter.id, snapshot)
                 if (chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
-                    // Auto-advance changes the engine session before emitting its first snapshot for the
-                    // next chapter. Follow that transition by rebuilding the reader for the same chapter.
+                    // Auto-advance swaps the session before the next chapter's first snapshot: rebuild to follow.
                     showReader(story.id, chapterToOpen)
                     return@collect
                 }
@@ -251,9 +228,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                         chapterId = chapter.id,
                     )
                 transportSnapshot = relevant
-                // The bar stays in the tree; visibility is toggled instead of add/remove so a TTS
-                // session that starts after this screen was built (open chapter → "Read aloud")
-                // reveals the bar without a full rebuild.
+                // Toggled (not add/remove) so a session starting after this build reveals the bar live.
                 transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
                 transportPlayPause?.let { button ->
                     val isPaused = relevant?.isPaused != false
@@ -265,8 +240,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     )
                     button.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
                 }
-                // Highlight refresh — evaluateJavascript is async + non-reloading, so the page
-                // doesn't flash. Only applied when there is a relevant snapshot (clear on stop/leave).
+                // Async + non-reloading, so no page flash; a null snapshot clears the highlight.
                 applyHighlight(reader, relevant?.chunkIndex, relevant?.totalChunks ?: 0)
             }
         }
@@ -277,18 +251,13 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         subtitle = "${currentIndex + 1} / ${story.chapters.size}$versionSuffix",
         onSubtitleClick = if (document.hasAppliedRewrite) ({ switchContentVersion() }) else null,
         onBack = {
-            // Leaving the reader: detach our TTS listener so it can't call evaluateJavascript on a
-            // WebView that the next screen's disposeWebViews() will tear down. Playback itself
-            // continues (driven by the foreground service) — only the in-reader observer is dropped.
+            // Detach before the next screen's disposeWebViews() tears down this WebView; playback continues.
             detachReaderTtsListener()
             showDetails(story.id)
         },
         actions = actions,
     ) {
         renderReader()
-        // Center the WebView in a capped reading column (800dp max) with width-class side padding,
-        // so text lines stay comfortable on the Fold's wide inner display instead of spanning edge
-        // to edge. The column still fills all vertical space between the app bar and the nav bar.
         val sidePad = readerSidePadding(layout.widthClass)
         val column =
             LinearLayout(context).apply {
@@ -298,7 +267,6 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         column.addView(reader, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         addView(
             MaxWidthFrameLayout(context).apply {
-                // Cap the column width and center it; compact screens still measure at the parent width.
                 maxContentWidthDp = ScreenLayoutPlanning.READER_COLUMN_MAX_WIDTH
                 addView(
                     column,
@@ -322,11 +290,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             ),
         )
 
-        // Floating TTS transport, docked just above the chapter nav. The bar is ALWAYS added
-        // to the tree and its visibility is toggled (VISIBLE while a session for THIS chapter exists,
-        // GONE otherwise). Toggling — rather than add/remove — is what lets a TTS session that starts
-        // AFTER the reader was built (open chapter → tap "Read aloud") reveal
-        // the transport live via the state listener, without rebuilding the whole screen.
+        // Docked above the nav; stays in the tree with toggled visibility so late sessions appear live.
         val transport =
             readerTtsTransport(
                 snapshot = transportSnapshot,

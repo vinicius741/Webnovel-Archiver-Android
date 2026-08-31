@@ -35,11 +35,6 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-/** Centered story header — cover, title, author, source/archived chips, an optional score row, and
- *  a compact "Saved / Chapters" progress summary. Mirrors the RN `StoryHeader`; D5 collapsed the
- *  three duplicate stat pills (Score/Chapters/Saved) — the chapter total is implied by the list —
- *  into one progress summary. The score is now rendered directly in the header via [scoreRow],
- *  matching the library card, instead of only appearing as a tag. */
 @Suppress("CyclomaticComplexMethod") // Header badges and optional metrics are independent presentation branches.
 internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     val col =
@@ -105,15 +100,8 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
         }
         col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
-    // Score (e.g. "4.5" with a star glyph). Rendered in the header so the rating is visible on the
-    // details screen too, mirroring the library card — not only on the library list. The star is
-    // enlarged (24dp vs the 16dp library card default) since the header has room to breathe and the
-    // rating is a focal point on this screen. Tapping the score opens the Trends screen focused on
-    // the score series (a contextual shortcut to the rating-over-time graph). A small trend arrow
-    // sits beside the score to surface the rating's overall direction at a glance; the metric
-    // history is the one piece of data not held in the repository's in-memory cache, so it loads
-    // asynchronously (same pattern as showTrends) and the arrow is patched in place. It stays
-    // hidden when there is nothing meaningful to report (fewer than two points, or a flat series).
+    // Tap opens Trends on the score series. The trend arrow loads async (metric history is not in
+    // the repository's in-memory cache) and stays hidden without a meaningful direction.
     story.score?.takeIf { it.isNotBlank() }?.let { score ->
         val ratingCount = SourceMetadataPlanning.metric(story.sourceMetadata, SourceMetricKind.RATINGS)?.value
         val trendArrow =
@@ -134,7 +122,6 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
                     }
                 isClickable = true
                 isFocusable = true
-                // Selectable-row ripple so the press gives feedback (the row is otherwise a bare layout).
                 background = selectableRipple(ThemeManager.colors.onSurface)
                 setOnClickListener { showTrends(story.id, FOCUS_SCORE) }
                 layoutParams =
@@ -171,12 +158,7 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
     return DetailsHeader(col, progressSummary)
 }
 
-/**
- * Loads the recorded metric history off the render path (the one piece of data the repository does
- * not cache in memory — same read showTrends performs) and patches the score row's trend arrow in
- * place: up in tertiary when the rating rose over the recorded period, down in error when it fell.
- * The arrow stays hidden when there is nothing meaningful to report (fewer than two points, flat).
- */
+/** Patches the trend arrow in place from metric history (not held in the repository's in-memory cache). */
 private fun ScreenHost.observeScoreTrend(
     storyId: String,
     score: String,
@@ -188,9 +170,8 @@ private fun ScreenHost.observeScoreTrend(
             MetricSnapshotPlanning.direction(
                 MetricSnapshotPlanning.scoreSeries(repository.getMetricHistory(storyId)),
             )
-        // Skip when the user has since navigated to a different story; patching that row would be
-        // harmless (it is detached) but pointless. A header scrolled off-screen in the chapter list
-        // is fine to patch — it shows correctly when it reattaches.
+        // Skip if the user navigated to a different story. A header merely scrolled off-screen is
+        // fine to patch; it reattaches with correct state.
         if (activeStory?.id != storyId) return@launch
         when (direction) {
             TrendDirection.UP -> {
@@ -203,7 +184,6 @@ private fun ScreenHost.observeScoreTrend(
                 trendArrow.visibility = View.VISIBLE
                 row.contentDescription = "Score $score, trending down. Tap to view trends."
             }
-            // FLAT or no recorded history yet: keep the arrow hidden.
             else -> Unit
         }
     }
@@ -215,11 +195,6 @@ internal data class DetailsHeader(
     val progressSummary: View?,
 )
 
-/**
- * Tappable source-site badge: opens the story's source page in the browser (moved out of the
- * Details overflow). The external-link glyph signals the outbound hop; the ripple is clipped to
- * the badge shape so press feedback matches the badge silhouette.
- */
 private fun ScreenHost.buildSourceSiteBadge(
     story: Story,
     sourceName: String,
@@ -244,5 +219,4 @@ private fun ScreenHost.buildSourceSiteBadge(
     }
 }
 
-/** Size (dp) of the score trend arrow; slightly smaller than the 24dp star so it reads as secondary. */
 private const val TREND_ARROW_SIZE_DP = 20

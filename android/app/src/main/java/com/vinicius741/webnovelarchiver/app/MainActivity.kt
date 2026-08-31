@@ -51,21 +51,15 @@ import com.vinicius741.webnovelarchiver.app.performNotificationPermissionAction 
 import com.vinicius741.webnovelarchiver.app.requestNotificationPermissionForDownload as requestNotificationPermissionForDownloadExt
 
 /**
- * App entry point. Owns lifecycle and wiring only: instantiates the storage/engines, the root
- * [frame], and the backup launchers, then hands the first screen off to the `ScreenHost`
- * extensions split across the `screens/`, `actions/`, and `ui/` files. All screen rendering,
- * navigation, and business actions live there — this class just implements [ScreenHost].
+ * App entry point: lifecycle and wiring only — engines, the root [frame], backup launchers.
+ * Screen rendering, navigation, and actions live in the ScreenHost extension files.
  */
 class MainActivity :
     AppCompatActivity(),
     ScreenHost {
     override val app: AppCompatActivity get() = this
 
-    /**
-     * UI coroutine scope. A single [CoroutineScope] wrapping the activity's
-     * [lifecycleScope] job/context, so all screen-launched coroutines (fold observation, backup
-     * import, sync) are cancelled automatically when the activity is destroyed — no leaked work.
-     */
+    /** UI scope wrapping [lifecycleScope] so screen-launched coroutines are cancelled on destroy. */
     override val scope: CoroutineScope by lazy { CoroutineScope(lifecycleScope.coroutineContext) }
     override lateinit var repository: AppRepository
     override lateinit var syncEngine: StorySyncEngine
@@ -95,15 +89,14 @@ class MainActivity :
     override var rerender: (() -> Unit)? = null
     override var screenObserver: Job? = null
 
-    /** Foldable detector. Created in [onCreate] once engines/storage are up. */
+    /** Created in [onCreate] once engines/storage are up. */
     override lateinit var foldTracker: FoldTracker
     private var uiReady = false
     private var restoredNavigation = false
 
     /**
-     * The single system-back callback. Always registered, but enabled only while a screen has
-     * provided in-app back navigation (see [backHandler]'s setter). Disabled on the root screen so
-     * the OS default — exit to home, with the predictive-back home preview — applies unchanged.
+     * Always registered, enabled only while a screen provides in-app back navigation (see
+     * [backHandler]'s setter); disabled on root so the OS predictive-back default applies.
      */
     private val backCallback =
         object : OnBackPressedCallback(false) {
@@ -144,17 +137,14 @@ class MainActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
-        // Pull process-wide dependencies from the shared AppContainer: one AppStorage, one network
-        // client, one set of engines shared with the foreground services.
+        // Process-wide AppContainer: one storage, one network client, one set of engines shared with the services.
         val container = appContainer
         repository = container.repository
         syncEngine = container.syncEngine
         epubEngine = container.epubEngine
-        // The activity's download engine is a control/enqueue handle only (ownsProcessLoop = false):
-        // it mutates the shared queue, but the foreground service owns the single process loop. The UI
-        // pairs every resume/retry with `DownloadForegroundService.start(app)` so the service's loop
-        // picks the work up. Two loops running at once would each honor their own concurrency cap and
-        // double the effective parallelism, so only one engine may run the loop.
+        // Control/enqueue handle only (ownsProcessLoop = false): the foreground service owns the
+        // single process loop — two loops would each honor their own concurrency cap and double
+        // the parallelism.
         downloadEngine =
             DownloadEngine(
                 repository,
@@ -162,20 +152,18 @@ class MainActivity :
                 container.downloadPacer,
                 ownsProcessLoop = false,
             )
-        // Shared process-wide TTS engine: the same instance the TtsForegroundService plays
-        // through, so the reader's multicast state listener fires for service-driven playback.
+        // Same instance the TtsForegroundService plays through, so the reader's listener fires
+        // for service-driven playback.
         ttsEngine = container.ttsEngine
         frame = FrameLayout(this)
         setContentView(frame)
         holdSplashScreenUntilFirstContent { uiReady }
-        // Background AI cover jobs outlive this activity; this keeps their progress + results visible.
-        // Attach only after `frame` exists: the collectors run inline on Main.immediate, and their
-        // first pass reads frame.tag when a job is already running (activity relaunch mid-generation).
+        // Background AI cover jobs outlive this activity. Attach only after `frame` exists: the
+        // collectors run inline on Main.immediate and their first pass reads frame.tag.
         attachAiCoverJobBridge()
         attachAiChapterRewriteJobBridge()
         onBackPressedDispatcher.addCallback(this, backCallback)
-        // The startup state paints before hydration can read the persisted DisplayPreferences, so
-        // seed the theme from the tiny hint written on every theme change / successful start.
+        // First paint precedes hydration; seed from the hint written on every theme change / start.
         StartupThemeHint.read(this)?.let(ThemeManager::apply)
         showStartupLoading()
         scope.launch {
@@ -190,8 +178,7 @@ class MainActivity :
 
     /** Initializes storage-backed UI state only after migration and repository hydration finish. */
     private suspend fun initializeUiAfterRepositoryReady() {
-        // Runs before startup-state resolution so dev targets and TTS resume see the restored
-        // library, not the pre-restore one.
+        // Before startup-state resolution so dev targets and TTS resume see the restored library.
         val devRestoreAttempted =
             if (BuildConfig.DEBUG) {
                 maybeRestoreFullBackupForDev()
@@ -232,9 +219,8 @@ class MainActivity :
         ) {
             writeDevLibraryReport()
         }
-        // Foldable hinge/inner-display detection. The activity declares all configChanges in the
-        // manifest, so fold/unfold/rotation does NOT recreate it — we must observe the fold sensor
-        // (here) and re-render the live screen on change (below) for the responsive layout to adapt.
+        // All configChanges are declared in the manifest, so fold/unfold/rotation never recreates
+        // the activity — observe the fold sensor and re-render for the layout to adapt.
         foldTracker = FoldTracker(this, scope)
         scope.launch {
             foldTracker.isFoldingFeature.collect { runOnUiThread { rerender?.invoke() } }
@@ -282,14 +268,12 @@ class MainActivity :
 
     override fun onDestroy() {
         screenObserver?.cancel()
-        // Destroy any lingering reader WebView in the frame so it can't leak the activity
-        // reference. Third-party browsing uses a browser-owned Custom Tab rather than this frame.
+        // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety
             .disposeAll(frame)
-        // Detach the reader's TTS observer (if a reader screen is active) so it can't fire into a
-        // destroyed activity. The shared TTS engine is process-wide; only the listener is dropped.
+        // Detach the reader/details TTS observers so they can't fire into a destroyed activity
+        // (the engine is process-wide; only the listener is dropped).
         detachReaderTtsListener()
-        // Same for the details screen's description-TTS observer.
         detachDetailsTtsListener()
         super.onDestroy()
     }
@@ -324,11 +308,8 @@ class MainActivity :
     }
 
     /**
-     * The manifest declares all configChanges (orientation, screenSize, screenLayout, uiMode,
-     * smallestScreenSize), so Android does NOT recreate this activity on rotate/fold/unfold/theme
-     * change. That preserves in-memory state, but the already-built view tree would otherwise never
-     * adapt to the new size. Re-render whatever screen is on the [frame] so the responsive layout
-     * (multi-column library, two-pane details, adaptive reader padding) reflows immediately.
+     * The manifest declares all configChanges, so Android never recreates this activity on
+     * rotate/fold/theme change — re-render so the responsive layout reflows immediately.
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)

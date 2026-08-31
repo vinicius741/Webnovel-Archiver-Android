@@ -7,43 +7,26 @@ import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Write-then-rename helpers for large binary/streamed files (chapter HTML, EPUBs).
- *
- * Each write lands in a sibling temp file, is fsync'd, then atomically renamed onto its final
- * path. A crash during the write therefore cannot leave a truncated chapter or half-built EPUB at
- * the destination — the previous content (if any) survives until the new file is complete.
- *
- * Tier 1 durability fixes (P4):
- *  - The destination is **no longer pre-deleted** before the rename. Pre-deleting broke the
- *    durability contract: a crash between the delete and the rename would lose *both* the old and
- *    the new content. The temp file lives in the same directory, so `renameTo` is a same-filesystem
- *    POSIX rename that atomically replaces an existing destination.
- *  - The parent directory is fsync'd after the rename so the rename itself survives power loss on
- *    ext4/f2fs.
- *  - Temp files are cleaned up in a `finally` if the write or rename throws (P12), so a long session
- *    with intermittent disk errors does not accumulate orphaned `.tmp.N` files.
+ * Write-then-rename helpers for large binary/streamed files (chapter HTML, EPUBs). Each write
+ * lands in a sibling temp file, is fsync'd, then atomically renamed over its destination — a
+ * crash can never leave a truncated file there. The parent dir is fsync'd after the rename;
+ * temp files are cleaned up on failure.
  */
 object AtomicFileWrites {
     /** Monotonic counter so concurrent temp files never collide. */
     private val tempCounter = AtomicInteger()
 
-    /** Writes [bytes] atomically to [destination], returning [destination]. */
     fun writeBytes(
         destination: File,
         bytes: ByteArray,
     ): File = writeAtomically(destination) { it.write(bytes) }.let { destination }
 
-    /** Writes [text] atomically to [destination]. */
     fun writeText(
         destination: File,
         text: String,
     ): File = writeAtomically(destination) { it.write(text.toByteArray(Charsets.UTF_8)) }.let { destination }
 
-    /**
-     * Opens [block] with an [OutputStream] backed by a temp file, then renames it onto
-     * [destination] when [block] returns normally. All atomic writes use this path so text,
-     * bytes, and streamed files share the same durability and cleanup guarantees.
-     */
+    /** Streams into a temp file, then renames it onto [destination] when [block] returns normally. */
     fun <R> writeAtomically(
         destination: File,
         block: (OutputStream) -> R,
@@ -73,20 +56,15 @@ object AtomicFileWrites {
     }
 
     /**
-     * Rename [temp] onto [destination] without pre-deleting the destination (P4).
-     *
-     * On the same filesystem (guaranteed: the temp is a sibling) `File.renameTo` maps to POSIX
-     * `rename(2)`, which atomically replaces an existing destination — so there is never a window
-     * where the destination is missing. Only if the rename itself returns false (rare; e.g. a
-     * cross-device edge) do we fall back to copy-then-delete, keeping an explicit overwrite.
+     * Renames [temp] over [destination] — a same-filesystem POSIX rename (temp is a sibling)
+     * atomically replaces it, so the destination is never missing. Falls back to copy-then-delete
+     * only if renameTo returns false (e.g. cross-device).
      */
     private fun renameOnto(
         temp: File,
         destination: File,
     ) {
         if (!temp.renameTo(destination)) {
-            // Rename can fail across filesystem boundaries; fall back to copy (overwrites the
-            // existing destination, preserving the old content until the copy completes).
             temp.copyTo(destination, overwrite = true)
             temp.delete()
         }
@@ -94,32 +72,26 @@ object AtomicFileWrites {
         fsyncDir(destination.parentFile)
     }
 
-    /** P12: ensure no orphaned `.tmp.N` is left behind when a write or rename fails. */
+    /** Ensure no orphaned `.tmp.N` is left behind when a write or rename fails. */
     private fun cleanupTempIfPresent(temp: File) {
         if (temp.exists()) {
-            // renameOnto already deleted temp on success; reaching here with the file present means
-            // the write/rename failed.
+            // If the temp still exists here, the write or rename failed.
             runCatching { temp.delete() }
         }
     }
 
     private fun fsync(file: File) {
-        // Open read-only (no truncation of the just-written file), then force the file descriptor's
-        // data+metadata to disk before the rename so a crash after the rename can't lose it.
+        // Open read-only (no truncation) and force data+metadata to disk before the rename.
         runCatching {
             java.io.RandomAccessFile(file, "r").use { raf -> raf.fd.sync() }
         }
     }
 
     /**
-     * P4: force the directory's metadata to disk after a rename so the rename itself (a directory
-     * entry update) is durable across power loss on ext4/f2fs.
-     *
-     * Uses [Os] (available on minSdk 21+) to open the directory read-only and fsync its file
-     * descriptor — the only way to fsync a directory from the JVM (`RandomAccessFile`/`FileChannel`
-     * cannot open directories). Catches [Throwable] (not just [Exception]) because on the pure-JVM
-     * unit-test classpath `android.system.Os` is absent and referencing it throws
-     * `NoClassDefFoundError`; this is best-effort defense-in-depth and must never abort the write.
+     * fsync's the directory so the rename (a directory entry update) is durable across power loss.
+     * [Os] is the only way to fsync a directory from the JVM. Catches [Throwable] (not just
+     * [Exception]) because `android.system.Os` is absent on the pure-JVM unit-test classpath
+     * (throws NoClassDefFoundError) — best-effort, must never abort the write.
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private fun fsyncDir(dir: File?) {
@@ -133,7 +105,7 @@ object AtomicFileWrites {
         try {
             Os.fsync(fd)
         } catch (error: Throwable) {
-            // Best-effort defense-in-depth; the write itself is already durable via the temp-file fsync.
+            // The write itself is already durable via the temp-file fsync.
         } finally {
             runCatching { Os.close(fd) }
         }

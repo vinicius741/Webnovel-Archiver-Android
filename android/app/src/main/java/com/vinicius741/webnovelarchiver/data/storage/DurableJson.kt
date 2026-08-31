@@ -10,21 +10,9 @@ import java.io.File
 import java.io.IOException
 
 /**
- * Crash-safe JSON I/O helpers used by [AppStorage].
- *
- * Goals (Reliability R1):
- *  - Every durable JSON document is written through [AtomicFile], which writes to a temporary
- *    sibling file and renames it into place. A process death mid-write leaves the previous file
- *    intact instead of a truncated half-file.
- *  - Each durable document carries a small envelope (`schemaVersion` + `appVersion`) so future
- *    migrations can detect the on-disk shape.
- *
- * Tier 1 durability fixes (P1/P2):
- *  - Writes route a serialization/IO failure through [AtomicFile.failWrite] so the half-written
- *    new file is discarded and no stale `.new` artifact is left behind (P1).
- *  - Reads distinguish "file missing" (a clean null) from "parse failed". A corrupt document is
- *    logged and quarantined to a sibling `.corrupt` file so the data is not silently hidden and can
- *    be recovered, instead of vanishing from the user's view (P2).
+ * Crash-safe JSON I/O: writes go through [AtomicFile] (temp + rename), reads distinguish
+ * missing from corrupt, and corrupt files are quarantined to a `.corrupt` sibling for recovery.
+ * Each document carries a schema/app-version envelope for future migrations.
  */
 object DurableJson {
     /** Bumped whenever the on-disk shape of any durable JSON document changes. */
@@ -36,7 +24,6 @@ object DurableJson {
         val payload: Any? = null,
     )
 
-    /** Wraps a value in an [Envelope] so the on-disk shape is uniform across documents. */
     fun envelope(
         value: Any?,
         appVersion: String?,
@@ -47,15 +34,8 @@ object DurableJson {
             payload = value,
         )
 
-    /**
-     * Atomic write of [envelope] to [file] (JSON via [gson]). Overwrites the previous document only
-     * after the new bytes are fully written and flushed, via [AtomicFile.finishWrite].
-     *
-     * P1: a failure during serialization or the underlying write now goes through
-     * [AtomicFile.failWrite] (which closes + discards the temp `.new` file) and re-throws, so a
-     * failed write can never leave a stale `.new` artifact behind and the caller gets a real signal.
-     */
-    @Suppress("TooGenericExceptionCaught") // P1: any write/serialize failure must route to failWrite; re-thrown after cleanup.
+    /** Atomic write: the previous document is replaced only after the new bytes are written and flushed. */
+    @Suppress("TooGenericExceptionCaught") // Any write/serialize failure must route to failWrite; re-thrown after cleanup.
     fun writeAtomic(
         file: File,
         gson: Gson,
@@ -68,21 +48,15 @@ object DurableJson {
             out.write(gson.toJson(envelope).toByteArray(Charsets.UTF_8))
             atomic.finishWrite(out)
         } catch (error: Throwable) {
-            // failWrite closes the stream and deletes the half-written new file. Re-throw so the
-            // caller observes a real failure instead of a silent stale-artifact-and-no-commit.
+            // failWrite closes and discards the temp file; re-throw so the caller sees the failure.
             atomic.failWrite(out)
             throw error
         }
     }
 
     /**
-     * Reads [file] and returns the unwrapped payload of type [T].
-     *
-     * Returns `null` when the file is missing (a clean "no state yet" — the caller's null handling
-     * is correct there). When the file exists but cannot be read or parsed, the corrupt file is
-     * logged (T1) and **quarantined** to a sibling `.corrupt` file so the data is recoverable and
-     * is not silently hidden (P2); `null` is still returned so a single bad document cannot crash
-     * startup. The next successful write replaces the document at its original path.
+     * Reads [file] and unwraps the payload. A missing file is a clean [DurableReadResult.Absent];
+     * a corrupt file is logged and quarantined to a `.corrupt` sibling so it stays recoverable.
      */
     inline fun <reified T> readAtomicResult(
         file: File,
@@ -159,7 +133,7 @@ object DurableJson {
         }
     }
 
-    /** Log (T1) + rename [file] to `file.corrupt` (P2) so a corrupt document is recoverable, not hidden. */
+    /** Renames [file] to a `.corrupt` sibling so a corrupt document is recoverable, not hidden. */
     @PublishedApi
     internal fun quarantineCorrupt(
         file: File,
@@ -170,8 +144,7 @@ object DurableJson {
         return runCatching {
             if (!file.exists()) return@runCatching null
             val quarantine = File(file.parentFile, "${file.name}.corrupt")
-            // If a prior quarantined copy exists (repeated read failures), don't overwrite the
-            // first-known-bad copy; instead append a counter so every corrupt revision is kept.
+            // Don't overwrite a prior quarantined copy; append a counter so every corrupt revision is kept.
             val target =
                 if (!quarantine.exists()) {
                     quarantine

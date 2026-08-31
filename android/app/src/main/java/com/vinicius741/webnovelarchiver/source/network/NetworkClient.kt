@@ -23,25 +23,14 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
-/**
- * Optional per-request gate layered around the shared source-safety claim.
- *
- * Download code uses this to combine its user-configured delay with the process-wide cooldown and
- * rolling request budget at one actual request boundary. Sync and other callers omit the gate, so
- * they never inherit download preferences. Implementations must invoke [claimSourcePermission]
- * exactly once before returning.
- */
+/** Per-request gate around the shared source-safety claim; must invoke [claimSourcePermission] exactly once. */
 fun interface NetworkRequestGate {
     suspend fun awaitRequest(claimSourcePermission: suspend () -> Unit)
 }
 
 @Suppress("TooManyFunctions")
 class NetworkClient(
-    /**
-     * Shared OkHttp client (R6). Cover/image fetches go through the same client as page fetches.
-     * Built by [buildDefault] with the [AndroidCookieJar] (and, in Phase 2, the Cloudflare
-     * interceptor) attached, so cookies earned in an in-app WebView are replayed here automatically.
-     */
+    /** Shared OkHttp client built by [buildDefault]; WebView-earned cookies replay here via [AndroidCookieJar]. */
     val client: OkHttpClient = defaultClient,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val policyResolver: NetworkPolicyResolver = DefaultNetworkPolicyResolver,
@@ -102,10 +91,8 @@ class NetworkClient(
     }
 
     /**
-     * Fetches a page that several chapter jobs may share and retains it briefly. The per-key mutex
-     * coalesces concurrent misses, so a Reader page is requested only once even when parallel
-     * workers ask for different chapters on that page at the same time. [cacheValidator] controls
-     * cache admission and prevents successful-but-invalid HTML from poisoning later jobs.
+     * Fetches and caches a page shared by several chapter jobs; the per-key mutex coalesces concurrent
+     * misses. [cacheValidator] gates cache admission so invalid HTML can't poison later jobs.
      */
     suspend fun fetchReusablePage(
         url: String,
@@ -167,10 +154,8 @@ class NetworkClient(
     }
 
     /**
-     * Fetches a binary response (cover images, R6) through the shared OkHttp client with an
-     * optional [maxBytes] cap. Returns null on non-2xx, non-image responses, or oversize bodies.
-     * Respects the same per-host rate limit as [fetch] (R6) so cover fetches on Scribble Hub can't
-     * stack 403s alongside page fetches.
+     * Fetches a binary body (covers) capped at [maxBytes]; null on non-2xx, non-image, or oversize.
+     * Shares [fetch]'s per-host rate limit so cover fetches can't stack 403s.
      */
     suspend fun fetchBytes(
         url: String,
@@ -197,9 +182,7 @@ class NetworkClient(
                     val body = response.body ?: return@use null
                     val length = body.contentLength()
                     if (length > maxBytes) return@use null
-                    // Cap at the source so a chunked/unknown-length response can't be buffered in full
-                    // before the size check runs. Request one byte past the cap; if we get it, the body
-                    // is too large.
+                    // Request one byte past the cap so a chunked/unknown-length body can't buffer in full first.
                     val source = body.source()
                     source.request(maxBytes + 1)
                     if (source.buffer.size > maxBytes) return@use null
@@ -357,17 +340,14 @@ class NetworkClient(
     fun reliabilitySnapshots(): List<SourceReliabilitySnapshot> = reliability.snapshots()
 
     companion object {
-        /** Maximum bytes accepted for a cover/image download (R6 size cap). */
         const val MAX_IMAGE_BYTES = 8_000_000L
         private const val PREPARED_PAGE_TTL_MILLIS = 5L * 60L * 1_000L
         private const val REUSABLE_PAGE_TTL_MILLIS = 10L * 60L * 1_000L
         private const val MAX_REUSABLE_PAGES = 24
 
         /**
-         * Legacy fallback built without a [Context]. Kept for the parameter default only — the real
-         * client used in production is built by [buildDefault], which attaches the shared
-         * [AndroidCookieJar] and the Cloudflare bypass interceptor. This has no cookie jar and must
-         * never be the process-wide client (Cloudflare clearance would be dropped on every response).
+         * Legacy fallback with no cookie jar, used only for the parameter default; must never be the
+         * process-wide client (Cloudflare clearance would be dropped on every response).
          */
         private val defaultClient: OkHttpClient =
             OkHttpClient
@@ -377,10 +357,8 @@ class NetworkClient(
                 .build()
 
         /**
-         * Builds the production OkHttp client: same timeouts as the legacy builder, plus the
-         * [AndroidCookieJar] (so `Set-Cookie` responses persist and WebViews share the store) and
-         * the [CloudflareBypassInterceptor] (so a detected challenge is solved by a background
-         * WebView before the response reaches [executeWithRetries]).
+         * Production client: [AndroidCookieJar] so cookies persist and WebViews share the store,
+         * plus [CloudflareBypassInterceptor] to solve challenges in a background WebView.
          */
         fun buildDefault(
             context: Context,

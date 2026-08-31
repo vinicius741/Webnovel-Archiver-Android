@@ -28,34 +28,17 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/*
- * Per-novel metric Trends sub-screen. Reached from the Details screen (tappable score row, tappable
- * Patreon card, tappable engagement chips, or the overflow "Trends" entry). Renders one MPAndroidChart
- * line chart per available series (score, Patreon members, Patreon monthly USD, plus the source's
- * featured engagement metrics — watchers/favorites/… for sources without a rating) plus a
- * current-value / delta / range summary line above each chart. Each sync records one point; see
- * [MetricSnapshotPlanning] for the retention (same-day coalescing + 60-day-then-downsample +
- * 1000-point cap).
- *
- * `showTrends` mirrors the `showLegacyEpubs` pattern: render a loading empty state, then a coroutine
- * reads the history off the IO dispatcher and re-renders into `renderTrends`.
- */
+// Per-novel metric Trends sub-screen: one line chart per recorded series (score, Patreon members /
+// USD, source engagement metrics) with a current/delta/range summary. Retention policy (same-day
+// coalescing, downsampling, point cap) lives in [MetricSnapshotPlanning].
 
-/** Focus token that opens the screen scrolled to the score chart. */
 internal const val FOCUS_SCORE = "score"
 
-/** Focus token that opens the screen scrolled to the Patreon members chart. */
 internal const val FOCUS_PATREON_MEMBERS = "patreon_members"
 
-/** Focus token that opens the screen scrolled to the Patreon monthly-USD chart. */
 internal const val FOCUS_PATREON_USD = "patreon_usd"
 
-/**
- * Per-card configuration for one trend chart, bundled so [ScreenHost.addChartCard] stays under the
- * parameter-count budget. [chartProvider] is invoked lazily and only when [showChart] is true, so a
- * series with too few points never constructs its chart. Internal so the source-metric cards in
- * TrendMetricCards.kt can reuse the same card scaffolding.
- */
+/** Card config for [addChartCard]; [chartProvider] is lazy and only invoked when [showChart] is true. */
 internal data class TrendChartCard(
     val title: String,
     val focusTag: String,
@@ -87,8 +70,7 @@ internal fun ScreenHost.showTrends(
     val loadingRoot = frame.getChildAt(0)
     scope.launch {
         val history = repository.getMetricHistory(storyId)
-        // The loading tree may have been torn down if the user navigated away during the read; only
-        // render when it is still on screen (same guard showLegacyEpubs uses).
+        // Render only if the loading tree is still on screen (the user may have navigated away).
         if (loadingRoot.parent === frame) renderTrends(story, history, focus)
     }
 }
@@ -121,9 +103,7 @@ private fun ScreenHost.renderTrends(
         val memberPoints = MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MEMBERS)
         val usdPoints = MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MONTHLY_USD)
 
-        // Each chart card is tagged so the focus token can scroll the matching one into view after
-        // the body lays out. A series needs at least two points to draw a meaningful line; with zero
-        // or one point we show an explanatory card instead of a flat/degenerate chart.
+        // Cards are tagged for focus scrolling; under two points an explanatory card replaces a degenerate chart.
         if (scorePoints.isNotEmpty()) {
             addChartCard(
                 this,
@@ -201,7 +181,6 @@ private fun ScreenHost.renderTrends(
     focus?.let { scrollToFocus(it) }
 }
 
-/** Small header: title row plus a "Recording N · since <date> · updated <date>" line. */
 private fun ScreenHost.addTrendsHeader(
     content: LinearLayout,
     story: Story,
@@ -239,7 +218,6 @@ private fun ScreenHost.addTrendsHeader(
     )
 }
 
-/** A titled card holding a summary line and (when there are enough points) a chart. */
 internal fun ScreenHost.addChartCard(
     content: LinearLayout,
     card: TrendChartCard,
@@ -267,9 +245,7 @@ internal fun ScreenHost.addChartCard(
             )
             if (card.showChart) {
                 addView(makeDivider(app))
-                // Fixed height: WRAP_CONTENT measures a LineChart inside this ScrollView to a few
-                // dozen px (the view has no intrinsic height), which squished the plot and stacked
-                // the axis labels on top of each other.
+                // WRAP_CONTENT gives a LineChart in a ScrollView almost no height; fixed height avoids a squished plot.
                 addView(
                     card.chartProvider(),
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TREND_CHART_HEIGHT_DP)).apply {
@@ -288,15 +264,10 @@ internal fun ScreenHost.addChartCard(
     content.addView(view)
 }
 
-/**
- * Scrolls the body so the focus-tagged card is visible. `post` runs after the ScrollView measures its
- * content, so the target card's position is known. Falls back silently if the tag isn't present.
- */
+/** Scrolls the focus-tagged card into view once the ScrollView has measured; no-op if absent. */
 private fun ScreenHost.scrollToFocus(focus: String) {
     val scrollView = findScrollView(frame) ?: return
 
-    // Local recursive search for the card whose tag matches the focus token, so the body can scroll
-    // the matching chart into view once it has been measured.
     fun findTagged(root: View): View? {
         if (root.tag == focus) return root
         if (root is ViewGroup) {
@@ -330,9 +301,7 @@ private fun scoreSummary(points: List<Pair<Long, Double>>): String {
     return base + range
 }
 
-/** Patreon summary (members or USD): "Current <value><suffix> (<signed delta> since last sync)".
- *  [formatDelta] is passed in so the delta renders in the same unit as the value (USD points are
- *  stored in cents but shown in dollars; a raw numeric delta would be a 100× mismatch). */
+/** [formatDelta] is injected so the delta matches the value's unit (USD is stored in cents, shown in dollars). */
 private fun patreonSummary(
     points: List<Pair<Long, Double>>,
     suffix: String,
@@ -340,7 +309,6 @@ private fun patreonSummary(
     formatDelta: () -> String?,
 ): String = seriesSummary(points = points, suffix = suffix, formatValue = formatValue, formatDelta = formatDelta)
 
-/** Shared "Current <value> (<signed delta> since last sync)" line for any series. */
 internal fun seriesSummary(
     points: List<Pair<Long, Double>>,
     suffix: String = "",
@@ -372,5 +340,5 @@ private fun formatUsd(
 private fun formatDate(epochMillis: Long): String =
     DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
 
-/** Fixed chart height (dp) inside a trend card; see [ScreenHost.addChartCard]. */
+/** Fixed chart height (dp) inside a trend card. */
 private const val TREND_CHART_HEIGHT_DP = 180

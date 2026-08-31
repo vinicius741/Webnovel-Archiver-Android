@@ -3,15 +3,9 @@ package com.vinicius741.webnovelarchiver.ui.layout
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 
 /**
- * Responsive layout engine — the single source of truth for how the app decides a window's
- * Material-style size class and the derived layout values (column count, two-pane, compact-height)
- * consumed by every screen.
- *
- * Kept pure on purpose: no Android types, no I/O. All screen-aware code reads the result of
- * [resolveScreenLayout], so the breakpoints can be exhaustively unit-tested without a device.
- *
- * `screenLayoutMode` is the user-facing override ("auto" | "cover" | "inner") persisted in
- * [DisplayPreferences.screenLayoutMode] for foldable/large-screen layout forcing.
+ * Single source of truth for window size class and derived layout values. Pure on purpose (no
+ * Android types, no I/O) so breakpoints are unit-testable. `screenLayoutMode` is the persisted
+ * user override ("auto" | "cover" | "inner").
  */
 object ScreenLayoutPlanning {
     const val SCREEN_LAYOUT_MODE_AUTO = "auto"
@@ -28,9 +22,8 @@ object ScreenLayoutPlanning {
     const val HEIGHT_EXPANDED = 900
     const val HEIGHT_MEDIUM = 480
 
-    // Fold inner-display promotion: a square-ish window with a shortest side of at least 460dp and an
-    // aspect ratio of at most 1.8 is treated as medium so a Fold's inner screen reporting slightly
-    // below 600dp still gets the tablet layout.
+    // A square-ish window (shortest side >= 460dp, aspect <= 1.8) is promoted to medium so a Fold's
+    // inner screen just under 600dp still gets the tablet layout.
     const val FOLD_INNER_SHORTEST_SIDE = 460
     const val FOLD_INNER_MAX_ASPECT = 1.8
 
@@ -73,15 +66,7 @@ enum class ScreenLayoutMode {
     }
 }
 
-/**
- * Inputs to layout resolution. All sizes are in dp.
- *
- * @param widthDp        current window width.
- * @param heightDp       current window height.
- * @param hasFoldingFeature true when a foldable hinge/inner-display feature is present (from
- *                          androidx.window's WindowLayoutInfo).
- * @param mode           user-facing override.
- */
+/** Inputs to layout resolution; all sizes in dp. hasFoldingFeature comes from androidx.window. */
 data class ScreenLayout(
     val widthDp: Int,
     val heightDp: Int,
@@ -101,15 +86,6 @@ data class ScreenLayoutResult(
     val mode: ScreenLayoutMode,
 )
 
-/**
- * Resolves [layout] into [ScreenLayoutResult]. Mirrors `useScreenLayout.ts` line-for-line:
- *   - cover mode forces compact width (1 column),
- *   - inner mode forces medium/expanded (never compact),
- *   - otherwise, a detected folding feature promotes compact → medium,
- *   - a square-ish inner-Fold window (< 600dp but shortestSide ≥ 460, aspect ≤ 1.8) → medium,
- *   - numColumns is 3 (expanded) / 2 (medium) / 1, except medium + compact-height collapses to 1,
- *   - isTwoPane when width is not compact and height is not compact.
- */
 fun resolveScreenLayout(layout: ScreenLayout): ScreenLayoutResult {
     val width = layout.widthDp
     val height = layout.heightDp
@@ -173,7 +149,7 @@ private fun heightClass(height: Int): HeightClass {
     return HeightClass.COMPACT
 }
 
-/** Maximum library content width (dp) for a given column count, mirroring `useLibraryLayout.ts`. */
+/** Maximum library content width (dp) for a given column count. */
 fun libraryMaxContentWidth(numColumns: Int): Int =
     when (numColumns) {
         1 -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_1_COL
@@ -181,7 +157,7 @@ fun libraryMaxContentWidth(numColumns: Int): Int =
         else -> ScreenLayoutPlanning.LIBRARY_MAX_WIDTH_3_COL
     }
 
-/** Reader horizontal padding (dp) by width class, mirroring the RN reader `shellPadding`. */
+/** Reader horizontal padding (dp) by width class. */
 fun readerSidePadding(widthClass: WidthClass): Int =
     when (widthClass) {
         WidthClass.EXPANDED -> 32

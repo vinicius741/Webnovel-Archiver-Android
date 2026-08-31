@@ -36,22 +36,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-/*
- * Per-novel AI Controls screen: the hub for AI-generated content, reached from the Details screen's
- * "More options" menu so the Details body stays free of per-feature AI buttons as more generators
- * (e.g. tags) join. It hosts description and cover-art generation as preview-then-apply flows: an
- * engine returns a draft, the user previews it here, and only "Apply" persists it through the
- * repository. It also owns the show-AI/original synopsis preference the Details screen renders.
- */
-
 internal fun ScreenHost.showAiControls(storyId: String) {
     val story = repository.story(storyId) ?: return showDetails(storyId)
     val generating = storyOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
-    // Cover jobs run on the process-wide coordinator: the lookup falls back to it so a job that
-    // outlived this activity (recreated mid-run) still gates the buttons and shows its progress.
+    // Cover jobs run on the process-wide coordinator so one that outlived a recreated activity still gates the UI.
     val generatingCover = aiCoverOperationFor(story.id)
-    // A draft generated in the background (or under a previous activity) lives on disk; pull it
-    // into the screen state so its prompt/preview card renders. No-op when state is hydrated.
     hydrateAiCoverDraftFromStorage(story.id)
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
         showDetails(story.id)
@@ -84,10 +73,6 @@ internal fun ScreenHost.showAiControls(storyId: String) {
     rerender = { showAiControls(storyId) }
 }
 
-/**
- * Current-state card: the model selector, context chapters, the applied AI synopsis,
- * the show-AI preference, and the generate/regenerate action.
- */
 private fun ScreenHost.addAiDescriptionCard(
     container: LinearLayout,
     story: Story,
@@ -157,7 +142,6 @@ private fun ScreenHost.addAiDescriptionCard(
     container.addView(cardView)
 }
 
-/** "Show AI description in Details" preference row; persists via [com.vinicius741.webnovelarchiver.data.repository.AppRepository.setShowAiDescription]. */
 private fun ScreenHost.addAiDisplayToggleRow(
     container: LinearLayout,
     story: Story,
@@ -182,7 +166,7 @@ private fun ScreenHost.addAiDisplayToggleRow(
     }
 }
 
-/** The generated draft with Apply/Discard actions. Nothing is persisted until Apply. */
+/** Draft preview; nothing is persisted until Apply. */
 private fun ScreenHost.addAiDraftPreviewCard(
     container: LinearLayout,
     story: Story,
@@ -218,11 +202,7 @@ private fun ScreenHost.addAiDraftPreviewCard(
     container.addView(cardView)
 }
 
-/**
- * Starts draft generation. Generating over an applied AI description or a pending (unapplied) preview
- * asks for confirmation first — every generation is a billable OpenRouter call on the user's key and
- * replaces the synopsis work already there.
- */
+/** Confirms first when an applied or pending synopsis would be replaced: each run is a billable OpenRouter call. */
 internal fun ScreenHost.generateAiDescriptionDraft(story: Story) {
     val model = repository.getAiSettings().descriptionModel
     val hasApplied = story.aiDescription != null
@@ -237,8 +217,7 @@ internal fun ScreenHost.generateAiDescriptionDraft(story: Story) {
     confirm(message, confirmLabel = "Generate") { startAiDescriptionDraft(story) }
 }
 
-// User-facing operation handler: funnel any failure into a toast + state cleanup after
-// re-throwing CancellationException (the documented per-site opt-in for broad catches).
+// Re-throw CancellationException; funnel other failures into toast + state cleanup.
 @Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
 private fun ScreenHost.startAiDescriptionDraft(story: Story) {
     if (storyOperation != null) {
@@ -278,11 +257,7 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
     }
 }
 
-/**
- * Writes the progress message straight into [storyOperation] and patches whichever progress surface
- * is visible — deliberately not [com.vinicius741.webnovelarchiver.feature.story.setStoryOperation],
- * whose first tick rebuilds Details and would pull the user off this screen.
- */
+/** Patches progress in place; setStoryOperation's first tick would rebuild Details and pull the user off this screen. */
 private fun ScreenHost.patchAiDraftProgress(
     storyId: String,
     message: String,
@@ -314,7 +289,6 @@ internal fun ScreenHost.discardAiDescriptionDraft(story: Story) {
 
 internal fun ScreenHost.frameIsAiControls(storyId: String): Boolean = frame.tag == AppRoute.AiControls(storyId).stableKey
 
-/** Re-renders Details when it is the visible screen, so buttons disabled by the operation re-enable. */
 internal fun ScreenHost.rerenderDetailsIfVisible(storyId: String) {
     if (frame.tag == AppRoute.Details(storyId).stableKey) showDetails(storyId)
 }

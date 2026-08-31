@@ -9,9 +9,7 @@ object ReaderContentRenderer {
     data class ReaderDocumentColors(
         val background: String,
         val foreground: String,
-        /** Accent color (CSS hex, e.g. "#7C4DFF") for the TTS highlight background. Defaults to a
-         *  neutral purple so the highlight is visible on both light + dark reader backgrounds when no
-         *  theme accent is supplied. */
+        /** CSS hex accent for the TTS highlight; default reads on light + dark backgrounds. */
         val ttsHighlight: String = "#7C4DFF",
     )
 
@@ -22,10 +20,6 @@ object ReaderContentRenderer {
         bodyHtml: String,
     ): String = document(title, bodyHtml, fontScale = 1.0f, dark = false)
 
-    /**
-     * Renders the chapter HTML for the reader WebView. `fontScale` multiplies the base 18px body
-     * font-size; `dark` swaps to a dark background + light text (R4 reader chrome).
-     */
     fun document(
         title: String,
         bodyHtml: String,
@@ -44,15 +38,9 @@ object ReaderContentRenderer {
     ): String = document(title, bodyHtml, fontScale, colors, includeTtsScript = false)
 
     /**
-     * Full reader document (parity gap 3). When [includeTtsScript] is true, the body HTML is assumed
-     * to have already been through [TtsTextPreparation.prepareTtsAnnotatedHtml] (so block elements carry
-     * `data-tts-group` indices) and a small, self-contained script is injected that (a) exposes
-     * `WnaTts.setActive(index)` to toggle the `.tts-active` highlight on the speaking chunk, and
-     * (b) listens for a double-tap on a tagged paragraph to ask the host to start TTS there via the
-     * `AndroidBridge.onTtsStart(index)` JavascriptInterface (attached by [ReaderScreen]).
-     *
-     * The CSS `.tts-active` rule mirrors the legacy RN reader's highlight: a translucent accent
-     * background.
+     * Full reader document. When [includeTtsScript] is true, [bodyHtml] must already come from
+     * [TtsTextPreparation.prepareTtsAnnotatedHtml] so elements carry `data-tts-group` indices for
+     * the injected highlight/tap script.
      */
     fun document(
         title: String,
@@ -108,11 +96,9 @@ object ReaderContentRenderer {
     }
 
     /**
-     * The injected reader script (parity gap 3). `WnaTts.setActive(i)` clears the previous
-     * `.tts-active` and applies it to every `[data-tts-group="i"]` node, scrolling the first into
-     * view. A double-tap (or two quick taps) on a tagged paragraph posts the group index to the
-     * host's `AndroidBridge.onTtsStart(i)`. The bridge is a single method attached only while the
-     * reader screen is alive, and the script trusts no other page input.
+     * Injected script: `WnaTts.setActive(i)` toggles `.tts-active` on the speaking chunk and
+     * scrolls it into view; a double-tap on a tagged paragraph calls `AndroidBridge.onTtsStart(i)`
+     * (bridge attached only while the reader screen is alive).
      */
     private fun ttsHighlightScript(): String =
         """

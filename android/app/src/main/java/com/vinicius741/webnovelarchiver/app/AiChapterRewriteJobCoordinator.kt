@@ -45,10 +45,10 @@ sealed interface AiChapterRewriteJobEvent {
 }
 
 /**
- * Runs the billable chapter-rewrite flow on the process-wide application scope (the cover-job
- * lifecycle, keyed by story+chapter instead of story): jobs keep running through navigation and
- * app exit, and the validated draft is persisted before anyone is told it is ready. One rewrite
- * runs at a time; [enqueue] lines up further chapters (batch polish) and they drain sequentially.
+ * Runs billable chapter rewrites on the process-wide application scope (the cover-job lifecycle,
+ * keyed by story+chapter): jobs survive navigation and app exit, and the validated draft is
+ * persisted before anyone is told it is ready. One rewrite at a time; [enqueue] queues further
+ * chapters (batch polish) and they drain sequentially.
  */
 class AiChapterRewriteJobCoordinator(
     private val scope: CoroutineScope,
@@ -85,10 +85,7 @@ class AiChapterRewriteJobCoordinator(
 
     fun queuedFor(storyId: String): List<AiChapterRewriteJobState> = _queue.value.filter { it.storyId == storyId }
 
-    /**
-     * Queues a chapter for polishing; it starts immediately when the coordinator is idle, otherwise
-     * it waits its turn. Returns false when the chapter is already running or queued.
-     */
+    /** Queues a chapter; starts immediately when idle. False when already running or queued. */
     fun enqueue(
         storyId: String,
         chapterId: String,
@@ -120,8 +117,8 @@ class AiChapterRewriteJobCoordinator(
     private fun launchNextLocked() {
         if (_jobs.value.isNotEmpty()) return
         val next = _queue.value.firstOrNull() ?: return
-        // Register before popping the queue: between the two updates the chapter must stay visible
-        // in at least one map, or the service collector reads an idle coordinator mid-handoff.
+        // Register before popping so the chapter stays visible in at least one map throughout —
+        // the service collector must never read an idle coordinator mid-handoff.
         _jobs.update { it + (key(next.storyId, next.chapterId) to next.copy(message = "Preparing rewrite...")) }
         _queue.update { it - next }
         scope.launch { runJob(next) }
@@ -157,10 +154,9 @@ class AiChapterRewriteJobCoordinator(
     }
 
     /**
-     * Clears the finished job and starts the next queued chapter, if any. The handoff swaps the
-     * finished entry for the next one in a single [_jobs] update: clearing first would expose an
-     * idle coordinator while the queue still has work, crashing the service collector or stopping
-     * the keep-alive service mid-batch.
+     * Swaps the finished entry for the next queued chapter in a single [_jobs] update; clearing
+     * first would expose an idle coordinator with work queued, crashing the service collector or
+     * stopping the keep-alive service mid-batch.
      */
     private fun finishJob(jobKey: String) {
         synchronized(queueLock) {

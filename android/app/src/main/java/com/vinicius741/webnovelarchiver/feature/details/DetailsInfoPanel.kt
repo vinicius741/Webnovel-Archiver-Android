@@ -30,17 +30,7 @@ import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 
-/**
- * Info-panel builder for the Details screen.
- * Assembles the single vertical column above the chapter list: header, primary actions (sync /
- * download / generate EPUB / read EPUB), the live download banner slot, Patreon card, expandable
- * description, and tags. Returns the panel plus the stable views the download-refresh loop in
- * [showDetails] patches in place after a progress event.
- *
- * @param operation the in-flight story operation, if any (drives the "Syncing..." / "Generating..."
- *   labels and the progress blocks).
- * @param downloadSummary reduced snapshot of this story's queue jobs for the download action + banner.
- */
+/** Builds the info panel and returns the stable views the download-refresh loop patches in place after progress events. */
 @Suppress("CyclomaticComplexMethod") // One linear UI builder intentionally reflects mutually exclusive story states.
 internal fun ScreenHost.buildDetailsInfoPanel(
     story: Story,
@@ -52,12 +42,10 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     val infoPanel = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     val header = buildDetailsHeader(story)
     infoPanel.addView(header.view)
-    // Keep source-native facts in the same top summary area as score/progress. Placing them after a
-    // long synopsis made unscored sources look as though no metadata had been captured at all.
+    // Source metadata stays in the top summary area; after a long synopsis it looked uncaptured.
     buildSourceMetadataFlow(story)?.let(infoPanel::addView)
 
-    // Mutable slots the caller patches after download / story-operation progress events; non-null
-    // only when rendered.
+    // Mutable slots the caller patches after progress events; non-null only when rendered.
     var bannerSlot: LinearLayout? = null
     var downloadActionSlot: LinearLayout? = null
     var operationSlot: LinearLayout? = null
@@ -103,11 +91,8 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         infoPanel.addView(downloadActionSlot!!)
     }
     if (shouldShowDetailsBanner(downloadSummary)) {
-        // The live download banner lives in a stable slot view held by [bannerSlot]. The download
-        // refresh loop swaps its child in place rather than rebuilding the screen. The slot is always
-        // allocated when shown so we have a direct reference even while the header is scrolled
-        // off-screen and the slot is detached from the window — patching a detached view is safe and
-        // shows on reattach.
+        // Stable slot: the refresh loop swaps the banner child in place instead of rebuilding the
+        // screen. Patching a detached slot view is safe and shows on reattach.
         bannerSlot =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
@@ -116,14 +101,11 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         infoPanel.addView(bannerSlot!!)
     }
     if (operation?.kind == StoryOperationKind.CLEANUP) {
-        // Stable slot: cleanup progress ticks update message/bar in place rather than calling
-        // showDetails() per chapter (which rebuilt the whole tree and flickered).
+        // Stable slot: progress ticks patch in place; per-chapter showDetails calls flickered.
         operationSlot = makeStoryOperationSlot(app, operation)
         infoPanel.addView(operationSlot!!)
     }
     val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
-    // D2: Generate EPUB is the primary action — promote it to a full-width button so its visual
-    // weight matches its usage.
     val generateLabel = if (operation?.kind == StoryOperationKind.EPUB) "Generating..." else "Generate EPUB"
     infoPanel.addView(
         makeFullWidthButton(
@@ -149,7 +131,6 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         operationSlot = makeStoryOperationSlot(app, operation)
         infoPanel.addView(operationSlot!!)
     }
-    // Read EPUB is now a full-width outlined button so it aligns with the other primary actions.
     infoPanel.addView(
         makeFullWidthButton(
             app,
@@ -163,14 +144,12 @@ internal fun ScreenHost.buildDetailsInfoPanel(
             openEpubForStory(story)
         },
     )
-    // D6: make the stale notice actionable with an inline Regenerate button.
     if (story.epubStale == true && hasEpub) {
         infoPanel.addView(buildStaleEpubNotice(story, isBusy))
     }
 
-    // Render the Patreon card whenever the story has a Patreon URL, even if the public stats
-    // could not be fetched: a link-only card surfaces that the creator has a Patreon, instead of
-    // silently showing nothing (which would be indistinguishable from having no Patreon).
+    // Render the card for any Patreon URL, even without public stats: a link-only card surfaces the
+    // creator's Patreon instead of showing nothing, which reads as having none.
     if (!story.patreonUrl.isNullOrBlank()) {
         infoPanel.addView(buildPatreonStatsCard(story.patreonStats, story.patreonUrl) { showTrends(story.id, FOCUS_PATREON_USD) })
     }
@@ -184,10 +163,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot, descriptionViews.listenButton)
 }
 
-/**
- * Stable container for an in-flight story-operation progress block. Children are swapped by
- * [renderStoryOperationProgress] on subsequent ticks without tearing down Details.
- */
+/** Stable container whose children are swapped per tick by [renderStoryOperationProgress] without tearing down Details. */
 internal fun makeStoryOperationSlot(
     context: android.content.Context,
     operation: StoryOperationState,
@@ -207,25 +183,16 @@ internal data class DetailsInfoPanel(
     val bannerSlot: LinearLayout?,
     /** "Download Remaining" action slot, non-null only when downloads can be queued. */
     val downloadActionSlot: LinearLayout?,
-    /**
-     * In-flight story-operation progress slot (sync / cleanup / EPUB). Non-null only while an
-     * operation for this story is active. Held as a direct reference so progress ticks can patch
-     * the message/bar without rebuilding Details (see [renderStoryOperationProgress]).
-     */
+    /** In-flight operation progress slot, patched in place per tick; null when no operation runs. */
     val operationSlot: LinearLayout?,
-    /**
-     * Description "Listen" button, non-null when the story has a description. Patched in place by
-     * the description-TTS observer ([observeDetailsDescriptionTts]) as playback state changes.
-     */
+    /** Description "Listen" button, patched in place by the description-TTS observer. */
     val descriptionTtsButton: Button?,
 )
 
 /**
- * Renders the active synopsis (source or AI — see [AiDescriptionPlanning.activeDescription]) with
- * copy gestures, expand/collapse, and Listen. AI actions live on the AI Controls screen; the only AI
- * UI left here is a slim progress block while an AI description is generating (so a user who backs
- * out of AI Controls mid-generation still sees why the Details buttons are disabled). Returns the
- * "Listen" button (for the description-TTS observer) and that progress slot.
+ * Renders the active synopsis, source or AI, with copy, expand, and Listen. The slim AI progress
+ * block stays here so backing out of AI Controls mid-generation still shows why the Details
+ * buttons are disabled.
  */
 private fun ScreenHost.addDetailsDescription(
     infoPanel: LinearLayout,
@@ -269,7 +236,6 @@ internal data class DetailsDescriptionViews(
     val aiOperationSlot: LinearLayout?,
 )
 
-/** Tag chips row (new on native; were missing). */
 private fun ScreenHost.addDetailsTags(
     infoPanel: LinearLayout,
     story: Story,

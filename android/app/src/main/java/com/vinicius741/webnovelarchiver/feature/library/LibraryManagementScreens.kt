@@ -35,8 +35,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
     val tabs = repository.getTabs().sortedBy { it.order }
     val selectedIds = initialSelectedIds.toMutableSet()
     screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Organize Novels", onBack = { navigateBack() }) {
-        // Empty library: show the same empty state the Library screen shows instead of a bare
-        // filter bar with nothing to filter.
+        // Empty library: same empty state as the Library screen, not a bare filter bar.
         if (stories.isEmpty()) {
             addView(
                 makeEmptyState(
@@ -49,23 +48,20 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             return@screen
         }
 
-        // Filter state is held in local closures rather than on ScreenHost because the screen never
-        // rebuilds its own view tree: Select All / Deselect All re-filter in place (see [applyFilters]),
-        // and the activity's configChanges declaration keeps the view tree alive across rotation/fold.
-        // Opening the screen fresh always starts from the All tab + no tag filters + last-updated sort.
+        // Filter state is local, not on ScreenHost: this screen never rebuilds its view tree —
+        // Select All / Deselect All re-filter in place ([applyFilters]), and configChanges keeps
+        // the tree alive across rotation/fold.
         var filterState = LibraryFilterState()
 
-        // Declared up front as reassignable lambdas (matching the Library screen) so the search watcher,
-        // chip callbacks, tab bar, and Select All / Deselect All can all close over them before their
-        // real bodies are assigned further down.
+        // Declared up front as reassignable lambdas so the search watcher, chip callbacks, tab
+        // bar, and bulk actions can close over them before their real bodies are assigned.
         var applyFilters: () -> Unit = {}
         var currentFilteredIds: () -> List<String> = { emptyList() }
 
         val search = makeSearchField(context, "Search novels")
 
-        // Rebuild the chip set whenever the active tab changes so the tag/source filters follow the
-        // tab (All = union, a specific tab = only that tab's labels).
-        // Declared before the tab bar so the bar's selection lambda can close over it.
+        // Chips rebuild on tab change so tag/source filters follow the tab (All = union, a
+        // specific tab = that tab's labels). Declared before the tab bar so it can close over it.
         var refreshFilters: (String?, Set<String>) -> Unit = { _, _ -> }
 
         val filters =
@@ -86,7 +82,6 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                     val nextTags = filterState.selectedTags.toMutableSet()
                     if (!nextTags.add(tag)) nextTags.remove(tag)
                     filterState = filterState.copy(selectedTags = nextTags)
-                    // Re-render the chip row so the tapped chip shows its selected state.
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
@@ -101,9 +96,8 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
         addView(tabBar.view)
         addView(filters.view)
 
-        // Wire the search watcher after `filters`/`refreshFilters` exist (mirrors the Library screen)
-        // so typing updates the collapsible header's active-filter indicators and re-narrows the chip
-        // row under the typed query, not just the visible rows.
+        // Wire the search watcher after filters/refreshFilters exist so typing updates the header
+        // indicators and narrows the chip row, not just the visible rows.
         search.doAfterTextChanged {
             filterState = filterState.copy(query = it?.toString().orEmpty())
             filters.syncActiveFilters(filterState.selectedTags)
@@ -111,8 +105,8 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             applyFilters()
         }
 
-        // Select All / Deselect All act on the *currently filtered* list (matching the Follow Updates
-        // selection screen), so selecting every novel in a search result or a single tab is one tap.
+        // Select All / Deselect All act on the currently filtered list — one tap selects a whole
+        // search result or tab.
         var refreshBulkActions: () -> Unit = {}
         flow {
             button("Select All", Btn.TEXT, R.drawable.wna_check) {
@@ -127,12 +121,11 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             }
         }
 
-        // Reusable row container rebuilt by [applyFilters]. Wraps it in a scroller so a long filtered
-        // list scrolls independently of the pinned tab bar / search / chips above it.
+        // Row container rebuilt by [applyFilters]; scrolls independently of the pinned bar/search/
+        // chips above.
         val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         addView(scroll(rows), verticalFill())
 
-        // Bulk actions docked at the bottom as full-width primary CTAs.
         lateinit var moveButton: Button
         lateinit var deleteButton: Button
         moveButton =
@@ -157,8 +150,8 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
             deleteButton.text = if (selectedIds.isEmpty()) "Delete Selected" else "Delete ${selectedIds.size} Selected"
         }
 
-        // Snapshot the current filtered ids for Select All / Deselect All. Computed on demand rather
-        // than cached so it always reflects the latest search/tab/tag state at click time.
+        // Current filtered ids for Select All / Deselect All; computed on demand so it reflects
+        // the latest filters at click time.
         currentFilteredIds = {
             LibraryQuery
                 .filterAndSort(
@@ -171,9 +164,8 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                 ).map { it.id }
         }
 
-        // Rebuild the row list from the current filter snapshot, then refresh the bulk-action labels.
-        // Rebuilding rather than re-rendering keeps the tab bar, search field, and chips untouched, so
-        // the user's filter context is never disturbed by a Select All or a row toggle.
+        // Rebuild rows only (never the filter UI) so the user's filter context survives a Select
+        // All or row toggle, then refresh the bulk-action labels.
         applyFilters = {
             val visible =
                 LibraryQuery.filterAndSort(
@@ -196,7 +188,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                 )
             } else {
                 visible.forEach { story ->
-                    // Archives share the live title; label them so bulk move/delete is not ambiguous.
+                    // Archives share the live title; labeled so bulk move/delete is unambiguous.
                     val subtitle =
                         if (story.isArchived == true) {
                             listOfNotNull(story.author.takeIf { it.isNotBlank() }, "Archived").joinToString(" · ")

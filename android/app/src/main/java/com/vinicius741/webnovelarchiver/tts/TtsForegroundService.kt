@@ -39,20 +39,16 @@ class TtsForegroundService : Service() {
     private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var stateCollectionJob: Job? = null
 
-    /** Real Android MediaSession (parity gaps 1 & 2): owns the lock-screen / system media UI and
-     *  receives headset-hook / Bluetooth media-button events. Its token drives the MediaStyle
-     *  notification so the standard media card + transport metadata appear system-wide. */
+    /** Owns the system media UI and media-button events; its token drives the MediaStyle notification. */
     private var mediaSession: MediaSessionCompat? = null
 
-    /** Last snapshot emitted by the engine; drives notification + MediaSession refresh. */
     private var lastSnapshot: TtsPlaybackSnapshot? = null
 
     private val errorListener: (TtsPlaybackError) -> Unit = { error -> showPlaybackError(error) }
 
     override fun onCreate() {
         super.onCreate()
-        // Process-wide shared engine: the same instance the activity's reader observes, so a
-        // playback the service drives fires the reader's highlight/transport listener too.
+        // Process-wide shared engine — the same instance the activity's reader observes.
         engine = appContainer.ttsEngine
         audioFocus =
             TtsAudioFocusManager(
@@ -79,7 +75,7 @@ class TtsForegroundService : Service() {
             )
         AppNotificationChannels.ensureCreated(this)
         ensureMediaSession()
-        // One replaying state stream drives the MediaSession + notification without polling storage.
+        // One replaying state stream drives MediaSession + notification; no storage polling.
         stateCollectionJob =
             stateScope.launch {
                 engine.playbackState.collect { update -> refreshMediaState(update.snapshot) }
@@ -92,8 +88,6 @@ class TtsForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        // Hardware media buttons (headset hook, Bluetooth) arrive as ACTION_MEDIA_BUTTON.
-        // Hand them to the MediaSession's callback, which maps them onto engine play/pause/skip.
         if (Intent.ACTION_MEDIA_BUTTON == intent?.action) {
             MediaButtonReceiver.handleIntent(mediaSession, intent)
             return START_STICKY
@@ -129,11 +123,8 @@ class TtsForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        // Detach only this service's observer; the TTS engine itself is process-wide (shared with
-        // the activity's reader) and is never shut down by a component. We intentionally do not
-        // touch playback here: the ACTION_STOP / ACTION_PAUSE handlers already put the engine into
-        // the right state before stopSelf(), and a system-killed service should leave the persisted
-        // session intact so playback can resume next launch.
+        // The engine is process-wide and never shut down by a component; a system-killed service
+        // must leave the persisted session intact so playback can resume next launch.
         stateCollectionJob?.cancel()
         stateCollectionJob = null
         stateScope.cancel()
@@ -164,8 +155,7 @@ class TtsForegroundService : Service() {
         startForegroundIfNeeded(buildNotification(null))
         if (!requestAudioFocusOrShowError()) return
         engine.resumePersistedSession()
-        // The engine only emits state when it actually starts speaking; update the notification
-        // surface regardless so "no session" / "buffering" is reflected immediately.
+        // The engine only emits on real state changes; refresh regardless so buffering/no-session shows.
         refreshMediaStateFromEngine()
     }
 
@@ -217,23 +207,12 @@ class TtsForegroundService : Service() {
         foregroundStarted = true
     }
 
-    /**
-     * Tears down foreground state AND resets the [foregroundStarted] flag so a subsequent
-     * [startForegroundIfNeeded] (e.g. a new ACTION_START in the same process) re-enters foreground
-     * correctly. Without the reset the flag would stay `true` after a stop, making the next start
-     * skip `startForeground()` — a latent bug that could prevent the service from re-establishing
-     * foreground state.
-     */
+    /** Also resets [foregroundStarted] so a later start re-enters foreground after a stop. */
     private fun stopForegroundAndReset() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         foregroundStarted = false
     }
 
-    /**
-     * Single refresh entry point invoked from the engine's multicast state-listener hook
-     * (see [TtsEngine.playbackState]). Updates the cached snapshot, the MediaSession playback
-     * state + metadata, and the notification.
-     */
     private fun refreshMediaState(snapshot: TtsPlaybackSnapshot?) {
         lastSnapshot = snapshot
         if (snapshot?.isPlaying == true) lastErrorText = null
@@ -275,14 +254,13 @@ class TtsForegroundService : Service() {
         refreshMediaState(engine.currentSnapshot(lastSnapshot?.isPlaying == true))
     }
 
-    @SuppressLint("MissingPermission") // MediaSession notifications are exempt from POST_NOTIFICATIONS on Android 13+.
+    @SuppressLint("MissingPermission")
     private fun updateNotification() {
         if (!foregroundStarted) {
             startForegroundIfNeeded(buildNotification(lastSnapshot))
             return
         }
-        // MediaSession notifications are exempt from Android 13's POST_NOTIFICATIONS permission;
-        // the user-controlled TTS channel still decides whether this is visible.
+        // MediaSession notifications are exempt from POST_NOTIFICATIONS on 13+; the TTS channel still controls visibility.
         runCatching {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(lastSnapshot))
         }
@@ -322,9 +300,7 @@ class TtsForegroundService : Service() {
                 .setContentTitle(title)
                 .setContentText(body)
                 .setContentIntent(openIntent)
-                // Ongoing while ANY session exists (playing OR paused), so a paused-but-active session
-                // keeps the foreground service + media notification alive. Drops to dismissable only once
-                // playback stops and the snapshot becomes null.
+                // Ongoing while any session exists (playing or paused); dismissable once the snapshot is null.
                 .setOngoing(snapshot != null)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
@@ -333,8 +309,6 @@ class TtsForegroundService : Service() {
         TtsNotificationActions.actions(isPaused).forEachIndexed { index, action ->
             builder.addAction(0, getString(action.labelResId), serviceAction(12 + index, action.action))
         }
-        // MediaStyle ties the notification to the MediaSession so the system renders the
-        // standard media card (lock screen + quick-settings shade) with the transport controls.
         builder.setStyle(
             MediaStyle()
                 .setMediaSession(mediaSession?.sessionToken)
@@ -351,9 +325,8 @@ class TtsForegroundService : Service() {
                     MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
                         MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS,
                 )
-                // A hardware media button press (headset hook / Bluetooth) is delivered to the
-                // service as ACTION_MEDIA_BUTTON; the MediaButtonReceiver hands it to this pending
-                // intent's session, whose callback (below) maps it to play/pause/skip.
+                // Media buttons arrive as ACTION_MEDIA_BUTTON; this pending intent routes them to
+                // the session callback below.
                 setMediaButtonReceiver(
                     MediaButtonReceiver.buildMediaButtonPendingIntent(
                         this@TtsForegroundService,
@@ -519,7 +492,6 @@ class TtsForegroundService : Service() {
     }
 }
 
-/** Extracts the KeyEvent from a MEDIA_BUTTON intent across API levels. */
 private fun Intent.getKeyEventCompat(): KeyEvent? =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)

@@ -11,34 +11,20 @@ import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 /**
- * Thin OpenRouter REST client shared by all AI features (description generation today; tags and
- * cover art later). Deliberately does NOT ride the app's [com.vinicius741.webnovelarchiver.source.network.NetworkClient]:
- * that stack routes requests through the Cloudflare WebView interceptor and per-source rate
- * limiting meant for novel websites — an authenticated JSON API call to openrouter.ai needs a
- * plain client instead.
- *
- * [baseUrl] is injectable so JVM tests can point the client at MockWebServer.
- *
- * Request and response JSON are built/parsed by hand (JsonObject/JsonParser), never via Gson
- * reflection: R8 renames wire DTO fields in release builds, which silently corrupts the payload
- * (messages lose role/content and the model returns an empty completion).
+ * Thin OpenRouter REST client for all AI features. Deliberately does NOT ride the app's
+ * [com.vinicius741.webnovelarchiver.source.network.NetworkClient]: its Cloudflare WebView
+ * interceptor and per-source rate limiting target novel sites, not an authenticated JSON API.
+ * Wire JSON is built/parsed by hand — R8 renames Gson DTO fields in release builds and silently
+ * corrupts the payload. [baseUrl] is injectable for MockWebServer tests.
  */
-@Suppress("TooManyFunctions") // Deliberately one thin client for every AI feature's endpoints.
+@Suppress("TooManyFunctions") // One thin client for every AI feature.
 class OpenRouterClient(
     private val baseUrl: String = PRODUCTION_BASE_URL,
     private val client: OkHttpClient = defaultClient(),
 ) {
     private val rootUrl = baseUrl.trimEnd('/')
 
-    /**
-     * POST /api/v1/chat/completions. Returns the first choice's message content and provider
-     * receipt; throws
-     * [OpenRouterException] with a friendly message for auth/credit/model/rate-limit failures.
-     *
-     * The optional [temperature], [responseFormat] (structured outputs), and [provider] (privacy
-     * routing) fields are included only when non-null; callers pass null for anything the selected
-     * model must not receive.
-     */
+    /** POST /api/v1/chat/completions; throws [OpenRouterException] with friendly messages for auth/credit/model/rate-limit failures. */
     suspend fun chatCompletion(
         apiKey: String,
         model: String,
@@ -77,8 +63,7 @@ class OpenRouterClient(
                 httpCode == 200 -> parseChatCompletion(responseJson, requestedModel = model)
                 httpCode == 401 -> throw OpenRouterException("Invalid OpenRouter API key. Check Settings → AI Settings.", receipt)
                 httpCode == 402 -> throw OpenRouterException("OpenRouter reports insufficient credits for this API key.", receipt)
-                // Routing failures also land here (provider block no endpoint satisfies); the
-                // server detail lets callers tell "model not found" from "no allowed providers".
+                // Routing failures also land here; the detail distinguishes "model not found" from "no allowed providers".
                 httpCode == 404 -> throw OpenRouterException(
                     "Model not found on OpenRouter: $model (${serverMessage(responseJson)})",
                     receipt,
@@ -150,13 +135,7 @@ class OpenRouterClient(
         }
     }
 
-    /**
-     * POST /api/v1/images — generates one image from a prompt. The optional parameters
-     * ([aspectRatio], [resolution], [quality], [outputFormat]) are included only when non-null;
-     * callers pass null for anything the selected model does not support (the image catalog's
-     * `supported_parameters` decides) so the API never rejects an unknown parameter. Throws
-     * [OpenRouterException] with a friendly message for auth/credit/model/rate-limit failures.
-     */
+    /** POST /api/v1/images; sends only the optional params the model supports, so the API never rejects an unknown one. */
     suspend fun generateImage(
         apiKey: String,
         model: String,
@@ -199,8 +178,8 @@ class OpenRouterClient(
         return execute(request) { responseJson, httpCode ->
             if (httpCode != 200) throw OpenRouterException("Could not load the OpenRouter image model list (HTTP $httpCode).")
             val data = responseJson.getAsJsonArray("data")
-            // A 200 without a usable list (unexpected body, empty catalog) must fail loudly: the
-            // picker caches successes, so a silent empty would stick for the whole process.
+
+            // A 200 with no list must fail loudly; the picker caches successes, so a silent empty sticks for the process.
             if (data == null || data.size() == 0) {
                 throw OpenRouterException("OpenRouter returned an empty image model list. Try again in a moment.")
             }
@@ -361,8 +340,7 @@ class OpenRouterClient(
             OkHttpClient
                 .Builder()
                 .connectTimeout(20, TimeUnit.SECONDS)
-                // Text generation can take tens of seconds; image generation at 2:3 + medium
-                // quality can exceed 90s, so keep the read budget generous.
+                // Image generation can exceed 90s; keep the read budget generous.
                 .readTimeout(180, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build()

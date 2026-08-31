@@ -22,15 +22,12 @@ import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 
 /*
- * Shared Chapter-polish actions used by both entry points (Reader overflow and AI Controls):
- * the billable preflight (estimate + explicit confirm), the queue start, and the per-render status
- * index (one manifest read per screen render, not one per chapter row).
+ * Shared chapter-polish actions for both entry points (Reader overflow, AI Controls): billable
+ * preflight (estimate + confirm), queue start, and the per-render status index.
  */
 
-/**
- * One render's view of polish state for a story: the manifest plus a chapterId → status tag map
- * ([AiChapterPolishPlanning] tags). Running and queued work override draft/applied entries.
- */
+/** One render's polish state: manifest + chapterId→status tags; running/queued work overrides
+ *  draft/applied entries. */
 internal data class PolishStatusIndex(
     val manifest: ChapterRewriteManifestModel,
     val tags: Map<String, String>,
@@ -62,8 +59,8 @@ internal fun ScreenHost.startChapterPolishJob(
     story: Story,
     chapter: Chapter,
 ) {
-    // Same shared-slot discipline as covers and descriptions: one billable story operation at a
-    // time, or the second job would run with no progress representation in the Details slot.
+    // Shared-slot discipline: one billable story operation at a time, or the second runs with no
+    // progress representation in the Details slot.
     if (storyOperation != null) {
         toast("Please wait for the current operation to finish")
         return
@@ -83,10 +80,8 @@ internal fun ScreenHost.startChapterPolishJob(
     if (frameIsAiControls(story.id)) showAiControls(story.id)
 }
 
-/**
- * Preflight before a billable single-chapter rewrite: cost ceiling, then explicit confirmation.
- * Every run sends copyrighted story text to the configured provider and spends OpenRouter credits.
- */
+/** Billable preflight: cost ceiling, then explicit confirmation. Every run sends copyrighted
+ *  story text to the provider and spends credits. */
 internal fun ScreenHost.confirmChapterPolish(
     story: Story,
     chapter: Chapter,
@@ -114,12 +109,10 @@ internal fun ScreenHost.confirmChapterPolish(
 }
 
 /**
- * Preflight for a batch polish: one aggregate cost ceiling for the whole set, then a single
- * confirmation. Chapters run one at a time on the coordinator queue; pending ones stay cancellable.
- * The shared-slot guard is checked once in the confirm callback; the enqueues then go straight
- * through the coordinator — routing them through [startChapterPolishJob] would reject every chapter
- * after the first, since the job bridge mirrors the running chapter into [storyOperation] as soon
- * as the first enqueue lands.
+ * Batch preflight: one aggregate cost ceiling, one confirmation. The shared-slot guard is checked
+ * once in the confirm callback, then chapters enqueue straight through the coordinator —
+ * [startChapterPolishJob] would reject every chapter after the first once the job bridge mirrors
+ * the running chapter into [storyOperation].
  */
 internal fun ScreenHost.confirmBatchPolish(
     story: Story,
@@ -147,9 +140,7 @@ internal fun ScreenHost.confirmBatchPolish(
                     "For personal reading only — do not republish polished chapters.",
                 confirmLabel = "Polish ${chapters.size} chapter${if (chapters.size == 1) "" else "s"}",
             ) {
-                // Same shared-slot discipline as the single-chapter path: without this, a batch
-                // queued while another operation runs would start billable work with no progress
-                // representation in the Details slot.
+                // Shared-slot discipline, same as the single-chapter path.
                 if (storyOperation != null) {
                     toast("Please wait for the current operation to finish")
                     return@confirm
@@ -208,7 +199,6 @@ private fun systemPromptForStrength(story: Story): String =
         },
     )
 
-/** One row's polish status for the browse dialog. */
 internal sealed interface ChapterPolishRowStatus {
     data object Generating : ChapterPolishRowStatus
 

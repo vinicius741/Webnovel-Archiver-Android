@@ -2,42 +2,29 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
-/**
- * Pure planning for AI-generated novel descriptions. Decides which chapters feed the model, builds
- * the prompt, and post-processes the reply, all unit-testable without Android or network. The
- * chapter/char budgets bound the per-generation cost regardless of how long the source chapters are.
- *
- * Future AI features (tags, cover art) get their own planning objects beside this one.
- */
+/** Pure planning for AI-generated descriptions: chapter selection, prompt build, reply post-processing. */
 object AiDescriptionPlanning {
-    /** How many of the story's first downloaded chapters are sent as context. */
     const val CONTEXT_CHAPTER_COUNT = 5
 
-    /** Per-chapter plain-text cap (~3k tokens); enough for a full typical web-novel chapter. */
+    /** Per-chapter plain-text cap (~3k tokens) — fits a typical full chapter. */
     internal const val MAX_CHARS_PER_CHAPTER = 12_000
 
-    /** Total context cap across all chapters; with the per-chapter cap this is a final guard. */
     internal const val MAX_TOTAL_CONTEXT_CHARS = 60_000
 
     /** Leaves ample answer room even when the selected model internally reasons before responding. */
     const val MAX_OUTPUT_TOKENS = 2_000
 
-    /** Hard presentation guards. The prompt's 120 to 180 word target remains advisory. */
+    /** Hard caps; the prompt's 120–180 word target stays advisory. */
     internal const val MAX_GENERATED_DESCRIPTION_CHARS = 2_400
     internal const val MAX_GENERATED_DESCRIPTION_WORDS = 260
 
-    /** Plain text of one context chapter, already capped and trimmed. */
     data class ChapterText(
         val number: Int,
         val title: String,
         val text: String,
     )
 
-    /**
-     * The synopsis the Details screen should display: the AI one when the story has one and the
-     * user's toggle selects it, otherwise the source description. Also drives description TTS so
-     * narration reads exactly what is on screen.
-     */
+    /** The synopsis to display given the AI toggle; also drives description TTS to match the screen. */
     fun activeDescription(story: Story): String? {
         val aiDescription = story.aiDescription?.takeIf { it.isNotBlank() }
         val sourceDescription = story.description?.takeIf { it.isNotBlank() }
@@ -48,14 +35,12 @@ object AiDescriptionPlanning {
         }
     }
 
-    /** Whether [activeDescription] currently resolves to the locally generated synopsis. */
     fun isAiDescriptionActive(story: Story): Boolean {
         val hasAiDescription = !story.aiDescription.isNullOrBlank()
         val hasSourceDescription = !story.description.isNullOrBlank()
         return hasAiDescription && (story.showAiDescription || !hasSourceDescription)
     }
 
-    /** Indices (into [Story.chapters]) of the first [CONTEXT_CHAPTER_COUNT] downloaded chapters. */
     fun selectContextChapters(story: Story): List<Int> =
         story.chapters
             .withIndex()
@@ -64,11 +49,9 @@ object AiDescriptionPlanning {
             .map { it.index }
 
     /**
-     * Resolves the chapter indices an AI generation should use. A null (or empty) [explicit]
-     * selection means no user choice exists and the default applies — exactly the first
-     * [CONTEXT_CHAPTER_COUNT] downloaded chapters. An explicit selection is kept only where it
-     * still points at a downloaded chapter (sync may have replaced the list since it was saved),
-     * is de-duplicated, and is returned in chapter order so prompts stay deterministic.
+     * null/empty [explicit] means the default: the first [CONTEXT_CHAPTER_COUNT] downloaded
+     * chapters. Explicit entries are kept only where still downloaded (sync may have replaced the
+     * list), de-duplicated and sorted for deterministic prompts.
      */
     fun resolveContextChapters(
         story: Story,
@@ -79,11 +62,7 @@ object AiDescriptionPlanning {
         return explicit.filter { it in downloaded }.distinct().sorted()
     }
 
-    /**
-     * UI label for the AI Controls context-chapter row: the default wording when no explicit
-     * selection exists, otherwise the resolved selection size (which may be smaller than what was
-     * saved if chapters stopped being downloaded).
-     */
+    /** Row label; the resolved size may be smaller than saved if chapters stopped being downloaded. */
     fun contextChaptersLabel(story: Story): String =
         if (story.aiContextChapterIndices == null) {
             "First $CONTEXT_CHAPTER_COUNT downloaded (default)"
@@ -96,7 +75,6 @@ object AiDescriptionPlanning {
             }
         }
 
-    /** Caps one chapter's plain text, marking the cut so the model knows the text continues. */
     fun capChapterText(text: String): String =
         if (text.length <= MAX_CHARS_PER_CHAPTER) {
             text.trim()
@@ -104,7 +82,6 @@ object AiDescriptionPlanning {
             text.take(MAX_CHARS_PER_CHAPTER).trim() + "\n[... chapter truncated ...]"
         }
 
-    /** Builds the chat messages for description generation from the story metadata + context text. */
     fun buildMessages(
         story: Story,
         chapters: List<ChapterText>,
@@ -119,7 +96,6 @@ object AiDescriptionPlanning {
         )
     }
 
-    /** Drops/truncates trailing chapters so combined context stays under [MAX_TOTAL_CONTEXT_CHARS]. */
     internal fun enforceTotalContextCap(chapters: List<ChapterText>): List<ChapterText> {
         var remaining = MAX_TOTAL_CONTEXT_CHARS
         return chapters.mapNotNull { chapter ->
@@ -135,11 +111,7 @@ object AiDescriptionPlanning {
         }
     }
 
-    /**
-     * Post-processes the model's reply: trims surrounding whitespace, drops wrapping quotes some
-     * models add (either around the whole reply or just a stray leading quote), and collapses 3+
-     * blank lines. Returns null when nothing presentable remains.
-     */
+    /** Trims, drops wrapping quotes, collapses 3+ blank lines; null when over the caps or blank. */
     fun cleanGeneratedDescription(raw: String): String? {
         var text = raw.trim()
         if (text.startsWith("\"")) text = text.removePrefix("\"")

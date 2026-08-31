@@ -7,8 +7,8 @@ import org.jsoup.nodes.TextNode
 import java.security.MessageDigest
 
 /**
- * One sanitized top-level element of a chapter. Rewrites address blocks by [id]; protected blocks
- * must come back byte-identical (after whitespace normalization) and can never be merged across.
+ * One sanitized top-level element. Rewrites address blocks by [id]; protected blocks must return
+ * byte-identical (after whitespace normalization) and can never be merged across.
  */
 data class ChapterBlock(
     val id: String,
@@ -34,14 +34,8 @@ data class ParsedChapter(
 
 /**
  * Chapter HTML → ordered [ParsedChapter]: sanitize to the input allowlist, split into top-level
- * blocks (`b0001`…), classify protected blocks (System panels, tables, dividers, headings,
- * spacers, stat-like text), and hash what must be preserved. Port of the Phase-1 spike's
- * `blocks.py` with the block/id/merge contract proven there — one deliberate divergence: stray
- * content stays at its document position instead of the spike's index-0 hoist, which silently
- * relocated inter-paragraph and trailing content to the chapter's head.
- *
- * Classification is deliberately conservative: a false positive leaves awkward prose untouched,
- * a false negative may change game rules.
+ * blocks (`b0001`…), classify protected blocks, and hash what must be preserved. Stray content
+ * stays at its document position (never hoisted to the chapter head).
  */
 object ChapterBlockParsing {
     /** Tags kept when sanitizing chapter HTML for the pipeline. Everything else is unwrapped. */
@@ -75,7 +69,6 @@ object ChapterBlockParsing {
     private val VOID_TAGS = setOf("br", "hr")
     private val TOP_LEVEL_START = Regex("<(p|h[1-6]|blockquote|ul|ol|table|hr)\\b[^>]*>", RegexOption.IGNORE_CASE)
 
-    /** Sanitizes downloaded chapter HTML to the pipeline's input allowlist (no attributes, no scripts). */
     fun sanitizeChapterHtml(html: String): String {
         val body = Jsoup.parse(html).body()
         val out = StringBuilder()
@@ -83,7 +76,6 @@ object ChapterBlockParsing {
         return out.toString()
     }
 
-    /** Sanitizes + splits chapter HTML into ordered, classified, id-stamped blocks. */
     fun parseChapter(html: String): ParsedChapter {
         val sanitized = sanitizeChapterHtml(html)
         val blocks = mutableListOf<ChapterBlock>()
@@ -109,11 +101,6 @@ object ChapterBlockParsing {
         return ParsedChapter(blocks = blocks, sourceSha256 = sourceSha256(sanitized))
     }
 
-    /**
-     * Loose top-level content outside recognized blocks, kept as its own protected pre-block AT ITS
-     * DOCUMENT POSITION so it is returned unchanged without relocating content: inter-paragraph or
-     * trailing stray stays between/after the paragraphs it was found at, never hoisted to the top.
-     */
     private fun addStrayBlock(
         blocks: MutableList<ChapterBlock>,
         raw: String,
@@ -162,10 +149,7 @@ object ChapterBlockParsing {
 
     fun assembleChapterHtml(blocks: List<ChapterBlock>): String = blocks.joinToString("\n") { it.html }
 
-    /**
-     * Strips anything outside the prose output allowlist from a rewritten block. Returns the clean
-     * HTML plus notes naming the removed hazard tags (script/style/iframe/object/embed/img/a).
-     */
+    /** Strips non-prose tags from a rewritten block; returns HTML plus notes naming removed hazards. */
     fun sanitizeOutputBlock(html: String): Pair<String, List<String>> {
         val notes = mutableListOf<String>()
         val body = Jsoup.parse(html).body()
@@ -297,11 +281,7 @@ object ChapterBlockParsing {
     private val HAZARD_TAGS = setOf("script", "style", "iframe", "object", "embed", "img", "a")
 }
 
-/**
- * Conservative protected-block classification (System panels, tables, dividers, headings, spacers,
- * stat-like text). A false positive leaves awkward prose untouched; a false negative may change
- * game rules. Split out of [ChapterBlockParsing] to keep both objects inside detekt budgets.
- */
+/** Conservative classifier: false positives leave awkward prose; false negatives may change game rules. */
 object ChapterBlockClassification {
     private val STAT_LINE =
         Regex(

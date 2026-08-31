@@ -27,13 +27,11 @@ import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
 import java.util.Locale
 
-/** Convenience for [Context.dp] so screen code can keep writing `dp(n)`. */
 internal fun ScreenHost.dp(value: Int): Int = app.dp(value)
 
 /**
- * Captures the live window dimensions (dp) + fold sensor + user "Large Screen Layout" override into
- * a [ScreenLayout] input. Uses Jetpack WindowManager's [WindowMetricsCalculator] so the size reflects
- * the real window (incl. foldable inner display / multi-window), not the legacy display metrics.
+ * Window dims (dp) + fold sensor + user layout override. Uses WindowManager metrics so the size
+ * reflects the real window (foldables, multi-window), not legacy display metrics.
  */
 internal fun ScreenHost.screenMetrics(): ScreenLayout {
     val bounds = WindowMetricsCalculator.getOrCreate().computeCurrentWindowMetrics(app).bounds
@@ -54,13 +52,13 @@ internal fun ScreenHost.currentScreenLayout(): ScreenLayoutResult = resolveScree
 
 internal fun ScreenHost.scroll(child: View): ScrollView =
     ScrollView(app).apply {
-        // Fill the allocated area when content is short; scroll when it overflows.
+        // Fill the viewport when short; scroll when overflowing.
         isFillViewport = true
         addView(child)
     }
 
-/** MATCH_PARENT width with height 0 + weight 1, so a child fills all remaining vertical space.
- *  Use for scrolling lists placed below pinned controls so the list area never collapses to 0. */
+/** MATCH_PARENT width, height 0 + weight 1: child fills remaining vertical space below pinned
+ *  controls so a scrolling list area never collapses to 0. */
 internal fun verticalFill() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
 
 internal fun ScreenHost.toast(message: String) = Toast.makeText(app, message, Toast.LENGTH_LONG).show()
@@ -134,10 +132,8 @@ internal fun ScreenHost.loadImage(
     source: Any?,
     image: ImageView,
 ) {
-    // Route cover loads through Coil instead of hand-rolled URL.openStream +
-    // BitmapFactory.decodeStream. Coil adds a memory + disk cache, downsampling to the target size,
-    // request cancellation when the view is detached, and a placeholder/error drawable.
-    // `source` is a remote URL string or a local java.io.File (generated AI cover).
+    // Coil gives cover loads caching, downsampling, view-detach cancellation, and placeholder/error
+    // drawables. `source` is a remote URL or a local java.io.File (generated AI cover).
     image.load(source) {
         crossfade(true)
     }
@@ -155,16 +151,9 @@ internal fun ScreenHost.styledDialogField(
             }
     }
 
-// Renders a story score in a single canonical two-decimal form ("X.XX") regardless of which
-// provider produced it. Royal Road already stores "4.84 / 5", while Scribble Hub stores a bare
-// "4.8", so without normalization the two sources display inconsistently on cards and the details
-// header (see QA F1). We pull the leading number out of whatever string the provider saved and
-// reformat it to two decimals on a US locale (so the separator is always "."). The trailing
-// " / 5" is dropped because the score always renders next to a star glyph that already conveys
-// "out of 5", and repeating it on every card/row was visual noise.
-// LibraryQuery.parseScore does the same numeric extraction for sorting, so the canonical value is
-// recoverable from any stored form. Normalize here rather than at the provider layer so already-
-// stored stories pick up the new format without a re-sync.
+// Providers store scores inconsistently (Royal Road "4.84 / 5", Scribble Hub "4.8"); reformat to a
+// canonical two-decimal US-locale value. The " / 5" is dropped — the star glyph already conveys it.
+// Normalize here, not at the provider layer, so already-stored stories pick it up without re-sync.
 internal fun formatScore(score: String): String {
     val value =
         Regex("""(\d+(?:\.\d+)?)""")
@@ -247,8 +236,7 @@ internal const val DESCRIPTION_PREVIEW_LENGTH = 200
 
 internal fun truncateDescription(description: String): String {
     if (description.length <= DESCRIPTION_PREVIEW_LENGTH) return description
-    // Collapse the multi-paragraph layout (Sources.blockText) to a single line for the collapsed
-    // teaser; the expanded view keeps the original paragraph breaks.
+    // Collapse paragraphs to one line for the collapsed teaser; expanded keeps the original breaks.
     val flat = description.replace(Regex("\\s+"), " ").trim()
     val preview = flat.take(DESCRIPTION_PREVIEW_LENGTH)
     val lastSpace = preview.lastIndexOf(" ")
@@ -258,8 +246,7 @@ internal fun truncateDescription(description: String): String {
 
 private val trailingDotsRegex = Regex("\\s*(\\.{2,}|…|⋯|⋮)$")
 
-/** Mirrors src/utils/stringUtils.ts sanitizeTitle: strip trailing ellipsis/multi-dot noise that
- *  some novel sites append to truncated list titles. */
+/** Strips trailing ellipsis/multi-dot noise some novel sites append to truncated list titles. */
 internal fun sanitizeTitle(title: String?): String {
     if (title.isNullOrBlank()) return ""
     return trailingDotsRegex.replace(title.trim(), "").trim()

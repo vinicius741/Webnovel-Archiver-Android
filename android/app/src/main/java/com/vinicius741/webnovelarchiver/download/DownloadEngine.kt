@@ -24,24 +24,12 @@ import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Queue-based chapter downloader. Owns the download
- * process loop, per-source rate-limit bookkeeping, retry/error classification, and progress emission.
- * The repository owns durable queue state; this engine owns worker lifecycle and source fences.
+ * Queue-based chapter downloader. The repository owns durable queue state; this engine owns worker
+ * lifecycle, rate limiting, and retry classification.
  *
- * R3 single-owner serialization: every queue read-modify-write goes through [AppStorage.mutateQueueInPlace]
- * / [AppStorage.saveEnqueue], which hold the storage monitor across the whole RMW. The activity and the
- * foreground service both hold a [DownloadEngine] over the *one* [AppStorage] from [AppContainer], so
- * they can't interleave read-modify-writes on `download_queue.json` — without ever blocking the main
- * thread on a coroutine mutex (the earlier [runBlocking] path was an ANR risk from UI button handlers).
- *
- * Single process loop: exactly one engine in the process owns the loop — the foreground service, which
- * constructs with [ownsProcessLoop] = true. The activity constructs with false, so its engine is a
- * control/enqueue handle only: [queue] / [resumeAll] / [retryFailed] / etc. mutate the shared queue but
- * never run a loop. Without this, both engines would each launch their own source lanes against the
- * one queue (the `running` guard is per-instance, not shared), so source limits and delays would not
- * be honored across instances.
- * The activity instead hands work to the service via `DownloadForegroundService.start`, whose single
- * loop reads the resumed/retried jobs from shared storage.
+ * Exactly one engine per process runs the loop, the foreground service, which constructs with
+ * [ownsProcessLoop] = true. Activity engines are control and enqueue handles only. The `running`
+ * guard is per-instance, so a second loop would race source lanes and ignore the configured limits.
  */
 class DownloadEngine(
     private val repository: AppRepository,
@@ -71,17 +59,11 @@ class DownloadEngine(
     private var worker: Job? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
 
-    /**
-     * Fired when the manual-verification circuit opens for a source mid-download. The foreground
-     * service uses it to tell the user their queue is paused pending an in-app verification.
-     */
+    /** Fired when the manual-verification circuit opens mid-download; the service tells the user the queue is paused. */
     var onSourceBlocked: ((providerId: String, blockedUrl: String) -> Unit)? = null
 
     private companion object {
-        /**
-         * One wake signal for the single process-wide download loop. Activity-owned engines are
-         * control handles only, so their resume/retry mutations must wake the service-owned loop.
-         */
+        /** One wake signal for the process-wide loop; activity-side mutations must wake the service's loop. */
         val processLoopWakeSignals = Channel<Unit>(Channel.CONFLATED)
 
         fun wakeProcessLoop() {
@@ -90,22 +72,17 @@ class DownloadEngine(
     }
 
     /**
-     * Enqueues chapters for download. The queue plan + the story's status/lastUpdated are persisted
-     * together atomically via [AppStorage.saveEnqueue] (one storage-monitor acquisition), so a
-     * concurrent queue writer can't interleave and lose the enqueue (R3 single-owner). No
-     * [runBlocking] on the repository mutex — control methods like this are called from UI button
-     * handlers, so they must not block the main thread on a contended coroutine lock.
-     * [startNow] launches the local process loop — the activity passes `false` and hands the runner
-     * to the foreground service instead.
+     * Enqueues chapters. The queue plan and the story's status are persisted atomically via
+     * [AppStorage.saveEnqueue]. Called from UI button handlers, so no blocking on a coroutine lock.
+     * Pass [startNow] = false to hand the runner to the foreground service instead of this engine.
      */
     fun queue(
         story: Story,
         indexes: List<Int>,
         startNow: Boolean = true,
     ) {
-        // Hold the same storage monitor across read, planning, and persistence. Enqueue can run on a
-        // process scope while the service updates job statuses, so synchronizing only saveEnqueue's
-        // final write would allow either side to overwrite the other's newer queue snapshot.
+        // Hold the storage monitor across read, planning, and persistence, so a concurrent queue
+        // writer can't overwrite the newer snapshot.
         val plan =
             DownloadEnqueueTransaction.execute(
                 lock = storage,
@@ -150,12 +127,7 @@ class DownloadEngine(
 
     fun retryFailedForStory(storyId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailed(it, storyId) }
 
-    /**
-     * Centralized read-modify-write for the queue, routed through [AppStorage.mutateQueueInPlace]:
-     * the transform runs under the storage monitor so the read and write can't be interleaved by the
-     * process loop (R3 single-owner). Non-suspending and fast, so control methods invoked from UI
-     * button handlers never block the main thread on a coroutine mutex.
-     */
+    /** Queue read-modify-write under the storage monitor; non-suspending so UI callers never block the main thread. */
     private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
         storage.mutateQueueInPlace { transform(it) }
         repository.publishDownloadState(queueChanged = true)
@@ -166,19 +138,8 @@ class DownloadEngine(
         start()
     }
 
-    /**
-     * Explicit lifecycle (Reliability R3). [start] launches the download process loop; [pause] and
-     * [stopAndCancel] halt it without losing queued work; [close] tears down the engine scope.
-     *
-     * Single process loop: only the owner engine (the foreground service) may start the loop. The
-     * activity's engine is a control/enqueue handle — control methods ([resumeAll], [retryFailed], …)
-     * mutate the shared queue and the activity separately starts the service, whose loop picks the
-     * work up. A no-op here on non-owners prevents a second loop from running concurrently against
-     * the one queue, which would otherwise ignore the configured concurrency cap (see class doc).
-     */
     fun start() {
-        // Single process loop: a non-owner engine must not launch the loop. Control mutations made by
-        // the activity are already picked up by the service's loop via shared storage.
+        // Only the loop owner may launch; a non-owner just wakes the service's loop.
         if (!ownsProcessLoop) {
             wakeProcessLoop()
             return
@@ -213,9 +174,8 @@ class DownloadEngine(
     }
 
     /**
-     * Synchronously makes the durable queue resumable before Android terminates a timed-out
-     * data-sync foreground service. Rejecting worker results first prevents a late network response
-     * from overwriting the recovered pending state after the timeout callback returns.
+     * Synchronously recovers the queue before Android terminates a timed-out data-sync service.
+     * Rejects worker results first so a late response can't overwrite the recovered pending state.
      */
     internal fun recoverAfterForegroundServiceTimeout() {
         acceptsWorkerResults.set(false)
@@ -253,12 +213,8 @@ class DownloadEngine(
         }
     }
 
-    // E2: classifier input must be broad; cancellation is caught and rethrown first.
     @Suppress("TooGenericExceptionCaught")
     private suspend fun processJob(job: DownloadJob) {
-        // Audit Rec 4: snapshot the queue once for the job-start progress emission instead of letting
-        // buildProgress re-parse download_queue.json. The cancellation check below re-reads after
-        // network I/O (a user can cancel during the fetch), but only once rather than twice.
         emitProgress(job, storage.getQueue())
         var providerName: String? = null
         try {
@@ -276,8 +232,7 @@ class DownloadEngine(
                 )
             preflight.mutation?.let(::publishQueueMutation)
             if (preflight.mutation != null) return
-            // Use the shared cached cleanup so regexes compile once per settings change, not once
-            // per chapter. Output is identical to the cleanup engine's stateless contract.
+            // Shared cached cleanup compiles the regexes once per settings change, not once per chapter.
             val clean =
                 CleanupEngine.shared.applyDownload(
                     provider.fetchChapterContent(
@@ -301,13 +256,10 @@ class DownloadEngine(
                     completedAt = System.currentTimeMillis(),
                 ) != null,
             ) { "Chapter not found" }
-            // Re-read the queue once after network I/O so a user cancellation issued during the fetch
-            // is observed (gap 4: this previously triggered two fresh getQueue() parses).
+            // Re-read the queue after network I/O so a cancellation issued during the fetch is observed.
             if (!isCancelled(job.id, storage.getQueue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: CancellationException) {
-            // E2: cancellation must propagate. Scope teardown cancels directly; a user pause/cancel
-            // while this job is still in the pacer is converted to cancellation by the queue-state
-            // checks above so the request never starts after the job stopped being active.
+            // Cancellation must propagate, from scope teardown or a user pause/cancel.
             Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
             throw error
         } catch (error: SourceAccessBlockedException) {
@@ -318,7 +270,7 @@ class DownloadEngine(
                 mutation?.let(::publishQueueMutation)
             }
         } catch (error: Exception) {
-            // E2: catch Exception (not Throwable) so OutOfMemoryError/StackOverflowError propagate.
+            // Exception, not Throwable, so OutOfMemoryError and StackOverflowError propagate.
             if (!isCancelled(job.id, storage.getQueue())) {
                 sourceReliability.handleJobError(job, error, providerName)?.let(::publishQueueMutation)
             }

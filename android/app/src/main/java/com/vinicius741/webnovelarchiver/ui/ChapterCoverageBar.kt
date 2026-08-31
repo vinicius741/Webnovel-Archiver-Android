@@ -14,14 +14,9 @@ import android.widget.TextView
 import com.vinicius741.webnovelarchiver.ui.layout.ChapterCoveragePlanning
 
 /**
- * Horizontal capsule that shows which chapters of a novel are downloaded, plus a bookmark
- * marker. Each chapter occupies one equal-width slot; contiguous runs of downloaded chapters
- * are drawn as single rounded segments in the theme primary. [bookmarkFraction] (0..1, null
- * when there is no bookmark) raises a pin above the bar at the bookmarked chapter's centre:
- * a downward triangle with a stem through the capsule, filled in the theme error colour and
- * outlined in the surface colour so it separates from every theme's fill and track. Drawn
- * from pure primitives (a boolean array + a fraction) so this stays a dumb UI widget with no
- * domain coupling; slot geometry comes from [ChapterCoveragePlanning].
+ * Capsule bar of downloaded chapters, one slot per chapter, contiguous runs as rounded segments,
+ * with an optional bookmark pin raised above. [bookmarkFraction] is 0..1, null when there is no
+ * bookmark. Takes raw primitives only, no domain coupling; geometry from [ChapterCoveragePlanning].
  */
 class ChapterCoverageBar(
     context: Context,
@@ -41,8 +36,7 @@ class ChapterCoverageBar(
             style = Paint.Style.FILL
         }
 
-    /** Surface-coloured stroke drawn under the bookmark pin: an outline that guarantees the
-     *  marker separates from whatever is behind it (fill, track, or card) in every theme. */
+    /** Surface-coloured stroke under the pin so it separates from fill, track, and card in every theme. */
     private val bookmarkHaloPaint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -66,11 +60,7 @@ class ChapterCoverageBar(
         describe()
     }
 
-    /**
-     * A plain [View] with `WRAP_CONTENT` height measures to 0 (no intrinsic height like
-     * [ProgressBar] has), which collapses the bar to nothing. Enforce the total height here so
-     * the bar stays visible regardless of how its layout params are configured at the call site.
-     */
+    /** A plain [View] has no intrinsic height, so WRAP_CONTENT would collapse the bar; enforce the fixed height. */
     override fun onMeasure(
         widthMeasureSpec: Int,
         heightMeasureSpec: Int,
@@ -100,13 +90,9 @@ class ChapterCoverageBar(
         val c = ThemeManager.colors
         trackPaint.color = c.surfaceVariant
         fillPaint.color = c.primary
-        // The marker must stand out against BOTH the filled segments and the track. In some themes
-        // the tertiary colour lands too close to primary (e.g. Obsidian's gold primary vs gold
-        // tertiary), so the bookmark vanishes into the fill. The error red is distinct from every
-        // theme's primary (gold/blue/green/dark-blue) and reads as a clear marker everywhere.
+        // Error red, not tertiary: in some themes tertiary lands too close to primary and the pin
+        // vanishes into the fill. Red is distinct in every theme.
         bookmarkPaint.color = c.error
-        // The halo does the real separation work: a surface-coloured outline around the pin that
-        // contrasts with the red, the primary fill, and the track in all four themes.
         bookmarkHaloPaint.color = c.surface
     }
 
@@ -131,8 +117,7 @@ class ChapterCoverageBar(
     override fun onDraw(canvas: Canvas) {
         if (width <= 0 || height <= 0) return
         applyTheme()
-        // The capsule bar is pinned to the BOTTOM of the view; the strip above it is reserved
-        // for the bookmark pin so it never competes with the fill for the same few pixels.
+        // The capsule is pinned to the bottom; the strip above is reserved for the bookmark pin.
         val barHeight = BAR_HEIGHT_DP * density
         val barTop = height - barHeight
         val radius = barHeight / 2f
@@ -142,25 +127,17 @@ class ChapterCoverageBar(
         if (total <= 0) return
 
         val slotWidth = width.toFloat() / total
-        // ONE rounded rect per contiguous run. Drawing per-chapter slots instead leaves a
-        // track-coloured hairline at every chapter boundary: adjacent anti-aliased edges share
-        // pixels at fractional x positions and never composite to full opacity.
+        // One rounded rect per run: per-chapter rects leave a hairline at each boundary because
+        // adjacent anti-aliased edges never composite to full opacity.
         for (range in ChapterCoveragePlanning.downloadedRuns(downloaded)) {
             runRect.set(range.first * slotWidth, barTop, (range.last + 1) * slotWidth, height.toFloat())
-            // All four corners rounded: runs are separated by at least one empty slot, so the
-            // capsule shape never collides with a neighbour, and runs touching the bar's ends
-            // match the track's rounded caps.
+            // All four corners rounded: runs never touch a neighbour and match the track's rounded ends.
             canvas.drawRoundRect(runRect, radius, radius, fillPaint)
         }
 
         drawBookmarkPin(canvas, total, slotWidth, barTop)
     }
 
-    /**
-     * Draws the bookmark as a pin raised above the bar: a downward triangle whose apex dips into
-     * the capsule, with a slim stem through the capsule's full height. A surface-coloured halo is
-     * stroked under the red fill first, so the marker is outlined against whatever is behind it.
-     */
     private fun drawBookmarkPin(
         canvas: Canvas,
         total: Int,
@@ -174,23 +151,18 @@ class ChapterCoverageBar(
         val cx = ((slot + 0.5f) * slotWidth).coerceIn(triangleHalf + inset, width - triangleHalf - inset)
         val stemHalf = BOOKMARK_STEM_HALF_WIDTH_DP * density
         markerPath.reset()
-        // Triangle: base across the top of the marker strip, apex dipping 1dp into the capsule.
         markerPath.moveTo(cx - triangleHalf, inset)
         markerPath.lineTo(cx + triangleHalf, inset)
         markerPath.lineTo(cx, barTop + density)
         markerPath.close()
-        // Stem through the capsule so the exact bookmarked slot stays unambiguous. Ends `inset`
-        // above the bottom edge so the halo's round cap isn't clipped by the view bounds.
+        // The stem ends inset above the bottom so the halo's round cap is not clipped by the view bounds.
         markerPath.addRect(cx - stemHalf, barTop, cx + stemHalf, height - inset, Path.Direction.CW)
         canvas.drawPath(markerPath, bookmarkHaloPaint)
         canvas.drawPath(markerPath, bookmarkPaint)
     }
 }
 
-/** Compact "X / Y chapters" summary whose bar fills only the chapters actually on disk and
- *  marks the bookmarked chapter with a pin raised above the bar. Mirrors the layout of
- *  [makeProgressSummary] (count text on the left, weighted bar on the right) so it slots into
- *  the same call sites. */
+/** "X / Y chapters" summary that mirrors [makeProgressSummary]: count text left, weighted bar right. */
 class ChapterCoverageSummary(
     context: Context,
     downloaded: BooleanArray,
@@ -245,8 +217,7 @@ fun makeChapterCoverageSummary(
     total: Int,
 ): ChapterCoverageSummary = ChapterCoverageSummary(context, downloaded, bookmarkFraction, done, total)
 
-/** Patches an existing [makeChapterCoverageSummary] in place (count text + bar) without
- *  rebuilding the view hierarchy — used for live download ticks. */
+/** Patches an existing summary in place, used for live download ticks. */
 fun updateChapterCoverageSummary(
     view: View,
     downloaded: BooleanArray,
@@ -257,21 +228,16 @@ fun updateChapterCoverageSummary(
     (view as? ChapterCoverageSummary)?.render(done, total, downloaded, bookmarkFraction)
 }
 
-/** Capsule height (dp) for the [ChapterCoverageBar]. */
 private const val BAR_HEIGHT_DP = 6
 
 /** Height (dp) of the strip above the capsule reserved for the bookmark pin's triangle. */
 private const val BOOKMARK_MARKER_HEIGHT_DP = 5
 
-/** Total [ChapterCoverageBar] height (dp): marker strip + capsule. Fixed regardless of whether a
- *  bookmark exists so binding/unbinding a bookmark never triggers a layout jump. */
+/** Total bar height, fixed with or without a bookmark so binding one never causes a layout jump. */
 private const val COVERAGE_BAR_HEIGHT_DP = BAR_HEIGHT_DP + BOOKMARK_MARKER_HEIGHT_DP
 
-/** Half-width (dp) of the bookmark pin's triangle base. */
 private const val BOOKMARK_TRIANGLE_HALF_WIDTH_DP = 3f
 
-/** Half-width (dp) of the bookmark pin's stem through the capsule. */
 private const val BOOKMARK_STEM_HALF_WIDTH_DP = 1.5f
 
-/** Stroke width (dp) of the surface-coloured halo outlining the bookmark pin. */
 private const val BOOKMARK_HALO_WIDTH_DP = 2.5f

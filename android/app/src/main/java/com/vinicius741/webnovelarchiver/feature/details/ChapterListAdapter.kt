@@ -31,21 +31,9 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
- * RecyclerView adapter for the Details chapter list. Uses view recycling, so novels with
- * hundreds/thousands of chapters no longer inflate one row each on every render/filter tick.
- *
- * Row layout: status leading · title + compact index/state metadata · bookmark. Removing the
- * separate index column gives numeric source titles (e.g. "13.11 …") one clear visual anchor, while
- * the explicitly labeled index preserves the chapter's position in the full list. Metadata also
- * carries the live queue state or a quiet "Downloaded MMM d, yyyy" when known.
- *
- * [chapterStatuses] carries live per-chapter download state from the queue (see
- * [com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning.chapterJobStatuses]) so a row can
- * show real-time feedback — an indeterminate spinner for a chapter being fetched, a queued dot, or a
- * "Failed" state — in addition to the static downloaded/not-downloaded dot.
- *
- * View helpers are Context extensions (`Context.dp`, `Context.tintedIcon`, `Context.makeText`); the
- * adapter resolves the Context from the parent view and threads it through.
+ * RecyclerView adapter for the Details chapter list (recycling keeps huge novels from re-inflating
+ * every row on each render/filter tick). [chapterStatuses] carries live per-chapter download state
+ * from the queue so rows can show spinner/queued/failed feedback beyond the static downloaded dot.
  */
 class ChapterListAdapter(
     private val host: ScreenHost,
@@ -61,17 +49,14 @@ class ChapterListAdapter(
     private val onPick: (String) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
     init {
-        // Stable ids let RecyclerView track rows across DiffUtil updates (and animations) by
-        // chapter id instead of position, so a filter/download tick no longer invalidates everything.
+        // Stable ids: RecyclerView tracks rows by chapter id across DiffUtil updates, not position.
         setHasStableIds(true)
     }
 
-    /** Item types: a distinct, cheaply-bound empty-state row vs the full chapter row. */
     private val typeEmpty = 0
     private val typeChapter = 1
 
-    /** Holder for the normal chapter row. Holds the static skeleton built once in onCreateViewHolder;
-     *  onBindViewHolder only mutates contents (index, title, status, subtitle, bookmark). */
+    /** Skeleton built once in onCreateViewHolder; bind only mutates contents. */
     class RowHolder(
         val row: LinearLayout,
         val statusSlot: FrameLayout,
@@ -80,7 +65,6 @@ class ChapterListAdapter(
         val bookmark: ImageView,
     ) : RecyclerView.ViewHolder(row)
 
-    /** Holder for the empty-state row (a single centered label). */
     class EmptyHolder(
         val row: LinearLayout,
         val label: TextView,
@@ -107,9 +91,8 @@ class ChapterListAdapter(
         this.filter = filter
         this.chapterStatuses = chapterStatuses
         this.waitingChapterIds = waitingChapterIds
-        // Prefer a DiffUtil pass keyed by chapter id so insertions/removals/reorders animate and
-        // only changed rows rebind. When the empty-state toggles, the whole tree changes shape, so
-        // fall back to a full notifyDataSetChanged in that one transition.
+        // DiffUtil keyed by chapter id animates changes and rebinds only changed rows; the
+        // empty-state toggle changes the tree shape, so it needs a full notify.
         if (previousEmpty != isEmptyState) {
             notifyDataSetChanged()
             return
@@ -137,8 +120,6 @@ class ChapterListAdapter(
                     ): Boolean {
                         val (oldIndex, oldChapter) = previous[oldItemPosition]
                         val (newIndex, newChapter) = next[newItemPosition]
-                        // Content identity: position in the story, the displayed title, download state
-                        // (flag + timestamp), the live queue status, and whether this is bookmarked.
                         val nextBookmarkId = story.lastReadChapterId
                         return oldIndex == newIndex &&
                             oldChapter.id == newChapter.id &&
@@ -153,17 +134,15 @@ class ChapterListAdapter(
             ).dispatchUpdatesTo(this)
     }
 
-    /** The query/filter currently applied so the in-place download refresh can re-filter against the
-     *  user's live view without forcing a full screen rebuild. */
+    /** Live query/filter so in-place download refreshes can re-filter without a screen rebuild. */
     fun currentQuery(): String = query
 
     fun currentFilter(): String = filter
 
     override fun getItemViewType(position: Int): Int = if (isEmptyState) typeEmpty else typeChapter
 
-    override fun getItemId(position: Int): Long {
-        // Stable id keyed by chapter id; the empty-state row uses NO_ID.
-        return if (isEmptyState) {
+    override fun getItemId(position: Int): Long =
+        if (isEmptyState) {
             RecyclerView.NO_ID
         } else {
             chapters[position]
@@ -171,7 +150,6 @@ class ChapterListAdapter(
                 .hashCode()
                 .toLong()
         }
-    }
 
     override fun onCreateViewHolder(
         parent: ViewGroup,
@@ -221,9 +199,7 @@ class ChapterListAdapter(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
                         ).apply { bottomMargin = context.dp(Space.XS) }
             }
-        // Build the row skeleton ONCE here. The status slot is a fixed FrameLayout whose child
-        // is swapped in bind; the title column carries the title + a compact metadata line;
-        // the bookmark icon is reused and only re-tinted in bind.
+        // The status slot's leading child is swapped in bind; the rest of the skeleton is reused.
         val statusSlot = chapterStatusSlot(context, host.dot(ThemeManager.colors.outlineVariant))
         val title =
             makeText(context, "", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
@@ -278,10 +254,8 @@ class ChapterListAdapter(
         chapter: Chapter,
     ) {
         val context: Context = holder.row.context
-        // A chapter that isn't downloaded can't be read yet, so it isn't tappable: no ripple, no click
-        // listener. The existing outlineVariant status dot + muted title still show which chapters
-        // remain to be fetched. (A downloading/queued/failed chapter also has downloaded == false, so
-        // it is blocked here too — its live status is still conveyed by the dot/spinner/subtitle.)
+        // Not-downloaded chapters aren't tappable — including downloading/queued/failed ones, whose
+        // live status still shows via the dot/spinner/subtitle.
         val openable = chapter.downloaded
         val radiusPx = context.dp(Space.SM).toFloat()
         holder.row.apply {
@@ -295,15 +269,12 @@ class ChapterListAdapter(
             isFocusable = openable
             setOnClickListener { if (openable) host.showReader(story.id, chapter.id) }
         }
-        // Live status from the download queue takes precedence over the static downloaded flag, so
-        // an in-flight/queued/failed chapter shows real-time feedback rather than "not downloaded".
+        // Queue status takes precedence over the static downloaded flag.
         val liveStatus = chapterStatuses[chapter.id]
         val waitingForDelay = chapter.id in waitingChapterIds
-        // Swap only the leading child of the fixed status slot instead of rebuilding the row.
         setStatusLeading(holder.statusSlot, liveStatus, chapter.downloaded, waitingForDelay, context)
         holder.title.text = ChapterRowPlanning.displayTitle(chapter.title)
-        // Dim the title when the chapter can't be opened so the row reads as disabled, matching the
-        // faint status dot used for non-downloaded chapters.
+        // Dim the title when not openable so the row reads as disabled.
         holder.title.setTextColor(if (openable) ThemeManager.colors.onSurface else ThemeManager.colors.onSurfaceVariant)
         holder.row.contentDescription =
             "Chapter ${ChapterRowPlanning.indexLabel(index)}, ${ChapterRowPlanning.displayTitle(chapter.title)}"
@@ -311,8 +282,7 @@ class ChapterListAdapter(
         holder.subtitleSlot.addView(
             subtitleText(index, liveStatus, chapter.downloaded, chapter.downloadedAt, waitingForDelay, context),
         )
-        // One-tap bookmark (replaces the per-chapter three-dot overflow): empty outline by default,
-        // filled + primary-tinted when this chapter is the novel's bookmark. Tapping toggles it.
+        // One-tap bookmark: outline by default, filled when this is the novel's bookmark.
         val isBookmarked = story.lastReadChapterId == chapter.id
         holder.bookmark.setImageDrawable(
             context.tintedIcon(
@@ -326,8 +296,7 @@ class ChapterListAdapter(
         }
     }
 
-    /** Replace the leading child of the fixed [statusSlot] with the view for [liveStatus]. Cheaper
-     *  than rebuilding the row; the dot/spinner color is baked into the View so it must be swapped. */
+    /** Swaps [statusSlot]'s leading child; colors are baked into Views, so they must be swapped. */
     private fun setStatusLeading(
         statusSlot: FrameLayout,
         liveStatus: DownloadJobStatus?,
@@ -342,8 +311,7 @@ class ChapterListAdapter(
                 DownloadJobStatus.Failed -> host.dot(ThemeManager.colors.error)
                 else -> host.chapterStatusDot(downloaded)
             }
-        // Keep an already-running spinner rather than replacing it on every progress rebind; for
-        // dots (color baked in) always swap so a status change recolors correctly.
+        // Keep a running spinner across rebinds; dots (color baked in) always swap to recolor.
         val current = statusSlot.getChildAt(0)
         val keepSpinner = desired is ProgressBar && current is ProgressBar
         if (keepSpinner) return
@@ -371,7 +339,7 @@ class ChapterListAdapter(
             when (liveStatus) {
                 DownloadJobStatus.Downloading -> if (waitingForDelay) ThemeManager.colors.secondary else ThemeManager.colors.primary
                 DownloadJobStatus.Failed -> ThemeManager.colors.error
-                // Quiet metadata for download date / offline cue so the title stays the focus.
+                // Quiet metadata so the title stays the focus.
                 else -> ThemeManager.colors.onSurfaceVariant
             }
         return makeText(context, label, Type.CAPTION, color).apply {

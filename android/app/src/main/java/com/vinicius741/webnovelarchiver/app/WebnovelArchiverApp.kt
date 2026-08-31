@@ -16,20 +16,13 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * Application entry point. Owns the process-wide [AppContainer] so that the
- * activity and the download/TTS foreground services share a single [com.vinicius741.webnovelarchiver.data.storage.AppStorage],
- * [com.vinicius741.webnovelarchiver.source.network.NetworkClient], and set of engines — preventing duplicate
- * engines from racing on the same JSON files.
- *
- * Observability: plants a [Timber.DebugTree] in debug builds so diagnostics flow to
- * logcat. In release a minimal tree keeps warnings+ so serious failures (caught in catch blocks, or
- * unexpected throwables) are still recorded for bug reports, without leaking verbose debug logs.
+ * Process-wide [AppContainer] so the activity and download/TTS services share one storage,
+ * network client, and engines — duplicate engines would race on the same JSON files.
  */
 class WebnovelArchiverApp : Application() {
     lateinit var container: AppContainer
         private set
 
-    /** Background scope for startup work that must not block the main thread (see onCreate). */
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -43,21 +36,16 @@ class WebnovelArchiverApp : Application() {
         }
         Timber.plant(LocalDiagnosticTree())
         if (BuildConfig.DEBUG) enableDebugStrictMode()
-        // Channels must exist before the Settings screen can show or open their system controls.
-        // Creating them is idempotent and does not trigger the Android 13 runtime permission prompt.
+        // Must exist before Settings opens system controls; creation is idempotent and does not
+        // trigger the Android 13 runtime permission prompt.
         AppNotificationChannels.ensureCreated(this)
-        // Resolve the shared User-Agent asynchronously. WebSettings.getDefaultUserAgent lazily loads
-        // the WebView provider, which is expensive — calling it synchronously on the main thread
-        // here caused a startup ANR (the process failed to complete startup within the system's
-        // window). resolveAsync posts the read to the main Looper without blocking onCreate; until
-        // it completes, SourceUserAgent falls back to a current-ish Chrome UA, which is safe because
-        // no OkHttp request fires during this brief window (the user must navigate to a screen first).
+        // WebSettings.getDefaultUserAgent lazy-loads the WebView provider; calling it synchronously
+        // caused a startup ANR. resolveAsync posts the read; the fallback UA is safe since no
+        // OkHttp request fires before the user navigates somewhere.
         SourceUserAgent.resolveAsync(this)
         container = AppContainer(this).apply { init() }
-        // CookieManager.getInstance() also lazy-loads the WebView provider, so defer cookie
-        // acceptance + provider-declared cookie seeding to the background. OkHttp's AndroidCookieJar
-        // calls CookieManager lazily per-request, so by the time any request actually runs (after the
-        // user navigates) the provider is loaded and the seeded toc_show cookie is in place.
+        // CookieManager.getInstance() also lazy-loads the WebView provider; defer seeding to the
+        // background. OkHttp's cookie jar reads CookieManager lazily per request, so seeds land in time.
         startupScope.launch { enableAndSeedCookies() }
     }
 
@@ -82,8 +70,7 @@ class WebnovelArchiverApp : Application() {
 
     private fun enableAndSeedCookies() {
         runCatching {
-            // The OkHttp AndroidCookieJar and the in-app WebViews all funnel through CookieManager,
-            // so it must accept cookies app-wide before the first network request fires.
+            // OkHttp's cookie jar and the in-app WebViews all funnel through CookieManager.
             CookieManager.getInstance().setAcceptCookie(true)
             SourceRegistry
                 .all()
@@ -96,11 +83,7 @@ class WebnovelArchiverApp : Application() {
     private fun cm() = CookieManager.getInstance()
 }
 
-/**
- * Release-only [Timber.Tree]: emits WARN/ERROR levels with the callsite class tag so the diagnostic
- * logging added alongside catch blocks (Tier 1, T1) survives in shipped builds, while DEBUG/INFO
- * noise is dropped.
- */
+/** Release-only tree: WARN+ only, so diagnostics survive in shipped builds without DEBUG/INFO noise. */
 private class ReleaseLogTree : Timber.Tree() {
     override fun isLoggable(
         tag: String?,
@@ -121,6 +104,5 @@ private class ReleaseLogTree : Timber.Tree() {
     }
 }
 
-/** Convenience accessor for any component holding an application [Context]. */
 val Context.appContainer: AppContainer
     get() = (applicationContext as WebnovelArchiverApp).container

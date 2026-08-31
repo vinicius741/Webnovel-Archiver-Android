@@ -32,12 +32,9 @@ import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
- * Holds the built filter [view] plus a [rebuildChips] hook the screen calls whenever the active
- * tab, search query, or tag selection changes. The available tag/source chips follow that filter
- * context (All = union, a specific tab = only that tab's labels). Each rebuild also preserves the
- * chip row's scroll context — the tapped chip is pinned at its on-screen position and the surviving
- * chips keep their order — so narrowing the row never makes it jump away from where the user is
- * looking.
+ * Filter bar [view] plus [rebuildChips] (called on tab/search/tag changes). Chips follow that
+ * filter context; rebuilds preserve chip-row scroll — the tapped chip stays pinned and surviving
+ * chips keep their order.
  */
 internal class LibraryFiltersView(
     val view: View,
@@ -66,7 +63,6 @@ internal fun ScreenHost.makeLibraryFilters(
             topMargin = dp(Space.SM)
         }
 
-    // Search + sort row
     val searchRow =
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -74,8 +70,7 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     searchRow.addView(search, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-    // Live sort state for this filter bar. The parameters above are only the *initial* snapshot;
-    // the chip's label and click listener must read these mutable locals to track dialog picks.
+    // The parameters are only the initial snapshot; the chip reads these locals to track dialog picks.
     var currentSortOption = LibraryFiltersPlanning.normalizeSortOption(sortOption)
     var currentSortAscending = sortAscending
 
@@ -105,8 +100,7 @@ internal fun ScreenHost.makeLibraryFilters(
         LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            // Match the search field's 48dp minimum height so the two filter controls form one
-            // visually aligned row instead of the sort chip shrinking to its content height.
+            // Match the search field's 48dp min height so the two controls align.
             minimumHeight = context.dp(48)
             setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
             background =
@@ -142,8 +136,7 @@ internal fun ScreenHost.makeLibraryFilters(
     )
     filtersContainer.addView(searchRow)
 
-    // Tag chips. [populateChips] rebuilds them whenever the active tab or search changes; they are
-    // allocated up front (unconditionally) so a refresh can show chips even if the entry tab had none.
+    // Chips are allocated up front so a refresh can show them even if the entry tab had none.
     val tagScroll =
         HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
@@ -160,31 +153,21 @@ internal fun ScreenHost.makeLibraryFilters(
         },
     )
 
-    // Recompute the chip set for the active tab. Labels, counts, and presence derive from the
-    // stories still visible under the active filter context: the tab plus the current search query
-    // and selected tags, so only tag combinations that can actually match something are offered
-    // ([LibraryQuery.availableFilterGroups]). When the active filters match nothing, that function
-    // falls back to the tab's full label set so the active chips never vanish and stay deselectable.
-    // The collapsible header's active-filter indicators (badge dot + "•") are synced here too so a
-    // tag toggle keeps them honest; assigned by the wrapper branch below, no-op without tabs.
+    // Labels derive from stories visible under the tab + search + selected tags
+    // ([LibraryQuery.availableFilterGroups]; falls back to the tab's full label set when nothing
+    // matches). syncActiveFilters — assigned below when tabs exist — keeps the header honest.
     var syncActiveFilters: (Set<String>) -> Unit = { _ -> }
-    // Identity of the chip the user just tapped, consumed by the next rebuild so it can pin that
-    // chip at the viewport position where it was tapped. Without a pin, the narrowed row re-sorts
-    // itself by the new counts and the viewport reflows, so the chip being selected can jump out
-    // of view (or the row can visibly snap back to the start) whenever the tap lands mid-row.
+    // The chip the user just tapped, pinned by the next rebuild at its viewport position — without
+    // a pin, the narrowed row re-sorts by the new counts and the selected chip can jump out of view.
     var lastToggledLabel: String? = null
-    // Tab the current chip set was built for; a change means the chips are a brand-new set and the
-    // row should reset to the start instead of preserving the previous scroll context.
+    // Tab the chip set was built for; a change resets the row to the start.
     var lastTabId: String? = null
-    // Render order from the previous chip build, per group. Narrowing keeps the surviving chips in
-    // the order the user already saw them instead of re-sorting by the new counts, so the row does
-    // not reshuffle under the tap. The first build (and tab switches) still use LibraryQuery's
-    // frequency-then-name order.
+    // Previous render order per group: narrowing keeps surviving chips in the order the user saw;
+    // first build and tab switches use LibraryQuery's frequency-then-name order.
     var lastSourceOrder: List<String> = emptyList()
     var lastTagOrder: List<String> = emptyList()
-    // The pending layout listener for [restoreChipScroll]. Only one is ever registered at a time:
-    // each rebuild removes the previous one before installing its own, so a burst of rebuilds (e.g.
-    // fast search typing) can't stack listeners that each fire `scrollTo` with a stale scroll.
+    // Only one layout listener at a time: each rebuild removes the previous one, so bursts of
+    // rebuilds can't stack stale `scrollTo` calls.
     var pendingScrollListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     fun stableOrder(
@@ -195,10 +178,8 @@ internal fun ScreenHost.makeLibraryFilters(
         return previous.mapNotNull { byLabel[it] } + labels.filter { it.first !in previous }
     }
 
-    // HorizontalScrollView re-clamps (and effectively resets) the viewport when its content is
-    // rebuilt, so the scroll position must be re-applied after the new row is measured. Pinning
-    // the tapped chip keeps it under the user's finger; otherwise the previous scroll position is
-    // preserved. Tab switches reset to the start on purpose.
+    // HorizontalScrollView resets its viewport when content is rebuilt, so scroll is re-applied
+    // after the new row is measured; the tapped chip stays under the finger, tab changes reset.
     fun restoreChipScroll(
         tabChanged: Boolean,
         anchorLabel: String?,
@@ -235,9 +216,8 @@ internal fun ScreenHost.makeLibraryFilters(
         val tabChanged = currentTabId != lastTabId
         lastTabId = currentTabId
 
-        // Capture the tapped chip's viewport position before the row is rebuilt. `lastToggledLabel`
-        // is null for search/tab rebuilds, which instead preserve the previous scroll (tab changes
-        // deliberately reset to the start).
+        // Capture the tapped chip's viewport position before the rebuild; null for search/tab
+        // rebuilds, which preserve the previous scroll (tabs reset to the start).
         var anchorViewportX: Int? = null
         if (!tabChanged && lastToggledLabel != null) {
             for (i in 0 until tagRow.childCount) {
@@ -265,9 +245,7 @@ internal fun ScreenHost.makeLibraryFilters(
         lastTagOrder = orderedTags.map { it.first }
 
         tagRow.removeAllViews()
-        // Render every available label as a chip — no artificial cap. `availableFilterGroups` already
-        // returns one entry per unique source/tag (sorted by frequency then name), and the row sits
-        // inside a HorizontalScrollView, so a large label set just scrolls instead of being truncated.
+        // No artificial cap on chip count; the row just scrolls.
         orderedSources.forEach { (label, count) ->
             val selected = currentTags.contains(label)
             val chip =
@@ -300,8 +278,7 @@ internal fun ScreenHost.makeLibraryFilters(
             )
         }
         val rowHasChips = sourceLabels.isNotEmpty() || tagLabels.isNotEmpty()
-        // Hide the row entirely when the active tab offers no chips, so the empty scroll view does
-        // not leave a stray gap below the search/sort row.
+        // Hide the row when the tab offers no chips so the empty scroll view leaves no stray gap.
         tagScroll.visibility = if (rowHasChips) View.VISIBLE else View.GONE
         syncActiveFilters(currentTags)
         restoreChipScroll(tabChanged, anchorLabel, anchorViewportX, previousScrollX, rowHasChips)
@@ -313,12 +290,9 @@ internal fun ScreenHost.makeLibraryFilters(
         return LibraryFiltersView(filtersContainer, populateChips, syncActiveFilters)
     }
 
-    // Collapsible wrapper when tabs exist
     val wrapper = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    // The chevron is decorative only — its tap is handled by `toggleWrap`'s listener (below). It must
-    // NOT be clickable/focusable, otherwise Android dispatches the touch to this ImageView (which has
-    // its own no-op listener from iconButtonSmall), consumes it, and the parent never expands — leaving
-    // the search/sort/tag filters trapped behind View.GONE and the whole filter row unresponsive.
+    // Decorative only: if clickable, Android dispatches the touch to this ImageView (which has its
+    // own no-op listener), consumes it, and the parent never expands.
     val toggleIcon =
         context
             .iconButton(R.drawable.wna_chevron_down, "Toggle filters", style = com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Small)
@@ -326,9 +300,8 @@ internal fun ScreenHost.makeLibraryFilters(
                 isClickable = false
                 isFocusable = false
             }
-    // Active-filter indicators (badge dot + "•" next to the "Filters" label), always allocated and
-    // shown/hidden by [syncActiveFilters] so they track live tag/search state instead of the initial
-    // snapshot. Both are decorative only; the tap target is `toggleWrap`.
+    // Active-filter indicators, shown/hidden by [syncActiveFilters]; decorative only — the tap
+    // target is `toggleWrap`.
     val activeDot =
         View(context).apply {
             layoutParams =

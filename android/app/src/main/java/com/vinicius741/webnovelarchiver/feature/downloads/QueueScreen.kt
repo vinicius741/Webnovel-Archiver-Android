@@ -68,15 +68,12 @@ internal fun ScreenHost.showQueue() {
     lateinit var emptySlot: FrameLayout
     lateinit var list: RecyclerView
     val initialGlobalActions = DownloadManagerPlanning.globalActions(DownloadCounts.from(queue))
-    // Gear is a fixed first action (always reachable); the per-queue actions append behind it so the
-    // dynamically recomputed set (Resume/Pause/Retry/Cancel/Clear) still drives the rest of the bar.
+    // Gear is a fixed first action; the recomputed global set drives the rest of the bar.
     val appBarActions =
         listOf(AppBarAction(R.drawable.wna_settings, "Download Settings") { showDownloadSettings() }) +
             globalAppBarActions(initialGlobalActions)
     screen(route = AppRoute.Queue, title = "Downloads", onBack = { showLibrary() }, actions = appBarActions) {
-        // Center everything in a width-capped column (920/1080dp by width class) so the queue doesn't
-        // stretch edge-to-edge on tablets/the Fold inner display. On phone widths the cap is larger
-        // than the screen so it has no effect.
+        // Width-capped centered column so tablets/Fold don't stretch edge-to-edge; no effect on phones.
         val centered =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -109,7 +106,6 @@ internal fun ScreenHost.showQueue() {
                 itemAnimator = null
                 overScrollMode = View.OVER_SCROLL_NEVER
             }
-        // Give the progress summary + status chips a bottom gap so they don't touch the chapter list.
         centered.addView(
             summarySlot,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -187,8 +183,6 @@ private fun ScreenHost.updateQueueContent(
     summarySlot.removeAllViews()
     emptySlot.removeAllViews()
     if (queue.isEmpty()) {
-        // No summary or list to show: collapse the summary block entirely (including its bottom gap)
-        // so the empty state sits flush at the top.
         summarySlot.visibility = View.GONE
         list.visibility = View.GONE
         emptySlot.visibility = View.VISIBLE
@@ -222,10 +216,7 @@ private fun ScreenHost.updateQueueContent(
     adapter.submitQueue(queue, pacingSnapshots, nowMillis)
 }
 
-/**
- * The all-pending blocked state has no failed jobs, so none of the retry-keyed solve triggers can
- * fire: the queue looks stalled with no way out. Answer it with an explicit verify action here.
- */
+/** The all-pending blocked state has no failed jobs for the retry-keyed solve flow; offer an explicit verify action. */
 private fun ScreenHost.appendBlockedVerificationBanner(
     summarySlot: LinearLayout,
     queue: List<DownloadJob>,
@@ -267,7 +258,6 @@ private fun ScreenHost.appendBlockedVerificationBanner(
     )
 }
 
-/** Global (whole-queue) actions rendered as a stable app-bar icon strip. */
 private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): List<AppBarAction> =
     actions.map { action ->
         when (action) {
@@ -318,12 +308,8 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
     }
 
 /**
- * U2: a recycled, persistent card shell for one story's download group. The card, header, title,
- * subtitle, progress summary, action group, and job-rows body are built once in [createQueueGroupCard];
- * [bind] repopulates only the dynamic contents (header text/progress, the action group whose enabled
- * set depends on live counts, and the job rows). This replaces the previous per-bind full subtree
- * rebuild (`removeAllViews()` + `addStoryGroup(...)`), so recycling now actually reuses the heavy card
- * instead of reconstructing it on every bind.
+ * Recycled card shell for one story's group: heavy views are built once; [bind] repopulates only
+ * the dynamic contents instead of rebuilding the subtree on every bind.
  */
 internal class QueueGroupCard(
     val view: LinearLayout,
@@ -371,7 +357,6 @@ internal class QueueGroupCard(
             }
         chevron.rotation = if (expanded) 0f else -90f
 
-        // Progress summary + action group are small views; rebuild only their contents in place.
         progressSlot.removeAllViews()
         progressSlot.addView(makeProgressSummary(host.app, counts.completed, counts.total).root)
         actionSlot.removeAllViews()
@@ -382,7 +367,6 @@ internal class QueueGroupCard(
             onToggle()
         }
 
-        // Body: only the job rows are rebuilt — and only when expanded. This is the cheap part.
         body.removeAllViews()
         if (expanded) {
             body.addView(makeDivider(host.app))
@@ -394,8 +378,7 @@ internal class QueueGroupCard(
     }
 }
 
-/** Inline story-header action icons (pause/resume/cancel/retry as relevant). Tapping the header
- *  row toggles expand; these icons are clickable children so they consume the touch and don't. */
+/** Inline header action icons; clickable children consume the touch so they don't toggle expand. */
 private fun ScreenHost.storyActionGroup(
     storyId: String,
     jobs: List<DownloadJob>,
@@ -504,8 +487,6 @@ internal fun ScreenHost.addQueueJobRow(
     return row
 }
 
-/** Inline status-driven action icons for a single chapter, mirroring the legacy RN layout: at most
- *  two icons (e.g. pause + cancel, retry + remove) sit at the row's right edge. */
 private fun ScreenHost.addChapterActions(
     container: LinearLayout,
     job: DownloadJob,
@@ -551,7 +532,6 @@ private fun ScreenHost.chapterActionButton(
             }
     }
 
-/** Compact tappable icon used by the inline action groups. */
 internal fun ScreenHost.iconAction(
     icon: Int,
     tint: Int,

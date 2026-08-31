@@ -5,14 +5,10 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Pure planning for trend-chart axis ranges.
- *
- * The Trends charts originally pinned the score Y axis to 0–5 and the Patreon axes to start at 0.
- * With the small week-to-week movement these metrics actually have (a score oscillating between
- * 4.6 and 4.8, a member count creeping from 1200 to 1250) that rendered as a flat line hugging
- * the top of the chart — the graph carried no visible information. [yAxisRange] instead fits the
- * axis to the recorded data with a padding margin, clamped to the metric's valid domain, so small
- * variations stay visible. Kept Android-free so the math is unit-testable.
+ * Pure planning for trend-chart axis ranges. A fixed axis (score 0–5, counts from 0) renders these
+ * small week-to-week movements as flat lines hugging a chart edge; [yAxisRange] instead fits the
+ * data with a padding margin, clamped to the metric's valid domain. Android-free for
+ * unit-testability.
  */
 object TrendAxisPlanning {
     /** Fraction of the data span added as headroom on each side of the fitted range. */
@@ -25,14 +21,10 @@ object TrendAxisPlanning {
     const val FLAT_WINDOW_MIN = 1.0
 
     /**
-     * Computes `[min, max]` for the Y axis from the recorded [points], fitted to the data so small
-     * movements stay visible, then clamped to `[hardMin, hardMax]` — the metric's valid domain
-     * (a score can never leave 0–5; a count or a cent amount can never go below 0).
-     *
-     * A flat series (all points equal) gets a symmetric window around the value so the flat line
-     * renders mid-chart instead of collapsing onto an axis edge. The result always has `max > min`
-     * so the chart never receives a zero-height range. Returns `null` when there are no points;
-     * the caller then leaves the chart's own auto-range in place.
+     * `[min, max]` for the Y axis fitted to [points], clamped to `[hardMin, hardMax]` — the
+     * metric's valid domain (score 0–5; counts/cents never below 0). A flat series gets a
+     * symmetric window; the result always has `max > min`. Null when empty — the caller keeps the
+     * chart's auto-range.
      */
     fun yAxisRange(
         points: List<MetricPoint>,
@@ -52,9 +44,8 @@ object TrendAxisPlanning {
             }
         val clampedMin = max(hardMin, dataMin - pad)
         val clampedMax = min(hardMax, dataMax + pad)
-        // Clamping can only collapse/invert the range when the data itself lies outside the stated
-        // domain (e.g. a provider stored a score above 5). Show that data as recorded rather than
-        // hiding it behind the clamp.
+        // Clamp can only invert when data lies outside the stated domain (e.g. a stored score
+        // above 5) — show it as recorded rather than hiding it.
         return if (clampedMin < clampedMax) clampedMin to clampedMax else (dataMin - pad) to (dataMax + pad)
     }
 }

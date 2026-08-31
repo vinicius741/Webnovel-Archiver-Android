@@ -19,31 +19,22 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /*
- * Description narration for the Details screen. Speaks the story's description through the same
- * engine/settings/foreground-service pipeline as chapter TTS (sessions keyed by
- * [TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID]) and owns the two on-screen affordances:
- *
- *  - the "Listen" button beside the description (engages, then doubles as pause/resume), and
- *  - the docked transport bar (prev sentence / play-pause / next sentence / stop) that stays
- *    visible no matter where the info panel has scrolled.
- *
- * System media controls + the TTS notification also pause/stop playback, as with chapter TTS.
+ * Description narration for the Details screen: same engine/settings/foreground-service pipeline
+ * as chapter TTS (sessions keyed by [TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID]). Owns the
+ * "Listen" button and the docked transport bar; media controls and the TTS notification also
+ * pause/stop playback.
  */
 
-/** The single details collector is replaced whenever the screen is rebuilt. */
+/** Replaced whenever the Details screen is rebuilt. */
 internal var activeDetailsTtsStateJob: Job? = null
 
-/** Cancels the active details collector before its views are torn down or replaced. */
 internal fun ScreenHost.detachDetailsTtsListener() {
     activeDetailsTtsStateJob?.cancel()
     activeDetailsTtsStateJob = null
 }
 
-/**
- * Seeds the initial Details transport/button state. Prefers the live engine snapshot; before the
- * engine publishes an authoritative state (cold start) it falls back to the persisted session so a
- * paused description narration still shows "Resume" when the screen reopens.
- */
+/** Seeds initial state: prefers the live snapshot; before the engine is authoritative (cold
+ *  start) falls back to the persisted session so paused narration still shows "Resume". */
 internal fun detailsDescriptionSnapshotSeed(
     persisted: TtsSession?,
     update: TtsPlaybackUpdate,
@@ -72,7 +63,6 @@ internal fun ScreenHost.toggleDescriptionTts(story: Story) {
     }
 }
 
-/** Reflects the current description-playback state on the Listen button. */
 internal fun renderDescriptionTtsButton(
     button: Button,
     storyId: String,
@@ -104,12 +94,9 @@ internal fun renderDescriptionTtsButton(
     )
 }
 
-/**
- * Collects the replaying playback state while this Details screen is alive to reveal/hide the
- * docked transport and keep the Listen button in sync. Only snapshots for THIS story's description
- * session are acted on, so chapter playback (owned by the reader transport + media notification)
- * never cross-talks.
- */
+/** Collects the replaying playback state while this Details screen is alive to drive the docked
+ *  transport and Listen button; ignores other stories/sessions so chapter playback never
+ *  cross-talks. */
 internal fun ScreenHost.observeDetailsDescriptionTts(
     story: Story,
     listenButton: Button?,
@@ -145,8 +132,7 @@ private fun renderDescriptionTtsState(
     storyId: String,
     snapshot: TtsPlaybackSnapshot?,
 ) {
-    // The bar is always present in the tree; visibility toggles so a session that starts after the
-    // screen was built reveals it live (same pattern as the reader transport).
+    // The bar stays in the tree; visibility toggles so a session starting later reveals it live.
     transportBar.visibility = if (snapshot != null) View.VISIBLE else View.GONE
     transportPlayPause?.let { button ->
         val isPaused = snapshot?.isPaused != false

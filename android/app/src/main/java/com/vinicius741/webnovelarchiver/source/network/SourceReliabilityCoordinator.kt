@@ -22,13 +22,10 @@ data class SourceReliabilitySnapshot(
 )
 
 /**
- * Process-wide source-safety, circuit-breaker, and browser-transport state for source traffic.
- *
- * Every network consumer shares one instance through [com.vinicius741.webnovelarchiver.app.AppContainer],
- * so update sync, downloads, cover fetches, and retries cannot independently consume the same
- * source's built-in request budget or server-directed cooldown. User-configured download pacing is
- * deliberately owned by the download layer and must not be stored here. Waiting always occurs
- * outside the per-host mutex.
+ * Process-wide source-safety, circuit-breaker, and browser-transport state, shared by every
+ * consumer via [com.vinicius741.webnovelarchiver.app.AppContainer] so none can independently drain
+ * a source's budget. User download pacing belongs to the download layer; always wait outside the
+ * per-host mutex.
  */
 @Suppress("TooManyFunctions")
 class SourceReliabilityCoordinator(
@@ -54,11 +51,8 @@ class SourceReliabilityCoordinator(
     private val states = ConcurrentHashMap<String, HostState>()
 
     /**
-     * Snapshot of the state that must survive process death: an open manual circuit would
-     * otherwise be forgotten while the download queue still resumes via its durable jobs, and a
-     * sticky Chromium-transport window would be lost to a fresh OkHttp probe that Cloudflare has
-     * already rejected. Rolling-window and consecutive-success bookkeeping are intentionally not
-     * persisted — they self-heal within one request window.
+     * Only state that must survive process death (open manual circuit, sticky Chromium window,
+     * adaptive gap). Rolling-window bookkeeping is intentionally not persisted — it self-heals.
      */
     fun persistableStates(): List<PersistedHostReliability> =
         states.entries
@@ -79,11 +73,7 @@ class SourceReliabilityCoordinator(
                 }
             }.sortedBy { it.key }
 
-    /**
-     * Restores persisted state; timestamps already in the past simply expire on their own.
-     * Deliberately does not fire [onStateChanged]: the store already describes this state, so
-     * persisting it back would be a redundant write (on the main thread, from startup).
-     */
+    /** Restores persisted state; past timestamps expire on their own. Skips [onStateChanged] to avoid a redundant startup write. */
     fun restore(persisted: List<PersistedHostReliability>) {
         persisted.forEach { host ->
             val state = stateFor(host.key)
@@ -223,12 +213,7 @@ class SourceReliabilityCoordinator(
         onStateChanged()
     }
 
-    /**
-     * True while the manual-verification circuit is open for this host. Download scheduling uses
-     * this to stop offering jobs for the source (waiting for a human) instead of letting every
-     * queued job burn itself to a terminal failure against the open circuit. [key] may be a host
-     * name or a provider id — state keys are provider ids.
-     */
+    /** True while the manual circuit is open; [key] may be a host or provider id — state keys are provider ids. */
     fun isManualVerificationRequired(key: String): Boolean {
         val state = stateFor(key)
         synchronized(state) {
@@ -269,9 +254,8 @@ class SourceReliabilityCoordinator(
     }
 
     /**
-     * Network changes invalidate prepared page content, but do not erase server-directed cooldowns
-     * or the rolling request budget. Retaining sticky Chromium mode makes the next request perform a
-     * fresh browser load without first probing the source through the rejected native fingerprint.
+     * Keeps cooldowns and the request budget across network changes, and extends the sticky
+     * Chromium window to force a fresh browser load on the next request.
      */
     fun onNetworkChanged() {
         states.values.forEach { state ->
@@ -307,10 +291,7 @@ class SourceReliabilityCoordinator(
                 }
             }.sortedBy { it.host }
 
-    /**
-     * Known host aliases share the provider's stable source budget. This matches Cloudflare zones
-     * and source-owned origin limits more closely than treating every subdomain as a separate site.
-     */
+    /** Host aliases share the provider's stable budget — closer to Cloudflare zones than per-subdomain accounting. */
     private fun stateFor(host: String): HostState {
         val normalizedHost = host.lowercase(Locale.US).removePrefix("www.")
         val provider = SourceRegistry.providerForHost(normalizedHost)

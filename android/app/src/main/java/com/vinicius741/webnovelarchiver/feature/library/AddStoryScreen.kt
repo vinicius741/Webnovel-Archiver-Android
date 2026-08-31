@@ -37,14 +37,9 @@ import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showAddStory() {
     val tabs = repository.getTabs().sortedBy { it.order }
-    // Re-renderable state: the URL the user typed and the current fetch status, captured by the
-    // screen closure so they survive the re-renders we trigger as the sync progresses. Keeping the
-    // flow on this screen (instead of navigating to a separate "Working" page) means the user stays
-    // in context — the button flips to "Fetching..." and a spinner+status line appear beneath it.
-    //
-    // When invoked while idle (the FAB / empty-state CTAs all route here), treat it as a fresh open
-    // and clear any leftover URL draft from a previous visit. A non-null status means we're mid-fetch
-    // and this call is a status-driven re-render, so preserve both fields as-is.
+    // URL text + fetch status live in ScreenHost state so they survive status-driven re-renders;
+    // the flow stays on this screen (button flips to "Fetching...", spinner + status line appear).
+    // Null status = fresh open: clear any leftover URL draft. Non-null = mid-fetch re-render.
     if (addStoryStatus == null) {
         addStoryUrlText = ""
     }
@@ -64,15 +59,13 @@ internal fun ScreenHost.showAddStory() {
                 "Story URL",
                 android.text.InputType.TYPE_TEXT_VARIATION_URI,
             ).apply {
-                // Roomier vertical padding than the compact field style shared with search bars/dialogs,
-                // so this primary URL input is easier to tap and read.
+                // Roomier padding than the compact search/dialog field style — this is the
+                // primary URL input.
                 setPadding(context.dp(Space.MD + 2), context.dp(Space.MD), context.dp(Space.MD + 2), context.dp(Space.MD))
-                // Mirror typing into the captured state so a status-driven re-render restores the
-                // exact text the user entered rather than blanking the field.
+                // Mirror typing into state so a re-render restores the exact text, not a blank field.
                 doAfterTextChanged { addStoryUrlText = it?.toString().orEmpty() }
             }
-        // Paste button beside the field — a one-tap content-paste affordance that reads the system
-        // clipboard instead of long-pressing the field.
+        // One-tap paste from the system clipboard, beside the field.
         val pasteButton =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -95,7 +88,7 @@ internal fun ScreenHost.showAddStory() {
                     },
                 )
                 setOnClickListener {
-                    if (status != null) return@setOnClickListener // Ignore while a fetch is in flight.
+                    if (status != null) return@setOnClickListener
                     val clip = clipboardText()?.trim()
                     if (clip.isNullOrEmpty()) {
                         toast("Clipboard is empty")
@@ -135,8 +128,8 @@ internal fun ScreenHost.showAddStory() {
             ) {
                 val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
                 val tabId = tabs.getOrNull(spinnerPos)?.id
-                // syncStory emits the first status ("Starting...") via onStatus, which re-renders
-                // this screen with the button disabled — no need to set/toggle state manually here.
+                // syncStory's first onStatus re-renders with the button disabled — no manual
+                // state toggling needed here.
                 syncStory(
                     url.text.toString(),
                     tabId,
@@ -157,39 +150,32 @@ internal fun ScreenHost.showAddStory() {
                 )
             }
         if (fetching) disableButton(fetchButton)
-        // Inline progress block: a small spinner + the live status message from the sync engine,
-        // rendered right where the user tapped so the screen never changes beneath them.
+        // Spinner + live sync status rendered inline where the user tapped.
         status?.let { msg ->
             addView(makeAddStoryProgress(context, msg))
         }
-        // Each source row opens a Custom Tab at the source's baseUrl where the user can sign in,
-        // browse, and use the in-tab Import action.
+        // Each row opens a Custom Tab at the source's baseUrl (sign in, browse, in-tab Import).
         section("Or browse a source")
         sourcePickerRows(context) { provider -> showBrowser(provider.baseUrl) }
             .forEach { addView(it) }
     }
 }
 
-/**
- * In-place fetch status shared across the Add Story screen's re-renders. `null` = idle (no fetch in
- * flight); a non-null string is the latest status message from the sync engine and renders the
- * inline spinner + status line while blocking the Fetch button. Declared on [ScreenHost] so it
- * survives re-renders just like [com.vinicius741.webnovelarchiver.navigation.StoryOperationState].
- */
+/** Fetch status shared across re-renders: null = idle; non-null renders the inline spinner and
+ *  blocks the Fetch button. */
 internal var ScreenHost.addStoryStatus: String?
     get() = addStoryScreenState.status
     set(value) {
         addStoryScreenState.status = value
     }
 
-/** URL field text persisted across status-driven re-renders of the Add Story screen. */
+/** URL field text persisted across status-driven re-renders. */
 internal var ScreenHost.addStoryUrlText: String?
     get() = addStoryScreenState.urlText
     set(value) {
         addStoryScreenState.urlText = value
     }
 
-/** Inline spinner + status message block shown beneath the Fetch button while a fetch is in flight. */
 private fun makeAddStoryProgress(
     context: android.content.Context,
     message: String,

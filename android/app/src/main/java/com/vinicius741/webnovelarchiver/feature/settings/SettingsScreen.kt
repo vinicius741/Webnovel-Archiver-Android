@@ -58,7 +58,7 @@ private data class SourceDownloadInputs(
 
 internal fun ScreenHost.showSettings() {
     val displayPreferences = repository.getDisplayPreferences()
-    // Re-render so toggling "Large Screen Layout" / width changes re-centers the capped content live.
+    // Re-render so layout/width toggles re-center the capped content live.
     rerender = { showSettings() }
     val layout = currentScreenLayout()
     screen(route = AppRoute.Settings, title = "Settings", onBack = { showLibrary() }, scrollable = true) {
@@ -98,17 +98,15 @@ internal fun ScreenHost.showSettings() {
                 }
             }
         }
-        // EPUB volume splitting is controlled per-story / Download Settings ("Max chapters per EPUB"),
-        // not a global Cover/Inner toggle. foldLayoutMode remains in DisplayPreferences for backup
-        // compatibility but is intentionally not exposed here — nothing in the EPUB engine reads it.
+        // EPUB volume splitting is per-story in Download Settings. foldLayoutMode stays in
+        // DisplayPreferences for backup compatibility but nothing reads it.
         divider()
         section("Reading & Audio")
         settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
         settingRow(R.drawable.wna_auto_awesome, "AI Settings", "OpenRouter API key and models for AI descriptions") { showAiSettings() }
         divider()
-        // Operational destinations live off the Library top bar (Downloads) or are promoted here as
-        // ungrouped rows without their own noisy single-row section header.
+        // Ungrouped rows avoid single-row section headers; Downloads lives on the Library top bar.
         settingRow(R.drawable.wna_notifications, "Notifications", "Manage downloads and text-to-speech alerts") {
             showNotifications()
         }
@@ -116,22 +114,15 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_check, "Organize Novels", "Select, move, or delete novels in your library") {
             showLibrarySelection()
         }
-        // Storage issues surface as a marker on the title so the row still draws attention without
-        // permanently occupying its own slot in the main list.
+        // Storage issues surface as a title marker instead of occupying their own row.
         val storageHealth = repository.getStorageHealth()
         val dataBackupTitle = if (storageHealth.requiresUserAttention) "Data & Backup •" else "Data & Backup"
         settingRow(R.drawable.wna_folder, dataBackupTitle, "Backups, source access, and storage tools") {
             showDataBackup()
         }
-        // Width cap: on large screens, constrain this content LinearLayout and center it within the
-        // ScrollView so Settings doesn't stretch edge-to-edge (expanded → 840dp, medium → 720dp).
-        // No-op on compact widths where the cap exceeds the screen.
-        //
-        // This block runs inside `screen(...)`'s content builder, where `this` is the content
-        // LinearLayout *before* it is added to its ScrollView parent. At that point the view has no
-        // layout params yet (layoutParams == null), so reading/casting them NPEs. We instead set fresh
-        // FrameLayout.LayoutParams (the ScrollView is a FrameLayout) with a fixed width and centered
-        // gravity; the scaffold assigns exactly these params when it wraps content in the ScrollView.
+        // Cap and center the content on large screens (expanded 840dp, medium 720dp); no-op on
+        // compact widths. Runs inside the content builder, where the view has no layoutParams yet —
+        // set fresh FrameLayout.LayoutParams, exactly what the scaffold assigns to ScrollView content.
         if (layout.widthClass != com.vinicius741.webnovelarchiver.ui.layout.WidthClass.COMPACT) {
             val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
             layoutParams =
@@ -144,17 +135,13 @@ internal fun ScreenHost.showSettings() {
     }
 }
 
-/**
- * Aggregated home for the heavy, rarely-used action rows that would clutter the main Settings
- * screen: backup/restore (JSON + ZIP), source-session maintenance, storage notices, and
- * destructive reset.
- */
+/** Heavy, rarely-used rows: backup/restore, source-session maintenance, storage notices, reset. */
 internal fun ScreenHost.showDataBackup() {
     backupExportState.reconcile()
     screen(route = AppRoute.DataBackup, title = "Data & Backup", onBack = { showSettings() }, scrollable = true) {
         section("Backup")
-        // The host-owned state prevents concurrent exports and survives configuration re-renders.
-        // Each controller is captured via a nullable holder so the click lambda can update its row.
+        // Host-owned state prevents concurrent exports and survives re-renders; the nullable
+        // holder lets the click lambda update its row.
         var exportRow: com.vinicius741.webnovelarchiver.ui.SettingActionRow? = null
         settingRowWithLoading(
             R.drawable.wna_share,
@@ -253,13 +240,11 @@ internal fun ScreenHost.showDataBackup() {
     }
 }
 
-/** Download settings sub-screen: parallel source lanes plus per-source delay overrides. */
 internal fun ScreenHost.showDownloadSettings() {
     val settings = repository.getSettings()
     val sourceSettings = repository.getSourceDownloadSettings()
     screen(route = AppRoute.DownloadSettings, title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
-        // Parallelism is across independent sources. Each source itself owns one sequential request
-        // lane, with the delay defaults below applied between starts in that lane.
+        // Parallelism is across sources; each source runs one sequential lane with its delay between starts.
         section("Defaults")
         text(
             "Download from different sources together. Requests to the same source stay sequential and use its own delay.",
@@ -267,9 +252,8 @@ internal fun ScreenHost.showDownloadSettings() {
             ThemeManager.colors.onSurfaceVariant,
         )
         spacer(Space.XS)
-        // Group the three number fields in one card so they read as a unit and don't sit bare on the
-        // background next to the carded source overrides below. `labeledField` adds itself to the card
-        // receiver and returns the EditText; capture via nullable vars (same pattern as the source cards).
+        // One card so the number fields read as a unit; labeledField adds itself to the card and
+        // returns the EditText, so capture via nullable vars.
         var parallelSources: EditText? = null
         var delayMin: EditText? = null
         var delayMax: EditText? = null
@@ -291,8 +275,7 @@ internal fun ScreenHost.showDownloadSettings() {
             },
         )
 
-        // Per-source overrides affect pacing only. Source concurrency is deliberately fixed at one;
-        // throughput comes from independent sources rather than parallel requests to one website.
+        // Overrides affect pacing only; per-source concurrency is deliberately fixed at one.
         section("Source Delay Overrides")
         text(
             "Replace the delay defaults for a specific source. Fields appear when you enable an override.",
@@ -306,9 +289,8 @@ internal fun ScreenHost.showDownloadSettings() {
                 var toggle: CheckBox? = null
                 var sourceDelayMin: EditText? = null
                 var sourceDelayMax: EditText? = null
-                // Build the whole card in one block so the row + fields end up as children of the card,
-                // not the screen content. The DSL `row`/`labeledField` helpers add themselves to whatever
-                // ViewGroup is the receiver, so they must be called inside `card { }`.
+                // row/labeledField add themselves to the receiver ViewGroup — build inside card { }
+                // so they end up as children of the card, not the screen content.
                 addView(
                     card {
                         row {
@@ -316,8 +298,7 @@ internal fun ScreenHost.showDownloadSettings() {
                                 makeText(context, provider.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface),
                                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
                             )
-                            // No switch component exists; the themed checkbox acts as the per-source toggle
-                            // (no label — the card title covers it).
+                            // No switch component exists; the label-less themed checkbox acts as the toggle.
                             val cb =
                                 CheckBox(context).apply {
                                     text = ""
@@ -347,8 +328,7 @@ internal fun ScreenHost.showDownloadSettings() {
                                 )
                         }
                         addView(fieldsContainer)
-                        // Toggling just reveals/hides the fields without re-rendering, so values the user
-                        // typed are preserved while the box is checked.
+                        // Reveal/hide without re-render so typed values survive while checked.
                         toggle!!.setOnCheckedChangeListener { _, isChecked ->
                             fieldsContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                         }

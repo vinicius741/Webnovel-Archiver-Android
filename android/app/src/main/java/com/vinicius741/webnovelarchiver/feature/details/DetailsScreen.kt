@@ -29,17 +29,10 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
 import kotlinx.coroutines.launch
 
-/**
- * Details screen orchestrator. Wires story + download state, builds the info panel
- * list ([renderChapterList] / [renderFilterChips]), selects the single-pane vs two-pane layout, and
- * subscribes the in-place download-refresh loop. The info-panel and chapter-list building blocks
- * live in [DetailsInfoPanel.kt] and [DetailsChapterList.kt].
- */
 internal fun ScreenHost.showDetails(storyId: String) {
-    // Drop the previous description-TTS collector before its views are torn down or replaced.
+    // Drop the previous collector before its views are torn down.
     detachDetailsTtsListener()
-    // Seed from the repository's cached library rather than re-parsing the story JSON on each
-    // render. The downloaded-flow observer below patches this in place afterward.
+    // Seed from the cached library; the download observer below patches this in place afterward.
     val story = repository.story(storyId) ?: return showLibrary()
     val screenKey = AppRoute.Details(story.id).stableKey
     val previousListState =
@@ -49,13 +42,12 @@ internal fun ScreenHost.showDetails(storyId: String) {
             null
         }
     activeStory = story
-    // Re-render on fold/unfold/rotation so the two-pane ↔ single-scroll layout can switch live.
+    // Re-render on fold/unfold/rotation so the layout switches live.
     rerender = { showDetails(storyId) }
     val layout = currentScreenLayout()
     val operation = storyOperation?.takeIf { it.storyId == story.id }
     val isBusy = operation != null
-    // Live download feedback: reduce this story's queue jobs once for the initial render from the
-    // cached queue. Later repository events patch the banner and chapter rows in place below.
+    // The cached queue drives the initial render; later events patch rows in place.
     val queue = repository.queue()
     val jobsForStory = queue.filter { it.storyId == story.id }
     val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
@@ -71,9 +63,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             nowMillis = System.currentTimeMillis(),
             allJobs = queue,
         )
-    // Stable references captured into the refresh closure below so the loop patches the header
-    // progress, banner, and download action in place even when the header is scrolled off-screen
-    // (the views detach but the references stay valid). Assigned synchronously inside screen { ... }.
+    // Stable refs for the refresh closure: the views can detach when scrolled off-screen.
     var headerProgressSummary: View? = null
     var bannerSlot: ViewGroup? = null
     var downloadActionSlot: LinearLayout? = null
@@ -86,8 +76,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         subtitle = "by ${story.author}",
         onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
-        // The chapter RecyclerView must be the scrolling surface. Wrapping it in a ScrollView makes
-        // Android measure and inflate every chapter row, defeating recycling for large novels.
+        // The RecyclerView must be the scroll surface; a ScrollView wrapper defeats row recycling.
         scrollable = false,
     ) {
         val panel = buildDetailsInfoPanel(story, operation, downloadSummary, initialPacingStatus)
@@ -95,11 +84,9 @@ internal fun ScreenHost.showDetails(storyId: String) {
         headerProgressSummary = panel.headerProgressSummary
         bannerSlot = panel.bannerSlot
         downloadActionSlot = panel.downloadActionSlot
-        // Direct ref for setStoryOperation in-place ticks (cleanup/EPUB/sync). Must not be a tree
-        // walk: in compact layout the slot lives in the RecyclerView header and can detach.
+        // Direct ref, not a tree walk: in compact layout the slot can detach inside the RecyclerView header.
         detailsOperationSlot = panel.operationSlot
 
-        // ---- Chapter filter (search + chips) ----
         val chapterControls =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -116,8 +103,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
             }
         chapterControls.addView(chipsContainer)
 
-        // ---- Chapter list: a RecyclerView so novels with hundreds/thousands of chapters recycle
-        // views instead of inflating one row each on every render/filter tick ----
         val chaptersContainer =
             androidx.recyclerview.widget.RecyclerView(context).apply {
                 layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
@@ -126,8 +111,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             }
         chaptersBinding = chaptersContainer
 
-        // Compact keeps one continuous scroll by exposing details and controls as the list's first
-        // item. Two-pane keeps controls fixed above the independently scrolling chapter list.
+        // Compact: details + controls ride as the list header; two-pane keeps them above the list.
         val listHeader: View? =
             if (!layout.isTwoPane) {
                 buildCompactListHeader(infoPanel, chapterControls)
@@ -138,8 +122,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
         var chapterFilter = repository.getChapterFilterSettings().filterMode
         var chapterQuery = ""
 
-        // Chips are rebuilt on every pick so the active one re-highlights. The "From Bookmark"
-        // chip also carries the live (N) count of chapters remaining from the bookmark.
         var pick: (String) -> Unit = {}
         pick = { mode ->
             chapterFilter = mode
@@ -185,10 +167,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
         )
 
         if (layout.isTwoPane) {
-            // Two-pane: info scrolls on the left, chapter list scrolls on the right. The info
-            // pane stays pinned at a fixed width while the chapter
-            // list takes the remaining space, each with its own scroll surface. No divider is drawn
-            // between the panes — a marginEnd on the info pane keeps the columns from touching.
             val leftScroll = scroll(infoPanel)
             val rightPane =
                 LinearLayout(context).apply {
@@ -207,18 +185,13 @@ internal fun ScreenHost.showDetails(storyId: String) {
                     )
                     addView(rightPane, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
                 }
-            // Weighted height (not MATCH_PARENT) so the docked description-TTS transport added
-            // below still fits when visible.
+            // Weighted (not MATCH_PARENT) so the docked TTS transport below still fits.
             addView(shell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         } else {
             addView(chaptersContainer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        // ---- Description TTS transport ----
-        // Docked below the scrolling surfaces (never inside them) so pause/resume/stop stay
-        // reachable no matter how far the info panel has scrolled. Revealed live while this
-        // story's description session is active; chapter playback keeps using the reader transport
-        // and the system media controls, so only description snapshots drive this bar.
+        // Docked outside the scrollers so controls stay reachable; only description sessions drive this bar.
         var ttsSnapshot = detailsDescriptionSnapshotSeed(repository.getTtsSession(), ttsEngine.playbackState.value, story.id)
         var ttsPlayPause: ImageView? = null
         val ttsTransport =
@@ -265,11 +238,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
     observeDetailsDownload(storyId, bindings, isBusy, initialPacingStatus)
 }
 
-/**
- * Single-pane list header: a "Hide/Show details" toggle above the info panel + chapter controls,
- * exposed as the RecyclerView's first item via a [DetailsHeaderAdapter] so everything shares one
- * continuous scroll surface.
- */
 private fun ScreenHost.buildCompactListHeader(
     infoPanel: LinearLayout,
     chapterControls: LinearLayout,
@@ -295,7 +263,6 @@ private fun ScreenHost.buildCompactListHeader(
         addView(chapterControls)
     }
 
-/** Re-derives only the Details download action after a progress event. */
 internal fun ScreenHost.renderDetailsDownloadAction(
     slot: LinearLayout,
     story: Story,
@@ -329,7 +296,6 @@ internal fun ScreenHost.renderDetailsDownloadAction(
             )
         },
     )
-    // Manual counterpart of the bulk download above; hidden together with it by the guard returns.
     slot.addView(
         makeFullWidthButton(app, "Select Chapters", Btn.TEXT, R.drawable.wna_list) {
             showChapterSelection(story.id)
@@ -337,8 +303,8 @@ internal fun ScreenHost.renderDetailsDownloadAction(
     )
 }
 
-/** Fixed width (dp) of the left info pane in the two-pane details layout. */
+/** Left info-pane width (dp) in the two-pane layout. */
 private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 
-/** Gap (dp) of clear whitespace between the info pane and the chapter list in the two-pane layout. */
+/** Gap (dp) between the two panes. */
 private const val DETAILS_TWO_PANE_GAP_DP = Space.MD

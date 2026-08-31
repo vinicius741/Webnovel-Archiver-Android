@@ -16,15 +16,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/**
- * Builds a fully themed [LineChart] for a trend series. Pure view construction — no data fetching,
- * no Android lifecycle — so the Trends screen can call it once per series after loading history.
- *
- * The chart intentionally disables vertical zoom and pin zoom (which fight the screen's vertical
- * scroll) and enables only horizontal drag so a long history can be panned. The X axis is epoch-millis
- * formatted as a date; the Y axis format comes from [kind] and its range is fitted to the data by
- * [TrendAxisPlanning] (clamped to the metric's valid domain) so small movements stay visible.
- */
+/** Builds a fully themed [LineChart] for a trend series; pure view construction, no Android lifecycle. */
 internal fun buildTrendChart(
     context: Context,
     points: List<MetricPoint>,
@@ -38,8 +30,7 @@ internal fun buildTrendChart(
             null
         } else {
             LineDataSet(entries, "").apply {
-                // A single subtle line; no value labels (the summary line above the chart carries the
-                // exact current value, so per-point labels would just clutter the graph).
+                // No per-point value labels; the summary line above the chart carries the current value.
                 color = colors.primary
                 lineWidth = 2.5f
                 setDrawCircles(true)
@@ -56,20 +47,18 @@ internal fun buildTrendChart(
     chart.data = dataSet?.let { LineData(it) }
     chart.description.isEnabled = false
     chart.legend.isEnabled = false
-    // Transparent so the chart sits on the card background without a contrasting panel.
+    // Transparent so the chart sits on the card background.
     chart.setDrawGridBackground(false)
     chart.setBackgroundColor(0)
     chart.setNoDataText("Not enough data to chart yet.")
     chart.setNoDataTextColor(colors.onSurfaceVariant)
-    // Touch: horizontal pan only. Disable pinch-zoom and the double-tap zoom so two-finger and
-    // double-tap gestures don't get swallowed by the chart instead of scrolling the screen.
+    // Horizontal pan only; zoom gestures must not swallow the screen's vertical scroll.
     chart.setTouchEnabled(true)
     chart.isDragEnabled = true
     chart.setScaleEnabled(false)
     chart.setPinchZoom(false)
     chart.isDoubleTapToZoomEnabled = false
-    // No manual view-port offsets: the fitted Y range can produce wide labels ("1,250" members),
-    // and the chart only reserves enough room for them when it computes offsets itself.
+    // No manual view-port offsets: only self-computed offsets reserve room for wide labels ("1,250").
 
     val xAxis = chart.xAxis
     xAxis.position = XAxis.XAxisPosition.BOTTOM
@@ -80,10 +69,8 @@ internal fun buildTrendChart(
     xAxis.setDrawAxisLine(false)
     xAxis.setLabelCount(4, true)
     xAxis.textSize = 10f
-    // Snapshots are coalesced to one point per calendar day, so labels closer than a day can only
-    // repeat the same date — force day granularity to keep a short history's axis readable.
+    // One point per calendar day; day granularity keeps a short history's labels from repeating.
     xAxis.granularity = MILLIS_PER_DAY_FLOAT
-    // Keep the first/last date from being clipped at the chart edges.
     xAxis.setAvoidFirstLastClipping(true)
 
     val yAxis = chart.axisLeft
@@ -93,15 +80,13 @@ internal fun buildTrendChart(
     yAxis.gridLineWidth = 1f
     yAxis.setDrawAxisLine(false)
     yAxis.textSize = 10f
-    // A fitted (narrow) range makes the default label count draw duplicate, overlapping labels;
-    // cap it and let the chart pick clean intervals instead of forcing an exact count.
+    // A fitted narrow range duplicates labels at the default count; let the chart pick clean intervals.
     yAxis.setLabelCount(Y_AXIS_LABEL_COUNT, false)
     if (kind == TrendMetricKind.PATREON_MEMBERS || kind == TrendMetricKind.COUNT) {
-        // These are whole counts: fractional grid lines would format to duplicate integers.
+        // Whole counts: fractional grid lines would format to duplicate integers.
         yAxis.granularity = 1f
     }
-    // Fit the axis to the recorded data (clamped to the metric's valid domain) so small movements
-    // stay visible; a fixed 0–5 / 0-based axis rendered real week-to-week changes as a flat line.
+    // Fit the Y range to the data so small movements stay visible; a fixed 0–5 axis flattened them.
     val range =
         TrendAxisPlanning.yAxisRange(
             points = points,
@@ -116,17 +101,14 @@ internal fun buildTrendChart(
     }
     chart.axisRight.isEnabled = false
 
-    // Animate the line draw on first appearance so the trend "arrives"; short so repeated opens
-    // don't feel slow.
+    // Animate the draw-in; short so repeated opens don't feel slow.
     chart.animateX(400)
 
-    // The chart's height is set by the Trends screen when it adds the view to its card (a
-    // LineChart has no intrinsic height and WRAP_CONTENT would collapse it inside a ScrollView).
+    // Height is set by the Trends screen; WRAP_CONTENT would collapse a LineChart inside a ScrollView.
     chart.invalidate()
     return chart
 }
 
-/** X-axis granularity: one calendar day in epoch millis (the resolution snapshots are coalesced to). */
 private const val MILLIS_PER_DAY_FLOAT = 24f * 60f * 60f * 1000f
 
 /** Score metrics live on a 0–5 scale; used as the hard domain for the fitted Y range. */
@@ -155,8 +137,7 @@ private class YAxisFormatter(
 
     override fun getFormattedValue(value: Float): String =
         when (kind) {
-            // Two decimals: the fitted range is narrow, and one decimal rounded adjacent grid
-            // lines to the same label (4.55 and 4.65 both read "4.6").
+            // Two decimals; one decimal collapsed adjacent grid lines to the same label.
             TrendMetricKind.SCORE -> String.format(Locale.US, "%.2f", value)
             TrendMetricKind.PATREON_MEMBERS -> intFormat.format(value.toInt())
             // Stored as cents; show compact dollars ($1.20k, $12.5k).
@@ -177,11 +158,7 @@ private class YAxisFormatter(
     }
 }
 
-/**
- * Compact whole-count formatting shared by the Trends COUNT axis and the Details metric chips, so a
- * value reads identically in both places ("85.2K"). Decimal count scales down as the value grows so
- * adjacent axis labels stay distinct.
- */
+/** Compact whole-count format ("85.2K") shared by the Trends COUNT axis and Details chips. */
 internal fun formatCompactCount(value: Long): String {
     val suffix =
         when {

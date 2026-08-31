@@ -27,13 +27,9 @@ interface SourceProvider {
     val supportsLatestChapterSync: Boolean get() = descriptor.capabilities.latestChapterSync
     val maximumDownloadConcurrency: Int? get() = descriptor.capabilities.maximumDownloadConcurrency
 
-    /** Classifies importable URLs without exposing provider-specific regexes centrally. */
     fun classifyUrl(url: String): SourceUrlKind? = null
 
-    /**
-     * Converts equivalent source URL variants to the one representation used for fetching and
-     * persistence. Providers without alternate hosts or URL forms only trim the submitted value.
-     */
+    /** Canonicalizes equivalent source URL variants to the one form used for fetch + persistence. */
     fun normalizeStoryUrl(url: String): String = url.trim()
 
     fun getStoryId(url: String): String
@@ -42,12 +38,8 @@ interface SourceProvider {
 
     fun parseMetadata(html: String): NovelMetadata
 
-    /**
-     * Optionally fetches a small, source-owned supplemental metadata page. Most providers can
-     * return the parsed value unchanged; sources such as Scribble Hub use this for their canonical
-     * `/stats/` page. The hook is deliberately before chapter retrieval so a failed supplement can
-     * be isolated without preventing the story import.
-     */
+    /** Optional supplemental metadata fetch (e.g. Scribble Hub's `/stats/` page), run before
+     *  chapter retrieval so a failure can't block the import. */
     suspend fun enrichMetadata(
         metadata: NovelMetadata,
         html: String,
@@ -72,10 +64,7 @@ interface SourceProvider {
 
     fun parseChapterContent(html: String): String
 
-    /**
-     * Owns source request orchestration. Simple HTML providers inherit the established single-page
-     * pipeline; API-, authentication-, or JavaScript-backed sources can override it as one unit.
-     */
+    /** Request orchestration; API/auth/JS-backed sources override the HTML pipeline as one unit. */
     suspend fun loadStory(
         url: String,
         preferLatestChapters: Boolean,
@@ -83,10 +72,7 @@ interface SourceProvider {
         progress: (String) -> Unit = {},
     ): LoadedSourceStory = loadHtmlStory(this, url, preferLatestChapters, network, progress)
 
-    /**
-     * Fetches one chapter for the download queue. Most sources expose one chapter per URL, while
-     * forum-backed sources can override this to reuse a reader page containing several chapters.
-     */
+    /** Fetches one chapter for the queue; forum sources may override to reuse a multi-chapter page. */
     suspend fun fetchChapterContent(
         storyUrl: String,
         chapter: Chapter,
@@ -103,22 +89,13 @@ interface SourceProvider {
         )
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Shared source-parsing helpers. Package-internal so the per-provider files in this package can
-// use them without exposing them as a public API.
-// ──────────────────────────────────────────────────────────────────────────────
-
 internal val descriptionBlockTags =
     setOf("p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "hr")
 
 /**
- * Returns the visible text of [element] while preserving the author's paragraph/line-break layout.
- * Unlike Jsoup's [Element.text] — which flattens every `<p>`/`<div>`/`<br>` into a single
- * space-joined line — this walks the DOM and inserts `\n\n` around block elements and `\n` for
- * `<br>`, then collapses runs of blank lines so the result is a clean, structured string.
- *
- * Used for novel descriptions so the Details screen and EPUB details page render real paragraphs
- * instead of one dumped block of text (EpubContent.details already splits on `\n+`).
+ * Visible text preserving paragraph layout (`\n\n` around block elements, `\n` for `<br>`),
+ * unlike Jsoup's [Element.text] which flattens blocks into one line. Consumers (Details, EPUB
+ * details) split on `\n+`.
  */
 internal fun Element.blockText(): String {
     val builder = StringBuilder()
@@ -144,11 +121,11 @@ internal fun Element.blockText(): String {
     walk(this)
     return builder
         .toString()
-        .replace(Regex("\\u00A0"), " ") // non-breaking space → normal space
-        .replace(Regex("[ \\t]+"), " ") // collapse intra-line whitespace
-        .replace(Regex("\\n[ \\t]+"), "\n") // trim leading spaces on each line
-        .replace(Regex("[ \\t]+\\n"), "\n") // trim trailing spaces on each line
-        .replace(Regex("\\n{3,}"), "\n\n") // collapse blank-line runs
+        .replace(Regex("\\u00A0"), " ") // NBSP → space
+        .replace(Regex("[ \\t]+"), " ")
+        .replace(Regex("\\n[ \\t]+"), "\n")
+        .replace(Regex("[ \\t]+\\n"), "\n")
+        .replace(Regex("\\n{3,}"), "\n\n")
         .trim()
 }
 

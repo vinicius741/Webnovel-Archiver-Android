@@ -33,16 +33,12 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Cover Art section of the AI Controls screen: the applied state as a Source | AI comparison with
- * the show-AI preference between them, the generation-mode checkbox, and the preview/apply/discard/
- * delete actions. The billable generation flows themselves (one-shot and staged, with the editable
- * prompt in between) live in AiCoverGeneration.kt; the before/after thumbnails live in
- * AiCoverCompareUi.kt. The source cover URL is never modified, and once an AI cover is applied the
- * user can switch between it and the source cover at any time — deleting the generated image is
- * only for reclaiming the choice entirely.
+ * Cover Art section of the AI Controls screen: applied Source|AI comparison, show-AI preference,
+ * generation-mode checkbox, preview/apply/discard/delete. The billable generation flows live in
+ * AiCoverGeneration.kt; before/after thumbnails in AiCoverCompareUi.kt. The source cover URL is
+ * never modified; deleting the generated image only reclaims the choice entirely.
  */
 
-/** Current-state card: the image model selector, applied AI cover, show-AI preference, and generate/delete actions. */
 internal fun ScreenHost.addAiCoverCard(
     container: LinearLayout,
     story: Story,
@@ -116,7 +112,6 @@ internal fun ScreenHost.addAiCoverCard(
     container.addView(cardView)
 }
 
-/** "Show AI cover" preference row; persists via [com.vinicius741.webnovelarchiver.data.repository.setShowAiCover]. */
 private fun ScreenHost.addAiCoverDisplayToggleRow(
     container: LinearLayout,
     story: Story,
@@ -141,12 +136,9 @@ private fun ScreenHost.addAiCoverDisplayToggleRow(
     }
 }
 
-/**
- * "Generate prompt + image in one step" preference row; persists into
- * [com.vinicius741.webnovelarchiver.domain.model.AiSettings.coverOneStep] and re-renders so the
- * generate button and staged hint follow the new mode immediately. Unchecked = staged generation,
- * whose prompt editor lives in AiCoverGeneration.kt.
- */
+/** "Generate prompt + image in one step" preference; persists into AiSettings.coverOneStep and
+ *  re-renders so the button/hint follow the new mode. Unchecked = staged generation (prompt
+ *  editor in AiCoverGeneration.kt). */
 private fun ScreenHost.addAiCoverModeRow(
     container: LinearLayout,
     story: Story,
@@ -175,10 +167,7 @@ private fun ScreenHost.addAiCoverModeRow(
     }
 }
 
-/**
- * The generated cover draft shown as a Current | New comparison with the prompt that produced it,
- * plus Apply/Discard actions. Nothing is persisted until Apply.
- */
+/** Draft preview: Current|New comparison + the prompt + Apply/Discard. Nothing is persisted until Apply. */
 internal fun ScreenHost.addAiCoverDraftPreviewCard(
     container: LinearLayout,
     story: Story,
@@ -249,11 +238,8 @@ internal fun ScreenHost.discardAiCoverDraft(story: Story) {
     showAiControls(story.id)
 }
 
-/**
- * Deletes the generated cover file and record. Switching which cover the app shows is the
- * "Show AI cover" toggle; this is only for giving up the generated image entirely — the untouched
- * source [Story.coverUrl] then applies again.
- */
+/** Deletes the generated cover file/record — switching which cover shows is the "Show AI cover"
+ *  toggle. The untouched source [Story.coverUrl] applies again. */
 internal fun ScreenHost.revertAiCover(story: Story) {
     val hasSourceCover = !story.coverUrl.isNullOrBlank()
     val message =

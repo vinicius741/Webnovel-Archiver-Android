@@ -4,35 +4,19 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 
 /**
- * Debug-only "dev launch screen" planning (agent QA convenience).
- *
- * Lets [MainActivity] cold-start directly into a chosen screen via an `am start --es` intent extra,
- * so the agent can test TTS (reader), the download manager (queue), etc. without navigating there by
- * hand. [MainActivity] gates the whole feature behind `BuildConfig.DEBUG`, so this code is dead in
- * the release variant — but the planning lives here as a pure, unit-testable function (no `Intent`
- * dependency) mirroring [com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning] and
- * [com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning].
- *
- * `reader`/`details`/`aicontrols` need a story (and the reader a chapter). To avoid a disk read on
- * the common no-arg screens, [resolve] only invokes [libraryProvider] for those targets, auto-picking
- * the first story (and first chapter for the reader) when no explicit override id is supplied. Returns
- * `null` for a missing/unknown token or an empty library, so [MainActivity] falls back to its normal
- * launch flow rather than rendering a blank screen.
+ * Debug-only launch planning for QA: cold-start into a chosen screen via `am start --es` extras,
+ * gated behind BuildConfig.DEBUG in MainActivity. [resolve] invokes [libraryProvider] only for
+ * story-requiring targets (keeps the disk read off no-arg screens) and returns null when the
+ * token is unknown or the story/chapter can't be resolved, so the caller falls back to a normal
+ * launch.
  */
 object DevLaunchPlanning {
-    /** Intent extra carrying the target screen token (e.g. "reader", "queue"). */
     const val EXTRA_DEV_START_SCREEN = "dev_start_screen"
 
-    /** Optional override for the story id used by the `reader`/`details` targets. */
     const val EXTRA_DEV_START_STORY = "dev_start_story"
 
-    /** Optional override for the chapter id used by the `reader` target. */
     const val EXTRA_DEV_START_CHAPTER = "dev_start_chapter"
 
-    /**
-     * Screen tokens accepted via [EXTRA_DEV_START_SCREEN]. The [token] is what `am start --es` passes
-     * and is matched case-insensitively after trimming.
-     */
     enum class DevStartScreen(
         val token: String,
     ) {
@@ -57,14 +41,6 @@ object DevLaunchPlanning {
         }
     }
 
-    /**
-     * Resolves the dev launch target from the intent extras. Returns `null` when the token is
-     * missing/unknown or the required story/chapter can't be resolved, so the caller falls through
-     * to its normal launch flow.
-     *
-     * [libraryProvider] is invoked lazily and only for `reader`/`details`/`aicontrols`, keeping the
-     * library disk read off the path for the no-arg screens.
-     */
     fun resolve(
         screenName: String?,
         storyOverride: String?,

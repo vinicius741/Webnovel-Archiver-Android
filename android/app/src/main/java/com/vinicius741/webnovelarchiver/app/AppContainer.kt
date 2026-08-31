@@ -28,24 +28,10 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * Lightweight process-wide dependency container. Attached to
- * [WebnovelArchiverApp] and reachable from any Android component via
- * `(applicationContext as WebnovelArchiverApp).container`. Holds exactly one instance of each
- * process-wide dependency:
- *
- *  - [repository] → owns the single [AppStorage] and the queue/story transaction lock.
- *  - [network] → shared OkHttp client + source-safety limits and server cooldowns.
- *  - [downloadPacer] → user-configured download-only delays; sync never reads this state.
- *  - [syncEngine] / [epubEngine] → stateful engines built on the shared repository + network.
- *  - [ttsEngine] → the single TTS playback engine, shared by [MainActivity] (reader highlight +
- *    transport) and [com.vinicius741.webnovelarchiver.tts.TtsForegroundService]
- *    (MediaSession + notification). Sharing one instance means the reader's
- *    multicast state listener fires for playback the service drives, instead of each component
- *    racing with its own TextToSpeech handle against the same session JSON.
- *
- * This is deliberately *not* a DI framework: it is the native-Android manual-service-locator pattern
- * that prevents the activity and foreground services from accidentally instantiating duplicate
- * engines racing against the same files.
+ * Process-wide manual service locator (deliberately not a DI framework): one instance of each
+ * engine so the activity and foreground services never race duplicates against the same files.
+ * [ttsEngine] is shared by the reader UI and [com.vinicius741.webnovelarchiver.tts.TtsForegroundService]
+ * so both observe one playback session instead of racing TextToSpeech handles.
  */
 class AppContainer(
     context: Context,
@@ -54,15 +40,13 @@ class AppContainer(
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
 
-    // Container construction = process start, when no export can be writing: orphaned .tmp.N
-    // backup temps are leftovers of a process death mid-write and safe to sweep here.
+    // Orphaned .tmp.N backup temps mean a process death mid-write; nothing else can be writing at process start.
     private val storage =
         AppStorage(context).also { BackupFilePlanning.sweepOrphanTempFiles(it.backupRoot) }
 
     private val reliabilityStore = SourceReliabilityStore(storage.root)
 
-    // Conflated so bursts of state changes coalesce into one save; the drain coroutine always
-    // persists the *current* state, so the latest signal can never be satisfied with stale data.
+    // Conflated: bursts coalesce, and the drain coroutine always persists the latest state.
     private val reliabilityPersistSignals = Channel<Unit>(Channel.CONFLATED)
 
     private val sourceReliability = SourceReliabilityCoordinator(onStateChanged = ::persistSourceReliability)
@@ -72,7 +56,7 @@ class AppContainer(
             reliabilityCoordinator = sourceReliability,
         )
 
-    /** Never writes synchronously: state changes fire on OkHttp/coroutine threads and from main-thread UI paths (solve activity, Settings reset). */
+    /** Never writes synchronously: callers include OkHttp threads and main-thread UI paths. */
     private fun persistSourceReliability() {
         reliabilityPersistSignals.trySend(Unit)
     }
@@ -109,27 +93,16 @@ class AppContainer(
     val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
     val aiCoverArtEngine: AiCoverArtEngine = AiCoverArtEngine(repository, openRouter)
 
-    /**
-     * Cover generation on the process scope: jobs keep running through navigation and app exit,
-     * and results are persisted as drafts before anyone is told they are ready. The activity
-     * bridges this into its UI surfaces; the AI cover foreground service mirrors it in a
-     * notification so the system keeps the process alive mid-call.
-     */
+    /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
     val aiChapterRewriteEngine: AiChapterRewriteEngine = AiChapterRewriteEngine(repository, openRouter)
 
-    /**
-     * Chapter polish on the process scope (same contract as covers): the rewrite keeps running
-     * through navigation and app exit, and the validated draft is persisted before any listener
-     * is told it is ready.
-     */
+    /** Process scope, same contract as covers: the draft persists before listeners are notified. */
     val aiChapterRewriteJobCoordinator: AiChapterRewriteJobCoordinator =
         AiChapterRewriteJobCoordinator(applicationScope, repository, aiChapterRewriteEngine)
     private val repositoryStartup =
         RepositoryStartup {
-            // One storage monitor covers the complete migration/recovery/hydration transaction.
-            // Services that reach file APIs concurrently wait on the same monitor rather than
-            // observing a partially migrated queue or library.
+            // One storage monitor guards the whole migration/recovery/hydration transaction; concurrent file APIs wait on it.
             synchronized(storage) {
                 storage.migrateChapterPathsToRelative()
                 storage.migrateSourceIdentities(
@@ -153,17 +126,14 @@ class AppContainer(
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                 .registerDefaultNetworkCallback(networkCallback)
         }
-        // Drains persistence signals serially on the process IO scope: every state change is
-        // written by exactly one coroutine, so an older snapshot can never rename over a newer one.
+        // Serial drain: one writer coroutine so an older snapshot can never overwrite a newer one.
         applicationScope.launch {
             for (ignored in reliabilityPersistSignals) {
                 reliabilityStore.save(sourceReliability.persistableStates())
             }
         }
-        // Before the first source request: an open manual circuit or live sticky-transport window
-        // from the previous process must govern scheduling and transport choice again. The persisted
-        // state is advisory — an unreadable document must degrade to empty state, never crash
-        // Application.onCreate before any UI exists.
+        // Persisted circuit/transport state must govern scheduling again, but is advisory: an
+        // unreadable document degrades to empty state instead of crashing Application.onCreate.
         runCatching { sourceReliability.restore(reliabilityStore.load()) }
             .onFailure { Timber.e(it, "Failed to restore source reliability state") }
         repositoryStartup.start(applicationScope)

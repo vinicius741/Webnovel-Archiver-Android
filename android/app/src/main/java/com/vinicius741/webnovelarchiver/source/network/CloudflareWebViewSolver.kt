@@ -20,27 +20,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Renders a Cloudflare-blocked request with Chromium and returns the resulting DOM to OkHttp.
+ * Renders a Cloudflare-blocked request in a detached WebView and returns the DOM to OkHttp. A
+ * cf_clearance cookie replayed through OkHttp's different network fingerprint can be re-challenged,
+ * so the response WebView actually loaded is kept instead of retried. Interactive challenges still
+ * fall through to [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity].
  *
- * A `cf_clearance` cookie is no longer sufficient evidence that an OkHttp retry will pass. Modern
- * Cloudflare clearance is tied to the browser/device session and is continuously re-evaluated, so
- * replaying a cookie minted by WebView through OkHttp's different network fingerprint can be
- * challenged again. The old implementation discarded the page WebView had successfully loaded and
- * retried through OkHttp, which caused the visible verification loop.
- *
- * This renderer keeps the successful browser response instead. It loads the original GET or form
- * POST in a detached WebView, waits until the main page is no longer a challenge, serializes the
- * rendered DOM, and hands it back to [CloudflareBypassInterceptor]. Interactive challenges still
- * time out and fall through to
- * [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity].
- *
- * Page inspection runs on its own timer starting when navigation is issued, not from WebView page
- * callbacks: some physical-device WebView builds omit both `onPageStarted` and `onPageFinished` for
- * a detached WebView even though the document loads. Waiting for either callback left the renderer
- * with no DOM poll at all. [CloudflareRenderedPageValidator] checks the requested resource as well
- * as the host and expected DOM shape, and the outgoing document is marked stale before each
- * navigation, so polling cannot decide on a previous session document before the fresh navigation
- * commits.
+ * Polling runs on its own timer, not WebView page callbacks: some device WebView builds omit
+ * onPageStarted/onPageFinished for a detached WebView even though the document loads.
  */
 object CloudflareWebViewSolver {
     private data class BrowserSession(
@@ -62,8 +48,7 @@ object CloudflareWebViewSolver {
         val renderedPage = AtomicReference<CloudflareRenderedPage?>(null)
         val requestClosed = AtomicBoolean(false)
         val failure = AtomicReference<CloudflareRenderFailure?>(null)
-        // The 20s poll budget races the 20s await timeout, so the budget-exhaustion failure can lose;
-        // the last observed document state carries the reason either way.
+        // The poll budget races the await timeout; the last observed document state carries the reason either way.
         val lastPollNote = AtomicReference("no poll completed")
         val session = sessions.getOrPut(hostKey(request.url)) { BrowserSession() }
         val renderId = BypassEventLog.nextId("r")
@@ -142,9 +127,8 @@ object CloudflareWebViewSolver {
                             }
 
                         CloudflareRenderPollDecision.REJECT_PAGE ->
-                            // The right page settled but failed the content rules. Return it: the
-                            // source parser's own selector check fails the single job with a typed
-                            // parse error instead of blocking the whole source.
+                            // Return the settled-but-unexpected page: the parser's selector check
+                            // fails one job with a typed error instead of blocking the source.
                             finishWith(
                                 CloudflareRenderFailure.PageContentUnexpected(
                                     CloudflareRenderedPage(state.html, documentUrl),
@@ -155,11 +139,8 @@ object CloudflareWebViewSolver {
             }
 
             web.webViewClient = renderClient(session, ::finishWith)
-            // Mark the outgoing document before navigating: the session WebView is persistent, so
-            // it still shows the previous request's page, and the first polls run before this
-            // navigation commits. The marker lives in the old document's window, so any freshly
-            // loaded document starts clean. Navigation is issued from the marker's callback so the
-            // fresh document can never be marked by mistake.
+            // The persistent session WebView still shows the previous request's page; mark it stale
+            // before navigating (from the marker's own callback) so a fresh document is never marked.
             web.evaluateJavascript(STALE_MARKER_SCRIPT) {
                 val navigationIssued =
                     when (request.method) {
@@ -174,8 +155,7 @@ object CloudflareWebViewSolver {
                         else -> false
                     }
                 if (navigationIssued) {
-                    // Use the main Looper directly. View.post queues work until attachment on Samsung,
-                    // and this renderer is deliberately detached, so a WebView-owned timer never runs.
+                    // View.post queues work until attachment on Samsung; this WebView is deliberately detached, so use the main Looper.
                     mainHandler.post { inspectPage(web, request.url) }
                 } else {
                     finishWith(CloudflareRenderFailure.UnsupportedMethod)
@@ -196,7 +176,6 @@ object CloudflareWebViewSolver {
         return completedOutcome(request, renderId, renderedPage, failure, lastPollNote)
     }
 
-    /** Typed failure reporting for main-frame events during one render. */
     private fun renderClient(
         session: BrowserSession,
         finishWith: (CloudflareRenderFailure) -> Unit,
@@ -237,7 +216,6 @@ object CloudflareWebViewSolver {
             }
         }
 
-    /** Assembles the render's final outcome and records/logs the non-success reasons. */
     private fun completedOutcome(
         request: CloudflareWebViewRequest,
         renderId: String,
@@ -281,7 +259,6 @@ object CloudflareWebViewSolver {
         return outcome
     }
 
-    /** One structured log line per DOM poll — the diagnostic core of a render. */
     private fun recordPoll(
         renderId: String,
         host: String,
@@ -305,7 +282,7 @@ object CloudflareWebViewSolver {
         )
     }
 
-    /** Drops persistent renderer processes; CookieManager/WebStorage reset is owned by Settings. */
+    /** Destroys renderer processes; CookieManager/WebStorage reset is owned by Settings. */
     fun destroySessions() {
         val existing = sessions.values.toList()
         sessions.clear()

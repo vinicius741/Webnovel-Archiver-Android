@@ -9,11 +9,7 @@ import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.util.UUID
 
-/**
- * A generated-but-unapplied cover draft. The applied cover is not changed; the caller decides via
- * [AppRepository.setAiCover]. [prompt] is kept alongside the image so the UI can show the user
- * exactly what was sent to the image model.
- */
+/** Generated but unapplied; the caller applies it via [AppRepository.setAiCover]. [prompt] is kept for the UI. */
 data class AiCoverDraft(
     val prompt: String,
     val bytes: ByteArray,
@@ -21,31 +17,20 @@ data class AiCoverDraft(
 )
 
 /**
- * Generates AI cover art drafts in two billable stages: the description model writes an
- * image-generation prompt from the novel's material (title, author, tags, description, opening
- * chapters), then the configured image model renders it. [draft] runs both stages in one shot;
- * [draftPrompt] + [draftImage] expose the stages individually so the user can edit the prompt in
- * between. The returned draft is preview-only; progress is reported as short user-facing
- * messages, mirroring [AiDescriptionEngine].
+ * Generates cover drafts in two billable stages: the description model writes an image prompt,
+ * then the image model paints it. [draft] runs both in one shot; [draftPrompt] + [draftImage]
+ * expose the stages so the user can edit the prompt in between.
  */
 @Suppress("TooGenericExceptionCaught") // Track any terminal request failure; receipt persistence remains best effort.
 class AiCoverArtEngine(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
 ) {
-    /**
-     * Process-lifetime cache of image-model id → supported request parameters (with each
-     * parameter's allowed values), fetched from the free public catalog. Null until the first
-     * successful fetch; a fetch failure leaves it null so the image request falls back to the
-     * minimal model + prompt shape.
-     */
+    /** Catalog cache for the process lifetime; null until first success, so failures fall back to the minimal request shape. */
     @Volatile
     private var imageModelParametersCache: Map<String, Map<String, List<String>?>>? = null
 
-    /**
-     * One-shot flow: writes the image prompt and paints it in a single uninterrupted run. The
-     * optional callback lets the background coordinator persist the billed prompt before painting.
-     */
+    /** One-shot flow: write the prompt then paint it; [onPromptReady] persists the billed prompt before painting. */
     suspend fun draft(
         storyId: String,
         onProgress: (String) -> Unit = {},
@@ -57,12 +42,7 @@ class AiCoverArtEngine(
         return draftImage(storyId, prompt, onProgress, operationId)
     }
 
-    /**
-     * Stage 1 (staged mode): reads the story's context and asks the description model for an
-     * image-generation prompt. Returns the cleaned prompt so the user can edit it before the
-     * billable image call. Throws with a user-presentable message when the API key is missing, no
-     * chapters are downloaded, or OpenRouter/a model fails.
-     */
+    /** Stage 1: ask the description model for an image prompt, cleaned for user editing before the billable image call. */
     suspend fun draftPrompt(
         storyId: String,
         onProgress: (String) -> Unit = {},
@@ -106,11 +86,7 @@ class AiCoverArtEngine(
             ?: error("The model returned an empty image prompt. Try again or pick a different model.")
     }
 
-    /**
-     * Stage 2 (staged mode): paints the given prompt — typically reviewed and possibly edited by
-     * the user after stage 1 — with the configured image model. The prompt is cleaned again so a
-     * hand-edited draft is trimmed and capped exactly like a fresh model reply.
-     */
+    /** Stage 2: paint the (possibly user-edited) prompt; it is cleaned again exactly like a fresh model reply. */
     suspend fun draftImage(
         storyId: String,
         prompt: String,
@@ -200,10 +176,8 @@ class AiCoverArtEngine(
     )
 
     /**
-     * Asks the description model for the image prompt, retrying exactly once when the reply comes
-     * back empty: reasoning-style models occasionally spend the whole token budget before writing
-     * any text, and one retry reliably recovers that flake. HTTP failures are not retried — a
-     * second call cannot fix auth, credits, or rate limits.
+     * Retries exactly once on an empty reply: reasoning models sometimes burn the whole token
+     * budget before writing text. HTTP failures are not retried — a second call can't fix auth or credits.
      */
     private suspend fun writeImagePrompt(
         apiKey: String,
