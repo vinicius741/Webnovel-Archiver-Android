@@ -5,7 +5,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
@@ -217,9 +217,9 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
             story.score?.takeIf { it.isNotBlank() }?.let { score ->
                 addView(scoreRow(score))
             }
-            story.patreonStats?.let { stats ->
+            story.patreonStats?.let(PatreonEarningsPlanning::estimate)?.let { earnings ->
                 addView(
-                    makeText(app, formatLibraryPatreonStats(stats), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    makeText(app, formatLibraryPatreonStats(earnings), Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
                         maxLines = 1
                         ellipsize = android.text.TextUtils.TruncateAt.END
                         setPadding(0, dp(Space.XS), 0, 0)
@@ -250,14 +250,16 @@ private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
     return row
 }
 
-private fun formatLibraryPatreonStats(stats: PatreonStats): String {
-    val amountPrefix = if (stats.amountIsEstimated) "~" else ""
-    val dollars = (stats.monthlyUsdCents / 100.0).roundToLong()
-    val amount = "${amountPrefix}${'$'}${NumberFormat.getIntegerInstance(Locale.US).format(dollars)}/mo"
-    val membersPrefix = if (stats.membersIsEstimated) "~" else ""
-    val members = "${membersPrefix}${NumberFormat.getIntegerInstance().format(stats.paidMembers)}"
-    val membersLabel = if (stats.membersIsEstimated) "est. paid" else "paid"
-    return "Patreon $amount · $members $membersLabel"
+private fun formatLibraryPatreonStats(earnings: PatreonEarningsPlanning.PatreonEarnings): String {
+    val amount =
+        earnings.monthlyUsdCents?.let { cents ->
+            val prefix = if (earnings.amountIsEstimated) "~" else ""
+            "${prefix}${'$'}${NumberFormat.getIntegerInstance(Locale.US).format((cents / 100.0).roundToLong())}/mo"
+        }
+    val membersPrefix = if (earnings.membersIsEstimated) "~" else ""
+    val members = "${membersPrefix}${NumberFormat.getIntegerInstance().format(earnings.paidMembers)}"
+    val membersLabel = if (earnings.membersIsEstimated) "est. paid" else "paid"
+    return if (amount != null) "Patreon $amount · $members $membersLabel" else "Patreon · $members $membersLabel"
 }
 
 private fun ScreenHost.showStoryActionsDialog(story: Story) {

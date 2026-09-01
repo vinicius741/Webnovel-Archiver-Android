@@ -1,7 +1,8 @@
 package com.vinicius741.webnovelarchiver.domain.metrics
 
 import com.google.gson.Gson
-import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawTier
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetric
@@ -34,11 +35,8 @@ class MetricSnapshotPlanningTest {
         assertEquals("4.84 / 5", snap.score)
         assertEquals(120, snap.totalChapters)
         assertEquals(PublicationStatus.ongoing, snap.publicationStatus)
-        // Patreon not refreshed -> all Patreon fields null even if the story has stats.
-        assertNull(snap.patreonPaidMembers)
-        assertNull(snap.patreonMonthlyUsdCents)
-        assertFalse(snap.patreonAmountIsEstimated)
-        assertFalse(snap.patreonMembersIsEstimated)
+        // Patreon not refreshed -> raw block null even if the story has stats.
+        assertNull(snap.patreonRaw)
     }
 
     @Test
@@ -47,31 +45,25 @@ class MetricSnapshotPlanningTest {
             Story(
                 id = "s1",
                 patreonStats =
-                    PatreonStats(
+                    PatreonRawStats(
+                        capturedAt = 4L,
                         paidMembers = 410,
-                        monthlyUsdCents = 5_500_00,
-                        amountIsEstimated = true,
-                        membersIsEstimated = false,
+                        tiers = listOf(PatreonRawTier(usdCents = 1_000)),
                     ),
             )
         val refreshed = MetricSnapshotPlanning.fromStory(story, patreonRefreshed = true, capturedAt = 5L)
-        assertEquals(410, refreshed.patreonPaidMembers)
-        assertEquals(5_500_00L, refreshed.patreonMonthlyUsdCents)
-        assertTrue(refreshed.patreonAmountIsEstimated)
-        assertFalse(refreshed.patreonMembersIsEstimated)
+        assertEquals(story.patreonStats, refreshed.patreonRaw)
 
         val notRefreshed = MetricSnapshotPlanning.fromStory(story, patreonRefreshed = false, capturedAt = 5L)
         // The story HAS patreon stats, but they were carried forward, not refreshed this sync -> null.
-        assertNull(notRefreshed.patreonPaidMembers)
-        assertNull(notRefreshed.patreonMonthlyUsdCents)
+        assertNull(notRefreshed.patreonRaw)
     }
 
     @Test
     fun fromStoryWithNoPatreonStatsLeavesPatreonNullEvenWhenRefreshed() {
         val story = Story(id = "s1") // no patreonUrl, no patreonStats
         val snap = MetricSnapshotPlanning.fromStory(story, patreonRefreshed = true)
-        assertNull(snap.patreonPaidMembers)
-        assertNull(snap.patreonMonthlyUsdCents)
+        assertNull(snap.patreonRaw)
     }
 
     @Test
@@ -258,9 +250,15 @@ class MetricSnapshotPlanningTest {
             StoryMetricHistory(
                 snapshots =
                     mutableListOf(
-                        StoryMetricSnapshot(capturedAt = 1L, patreonPaidMembers = 100, patreonMonthlyUsdCents = 1_000_00),
+                        StoryMetricSnapshot(
+                            capturedAt = 1L,
+                            patreonRaw = PatreonRawStats(paidMembers = 100, exactMonthlyUsdCents = 1_000_00),
+                        ),
                         StoryMetricSnapshot(capturedAt = 2L), // batch sync: Patreon not measured
-                        StoryMetricSnapshot(capturedAt = 3L, patreonPaidMembers = 110, patreonMonthlyUsdCents = 1_200_00),
+                        StoryMetricSnapshot(
+                            capturedAt = 3L,
+                            patreonRaw = PatreonRawStats(paidMembers = 110, exactMonthlyUsdCents = 1_200_00),
+                        ),
                     ),
             )
         assertEquals(
@@ -272,6 +270,169 @@ class MetricSnapshotPlanningTest {
             listOf(1L to 100_000.0, 3L to 120_000.0),
             MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MONTHLY_USD),
         )
+    }
+
+    @Test
+    fun appendAndRetainKeepsLadderExplicitForSameDayResyncs() {
+        // Same-day last-wins coalescing replaces the earlier snapshot, so a same-day anchor must not
+        // be delta-encoded against — otherwise the day ends with tiers=null and no anchor anywhere.
+        val ladder = listOf(PatreonRawTier(usdCents = 500), PatreonRawTier(usdCents = 1_500))
+        val t0 = dayMillis(2026, 7, 17) + 9 * 3_600_000L
+        val t1 = t0 + 60_000 // same calendar day
+        val first =
+            MetricSnapshotPlanning.appendAndRetain(
+                emptyList(),
+                StoryMetricSnapshot(capturedAt = t0, patreonRaw = PatreonRawStats(capturedAt = t0, paidMembers = 100, tiers = ladder)),
+                now = t0,
+                zone = zone,
+            )
+        val resynced =
+            MetricSnapshotPlanning.appendAndRetain(
+                first,
+                StoryMetricSnapshot(capturedAt = t1, patreonRaw = PatreonRawStats(capturedAt = t1, paidMembers = 110, tiers = ladder)),
+                now = t1,
+                zone = zone,
+            )
+        assertEquals(1, resynced.size)
+        assertEquals(110, resynced.single().patreonRaw?.paidMembers)
+        assertEquals(ladder, resynced.single().patreonRaw?.tiers)
+    }
+
+    @Test
+    fun appendAndRetainDeltaEncodesUnchangedTierLadderAcrossDays() {
+        val ladder = listOf(PatreonRawTier(usdCents = 500), PatreonRawTier(usdCents = 1_500))
+        val d0 = dayMillis(2026, 7, 16)
+        val d1 = dayMillis(2026, 7, 17)
+        val existing =
+            listOf(
+                StoryMetricSnapshot(capturedAt = d0, patreonRaw = PatreonRawStats(capturedAt = d0, paidMembers = 100, tiers = ladder)),
+            )
+        val nextDay =
+            MetricSnapshotPlanning.appendAndRetain(
+                existing,
+                StoryMetricSnapshot(capturedAt = d1, patreonRaw = PatreonRawStats(capturedAt = d1, paidMembers = 110, tiers = ladder)),
+                now = d1,
+                zone = zone,
+            )
+        // Identical ladder on a later day -> stored as null (carry-forward); members stay fresh
+        // and the previous day's explicit anchor survives.
+        assertEquals(110, nextDay.last().patreonRaw?.paidMembers)
+        assertNull(nextDay.last().patreonRaw?.tiers)
+        assertEquals(ladder, nextDay.first().patreonRaw?.tiers)
+
+        val changed = ladder + PatreonRawTier(usdCents = 5_000)
+        val d2 = dayMillis(2026, 7, 18)
+        val newLadder =
+            MetricSnapshotPlanning.appendAndRetain(
+                nextDay,
+                StoryMetricSnapshot(capturedAt = d2, patreonRaw = PatreonRawStats(capturedAt = d2, paidMembers = 120, tiers = changed)),
+                now = d2,
+                zone = zone,
+            )
+        assertEquals(changed, newLadder.last().patreonRaw?.tiers)
+    }
+
+    @Test
+    fun appendAndRetainReanchorsCarriedLadderWhenTrimDropsItsAnchor() {
+        // Over-cap retention drops the oldest days — where the only explicit ladder sits. The first
+        // surviving carry-forward snapshot must be materialized with that ladder so the kept tail
+        // still resolves.
+        val ladder = listOf(PatreonRawTier(usdCents = 1_000))
+        val dayMs = 24L * 60 * 60 * 1000
+        val base = dayMillis(2020, 1, 1)
+        val day0 =
+            StoryMetricSnapshot(capturedAt = base, patreonRaw = PatreonRawStats(capturedAt = base, paidMembers = 100, tiers = ladder))
+        val carried =
+            (1..1004).map { i ->
+                StoryMetricSnapshot(
+                    capturedAt = base + i * dayMs,
+                    patreonRaw =
+                        PatreonRawStats(
+                            capturedAt = base + i * dayMs,
+                            paidMembers =
+                                100 + i,
+                            tiers = null,
+                        ),
+                )
+            }
+        val incomingAt = base + 1005 * dayMs
+        val result =
+            MetricSnapshotPlanning.appendAndRetain(
+                listOf(day0) + carried,
+                StoryMetricSnapshot(
+                    capturedAt = incomingAt,
+                    patreonRaw = PatreonRawStats(capturedAt = incomingAt, paidMembers = 1105, tiers = null),
+                ),
+                now = incomingAt,
+                zone = zone,
+            )
+
+        assertTrue(result.size <= MetricSnapshotPlanning.MAX_SNAPSHOTS)
+        // The trimmed prefix held the anchor; the first survivor now carries it explicitly and the
+        // rest still resolve through carry-forward.
+        assertEquals(ladder, result.first().patreonRaw?.tiers)
+        assertNull(result[1].patreonRaw?.tiers)
+    }
+
+    @Test
+    fun patreonSeriesCarriesTierLadderForwardAndRecomputesEstimates() {
+        // Snapshot 2 stored no ladder (delta-encoded); the USD series must resolve it from snapshot
+        // 1 and derive both points with the current formula — the retroactive-recalculation contract.
+        val ladder = listOf(PatreonRawTier(usdCents = 1_000), PatreonRawTier(usdCents = 3_000))
+        val history =
+            StoryMetricHistory(
+                snapshots =
+                    mutableListOf(
+                        StoryMetricSnapshot(capturedAt = 1L, patreonRaw = PatreonRawStats(paidMembers = 100, tiers = ladder)),
+                        StoryMetricSnapshot(capturedAt = 2L, patreonRaw = PatreonRawStats(paidMembers = 200, tiers = null)),
+                    ),
+            )
+        // Median 2000c × 200 members × 0.9 = 360000c.
+        assertEquals(
+            listOf(1L to 180_000.0, 2L to 360_000.0),
+            MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MONTHLY_USD),
+        )
+    }
+
+    @Test
+    fun legacySnapshotJsonWithDerivedPatreonFieldsLoadsThemAsUnmeasured() {
+        // History JSON written before raw storage: derived patreon fields are unknown keys now, so
+        // old points read as "not measured" and the series starts accruing with the new format.
+        val history =
+            Gson().fromJson(
+                """{"storyId":"rr_123","snapshots":[{"capturedAt":1000,"score":"4.5","totalChapters":10,
+                   "publicationStatus":"ongoing","patreonPaidMembers":1137,"patreonMonthlyUsdCents":12102569}]}""",
+                StoryMetricHistory::class.java,
+            )
+        assertNull(history.snapshots.single().patreonRaw)
+        assertEquals(
+            emptyList<Pair<Long, Double>>(),
+            MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MONTHLY_USD),
+        )
+    }
+
+    @Test
+    fun rawPatreonSnapshotRoundTripsThroughGson() {
+        val history =
+            StoryMetricHistory(
+                storyId = "rr_9",
+                snapshots =
+                    mutableListOf(
+                        StoryMetricSnapshot(
+                            capturedAt = 5L,
+                            patreonRaw =
+                                PatreonRawStats(
+                                    capturedAt = 5L,
+                                    paidMembers = 95,
+                                    totalMembers = 106,
+                                    exactMonthlyUsdCents = null,
+                                    tiers = mutableListOf(PatreonRawTier(usdCents = 400, members = 12)),
+                                ),
+                        ),
+                    ),
+            )
+        val restored = Gson().fromJson(Gson().toJson(history), StoryMetricHistory::class.java)
+        assertEquals(history.snapshots, restored.snapshots)
     }
 
     @Test

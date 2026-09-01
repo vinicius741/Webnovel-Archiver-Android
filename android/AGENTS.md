@@ -32,10 +32,12 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - New novel sites implement `SourceProvider`, declare stable identity/capabilities/network/UI policy
   in `SourceDescriptor`, and must be registered in `SourceRegistry`. Do not add source-name or host
   switches outside the provider descriptor; follow `docs/sources/adding-a-source.md`. Source
-  metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes and persists public or
-  tier-estimated Patreon statistics by default without creator-specific mappings. Bulk update
-  tracking can skip the Patreon refresh to keep followed-novel checks fast while preserving existing
-  saved stats.
+  metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes Patreon statistics by
+  default without creator-specific mappings. Only measured data is persisted (`PatreonRawStats`,
+  USD-converted at capture, tier ladder delta-encoded on metric snapshots); every displayed dollar
+  figure is derived at render by `PatreonEarningsPlanning`, so formula changes apply retroactively.
+  Bulk update tracking can skip the Patreon refresh to keep followed-novel checks fast while
+  preserving existing saved stats.
 - Archived snapshots remain read-only for sync and download.
 
 ## Build and Validation

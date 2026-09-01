@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 
@@ -134,8 +135,8 @@ object LibraryQuery {
             "lastUpdated", "updated" -> stories.sortedBy { it.lastUpdated ?: 0L }
             "totalChapters" -> stories.sortedBy { it.totalChapters }
             "score" -> stories.sortedBy { parseScore(it.score) }
-            "patreonMonthly" -> stories.sortedBy { it.patreonStats?.monthlyUsdCents ?: 0L }
-            "patreonMembers" -> stories.sortedBy { it.patreonStats?.paidMembers ?: 0 }
+            "patreonMonthly" -> stories.sortedBy { it.patreonStats?.let(PatreonEarningsPlanning::estimate)?.monthlyUsdCents ?: 0L }
+            "patreonMembers" -> stories.sortedBy { it.patreonStats?.let(PatreonEarningsPlanning::estimate)?.paidMembers ?: 0 }
             "progress" -> stories.sortedBy { progressRatio(it) }
             // Smart is intentionally equivalent to Last Updated. A successful chapter sync updates
             // this timestamp, which promotes the synced story to the top in the default descending view.

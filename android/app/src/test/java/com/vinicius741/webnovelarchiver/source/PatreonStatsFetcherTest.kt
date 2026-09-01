@@ -1,10 +1,9 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawTier
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PatreonStatsFetcherTest {
@@ -62,7 +61,7 @@ class PatreonStatsFetcherTest {
     fun `parseCampaign prefers real charge price over usd-normalized amount`() {
         // Mirrors the real hidden-earnings about page: tiers carry a USD-normalized `amount_cents`
         // alongside the real `patron_amount_cents`/`patron_currency` the patron actually pays. The
-        // real-charge fields must win so currency conversion uses the campaign's true currency.
+        // real-charge fields must win so capture converts the campaign's true currency.
         val html =
             """<script type="application/json">""" +
                 """{"reward":{"amount_cents":300,"currency":"USD","is_free_tier":false,""" +
@@ -99,7 +98,7 @@ class PatreonStatsFetcherTest {
     }
 
     @Test
-    fun `fetch wires exact public Patreon statistics`() =
+    fun `fetch captures exact public statistics in usd`() =
         runBlocking {
             val fetcher =
                 PatreonStatsFetcher(
@@ -109,17 +108,17 @@ class PatreonStatsFetcherTest {
                     now = { 123L },
                 )
 
-            val stats = fetcher.fetch("https://patreon.com/writer")!!
+            val raw = fetcher.fetch("https://patreon.com/writer")!!
 
-            assertEquals(42, stats.paidMembers)
-            assertEquals(123_400L, stats.monthlyUsdCents)
-            assertFalse(stats.amountIsEstimated)
-            assertFalse(stats.membersIsEstimated)
-            assertEquals(123L, stats.updatedAt)
+            assertEquals(123L, raw.capturedAt)
+            assertEquals(42, raw.paidMembers)
+            assertEquals(123_400L, raw.exactMonthlyUsdCents)
+            // The story-level block always carries a resolved ladder, here empty.
+            assertEquals(emptyList<PatreonRawTier>(), raw.tiers)
         }
 
     @Test
-    fun `fetch estimates hidden earnings from current tier distribution`() =
+    fun `fetch captures raw tier prices and counts without deriving a dollar figure`() =
         runBlocking {
             val fetcher =
                 PatreonStatsFetcher(
@@ -129,20 +128,19 @@ class PatreonStatsFetcherTest {
                     now = { 456L },
                 )
 
-            val stats = fetcher.fetch("https://patreon.com/writer")!!
+            val raw = fetcher.fetch("https://patreon.com/writer")!!
 
-            assertEquals(10, stats.paidMembers)
-            assertEquals(7_200L, stats.monthlyUsdCents)
-            assertTrue(stats.amountIsEstimated)
-            assertFalse(stats.membersIsEstimated)
-            assertEquals(456L, stats.updatedAt)
+            assertEquals(456L, raw.capturedAt)
+            assertEquals(10, raw.paidMembers)
+            assertNull(raw.exactMonthlyUsdCents)
+            assertEquals(listOf(PatreonRawTier(500, 4), PatreonRawTier(1_000, 6)), raw.tiers)
         }
 
     @Test
-    fun `fetch estimates hidden earnings via campaign api with real paid count`() =
+    fun `fetch converts tier prices to usd once per distinct currency`() =
         runBlocking {
             // Mirrors The Wixx Chronicles: about page exposes only tiers (no counts), then the
-            // campaign API fills in a real paid_member_count and the BRL tier price.
+            // campaign API fills in a real paid_member_count and BRL tier prices.
             val aboutHtml =
                 """<meta property="og:image" content="https://www.patreon.com/ig/card-teaser-image/creator/15734387.png"/>'""" +
                     """<script type="application/json">{"reward":{"amount_cents":300,"currency":"USD","is_free_tier":false,""" +
@@ -153,60 +151,31 @@ class PatreonStatsFetcherTest {
                     """"included":[{"id":"28371438","type":"reward","attributes":{"amount_cents":300,"currency":"USD",""" +
                     """"is_free_tier":false,"patron_amount_cents":2000,"patron_currency":"BRL","patron_count":null}}]}"""
             val frankfurter = """{"rates":{"USD":0.20}}""" // 1 BRL = 0.20 USD → R$20 = $4
+            val fxCalls = mutableListOf<String>()
             val fetcher =
                 PatreonStatsFetcher(
                     fetchPage = { url ->
                         when {
                             url.contains("/about") -> aboutHtml
                             url.contains("/api/campaigns/") -> apiJson
-                            url.contains("frankfurter") -> frankfurter
+                            url.contains("frankfurter") -> {
+                                fxCalls += url
+                                frankfurter
+                            }
                             else -> ""
                         }
                     },
                     now = { 789L },
                 )
 
-            val stats = fetcher.fetch("https://patreon.com/RileyCLyle")!!
+            val raw = fetcher.fetch("https://patreon.com/RileyCLyle")!!
 
-            // Real paid count reads as measured; revenue = 95 × $4 × 0.9 fee = $342.00 = 34200c.
-            assertEquals(95, stats.paidMembers)
-            assertEquals(34_200L, stats.monthlyUsdCents)
-            assertTrue(stats.amountIsEstimated)
-            assertFalse(stats.membersIsEstimated)
-            assertEquals(789L, stats.updatedAt)
-        }
-
-    @Test
-    fun `fetch assumes a share of total members when paid count is hidden everywhere`() =
-        runBlocking {
-            // Worst case: the API exposes only the public total member count and no per-tier counts,
-            // and the about page carries only a tier price. We fall back to the 70% assumption for
-            // members and the mean tier price for revenue.
-            val aboutHtml =
-                """<meta property="og:image" content="https://www.patreon.com/ig/card-teaser-image/creator/99.png"/>""" +
-                    """<script type="application/json">{"reward":{"amount_cents":1000,"currency":"USD","is_free_tier":false,"patron_count":null}}</script>"""
-            val apiJson =
-                """{"data":{"id":"99","type":"campaign","attributes":{"patron_count":100,""" +
-                    """"earnings_visibility":"private","pledge_sum_currency":"USD"}},"included":[]}"""
-            val fetcher =
-                PatreonStatsFetcher(
-                    fetchPage = { url ->
-                        when {
-                            url.contains("/about") -> aboutHtml
-                            url.contains("/api/campaigns/") -> apiJson
-                            else -> ""
-                        }
-                    },
-                    now = { 1L },
-                )
-
-            val stats = fetcher.fetch("https://patreon.com/writer")!!
-
-            // 100 total × 0.70 = 70 paid (estimated). 70 × $10 × 0.9 = $630.00 = 63000c.
-            assertEquals(70, stats.paidMembers)
-            assertEquals(63_000L, stats.monthlyUsdCents)
-            assertTrue(stats.amountIsEstimated)
-            assertTrue(stats.membersIsEstimated)
+            // Real paid count and USD-converted price are captured raw; nothing is estimated here.
+            assertEquals(95, raw.paidMembers)
+            assertEquals(106, raw.totalMembers)
+            assertNull(raw.exactMonthlyUsdCents)
+            assertEquals(listOf(PatreonRawTier(usdCents = 400, members = null)), raw.tiers)
+            assertEquals(1, fxCalls.size)
         }
 
     @Test
@@ -223,6 +192,67 @@ class PatreonStatsFetcherTest {
                     },
                 )
 
+            // Losing the figure to an FX outage must read as fetch failure so the sync keeps the
+            // previously stored stats instead of replacing them with a members-only block.
             assertNull(fetcher.fetch("https://patreon.com/writer"))
+        }
+
+    @Test
+    fun `fetch returns null when conversion drops the only ladder`() =
+        runBlocking {
+            // Hidden earnings + a single BRL tier + FX outage: no usable dollar source remains.
+            val fetcher =
+                PatreonStatsFetcher(
+                    fetchPage = { url ->
+                        if (url.contains("frankfurter")) {
+                            "{\"error\":\"unsupported\"}"
+                        } else {
+                            """<script type="application/json">{"campaign":{"paid_member_count":95,"show_earnings":false},"tiers":[{"amount_cents":2000,"patron_currency":"BRL","currency":"BRL","is_free_tier":false}]}</script>"""
+                        }
+                    },
+                )
+
+            assertNull(fetcher.fetch("https://patreon.com/writer"))
+        }
+
+    @Test
+    fun `fetch captures members-only stats when earnings are hidden and no paid tiers exist`() =
+        runBlocking {
+            val fetcher =
+                PatreonStatsFetcher(
+                    fetchPage = {
+                        """<script type="application/json">{"campaign":{"paid_member_count":10,"patron_count":40,"show_earnings":false},"tiers":[{"amount_cents":0,"currency":"USD","is_free_tier":true,"patron_count":40}]}</script>"""
+                    },
+                    now = { 111L },
+                )
+
+            val raw = fetcher.fetch("https://patreon.com/writer")!!
+
+            assertEquals(111L, raw.capturedAt)
+            assertEquals(10, raw.paidMembers)
+            assertEquals(40, raw.totalMembers)
+            assertNull(raw.exactMonthlyUsdCents)
+            assertEquals(emptyList<PatreonRawTier>(), raw.tiers)
+        }
+
+    @Test
+    fun `fetch keeps measured zeros for public earnings and members`() =
+        runBlocking {
+            // A small creator publicly showing $0 with 0 paid members: zeros are measurements, not
+            // "not measured" — otherwise the estimator would fabricate an assumed figure.
+            val fetcher =
+                PatreonStatsFetcher(
+                    fetchPage = {
+                        """<script type="application/json">{"campaign":{"paid_member_count":0,"patron_count":12,"campaign_pledge_sum":0,"currency":"USD","show_earnings":true},"tiers":[{"amount_cents":300,"currency":"USD","is_free_tier":false,"patron_count":0}]}</script>"""
+                    },
+                    now = { 222L },
+                )
+
+            val raw = fetcher.fetch("https://patreon.com/writer")!!
+
+            assertEquals(0, raw.paidMembers)
+            assertEquals(12, raw.totalMembers)
+            assertEquals(0L, raw.exactMonthlyUsdCents)
+            assertEquals(listOf(PatreonRawTier(usdCents = 300, members = 0)), raw.tiers)
         }
 }

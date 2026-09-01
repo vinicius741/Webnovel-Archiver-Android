@@ -8,7 +8,8 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -32,16 +33,17 @@ import kotlin.math.roundToLong
  * Patreon support snapshot for the creator behind a story. Sits below the primary action buttons
  * so it reads as supplementary context (not a call to action). The card has two tap targets: the
  * trailing open-in-external glyph in the header opens the creator's Patreon page when [patreonUrl]
- * is set, and the stats body (when [stats] are present) opens the per-novel Trends screen via
+ * is set, and the stats body (when raw stats produce figures) opens the per-novel Trends screen via
  * [onShowTrends] so the user can see members/earnings change over time.
  *
- * The card is rendered whenever the story has a [patreonUrl]. When [stats] are available they fill
- * the divider + two-number body + footer; when [stats] is null the card still appears as a plain
- * link-only surface — surfacing that the creator has a Patreon even when the public stats could not
- * be fetched, instead of silently showing nothing (which would be indistinguishable from no Patreon).
+ * The card is rendered whenever the story has a [patreonUrl]. [stats] holds only measured data;
+ * the displayed dollar figure (exact or estimated, single value or floor–estimate range) is
+ * derived at render, so a formula fix shows through without a refetch. When stats yield nothing
+ * displayable the card still appears as a plain link-only surface — surfacing that the creator has
+ * a Patreon even when the public stats could not be fetched.
  */
 internal fun ScreenHost.buildPatreonStatsCard(
-    stats: PatreonStats?,
+    stats: PatreonRawStats?,
     patreonUrl: String?,
     onShowTrends: () -> Unit,
 ): LinearLayout {
@@ -103,7 +105,8 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 }
             },
         )
-        if (stats != null) {
+        val earnings = stats?.let(PatreonEarningsPlanning::estimate)
+        if (stats != null && earnings != null) {
             addView(makeDivider(app))
             // ---- Stats: two big numbers side by side. Tapping the body opens the Patreon trends
             // (members + monthly earnings over time). The header's open-external glyph still opens
@@ -120,26 +123,29 @@ internal fun ScreenHost.buildPatreonStatsCard(
                     setOnClickListener { onShowTrends() }
                     addView(
                         buildPatreonStat(
-                            if (stats.membersIsEstimated) "Est. paid members" else "Paid members",
-                            formatMemberCount(stats),
+                            if (earnings.membersIsEstimated) "Est. paid members" else "Paid members",
+                            formatMemberCount(earnings),
                         ),
                         statLayoutParams(),
                     )
-                    addView(
-                        buildPatreonStat(
-                            if (stats.amountIsEstimated) "Estimated amount" else "Monthly earnings",
-                            formatMonthlyUsd(stats.monthlyUsdCents),
-                        ),
-                        statLayoutParams(),
-                    )
+                    // Hidden earnings with no usable tier ladder: members only, no dollar figure.
+                    earnings.monthlyUsdCents?.let { monthly ->
+                        addView(
+                            buildPatreonStat(
+                                if (earnings.amountIsEstimated) "Estimated amount" else "Monthly earnings",
+                                formatMonthlyUsd(monthly, earnings.floorUsdCents),
+                            ),
+                            statLayoutParams(),
+                        )
+                    }
                 },
             )
             // ---- Footer ----
-            if (stats.updatedAt > 0) {
+            if (stats.capturedAt > 0) {
                 addView(
                     makeText(
                         app,
-                        "Updated ${formatPatreonDate(stats.updatedAt)} · per month · tap for trends",
+                        "Updated ${formatPatreonDate(stats.capturedAt)} · per month · tap for trends",
                         Type.BODY_SMALL,
                         colors.onSurfaceVariant,
                     ),
@@ -170,14 +176,18 @@ private fun ScreenHost.buildPatreonStat(
         )
     }
 
-private fun formatMonthlyUsd(cents: Long): String {
-    val dollars = (cents / 100.0).roundToLong()
-    return "$${NumberFormat.getIntegerInstance(Locale.US).format(dollars)}"
+private fun formatMonthlyUsd(
+    cents: Long,
+    floorCents: Long? = null,
+): String {
+    val format = NumberFormat.getIntegerInstance(Locale.US)
+    val dollars = { c: Long -> "$${format.format((c / 100.0).roundToLong())}" }
+    return floorCents?.let { "${dollars(it)}–${dollars(cents)}" } ?: dollars(cents)
 }
 
-private fun formatMemberCount(stats: PatreonStats): String {
-    val prefix = if (stats.membersIsEstimated) "~" else ""
-    return "$prefix${NumberFormat.getIntegerInstance().format(stats.paidMembers)}"
+private fun formatMemberCount(earnings: PatreonEarningsPlanning.PatreonEarnings): String {
+    val prefix = if (earnings.membersIsEstimated) "~" else ""
+    return "$prefix${NumberFormat.getIntegerInstance().format(earnings.paidMembers)}"
 }
 
 private fun formatPatreonDate(timestamp: Long): String =

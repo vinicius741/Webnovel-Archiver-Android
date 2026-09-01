@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
-import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetadata
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
@@ -229,6 +229,6 @@ class LibraryQueryTest {
         monthlyUsdCents: Long,
     ): Story =
         apply {
-            patreonStats = PatreonStats(paidMembers = paidMembers, monthlyUsdCents = monthlyUsdCents)
+            patreonStats = PatreonRawStats(paidMembers = paidMembers, exactMonthlyUsdCents = monthlyUsdCents)
         }
 }

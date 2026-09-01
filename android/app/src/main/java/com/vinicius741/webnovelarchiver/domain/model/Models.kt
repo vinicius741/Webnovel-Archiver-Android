@@ -137,8 +137,7 @@ data class Story(
     /**
      * Which cover the app displays: true = [aiCoverPath], false = [coverUrl]. Defaults to true
      * because story JSON written before this field existed showed the AI cover whenever one was
-     * recorded — display is still gated on a non-blank [aiCoverPath], same trick as
-     * [PatreonStats.membersIsEstimated].
+     * recorded — display is still gated on a non-blank [aiCoverPath].
      */
     var showAiCover: Boolean = true,
     var sourceUrl: String = "",
@@ -164,7 +163,7 @@ data class Story(
     var archivedAt: Long? = null,
     var archiveReason: String? = null,
     var patreonUrl: String? = null,
-    var patreonStats: PatreonStats? = null,
+    var patreonStats: PatreonRawStats? = null,
     var publicationStatus: PublicationStatus = PublicationStatus.unknown,
     var lastChapterSyncAt: Long? = null,
     var sourceSyncState: SourceSyncState = SourceSyncState(),
@@ -185,39 +184,40 @@ data class Story(
     var chapterRewriteStrength: String? = null,
 )
 
-data class PatreonStats(
-    val paidMembers: Int = 0,
-    val monthlyUsdCents: Long = 0,
-    val amountIsEstimated: Boolean = true,
-    val updatedAt: Long = 0,
-    /**
-     * Whether [paidMembers] is a measured Patreon figure (`false`) or an assumption we derived
-     * because the creator hid both earnings and paid-member counts (`true`). Distinct from
-     * [amountIsEstimated], which only marks the dollar figure: a campaign can expose a real
-     * paid-member count while still hiding earnings, so the count reads as fact and only the
-     * monthly amount is labelled estimated. Defaults to `false` so persisted `PatreonStats` JSON
-     * written before this field existed keeps deserializing as a measured count.
-     */
-    val membersIsEstimated: Boolean = false,
+/**
+ * Measured Patreon data only — no derived figures are persisted. Prices are converted to USD at
+ * capture so re-estimation never re-applies a newer exchange rate; the formula lives in
+ * [com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning] and runs at render.
+ * On snapshots [tiers] is delta-encoded: null = carry the previous ladder, empty = no paid tiers.
+ */
+data class PatreonRawStats(
+    val capturedAt: Long = 0,
+    val paidMembers: Int? = null,
+    val totalMembers: Int? = null,
+    /** Real pledge sum when the creator shows earnings; null when hidden or unconvertible. */
+    val exactMonthlyUsdCents: Long? = null,
+    val tiers: List<PatreonRawTier>? = null,
+)
+
+data class PatreonRawTier(
+    /** Price per month in USD cents, converted at capture time. */
+    val usdCents: Long = 0,
+    /** Members on this tier when Patreon publishes per-tier counts; null when hidden. */
+    val members: Int? = null,
 )
 
 /**
- * One point in a novel's metric history, captured at [capturedAt] during a sync. The score, chapter
- * count, publication status, and source-reported [metrics] are captured on every sync. The Patreon
- * fields are captured only when Patreon stats were actually refreshed for this sync — they stay
- * `null` on batch "Follow Updates" syncs (which pass `refreshPatreonStats = false`) and on stories
- * without a Patreon URL, so a `null` Patreon field reads as "not measured this sync" rather than
- * "zero". [metrics] defaults empty so pre-existing history JSON restores without a format migration.
+ * One point in a novel's metric history, captured at [capturedAt] during a sync. Score, chapter
+ * count, status, and source [metrics] are captured on every sync; [patreonRaw] only when Patreon
+ * stats were refreshed (null reads as "not measured", not zero). Derived dollar figures are never
+ * stored — charts recompute them so formula fixes apply to the whole history.
  */
 data class StoryMetricSnapshot(
     val capturedAt: Long = 0L,
     val score: String? = null,
     val totalChapters: Int = 0,
     val publicationStatus: PublicationStatus = PublicationStatus.unknown,
-    val patreonPaidMembers: Int? = null,
-    val patreonMonthlyUsdCents: Long? = null,
-    val patreonAmountIsEstimated: Boolean = false,
-    val patreonMembersIsEstimated: Boolean = false,
+    val patreonRaw: PatreonRawStats? = null,
     val metrics: MutableList<SourceMetric> = mutableListOf(),
 )
 

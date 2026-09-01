@@ -3,12 +3,12 @@ package com.vinicius741.webnovelarchiver.source
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.vinicius741.webnovelarchiver.domain.model.PatreonStats
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawTier
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 import java.net.URI
-import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 internal data class PatreonTierSnapshot(
@@ -25,7 +25,13 @@ internal data class PatreonCampaignSnapshot(
     val tiers: List<PatreonTierSnapshot>,
 )
 
-/** Reads the creator's public Patreon page; no creator names or novel ids are special-cased. */
+/**
+ * Reads the creator's public Patreon page and returns measured data only. Prices are converted to
+ * USD at capture (one FX call per distinct currency) so later re-estimation never re-applies a
+ * newer exchange rate to old data; the earnings estimate itself is computed at render by
+ * [com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning]. No creator names or
+ * novel ids are special-cased.
+ */
 class PatreonStatsFetcher internal constructor(
     private val fetchPage: suspend (String) -> String,
     private val now: () -> Long = System::currentTimeMillis,
@@ -38,7 +44,7 @@ class PatreonStatsFetcher internal constructor(
         now = now,
     )
 
-    suspend fun fetch(creatorUrl: String): PatreonStats? {
+    suspend fun fetch(creatorUrl: String): PatreonRawStats? {
         val aboutUrl = aboutUrl(creatorUrl)
         val aboutHtml = fetchPage(aboutUrl)
         // The campaign API returns member counts even for hidden-earnings campaigns; the about-page
@@ -57,92 +63,68 @@ class PatreonStatsFetcher internal constructor(
                 apiCampaign != null -> apiCampaign
                 else -> htmlCampaign
             }
-        return buildStats(campaign)
+        return buildRaw(campaign)
     }
 
-    private suspend fun buildStats(campaign: PatreonCampaignSnapshot): PatreonStats? {
-        val exactAmount =
-            campaign.exactAmountCents?.let { cents ->
+    private suspend fun buildRaw(campaign: PatreonCampaignSnapshot): PatreonRawStats? {
+        val rates = RateCache()
+        val exactCents = campaign.exactAmountCents
+        val exact =
+            if (exactCents != null) {
                 val currency = campaign.exactAmountCurrency ?: campaign.tiers.firstOrNull()?.currency ?: "USD"
-                convertToUsd(cents, currency)
-            }
-        if (exactAmount != null) {
-            val paidMembers = campaign.paidMembers ?: campaign.totalMembers ?: return null
-            return PatreonStats(
-                paidMembers = paidMembers,
-                monthlyUsdCents = exactAmount,
-                amountIsEstimated = false,
-                membersIsEstimated = false,
-                updatedAt = now(),
-            )
-        }
-        // Earnings hidden: estimate revenue from members × tier prices so the card still shows a number.
-        val (paidMembers, membersEstimated) = resolvePaidMembers(campaign) ?: return null
-        val monthlyUsdCents = estimateMonthlyUsd(campaign, paidMembers) ?: return null
-        return PatreonStats(
-            paidMembers = paidMembers,
-            monthlyUsdCents = monthlyUsdCents,
-            amountIsEstimated = true,
-            membersIsEstimated = membersEstimated,
-            updatedAt = now(),
-        )
-    }
-
-    /** Returns (count, estimated), or null when no member signal exists; estimated = assumed, not read. */
-    private fun resolvePaidMembers(campaign: PatreonCampaignSnapshot): Pair<Int, Boolean>? {
-        campaign.paidMembers?.let { return it to false }
-        val tierSum =
-            campaign.tiers
-                .mapNotNull { it.members }
-                .sum()
-                .takeIf { it > 0 }
-        tierSum?.let { return it to false }
-        // Last resort for campaigns hiding earnings and per-tier counts: assume a share of the public total.
-        campaign.totalMembers?.let { return (it * PAID_MEMBER_ASSUMPTION).roundToInt() to true }
-        return null
-    }
-
-    private suspend fun estimateMonthlyUsd(
-        campaign: PatreonCampaignSnapshot,
-        paidMembers: Int,
-    ): Long? {
-        val paidTiers = campaign.tiers.filter { it.amountCents > 0 }
-        if (paidTiers.isEmpty()) return null
-        val knownTiers = paidTiers.filter { it.members != null && it.members > 0 }
-        val grossUsdCents =
-            if (knownTiers.isNotEmpty()) {
-                val converted = knownTiers.mapNotNull { tier -> convertToUsd(tier.amountCents, tier.currency)?.let { tier to it } }
-                if (converted.isEmpty()) return null
-                val knownGross = converted.sumOf { (tier, usdCents) -> usdCents * (tier.members ?: 0) }
-                val convertedMembers = converted.sumOf { (tier, _) -> tier.members ?: 0 }
-                if (convertedMembers == paidMembers) knownGross else (knownGross.toDouble() / convertedMembers * paidMembers).roundToLong()
+                rates.usdCents(exactCents, currency)
             } else {
-                // No per-tier split: the mean of tier prices — the least-biased single number for an
-                // unknown distribution.
-                val prices = paidTiers.mapNotNull { tier -> convertToUsd(tier.amountCents, tier.currency) }
-                if (prices.isEmpty()) return null
-                (prices.sum() / prices.size) * paidMembers
+                null
             }
-        // Patreon public earnings are post-fee approximations; apply the same 10% deduction.
-        return (grossUsdCents * 0.9).roundToLong()
+        val tiers =
+            campaign.tiers
+                .filter { it.amountCents > 0 }
+                .mapNotNull { tier ->
+                    rates.usdCents(tier.amountCents, tier.currency)?.let { usd ->
+                        PatreonRawTier(usdCents = usd, members = tier.members)
+                    }
+                }
+        // A transient FX outage must not replace previously stored figures with a members-only
+        // block: when conversion dropped the pledge sum or the whole ladder (the only figure
+        // source), report failure so the sync keeps the existing stats instead.
+        val lostExact = exactCents != null && exact == null
+        val lostLadder = exact == null && campaign.tiers.any { it.amountCents > 0 } && tiers.isEmpty()
+        if (lostExact || lostLadder) return null
+        val raw =
+            PatreonRawStats(
+                capturedAt = now(),
+                paidMembers = campaign.paidMembers,
+                totalMembers = campaign.totalMembers,
+                exactMonthlyUsdCents = exact,
+                tiers = tiers,
+            )
+        return raw.takeIf {
+            it.paidMembers != null || it.totalMembers != null || it.exactMonthlyUsdCents != null || !it.tiers.isNullOrEmpty()
+        }
     }
 
-    private suspend fun convertToUsd(
-        cents: Long,
-        currency: String,
-    ): Long? {
-        if (currency.equals("USD", ignoreCase = true)) return cents
-        val rate =
+    /** One FX lookup per distinct currency per fetch; failures are cached so they are not retried per tier. */
+    private inner class RateCache {
+        private val rates = mutableMapOf<String, Double?>()
+
+        suspend fun usdCents(
+            amountCents: Long,
+            currency: String,
+        ): Long? {
+            if (currency.equals("USD", ignoreCase = true)) return amountCents
+            val rate = rates.getOrPut(currency.uppercase()) { fetchRate(currency) } ?: return null
+            return (amountCents * rate).roundToLong()
+        }
+
+        private suspend fun fetchRate(currency: String): Double? =
             runCatching {
-                val response = fetchPage("https://api.frankfurter.app/latest?from=${currency.uppercase()}&to=USD")
                 JsonParser
-                    .parseString(response)
+                    .parseString(fetchPage("https://api.frankfurter.app/latest?from=$currency&to=USD"))
                     .asJsonObject["rates"]
                     ?.asJsonObject
                     ?.get("USD")
                     ?.asDouble
-            }.getOrNull() ?: return null
-        return (cents * rate).roundToLong()
+            }.getOrNull()
     }
 
     companion object {
@@ -180,7 +162,8 @@ class PatreonStatsFetcher internal constructor(
         /**
          * Parses `/api/campaigns/{id}`; null when the payload lacks the attributes we rely on. Tiers
          * travel in `included` as `reward` resources; prefer the charge price (`patron_amount_cents`)
-         * over the USD-normalized `amount_cents`.
+         * over the USD-normalized `amount_cents`. Same-price tiers stay separate entries — they are
+         * distinct products.
          */
         internal fun parseCampaignApi(json: String): PatreonCampaignSnapshot? {
             val root =
@@ -206,13 +189,12 @@ class PatreonStatsFetcher internal constructor(
                     tiers += PatreonTierSnapshot(amount, currency, attrs.int("patron_count"))
                 }
             }
-            val paidTiers = tiers.filter { it.amountCents > 0 }
             return PatreonCampaignSnapshot(
                 paidMembers = attributes.int("paid_member_count"),
                 totalMembers = attributes.int("patron_count"),
                 exactAmountCents = exactAmount,
                 exactAmountCurrency = exactCurrency,
-                tiers = (paidTiers.ifEmpty { tiers }).distinct(),
+                tiers = tiers.filter { it.amountCents > 0 },
             )
         }
 
@@ -228,8 +210,8 @@ class PatreonStatsFetcher internal constructor(
                 .forEach { script ->
                     runCatching { JsonParser.parseString(script.data()) }.getOrNull()?.let { root ->
                         visitJson(root) { objectValue ->
-                            objectValue.int("paid_member_count")?.takeIf { it > 0 }?.let { paidMembers = it }
-                            objectValue.int("patron_count")?.takeIf { it > 0 }?.let {
+                            objectValue.int("paid_member_count")?.let { paidMembers = it }
+                            objectValue.int("patron_count")?.let {
                                 if (totalMembers == null) totalMembers = it
                             }
                             val pledge = objectValue.long("campaign_pledge_sum")
@@ -256,7 +238,6 @@ class PatreonStatsFetcher internal constructor(
                         ?.groupValues
                         ?.get(1)
                         ?.toIntOrNull()
-                        ?.takeIf { it > 0 }
             }
             if (totalMembers == null) {
                 totalMembers =
@@ -265,7 +246,6 @@ class PatreonStatsFetcher internal constructor(
                         ?.groupValues
                         ?.get(1)
                         ?.toIntOrNull()
-                        ?.takeIf { it > 0 }
             }
             if (exactAmount == null && Regex("\"show_earnings\"\\s*:\\s*true").containsMatchIn(normalized)) {
                 exactAmount =
@@ -275,6 +255,7 @@ class PatreonStatsFetcher internal constructor(
                         ?.get(1)
                         ?.toLongOrNull()
             }
+            // The about page repeats its JSON payloads; dedupe identical tier objects.
             if (tiers.isEmpty()) tiers += parseEscapedTiers(normalized)
             return PatreonCampaignSnapshot(paidMembers, totalMembers, exactAmount, exactCurrency, tiers.distinct())
         }
@@ -332,9 +313,6 @@ class PatreonStatsFetcher internal constructor(
 
         private fun JsonObject.string(key: String): String? =
             get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
-
-        /** Share of public total members assumed to be paying when no paid count is available. */
-        private const val PAID_MEMBER_ASSUMPTION = 0.70
 
         private const val PATREON_CALL_TIMEOUT_MILLIS = 12_000L
     }

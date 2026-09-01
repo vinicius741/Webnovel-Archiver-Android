@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.domain.metrics
 
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawTier
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
@@ -27,31 +28,32 @@ object MetricSnapshotPlanning {
 
     /**
      * [patreonRefreshed] must be true only when the sync fetched fresh Patreon figures this run.
-     * When false the Patreon fields stay null so a chart reads the gap as not measured, not zero.
+     * When false [StoryMetricSnapshot.patreonRaw] stays null so a chart reads the gap as not
+     * measured, not zero.
      */
     fun fromStory(
         story: Story,
         patreonRefreshed: Boolean,
         capturedAt: Long = System.currentTimeMillis(),
-    ): StoryMetricSnapshot {
-        val patreon = story.patreonStats?.takeIf { patreonRefreshed }
-        return StoryMetricSnapshot(
+    ): StoryMetricSnapshot =
+        StoryMetricSnapshot(
             capturedAt = capturedAt,
             score = story.score,
             totalChapters = story.totalChapters,
             publicationStatus = story.publicationStatus,
-            patreonPaidMembers = patreon?.paidMembers,
-            patreonMonthlyUsdCents = patreon?.monthlyUsdCents,
-            patreonAmountIsEstimated = patreon?.amountIsEstimated ?: false,
-            patreonMembersIsEstimated = patreon?.membersIsEstimated ?: false,
+            patreonRaw = story.patreonStats?.takeIf { patreonRefreshed },
             metrics = story.sourceMetadata.metrics.toMutableList(),
         )
-    }
 
     /**
      * Appends [incoming] and retains: keep the latest snapshot per calendar day, then cap at
      * [MAX_SNAPSHOTS] by dropping the oldest days outside the recent window first. Result is
-     * oldest-first. [now] and [zone] are injected so the retention math is testable.
+     * oldest-first. An incoming Patreon tier ladder identical to the previous explicit one is
+     * delta-encoded to null (carry-forward) so history files stay small; [patreonSeries] resolves
+     * it back. The anchor must live on a strictly earlier day — same-day re-syncs keep the ladder
+     * explicit, because last-wins coalescing would otherwise replace the anchor with the encoded
+     * snapshot and orphan the whole day. [now] and [zone] are injected so the retention math is
+     * testable.
      */
     fun appendAndRetain(
         existing: List<StoryMetricSnapshot>,
@@ -59,7 +61,23 @@ object MetricSnapshotPlanning {
         now: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): List<StoryMetricSnapshot> {
-        val withIncoming = (existing + incoming).sortedBy { it.capturedAt }
+        val dayStart =
+            Instant
+                .ofEpochMilli(incoming.capturedAt)
+                .atZone(zone)
+                .toLocalDate()
+                .atStartOfDay(zone)
+                .toInstant()
+                .toEpochMilli()
+        val anchor = existing.lastOrNull { it.capturedAt < dayStart && it.patreonRaw?.tiers != null }?.patreonRaw?.tiers
+        val encoded =
+            incoming.copy(
+                patreonRaw =
+                    incoming.patreonRaw?.let { raw ->
+                        if (raw.tiers != null && raw.tiers == anchor) raw.copy(tiers = null) else raw
+                    },
+            )
+        val withIncoming = (existing + encoded).sortedBy { it.capturedAt }
         // Keep the latest snapshot per calendar day; re-syncing replaces today's point.
         val perDay = LinkedHashMap<LocalDate, StoryMetricSnapshot>()
         for (snapshot in withIncoming) {
@@ -74,8 +92,20 @@ object MetricSnapshotPlanning {
         val recent = coalesced.filter { it.capturedAt >= recentCutoff }
         val old = coalesced.filter { it.capturedAt < recentCutoff }
         val keepFromOld = (MAX_SNAPSHOTS - recent.size).coerceAtLeast(0)
-        val trimmedOld = old.takeLast(keepFromOld)
-        return (trimmedOld + recent).sortedBy { it.capturedAt }
+        val kept = (old.takeLast(keepFromOld) + recent).sortedBy { it.capturedAt }
+        // Trimming drops oldest days first — possibly the day holding the only explicit ladder the
+        // surviving null-tier snapshots carry. Materialize that ladder into the first survivor so
+        // the kept tail keeps resolving without its original anchor.
+        val firstCarried = kept.indexOfFirst { it.patreonRaw != null && it.patreonRaw?.tiers == null }
+        if (firstCarried < 0) return kept
+        val carriedAt = kept[firstCarried].capturedAt
+        val ladder =
+            coalesced.lastOrNull { it.capturedAt < carriedAt && it.patreonRaw?.tiers != null }?.patreonRaw?.tiers
+                ?: return kept
+        return kept.toMutableList().also { list ->
+            list[firstCarried] =
+                list[firstCarried].copy(patreonRaw = list[firstCarried].patreonRaw?.copy(tiers = ladder))
+        }
     }
 
     enum class PatreonField { MEMBERS, MONTHLY_USD }
@@ -92,17 +122,27 @@ object MetricSnapshotPlanning {
                 ?.let { snap.capturedAt to it }
         }
 
-    /** Pulls the requested Patreon field, skipping snapshots where it wasn't measured. */
+    /**
+     * Pulls the requested Patreon field, skipping snapshots where it wasn't measured. Null tier
+     * ladders inherit the most recent explicit ladder (delta encoding); the dollar series is
+     * re-derived from raw inputs so formula changes apply to the whole history.
+     */
     fun patreonSeries(
         history: StoryMetricHistory,
         field: PatreonField,
-    ): List<MetricPoint> =
-        history.snapshots.mapNotNull { snap ->
+    ): List<MetricPoint> {
+        var carriedTiers: List<PatreonRawTier>? = null
+        return history.snapshots.mapNotNull { snap ->
+            val raw = snap.patreonRaw ?: return@mapNotNull null
+            raw.tiers?.let { carriedTiers = it }
+            val earnings = PatreonEarningsPlanning.estimate(raw.copy(tiers = raw.tiers ?: carriedTiers)) ?: return@mapNotNull null
             when (field) {
-                PatreonField.MEMBERS -> snap.patreonPaidMembers?.toDouble()?.let { snap.capturedAt to it }
-                PatreonField.MONTHLY_USD -> snap.patreonMonthlyUsdCents?.toDouble()?.let { snap.capturedAt to it }
+                PatreonField.MEMBERS -> snap.capturedAt to earnings.paidMembers.toDouble()
+                PatreonField.MONTHLY_USD ->
+                    earnings.monthlyUsdCents?.toDouble()?.let { snap.capturedAt to it }
             }
         }
+    }
 
     /** Pulls the requested source metric (watchers, favorites, …), skipping snapshots without it. */
     fun metricSeries(

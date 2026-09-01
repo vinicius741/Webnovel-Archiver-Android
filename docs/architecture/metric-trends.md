@@ -18,13 +18,42 @@ transaction:
 | `totalChapters` | every sync | derived chapter count |
 | `publicationStatus` | every sync | enum |
 | `metrics` | every sync | copy of the sync's `Story.sourceMetadata.metrics` (`SourceMetric` list — watchers, replies, views, likes, favorites, follows, …, with `isEstimated` flags). Empty for histories recorded before the field existed. |
-| `patreonPaidMembers` | only when Patreon was refreshed | `null` otherwise |
-| `patreonMonthlyUsdCents` | only when Patreon was refreshed | `null` otherwise |
-| `patreonAmountIsEstimated`, `patreonMembersIsEstimated` | only when Patreon was refreshed | estimation flags |
+| `patreonRaw` | only when Patreon was refreshed | `PatreonRawStats` — measured data only (member counts, exact pledge sum when public, tier ladder with USD-at-capture prices); `null` otherwise |
 
-The Patreon fields stay `null` on **batch "Follow Updates" syncs** (which pass `refreshPatreonStats = false`)
-and on stories without a Patreon URL. A `null` Patreon field therefore reads as "not measured this
-sync" — never as "zero" — so a chart correctly shows the gap rather than a fabricated zero point.
+`patreonRaw` stays `null` on **batch "Follow Updates" syncs** (which pass `refreshPatreonStats = false`)
+and on stories without a Patreon URL. A `null` therefore reads as "not measured this sync" — never as
+"zero" — so a chart correctly shows the gap rather than a fabricated zero point. (A *measured* zero —
+a campaign publicly showing $0/0 — is stored and displayed as such; only null means unmeasured.)
+
+### Patreon raw storage and estimation
+
+No dollar figure is ever persisted. `PatreonStatsFetcher` captures only measurements — member counts,
+the public pledge sum when visible, and the tier ladder converted to USD **at capture** (one FX call
+per distinct currency), so re-estimating later never re-applies a newer exchange rate to old data.
+On snapshots the tier ladder is delta-encoded: `tiers: null` means "unchanged, carry the previous
+snapshot's ladder forward" (empty list means "measured, no paid tiers"), keeping history files small
+even though ladders rarely change.
+
+The estimate itself is computed at render by `domain/metrics/PatreonEarningsPlanning` — the single
+formula shared by the Details card, library badge, library sort, and both Trends series:
+
+- public pledge sum passes through untouched;
+- published per-tier counts → count-weighted gross scaled to the paid total;
+- counts hidden → **median** tier price (the mean is poisoned by joke/whale tiers — a R$3,052 meme
+  tier once produced a 7–20x overstated estimate), shown with a cheapest-tier floor as a range.
+
+Because nothing derived is stored, changing the formula re-derives every historical snapshot at
+once — there is no legacy-value step in the charts. The display flags (`amountIsEstimated`,
+`membersIsEstimated`) are computed, not persisted. Histories recorded before raw storage simply have
+`patreonRaw: null` and start accruing points on later syncs. If an FX outage mid-fetch would drop the
+pledge sum or the whole ladder, the fetch reports failure instead so the sync keeps the previously
+stored stats rather than replacing them with a degraded block.
+
+Two anchor rules keep the delta encoding safe: a snapshot only encodes `tiers: null` against an
+explicit ladder on a **strictly earlier day** (same-day re-syncs keep the ladder explicit, because
+last-wins coalescing would otherwise replace the anchor with the very snapshot that needs it), and
+when retention trimming drops the day holding the last explicit ladder, the carried ladder is
+materialized into the first surviving snapshot so the kept tail keeps resolving.
 
 ## Retention
 
