@@ -11,7 +11,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Offline Library** — Download chapters for reading without an internet connection.
 - **Built-in Reader** — WebView-based reader with sentence-level TTS highlighting, image support, last-read position tracking, and a floating TTS transport.
 - **Text-to-Speech** — Foreground service with MediaSession, notification/media-button controls, audio focus, stall recovery, configurable voice/rate/pitch, and auto-resume across chapters. Story descriptions can also be read aloud from the detail page (Listen button + docked transport), using the same voice settings.
-- **Updates Tracker** — Follow novels and batch-sync for new chapters (concurrent per-story sync) with nested chapter rows under each novel.
+- **Updates Tracker** — Novels are followed automatically while your bookmark is within an adjustable threshold (default 5 chapters) of their latest chapter, and batch-synced concurrently for new chapters with nested chapter rows under each novel; a Following Review screen shows each novel's distance from the end and why it is or isn't followed.
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting, configurable chapter ranges, timestamped outputs, and an EPUB Files screen for leftovers.
 - **Background Downloads** — Foreground service with a persistent queue, two parallel source lanes, sequential per-source pacing, isolated bulk preflight and Cloudflare circuit breaking, `Retry-After` cooldowns, and automatic recovery.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both), live sample previews, and circuit-breaking for pathological user regex.

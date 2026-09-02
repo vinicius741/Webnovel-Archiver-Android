@@ -23,6 +23,7 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.domain.story.StoryNormalization
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,7 +92,7 @@ class AppStorage(
     private val sentencesFile = File(root, "sentence_removal.json")
     private val regexFile = File(root, "regex_cleanup_rules.json")
     private val queueFile = File(root, "download_queue.json")
-    private val updateFollowedStoriesFile = File(root, "update_followed_story_ids.json")
+    private val updateFollowSettingsFile = File(root, "update_follow_settings.json")
     private val ttsFile = File(root, "tts_settings.json")
     private val sessionFile = File(root, "tts_session.json")
     private val aiSettingsFile = File(root, "ai_settings.json")
@@ -233,9 +234,9 @@ class AppStorage(
 
     fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, RegexRuleCleanup.sanitizeRegexRules(rules))
 
-    fun getUpdateFollowedStoryIds(): MutableList<String> = read(updateFollowedStoriesFile) ?: mutableListOf()
+    fun getUpdateFollowSettings(): UpdateFollowSettings = read(updateFollowSettingsFile) ?: UpdateFollowSettings()
 
-    fun saveUpdateFollowedStoryIds(ids: List<String>) = write(updateFollowedStoriesFile, ids.filter { it.isNotBlank() }.distinct())
+    fun saveUpdateFollowSettings(settings: UpdateFollowSettings) = write(updateFollowSettingsFile, settings)
 
     fun getTtsSettings(): TtsSettings = PreferenceNormalization.ttsSettings(read(ttsFile) ?: TtsSettings())
 

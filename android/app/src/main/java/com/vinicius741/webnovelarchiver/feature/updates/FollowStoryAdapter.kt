@@ -2,34 +2,32 @@ package com.vinicius741.webnovelarchiver.feature.updates
 
 import android.view.Gravity
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
-import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.FollowReviewEntry
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.applyCheckBoxTint
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.size
 
-internal data class FollowStoryItem(
-    val story: Story,
-    val selected: Boolean,
+internal data class FollowReviewItem(
+    val entry: FollowReviewEntry,
     val showCover: Boolean,
 )
 
 internal class FollowStoryAdapter(
     private val host: ScreenHost,
-    private val onToggle: (String, Boolean) -> Unit,
+    private val onOpen: (String) -> Unit,
 ) : RecyclerView.Adapter<FollowStoryAdapter.Holder>() {
-    private var items = emptyList<FollowStoryItem>()
+    private var items = emptyList<FollowReviewItem>()
 
     init {
         setHasStableIds(true)
@@ -39,7 +37,9 @@ internal class FollowStoryAdapter(
 
     override fun getItemId(position: Int) =
         items[position]
-            .story.id
+            .entry
+            .story
+            .id
             .hashCode()
             .toLong()
 
@@ -49,11 +49,6 @@ internal class FollowStoryAdapter(
     ): Holder {
         val context = parent.context
         val theme = ThemeManager.current
-        val checkbox =
-            CheckBox(context).apply {
-                applyCheckBoxTint()
-                isSaveEnabled = false
-            }
         val coverSlot = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val title =
             TextView(context).apply {
@@ -69,7 +64,7 @@ internal class FollowStoryAdapter(
                 setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
                 setTextColor(theme.colors.onSurfaceVariant)
                 setPadding(0, context.dp(2), 0, 0)
-                maxLines = 1
+                maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 includeFontPadding = false
             }
@@ -79,10 +74,13 @@ internal class FollowStoryAdapter(
                 addView(title)
                 addView(subtitle)
             }
+        val badgeSlot = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val row =
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
                 isSaveEnabled = false
                 setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
                 background = roundedBg(theme.colors.elevation1, context.dp(theme.shapes.cardRadius).toFloat())
@@ -90,7 +88,6 @@ internal class FollowStoryAdapter(
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         bottomMargin = context.dp(Space.MD)
                     }
-                addView(checkbox)
                 addView(coverSlot)
                 addView(
                     textColumn,
@@ -98,10 +95,9 @@ internal class FollowStoryAdapter(
                         marginStart = context.dp(Space.MD)
                     },
                 )
+                addView(badgeSlot)
             }
-        val holder = Holder(row, title, subtitle, checkbox, coverSlot)
-        row.setOnClickListener { checkbox.isChecked = !checkbox.isChecked }
-        return holder
+        return Holder(row, title, subtitle, badgeSlot, coverSlot)
     }
 
     override fun onBindViewHolder(
@@ -109,35 +105,41 @@ internal class FollowStoryAdapter(
         position: Int,
     ) {
         val item = items[position]
-        holder.title.text = item.story.title
+        val entry = item.entry
+        val story = entry.story
+        val colors = ThemeManager.current.colors
+        holder.title.text = story.title
         holder.subtitle.text =
             buildString {
-                append("by ${item.story.author}")
-                if (item.story.isArchived == true) append(" · Archived")
-                when (item.story.sourceSyncState.availability) {
+                append("by ${story.author}")
+                append(" · ${UpdateTrackerPlanning.reviewDistanceLabel(entry)}")
+                when (story.sourceSyncState.availability) {
                     SourceAvailability.available -> Unit
                     SourceAvailability.not_found -> append(" · Source unavailable")
                     SourceAvailability.access_restricted -> append(" · Source access blocked")
                 }
             }
-        holder.checkbox.setOnCheckedChangeListener(null)
-        holder.checkbox.isChecked = item.selected
-        holder.checkbox.setOnCheckedChangeListener { _, checked ->
-            if (checked == item.selected) return@setOnCheckedChangeListener
-            onToggle(item.story.id, checked)
-        }
+        holder.badgeSlot.removeAllViews()
+        holder.badgeSlot.addView(
+            makeBadge(
+                holder.itemView.context,
+                UpdateTrackerPlanning.reviewStatusBadgeLabel(entry),
+                if (entry.isFollowed) colors.primaryContainer else colors.surfaceVariant,
+                if (entry.isFollowed) colors.onPrimaryContainer else colors.onSurfaceVariant,
+            ),
+        )
         holder.coverSlot.removeAllViews()
         if (item.showCover) {
-            holder.coverSlot.addView(host.coverImage(item.story, 80, 120, false))
+            holder.coverSlot.addView(host.coverImage(story, 80, 120, false))
         }
+        holder.row.setOnClickListener { onOpen(story.id) }
     }
 
     fun submit(
-        stories: List<Story>,
-        selected: Set<String>,
+        entries: List<FollowReviewEntry>,
         showCover: Boolean,
     ) {
-        val next = stories.map { FollowStoryItem(it, it.id in selected, showCover) }
+        val next = entries.map { FollowReviewItem(it, showCover) }
         val previous = items
         items = next
         DiffUtil
@@ -150,18 +152,22 @@ internal class FollowStoryAdapter(
                     override fun areItemsTheSame(
                         old: Int,
                         new: Int,
-                    ) = previous[old].story.id == next[new].story.id
+                    ) = previous[old].entry.story.id == next[new].entry.story.id
 
                     override fun areContentsTheSame(
                         old: Int,
                         new: Int,
-                    ) = previous[old].selected == next[new].selected &&
-                        previous[old].showCover == next[new].showCover &&
-                        previous[old].story.id == next[new].story.id &&
-                        previous[old].story.title == next[new].story.title &&
-                        previous[old].story.author == next[new].story.author &&
-                        previous[old].story.isArchived == next[new].story.isArchived &&
-                        previous[old].story.sourceSyncState.availability == next[new].story.sourceSyncState.availability
+                    ): Boolean {
+                        val prev = previous[old].entry
+                        val curr = next[new].entry
+                        return previous[old].showCover == next[new].showCover &&
+                            prev.isFollowed == curr.isFollowed &&
+                            prev.chaptersBehindEnd == curr.chaptersBehindEnd &&
+                            prev.story.id == curr.story.id &&
+                            prev.story.title == curr.story.title &&
+                            prev.story.author == curr.story.author &&
+                            prev.story.sourceSyncState.availability == curr.story.sourceSyncState.availability
+                    }
                 },
             ).dispatchUpdatesTo(this)
     }
@@ -170,7 +176,7 @@ internal class FollowStoryAdapter(
         val row: LinearLayout,
         val title: TextView,
         val subtitle: TextView,
-        val checkbox: CheckBox,
+        val badgeSlot: LinearLayout,
         val coverSlot: LinearLayout,
     ) : RecyclerView.ViewHolder(row)
 }

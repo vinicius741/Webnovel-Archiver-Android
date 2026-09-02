@@ -25,7 +25,7 @@ internal fun ScreenHost.syncFollowedUpdates(onProgress: () -> Unit) {
     val state = updateTrackerScreenState
     if (state.syncing) return toast("Sync already running")
     val stories = repository.library()
-    val toSync = UpdateTrackerPlanning.syncableFollowedStories(stories, repository.getUpdateFollowedStoryIds())
+    val toSync = UpdateTrackerPlanning.syncableFollowedStories(stories, repository.getUpdateFollowSettings().thresholdChapters)
     if (toSync.isEmpty()) return toast("No followed novels are currently available to sync")
     state.reset(toSync.size)
     onProgress()

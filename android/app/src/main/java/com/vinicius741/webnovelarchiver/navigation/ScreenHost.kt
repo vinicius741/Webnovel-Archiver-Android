@@ -135,19 +135,13 @@ class InFlightStorySync(
 }
 
 /**
- * Transient UI state for the Follow Updates selection screen. [filter] is the same tab/search/tag/sort
- * snapshot the Library uses; [showSelectedOnly] reviews the current follow set without dropping ids
- * when other filters change; [showCovers] mirrors the persisted
- * [com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences.showCoversOnUpdates] toggle.
- * Lives here so typed query, chips, and toggles survive the navigation/re-render cycle.
+ * Transient UI state for the Following Review screen: the typed query, the active tab filter, and
+ * the persisted [com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences.showCoversOnUpdates]
+ * toggle. The followed set itself is always derived from bookmarks, never stored here.
  */
 class UpdateFollowSelectionState {
     var query: String = ""
     var selectedTabId: String? = "__all__"
-    var selectedTags: Set<String> = emptySet()
-    var sortOption: String = "title"
-    var sortAscending: Boolean = true
-    var showSelectedOnly: Boolean = false
     var showCovers: Boolean = false
 }
 

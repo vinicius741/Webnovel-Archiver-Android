@@ -4,6 +4,7 @@ import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.story.FollowedNovelPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.SyncDownloadPlanning
@@ -13,16 +14,13 @@ import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.verticalFill
-import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showUpdates() {
     activeStory = null
     rerender = { showUpdates() }
     val stories = repository.library()
-    val savedIds = repository.getUpdateFollowedStoryIds()
-    val followedIds = UpdateTrackerPlanning.normalizeFollowedIds(stories, savedIds)
-    if (followedIds != savedIds) scope.launch { repository.saveUpdateFollowedStoryIds(followedIds) }
-    val followed = UpdateTrackerPlanning.followedStories(stories, followedIds)
+    val threshold = repository.getUpdateFollowSettings().thresholdChapters
+    val followed = FollowedNovelPlanning.followedStories(stories, threshold)
     val syncableFollowed = followed.filter(StoryActionGuards::canAutoSync)
     val unavailableCount = followed.size - syncableFollowed.size
     val syncedIds = updateTrackerScreenState.syncedUpdatedChapterIds
@@ -35,9 +33,9 @@ internal fun ScreenHost.showUpdates() {
     screen(
         route = AppRoute.Updates,
         title = "Updates",
-        subtitle = "${followed.size} followed · $chapterCount new",
+        subtitle = "${followed.size} following · $chapterCount new",
         onBack = { showLibrary() },
-        actions = listOf(AppBarAction(R.drawable.wna_check, "Choose novels") { showUpdateFollowSelection() }),
+        actions = listOf(AppBarAction(R.drawable.wna_list, "Review following") { showUpdateFollowSelection() }),
     ) {
         if (stories.isEmpty()) {
             addView(
@@ -75,10 +73,10 @@ internal fun ScreenHost.showUpdates() {
                 addView(
                     makeEmptyState(
                         context,
-                        title = "Choose novels to follow",
-                        message = "Pick the ongoing novels you want to check together.",
+                        title = "Nothing followed yet",
+                        message = "Novels follow automatically once your bookmark is within $threshold chapters of their latest chapter.",
                         iconRes = R.drawable.wna_refresh,
-                        actionLabel = "Choose novels",
+                        actionLabel = "Review novels",
                         onAction = { showUpdateFollowSelection() },
                     ),
                     verticalFill(),

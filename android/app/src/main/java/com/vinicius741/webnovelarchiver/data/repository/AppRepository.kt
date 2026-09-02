@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -153,7 +154,7 @@ class AppRepository private constructor(
     private var ttsSession: TtsSession? = null
 
     @Volatile
-    private var updateFollowedStoryIds: List<String> = emptyList()
+    private var updateFollowSettings = UpdateFollowSettings()
 
     /** Loads the current library + queue + settings into the state flows. Call once at startup. */
     fun refresh() {
@@ -176,7 +177,7 @@ class AppRepository private constructor(
             aiSettings = storage.getAiSettings().copy()
             aiUsage.reload(storage.aiUsage::load)
             ttsSession = storage.getTtsSession()?.copy()
-            updateFollowedStoryIds = storage.getUpdateFollowedStoryIds().toList()
+            updateFollowSettings = PreferenceNormalization.updateFollowSettings(storage.getUpdateFollowSettings())
             _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
         }
     }
@@ -263,7 +264,7 @@ class AppRepository private constructor(
 
     fun getTtsSession(): TtsSession? = ttsSession?.copy()
 
-    fun getUpdateFollowedStoryIds(): List<String> = updateFollowedStoryIds.toList()
+    fun getUpdateFollowSettings(): UpdateFollowSettings = updateFollowSettings
 
     fun getStorageHealth(): StorageHealthSnapshot = requiredStorage.storageHealth.value
 
@@ -389,11 +390,11 @@ class AppRepository private constructor(
             ttsSession = null
         }
 
-    suspend fun saveUpdateFollowedStoryIds(ids: List<String>) =
+    suspend fun saveUpdateFollowSettings(settings: UpdateFollowSettings) =
         storageTransaction {
-            val normalized = ids.filter(String::isNotBlank).distinct()
-            requiredStorage.saveUpdateFollowedStoryIds(normalized)
-            updateFollowedStoryIds = normalized
+            val normalized = PreferenceNormalization.updateFollowSettings(settings)
+            requiredStorage.saveUpdateFollowSettings(normalized)
+            updateFollowSettings = normalized
         }
 
     /** Read-modify-write a story under the shared storage monitor; a null return from [block] aborts. */

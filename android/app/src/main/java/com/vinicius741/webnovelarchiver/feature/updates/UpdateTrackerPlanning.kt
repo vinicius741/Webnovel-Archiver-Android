@@ -2,8 +2,10 @@ package com.vinicius741.webnovelarchiver.feature.updates
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.FollowBlockReason
+import com.vinicius741.webnovelarchiver.domain.story.FollowReviewEntry
+import com.vinicius741.webnovelarchiver.domain.story.FollowedNovelPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
-import com.vinicius741.webnovelarchiver.feature.library.LibraryFilterState
 
 data class UpdatedChapter(
     val index: Int,
@@ -29,55 +31,10 @@ object UpdateTrackerPlanning {
         }
     }
 
-    fun visibleFollowStories(
-        stories: List<Story>,
-        filter: LibraryFilterState,
-        selectedIds: Set<String>,
-        showSelectedOnly: Boolean,
-    ): List<Story> {
-        val filtered = filter.applyTo(stories)
-        return if (showSelectedOnly) filtered.filter { it.id in selectedIds } else filtered
-    }
-
-    fun selectedReviewLabel(
-        selectedCount: Int,
-        showingSelectedOnly: Boolean,
-    ): String = if (showingSelectedOnly) "Show all" else "Selected ($selectedCount)"
-
-    /** List-header label that surfaces how many novels the current filters leave visible. */
-    fun followSelectionNovelsLabel(
-        visibleCount: Int,
-        totalCount: Int,
-    ): String = if (visibleCount == totalCount) "Novels ($visibleCount)" else "Novels ($visibleCount of $totalCount)"
-
-    fun followSelectionEmptyCopy(showSelectedOnly: Boolean): Pair<String, String> =
-        if (showSelectedOnly) {
-            "No selected novels" to "Select novels from the full list, or turn off the selected filter."
-        } else {
-            "No matches" to "Try clearing your search or filters."
-        }
-
-    fun normalizeFollowedIds(
-        stories: List<Story>,
-        followedIds: List<String>,
-    ): List<String> {
-        // Drop missing ids and archived snapshots — following an archive cannot sync.
-        val followableIds = followableStories(stories).map { it.id }.toSet()
-        return followedIds.filter { it in followableIds }.distinct()
-    }
-
-    fun followedStories(
-        stories: List<Story>,
-        followedIds: List<String>,
-    ): List<Story> {
-        val byId = stories.associateBy { it.id }
-        return normalizeFollowedIds(stories, followedIds).mapNotNull { byId[it] }
-    }
-
     fun syncableFollowedStories(
         stories: List<Story>,
-        followedIds: List<String>,
-    ): List<Story> = followedStories(stories, followedIds).filter(StoryActionGuards::canAutoSync)
+        thresholdChapters: Int,
+    ): List<Story> = FollowedNovelPlanning.followedStories(stories, thresholdChapters).filter(StoryActionGuards::canAutoSync)
 
     fun syncBatches(
         stories: List<Story>,
@@ -104,4 +61,30 @@ object UpdateTrackerPlanning {
         stories: List<Story>,
         chapterIdsByStoryId: Map<String, List<String>> = emptyMap(),
     ): Int = stories.sumOf { updatedChapters(it, chapterIdsByStoryId[it.id]).size }
+
+    fun reviewHeaderLabel(
+        followedCount: Int,
+        totalCount: Int,
+    ): String = "$followedCount of $totalCount following"
+
+    fun reviewNovelsLabel(
+        visibleCount: Int,
+        totalCount: Int,
+    ): String = if (visibleCount == totalCount) "Novels ($visibleCount)" else "Novels ($visibleCount of $totalCount)"
+
+    fun reviewStatusBadgeLabel(entry: FollowReviewEntry): String = if (entry.isFollowed) "Following" else "Not following"
+
+    fun reviewDistanceLabel(entry: FollowReviewEntry): String =
+        when (entry.blockReason) {
+            null -> chaptersBehindLabel(entry.chaptersBehindEnd ?: 0)
+            FollowBlockReason.COMPLETED -> "Completed"
+            FollowBlockReason.NO_BOOKMARK -> "No bookmark"
+            FollowBlockReason.TOO_FAR -> chaptersBehindLabel(entry.chaptersBehindEnd ?: 0)
+        }
+
+    private fun chaptersBehindLabel(behind: Int): String = "$behind chapter${plural(behind)} behind the end"
+
+    fun reviewEmptyCopy(): Pair<String, String> = "No matches" to "Try a different search."
+
+    fun thresholdLabel(threshold: Int): String = "Within $threshold chapter${plural(threshold)} of the end"
 }

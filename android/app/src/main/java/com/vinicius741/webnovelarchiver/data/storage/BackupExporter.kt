@@ -165,7 +165,7 @@ internal class BackupExporter(
             "tabs" to storage.getTabs(),
             "sentenceRemovalList" to storage.getSentenceRemovalList(),
             "regexCleanupRules" to storage.getRegexRules(),
-            "updateFollowedStoryIds" to storage.getUpdateFollowedStoryIds(),
+            "updateFollowSettings" to storage.getUpdateFollowSettings(),
             "ttsSettings" to storage.getTtsSettings(),
             "ttsSession" to storage.getTtsSession(),
             "foldLayoutMode" to displayPreferences.foldLayoutMode,
