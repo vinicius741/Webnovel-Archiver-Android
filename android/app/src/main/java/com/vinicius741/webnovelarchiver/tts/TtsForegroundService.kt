@@ -2,25 +2,15 @@ package com.vinicius741.webnovelarchiver.tts
 
 import android.annotation.SuppressLint
 import android.app.Notification
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
-import android.view.KeyEvent
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.media.app.NotificationCompat.MediaStyle
-import androidx.media.session.MediaButtonReceiver
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,14 +23,13 @@ import kotlinx.coroutines.launch
 class TtsForegroundService : Service() {
     private lateinit var engine: TtsEngine
     private lateinit var audioFocus: TtsAudioFocusManager
+    private lateinit var notificationManager: TtsNotificationManager
+    private lateinit var mediaSessionManager: TtsMediaSessionManager
     private var foregroundStarted = false
     private var resumeAfterFocusGain = false
     private var lastErrorText: String? = null
     private val stateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var stateCollectionJob: Job? = null
-
-    /** Owns the system media UI and media-button events; its token drives the MediaStyle notification. */
-    private var mediaSession: MediaSessionCompat? = null
 
     private var lastSnapshot: TtsPlaybackSnapshot? = null
 
@@ -50,6 +39,25 @@ class TtsForegroundService : Service() {
         super.onCreate()
         // Process-wide shared engine — the same instance the activity's reader observes.
         engine = appContainer.ttsEngine
+        notificationManager = TtsNotificationManager(this)
+        mediaSessionManager =
+            TtsMediaSessionManager(
+                this,
+                object : TtsMediaSessionManager.Callbacks {
+                    override fun onPlay() = resumePlayback()
+
+                    override fun onPause() {
+                        pausePlayback()
+                        refreshMediaStateFromEngine()
+                    }
+
+                    override fun onStop() = stopPlayback()
+
+                    override fun onSkipChapter(delta: Int) = skipChapter(delta)
+
+                    override fun onTogglePlayPause() = togglePlayPause()
+                },
+            )
         audioFocus =
             TtsAudioFocusManager(
                 this,
@@ -68,17 +76,29 @@ class TtsForegroundService : Service() {
                     }
 
                     override fun onPermanentFocusLoss() {
+                        // Podcast behavior: another app took the audio for good — pause and keep the
+                        // session so the user can resume where they left off.
                         resumeAfterFocusGain = false
-                        stopPlayback()
+                        pausePlayback()
+                        refreshMediaStateFromEngine()
                     }
                 },
             )
         AppNotificationChannels.ensureCreated(this)
-        ensureMediaSession()
-        // One replaying state stream drives MediaSession + notification; no storage polling.
+        mediaSessionManager.ensureSession()
+        // One replaying state stream drives MediaSession + notification; no storage polling. An
+        // authoritative null (explicit stop, natural completion, or a no-op command confirming an
+        // idle engine) tears the foreground state down — otherwise a finished session or a stray
+        // command leaves a zombie service behind. The non-authoritative startup replay must not.
         stateCollectionJob =
             stateScope.launch {
-                engine.playbackState.collect { update -> refreshMediaState(update.snapshot) }
+                engine.playbackState.collect { update ->
+                    refreshMediaState(update.snapshot)
+                    if (TtsPlaybackState.serviceShouldStop(update)) {
+                        stopForegroundAndReset()
+                        stopSelf()
+                    }
+                }
             }
         engine.addErrorListener(errorListener)
     }
@@ -89,7 +109,7 @@ class TtsForegroundService : Service() {
         startId: Int,
     ): Int {
         if (Intent.ACTION_MEDIA_BUTTON == intent?.action) {
-            MediaButtonReceiver.handleIntent(mediaSession, intent)
+            mediaSessionManager.handleMediaButton(intent)
             return START_STICKY
         }
         when (intent?.action ?: ACTION_RESUME_SESSION) {
@@ -99,22 +119,36 @@ class TtsForegroundService : Service() {
                 pausePlayback()
                 refreshMediaStateFromEngine()
             }
-            ACTION_PLAY_PAUSE -> {
-                if (lastSnapshot?.isPaused == true || lastSnapshot?.isPlaying != true) {
-                    resumePlayback()
-                } else {
-                    pausePlayback()
+            ACTION_PLAY_PAUSE -> togglePlayPause()
+            ACTION_NEXT -> skipNext()
+            ACTION_PREVIOUS -> skipPrevious()
+            ACTION_NEXT_CHAPTER -> skipChapter(1)
+            ACTION_PREVIOUS_CHAPTER -> skipChapter(-1)
+            ACTION_SEEK_CHUNK -> {
+                val chunkIndex = intent?.getIntExtra(EXTRA_CHUNK_INDEX, -1) ?: -1
+                if (chunkIndex >= 0) {
+                    engine.seekChunk(chunkIndex)
                     refreshMediaStateFromEngine()
                 }
             }
-            ACTION_NEXT -> {
-                skipNext()
+            ACTION_SET_RATE -> {
+                intent
+                    ?.getFloatExtra(TtsNotificationActions.EXTRA_RATE, Float.NaN)
+                    ?.takeIf { !it.isNaN() }
+                    ?.let(engine::setRate)
             }
-            ACTION_PREVIOUS -> {
-                skipPrevious()
+            ACTION_SET_SLEEP_TIMER -> {
+                val minutes = intent?.getIntExtra(EXTRA_SLEEP_TIMER_MINUTES, 0) ?: 0
+                when {
+                    minutes > 0 -> engine.setSleepTimerDuration(minutes)
+                    minutes == -1 -> engine.setSleepTimerEndOfChapter()
+                    else -> engine.cancelSleepTimer()
+                }
             }
             ACTION_STOP -> {
-                stopPlayback()
+                val forgetPosition = intent?.getBooleanExtra(TtsNotificationActions.EXTRA_FORGET_POSITION, false) ?: false
+                val storyId = intent?.getStringExtra(EXTRA_STORY_ID)
+                stopPlayback(forgetPosition, storyId)
             }
         }
         return START_STICKY
@@ -130,11 +164,7 @@ class TtsForegroundService : Service() {
         stateScope.cancel()
         engine.removeErrorListener(errorListener)
         audioFocus.abandon()
-        mediaSession?.run {
-            isActive = false
-            release()
-        }
-        mediaSession = null
+        mediaSessionManager.release()
         super.onDestroy()
     }
 
@@ -145,7 +175,8 @@ class TtsForegroundService : Service() {
         val chapterId = intent?.getStringExtra(EXTRA_CHAPTER_ID)
         val chunkIndex = intent?.takeIf { it.hasExtra(EXTRA_CHUNK_INDEX) }?.getIntExtra(EXTRA_CHUNK_INDEX, 0)
         if (storyId != null && chapterId != null) {
-            engine.play(storyId, chapterId, chunkIndex ?: 0)
+            // Null chunk index = resume wherever this story last stopped.
+            engine.play(storyId, chapterId, chunkIndex)
         } else {
             refreshMediaStateFromEngine()
         }
@@ -159,6 +190,15 @@ class TtsForegroundService : Service() {
         refreshMediaStateFromEngine()
     }
 
+    private fun togglePlayPause() {
+        if (lastSnapshot?.isPaused != false) {
+            resumePlayback()
+        } else {
+            pausePlayback()
+            refreshMediaStateFromEngine()
+        }
+    }
+
     private fun pausePlayback(abandonFocus: Boolean = true) {
         engine.pause()
         if (abandonFocus) {
@@ -167,8 +207,11 @@ class TtsForegroundService : Service() {
         }
     }
 
-    private fun stopPlayback() {
-        engine.stop()
+    private fun stopPlayback(
+        forgetPosition: Boolean = false,
+        fallbackStoryId: String? = null,
+    ) {
+        engine.stop(forgetPosition, fallbackStoryId)
         resumeAfterFocusGain = false
         audioFocus.abandon()
         stopForegroundAndReset()
@@ -184,6 +227,12 @@ class TtsForegroundService : Service() {
     private fun skipPrevious() {
         if (!requestAudioFocusOrShowError()) return
         engine.previous()
+        refreshMediaStateFromEngine()
+    }
+
+    /** Chapter skip (podcast episode semantics); stays paused if playback was paused. */
+    private fun skipChapter(delta: Int) {
+        engine.skipChapter(delta)
         refreshMediaStateFromEngine()
     }
 
@@ -216,8 +265,8 @@ class TtsForegroundService : Service() {
     private fun refreshMediaState(snapshot: TtsPlaybackSnapshot?) {
         lastSnapshot = snapshot
         if (snapshot?.isPlaying == true) lastErrorText = null
-        updateMediaSessionPlaybackState()
-        updateMediaSessionMetadata()
+        mediaSessionManager.updatePlaybackState(snapshot)
+        mediaSessionManager.updateMetadata(snapshot)
         updateNotification()
     }
 
@@ -225,17 +274,6 @@ class TtsForegroundService : Service() {
         lastErrorText = stringForPlaybackError(error)
         updateNotification()
     }
-
-    private fun chunkProgressText(snapshot: TtsPlaybackSnapshot): String =
-        if (snapshot.totalChunks <= 0) {
-            getString(R.string.tts_notif_buffering)
-        } else {
-            getString(
-                R.string.tts_notif_chunk_progress,
-                (snapshot.chunkIndex + 1).coerceIn(1, snapshot.totalChunks),
-                snapshot.totalChunks,
-            )
-        }
 
     private fun stringForPlaybackError(error: TtsPlaybackError): String =
         when (error.kind) {
@@ -266,189 +304,15 @@ class TtsForegroundService : Service() {
         }
     }
 
-    private fun buildNotification(snapshot: TtsPlaybackSnapshot?): Notification {
-        val openIntent =
-            PendingIntent.getActivity(
-                this,
-                11,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-
-        fun serviceAction(
-            requestCode: Int,
-            action: String,
-        ): PendingIntent =
-            PendingIntent.getService(
-                this,
-                requestCode,
-                Intent(this, TtsForegroundService::class.java).setAction(action),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-
-        val isPaused = snapshot?.isPaused == true
-        val title = snapshot?.title ?: getString(R.string.tts_notif_title)
-        val body =
-            lastErrorText
-                ?: snapshot?.let { chunkProgressText(it) }
-                ?: getString(R.string.tts_notif_paused)
-
-        val builder =
-            NotificationCompat
-                .Builder(this, AppNotificationCategory.TEXT_TO_SPEECH.channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setContentIntent(openIntent)
-                // Ongoing while any session exists (playing or paused); dismissable once the snapshot is null.
-                .setOngoing(snapshot != null)
-                .setOnlyAlertOnce(true)
-                .setShowWhen(false)
-                .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        TtsNotificationActions.actions(isPaused).forEachIndexed { index, action ->
-            builder.addAction(0, getString(action.labelResId), serviceAction(12 + index, action.action))
-        }
-        builder.setStyle(
-            MediaStyle()
-                .setMediaSession(mediaSession?.sessionToken)
-                .setShowActionsInCompactView(*TtsNotificationActions.COMPACT_ACTION_INDICES),
-        )
-        return builder.build()
-    }
-
-    private fun ensureMediaSession() {
-        if (mediaSession != null) return
-        mediaSession =
-            MediaSessionCompat(this, TAG).apply {
-                setFlags(
-                    MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
-                        MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS,
-                )
-                // Media buttons arrive as ACTION_MEDIA_BUTTON; this pending intent routes them to
-                // the session callback below.
-                setMediaButtonReceiver(
-                    MediaButtonReceiver.buildMediaButtonPendingIntent(
-                        this@TtsForegroundService,
-                        PlaybackStateCompat.ACTION_PLAY_PAUSE,
-                    ),
-                )
-                setCallback(
-                    object : MediaSessionCompat.Callback() {
-                        override fun onPlay() {
-                            resumePlayback()
-                        }
-
-                        override fun onPause() {
-                            pausePlayback()
-                            refreshMediaStateFromEngine()
-                        }
-
-                        override fun onStop() {
-                            stopPlayback()
-                        }
-
-                        override fun onSkipToNext() {
-                            skipNext()
-                        }
-
-                        override fun onSkipToPrevious() {
-                            skipPrevious()
-                        }
-
-                        override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-                            val keyEvent = mediaButtonEvent?.getKeyEventCompat() ?: return super.onMediaButtonEvent(mediaButtonEvent)
-                            if (keyEvent.action != KeyEvent.ACTION_DOWN) return super.onMediaButtonEvent(mediaButtonEvent)
-                            when (keyEvent.keyCode) {
-                                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK -> {
-                                    togglePlayPause()
-                                    return true
-                                }
-                                KeyEvent.KEYCODE_MEDIA_PLAY -> {
-                                    resumePlayback()
-                                    return true
-                                }
-                                KeyEvent.KEYCODE_MEDIA_PAUSE -> {
-                                    pausePlayback()
-                                    refreshMediaStateFromEngine()
-                                    return true
-                                }
-                                KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                                    skipNext()
-                                    return true
-                                }
-                                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                                    skipPrevious()
-                                    return true
-                                }
-                            }
-                            return super.onMediaButtonEvent(mediaButtonEvent)
-                        }
-                    },
-                )
-                isActive = true
-            }
-        updateMediaSessionPlaybackState()
-    }
-
-    private fun togglePlayPause() {
-        if (lastSnapshot?.isPaused == true || lastSnapshot?.isPlaying != true) {
-            resumePlayback()
-        } else {
-            pausePlayback()
-            refreshMediaStateFromEngine()
-        }
-    }
-
-    private fun updateMediaSessionPlaybackState() {
-        val snapshot = lastSnapshot
-        val state =
-            when {
-                snapshot == null -> PlaybackStateCompat.STATE_STOPPED
-                snapshot.isPaused -> PlaybackStateCompat.STATE_PAUSED
-                snapshot.isPlaying -> PlaybackStateCompat.STATE_PLAYING
-                else -> PlaybackStateCompat.STATE_STOPPED
-            }
-        val actions = (
-            PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                PlaybackStateCompat.ACTION_PLAY or
-                PlaybackStateCompat.ACTION_PAUSE or
-                PlaybackStateCompat.ACTION_STOP or
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-        )
-        mediaSession?.setPlaybackState(
-            PlaybackStateCompat
-                .Builder()
-                .setActions(actions)
-                .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
-                .build(),
-        )
-    }
-
-    private fun updateMediaSessionMetadata() {
-        val snapshot = lastSnapshot
-        mediaSession?.setMetadata(
-            MediaMetadataCompat
-                .Builder()
-                .apply {
-                    putString(MediaMetadataCompat.METADATA_KEY_TITLE, snapshot?.title ?: getString(R.string.tts_notif_title))
-                    putString(MediaMetadataCompat.METADATA_KEY_ARTIST, getString(R.string.app_name))
-                    putString(MediaMetadataCompat.METADATA_KEY_ALBUM, snapshot?.title ?: getString(R.string.tts_metadata_reading))
-                    if (snapshot != null && snapshot.totalChunks > 0) {
-                        putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, snapshot.chunkIndex.toLong() + 1L)
-                        putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, snapshot.totalChunks.toLong())
-                    }
-                }.build(),
-        )
-    }
+    private fun buildNotification(snapshot: TtsPlaybackSnapshot?): Notification =
+        notificationManager.buildNotification(snapshot, lastErrorText, mediaSessionManager.sessionToken)
 
     companion object {
-        private const val TAG = "WebnovelTts"
         private const val NOTIFICATION_ID = 1002
         private const val EXTRA_STORY_ID = "storyId"
         private const val EXTRA_CHAPTER_ID = "chapterId"
         private const val EXTRA_CHUNK_INDEX = "chunkIndex"
+        private const val EXTRA_SLEEP_TIMER_MINUTES = "sleepTimerMinutes"
         const val ACTION_START = TtsNotificationActions.ACTION_START
         const val ACTION_RESUME_SESSION = TtsNotificationActions.ACTION_RESUME_SESSION
         const val ACTION_PAUSE = TtsNotificationActions.ACTION_PAUSE
@@ -456,19 +320,73 @@ class TtsForegroundService : Service() {
         const val ACTION_NEXT = TtsNotificationActions.ACTION_NEXT
         const val ACTION_PREVIOUS = TtsNotificationActions.ACTION_PREVIOUS
         const val ACTION_STOP = TtsNotificationActions.ACTION_STOP
+        const val ACTION_NEXT_CHAPTER = TtsNotificationActions.ACTION_NEXT_CHAPTER
+        const val ACTION_PREVIOUS_CHAPTER = TtsNotificationActions.ACTION_PREVIOUS_CHAPTER
+        const val ACTION_SET_RATE = TtsNotificationActions.ACTION_SET_RATE
+        const val ACTION_SEEK_CHUNK = "com.vinicius741.webnovelarchiver.action.TTS_SEEK_CHUNK"
+        const val ACTION_SET_SLEEP_TIMER = "com.vinicius741.webnovelarchiver.action.TTS_SET_SLEEP_TIMER"
 
+        /** Start (or resume) playback wherever this story last stopped. */
         fun start(
             context: Context,
             storyId: String,
             chapterId: String,
-            chunkIndex: Int? = null,
         ) {
             val intent =
                 Intent(context, TtsForegroundService::class.java)
                     .setAction(ACTION_START)
                     .putExtra(EXTRA_STORY_ID, storyId)
                     .putExtra(EXTRA_CHAPTER_ID, chapterId)
-            chunkIndex?.let { intent.putExtra(EXTRA_CHUNK_INDEX, it) }
+            startService(context, intent)
+        }
+
+        /** Start pinned to a chunk: the reader's tap-to-start-from-paragraph, restart-from-top. */
+        fun startFromChunk(
+            context: Context,
+            storyId: String,
+            chapterId: String,
+            chunkIndex: Int,
+        ) {
+            val intent =
+                Intent(context, TtsForegroundService::class.java)
+                    .setAction(ACTION_START)
+                    .putExtra(EXTRA_STORY_ID, storyId)
+                    .putExtra(EXTRA_CHAPTER_ID, chapterId)
+                    .putExtra(EXTRA_CHUNK_INDEX, chunkIndex)
+            startService(context, intent)
+        }
+
+        fun seekChunk(
+            context: Context,
+            chunkIndex: Int,
+        ) {
+            val intent =
+                Intent(context, TtsForegroundService::class.java)
+                    .setAction(ACTION_SEEK_CHUNK)
+                    .putExtra(EXTRA_CHUNK_INDEX, chunkIndex)
+            startService(context, intent)
+        }
+
+        fun setRate(
+            context: Context,
+            rate: Float,
+        ) {
+            startService(
+                context,
+                Intent(context, TtsForegroundService::class.java)
+                    .setAction(TtsNotificationActions.ACTION_SET_RATE)
+                    .putExtra(TtsNotificationActions.EXTRA_RATE, rate),
+            )
+        }
+
+        fun setSleepTimer(
+            context: Context,
+            minutes: Int,
+        ) {
+            val intent =
+                Intent(context, TtsForegroundService::class.java)
+                    .setAction(ACTION_SET_SLEEP_TIMER)
+                    .putExtra(EXTRA_SLEEP_TIMER_MINUTES, minutes)
             startService(context, intent)
         }
 
@@ -477,6 +395,19 @@ class TtsForegroundService : Service() {
             action: String,
         ) {
             startService(context, Intent(context, TtsForegroundService::class.java).setAction(action))
+        }
+
+        /** Stop that also forgets the story's saved position — chunk indices remap on variant switch. */
+        fun stopForgettingPosition(
+            context: Context,
+            storyId: String? = null,
+        ) {
+            val intent =
+                Intent(context, TtsForegroundService::class.java)
+                    .setAction(ACTION_STOP)
+                    .putExtra(TtsNotificationActions.EXTRA_FORGET_POSITION, true)
+            storyId?.let { intent.putExtra(EXTRA_STORY_ID, it) }
+            startService(context, intent)
         }
 
         private fun startService(
@@ -491,11 +422,3 @@ class TtsForegroundService : Service() {
         }
     }
 }
-
-private fun Intent.getKeyEventCompat(): KeyEvent? =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        getParcelableExtra(Intent.EXTRA_KEY_EVENT, KeyEvent::class.java)
-    } else {
-        @Suppress("DEPRECATION")
-        getParcelableExtra(Intent.EXTRA_KEY_EVENT)
-    }

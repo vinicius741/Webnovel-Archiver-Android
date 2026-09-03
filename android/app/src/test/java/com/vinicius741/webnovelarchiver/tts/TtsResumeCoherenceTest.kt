@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -77,7 +78,7 @@ class TtsResumeCoherenceTest {
             val preparer = TtsPlaybackPreparer(owner, dispatcher, dispatcher)
 
             store.flush(TtsSession(storyId = "story", chapterId = "one", isPaused = true, wasPlaying = true))
-            store.clear()
+            store.stop(null)
 
             assertEquals(null, preparer.resume())
         }
@@ -101,6 +102,8 @@ class TtsResumeCoherenceTest {
 
         override fun session(): TtsSession? = persisted
 
+        override suspend fun position(storyId: String): TtsStoryPosition? = null
+
         override suspend fun markChapterRead(
             storyId: String,
             chapterId: String,
@@ -112,8 +115,12 @@ class TtsResumeCoherenceTest {
             persisted = session.copy()
         }
 
+        override suspend fun savePosition(position: TtsStoryPosition) {}
+
         override suspend fun clear() {
             persisted = null
         }
+
+        override suspend fun clearPosition(storyId: String) {}
     }
 }

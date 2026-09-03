@@ -251,6 +251,13 @@ interface ScreenHost {
     /** Observer owned by the currently rendered screen. [screen] cancels it on navigation/rebuild. */
     var screenObserver: Job?
 
+    /**
+     * Invoked at the end of every [com.vinicius741.webnovelarchiver.ui.screen] build so app-level
+     * chrome that depends on the current route (the TTS mini-player) can refresh without owning a
+     * second navigation observer.
+     */
+    var onScreenBuilt: (() -> Unit)?
+
     /** Foldable hinge/inner-display detector (androidx.window). Read on every screen render. */
     val foldTracker: FoldTracker
     val importBackupLauncher: ActivityResultLauncher<Array<String>>

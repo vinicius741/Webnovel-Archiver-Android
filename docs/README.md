@@ -54,6 +54,7 @@ Audits and evaluations of the Text-to-Speech subsystem.
 
 | File | Description |
 |------|-------------|
+| `tts-podcast-player.md` | The podcast-style TTS player: per-story resume memory (`tts_positions.json`), stop-vs-finish semantics, mini-player + Now Playing screens, chapter-skip transport, and lifecycle rules. |
 | `tts-audit.html` | Read-only audit of the current TTS implementation against modern Android best practices, with a prioritized recommendation list. |
 | `tts-media3-migration-evaluation.md` | Short evaluation recommending against a Media3 migration in the same change as the audio-focus/robustness fixes. |
 

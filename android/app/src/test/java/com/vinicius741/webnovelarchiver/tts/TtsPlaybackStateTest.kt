@@ -68,6 +68,17 @@ class TtsPlaybackStateTest {
     }
 
     @Test
+    fun serviceStopsOnlyOnAuthoritativeNull() {
+        assertTrue(TtsPlaybackState.serviceShouldStop(TtsPlaybackUpdate(snapshot = null, isAuthoritative = true)))
+        assertFalse(TtsPlaybackState.serviceShouldStop(TtsPlaybackUpdate(snapshot = null, isAuthoritative = false)))
+        assertFalse(
+            TtsPlaybackState.serviceShouldStop(
+                TtsPlaybackUpdate(snapshot = playbackSnapshot(storyId = "s", chapterId = "c"), isAuthoritative = true),
+            ),
+        )
+    }
+
+    @Test
     fun chunkProgressReportsOneIndexedPosition() {
         assertEquals("Chunk 1 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 0, totalChunks = 10))
         assertEquals("Chunk 5 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 4, totalChunks = 10))

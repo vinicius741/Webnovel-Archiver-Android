@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.repository.coverFile
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -51,6 +52,10 @@ internal fun ScreenHost.screen(
 ) {
     screenObserver?.cancel()
     screenObserver = null
+    // The reader's TTS collector (highlight/auto-follow) must die with the reader screen: its
+    // WebView is destroyed here, so updates past this point are dead writes — and auto-follow would
+    // hijack the screen the user navigated to. showReader re-registers on the next reader build.
+    if (route !is AppRoute.Reader) detachReaderTtsListener()
     navigator.navigate(route)
     val screenKey = navigator.current.stableKey
     val previousScreenKey = frame.tag as? String
@@ -108,9 +113,14 @@ internal fun ScreenHost.screen(
                 Gravity.BOTTOM or Gravity.END,
             )
         lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG) + systemBarBottom())
+        fabView.tag = FAB_VIEW_TAG
         frame.addView(fabView, lp)
     }
+    onScreenBuilt?.invoke()
 }
+
+/** Tags the screen FAB so the TTS mini-player can lift it out of the bar's way. */
+internal const val FAB_VIEW_TAG = "wna_screen_fab"
 
 /** Locates the first [ScrollView] anywhere under [root], so a re-render can capture the outgoing
  *  scroll position before the view tree is torn down. */

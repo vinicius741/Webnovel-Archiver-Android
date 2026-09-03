@@ -63,6 +63,9 @@ sealed class AppRoute(
 
     data object Queue : AppRoute("queue")
 
+    /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
+    data object Player : AppRoute("player")
+
     data object Updates : AppRoute("updates")
 
     data object UpdateFollowSelection : AppRoute("update_follow_selection")
@@ -127,6 +130,7 @@ object AppRouteCodec {
             "library" -> AppRoute.Library
             "add_story" -> AppRoute.AddStory
             "queue" -> AppRoute.Queue
+            "player" -> AppRoute.Player
             "updates" -> AppRoute.Updates
             "update_follow_selection" -> AppRoute.UpdateFollowSelection
             "settings" -> AppRoute.Settings

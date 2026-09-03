@@ -12,12 +12,16 @@ data class TtsPlaybackSnapshot(
     val title: String,
     val storyId: String,
     val chapterId: String,
+    val storyTitle: String = "",
     /** Zero-based index of the chunk currently (or about to be) spoken. */
     val chunkIndex: Int,
     /** Total chunks in the current chapter; 0 when nothing is loaded. */
     val totalChunks: Int,
     val isPlaying: Boolean,
     val isPaused: Boolean,
+    val rate: Float = 1f,
+    val sleepTimerTargetEpochMs: Long? = null,
+    val sleepTimerEndOfChapter: Boolean = false,
 )
 
 /**
@@ -61,6 +65,13 @@ object TtsPlaybackState {
             current
         }
 
+    /**
+     * Whether a service holding this update should tear itself down: only an authoritative null
+     * (playback explicitly ended, or a no-op command confirming an idle engine). The initial
+     * non-authoritative replay must not stop a freshly started service.
+     */
+    fun serviceShouldStop(update: TtsPlaybackUpdate): Boolean = update.snapshot == null && update.isAuthoritative
+
     /** Human-readable "Chunk X / Y" label used by the notification body + the reader transport. */
     fun chunkProgress(
         chunkIndex: Int,
@@ -91,11 +102,13 @@ object TtsPlaybackState {
             title = session.chapterTitle.ifBlank { "Reading" },
             storyId = session.storyId,
             chapterId = session.chapterId,
+            storyTitle = session.storyTitle,
             chunkIndex = session.currentChunkIndex.coerceAtLeast(0),
             totalChunks = totalChunks.coerceAtLeast(0),
             // A persisted session reports "paused" whenever it is not actively playing.
             isPlaying = isPlaying,
             isPaused = !isPlaying,
+            rate = session.rate,
         )
     }
 }

@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import kotlinx.coroutines.CoroutineDispatcher
@@ -264,6 +265,9 @@ class AppRepository private constructor(
 
     fun getTtsSession(): TtsSession? = ttsSession?.copy()
 
+    suspend fun getTtsStoryPosition(storyId: String): TtsStoryPosition? =
+        storageTransaction { requiredStorage.getTtsStoryPositions()[storyId] }?.copy()
+
     fun getUpdateFollowSettings(): UpdateFollowSettings = updateFollowSettings
 
     fun getStorageHealth(): StorageHealthSnapshot = requiredStorage.storageHealth.value
@@ -389,6 +393,10 @@ class AppRepository private constructor(
             requiredStorage.clearTtsSession()
             ttsSession = null
         }
+
+    suspend fun saveTtsStoryPosition(position: TtsStoryPosition) = storageTransaction { requiredStorage.saveTtsStoryPosition(position) }
+
+    suspend fun clearTtsStoryPosition(storyId: String) = storageTransaction { requiredStorage.clearTtsStoryPosition(storyId) }
 
     suspend fun saveUpdateFollowSettings(settings: UpdateFollowSettings) =
         storageTransaction {

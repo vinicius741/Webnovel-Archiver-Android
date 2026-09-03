@@ -2,12 +2,52 @@ package com.vinicius741.webnovelarchiver.tts
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 
 object TtsSessionPlanning {
     data class ReaderResumeTarget(
         val storyId: String,
         val chapterId: String,
     )
+
+    data class StartPosition(
+        val chapterId: String,
+        val chunkIndex: Int,
+    )
+
+    /**
+     * Where "Read aloud" should start for a story: its saved per-story position when that chapter is
+     * still playable (downloaded, or legacy inline content), else the chapter the user is looking at
+     * from the beginning. Description sessions never consult positions (they have none of their own).
+     */
+    fun resolveStartPosition(
+        story: Story,
+        requestedChapterId: String,
+        position: TtsStoryPosition?,
+    ): StartPosition {
+        if (TtsDescriptionPlanning.isDescriptionSession(requestedChapterId)) return StartPosition(requestedChapterId, 0)
+        if (position != null && position.storyId == story.id) {
+            val chapter = story.chapters.firstOrNull { it.id == position.chapterId }
+            if (chapter != null && (chapter.downloaded || !chapter.content.isNullOrBlank())) {
+                return StartPosition(chapter.id, position.currentChunkIndex.coerceAtLeast(0))
+            }
+        }
+        return StartPosition(requestedChapterId, 0)
+    }
+
+    /** Per-story position mirrored from a live session; description sessions persist none. */
+    fun storyPosition(session: TtsSession): TtsStoryPosition? =
+        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId) || session.storyId.isBlank()) {
+            null
+        } else {
+            TtsStoryPosition(
+                storyId = session.storyId,
+                chapterId = session.chapterId,
+                chapterTitle = session.chapterTitle,
+                currentChunkIndex = session.currentChunkIndex.coerceAtLeast(0),
+                updatedAt = session.updatedAt,
+            )
+        }
 
     fun isResumeEligible(session: TtsSession?): Boolean {
         if (session == null) return false
@@ -58,5 +98,18 @@ object TtsSessionPlanning {
         val current = story.chapters.indexOfFirst { it.id == currentChapterId }
         if (current < 0 || current >= story.chapters.lastIndex) return null
         return current + 1
+    }
+
+    /** Chapter index for a manual skip ([delta] is -1 or +1); null when there is none in that direction. */
+    fun chapterIndexAtDelta(
+        story: Story,
+        currentChapterId: String,
+        delta: Int,
+    ): Int? {
+        val current = story.chapters.indexOfFirst { it.id == currentChapterId }
+        if (current < 0) return null
+        val target = current + delta
+        if (target !in story.chapters.indices) return null
+        return target
     }
 }

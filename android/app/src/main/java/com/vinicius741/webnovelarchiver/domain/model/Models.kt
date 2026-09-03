@@ -322,20 +322,6 @@ data class AiSettings(
     }
 }
 
-data class TtsSession(
-    var storyId: String = "",
-    var chapterId: String = "",
-    var chapterTitle: String = "",
-    var currentChunkIndex: Int = 0,
-    var isPaused: Boolean = false,
-    var wasPlaying: Boolean = false,
-    var voiceIdentifier: String? = null,
-    var rate: Float = 1.0f,
-    var pitch: Float = 1.0f,
-    var updatedAt: Long = System.currentTimeMillis(),
-    var sessionVersion: Int = 1,
-)
-
 data class DownloadJob(
     var id: String = "",
     var storyId: String = "",

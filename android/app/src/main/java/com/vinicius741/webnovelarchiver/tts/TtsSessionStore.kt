@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.tts
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,9 @@ import timber.log.Timber
 
 /**
  * Serial, debounced persistence for high-frequency TTS chunk-position updates.
+ *
+ * Every session write also mirrors the story's per-story position ([TtsSessionPlanning.storyPosition])
+ * so an explicit stop can clear the active session while the story still remembers where it stopped.
  *
  * The persistence target must be the single owner of TTS session state so the read path (the
  * repository's in-memory cache, read by [TtsPlaybackPreparer.resume] and the reader/settings resume
@@ -45,33 +49,73 @@ internal class TtsSessionStore(
             pendingWrite =
                 scope.launch {
                     delay(debounceMs)
-                    runCatching { writeMutex.withLock { persistence.save(snapshot) } }
+                    runCatching { writeMutex.withLock { writeSessionAndPosition(snapshot) } }
                         .onFailure { Timber.e(it, "TTS position persistence failed") }
                 }
         }
     }
 
     suspend fun flush(session: TtsSession) {
-        synchronized(schedulingLock) {
-            pendingWrite?.cancel()
-            pendingWrite = null
-        }
-        withContext(dispatcher) { writeMutex.withLock { persistence.save(session.copy()) } }
+        cancelPending()
+        withContext(dispatcher) { writeMutex.withLock { writeSessionAndPosition(session.copy()) } }
     }
 
-    suspend fun clear() {
+    /**
+     * Explicit stop: keep the story position (already mirrored), drop the active session.
+     * [persistPosition] false forgets it instead — chunk indices remap across content variants,
+     * so a variant switch must not leave a stale mid-paragraph position behind.
+     */
+    suspend fun stop(
+        lastSession: TtsSession?,
+        persistPosition: Boolean = true,
+        forgetStoryId: String? = null,
+    ) {
+        cancelPending()
+        withContext(dispatcher) {
+            writeMutex.withLock {
+                val position = lastSession?.let(TtsSessionPlanning::storyPosition)
+                if (position != null) {
+                    if (persistPosition) persistence.savePosition(position) else persistence.clearPosition(position.storyId)
+                } else if (!persistPosition && forgetStoryId != null) {
+                    persistence.clearPosition(forgetStoryId)
+                }
+                persistence.clear()
+            }
+        }
+    }
+
+    /** Natural completion: nothing left to resume, so the story position goes too. Description sessions have none. */
+    suspend fun finish(lastSession: TtsSession?) {
+        cancelPending()
+        withContext(dispatcher) {
+            writeMutex.withLock {
+                persistence.clear()
+                lastSession?.let(TtsSessionPlanning::storyPosition)?.let { persistence.clearPosition(it.storyId) }
+            }
+        }
+    }
+
+    private suspend fun writeSessionAndPosition(session: TtsSession) {
+        persistence.save(session)
+        TtsSessionPlanning.storyPosition(session)?.let { persistence.savePosition(it) }
+    }
+
+    private fun cancelPending() {
         synchronized(schedulingLock) {
             pendingWrite?.cancel()
             pendingWrite = null
         }
-        withContext(dispatcher) { writeMutex.withLock { persistence.clear() } }
     }
 }
 
 internal interface TtsSessionPersistence {
     suspend fun save(session: TtsSession)
 
+    suspend fun savePosition(position: TtsStoryPosition)
+
     suspend fun clear()
+
+    suspend fun clearPosition(storyId: String)
 }
 
 /**
@@ -86,7 +130,13 @@ private class RepositoryTtsSessionPersistence(
 ) : TtsSessionPersistence {
     override suspend fun save(session: TtsSession) = repository.saveTtsSession(session)
 
+    override suspend fun savePosition(position: TtsStoryPosition) = repository.saveTtsStoryPosition(position)
+
     override suspend fun clear() {
         repository.clearTtsSession()
+    }
+
+    override suspend fun clearPosition(storyId: String) {
+        repository.clearTtsStoryPosition(storyId)
     }
 }

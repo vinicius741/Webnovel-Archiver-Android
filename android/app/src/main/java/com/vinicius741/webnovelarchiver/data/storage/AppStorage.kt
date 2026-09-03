@@ -23,6 +23,7 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.domain.story.StoryNormalization
@@ -95,6 +96,7 @@ class AppStorage(
     private val updateFollowSettingsFile = File(root, "update_follow_settings.json")
     private val ttsFile = File(root, "tts_settings.json")
     private val sessionFile = File(root, "tts_session.json")
+    private val ttsPositionsFile = File(root, "tts_positions.json")
     private val aiSettingsFile = File(root, "ai_settings.json")
 
     @Synchronized
@@ -251,6 +253,20 @@ class AppStorage(
     fun saveTtsSession(session: TtsSession) = write(sessionFile, session)
 
     fun clearTtsSession() = maintenanceCoordinator.withStorageAccess(this) { sessionFile.delete() }
+
+    fun getTtsStoryPositions(): MutableMap<String, TtsStoryPosition> =
+        read<MutableMap<String, TtsStoryPosition>>(ttsPositionsFile) ?: mutableMapOf()
+
+    fun saveTtsStoryPosition(position: TtsStoryPosition) {
+        val positions = getTtsStoryPositions()
+        positions[position.storyId] = position
+        write(ttsPositionsFile, positions)
+    }
+
+    fun clearTtsStoryPosition(storyId: String) {
+        val positions = getTtsStoryPositions()
+        if (positions.remove(storyId) != null) write(ttsPositionsFile, positions)
+    }
 
     @Synchronized
     fun getQueue(): MutableList<DownloadJob> = read(queueFile) ?: mutableListOf()

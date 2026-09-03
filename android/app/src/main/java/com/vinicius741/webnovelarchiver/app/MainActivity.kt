@@ -24,6 +24,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordin
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
@@ -88,6 +89,7 @@ class MainActivity :
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */
     override var rerender: (() -> Unit)? = null
     override var screenObserver: Job? = null
+    override var onScreenBuilt: (() -> Unit)? = null
 
     /** Created in [onCreate] once engines/storage are up. */
     override lateinit var foldTracker: FoldTracker
@@ -155,9 +157,17 @@ class MainActivity :
         // Same instance the TtsForegroundService plays through, so the reader's listener fires
         // for service-driven playback.
         ttsEngine = container.ttsEngine
+        // Screens render into `frame`; the TTS mini-player floats above them in `root` so it
+        // survives every screen rebuild.
         frame = FrameLayout(this)
-        setContentView(frame)
+        val root = FrameLayout(this)
+        root.addView(
+            frame,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
+        )
+        setContentView(root)
         holdSplashScreenUntilFirstContent { uiReady }
+        attachTtsMiniPlayer(root)
         // Background AI cover jobs outlive this activity. Attach only after `frame` exists: the
         // collectors run inline on Main.immediate and their first pass reads frame.tag.
         attachAiCoverJobBridge()

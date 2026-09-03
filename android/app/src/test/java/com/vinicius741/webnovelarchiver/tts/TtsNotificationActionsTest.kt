@@ -10,14 +10,19 @@ class TtsNotificationActionsTest {
         val actions = TtsNotificationActions.actions(isPaused = false)
 
         assertEquals(
-            listOf(R.string.tts_action_previous, R.string.tts_action_pause, R.string.tts_action_next, R.string.tts_action_stop),
+            listOf(
+                R.string.tts_action_previous_chapter,
+                R.string.tts_action_pause,
+                R.string.tts_action_next_chapter,
+                R.string.tts_action_stop,
+            ),
             actions.map { it.labelResId },
         )
         assertEquals(
             listOf(
-                TtsNotificationActions.ACTION_PREVIOUS,
+                TtsNotificationActions.ACTION_PREVIOUS_CHAPTER,
                 TtsNotificationActions.ACTION_PAUSE,
-                TtsNotificationActions.ACTION_NEXT,
+                TtsNotificationActions.ACTION_NEXT_CHAPTER,
                 TtsNotificationActions.ACTION_STOP,
             ),
             actions.map { it.action },
@@ -29,7 +34,12 @@ class TtsNotificationActionsTest {
         val actions = TtsNotificationActions.actions(isPaused = true)
 
         assertEquals(
-            listOf(R.string.tts_action_previous, R.string.tts_action_play, R.string.tts_action_next, R.string.tts_action_stop),
+            listOf(
+                R.string.tts_action_previous_chapter,
+                R.string.tts_action_play,
+                R.string.tts_action_next_chapter,
+                R.string.tts_action_stop,
+            ),
             actions.map { it.labelResId },
         )
         assertEquals(TtsNotificationActions.ACTION_RESUME_SESSION, actions[1].action)

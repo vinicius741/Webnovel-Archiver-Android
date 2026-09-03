@@ -22,10 +22,18 @@ internal class TtsPlaybackPublisher {
         session: TtsSession?,
         totalChunks: Int,
         isPlaying: Boolean,
+        sleepTimerTargetEpochMs: Long? = null,
+        sleepTimerEndOfChapter: Boolean = false,
     ) {
+        val base = TtsPlaybackState.snapshotForSession(session, totalChunks, isPlaying)
+        val snapshot =
+            base?.copy(
+                sleepTimerTargetEpochMs = sleepTimerTargetEpochMs,
+                sleepTimerEndOfChapter = sleepTimerEndOfChapter,
+            )
         mutablePlaybackState.value =
             TtsPlaybackUpdate(
-                snapshot = TtsPlaybackState.snapshotForSession(session, totalChunks, isPlaying),
+                snapshot = snapshot,
                 isAuthoritative = true,
             )
     }

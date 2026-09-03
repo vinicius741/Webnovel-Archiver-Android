@@ -40,6 +40,8 @@
   <string name="tts_action_pause">Pause</string>
   <string name="tts_action_next">Next</string>
   <string name="tts_action_stop">Stop</string>
+  <string name="tts_action_previous_chapter">Previous chapter</string>
+  <string name="tts_action_next_chapter">Next chapter</string>
   <string name="tts_metadata_reading">Reading</string>
   <string name="tts_error_audio_focus_denied">Could not start TTS: another app has audio focus</string>
   <string name="tts_error_init_failed">Could not start TTS: engine initialization failed</string>

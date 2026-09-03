@@ -58,8 +58,13 @@ internal fun ScreenHost.restartTtsForChapterVariant(
     val persisted = repository.getTtsSession()
     val persistedMatches = persisted?.storyId == storyId && persisted?.chapterId == chapterId
     when {
-        liveMatches && snapshot?.isPaused == false -> TtsForegroundService.start(app, storyId, chapterId)
-        liveMatches || persistedMatches -> TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP)
+        // Variant switch remaps chunk indices: live playback restarts at the top, a persisted one is
+        // stopped AND its story position forgotten so it cannot resume mid-paragraph in the new variant.
+        liveMatches && snapshot?.isPaused == false -> TtsForegroundService.startFromChunk(app, storyId, chapterId, 0)
+        liveMatches || persistedMatches -> {
+            TtsForegroundService.stopForgettingPosition(app, storyId)
+            scope.launch { repository.clearTtsStoryPosition(storyId) }
+        }
     }
 }
 
@@ -113,7 +118,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             app.runOnUiThread {
                 val latest = repository.story(story.id) ?: story
                 val currentChapter = latest.chapters.firstOrNull { it.id == chapter.id } ?: return@runOnUiThread
-                TtsForegroundService.start(app, latest.id, currentChapter.id, clamped)
+                TtsForegroundService.startFromChunk(app, latest.id, currentChapter.id, clamped)
             }
         }
     }
@@ -214,8 +219,14 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         scope.launch {
             ttsEngine.playbackState.collect { update ->
                 val snapshot = update.snapshot
+                // Auto-follow only while this reader chapter is the screen the user is looking at —
+                // otherwise a chapter transition elsewhere (player skip, background auto-advance)
+                // would hijack whatever screen is currently open.
+                val route = navigator.current
+                val readerIsCurrent =
+                    route is AppRoute.Reader && route.storyId == story.id && route.chapterId == chapter.id
                 val chapterToOpen = TtsPlaybackState.readerChapterTransition(story.id, chapter.id, snapshot)
-                if (chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
+                if (readerIsCurrent && chapterToOpen != null && story.chapters.any { it.id == chapterToOpen }) {
                     // Auto-advance swaps the session before the next chapter's first snapshot: rebuild to follow.
                     showReader(story.id, chapterToOpen)
                     return@collect
@@ -297,8 +308,11 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                 onPlayPause = { transportPlayPause = it },
                 onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
                 onPlayPauseTap = {
+                    // Cold start seeds the transport from the persisted session, so a "playing"
+                    // seed with no live engine session shows a phantom Pause icon — resume then.
+                    val live = ttsEngine.playbackState.value.snapshot
                     val action =
-                        if (transportSnapshot?.isPaused != false) {
+                        if (live == null || transportSnapshot?.isPaused != false) {
                             TtsForegroundService.ACTION_RESUME_SESSION
                         } else {
                             TtsForegroundService.ACTION_PAUSE

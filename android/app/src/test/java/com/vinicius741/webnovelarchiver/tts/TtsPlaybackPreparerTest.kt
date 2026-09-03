@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -20,7 +21,11 @@ class TtsPlaybackPreparerTest {
                     Chapter(id = "two", content = "<p>Next chapter.</p>"),
                 )
             val story = Story(id = "story", chapters = chapters)
-            val source = FakeTtsPlaybackSource(story, TtsSession("story", "one", currentChunkIndex = 99, wasPlaying = true))
+            val source =
+                FakeTtsPlaybackSource(
+                    story,
+                    TtsSession(storyId = "story", chapterId = "one", currentChunkIndex = 99, wasPlaying = true),
+                )
             val dispatcher = StandardTestDispatcher(testScheduler)
             val preparer = TtsPlaybackPreparer(source, dispatcher, dispatcher)
 
@@ -170,9 +175,142 @@ class TtsPlaybackPreparerTest {
             assertEquals(listOf("Polished prose that narration must read."), prepared.chunks)
         }
 
+    @Test
+    fun prepareWithoutExplicitIndexResumesStoryPositionFromItsChapter() =
+        runTest {
+            // Podcast resume: "Read aloud" lands on the story's saved chapter + chunk, even when the
+            // user was looking at a different chapter when they tapped.
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First. Second.</p>", downloaded = true),
+                            Chapter(id = "two", content = "<p>Third. Fourth.</p>", downloaded = true),
+                        ),
+                )
+            val source =
+                FakeTtsPlaybackSource(
+                    story,
+                    null,
+                    TtsStoryPosition(storyId = "story", chapterId = "two", currentChunkIndex = 1),
+                )
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared = TtsPlaybackPreparer(source, dispatcher, dispatcher).prepare("story", "one") ?: error("Expected resume")
+
+            assertEquals("two", prepared.chapter.id)
+            assertEquals(1, prepared.startIndex)
+        }
+
+    @Test
+    fun prepareWithoutExplicitIndexFallsBackToRequestedChapterWhenPositionIsStale() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters = mutableListOf(Chapter(id = "one", content = "<p>First. Second.</p>", downloaded = true)),
+                )
+            // "two" no longer exists; the viewed chapter plays from the top.
+            val source =
+                FakeTtsPlaybackSource(story, null, TtsStoryPosition(storyId = "story", chapterId = "two", currentChunkIndex = 1))
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared = TtsPlaybackPreparer(source, dispatcher, dispatcher).prepare("story", "one") ?: error("Expected playback")
+
+            assertEquals("one", prepared.chapter.id)
+            assertEquals(0, prepared.startIndex)
+        }
+
+    @Test
+    fun prepareWithExplicitIndexIgnoresStoryPosition() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters = mutableListOf(Chapter(id = "one", content = "<p>First. Second.</p>", downloaded = true)),
+                )
+            val source =
+                FakeTtsPlaybackSource(story, null, TtsStoryPosition(storyId = "story", chapterId = "one", currentChunkIndex = 1))
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared = TtsPlaybackPreparer(source, dispatcher, dispatcher).prepare("story", "one", 0) ?: error("Expected playback")
+
+            assertEquals(0, prepared.startIndex)
+        }
+
+    @Test
+    fun chapterAtSkipsForwardAndMarksCurrentChapterRead() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First.</p>", downloaded = true),
+                            Chapter(id = "two", content = "<p>Second.</p>", downloaded = true),
+                        ),
+                )
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared =
+                TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                    .chapterAt(TtsSession(storyId = "story", chapterId = "one"), 1)
+                    ?: error("Expected next chapter")
+
+            assertEquals("one", source.markedChapterId)
+            assertEquals("two", prepared.chapter.id)
+            assertEquals(0, prepared.startIndex)
+        }
+
+    @Test
+    fun chapterAtSkipsBackwardWithoutMarkingRead() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First.</p>", downloaded = true),
+                            Chapter(id = "two", content = "<p>Second.</p>", downloaded = true),
+                        ),
+                )
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val prepared =
+                TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                    .chapterAt(TtsSession(storyId = "story", chapterId = "two"), -1)
+                    ?: error("Expected previous chapter")
+
+            assertEquals(null, source.markedChapterId)
+            assertEquals("one", prepared.chapter.id)
+        }
+
+    @Test
+    fun chapterAtEdgeReturnsNull() =
+        runTest {
+            val story = Story(id = "story", chapters = mutableListOf(Chapter(id = "one", content = "<p>First.</p>", downloaded = true)))
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val forward = TtsPlaybackPreparer(source, dispatcher, dispatcher).chapterAt(TtsSession(storyId = "story", chapterId = "one"), 1)
+            val backward =
+                TtsPlaybackPreparer(
+                    source,
+                    dispatcher,
+                    dispatcher,
+                ).chapterAt(TtsSession(storyId = "story", chapterId = "one"), -1)
+
+            assertEquals(null, forward)
+            assertEquals(null, backward)
+        }
+
     private class FakeTtsPlaybackSource(
         private val story: Story,
         private val persisted: TtsSession?,
+        private val storyPosition: TtsStoryPosition? = null,
     ) : TtsPlaybackSource {
         var markedStoryId: String? = null
         var markedChapterId: String? = null
@@ -189,6 +327,8 @@ class TtsPlaybackPreparerTest {
         override fun regexRules(): List<RegexCleanupRule> = emptyList()
 
         override fun session(): TtsSession? = persisted
+
+        override suspend fun position(storyId: String): TtsStoryPosition? = storyPosition
 
         override suspend fun markChapterRead(
             storyId: String,
