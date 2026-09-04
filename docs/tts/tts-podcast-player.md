@@ -1,7 +1,8 @@
 # Podcast-style TTS playback
 
 How TTS behaves as a persistent, podcast-like player: playback that survives navigation and
-app exits, per-story resume memory, and the in-app player surfaces. Shipped 2026-09-02.
+app exits, per-story resume memory, and the in-app player surfaces. Shipped 2026-09-02;
+media buttons + in-app close hardened 2026-09-04.
 
 ## Model
 
@@ -32,20 +33,45 @@ inline content); otherwise the viewed chapter plays from the top.
   stopping and wiping position. Transient loss already paused + auto-resumed.
 - A session ending (explicit stop or natural completion) stops the foreground service and
   removes the notification — no zombie service with a dismissable notification.
+- A service instance started right after a previous stop must ignore the replayed
+  authoritative-null from *before* it existed (`replayAtCreate` reference guard in
+  `TtsForegroundService`); honoring it stopped the service before its first command ran,
+  leaving the process-wide engine speaking with no session or notification. Playback updates
+  carry an event id so a later no-op or failed resume emits a distinct authoritative-null and
+  still tears the new service down.
 - Cold start with a resume-eligible session reopens the reader at that chapter (pre-existing
   behavior, unchanged).
+
+## Media buttons (headset & Bluetooth)
+
+- **Routing**: TTS audio plays inside the engine's process, so the system attributes playback
+  to the engine's uid — and media-button routing picks the target session by "which uid is
+  actually playing audio". `TtsMediaButtonClaim` holds a silent looping in-app `AudioTrack`
+  while speaking so our uid becomes the active player and the session receives media buttons
+  like any music player; released on pause/stop (the "lastly played" ordering keeps the
+  paused session first in line, so resume taps still arrive).
+- **Headset semantics** (`TtsHeadsetTapPlanning`): 1 tap toggle, 2 taps next chapter, 3 taps
+  previous chapter (300 ms burst window). Repeated key-down events from a held button are
+  ignored. Dedicated PLAY/PAUSE/NEXT/PREVIOUS/STOP keycodes act immediately.
+- **AUDIO_BECOMING_NOISY** (headphones/Bluetooth disconnected) pauses via
+  `TtsNoisyAudioReceiver`, registered only while playing.
+- The manifest declares `androidx.media.session.MediaButtonReceiver` plus a
+  `MEDIA_BUTTON` intent-filter on the service, so post-death media-button restarts route to
+  the service (which enters foreground first, then dispatches the key to the session).
 
 ## Player surfaces
 
 - **Mini-player** (`feature/player/TtsMiniPlayer.kt`): floating bar pinned above every screen
-  while a session is loaded — play/pause, chapter + story title, sentence progress; tap opens
-  the player. Smooth enter/exit animations (`translationY` and `alpha`). Hidden on the Reader route
-  (which has its own transport + highlight). The current screen's FAB is lifted above the bar while visible.
+  while a session is loaded — play/pause, chapter + story title, sentence progress; chevron-up
+  opens the player, ✕ closes the session (stop; per-story position kept). Smooth enter/exit
+  animations (`translationY` and `alpha`). Hidden on the Reader route (which has its own
+  transport + highlight). The current screen's FAB is lifted above the bar while visible.
 - **Now Playing screen** (`feature/player/PlayerScreen.kt`, `AppRoute.Player`): cover, story +
   chapter titles, "Chapter n / N", interactive `SeekBar` scrubber with touch isolation and live
   seeking, prev/next chapter, prev/next sentence, play/pause, speed chip (0.75–2.0 presets, applied
-  live and persisted), sleep timer chip (countdown or chapter-end pause), closes itself when
-  playback ends. Rebuilds on chapter change; patches transport state in place otherwise.
+  live and persisted), sleep timer chip (countdown or chapter-end pause), Stop chip (ends the
+  session and navigates back), closes itself when playback ends. Rebuilds on chapter change;
+  patches transport state in place otherwise.
 - **Reader transport** (unchanged location): sentence-level prev/next + play/pause + stop for the
   visible chapter. Its play/pause resumes the persisted session when the engine has no live
   session (cold-start phantom-pause fix).
@@ -103,3 +129,13 @@ chapter skip while playing and while paused (silent position move), process-kill
 (startIndex=89), stop-then-resume (startIndex=104, re-speaks the interrupted sentence), per-story
 memory across two stories with a cross-chapter jump (Prologue tap → chapter 2 chunk 147), and
 the auto-follow hijack fix (player skip stays on the player).
+
+## Emulator QA (2026-09-04, webnovel_api36, debug build)
+
+Verified live via `cmd media_session dispatch` + `input keyevent 85` (same MediaSessionService
+dispatch Bluetooth uses): media button session resolves to our session (`dumpsys media_session`
+was `null` before the claim), single-tap pause/resume, double-tap next chapter, triple-tap
+previous chapter, STOP key teardown, becoming-noisy pause, paused session still owns media
+buttons, mini-player ✕ close (bar hides, service stops, `tts_positions.json` retained), Now
+Playing Stop chip (teardown + auto-navigate-back), chevron-up + ✕ confirmed by screenshot,
+and stop→restart in one process no longer zombies the engine.
