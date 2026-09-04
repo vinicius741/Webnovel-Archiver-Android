@@ -31,6 +31,8 @@ data class TtsPlaybackSnapshot(
 data class TtsPlaybackUpdate(
     val snapshot: TtsPlaybackSnapshot?,
     val isAuthoritative: Boolean,
+    /** Distinguishes repeated events whose playback payload is otherwise equal. */
+    val eventId: Long = 0L,
 )
 
 object TtsPlaybackState {

@@ -93,14 +93,16 @@ class TtsForegroundService : Service() {
         AppNotificationChannels.ensureCreated(this)
         mediaSessionManager.ensureSession()
         // One replaying state stream drives MediaSession + notification; no storage polling. An
-        // authoritative null (explicit stop, natural completion, or a no-op command confirming an
-        // idle engine) tears the foreground state down — otherwise a finished session or a stray
-        // command leaves a zombie service behind. The non-authoritative startup replay must not.
+        // authoritative null tears the foreground state down (explicit stop, completion, idle
+        // command) — but never the creation-time replay of a PREVIOUS instance's stop, which would
+        // stopSelf this service before its first command runs and zombie the process-wide engine.
+        val replayAtCreate = engine.playbackState.value
         stateCollectionJob =
             stateScope.launch {
                 engine.playbackState.collect { update ->
+                    val staleReplay = update === replayAtCreate
                     refreshMediaState(update.snapshot)
-                    if (TtsPlaybackState.serviceShouldStop(update)) {
+                    if (!staleReplay && TtsPlaybackState.serviceShouldStop(update)) {
                         stopForegroundAndReset()
                         stopSelf()
                     }

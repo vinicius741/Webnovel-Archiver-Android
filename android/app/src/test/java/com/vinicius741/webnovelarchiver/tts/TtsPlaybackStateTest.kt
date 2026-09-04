@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.tts
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,6 +77,19 @@ class TtsPlaybackStateTest {
                 TtsPlaybackUpdate(snapshot = playbackSnapshot(storyId = "s", chapterId = "c"), isAuthoritative = true),
             ),
         )
+    }
+
+    @Test
+    fun repeatedStopEventsRemainDistinct() {
+        val publisher = TtsPlaybackPublisher()
+
+        publisher.stop()
+        val firstStop = publisher.playbackState.value
+        publisher.stop()
+        val secondStop = publisher.playbackState.value
+
+        assertNotEquals(firstStop, secondStop)
+        assertTrue(secondStop.eventId > firstStop.eventId)
     }
 
     @Test

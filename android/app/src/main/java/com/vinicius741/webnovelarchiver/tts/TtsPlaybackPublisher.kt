@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Owns the engine's canonical observable playback state so [TtsEngine] stays focused on playback
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 internal class TtsPlaybackPublisher {
     private val mutablePlaybackState = MutableStateFlow(TtsPlaybackUpdate(snapshot = null, isAuthoritative = false))
+    private val nextEventId = AtomicLong(0L)
 
     /** Canonical observable playback state; authoritative `null` means playback explicitly stopped. */
     val playbackState: StateFlow<TtsPlaybackUpdate> = mutablePlaybackState.asStateFlow()
@@ -35,11 +37,17 @@ internal class TtsPlaybackPublisher {
             TtsPlaybackUpdate(
                 snapshot = snapshot,
                 isAuthoritative = true,
+                eventId = nextEventId.incrementAndGet(),
             )
     }
 
     /** Publishes the explicit stop that clears the transport, notification, and MediaSession. */
     fun stop() {
-        mutablePlaybackState.value = TtsPlaybackUpdate(snapshot = null, isAuthoritative = true)
+        mutablePlaybackState.value =
+            TtsPlaybackUpdate(
+                snapshot = null,
+                isAuthoritative = true,
+                eventId = nextEventId.incrementAndGet(),
+            )
     }
 }
