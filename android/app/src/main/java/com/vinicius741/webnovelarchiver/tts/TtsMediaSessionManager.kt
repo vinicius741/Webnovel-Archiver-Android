@@ -3,6 +3,8 @@ package com.vinicius741.webnovelarchiver.tts
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -35,6 +37,9 @@ internal class TtsMediaSessionManager(
     }
 
     private var session: MediaSessionCompat? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingTapRunnable: Runnable? = null
+    private var burstTapCount = 0
 
     val sessionToken: MediaSessionCompat.Token?
         get() = session?.sessionToken
@@ -82,9 +87,12 @@ internal class TtsMediaSessionManager(
                         override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
                             val keyEvent = mediaButtonEvent?.getKeyEventCompat() ?: return super.onMediaButtonEvent(mediaButtonEvent)
                             if (keyEvent.action != KeyEvent.ACTION_DOWN) return super.onMediaButtonEvent(mediaButtonEvent)
+                            // A held button emits repeated ACTION_DOWN events. Count only the first
+                            // event so a long press cannot masquerade as a multi-tap chapter skip.
+                            if (!TtsHeadsetTapPlanning.shouldCountKeyDown(keyEvent.repeatCount)) return true
                             when (keyEvent.keyCode) {
                                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_HEADSETHOOK -> {
-                                    callbacks.onTogglePlayPause()
+                                    registerToggleTap()
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PLAY -> {
@@ -93,6 +101,10 @@ internal class TtsMediaSessionManager(
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PAUSE -> {
                                     callbacks.onPause()
+                                    return true
+                                }
+                                KeyEvent.KEYCODE_MEDIA_STOP -> {
+                                    callbacks.onStop()
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
@@ -157,11 +169,41 @@ internal class TtsMediaSessionManager(
     }
 
     fun release() {
+        pendingTapRunnable?.let(mainHandler::removeCallbacks)
+        pendingTapRunnable = null
+        burstTapCount = 0
         session?.run {
             isActive = false
             release()
         }
         session = null
+    }
+
+    /** 1 toggle / 2 next / 3 previous — the burst waits briefly for a possible extra tap. */
+    private fun registerToggleTap() {
+        burstTapCount++
+        pendingTapRunnable?.let(mainHandler::removeCallbacks)
+        if (burstTapCount >= 3) {
+            dispatchTapBurst()
+            return
+        }
+        val fire =
+            Runnable {
+                pendingTapRunnable = null
+                dispatchTapBurst()
+            }
+        pendingTapRunnable = fire
+        mainHandler.postDelayed(fire, TtsHeadsetTapPlanning.MULTI_TAP_WINDOW_MS)
+    }
+
+    private fun dispatchTapBurst() {
+        val action = TtsHeadsetTapPlanning.actionForTapCount(burstTapCount)
+        burstTapCount = 0
+        when (action) {
+            TtsHeadsetTapAction.TogglePlayPause -> callbacks.onTogglePlayPause()
+            TtsHeadsetTapAction.NextChapter -> callbacks.onSkipChapter(1)
+            TtsHeadsetTapAction.PreviousChapter -> callbacks.onSkipChapter(-1)
+        }
     }
 
     private companion object {

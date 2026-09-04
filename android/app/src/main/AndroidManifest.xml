@@ -63,7 +63,11 @@
     <service
       android:name=".tts.TtsForegroundService"
       android:exported="false"
-      android:foregroundServiceType="mediaPlayback" />
+      android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="android.intent.action.MEDIA_BUTTON" />
+      </intent-filter>
+    </service>
     <!-- Gap 2: forwards hardware media-button broadcasts (headset hook, Bluetooth play/pause) to the
          TTS foreground service's MediaSession while the app process is alive. -->
     <receiver

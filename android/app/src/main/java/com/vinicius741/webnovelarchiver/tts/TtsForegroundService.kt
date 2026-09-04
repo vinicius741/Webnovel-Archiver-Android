@@ -25,6 +25,12 @@ class TtsForegroundService : Service() {
     private lateinit var audioFocus: TtsAudioFocusManager
     private lateinit var notificationManager: TtsNotificationManager
     private lateinit var mediaSessionManager: TtsMediaSessionManager
+    private val mediaButtonClaim = TtsMediaButtonClaim()
+    private val noisyAudio =
+        TtsNoisyAudioReceiver(this) {
+            pausePlayback()
+            refreshMediaStateFromEngine()
+        }
     private var foregroundStarted = false
     private var resumeAfterFocusGain = false
     private var lastErrorText: String? = null
@@ -109,6 +115,9 @@ class TtsForegroundService : Service() {
         startId: Int,
     ): Int {
         if (Intent.ACTION_MEDIA_BUTTON == intent?.action) {
+            // May arrive after the system restarted us for a media button: enter foreground
+            // first (startForegroundService contract), then route the key to the session.
+            startForegroundIfNeeded(buildNotification(lastSnapshot))
             mediaSessionManager.handleMediaButton(intent)
             return START_STICKY
         }
@@ -165,6 +174,8 @@ class TtsForegroundService : Service() {
         engine.removeErrorListener(errorListener)
         audioFocus.abandon()
         mediaSessionManager.release()
+        mediaButtonClaim.stop()
+        noisyAudio.unregister()
         super.onDestroy()
     }
 
@@ -268,24 +279,14 @@ class TtsForegroundService : Service() {
         mediaSessionManager.updatePlaybackState(snapshot)
         mediaSessionManager.updateMetadata(snapshot)
         updateNotification()
+        mediaButtonClaim.setSpeaking(snapshot?.isPlaying == true)
+        noisyAudio.setActive(snapshot?.isPlaying == true)
     }
 
     private fun showPlaybackError(error: TtsPlaybackError) {
-        lastErrorText = stringForPlaybackError(error)
+        lastErrorText = getString(TtsErrorPlanning.labelResId(error))
         updateNotification()
     }
-
-    private fun stringForPlaybackError(error: TtsPlaybackError): String =
-        when (error.kind) {
-            TtsPlaybackErrorKind.InitFailed -> getString(R.string.tts_error_init_failed)
-            TtsPlaybackErrorKind.LanguageMissingData -> getString(R.string.tts_error_language_missing_data)
-            TtsPlaybackErrorKind.LanguageNotSupported -> getString(R.string.tts_error_language_not_supported)
-            TtsPlaybackErrorKind.VoiceUnavailable -> getString(R.string.tts_error_voice_unavailable)
-            TtsPlaybackErrorKind.VoiceRejected -> getString(R.string.tts_error_voice_rejected)
-            TtsPlaybackErrorKind.SpeakFailed -> getString(R.string.tts_error_speak_failed)
-            TtsPlaybackErrorKind.SynthesisFailed -> getString(R.string.tts_error_synthesis_failed)
-            TtsPlaybackErrorKind.Stalled -> getString(R.string.tts_error_stalled)
-        }
 
     /** Rebuilds the snapshot from engine memory without decoding session JSON on the main thread. */
     private fun refreshMediaStateFromEngine() {

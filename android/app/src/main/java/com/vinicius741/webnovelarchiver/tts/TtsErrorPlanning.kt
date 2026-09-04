@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.tts
 
 import android.speech.tts.TextToSpeech
+import androidx.annotation.StringRes
+import com.vinicius741.webnovelarchiver.R
 import kotlin.math.roundToLong
 
 enum class TtsPlaybackErrorKind {
@@ -33,6 +35,20 @@ object TtsErrorPlanning {
             TextToSpeech.ERROR_SYNTHESIS -> "ERROR_SYNTHESIS"
             null -> "ERROR_UNKNOWN"
             else -> "ERROR_$code"
+        }
+
+    /** Notification label for a playback error. */
+    @StringRes
+    fun labelResId(error: TtsPlaybackError): Int =
+        when (error.kind) {
+            TtsPlaybackErrorKind.InitFailed -> R.string.tts_error_init_failed
+            TtsPlaybackErrorKind.LanguageMissingData -> R.string.tts_error_language_missing_data
+            TtsPlaybackErrorKind.LanguageNotSupported -> R.string.tts_error_language_not_supported
+            TtsPlaybackErrorKind.VoiceUnavailable -> R.string.tts_error_voice_unavailable
+            TtsPlaybackErrorKind.VoiceRejected -> R.string.tts_error_voice_rejected
+            TtsPlaybackErrorKind.SpeakFailed -> R.string.tts_error_speak_failed
+            TtsPlaybackErrorKind.SynthesisFailed -> R.string.tts_error_synthesis_failed
+            TtsPlaybackErrorKind.Stalled -> R.string.tts_error_stalled
         }
 
     fun logMessage(error: TtsPlaybackError): String {
