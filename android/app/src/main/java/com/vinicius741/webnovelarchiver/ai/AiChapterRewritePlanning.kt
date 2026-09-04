@@ -86,8 +86,11 @@ object AiChapterRewritePlanning {
         originalUserMessage + (
             "\n\nYour previous reply failed validation:\n" +
                 issues.joinToString("\n") { "- ${it.code}: ${it.detail}" } +
-                "\nReturn the corrected complete JSON: every input block id exactly once, in order; " +
-                "protected blocks byte-for-byte."
+                "\nGenerate the complete result again from the original source under the same editing " +
+                "contract. The messages above describe validation failures, not new story facts or " +
+                "permission to weaken preservation. Return the corrected complete JSON, not a patch: " +
+                "every input block id exactly once, in order; protected blocks byte-for-byte. " +
+                "Retain all unique content when merging. No commentary or markdown fences."
         )
 
     /**
@@ -122,9 +125,10 @@ object AiChapterRewritePlanning {
             }
         return (
             "Verify preservation of the rewritten chapter against the source block pairs. " +
-                "A rewritten_html of \"\" means the block was merged into the block above; that is not a " +
-                "finding by itself — check the carrier block for the absorbed content and flag it only " +
-                "if the absorbed content changed meaning.\n\n" +
+                "A rewritten_html of \"\" means the block was merged into the block above, possibly " +
+                "through a run of empty blocks sharing the nearest preceding nonempty carrier. " +
+                "Compare that whole group before judging missing or added content; check that every " +
+                "distinct fact and action survives in order. Do not cross protected blocks.\n\n" +
                 frameSourceData(payload)
         )
     }

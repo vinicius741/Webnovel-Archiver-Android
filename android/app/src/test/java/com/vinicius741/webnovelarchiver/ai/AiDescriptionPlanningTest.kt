@@ -129,7 +129,10 @@ class AiDescriptionPlanningTest {
         val system = messages[0].content
         assert(system.contains("multiple protagonists"))
         assert(system.contains("primary protagonist"))
-        assert(system.contains("one central character"))
+        assert(system.contains("without inventing a central hero"))
+        assert(system.contains("even when the"))
+        assert(system.contains("write less when the evidence is sparse"))
+        assert(system.contains("Do not fill gaps"))
         assert(system.contains("no parallel or alternative synopses"))
         assert(system.contains("120 to 180 words"))
     }

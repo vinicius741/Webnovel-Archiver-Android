@@ -2,7 +2,9 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiCoverPlanningTest {
@@ -44,8 +46,12 @@ class AiCoverPlanningTest {
         assert(system.contains("diptychs"))
         assert(system.contains("triptychs"))
         assert(system.contains("exactly one prompt"))
-        assert(system.contains("70 to 120 words"))
-        assert(system.contains("must contain no text"))
+        assertTrue(system.contains("100 to 160 words"))
+        assertTrue(system.contains("Include a readable title on the cover by default"))
+        assertTrue(system.contains("exact chosen lettering in double quotes near the START"))
+        assertTrue(system.contains("Long titles and typography difficulty are reasons to shorten"))
+        assertTrue(system.contains("Only omit lettering if no usable title"))
+        assertFalse(system.contains("The image must contain no text"))
     }
 
     @Test
@@ -86,6 +92,32 @@ class AiCoverPlanningTest {
         assertNull(AiCoverPlanning.cleanGeneratedPrompt("   \"   "))
         val capped = AiCoverPlanning.cleanGeneratedPrompt("x".repeat(5_000))
         assertEquals(AiCoverPlanning.MAX_PROMPT_CHARS, capped?.length)
+    }
+
+    @Test
+    fun `cleanGeneratedPrompt preserves quotes around title lettering`() {
+        val prompt = "Render the title exactly as \"Ace of Capes\""
+        assertEquals(prompt, AiCoverPlanning.cleanGeneratedPrompt(prompt))
+        assertEquals(prompt, AiCoverPlanning.cleanGeneratedPrompt("\"$prompt\""))
+    }
+
+    @Test
+    fun `cover and synopsis distinguish library title labels from real title words`() {
+        val title = "Ace of Capes [Superhero LitRPG] [Isekai] [Card Crafting]"
+        val story = Story(id = "s1", title = title, tags = mutableListOf("Genre", "Rankings#7 in Helpful Protagonist"))
+        listOf(
+            AiCoverPlanning.buildPromptMessages(story, emptyList()),
+            AiDescriptionPlanning.buildMessages(story, emptyList()),
+        ).forEach { messages ->
+            assertTrue(messages[0].content.contains(AiPromptSourceData.METADATA_GUIDANCE))
+            assertTrue(messages[0].content.contains("has title \"Ace of Capes\""))
+            assertTrue(messages[0].content.contains("Preserve genuine title words and meaningful subtitles"))
+            assertTrue(messages[1].content.contains(title))
+            assertFalse(messages[0].content.contains("id\":\"s1"))
+        }
+        // Prompt-level interpretation must not rename the saved novel or mutate its source tags.
+        assertEquals(title, story.title)
+        assertEquals(listOf("Genre", "Rankings#7 in Helpful Protagonist"), story.tags)
     }
 
     @Test

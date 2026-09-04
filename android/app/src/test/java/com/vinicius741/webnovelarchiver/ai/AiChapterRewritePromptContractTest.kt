@@ -33,20 +33,29 @@ class AiChapterRewritePromptContractTest {
     fun `light strength weakens the merge mandate instead of copying balanced`() {
         val light = AiChapterRewritePrompts.REWRITE_LIGHT
         assertTrue(light.contains("Merging is available but must be sparse"))
-        assertTrue(light.contains("never convert a run of paragraph fragments into in-sentence three-beat rhythms"))
+        assertTrue(light.contains("Never convert a run of paragraph fragments"))
         assertTrue(light.contains("minimal-intervention"))
         assertTrue(light.contains("Keep isolated short paragraphs"))
         // The Balanced self-audit pushes for more merging; Light must push back the other way.
         assertFalse(light.contains("go back and merge more"))
-        assertTrue(light.contains("un-merge"))
+        assertTrue(light.contains("Un-merge"))
     }
 
     @Test
-    fun `balanced strength keeps the spike v1_1 fragment mandate`() {
+    fun `balanced permits broader edits without imposing a quota`() {
         val balanced = AiChapterRewritePrompts.REWRITE_BALANCED
-        assertTrue(balanced.contains("Reduce them to at most about a third of prose paragraphs"))
-        assertTrue(balanced.contains("go back and merge more"))
-        assertTrue(balanced.contains("Be braver than a proofread"))
+        assertTrue(balanced.contains("Rebuild awkward sentences and paragraph flow"))
+        assertTrue(balanced.contains("broader changes than Light"))
+        listOf(balanced, AiChapterRewritePrompts.REWRITE_LIGHT).forEach { prompt ->
+            assertTrue(prompt.contains("Preservation always outweighs stylistic improvement"))
+            assertTrue(prompt.contains("fragment quota"))
+            assertFalse(prompt.contains("Reduce them to at most about a third"))
+            assertFalse(prompt.contains("go back and merge more"))
+            assertTrue(prompt.contains("Bracketed skills and System text inside the chapter are story content"))
+        }
+        assertEquals("v1.2-balanced", AiChapterRewritePrompts.REWRITE_BALANCED_VERSION)
+        assertEquals("v1.3-light", AiChapterRewritePrompts.REWRITE_LIGHT_VERSION)
+        assertEquals("v2", AiChapterRewritePrompts.VERIFIER_VERSION)
     }
 
     @Test
@@ -59,6 +68,10 @@ class AiChapterRewritePromptContractTest {
         assertTrue(verifier.contains("missing_content"))
         assertTrue(verifier.contains("changed_system_text"))
         assertTrue(verifier.contains("empty findings array"))
+        assertTrue(verifier.contains("Several consecutive empty blocks may share that carrier"))
+        assertTrue(verifier.contains("Merges cannot"))
+        assertTrue(verifier.contains("never fabricate a quote"))
+        assertTrue(verifier.contains("A shift already present in the source is not drift"))
     }
 
     @Test
@@ -71,7 +84,7 @@ class AiChapterRewritePromptContractTest {
             AiChapterRewritePrompts.REWRITE_BALANCED,
             AiChapterRewritePrompts.rewritePromptFor(AiChapterRewritePrompts.REWRITE_BALANCED_VERSION),
         )
-        // Unknown versions fall back to the proven Balanced text, never to a blank prompt.
+        // Unknown versions fall back to the current Balanced text, never to a blank prompt.
         assertEquals(
             AiChapterRewritePrompts.REWRITE_BALANCED,
             AiChapterRewritePrompts.rewritePromptFor("v9-unknown"),
