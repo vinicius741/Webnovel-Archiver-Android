@@ -38,12 +38,14 @@ private class TtsMiniPlayerBar(
     context: Context,
     onPlayPause: () -> Unit,
     onOpenPlayer: () -> Unit,
+    onClose: () -> Unit,
 ) {
     // Re-read on every snapshot: the bar is built before the startup theme hint applies, so the
     // construction-time palette can be stale by the time the bar first becomes visible.
     private var colors = ThemeManager.colors
     private val playPauseButton: ImageView
     private val chevronButton: ImageView
+    private val closeButton: ImageView
     private val chapterText: TextView
     private val storyText: TextView
     private val progressTrack: ProgressBar
@@ -88,8 +90,10 @@ private class TtsMiniPlayerBar(
         textColumn.addView(chapterText)
         textColumn.addView(storyText)
         row.addView(textColumn, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        chevronButton = context.iconButton(R.drawable.wna_chevron_down, "Open player", colors.onSurfaceVariant, onClick = onOpenPlayer)
+        chevronButton = context.iconButton(R.drawable.wna_chevron_up, "Open player", colors.onSurfaceVariant, onClick = onOpenPlayer)
         row.addView(chevronButton)
+        closeButton = context.iconButton(R.drawable.wna_close, "Close player", colors.onSurfaceVariant, onClick = onClose)
+        row.addView(closeButton)
         view.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         progressTrack =
@@ -122,7 +126,8 @@ private class TtsMiniPlayerBar(
         view.background = ripple(roundedBg(colors.elevation2, radius), radius, colors.onSurface)
         chapterText.setTextColor(colors.onSurface)
         storyText.setTextColor(colors.onSurfaceVariant)
-        chevronButton.setImageDrawable(view.context.tintedIcon(R.drawable.wna_chevron_down, colors.onSurfaceVariant))
+        chevronButton.setImageDrawable(view.context.tintedIcon(R.drawable.wna_chevron_up, colors.onSurfaceVariant))
+        closeButton.setImageDrawable(view.context.tintedIcon(R.drawable.wna_close, colors.onSurfaceVariant))
         progressTrack.progressTintList =
             android.content.res.ColorStateList
                 .valueOf(colors.primary)
@@ -140,6 +145,7 @@ internal fun ScreenHost.attachTtsMiniPlayer(root: ViewGroup): Job {
             context = app,
             onPlayPause = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PLAY_PAUSE) },
             onOpenPlayer = { showPlayer() },
+            onClose = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
         )
     bar.applySnapshot(ttsEngine.playbackState.value.snapshot)
     root.addView(

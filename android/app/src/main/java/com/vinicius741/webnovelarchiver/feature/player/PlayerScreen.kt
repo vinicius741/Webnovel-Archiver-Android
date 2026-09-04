@@ -283,10 +283,17 @@ private fun ScreenHost.buildPlayerBody(
 
     val rateChip = makeChip()
     val sleepTimerChip = makeChip()
+    val stopChip =
+        makeChip().apply {
+            setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) }
+            addView(makeText(app, "Stop", Type.LABEL_LARGE, colors.onSurfaceVariant))
+        }
 
     chipsRow.addView(rateChip)
     chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
     chipsRow.addView(sleepTimerChip)
+    chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
+    chipsRow.addView(stopChip)
 
     content.addView(
         chipsRow,
