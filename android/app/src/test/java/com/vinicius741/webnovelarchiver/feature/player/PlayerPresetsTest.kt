@@ -16,6 +16,8 @@ class PlayerPresetsTest {
         rate = nextRatePreset(rate)
         assertEquals(1.75f, rate, 0.001f)
         rate = nextRatePreset(rate)
+        assertEquals(1.8f, rate, 0.001f)
+        rate = nextRatePreset(rate)
         assertEquals(2.0f, rate, 0.001f)
         rate = nextRatePreset(rate)
         assertEquals(0.75f, rate, 0.001f)
