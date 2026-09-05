@@ -28,7 +28,7 @@ under `android/`.
 
 | File | Description |
 |------|-------------|
-| `performance-reliability-review-2026-09-04.md` | Static review of the native app with 30 prioritized reliability and performance recommendations, implementation evidence, effort estimates, and acceptance checks. Recommendations only; no implementation changes. |
+| `performance-reliability-review-2026-09-04.md` | Static review of the native app with 30 prioritized reliability and performance recommendations, effort estimates, and acceptance checks. All 30 recommendations (R01–R30) are implemented on branch `perf-reliability-review-2026-09-04`; the doc's header records per-item implementation notes. |
 | `code-simplification-audit-2026-07-31.html` | Current repository-wide simplification audit with 40 prioritized deletion, function-merging, state-consolidation, UI-structure, and tooling opportunities, including Kotlin examples and preservation guardrails. |
 | `product-architecture-review-2026-07-09.html` | Current product-wide architecture review covering stability, maintainability, runtime validation, prioritized findings, and an implementation roadmap. |
 | `project-improvement-audit.md` | Current static audit of speed, reliability, and maintainability gaps with prioritized recommendations (Markdown source, refreshed 2026-07-08). |

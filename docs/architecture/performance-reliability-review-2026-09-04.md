@@ -2,6 +2,33 @@
 
 Review date: 2026-09-04. Baseline: `94c03e7` plus the existing working-tree changes.
 
+> **Implementation status (2026-09-04, branch `perf-reliability-review-2026-09-04`)**: all 30
+> recommendations R01–R30 have been implemented with unit-test coverage, and the repository gate
+> (`:app:lintKotlin :app:detekt :app:ci`) passes. Notes on scope per item:
+>
+> - R01/R02: queue controls are suspend repository transactions on the I/O dispatcher with
+>   story-scoped single-transaction batch operations; UI reads serve a lock-free published snapshot.
+> - R05: a library generation invalidates in-flight sync/download/AI commits; AI existence checks
+>   ride the draft-save transactions; removed/cancelled downloads no longer publish.
+> - R07: full restore keeps a durable phase journal (`prepared`/`old-root-moved`/`committed`) beside
+>   the live root and its snapshot moved out of cacheDir; `RestoreStartupRecovery` runs before
+>   `AppStorage` construction and also recovers pre-journal legacy states.
+> - R10: the export manifest records `missingContent`; legacy inline chapter content is
+>   materialized; a progress warning names the omissions.
+> - R13: `Call.executeCancellable()` binds coroutine cancellation to `Call.cancel()`; every source
+>   request has a default 180s total call budget.
+> - R14: accepted `Retry-After` values are no longer clamped to the ordinary backoff cap, reach the
+>   shared host coordinator on arrival, and deadlines beyond the operation budget defer the work.
+> - R22: the report's first step shipped (200ms search debounce, equivalent-filter skip,
+>   off-main regex preview); the full RecyclerView card-recycling conversion remains the staged
+>   follow-up. R23 shipped countdown label patching on time-only ticks; adapters' background diff
+>   migration remains staged follow-up work.
+> - R27: `AiCoverDraftMeta` lives in the kept `domain.model` package with `@SerializedName` wire
+>   names; minified-artifact round-trip verification still needs the release workflow.
+> - R30: startup-phase timings (Timber), `LocalDiagnostics.recordOperation` for
+>   maintenance/queue-save/reader-preparation durations, and the per-recommendation failure tests
+>   added throughout this change.
+
 This report recommends changes only. No app implementation, tests, build configuration, or device data were changed for this review.
 
 The best first steps are to make queue controls safe for the main thread, reject incomplete source chapter lists, protect concurrent local edits during sync, and stop treating unreadable rewrite metadata as an empty document. These address hangs and lost or misleading state without replacing the app's architecture. Batch queue operations and remove redundant file work next.
