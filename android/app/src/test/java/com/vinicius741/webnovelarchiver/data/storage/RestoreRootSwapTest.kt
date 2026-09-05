@@ -28,7 +28,7 @@ class RestoreRootSwapTest {
         val source = tree("source", "new")
         val snapshot = File(dir, "snapshot")
 
-        RestoreRootSwap().swap(source, live, snapshot) { live.mkdirs() }
+        RestoreRootSwap().swap(source, live, snapshot, initializeRoot = { live.mkdirs() })
 
         assertEquals("new", File(live, "value.txt").readText())
         assertFalse(snapshot.exists())
@@ -49,7 +49,7 @@ class RestoreRootSwapTest {
             }
 
         assertThrows(IllegalStateException::class.java) {
-            RestoreRootSwap(operations).swap(source, live, snapshot) { }
+            RestoreRootSwap(operations).swap(source, live, snapshot, initializeRoot = { })
         }
 
         assertEquals("old", File(live, "value.txt").readText())
@@ -70,7 +70,7 @@ class RestoreRootSwapTest {
             }
 
         assertThrows(IllegalStateException::class.java) {
-            RestoreRootSwap(operations).swap(source, live, snapshot) { }
+            RestoreRootSwap(operations).swap(source, live, snapshot, initializeRoot = { })
         }
 
         assertEquals("old", File(live, "value.txt").readText())
@@ -114,10 +114,25 @@ class RestoreRootSwapTest {
                 override fun deleteTree(file: File): Boolean = if (file == snapshot) false else super.deleteTree(file)
             }
 
-        RestoreRootSwap(operations).swap(source, live, snapshot) { live.mkdirs() }
+        RestoreRootSwap(operations).swap(source, live, snapshot, initializeRoot = { live.mkdirs() })
 
         assertEquals("new", File(live, "value.txt").readText())
         assertEquals("old", File(snapshot, "value.txt").readText())
+    }
+
+    @Test
+    fun swapEmitsDurablePhasesInOrderAroundTheCommitPoint() {
+        val live = tree("live", "old")
+        val source = tree("source", "new")
+        val snapshot = File(dir, "snapshot")
+        val phases = mutableListOf<RestoreTransactionJournal.Phase>()
+
+        RestoreRootSwap().swap(source, live, snapshot, initializeRoot = { live.mkdirs() }) { phases.add(it) }
+
+        assertEquals(
+            listOf(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, RestoreTransactionJournal.Phase.COMMITTED),
+            phases,
+        )
     }
 
     private fun tree(

@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.EpubResult
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.fetchImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -49,7 +50,9 @@ class EpubEngine(
         progress: (EpubProgress) -> Unit = {},
     ): List<EpubResult> =
         withContext(Dispatchers.IO) {
-            val available = chapters.filter { it.content != null || storage.readChapter(it) != null }
+            // R25: availability from file metadata, not by reading every chapter's full HTML just
+            // to test for null.
+            val available = chapters.filter { it.content != null || storage.chapterAvailable(it) }
             if (available.isEmpty()) error("No downloaded chapters available")
             val chaptersPerFile =
                 config.maxChaptersPerEpub.coerceIn(
@@ -64,21 +67,22 @@ class EpubEngine(
                     .mapIndexed { index, chapter ->
                         chapter.id to (originalChapterNumbers?.getOrNull(index) ?: (index + 1))
                     }.toMap()
+            // R25: the cover is resolved exactly once per generation (local AI cover, else one
+            // network fetch) and its bytes are reused by every volume.
+            val coverAsset =
+                if (chaptersOnly) {
+                    null
+                } else {
+                    localCoverAsset(story) ?: story.coverUrl?.let { fetchCover(it) }
+                }
             chunks.forEachIndexed { index, chunk ->
                 progress(EpubProgress(completed = index + 1, total = chunks.size))
                 val start = chapterNumberById[chunk.first().id] ?: (chapters.indexOf(chunk.first()) + 1)
                 val end = chapterNumberById[chunk.last().id] ?: (chapters.indexOf(chunk.last()) + 1)
                 val filename = EpubFilename.forRange(story.title, start, end)
-                // Fetch the cover (suspend) before streaming the EPUB to its final file via a
-                // temp+rename, keeping one chapter's XHTML resident at a time. A locally generated
-                // AI cover wins over the source URL; when chaptersOnly is set we skip both — no
-                // network round-trip, and no failed-fetch risk on a missing cover URL.
-                val coverAsset =
-                    if (chaptersOnly) {
-                        null
-                    } else {
-                        localCoverAsset(story) ?: story.coverUrl?.let { fetchCover(it) }
-                    }
+                // Streamed into a temp file and renamed on success; a failure inside the write
+                // block (e.g. a chapter going missing mid-generation) aborts before any partial
+                // output is committed (R25).
                 val file =
                     storage.saveEpubStreamed(story.id, filename) { out ->
                         writeEpub(ZipOutputStream(out), story, chunk, coverAsset, chaptersOnly)
@@ -139,7 +143,12 @@ class EpubEngine(
             entry(zip, "OEBPS/toc.xhtml", EpubContent.tableOfContents(chapters))
         }
         chapters.forEachIndexed { i, chapter ->
-            entry(zip, "OEBPS/chapter_${i + 1}.xhtml", EpubContent.chapter(chapter, storage.readChapter(chapter) ?: ""))
+            // R25: a chapter that went missing between planning and writing is an explicit
+            // failure — the streamed temp file is discarded, never a blank chapter in the ZIP.
+            val html =
+                storage.readChapter(chapter)
+                    ?: error("Chapter \"${chapter.title}\" went missing during EPUB generation")
+            entry(zip, "OEBPS/chapter_${i + 1}.xhtml", EpubContent.chapter(chapter, html))
         }
         entry(
             zip,
@@ -159,12 +168,13 @@ class EpubEngine(
 
     private suspend fun fetchCover(url: String): CoverAsset? =
         runCatching {
-            // Route cover downloads through the shared client with a size cap instead of a raw URL
-            // connection, which would bypass the app's timeout and request policies.
-            val data = network.fetchBytes(url) ?: return@runCatching null
-            val mediaType = getCoverMediaType(url)
+            // Route cover downloads through the shared client with a size cap. The response's
+            // declared content type wins; the URL extension is only a fallback, so extensionless
+            // or transformed URLs are not mislabeled (R25).
+            val fetched = network.fetchImage(url) ?: return@runCatching null
+            val mediaType = fetched.contentType ?: getCoverMediaType(url)
             val extension = getCoverExtension(url, mediaType)
-            CoverAsset(data, "images/cover.$extension", mediaType)
+            CoverAsset(fetched.bytes, "images/cover.$extension", mediaType)
         }.getOrNull()
 
     /** The story's generated AI cover as an EPUB asset when it is the active display choice. */

@@ -9,9 +9,13 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkTimeoutException
 import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
+import com.vinicius741.webnovelarchiver.source.network.fetchBytes
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -24,6 +28,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.IOException
 import java.net.UnknownHostException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -144,7 +149,9 @@ class NetworkClientTest {
     @Test
     fun fetchThrowsOnNonRetryableHttpError() =
         runBlocking {
+            client = NetworkClient(policyResolver = NetworkPolicyResolver { SourceNetworkPolicy(maximumAttempts = 3) })
             server.enqueue(MockResponse().setResponseCode(404).setBody("nope"))
+            server.enqueue(MockResponse().setBody("Unexpected retry"))
             var threw = false
             try {
                 client.fetch(server.url("/missing").toString())
@@ -154,6 +161,7 @@ class NetworkClientTest {
                 assertTrue(error.message!!.contains("HTTP 404"))
             }
             assertTrue(threw)
+            assertEquals(1, server.requestCount)
         }
 
     @Test
@@ -167,6 +175,27 @@ class NetworkClientTest {
             )
 
             val result = runCatching { client.fetch(server.url("/protected").toString()) }
+
+            assertTrue(result.exceptionOrNull() is SourceAccessBlockedException)
+        }
+
+    @Test
+    fun interceptorThrownSourceBlockedCrossesTheAsyncBoundaryTyped() =
+        runBlocking {
+            // Regression guard: executeCancellable runs calls through enqueue, which wraps a
+            // non-IOException interceptor failure in a generic IOException and rethrows the
+            // original on OkHttp's dispatcher thread. The typed exception must stay an IOException
+            // so the catch sites (executeAttempt, download/sync failure planning) still see it.
+            val throwingClient =
+                NetworkClient(
+                    client =
+                        OkHttpClient
+                            .Builder()
+                            .addInterceptor { _ -> throw SourceAccessBlockedException(server.url("/blocked").toString()) }
+                            .build(),
+                )
+
+            val result = runCatching { throwingClient.fetch(server.url("/blocked").toString()) }
 
             assertTrue(result.exceptionOrNull() is SourceAccessBlockedException)
         }
@@ -229,28 +258,33 @@ class NetworkClientTest {
         }
 
     @Test
-    fun blockingCallAndBodyReadUseInjectedIoDispatcher() =
+    fun cancellingTheCoroutineCancelsTheUnderlyingCall() =
         runBlocking {
-            val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "network-test-io") }
-            val dispatcher = executor.asCoroutineDispatcher()
-            try {
-                var interceptorThread = ""
-                val recordingClient =
-                    OkHttpClient
-                        .Builder()
-                        .addInterceptor { chain ->
-                            interceptorThread = Thread.currentThread().name
-                            chain.proceed(chain.request())
-                        }.build()
-                client = NetworkClient(client = recordingClient, ioDispatcher = dispatcher)
-                server.enqueue(MockResponse().setBody("ok"))
+            // R13: cancellation must reach the in-flight OkHttp call so a dead operation stops
+            // occupying a worker. The interceptor observes chain.call().isCanceled() flipping.
+            val sawCancel = java.util.concurrent.CountDownLatch(1)
+            val recordingClient =
+                OkHttpClient
+                    .Builder()
+                    .addInterceptor { chain ->
+                        try {
+                            while (!chain.call().isCanceled()) Thread.sleep(5)
+                            sawCancel.countDown()
+                        } catch (_: InterruptedException) {
+                        }
+                        throw IOException("cancelled under test")
+                    }.build()
+            client = NetworkClient(client = recordingClient)
+            val url = server.url("/stalled").toString()
 
-                assertEquals("ok", client.fetch(server.url("/thread").toString()))
-                assertTrue(interceptorThread.startsWith("network-test-io"))
-            } finally {
-                dispatcher.close()
-                executor.shutdownNow()
-            }
+            val job =
+                launch(Dispatchers.IO) {
+                    runCatching { client.fetch(url, maximumAttemptsOverride = 1) }
+                }
+            Thread.sleep(100)
+            job.cancelAndJoin()
+
+            assertTrue("coroutine cancellation never reached the OkHttp call", sawCancel.await(2, TimeUnit.SECONDS))
         }
 
     @Test
@@ -268,9 +302,36 @@ class NetworkClientTest {
         }
 
     @Test
-    fun retryAfterIsBoundedAndJittered() =
+    fun serverRetryAfterBeyondTheBackoffBudgetDefersInsteadOfRetryingEarly() =
         runBlocking {
-            val sleeps = mutableListOf<Long>()
+            // R14: an accepted Retry-After longer than the ordinary backoff cap must not be clamped
+            // into an early retry; the operation defers with a typed rate-limit error.
+            client =
+                NetworkClient(
+                    policyResolver =
+                        NetworkPolicyResolver {
+                            SourceNetworkPolicy(
+                                maximumAttempts = 3,
+                                retryableStatusCodes = setOf(429),
+                                maximumRetryDelayMillis = 2_000L,
+                                maximumRetryAfterMillis = 60_000L,
+                                maximumJitterMillis = 0L,
+                            )
+                        },
+                )
+            server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "30"))
+
+            val error = runCatching { client.fetch(server.url("/deferred").toString()) }.exceptionOrNull()
+
+            assertTrue(error is RateLimitNetworkException)
+            assertEquals(30_000L, (error as RateLimitNetworkException).retryAfterMillis)
+            // Deferred, not retried: the server saw exactly the one rejected request.
+            assertEquals(1, server.requestCount)
+        }
+
+    @Test
+    fun serverRetryAfterWithinTheBackoffBudgetIsSleptAndRetried() =
+        runBlocking {
             client =
                 NetworkClient(
                     policyResolver =
@@ -278,19 +339,19 @@ class NetworkClientTest {
                             SourceNetworkPolicy(
                                 maximumAttempts = 2,
                                 retryableStatusCodes = setOf(429),
+                                baseRetryDelayMillis = 0L,
                                 maximumRetryDelayMillis = 2_000L,
                                 maximumRetryAfterMillis = 1_000L,
-                                maximumJitterMillis = 100L,
+                                maximumJitterMillis = 0L,
+                                minimumRequestGapMillis = 0L,
                             )
                         },
-                    sleep = { sleeps += it },
-                    jitterMillis = { 100L },
                 )
-            server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "30"))
+            server.enqueue(MockResponse().setResponseCode(429).setHeader("Retry-After", "1"))
             server.enqueue(MockResponse().setBody("ok"))
 
-            assertEquals("ok", client.fetch(server.url("/bounded").toString()))
-            assertEquals(listOf(1_100L), sleeps)
+            assertEquals("ok", client.fetch(server.url("/within-budget").toString()))
+            assertEquals(2, server.requestCount)
         }
 
     @Test
@@ -416,7 +477,12 @@ class NetworkClientTest {
                         maximumAttempts = maximumAttempts,
                         retryableStatusCodes = setOf(403, 429),
                         baseRetryDelayMillis = 0L,
+                        // R14: retryable responses now record a host cooldown on arrival; zero
+                        // caps keep these tests' retries immediate instead of wall-clock waits.
+                        maximumRetryDelayMillis = 0L,
+                        maximumRetryAfterMillis = 0L,
                         maximumJitterMillis = 0L,
+                        maximumAdaptiveGapMillis = 0L,
                     )
                 },
             sleep = {},

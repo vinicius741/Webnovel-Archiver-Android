@@ -34,6 +34,7 @@ import com.vinicius741.webnovelarchiver.ui.styledDialogField
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -156,14 +157,27 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         }
     view.addView(previewOutput)
 
+    // R19: preview matching runs off main (bounded input), and a newer keystroke discards the
+    // stale result instead of letting a slow pattern jank or overwrite the editor.
+    var previewGeneration = 0
+
     fun updatePreview() {
-        val cleaned =
-            RegexRuleCleanup.previewRegexRule(
-                pattern.text.toString(),
-                flags.text.toString(),
-                previewInput.text.toString(),
-            )
-        previewOutput.text = cleaned ?: "(No output)"
+        val generation = ++previewGeneration
+        val patternText = pattern.text.toString()
+        val flagsText = flags.text.toString()
+        val inputText = previewInput.text.toString()
+        scope.launch(Dispatchers.Default) {
+            val cleaned =
+                RegexRuleCleanup.previewRegexRule(
+                    patternText,
+                    flagsText,
+                    inputText,
+                )
+            app.runOnUiThread {
+                if (generation != previewGeneration) return@runOnUiThread
+                previewOutput.text = cleaned ?: "(No output)"
+            }
+        }
     }
     pattern.doAfterTextChanged { updatePreview() }
     flags.doAfterTextChanged { updatePreview() }

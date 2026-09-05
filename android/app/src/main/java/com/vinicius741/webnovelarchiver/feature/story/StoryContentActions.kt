@@ -54,6 +54,12 @@ private fun ScreenHost.runCleanup(
         try {
             val sentenceRemoval = repository.getSentenceRemovalList()
             val regexRules = repository.getRegexRules()
+            // Persist the stale marker before the first possible chapter modification (R17):
+            // cancellation, process death, or a later failure must never leave modified chapter
+            // files under an EPUB still marked current, and a later failure must not clear it.
+            check(repository.markCleanupApplied(story.id) != null) {
+                "Story was removed while cleanup was running"
+            }
             var processed = 0
             var errors = 0
             var sentencesRemoved = 0
@@ -66,21 +72,20 @@ private fun ScreenHost.runCleanup(
                         (index + 1).toFloat() / downloaded.size,
                     )
                 }
-                runCatching {
+                try {
                     val html = repository.readChapter(chapter) ?: error("Downloaded chapter file is missing")
                     val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules)
-                    check(repository.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }
-                    result
-                }.onSuccess { result ->
+                    // Skip writes whose cleaned HTML equals the original (R17).
+                    if (result.html != html) {
+                        check(repository.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }
+                    }
                     processed += 1
                     sentencesRemoved += result.sentencesRemoved
-                }.onFailure {
+                } catch (cancelled: CancellationException) {
+                    // The per-chapter boundary must rethrow cancellation, not count it as an error.
+                    throw cancelled
+                } catch (_: Exception) {
                     errors += 1
-                }
-            }
-            if (processed > 0) {
-                check(repository.markCleanupApplied(story.id) != null) {
-                    "Story was removed while cleanup was running"
                 }
             }
             withContext(Dispatchers.Main) {

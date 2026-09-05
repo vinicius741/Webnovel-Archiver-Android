@@ -49,7 +49,7 @@ internal class QueueGroupAdapter(
     private val onExpansionChanged: () -> Unit,
 ) : RecyclerView.Adapter<QueueGroupAdapter.GroupHolder>() {
     private var groups: List<QueueStoryGroupUi> = emptyList()
-    private var pacingSnapshots: Collection<DownloadPacingSnapshot> = emptyList()
+    private var pacing: Map<String, DownloadPacingSnapshot> = emptyMap()
     private var nowMillis: Long = 0L
     private var queue: List<DownloadJob> = emptyList()
 
@@ -81,14 +81,30 @@ internal class QueueGroupAdapter(
             holder.container.removeAllViews()
             holder.container.addView(card.view)
         }
-        card.bind(group, queue, pacingSnapshots, nowMillis, onExpansionChanged)
+        boundCards[group.storyId] = card
+        card.bind(group, queue, pacing.values, nowMillis, onExpansionChanged)
+    }
+
+    override fun onViewRecycled(holder: GroupHolder) {
+        boundCards.values.remove(holder.card)
+        holder.card = null
     }
 
     fun submitQueue(
         queue: List<DownloadJob>,
-        pacingSnapshots: Collection<DownloadPacingSnapshot> = emptyList(),
+        pacing: Map<String, DownloadPacingSnapshot> = emptyMap(),
         nowMillis: Long = System.currentTimeMillis(),
+        expansionChanged: Boolean = false,
     ) {
+        // R23: a countdown tick where neither the queue nor the pacing snapshots changed only
+        // moves time — patch the visible status labels in place instead of rebuilding the grouped
+        // presentation and re-running the diff every second. The guard compares the map itself:
+        // Map.values allocates a fresh view per call and never passes an identity check.
+        if (!expansionChanged && queue === this.queue && pacing === this.pacing && groups.isNotEmpty()) {
+            this.nowMillis = nowMillis
+            boundCards.values.forEach { card -> card.patchCountdownLabels(queue, pacing.values, nowMillis) }
+            return
+        }
         val previous = groups
         val activeJobIds =
             queue
@@ -96,8 +112,8 @@ internal class QueueGroupAdapter(
                 .filter { it.status in DownloadJobStatus.activeWires }
                 .map { it.id }
                 .toSet()
-        val next = host.queueGroups(queue, pacingSnapshots, nowMillis, activeJobIds)
-        this.pacingSnapshots = pacingSnapshots
+        val next = host.queueGroups(queue, pacing.values, nowMillis, activeJobIds)
+        this.pacing = pacing
         this.nowMillis = nowMillis
         this.queue = queue
         groups = next
@@ -120,6 +136,9 @@ internal class QueueGroupAdapter(
                 },
             ).dispatchUpdatesTo(this)
     }
+
+    /** Cards currently attached to holders; registered at bind, cleared on recycle (R23). */
+    private val boundCards = LinkedHashMap<String, QueueGroupCard>()
 
     class GroupHolder(
         val container: FrameLayout,

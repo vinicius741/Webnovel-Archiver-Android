@@ -77,36 +77,43 @@ object StorySyncMergePlanning {
                 targetChapters = mergedChapters,
                 matcher = matcher,
             )
+        val mergedChapterById = mergedChapters.associateBy { it.id }
 
         return synced.copy(
             chapters = mergedChapters,
             downloadedChapters = downloadedCount,
             status = status,
             lastReadChapterId = lastRead,
-            // The sync snapshot was captured before the network window. Prefer the current
-            // on-disk AI state so a generation/regeneration or display toggle completed by another
-            // flow (for example Update Tracker running beside Details) is not overwritten here.
-            aiDescription = onDisk.aiDescription ?: synced.aiDescription,
-            showAiDescription =
-                if (onDisk.aiDescription != null) {
-                    onDisk.showAiDescription
+            // User-owned fields below are taken from the current on-disk record *including null
+            // values*: a local edit during the network window (tab move, EPUB generation, AI reset,
+            // display toggle) must survive the commit, and an explicit reset to null must not be
+            // undone by the stale pre-window snapshot (R04).
+            tabId = onDisk.tabId,
+            dateAdded = onDisk.dateAdded,
+            epubPath = onDisk.epubPath,
+            epubPaths = onDisk.epubPaths,
+            // Re-derive range expansion / staleness against the current on-disk config so both a
+            // user config edit during the window and new-chapter growth are honored.
+            epubConfig = StorySyncPlanning.updateEpubConfigForSync(onDisk, mergedChapters.size),
+            epubStale =
+                if (StorySyncPlanning.shouldMarkEpubStale(onDisk, mergedChapters.size)) {
+                    true
                 } else {
-                    synced.showAiDescription
+                    onDisk.epubStale
                 },
-            // The AI cover gets the same protection: an apply or display-toggle completed by
-            // another flow during the network window must survive the fold.
-            aiCoverPath = onDisk.aiCoverPath ?: synced.aiCoverPath,
-            showAiCover =
-                if (onDisk.aiCoverPath != null) {
-                    onDisk.showAiCover
-                } else {
-                    synced.showAiCover
-                },
-            // The AI context-chapter selection gets the same protection: a pick saved by another
-            // flow during the network window must survive the fold.
-            aiContextChapterIndices = onDisk.aiContextChapterIndices ?: synced.aiContextChapterIndices,
-            // The per-novel Chapter polish strength gets the same protection.
-            chapterRewriteStrength = onDisk.chapterRewriteStrength ?: synced.chapterRewriteStrength,
+            aiDescription = onDisk.aiDescription,
+            showAiDescription = onDisk.showAiDescription,
+            aiCoverPath = onDisk.aiCoverPath,
+            showAiCover = onDisk.showAiCover,
+            aiContextChapterIndices = onDisk.aiContextChapterIndices,
+            chapterRewriteStrength = onDisk.chapterRewriteStrength,
+            // A chapter downloaded during the window leaves the pending set; drop it here so the
+            // committed story's pending list matches its own merged chapter state.
+            pendingNewChapterIds =
+                synced.pendingNewChapterIds
+                    ?.filter { id -> mergedChapterById[id]?.downloaded == false }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.toMutableList(),
         )
     }
 

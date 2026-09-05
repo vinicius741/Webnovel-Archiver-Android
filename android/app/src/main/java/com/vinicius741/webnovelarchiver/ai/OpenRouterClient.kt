@@ -161,7 +161,8 @@ class OpenRouterClient(
                 .header("Authorization", "Bearer $apiKey")
                 .post(body.toString().toRequestBody(JSON))
                 .build()
-        return execute(request) { responseJson, httpCode ->
+        // R24: image JSON carries base64 bytes; give it the deliberately larger body budget.
+        return execute(request, MAX_IMAGE_JSON_BODY_BYTES) { responseJson, httpCode ->
             if (httpCode != 200) throw imageFailure(responseJson, httpCode, model)
             parseImage(responseJson, model)
         }
@@ -198,8 +199,9 @@ class OpenRouterClient(
 
     private suspend fun <T> execute(
         request: Request,
+        maxBodyBytes: Long = MAX_JSON_BODY_BYTES,
         parse: (JsonObject, Int) -> T,
-    ): T = client.executeOpenRouterJson(request, parse)
+    ): T = client.executeOpenRouterJson(request, maxBodyBytes, parse)
 
     private fun parseChatCompletion(
         responseJson: JsonObject,

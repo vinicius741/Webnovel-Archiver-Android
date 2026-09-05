@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.app.renderRouteDispatch
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -38,6 +39,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
+import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -121,7 +123,15 @@ class MainActivity :
     override val importBackupLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri ?: return@registerForActivityResult
-            scope.launch {
+            // A failed import must return the user to the backup screen with a visible error (R12),
+            // not die in the coroutine handler.
+            runUiOperation(
+                "import json backup",
+                onExpectedError = { error ->
+                    toast(error.message ?: "Import failed")
+                    showDataBackup()
+                },
+            ) {
                 toast(repository.importBackupUri(uri))
                 showDataBackup()
             }
@@ -130,7 +140,13 @@ class MainActivity :
     override val importFullBackupLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri ?: return@registerForActivityResult
-            scope.launch {
+            runUiOperation(
+                "import full backup",
+                onExpectedError = { error ->
+                    toast(error.message ?: "Restore failed")
+                    showDataBackup()
+                },
+            ) {
                 toast(repository.importFullBackupUri(uri))
                 showLibrary()
             }

@@ -74,7 +74,11 @@ class AppStorage(
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
     internal val restoreRoot = File(this.context.cacheDir, "webnovel_restore").apply { mkdirs() }
 
-    internal val preRestoreSnapshotDir = File(this.context.cacheDir, "webnovel_restore_snapshot")
+    /**
+     * The ONLY rollback copy of the user's previous library. Durable app files, never cacheDir:
+     * the OS may purge cache between swap phases, destroying the recovery path (R07).
+     */
+    internal val preRestoreSnapshotDir = File(this.context.filesDir, "webnovel_restore_snapshot")
     internal val maintenanceCoordinator = MaintenanceCoordinator()
     val maintenanceState: StateFlow<MaintenanceState> = maintenanceCoordinator.state
 
@@ -84,7 +88,7 @@ class AppStorage(
     /** Backup/restore engine (Reliability R1.2 + R7). Delegated lazily to avoid constructing it for CRUD-only use. */
     private val backupRestore: BackupRestoreCoordinator by lazy { BackupRestoreCoordinator(this) }
 
-    private val libraryIndex = File(root, "library_index.json")
+    internal val libraryIndex = File(root, "library_index.json")
     private val settingsFile = File(root, "settings.json")
     private val sourceSettingsFile = File(root, "source_download_settings.json")
     private val chapterFilterFile = File(root, "chapter_filter_settings.json")
@@ -123,15 +127,19 @@ class AppStorage(
         val ids = readLibraryIdsWithRecovery().toMutableList()
         ensureHealthyForWrite(libraryIndex)
         ensureHealthyForWrite(storyFile(story.id))
+        var membershipChanged = false
         if (!ids.contains(story.id)) {
             ids.add(story.id)
             story.dateAdded = story.dateAdded ?: System.currentTimeMillis()
+            membershipChanged = true
         } else {
             val existing = getStory(story.id)
             story.dateAdded = existing?.dateAdded ?: story.dateAdded
         }
         saveStoryOnly(story)
-        write(libraryIndex, ids)
+        // R21: the index only changes when membership changes — an existing-story update must not
+        // rewrite it (one whole-library document per save, for nothing).
+        if (membershipChanged) write(libraryIndex, ids)
     }
 
     /**
@@ -200,6 +208,8 @@ class AppStorage(
         backupRoot.mkdirs()
         // Health fences are process-local; wipe them so recreated same-named documents can write again.
         _storageHealth.value = StorageHealthSnapshot()
+        // The rewrite tree was deleted wholesale; drop its cached manifests too (R26).
+        chapterRewrites.invalidateAll()
     }
 
     fun getSettings(): AppSettings = PreferenceNormalization.appSettings(read(settingsFile) ?: AppSettings())
@@ -291,6 +301,40 @@ class AppStorage(
     }
 
     /**
+     * One-pass startup library load (R20): reads the index and every story file once, applying the
+     * same coercion + relative-path migration [readStory] applies per read, and reports which
+     * story documents changed so the caller persists only those instead of rewriting the library.
+     */
+    internal class StartupLibraryMigration(
+        val stories: List<Story>,
+        val changedStoryIds: Set<String>,
+    )
+
+    @Synchronized
+    internal fun loadLibraryForStartup(): StartupLibraryMigration {
+        val ids = readLibraryIdsWithRecovery()
+        val changed = mutableSetOf<String>()
+        val stories =
+            ids.mapNotNull { id ->
+                val raw = read<Story>(storyFile(id)) ?: return@mapNotNull null
+                val coerced = StoryNormalization.coerceDefaults(raw)
+                val migrated = migrateChapterPaths(coerced.story)
+                if (coerced.changed || migrated !== coerced.story) changed.add(id)
+                migrated
+            }
+        return StartupLibraryMigration(stories, changed)
+    }
+
+    /** Persists only the startup migrations' changed story documents; the index is untouched (R20/R21). */
+    @Synchronized
+    internal fun persistStartupStories(stories: List<Story>) {
+        stories.forEach { story ->
+            ensureHealthyForWrite(storyFile(story.id))
+            saveStoryOnly(story)
+        }
+    }
+
+    /**
      * One-time on-disk migration of legacy absolute chapter/epub paths to paths relative to [root]
      * (R1.3). [migrateChapterPaths] converts paths on read but only persists them when something
      * else re-saves the story — so without this pass, every cold start would re-run the migration for
@@ -300,15 +344,9 @@ class AppStorage(
      */
     @Synchronized
     fun migrateChapterPathsToRelative() {
-        val ids = readLibraryIdsWithRecovery()
-        ids.forEach { id ->
-            // Coerce Gson nulls + migrate paths; re-save when either changed so legacy documents
-            // pick up new fields (e.g. publicationStatus) on disk once.
-            val raw = read<Story>(storyFile(id)) ?: return@forEach
-            val coerced = StoryNormalization.coerceDefaults(raw)
-            val migrated = migrateChapterPaths(coerced.story)
-            if (coerced.changed || migrated !== coerced.story) saveStoryOnly(migrated)
-        }
+        val load = loadLibraryForStartup()
+        if (load.changedStoryIds.isEmpty()) return
+        persistStartupStories(load.stories.filter { it.id in load.changedStoryIds })
     }
 
     @Synchronized
@@ -459,7 +497,9 @@ class AppStorage(
     ): String? {
         val source = resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return null
         val destination = chapterFile(storyId, index, chapter)
-        source.copyTo(destination, overwrite = true)
+        // Streamed temp + fsync + rename: a failed archive copy must not truncate the destination
+        // (R06), which a direct copyTo(overwrite = true) could.
+        AtomicFileWrites.copyAtomically(source, destination)
         return relativize(destination)
     }
 
@@ -468,6 +508,11 @@ class AppStorage(
         chapter.content?.let { return it }
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
+
+    /** File-metadata availability check: no full chapter read just to test for content (R25). */
+    @Synchronized
+    fun chapterAvailable(chapter: Chapter): Boolean =
+        chapter.content != null || resolveChapterPath(chapter.filePath)?.let { File(it).isFile } == true
 
     /** Replaces an existing downloaded chapter while honoring portable relative storage paths. */
     @Synchronized
@@ -572,7 +617,8 @@ class AppStorage(
 
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 
-    fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri)
+    /** A full restore replaces the on-disk rewrite tree wholesale, so cached manifests are dropped (R26). */
+    fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri).also { chapterRewrites.invalidateAll() }
 
     private fun saveStoryOnly(story: Story) {
         story.totalChapters = story.chapters.size
@@ -712,92 +758,7 @@ class AppStorage(
         }
     }
 
-    @Synchronized
-    private fun readLibraryIdsWithRecovery(): List<String> {
-        val result = DurableJson.readAtomicResult<List<String>>(libraryIndex, gson)
-        if (result is DurableReadResult.Present) {
-            clearStorageIssues(libraryIndex)
-            return result.value.filter { it.isNotBlank() }.distinct()
-        }
-
-        when (result) {
-            is DurableReadResult.Corrupt ->
-                recordStorageIssue(libraryIndex, StorageHealthKind.Corrupt, "Library index was corrupt and quarantined")
-            is DurableReadResult.UnsupportedSchema ->
-                recordStorageIssue(
-                    libraryIndex,
-                    StorageHealthKind.UnsupportedSchema,
-                    "Library index schema ${result.foundVersion} is unsupported",
-                )
-            is DurableReadResult.IoFailure ->
-                recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, result.cause.message ?: "I/O failure")
-            DurableReadResult.Absent -> Unit
-            is DurableReadResult.Present -> Unit
-        }
-
-        val storyFiles = storyDir.listFiles()?.toList().orEmpty()
-        if (storyFiles.none { it.isFile && it.name.endsWith(".json") }) return emptyList()
-        val recovery =
-            LibraryIndexRecovery.scan(
-                files = storyFiles,
-                safeName = ::safeName,
-                readStory = { file ->
-                    DurableJson.readAtomicResult<Story>(file, gson, quarantineOnCorruption = false).also { storyResult ->
-                        when (storyResult) {
-                            is DurableReadResult.Corrupt ->
-                                recordStorageIssue(file, StorageHealthKind.Corrupt, "Story document is corrupt and was left untouched")
-                            is DurableReadResult.UnsupportedSchema ->
-                                recordStorageIssue(file, StorageHealthKind.UnsupportedSchema, "Story schema is unsupported")
-                            is DurableReadResult.IoFailure ->
-                                recordStorageIssue(file, StorageHealthKind.IoFailure, storyResult.cause.message ?: "I/O failure")
-                            is DurableReadResult.Present -> clearStorageIssues(file)
-                            DurableReadResult.Absent -> Unit
-                        }
-                    }
-                },
-            )
-        val recoveredIds = recovery.stories.map { it.id }
-        // Persist a rebuilt index for recoverable cases so cold starts stop re-scanning. Leave an
-        // UnsupportedSchema index untouched so a downgrade cannot clobber a newer on-disk shape.
-        if (result !is DurableReadResult.UnsupportedSchema) {
-            persistRecoveredLibraryIndex(recoveredIds)
-        } else {
-            recordStorageIssue(
-                libraryIndex,
-                StorageHealthKind.LibraryIndexRecovered,
-                "Reconstructed an in-memory library index from valid story documents; unsupported index was not rewritten",
-                recovery.stories.size,
-            )
-        }
-        return recoveredIds
-    }
-
-    private fun persistRecoveredLibraryIndex(ids: List<String>) {
-        // Drop sticky IoFailure/Corrupt fences for the index so intentional recovery can rewrite it.
-        clearStorageIssues(libraryIndex)
-        runCatching {
-            maintenanceCoordinator.withStorageAccess(this) {
-                DurableJson.writeAtomic(libraryIndex, gson, DurableJson.envelope(ids, appVersion))
-            }
-            recordStorageIssue(
-                libraryIndex,
-                StorageHealthKind.LibraryIndexRecovered,
-                "Reconstructed and persisted library index from valid story documents",
-                ids.size,
-            )
-        }.onFailure { error ->
-            Timber.e(error, "Could not persist recovered library index")
-            recordStorageIssue(
-                libraryIndex,
-                StorageHealthKind.LibraryIndexRecovered,
-                "Reconstructed an in-memory library index from valid story documents; persistence failed",
-                ids.size,
-            )
-            recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, error.message ?: "I/O failure")
-        }
-    }
-
-    private fun recordStorageIssue(
+    internal fun recordStorageIssue(
         file: File,
         kind: StorageHealthKind,
         detail: String,
@@ -808,7 +769,7 @@ class AppStorage(
         _storageHealth.value = StorageHealthSnapshot(retained + issue)
     }
 
-    private fun clearStorageIssues(file: File) {
+    internal fun clearStorageIssues(file: File) {
         val retained = _storageHealth.value.issues.filterNot { it.document == file.name }
         if (retained.size != _storageHealth.value.issues.size) {
             _storageHealth.value = StorageHealthSnapshot(retained)

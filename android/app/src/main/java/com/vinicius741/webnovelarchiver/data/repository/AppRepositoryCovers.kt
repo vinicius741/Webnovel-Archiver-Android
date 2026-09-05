@@ -72,6 +72,27 @@ internal suspend fun AppRepository.saveAiCoverImageDraft(
     withContext(Dispatchers.IO) { storage.aiCoverDrafts.saveImage(storyId, draft) }
 }
 
+/**
+ * Persists a finished cover draft only when the story still exists (R05): the existence check and
+ * the draft save run as one storage transaction, so a story deleted mid-generation cannot regain
+ * orphaned draft files. False = discarded.
+ */
+internal suspend fun AppRepository.persistAiCoverDraftIfStoryExists(
+    storyId: String,
+    record: AiCoverDraftRecord,
+): Boolean =
+    storageTransaction {
+        if (storage.getStory(storyId) == null) {
+            false
+        } else {
+            when (record) {
+                is AiCoverDraftRecord.PromptOnly -> storage.aiCoverDrafts.savePrompt(storyId, record.prompt)
+                is AiCoverDraftRecord.Image -> storage.aiCoverDrafts.saveImage(storyId, record.draft)
+            }
+            true
+        }
+    }
+
 /** The story's persisted pending draft, or null when there is none. */
 internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDraftRecord? =
     withContext(Dispatchers.IO) { storage.aiCoverDrafts.load(storyId) }

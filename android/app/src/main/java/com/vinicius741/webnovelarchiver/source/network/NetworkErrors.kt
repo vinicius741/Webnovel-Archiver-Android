@@ -36,3 +36,13 @@ class NetworkParseException(
     message: String,
     cause: Throwable? = null,
 ) : NetworkException(message, cause)
+
+/**
+ * A full chapter list could not be retrieved completely (blocked pagination page, or a page cap
+ * reached without an observed end). Callers must never persist such a list as authoritative —
+ * the merge would treat unretrieved chapters as removed (R03).
+ */
+class SourceChapterListIncompleteException(
+    message: String,
+    cause: Throwable? = null,
+) : NetworkException(message, cause)

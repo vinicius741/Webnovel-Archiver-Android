@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.persistAiCoverDraftIfStoryExists
 import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverImageDraft
 import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
@@ -136,17 +137,12 @@ class AiCoverJobCoordinator(
         scope.launch {
             try {
                 val record = run()
-                if (repository.story(storyId) == null) {
+                if (!repository.persistAiCoverDraftIfStoryExists(storyId, record)) {
                     // Story deleted mid-run; deleteStory already cleaned its drafts — persisting
-                    // would orphan files.
+                    // would orphan files. The existence check rides the save transaction (R05).
                     Timber.i("AI cover job finished for deleted story %s; discarding result", storyId)
                     _jobs.update { it - storyId }
                     return@launch
-                }
-                // Persist before clearing the slot and emitting: listeners may hydrate from disk.
-                when (record) {
-                    is AiCoverDraftRecord.PromptOnly -> repository.saveAiCoverPromptDraft(storyId, record.prompt)
-                    is AiCoverDraftRecord.Image -> repository.saveAiCoverImageDraft(storyId, record.draft)
                 }
                 Timber.i(
                     "AI cover job succeeded for %s (kind=%s, image=%s)",
@@ -157,6 +153,10 @@ class AiCoverJobCoordinator(
                 _jobs.update { it - storyId }
                 _events.tryEmit(AiCoverJobEvent.Succeeded(storyId, kind, record))
             } catch (cancellation: CancellationException) {
+                // R15: cancellation releases the busy slot; the shared-slot gate would otherwise
+                // reject every later cover request until process restart.
+                Timber.i("AI cover job cancelled for %s (kind=%s)", storyId, kind)
+                _jobs.update { it - storyId }
                 throw cancellation
             } catch (error: Throwable) {
                 // The engine throws user-presentable messages; cancellation is rethrown untouched.

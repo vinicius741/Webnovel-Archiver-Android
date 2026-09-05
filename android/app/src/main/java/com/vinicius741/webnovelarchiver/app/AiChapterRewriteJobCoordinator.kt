@@ -76,6 +76,9 @@ class AiChapterRewriteJobCoordinator(
     /** Guards slot handoffs (enqueue start, batch drain) so observers always see a consistent jobs+queue view. */
     private val queueLock = Any()
 
+    /** The running job's coroutine handle; [cancelActive] cancels it so cancellation releases the slot (R15). */
+    private var activeHandle: kotlinx.coroutines.Job? = null
+
     fun jobFor(
         storyId: String,
         chapterId: String,
@@ -84,6 +87,23 @@ class AiChapterRewriteJobCoordinator(
     fun isBusy(): Boolean = _jobs.value.isNotEmpty()
 
     fun queuedFor(storyId: String): List<AiChapterRewriteJobState> = _queue.value.filter { it.storyId == storyId }
+
+    /**
+     * Drops queued chapters and cancels the running rewrite (R15): a foreground-service timeout
+     * must not leave the batch draining unprotected in the background. Cancellation releases the
+     * busy slot through [runJob]'s cancellation path; queued work is discarded, never replayed —
+     * an AI request with an unknown billing outcome is not re-sent blind.
+     */
+    fun cancelAll(reason: String) {
+        synchronized(queueLock) {
+            val dropped = _queue.value.size
+            _queue.value = emptyList()
+            activeHandle?.cancel()
+            if (dropped > 0 || activeHandle != null) {
+                Timber.w("Chapter rewrite work cancelled (%s): %d queued dropped", reason, dropped)
+            }
+        }
+    }
 
     /** Queues a chapter; starts immediately when idle. False when already running or queued. */
     fun enqueue(
@@ -121,32 +141,44 @@ class AiChapterRewriteJobCoordinator(
         // the service collector must never read an idle coordinator mid-handoff.
         _jobs.update { it + (key(next.storyId, next.chapterId) to next.copy(message = "Preparing rewrite...")) }
         _queue.update { it - next }
-        scope.launch { runJob(next) }
+        activeHandle = scope.launch { runJob(next) }
     }
 
     private suspend fun runJob(state: AiChapterRewriteJobState) {
         val jobKey = key(state.storyId, state.chapterId)
+        var slotReleased = false
         try {
             val output = engine.draft(state.storyId, state.chapterId, progressReporter(jobKey))
-            if (repository.story(state.storyId) == null) {
-                // The story was deleted mid-run; deleteStory already cleaned its rewrites.
+            // The save's own transaction re-checks story existence (R05): a story deleted mid-run
+            // cannot regain rewrite state.
+            if (!repository.saveChapterRewriteDraft(output)) {
                 Timber.i("Chapter rewrite finished for deleted story %s; discarding result", state.storyId)
                 finishJob(jobKey)
+                slotReleased = true
                 return
             }
-            repository.saveChapterRewriteDraft(output)
             finishJob(jobKey)
+            slotReleased = true
             _events.tryEmit(
                 AiChapterRewriteJobEvent.Succeeded(state.storyId, state.chapterId, output.chapterTitle, output.status),
             )
         } catch (cancellation: CancellationException) {
+            // R15: cancellation must release the registered slot and unblock the queue instead of
+            // leaving a permanently busy coordinator. Distinguish it from failure: no error event.
+            if (!slotReleased) {
+                finishJob(jobKey)
+                slotReleased = true
+            }
             throw cancellation
         } catch (
             @Suppress("TooGenericExceptionCaught") error: Throwable,
         ) {
             // The engine throws user-presentable messages; any failure must land in the event.
             Timber.w(error, "Chapter rewrite job failed for %s ch %s", state.storyId, state.chapterId)
-            finishJob(jobKey)
+            if (!slotReleased) {
+                finishJob(jobKey)
+                slotReleased = true
+            }
             _events.tryEmit(
                 AiChapterRewriteJobEvent.Failed(state.storyId, state.chapterId, error.message ?: "Chapter polish failed"),
             )
@@ -160,6 +192,7 @@ class AiChapterRewriteJobCoordinator(
      */
     private fun finishJob(jobKey: String) {
         synchronized(queueLock) {
+            if (activeHandle != null && activeHandle?.isCancelled == true) activeHandle = null
             val next = _queue.value.firstOrNull()
             if (next == null) {
                 _jobs.update { it - jobKey }
@@ -169,7 +202,7 @@ class AiChapterRewriteJobCoordinator(
             _jobs.update {
                 (it - jobKey) + (key(next.storyId, next.chapterId) to next.copy(message = "Preparing rewrite..."))
             }
-            scope.launch { runJob(next) }
+            activeHandle = scope.launch { runJob(next) }
         }
     }
 
@@ -179,9 +212,9 @@ class AiChapterRewriteJobCoordinator(
                 current[jobKey]?.let { current + (jobKey to it.copy(message = message)) } ?: current
             }
         }
-
-    private fun key(
-        storyId: String,
-        chapterId: String,
-    ): String = "$storyId::$chapterId"
 }
+
+private fun key(
+    storyId: String,
+    chapterId: String,
+): String = "$storyId::$chapterId"

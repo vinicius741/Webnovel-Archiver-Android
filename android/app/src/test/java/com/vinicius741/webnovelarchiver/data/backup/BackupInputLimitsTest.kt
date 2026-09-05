@@ -53,10 +53,26 @@ class BackupInputLimitsTest {
         assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites", directory = true))
         assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/manifest.json", directory = false))
         assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/ch1-1a2b3c4d/applied.html", directory = false))
+        // Generation suffixes are safeName(UUID): hyphens and dots must survive validation or the
+        // app rejects its own backups.
+        assertTrue(
+            BackupInputLimits.isAllowedFullBackupEntry(
+                "chapter_rewrites/rr_1/ch1-1a2b3c4d/applied-3fa85f64-5717-4562-b3.html",
+                directory = false,
+            ),
+        )
+        assertTrue(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/ch1-1a2b3c4d/applied-b12f0c.html", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/ch1-1a2b3c4d/draft.html", directory = false))
+        assertFalse(
+            BackupInputLimits.isAllowedFullBackupEntry(
+                "chapter_rewrites/rr_1/ch1-1a2b3c4d/draft-3fa85f64-5717-4562-b3.html",
+                directory = false,
+            ),
+        )
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/other.json", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/nested/deeper/applied.html", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/../escape.html", directory = false))
+        assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/rr_1/ch1-1a2b3c4d/applied-x!y.html", directory = false))
         assertFalse(BackupInputLimits.isAllowedFullBackupEntry("chapter_rewrites/", directory = false))
     }
 

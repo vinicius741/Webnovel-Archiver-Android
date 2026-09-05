@@ -13,6 +13,8 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
+import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -164,6 +166,8 @@ object SpaceBattlesProvider : SourceProvider {
             network.fetch(url)
         } catch (error: CancellationException) {
             throw error
+        } catch (_: SourceAccessBlockedException) {
+            null
         } catch (_: NetworkException) {
             null
         }
@@ -180,7 +184,15 @@ object SpaceBattlesProvider : SourceProvider {
         val firstHtml = network.fetch(firstUrl)
         val chapters = parseThreadmarks(firstHtml, root).toMutableList()
         val seen = chapters.mapNotNull { it.id }.toMutableSet()
-        val lastPage = threadmarkPageCount(firstHtml).coerceAtMost(MAX_THREADMARK_PAGES)
+        // The declared page count is authoritative: hitting the fetch cap means the list would be
+        // silently truncated, so fail instead of letting a full sync delete unseen chapters (R03).
+        val declaredLastPage = threadmarkPageCount(firstHtml)
+        val lastPage = declaredLastPage.coerceAtMost(MAX_THREADMARK_PAGES)
+        if (declaredLastPage > MAX_THREADMARK_PAGES) {
+            throw SourceChapterListIncompleteException(
+                "SpaceBattles threadmarks span $declaredLastPage pages, above the ${MAX_THREADMARK_PAGES}-page fetch limit",
+            )
+        }
         for (page in 2..lastPage) {
             progress("Fetching threadmark page $page of $lastPage · ${chapterCountLabel(chapters.size)} found...")
             parseThreadmarks(network.fetch(threadmarkListUrl(root, page)), root)

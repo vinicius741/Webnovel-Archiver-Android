@@ -91,14 +91,26 @@ object BackupInputLimits {
 
     /**
      * Rewrite entries follow the store's exact layout: `chapter_rewrites/<story>/manifest.json` or
-     * `chapter_rewrites/<story>/<stem>/applied.html`. Drafts are excluded from backups by design,
-     * so `draft.html` (and everything else) is rejected.
+     * `chapter_rewrites/<story>/<stem>/applied[-<generation>].html`. Drafts are excluded from
+     * backups by design, so `draft*.html` (and everything else) is rejected.
      */
     private fun isAllowedRewriteFile(parts: List<String>): Boolean =
         (
             parts.size == 3 && parts[1].isNotBlank() && parts[2] == "manifest.json"
         ) ||
-            (parts.size == 4 && parts[1].isNotBlank() && parts[2].isNotBlank() && parts[3] == "applied.html")
+            (
+                parts.size == 4 &&
+                    parts[1].isNotBlank() &&
+                    parts[2].isNotBlank() &&
+                    APPLIED_FILE_NAME.matches(parts[3])
+            )
+
+    /**
+     * Legacy `applied.html` plus generation-suffixed names (R09). The suffix class must cover every
+     * character `safeName(operationId)` can emit — operation ids are UUIDs, so it includes `-` and
+     * `.`; traversal is already blocked by the blank/`.`/`..` component rejection above.
+     */
+    private val APPLIED_FILE_NAME = Regex("applied(-[A-Za-z0-9._-]{1,32})?\\.html")
 
     /** File extensions accepted for generated cover entries inside a full backup. */
     private val COVER_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp")

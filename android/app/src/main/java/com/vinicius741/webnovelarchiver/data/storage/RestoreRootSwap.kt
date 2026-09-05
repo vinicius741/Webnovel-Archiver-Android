@@ -26,11 +26,19 @@ private object DefaultRestoreFileOperations : RestoreFileOperations
 internal class RestoreRootSwap(
     private val files: RestoreFileOperations = DefaultRestoreFileOperations,
 ) {
+    /**
+     * Runs the staged-root swap. [onPhase] records each phase into the caller's durable journal
+     * (R07) so a process death between moves is recoverable at next startup; it is invoked at:
+     * old-root-moved (after the live root lands on the snapshot), committed (after the new root is
+     * installed and initialized, BEFORE snapshot cleanup — a leftover snapshot after this point
+     * must never be restored over the committed root).
+     */
     fun swap(
         source: File,
         liveRoot: File,
         snapshot: File,
         initializeRoot: () -> Unit,
+        onPhase: (RestoreTransactionJournal.Phase) -> Unit = {},
     ) {
         check(liveRoot.exists()) { "Live storage root is missing before restore" }
         check(source.exists()) { "Staged restore root is missing" }
@@ -46,6 +54,7 @@ internal class RestoreRootSwap(
         check(snapshot.exists() && !liveRoot.exists()) {
             "Pre-restore snapshot rename did not complete"
         }
+        onPhase(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED)
 
         if (files.rename(source, liveRoot)) {
             check(liveRoot.exists() && !source.exists()) { "Restore root rename did not complete" }
@@ -57,10 +66,9 @@ internal class RestoreRootSwap(
         }
         initializeRoot()
         check(liveRoot.exists()) { "Live storage root is missing after restore initialization" }
-        // Snapshot cleanup happens after the new live root is fully committed. A cleanup failure
-        // must not turn that successful commit into a reported restore failure: the caller would
-        // then attempt rollback from a snapshot that deleteRecursively may already have partially
-        // removed. Keep any remainder for recovery and let the next restore fail closed.
+        // The commit point: everything after this is cleanup of the old snapshot. A failure or
+        // process death during cleanup must not turn a successful commit into a rollback.
+        onPhase(RestoreTransactionJournal.Phase.COMMITTED)
         files.deleteTree(snapshot)
     }
 

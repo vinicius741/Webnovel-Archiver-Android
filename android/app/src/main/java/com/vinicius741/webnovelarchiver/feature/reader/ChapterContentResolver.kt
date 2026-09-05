@@ -3,7 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.reader
 import com.vinicius741.webnovelarchiver.ai.ChapterBlockParsing
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.appliedChapterRewrite
-import com.vinicius741.webnovelarchiver.data.repository.appliedRewriteHtml
+import com.vinicius741.webnovelarchiver.data.repository.appliedRewriteHtmlForRecord
 import com.vinicius741.webnovelarchiver.domain.model.AppliedChapterRewrite
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
@@ -43,7 +43,8 @@ internal class RepositoryChapterRewriteLookup(
         chapterId: String,
     ): AppliedChapterRewrite? = repository.appliedChapterRewrite(storyId, chapterId)
 
-    override fun appliedHtml(record: AppliedChapterRewrite): String? = repository.appliedRewriteHtml(record.storyId, record.chapterId)
+    // R26: read through the already-selected record — no second manifest lookup per chapter open.
+    override fun appliedHtml(record: AppliedChapterRewrite): String? = repository.appliedRewriteHtmlForRecord(record)
 
     override suspend fun sourceChapterHtml(chapter: Chapter): String? = repository.readChapter(chapter)
 }

@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import java.io.File
@@ -127,6 +128,15 @@ internal class RestoreStagingWriter(
             )
         }
         payload["ttsSession"]?.let { writeEnvelope(File(root, "tts_session.json"), normalize<TtsSession>(it, TtsSession::class.java)) }
+        // R11: per-story resume positions; older backups omit the key and restore with an empty map.
+        payload["ttsPositions"]?.let {
+            val positions =
+                normalize<MutableMap<String, TtsStoryPosition>>(
+                    it,
+                    object : TypeToken<MutableMap<String, TtsStoryPosition>>() {}.type,
+                )
+            writeEnvelope(File(root, "tts_positions.json"), positions)
+        }
     }
 
     private fun writeEnvelope(

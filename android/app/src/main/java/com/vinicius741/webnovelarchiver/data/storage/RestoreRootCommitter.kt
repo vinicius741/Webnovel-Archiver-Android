@@ -8,6 +8,9 @@ internal class RestoreRootCommitter(
     private val storage: AppStorage,
     private val rootSwap: RestoreRootSwap = RestoreRootSwap(),
 ) {
+    private val journal: RestoreTransactionJournal =
+        RestoreTransactionJournal(File(storage.context.filesDir, RestoreTransactionJournal.FILE_NAME))
+
     fun stageBesideLiveRoot(staged: File): File {
         // When the staged tree already shares a parent directory with the live root, rename can
         // replace it directly. Otherwise copy beside the live root first (cache vs filesDir).
@@ -22,12 +25,17 @@ internal class RestoreRootCommitter(
     }
 
     fun commit(source: File) {
+        // R07: the durable phase journal makes a process death between root moves recoverable at
+        // the next startup; it is cleared only once the swap (including snapshot cleanup) returned.
+        journal.write(RestoreTransactionJournal.Phase.PREPARED)
         rootSwap.swap(
             source = source,
             liveRoot = storage.root,
             snapshot = storage.preRestoreSnapshotDir,
             initializeRoot = ::initializeStorageDirectories,
+            onPhase = journal::write,
         )
+        journal.clear()
     }
 
     /**
@@ -37,7 +45,10 @@ internal class RestoreRootCommitter(
      * snapshot was successfully restored; `false` when a snapshot existed but rollback failed.
      */
     fun rollback(): Boolean {
-        if (!storage.preRestoreSnapshotDir.exists()) return true
+        if (!storage.preRestoreSnapshotDir.exists()) {
+            journal.clear()
+            return true
+        }
         val restored =
             rootSwap.rollback(
                 liveRoot = storage.root,
@@ -45,6 +56,9 @@ internal class RestoreRootCommitter(
                 initializeRoot = ::initializeStorageDirectories,
             )
         if (restored) {
+            // The rollback undid the swap and consumed the snapshot; a leftover OLD_ROOT_MOVED
+            // journal would make the next startup treat the intact root as a half-installed one.
+            journal.clear()
             Timber.w("Restored previous library from pre-restore snapshot after a failed swap.")
         } else {
             Timber.e("Failed to roll back root from pre-restore snapshot; snapshot was preserved for recovery.")

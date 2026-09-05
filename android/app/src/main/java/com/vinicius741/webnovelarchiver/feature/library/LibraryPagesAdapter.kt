@@ -99,14 +99,17 @@ internal class LibraryPagesAdapter(
     }
 
     /** Apply a new search/tag/sort snapshot to every page. Re-renders bound pages in place without
-     *  disturbing the current page position. */
+     *  disturbing the current page position. Equivalent filter states are skipped (R22): a
+     *  no-change update must not rebuild any page's grid. */
     fun updateFilter(
         text: String,
         tags: Set<String>,
         sortOption: String,
         sortAscending: Boolean,
     ) {
-        filterSnapshot = FilterSnapshot(text, tags, sortOption, sortAscending)
+        val next = FilterSnapshot(text, tags, sortOption, sortAscending)
+        if (next == filterSnapshot) return
+        filterSnapshot = next
         notifyItemRangeChanged(0, itemCount)
     }
 

@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
 import com.vinicius741.webnovelarchiver.data.backup.BackupProgressPlanning
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.io.File
@@ -52,11 +53,50 @@ internal class BackupExporter(
     fun exportFull(onProgress: (String) -> Unit = {}): File {
         val library = storage.getLibrary()
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
-        val chapterFiles = collectChapterFiles(library)
         val metricFiles = collectMetricFiles(library)
         val coverFiles = collectCoverFiles(library)
         val rewritePayloads = collectRewritePayloads(library)
-        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, rewritePayloads)
+        // R10: expected-but-absent content is counted and reported, and the manifest records it —
+        // a successful export never silently omits content the library reports as available.
+        val chapterPlan =
+            FullBackupContentPlanning.planChapterContent(
+                library = library,
+                resolveFile = { chapter -> storage.resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::isFile) },
+                chapterPath = { storyId, chapterId, index -> FullBackupPaths.chapterPath(storyId, chapterId, index) },
+            )
+        val missingContent =
+            FullBackupContentPlanning.missingContentReport(
+                chapterPlan = chapterPlan,
+                missingAppliedByStory =
+                    rewritePayloads.associate { payload -> payload.storyId to payload.missingAppliedCount }.filterValues { it > 0 },
+            )
+        val chapterFiles =
+            chapterPlan.mapNotNull { entry ->
+                when (entry) {
+                    is FullBackupContentPlanning.ChapterContent.FromFile ->
+                        FullBackupChapterFile(
+                            storyId = entry.storyId,
+                            chapterId = entry.chapterId,
+                            chapterIndex = entry.chapterIndex,
+                            title = entry.title,
+                            path = entry.path,
+                            source = entry.file,
+                            inlineContent = null,
+                        )
+                    is FullBackupContentPlanning.ChapterContent.Inline ->
+                        FullBackupChapterFile(
+                            storyId = entry.storyId,
+                            chapterId = entry.chapterId,
+                            chapterIndex = entry.chapterIndex,
+                            title = entry.title,
+                            path = entry.path,
+                            source = null,
+                            inlineContent = entry.content,
+                        )
+                    is FullBackupContentPlanning.ChapterContent.Missing -> null
+                }
+            }
+        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, rewritePayloads, missingContent)
         val totalFiles =
             1 + chapterFiles.size + metricFiles.size + coverFiles.size +
                 rewritePayloads.sumOf { 1 + it.appliedFiles.size }
@@ -70,6 +110,12 @@ internal class BackupExporter(
         }
 
         onProgress(BackupProgressPlanning.startMessage(library.size))
+        if (missingContent.isNotEmpty()) {
+            onProgress(
+                "Warning: ${missingContent.size} item${if (missingContent.size == 1) "" else "s"} the library lists as available " +
+                    "could not be found and will not be in this backup.",
+            )
+        }
         return File(storage.backupRoot, "webnovel_full_backup_${System.currentTimeMillis()}.zip").also { output ->
             AtomicFileWrites.writeAtomically(output) { stream ->
                 ZipOutputStream(stream).use { zip ->
@@ -79,7 +125,13 @@ internal class BackupExporter(
                     markFileWritten()
                     chapterFiles.forEach { chapter ->
                         zip.putNextEntry(ZipEntry(chapter.path))
-                        chapter.source.inputStream().use { it.copyTo(zip) }
+                        when {
+                            chapter.source != null -> chapter.source.inputStream().use { it.copyTo(zip) }
+                            // R10: a downloaded chapter whose file is missing but whose legacy
+                            // inline content survives is materialized instead of dropped.
+                            chapter.inlineContent != null -> zip.write(chapter.inlineContent.toByteArray(Charsets.UTF_8))
+                            else -> error("Chapter entry without content: ${chapter.path}")
+                        }
                         zip.closeEntry()
                         markFileWritten()
                     }
@@ -114,12 +166,22 @@ internal class BackupExporter(
         }
     }
 
+    /** Manifest-ready shape for one missing item (R10). */
+    internal fun missingEntry(it: FullBackupContentPlanning.MissingContent): Map<String, Any?> =
+        mapOf(
+            "kind" to it.kind,
+            "storyId" to it.storyId,
+            "chapterId" to it.chapterId,
+            "title" to it.title,
+        )
+
     private fun fullManifest(
         library: List<Story>,
         chapterFiles: List<FullBackupChapterFile>,
         metricFiles: List<FullBackupMetricFile>,
         coverFiles: List<FullBackupCoverFile>,
         rewritePayloads: List<StoryRewriteBackup>,
+        missingContent: List<FullBackupContentPlanning.MissingContent>,
     ): Map<String, Any?> =
         mapOf(
             "format" to "webnovel-archiver-full-backup",
@@ -153,6 +215,9 @@ internal class BackupExporter(
                         mapOf("storyId" to payload.storyId, "path" to path)
                     }
                 },
+            // R10: content the library reports as available but that could not be found at export
+            // time. Older backups omit the key; restore ignores unknown keys.
+            "missingContent" to missingContent.map(::missingEntry),
         )
 
     private fun fullConfig(): Map<String, Any?> {
@@ -168,6 +233,9 @@ internal class BackupExporter(
             "updateFollowSettings" to storage.getUpdateFollowSettings(),
             "ttsSettings" to storage.getTtsSettings(),
             "ttsSession" to storage.getTtsSession(),
+            // R11: per-story resume positions, so stories whose playback was explicitly stopped
+            // (session cleared, position kept) still resume where the listener left off.
+            "ttsPositions" to storage.getTtsStoryPositions(),
             "foldLayoutMode" to displayPreferences.foldLayoutMode,
             "themeStorage" to mapOf("wa_theme_active_v1" to displayPreferences.activeThemeId),
         )
@@ -191,24 +259,6 @@ internal class BackupExporter(
             epubPath = null,
             epubPaths = null,
         )
-
-    private fun collectChapterFiles(library: List<Story>): List<FullBackupChapterFile> =
-        library.flatMap { story ->
-            story.chapters.mapIndexedNotNull { index, chapter ->
-                if (!chapter.downloaded) return@mapIndexedNotNull null
-                val source =
-                    storage.resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::exists)
-                        ?: return@mapIndexedNotNull null
-                FullBackupChapterFile(
-                    storyId = story.id,
-                    chapterId = chapter.id,
-                    chapterIndex = index,
-                    title = chapter.title,
-                    path = FullBackupPaths.chapterPath(story.id, chapter.id, index),
-                    source = source,
-                )
-            }
-        }
 
     /** Collects each story's trend-history file that actually exists on disk. Stories that have never
      *  been synced since the Trends feature shipped have no file and are skipped (restore recreates an
@@ -238,7 +288,9 @@ private data class FullBackupChapterFile(
     val chapterIndex: Int,
     val title: String,
     val path: String,
-    val source: File,
+    val source: File?,
+    /** Legacy inline chapter content, materialized when the chapter file is missing (R10). */
+    val inlineContent: String?,
 )
 
 private data class FullBackupMetricFile(

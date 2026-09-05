@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.source.network
 
 import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.data.storage.AtomicFileWrites
+import timber.log.Timber
 import java.io.File
 
 /** The slice of [SourceReliabilityCoordinator] state that survives process death. */
@@ -38,11 +39,17 @@ class SourceReliabilityStore(
         }.getOrDefault(emptyList())
     }
 
-    fun save(states: List<PersistedHostReliability>) {
+    /**
+     * Returns false when the persistence attempt failed (R29): a circuit state that will not
+     * survive restart deserves a diagnostic signal instead of silence. The store stays advisory —
+     * callers log; they never crash on it.
+     */
+    fun save(states: List<PersistedHostReliability>): Boolean =
         runCatching {
             AtomicFileWrites.writeText(file, gson.toJson(PersistedReliabilityDocument(states)))
-        }
-    }
+        }.onFailure { error ->
+            Timber.e(error, "Failed to persist source reliability state; circuit state will not survive restart")
+        }.isSuccess
 
     private data class PersistedReliabilityDocument(
         val hosts: List<PersistedHostReliability>? = null,

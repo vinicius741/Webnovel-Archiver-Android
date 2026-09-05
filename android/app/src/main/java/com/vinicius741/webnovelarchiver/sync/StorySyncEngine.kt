@@ -41,6 +41,10 @@ class StorySyncEngine(
         val normalizedUrl = match.normalizedUrl
         val storyId = provider.getStoryId(normalizedUrl)
         val existing = repository.story(storyId)
+        // R05: remember which library and which story this sync belongs to. A clear/restore or a
+        // delete during the network window must reject the commit instead of recreating state.
+        val startedGeneration = repository.libraryGeneration()
+        val requireExisting = existing != null
         status("Fetching from ${provider.name}...")
         val loaded =
             try {
@@ -176,6 +180,8 @@ class StorySyncEngine(
                         patreonRefreshed = refreshedPatreonStats != null,
                         capturedAt = syncedAt,
                     ),
+                startedGeneration = startedGeneration,
+                requireExisting = requireExisting,
             ) { current -> StorySyncMergePlanning.foldConcurrentChanges(story, current, provider) }
         return persisted
     }

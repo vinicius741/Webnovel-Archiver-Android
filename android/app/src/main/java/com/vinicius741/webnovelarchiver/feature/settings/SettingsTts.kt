@@ -4,6 +4,8 @@ import android.text.InputType
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.clearTtsSession
+import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService

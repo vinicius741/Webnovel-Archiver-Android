@@ -1,13 +1,17 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
+import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -71,4 +75,54 @@ class ScribbleHubProviderTest {
             assertSame(base, enriched)
             assertEquals(1, server.requestCount)
         }
+
+    @Test
+    fun blockedTocPageFailsTheFullChapterListInsteadOfReturningAPartialOne() =
+        runBlocking {
+            val error =
+                runCatching {
+                    paginateTocPages(
+                        start = listOf(chapterInfo("sh_1")),
+                        fetchPage = { page ->
+                            if (page == 2) throw SourceAccessBlockedException("/series/98765")
+                            error("page $page should not be fetched after the block")
+                        },
+                    ) {}
+                }.exceptionOrNull()
+
+            assertTrue(error is SourceChapterListIncompleteException)
+        }
+
+    @Test
+    fun tocPaginationWithoutAnObservedEndFailsAtThePageLimit() =
+        runBlocking {
+            var calls = 0
+            val error =
+                runCatching {
+                    paginateTocPages(
+                        start = (1..50).map { chapterInfo("sh_$it") },
+                        fetchPage = { _ ->
+                            calls += 1
+                            (1..50).map { index -> chapterInfo("sh_page_${calls}_$index") }
+                        },
+                    ) {}
+                }.exceptionOrNull()
+
+            assertTrue(error is SourceChapterListIncompleteException)
+            assertEquals(499, calls)
+        }
+
+    @Test
+    fun shortOrDuplicateTocPageTerminatesPaginationAsComplete() =
+        runBlocking {
+            val merged =
+                paginateTocPages(
+                    start = (1..50).map { chapterInfo("sh_$it") },
+                    fetchPage = { _ -> listOf(chapterInfo("sh_51"), chapterInfo("sh_1")) },
+                ) {}
+
+            assertEquals(51, merged.size)
+        }
+
+    private fun chapterInfo(id: String) = ChapterInfo(id = id, title = id, url = "https://www.scribblehub.com/read/$id")
 }

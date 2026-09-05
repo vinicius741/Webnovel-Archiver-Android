@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -45,6 +46,9 @@ class TtsEngine(
     private var tts: TextToSpeech? = null
     private var ttsInitialized = false
     private var pendingSpeakOnInit = false
+
+    /** Bounded initialization wait (R16); cancelled on successful init and every terminal path. */
+    private var initWatchdog: kotlinx.coroutines.Job? = null
     private var chunks: List<String> = emptyList()
     private var currentChunkIndex = 0
     private var session: TtsSession? = null
@@ -115,6 +119,7 @@ class TtsEngine(
                     return@withLock
                 }
                 ttsInitialized = true
+                cancelInitWatchdogLocked()
                 tts?.setOnUtteranceProgressListener(
                     TtsUtteranceProgressListener(
                         onUtteranceError = ::routeUtteranceError,
@@ -480,6 +485,9 @@ class TtsEngine(
         }
         if (!ttsInitialized) {
             pendingSpeakOnInit = true
+            // R16: bounded initialization watchdog — a callback that never arrives surfaces as a
+            // recoverable error instead of a silently pending playback.
+            scheduleInitWatchdogLocked()
             emitState(isPlaying = false)
             return
         }
@@ -567,6 +575,7 @@ class TtsEngine(
     private fun handlePlaybackErrorLocked(error: TtsPlaybackError) {
         playbackActive = false
         pendingSpeakOnInit = false
+        cancelInitWatchdogLocked()
         currentUtteranceId = null
         watchdog.cancel()
         session?.let {
@@ -607,24 +616,55 @@ class TtsEngine(
         }
         val request = commandVersion.incrementAndGet()
         scope.launch {
+            var preparationFailure: Throwable? = null
             val prepared =
                 runCatching { preparer.nextChapter(currentSession) }
-                    .onFailure { Timber.e(it, "TTS next-chapter preparation failed") }
-                    .getOrNull()
+                    .onFailure {
+                        preparationFailure = it
+                        Timber.e(it, "TTS next-chapter preparation failed")
+                    }.getOrNull()
             stateMutex.withLock {
                 if (request != commandVersion.get()) return@withLock
-                if (prepared == null) {
-                    finishPlaybackLocked()
-                } else {
-                    startPreparedPlaybackLocked(prepared)
+                val failure = preparationFailure
+                when {
+                    // R16: an I/O/preparation failure keeps the resumable session and position —
+                    // only a genuine end of story clears them below.
+                    failure != null ->
+                        handlePlaybackErrorLocked(
+                            TtsPlaybackError(TtsPlaybackErrorKind.PreparationFailed, detail = failure.message),
+                        )
+                    prepared == null -> finishPlaybackLocked()
+                    else -> startPreparedPlaybackLocked(prepared)
                 }
             }
         }
     }
 
+    /** Bounded wait for the engine's init callback (R16); fires a recoverable InitFailed error. */
+    private fun scheduleInitWatchdogLocked() {
+        initWatchdog?.cancel()
+        initWatchdog =
+            scope.launch {
+                delay(INIT_WATCHDOG_TIMEOUT_MS)
+                stateMutex.withLock {
+                    if (!ttsInitialized && pendingSpeakOnInit) {
+                        pendingSpeakOnInit = false
+                        Timber.w("TTS engine initialization never completed; failing pending playback")
+                        handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.InitFailed))
+                    }
+                }
+            }
+    }
+
+    private fun cancelInitWatchdogLocked() {
+        initWatchdog?.cancel()
+        initWatchdog = null
+    }
+
     private fun finishPlaybackLocked() {
         playbackActive = false
         pendingSpeakOnInit = false
+        cancelInitWatchdogLocked()
         currentUtteranceId = null
         watchdog.cancel()
         val finishedSession = session
@@ -642,10 +682,16 @@ class TtsEngine(
         // callback continuation can mutate storage after the service is torn down.
         scope.cancel()
         watchdog.cancel()
+        cancelInitWatchdogLocked()
         tts?.stop()
         tts?.shutdown()
         tts = null
         ttsInitialized = false
         playbackActive = false
+    }
+
+    private companion object {
+        /** Upper bound for the engine's init callback before a pending play surfaces as an error (R16). */
+        const val INIT_WATCHDOG_TIMEOUT_MS = 15_000L
     }
 }

@@ -11,6 +11,10 @@ data class DiagnosticEvent(
     val timestampMillis: Long,
     val priority: Int,
     val throwableType: String?,
+    /** Privacy-safe static operation name for timed operations (R30); null for plain log events. */
+    val operation: String? = null,
+    val durationMillis: Long? = null,
+    val failed: Boolean = false,
 )
 
 data class DiagnosticStorageIssue(

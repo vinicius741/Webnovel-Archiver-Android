@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.Dispatcher
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,10 +33,10 @@ fun interface NetworkRequestGate {
 class NetworkClient(
     /** Shared OkHttp client built by [buildDefault]; WebView-earned cookies replay here via [AndroidCookieJar]. */
     val client: OkHttpClient = defaultClient,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val policyResolver: NetworkPolicyResolver = DefaultNetworkPolicyResolver,
+    internal val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    internal val policyResolver: NetworkPolicyResolver = DefaultNetworkPolicyResolver,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
-    private val nowMillis: () -> Long = System::currentTimeMillis,
+    internal val nowMillis: () -> Long = System::currentTimeMillis,
     private val jitterMillis: (Long) -> Long = { maximum ->
         if (maximum <= 0L) 0L else Random.nextLong(maximum + 1L)
     },
@@ -53,21 +54,21 @@ class NetworkClient(
         ) : AttemptResult<Nothing>
     }
 
-    private data class PreparedPage(
+    internal data class PreparedPage(
         val html: String,
         val expiresAt: Long,
     )
 
-    private val reliability =
+    internal val reliability =
         reliabilityCoordinator
             ?: SourceReliabilityCoordinator(
                 nowMillis = nowMillis,
                 sleep = sleep,
             )
-    private val retryBackoff = RetryBackoff(nowMillis, jitterMillis)
-    private val preparedPages = ConcurrentHashMap<String, PreparedPage>()
-    private val reusablePages = ConcurrentHashMap<String, PreparedPage>()
-    private val reusablePageLocks = ConcurrentHashMap<String, Mutex>()
+    internal val retryBackoff = RetryBackoff(nowMillis, jitterMillis)
+    internal val preparedPages = ConcurrentHashMap<String, PreparedPage>()
+    internal val reusablePages = ConcurrentHashMap<String, PreparedPage>()
+    internal val reusablePageLocks = ConcurrentHashMap<String, Mutex>()
 
     suspend fun fetch(
         url: String,
@@ -82,7 +83,7 @@ class NetworkClient(
         val request = NetworkRequests.pageRequest(url)
         val policy = policyResolver.policyFor(request.url)
         return executeWithRetries(url, request, policy, callTimeoutMillis, maximumAttemptsOverride, requestGate) { response ->
-            val body = response.body?.string().orEmpty()
+            val body = response.bodyStringCapped(url, MAX_TEXT_RESPONSE_BYTES)
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
                 throw SourceAccessBlockedException(url)
             }
@@ -135,6 +136,7 @@ class NetworkClient(
                 }
             }
         }
+        evictIdlePageLocks()
     }
 
     suspend fun postForm(
@@ -144,56 +146,13 @@ class NetworkClient(
     ): String {
         val request = NetworkRequests.formRequest(url, fields, headers)
         val policy = policyResolver.policyFor(request.url)
-        return executeWithRetries(url, request, policy) { response ->
-            val body = response.body?.string().orEmpty()
+        return executeWithRetries(url, request, policy, read = { response ->
+            val body = response.bodyStringCapped(url, MAX_TEXT_RESPONSE_BYTES)
             if (SourceAccessBlockDetector.isChallengeResponse(response.headers, body)) {
                 throw SourceAccessBlockedException(url)
             }
             body
-        }
-    }
-
-    /**
-     * Fetches a binary body (covers) capped at [maxBytes]; null on non-2xx, non-image, or oversize.
-     * Shares [fetch]'s per-host rate limit so cover fetches can't stack 403s.
-     */
-    suspend fun fetchBytes(
-        url: String,
-        maxBytes: Long = MAX_IMAGE_BYTES,
-    ): ByteArray? {
-        val request = NetworkRequests.binaryRequest(url)
-        val policy = policyResolver.policyFor(request.url)
-        reliability.awaitPermission(url, request.url.host, policy)
-        return try {
-            withContext(ioDispatcher) {
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        if (response.code == 429) {
-                            reliability.recordRateLimit(
-                                request.url.host,
-                                policy,
-                                retryBackoff.retryAfterMillis(response.header("Retry-After"), policy),
-                            )
-                        }
-                        return@use null
-                    }
-                    val contentType = response.header("Content-Type").orEmpty()
-                    if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@use null
-                    val body = response.body ?: return@use null
-                    val length = body.contentLength()
-                    if (length > maxBytes) return@use null
-                    // Request one byte past the cap so a chunked/unknown-length body can't buffer in full first.
-                    val source = body.source()
-                    source.request(maxBytes + 1)
-                    if (source.buffer.size > maxBytes) return@use null
-                    source.buffer.readByteArray().also { reliability.recordSuccess(request.url.host, policy) }
-                }
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (_: Exception) {
-            null
-        }
+        })
     }
 
     @Suppress("NestedBlockDepth", "ThrowsCount")
@@ -241,16 +200,24 @@ class NetworkClient(
                         code = result.statusCode,
                     )
                     val isRateLimited = result.statusCode in policy.retryableStatusCodes
-                    if (!isRateLimited || attempt >= maximumAttempts) {
-                        if (isRateLimited) {
-                            val requestedRetryAfter = retryBackoff.retryAfterMillis(result.retryAfterHeader, policy)
-                            val cooldown = reliability.recordRateLimit(request.url.host, policy, requestedRetryAfter)
+                    if (isRateLimited) {
+                        // R14: the accepted server deadline reaches the shared host coordinator as
+                        // soon as the response arrives, so no other operation on this host can
+                        // request inside the server-directed wait either.
+                        val requestedRetryAfter = retryBackoff.retryAfterMillis(result.retryAfterHeader, policy)
+                        val cooldown = reliability.recordRateLimit(request.url.host, policy, requestedRetryAfter)
+                        val serverDeadlineExceedsBudget =
+                            requestedRetryAfter != null && requestedRetryAfter > policy.maximumRetryDelayMillis
+                        if (attempt >= maximumAttempts || serverDeadlineExceedsBudget) {
+                            // Defer the work: the shared cooldown now carries the server deadline,
+                            // and callers observe a typed rate-limit failure instead of an early retry.
                             throw RateLimitNetworkException(
                                 requestedUrl = url,
                                 statusCode = result.statusCode,
                                 retryAfterMillis = maxOf(requestedRetryAfter ?: 0L, cooldown),
                             )
                         }
+                    } else {
                         throw HttpNetworkException(url, result.statusCode)
                     }
                     sleep(retryBackoff.delayFor(attempt, result.retryAfterHeader, policy))
@@ -270,15 +237,19 @@ class NetworkClient(
         try {
             withContext(ioDispatcher) {
                 val call = client.newCall(request)
-                callTimeoutMillis?.let { timeout -> call.timeout().timeout(timeout, TimeUnit.MILLISECONDS) }
-                call.execute().use { response ->
+                // R13: a total per-call deadline (overridable per request class) plus real
+                // cancellation — cancelling the coroutine cancels the in-flight OkHttp call so a
+                // dead UI operation stops occupying a worker.
+                call.timeout().timeout(callTimeoutMillis ?: DEFAULT_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+                call.executeCancellable().use { response ->
                     if (response.isSuccessful) {
                         return@withContext AttemptResult.Success(
                             read(response),
                             response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER) == "1",
                         )
                     }
-                    val responseBody = response.body?.string().orEmpty()
+                    // Error bodies only feed challenge detection; a bounded prefix is enough (R24).
+                    val responseBody = response.bodyStringPrefix(url, MAX_ERROR_BODY_BYTES)
                     if (SourceAccessBlockDetector.isChallengeResponse(response.headers, responseBody)) {
                         throw SourceAccessBlockedException(url)
                     }
@@ -316,7 +287,7 @@ class NetworkClient(
                 allowPreparedPage = false,
                 requestGate = requestGate,
             )
-        preparedPages[url] = PreparedPage(html, nowMillis() + PREPARED_PAGE_TTL_MILLIS)
+        this.admitPreparedPage(url, PreparedPage(html, nowMillis() + PREPARED_PAGE_TTL_MILLIS))
     }
 
     fun clearSourceAccess(
@@ -339,11 +310,55 @@ class NetworkClient(
 
     fun reliabilitySnapshots(): List<SourceReliabilitySnapshot> = reliability.snapshots()
 
+    /**
+     * Reads a text body with an application-level byte cap (R24): content-length and chunked
+     * bodies alike are bounded, so an oversized response fails instead of buffering unbounded.
+     */
+    private fun Response.bodyStringCapped(
+        url: String,
+        maxBytes: Long,
+    ): String {
+        val body = this.body ?: return ""
+        if (body.contentLength() > maxBytes) {
+            throw NetworkTransportException(url, IOException("Response body exceeded $maxBytes bytes"))
+        }
+        val source = body.source()
+        // Request one byte past the cap: if the buffer holds more than maxBytes, the body is over.
+        source.request(maxBytes + 1)
+        if (source.buffer.size > maxBytes) {
+            throw NetworkTransportException(url, IOException("Response body exceeded $maxBytes bytes"))
+        }
+        return source.buffer.readUtf8()
+    }
+
+    /** First [maxBytes] of a body, for detection-only reads that must not fail on size. */
+    private fun Response.bodyStringPrefix(
+        url: String,
+        maxBytes: Long,
+    ): String =
+        if (body.contentLength() > maxBytes) {
+            ""
+        } else {
+            runCatching { bodyStringCapped(url, maxBytes) }.getOrNull().orEmpty()
+        }
+
     companion object {
         const val MAX_IMAGE_BYTES = 8_000_000L
-        private const val PREPARED_PAGE_TTL_MILLIS = 5L * 60L * 1_000L
+        internal const val PREPARED_PAGE_TTL_MILLIS = 5L * 60L * 1_000L
         private const val REUSABLE_PAGE_TTL_MILLIS = 10L * 60L * 1_000L
         private const val MAX_REUSABLE_PAGES = 24
+        internal const val MAX_PREPARED_PAGES = 24
+
+        /**
+         * Default total budget for one source request (R13), sized to also cover a background
+         * Cloudflare render inside the interceptor; callers with tighter classes pass
+         * `callTimeoutMillis` explicitly.
+         */
+        const val DEFAULT_CALL_TIMEOUT_MILLIS = 180_000L
+
+        /** Application-level caps for text/catalog bodies (R24). */
+        const val MAX_TEXT_RESPONSE_BYTES = 6_000_000L
+        const val MAX_ERROR_BODY_BYTES = 64_000L
 
         /**
          * Legacy fallback with no cookie jar, used only for the parameter default; must never be the
@@ -358,7 +373,9 @@ class NetworkClient(
 
         /**
          * Production client: [AndroidCookieJar] so cookies persist and WebViews share the store,
-         * plus [CloudflareBypassInterceptor] to solve challenges in a background WebView.
+         * plus [CloudflareBypassInterceptor] to solve challenges in a background WebView. Per-host
+         * pacing belongs to SourceReliabilityCoordinator, so the dispatcher's host cap is raised:
+         * OkHttp's default of 5 would queue same-host waits outside the call-timeout budget (R13).
          */
         fun buildDefault(
             context: Context,
@@ -370,6 +387,7 @@ class NetworkClient(
                 .readTimeout(45, TimeUnit.SECONDS)
                 .cookieJar(AndroidCookieJar())
                 .addInterceptor(CloudflareBypassInterceptor(context.applicationContext, reliabilityCoordinator))
+                .dispatcher(Dispatcher().apply { maxRequestsPerHost = 64 })
                 .build()
     }
 }

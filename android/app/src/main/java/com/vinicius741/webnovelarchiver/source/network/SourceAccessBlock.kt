@@ -1,12 +1,16 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import okhttp3.Headers
+import java.io.IOException
 
+// IOException so it survives OkHttp's async boundary unwrapped: enqueue wraps non-IO throwables in
+// a generic IOException AND rethrows the original on the dispatcher thread, which would crash the
+// process and defeat the typed catch sites (executeAttempt, download/sync failure planning).
 class SourceAccessBlockedException(
     val blockedUrl: String,
     val manualVerificationRequired: Boolean = true,
     message: String = "Cloudflare is blocking automated access. Open the source in the browser, pass the check, then retry.",
-) : NetworkException(message)
+) : IOException(message)
 
 object SourceAccessBlockDetector {
     /**

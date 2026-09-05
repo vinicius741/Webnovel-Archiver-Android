@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -60,6 +61,31 @@ class SpaceBattlesProviderTest {
             assertEquals(2, server.requestCount)
             assertTrue(server.takeRequest().path!!.contains("threadmark_category=1"))
             assertTrue(server.takeRequest().path!!.contains("page=2"))
+        }
+
+    @Test
+    fun fullSyncRejectsChapterListWhenDeclaredPagesExceedFetchCap() =
+        runBlocking {
+            val root = server.url("/threads/fixture-story.1183048/").toString()
+            val storyHtml = """<link rel="canonical" href="$root">"""
+            // Declaring more pages than the fetch cap would silently truncate the list; the
+            // provider must fail the full sync instead (R03).
+            server.enqueue(
+                MockResponse().setBody(
+                    threadmarkPage(
+                        mainRows = threadmarkRow(7001, "Chapter 1"),
+                        lastPage = 501,
+                    ),
+                ),
+            )
+
+            val error =
+                runCatching {
+                    SpaceBattlesProvider.getChapterList(storyHtml, root, network) {}
+                }.exceptionOrNull()
+
+            assertTrue(error is SourceChapterListIncompleteException)
+            assertEquals(1, server.requestCount)
         }
 
     @Test

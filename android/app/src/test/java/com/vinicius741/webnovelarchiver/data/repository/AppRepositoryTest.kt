@@ -9,7 +9,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.TimeUnit
 
 class AppRepositoryTest {
     @Test
@@ -50,6 +52,23 @@ class AppRepositoryTest {
             assertNull(repository.story("story"))
             assertEquals(listOf("other"), repository.library().map { it.id })
             assertEquals(0, store.libraryReadCount)
+        }
+
+    @Test
+    fun manifestOnlyRepublishBumpsVersionsWithoutRereadingStoryDocuments() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.story("story")!!)
+            val cachedTitle = repository.story("story")!!.title
+            val before = repository.downloadState.value
+
+            store.stories["story"] = store.story("story")!!.copy(title = "Externally Changed")
+            repository.republishLibrarySnapshot()
+
+            // R26: a rewrite toggle must not re-read the story document; the cached snapshot wins.
+            assertEquals(cachedTitle, repository.story("story")!!.title)
+            assertTrue(repository.downloadState.value.libraryVersion > before.libraryVersion)
         }
 
     @Test
@@ -109,6 +128,105 @@ class AppRepositoryTest {
             assertEquals(listOf("one", "two"), result.chapters.map { it.id })
         }
 
+    @Test
+    fun storyAndQueueReadsDoNotWaitForTheTransactionMonitor() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.story("story")!!)
+
+            // Hold the storage monitor like a long backup/restore/EPUB transaction would, then
+            // verify UI-side reads still return immediately from the published snapshot (R01).
+            synchronized(store.transactionLock) {
+                val read =
+                    Thread {
+                        readResults.add(repository.story("story")?.title)
+                        readResults.add(repository.library().singleOrNull()?.title)
+                        readResults.add(repository.queue().size.toString())
+                        readLatch.countDown()
+                    }
+                read.isDaemon = true
+                read.start()
+                assertTrue("story()/library()/queue() blocked on the storage monitor", readLatch.await(2, TimeUnit.SECONDS))
+            }
+
+            assertEquals(listOf("Story story", "Story story", "0"), readResults)
+        }
+
+    @Test
+    fun syncCommitIsRejectedWhenTheLibraryWasReplacedMidFlight() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.story("story")!!)
+            val staleGeneration = repository.libraryGeneration()
+
+            // A clear/restore bumped the generation after the sync captured the old one.
+            repository.invalidateLibraryGeneration()
+
+            val error =
+                runCatching {
+                    repository.commitSyncedStory(story(), startedGeneration = staleGeneration) { current -> current!! }
+                }.exceptionOrNull()
+
+            assertTrue(error is IllegalStateException)
+        }
+
+    @Test
+    fun syncCommitIsRejectedWhenTheStoryWasDeletedMidFlight() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(store.story("story")!!)
+
+            repository.deleteStory("story")
+
+            val error =
+                runCatching {
+                    repository.commitSyncedStory(story(), requireExisting = true) { current -> current!! }
+                }.exceptionOrNull()
+
+            assertTrue(error is IllegalStateException)
+            assertNull(store.story("story"))
+        }
+
+    @Test
+    fun concurrentIndependentDisplayPreferenceUpdatesBothSurvive() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            store.display =
+                com.vinicius741.webnovelarchiver.domain.model
+                    .DisplayPreferences()
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+
+            // Two rapid independent changes (tab + sort) started from the same old document: with
+            // plain save-copies the later write would restore the earlier field's old value (R28).
+            repository.updateDisplayPreferences { it.copy(libraryTabId = "reading") }
+            repository.updateDisplayPreferences { it.copy(librarySortOption = "title") }
+
+            val saved = repository.getDisplayPreferences()
+            assertEquals("reading", saved.libraryTabId)
+            assertEquals("title", saved.librarySortOption)
+        }
+
+    @Test
+    fun latestSameFieldChoiceWins() =
+        runTest {
+            val store = FakeRepositoryStoryStore(story())
+            store.display =
+                com.vinicius741.webnovelarchiver.domain.model
+                    .DisplayPreferences()
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+
+            repository.updateDisplayPreferences { it.copy(libraryTabId = "reading") }
+            repository.updateDisplayPreferences { it.copy(libraryTabId = "wishlist") }
+
+            assertEquals("wishlist", repository.getDisplayPreferences().libraryTabId)
+        }
+
+    private val readResults = java.util.Collections.synchronizedList(mutableListOf<String?>())
+    private val readLatch = java.util.concurrent.CountDownLatch(1)
+
     private class FakeRepositoryStoryStore(
         vararg initial: Story,
     ) : RepositoryStoryStore {
@@ -116,6 +234,9 @@ class AppRepositoryTest {
         val stories = initial.associateByTo(linkedMapOf()) { it.id }
         private var queue: List<DownloadJob> = emptyList()
         var libraryReadCount = 0
+        var display =
+            com.vinicius741.webnovelarchiver.domain.model
+                .DisplayPreferences()
 
         override fun stories(): List<Story> {
             libraryReadCount += 1
@@ -141,6 +262,12 @@ class AppRepositoryTest {
 
         override fun saveQueue(jobs: List<DownloadJob>) {
             queue = jobs
+        }
+
+        override fun displayPreferences(): com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences = display.copy()
+
+        override fun saveDisplayPreferences(preferences: com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences) {
+            display = preferences.copy()
         }
     }
 

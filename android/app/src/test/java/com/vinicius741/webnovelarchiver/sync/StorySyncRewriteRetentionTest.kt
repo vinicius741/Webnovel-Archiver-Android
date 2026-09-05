@@ -25,13 +25,15 @@ class StorySyncRewriteRetentionTest {
     }
 
     @Test
-    fun foldKeepsSyncedStrengthWhenDiskIsLegacyNull() {
+    fun foldKeepsExplicitStrengthResetMadeDuringSyncWindow() {
+        // The synced snapshot still carries the pre-window strength, but the disk record re-read
+        // at commit is null (user reset it mid-window): null wins, not the stale value (R04).
         val synced = syncedStory(strength = "light")
         val onDisk = syncedStory(strength = null)
 
         val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
 
-        assertEquals("light", folded.chapterRewriteStrength)
+        assertNull(folded.chapterRewriteStrength)
     }
 
     @Test
