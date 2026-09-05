@@ -26,6 +26,18 @@ object DownloadQueueControlPlanning {
             }
         }
 
+    /** Pauses every active job of one story in a single transform (one durable save for the group). */
+    fun pauseStory(
+        jobs: List<DownloadJob>,
+        storyId: String,
+    ): MutableList<DownloadJob> =
+        jobs.copyJobs().onEach { job ->
+            if (job.storyId == storyId && job.status in activeStatuses) {
+                job.status = DownloadJobStatus.Paused.wire
+                job.nextRetryAt = null
+            }
+        }
+
     fun resumeAll(jobs: List<DownloadJob>): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.status == DownloadJobStatus.Paused.wire) {
@@ -40,6 +52,18 @@ object DownloadQueueControlPlanning {
     ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status == DownloadJobStatus.Paused.wire) {
+                job.status = DownloadJobStatus.Pending.wire
+                job.nextRetryAt = null
+            }
+        }
+
+    /** Resumes every paused job of one story in a single transform. */
+    fun resumeStory(
+        jobs: List<DownloadJob>,
+        storyId: String,
+    ): MutableList<DownloadJob> =
+        jobs.copyJobs().onEach { job ->
+            if (job.storyId == storyId && job.status == DownloadJobStatus.Paused.wire) {
                 job.status = DownloadJobStatus.Pending.wire
                 job.nextRetryAt = null
             }
@@ -62,6 +86,18 @@ object DownloadQueueControlPlanning {
     ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.id == jobId && job.status in cancellableStatuses) {
+                markCancelled(job, reason)
+            }
+        }
+
+    /** Cancels every cancellable job of one story in a single transform. */
+    fun cancelStory(
+        jobs: List<DownloadJob>,
+        storyId: String,
+        reason: String = "cancelled by user",
+    ): MutableList<DownloadJob> =
+        jobs.copyJobs().onEach { job ->
+            if (job.storyId == storyId && job.status in cancellableStatuses) {
                 markCancelled(job, reason)
             }
         }

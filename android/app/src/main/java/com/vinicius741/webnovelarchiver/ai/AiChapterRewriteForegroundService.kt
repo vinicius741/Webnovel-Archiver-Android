@@ -97,6 +97,9 @@ class AiChapterRewriteForegroundService : Service() {
         fgsType: Int,
     ) {
         Timber.w("Chapter rewrite foreground service timed out (startId=%s, type=%s)", startId, fgsType)
+        // R15: cancel owned work and block the batch drain BEFORE shutdown — otherwise the
+        // application-scope job keeps running unprotected and Android may kill the process mid-write.
+        coordinator.cancelAll(reason = "foreground service timeout")
         stopAfterFinish()
     }
 
@@ -207,16 +210,17 @@ class AiChapterRewriteForegroundService : Service() {
         private const val OUTCOME_NOTIFICATION_ID = 1006
         const val ACTION_START = "com.vinicius741.webnovelarchiver.ai.CHAPTER_REWRITE_START"
 
-        /** Called from the UI while foregrounded, right before a job starts. */
-        fun start(context: Context) {
+        /** Called from the UI while foregrounded, right before a job starts. False when the
+         *  service could not start, so the enqueue flow can say so (R15). */
+        fun start(context: Context): Boolean {
             val intent = Intent(context, AiChapterRewriteForegroundService::class.java).setAction(ACTION_START)
-            runCatching {
+            return runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
                     context.startService(intent)
                 }
-            }.onFailure { Timber.w(it, "Could not start chapter rewrite foreground service") }
+            }.onFailure { Timber.w(it, "Could not start chapter rewrite foreground service") }.isSuccess
         }
     }
 }

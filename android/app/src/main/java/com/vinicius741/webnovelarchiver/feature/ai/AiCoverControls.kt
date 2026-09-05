@@ -182,40 +182,78 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
                     bottomMargin = dp(Space.SM)
                 },
             )
-            val bitmap = BitmapFactory.decodeByteArray(draft.bytes, 0, draft.bytes.size)
-            if (bitmap != null) {
-                addAiCoverDraftCompareRow(this, story, bitmap)
-                spacer(Space.SM)
-                text("Image prompt", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
-                text(draft.prompt, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-                    setLineSpacing(dp(Space.XS).toFloat(), 1f)
-                }
-                text(
-                    "Preview — not saved yet",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
-                latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)?.let { cost ->
-                    text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
-                        setPadding(0, 0, 0, dp(Space.SM))
+            // R24: the preview bitmap is decoded off main, sampled to preview size, with a
+            // dimension sanity check before any large allocation.
+            val previewSlot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            addView(previewSlot)
+            scope.launch(kotlinx.coroutines.Dispatchers.Default) {
+                val bitmap = decodeSampledDraftPreview(draft.bytes)
+                app.runOnUiThread {
+                    if (app.isFinishing || app.isDestroyed) return@runOnUiThread
+                    previewSlot.removeAllViews()
+                    if (bitmap != null) {
+                        addAiCoverDraftCompareRow(previewSlot, story, bitmap)
+                    } else {
+                        previewSlot.addView(
+                            makeText(
+                                app,
+                                "The model returned an image the app could not decode. Discard and try again.",
+                                Type.BODY_SMALL,
+                                colors.onSurfaceVariant,
+                            ),
+                        )
                     }
                 }
-                row {
-                    button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiCoverDraft(story, draft) }
-                    button("Discard", Btn.TEXT) { discardAiCoverDraft(story) }
+            }
+            spacer(Space.SM)
+            text("Image prompt", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
+            text(draft.prompt, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+                setLineSpacing(dp(Space.XS).toFloat(), 1f)
+            }
+            text(
+                "Preview — not saved yet",
+                Type.BODY_SMALL,
+                colors.onSurfaceVariant,
+            ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
+            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)?.let { cost ->
+                text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
+                    setPadding(0, 0, 0, dp(Space.SM))
                 }
-            } else {
-                text(
-                    "The model returned an image the app could not decode. Discard and try again.",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                )
-                spacer(Space.SM)
+            }
+            row {
+                button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiCoverDraft(story, draft) }
                 button("Discard", Btn.TEXT) { discardAiCoverDraft(story) }
             }
         }
     container.addView(cardView)
 }
+
+/**
+ * Decodes a preview-sized bitmap (R24): bounds are validated against a dimension sanity cap before
+ * the sampled allocation, so a small-compressed/huge-dimension payload cannot claim unbounded
+ * memory and the main thread never performs the decode.
+ */
+internal fun decodeSampledDraftPreview(
+    bytes: ByteArray,
+    targetPx: Int = 1024,
+): android.graphics.Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    if (bounds.outWidth > MAX_PREVIEW_DIMENSION_PX || bounds.outHeight > MAX_PREVIEW_DIMENSION_PX) return null
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= targetPx && bounds.outHeight / (sample * 2) >= targetPx) {
+        sample *= 2
+    }
+    return BitmapFactory.decodeByteArray(
+        bytes,
+        0,
+        bytes.size,
+        BitmapFactory.Options().apply { inSampleSize = sample },
+    )
+}
+
+private const val MAX_PREVIEW_DIMENSION_PX = 8192
 
 internal fun ScreenHost.applyAiCoverDraft(
     story: Story,

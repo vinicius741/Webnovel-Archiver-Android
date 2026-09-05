@@ -40,12 +40,13 @@ object AiCoverPlanning {
 
     fun cleanGeneratedPrompt(raw: String): String? {
         var text = raw.trim()
-        text = text.removeSurrounding("\"")
+        // removeSurrounding keeps a lone delimiter unchanged, so quotes-only input stays quotes.
+        if (text.length >= 2) text = text.removeSurrounding("\"")
         text = text.replace(Regex("\\s+"), " ").trim()
         if (text.length > MAX_PROMPT_CHARS) {
             text = text.take(MAX_PROMPT_CHARS).substringBeforeLast(' ', missingDelimiterValue = text.take(MAX_PROMPT_CHARS)).trim()
         }
-        return text.takeIf { it.isNotBlank() }
+        return text.takeIf { it.isNotBlank() && it.any { c -> c != '"' } }
     }
 
     fun isAiCoverActive(story: Story): Boolean {
@@ -152,10 +153,11 @@ object AiCoverPlanning {
 
         ART DIRECTION
         Specify a flat, full-bleed 2:3 portrait cover image, never a physical book, page, frame,
-        border, or 3D mockup. Choose exactly one focal subject and one coherent scene. For multiple
-        protagonists, choose the single most prominent character in the supplied context. If the
-        central character is unclear, choose a supported setting or signature object instead of
-        inventing a protagonist. No character lineups, collages, diptychs, triptychs, or alternatives.
+        border, or 3D mockup. Choose exactly one focal subject and one coherent scene. For
+        multiple protagonists, choose the single most prominent character in the supplied context.
+        If the central character is unclear, choose a supported setting or signature object
+        instead of inventing a protagonist. No character lineups, collages, diptychs, triptychs,
+        or alternatives.
         Describe the subject's supported appearance, clothing, pose or action, and setting with
         concrete visual nouns. Do not invent identity, anatomy, weapons, powers, or story events.
         When appearance is unknown, use distance, silhouette, or an object-led composition.

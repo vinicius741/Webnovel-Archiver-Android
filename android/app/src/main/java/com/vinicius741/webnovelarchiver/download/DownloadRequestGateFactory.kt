@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.download
 
-import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -14,7 +14,7 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
  * [DownloadEngine] so that file stays within its size budget.
  */
 internal class DownloadRequestGateFactory(
-    private val storage: AppStorage,
+    private val repository: AppRepository,
     private val downloadPacer: DownloadRequestPacer,
 ) {
     fun gateFor(
@@ -31,7 +31,7 @@ internal class DownloadRequestGateFactory(
                 claimSourcePermission = claimSourcePermission,
             ) {
                 ensureJobActive(job.id)
-                val settings = storage.getSettings()
+                val settings = repository.getSettings()
                 DownloadScheduler.settingsFor(
                     providerName = sourceId,
                     globalSettings =
@@ -40,15 +40,16 @@ internal class DownloadRequestGateFactory(
                             delay = settings.downloadDelay,
                             delayMax = settings.downloadDelayMax,
                         ),
-                    sourceSettings = storage.getSourceDownloadSettings(),
+                    sourceSettings = repository.getSourceDownloadSettings(),
                 )
             }
         }
 
+    /** Liveness check against the repository's coherent cached queue (R21), not durable JSON. */
     fun ensureJobActive(jobId: String) {
         val active =
-            storage
-                .getQueue()
+            repository
+                .queue()
                 .firstOrNull { it.id == jobId }
                 ?.status
                 ?.let { it in DownloadJobStatus.activeWires } == true

@@ -70,7 +70,11 @@ internal fun ScreenHost.startChapterPolishJob(
         toast("\"${chapter.title}\" is already polishing or queued")
         return
     }
-    AiChapterRewriteForegroundService.start(app)
+    if (!AiChapterRewriteForegroundService.start(app)) {
+        // R15: a failed service start is visible to the enqueue flow — the job still runs on the
+        // process scope, but the user learns foreground protection (and its notifications) failed.
+        toast("Started in background — foreground notifications unavailable")
+    }
     val queuedCount = coordinator.queuedFor(story.id).size
     if (queuedCount > 1) {
         toast("Queued \"${chapter.title}\" — $queuedCount chapters in the polish queue")

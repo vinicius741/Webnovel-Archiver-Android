@@ -58,7 +58,7 @@ internal fun ScreenHost.showQueue() {
     val queue =
         repository.downloadState.value.queue
             .ifEmpty { repository.queue() }
-    val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
+    val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value
     val nowMillis = System.currentTimeMillis()
     // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
     rerender = { showQueue() }
@@ -96,7 +96,8 @@ internal fun ScreenHost.showQueue() {
             QueueGroupAdapter(host) {
                 adapter.submitQueue(
                     repository.downloadState.value.queue,
-                    app.appContainer.downloadPacer.snapshots.value.values,
+                    app.appContainer.downloadPacer.snapshots.value,
+                    expansionChanged = true,
                 )
             }
         list =
@@ -164,7 +165,7 @@ private fun ScreenHost.observeQueueUpdates(
                             }
                             return@collect
                         }
-                        updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue, pacing.values, now)
+                        updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue, pacing, now)
                     }
                 }
         }
@@ -176,7 +177,7 @@ private fun ScreenHost.updateQueueContent(
     list: RecyclerView,
     adapter: QueueGroupAdapter,
     queue: List<DownloadJob>,
-    pacingSnapshots: Collection<DownloadPacingSnapshot>,
+    pacing: Map<String, DownloadPacingSnapshot>,
     nowMillis: Long,
 ) {
     val counts = DownloadCounts.from(queue)
@@ -201,7 +202,7 @@ private fun ScreenHost.updateQueueContent(
         summarySlot.row {
             addView(makeProgressSummary(context, counts.completed, counts.total).root)
         }
-        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, queue, nowMillis)
+        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacing.values, queue, nowMillis)
         val downloadingNow = counts.downloading - waitingByJobId.size
         summarySlot.flow {
             addView(makeCountChip(context, "downloading", downloadingNow, ThemeManager.colors.primary))
@@ -213,7 +214,7 @@ private fun ScreenHost.updateQueueContent(
         }
         appendBlockedVerificationBanner(summarySlot, queue)
     }
-    adapter.submitQueue(queue, pacingSnapshots, nowMillis)
+    adapter.submitQueue(queue, pacing, nowMillis)
 }
 
 /** The all-pending blocked state has no failed jobs for the retry-keyed solve flow; offer an explicit verify action. */
@@ -263,12 +264,12 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
         when (action) {
             GlobalQueueAction.RESUME_ALL ->
                 AppBarAction(R.drawable.wna_play, "Resume All") {
-                    downloadEngine.resumeAll()
+                    launchQueueControl("resumeAll") { downloadEngine.resumeAll() }
                     startDownloadForegroundService()
                 }
             GlobalQueueAction.PAUSE_ALL ->
                 AppBarAction(R.drawable.wna_pause, "Pause All") {
-                    downloadEngine.pauseAll()
+                    launchQueueControl("pauseAll") { downloadEngine.pauseAll() }
                 }
             GlobalQueueAction.RETRY_ALL ->
                 AppBarAction(R.drawable.wna_refresh, "Retry Failed", ThemeManager.colors.primary) {
@@ -281,18 +282,18 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
                             ?: repository.queue().firstOrNull { it.errorCategory == "source_blocked" }
                     if (blocked != null) {
                         showSourceAccessBlockedDialog(blocked.chapter.url) {
-                            downloadEngine.retryFailed()
+                            launchQueueControl("retryFailed") { downloadEngine.retryFailed() }
                             startDownloadForegroundService()
                         }
                         return@AppBarAction
                     }
-                    downloadEngine.retryFailed()
+                    launchQueueControl("retryFailed") { downloadEngine.retryFailed() }
                     startDownloadForegroundService()
                 }
             GlobalQueueAction.CANCEL_ALL ->
                 AppBarAction(R.drawable.wna_stop, "Cancel All", ThemeManager.colors.error) {
                     confirm("Cancel all active and pending downloads?", confirmLabel = "Cancel All") {
-                        downloadEngine.cancelAll()
+                        launchQueueControl("cancelAll") { downloadEngine.cancelAll() }
                     }
                 }
             GlobalQueueAction.CLEAR_FINISHED ->
@@ -301,11 +302,27 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
                         "Remove all finished downloads (completed, failed, and cancelled) from the list?",
                         confirmLabel = "Clear Finished",
                     ) {
-                        downloadEngine.clearFinished()
+                        launchQueueControl("clearFinished") { downloadEngine.clearFinished() }
                     }
                 }
         }
     }
+
+/**
+ * Runs one queue control on the screen scope; the repository moves the durable work to its I/O
+ * dispatcher, so the click handler never touches storage. A failed save is logged, not crashed on.
+ */
+internal fun ScreenHost.launchQueueControl(
+    name: String,
+    block: suspend () -> Unit,
+) {
+    scope.launch {
+        runCatching { block() }.onFailure { error ->
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            timber.log.Timber.w(error, "Queue control failed: %s", name)
+        }
+    }
+}
 
 /**
  * Recycled card shell for one story's group: heavy views are built once; [bind] repopulates only
@@ -322,6 +339,12 @@ internal class QueueGroupCard(
     private val actionSlot: LinearLayout,
     private val body: LinearLayout,
 ) {
+    /** Per-job status labels from the latest bind, so countdown ticks patch text in place (R23). */
+    private val statusLabels = LinkedHashMap<String, TextView>()
+
+    /** The group this card was last bound to; ticks recompute its header countdown (R23). */
+    private var boundGroup: QueueStoryGroupUi? = null
+
     fun bind(
         group: QueueStoryGroupUi,
         allJobs: List<DownloadJob>,
@@ -329,6 +352,7 @@ internal class QueueGroupCard(
         nowMillis: Long,
         onToggle: () -> Unit,
     ) {
+        boundGroup = group
         val jobs = group.jobs.map { it.job }
         val storyId = group.storyId
         val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
@@ -368,11 +392,47 @@ internal class QueueGroupCard(
         }
 
         body.removeAllViews()
+        statusLabels.clear()
         if (expanded) {
             body.addView(makeDivider(host.app))
             jobs.sortedBy { it.chapterIndex }.forEachIndexed { index, job ->
                 if (index > 0) body.addView(makeDivider(host.app))
-                body.addView(host.addQueueJobRow(job, waitingByJobId[job.id]))
+                body.addView(host.addQueueJobRow(job, waitingByJobId[job.id]) { label -> statusLabels[job.id] = label })
+            }
+        }
+    }
+
+    /** Recomputes only the countdown texts (header subtitle + status lines); no rebind, no diff (R23). */
+    fun patchCountdownLabels(
+        queue: List<DownloadJob>,
+        pacingSnapshots: Collection<DownloadPacingSnapshot>,
+        nowMillis: Long,
+    ) {
+        val group = boundGroup ?: return
+        val jobs = group.jobs.map { it.job }
+        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, queue, nowMillis)
+        val providerName = SourceRegistry.getProvider(jobs.first().sourceId, jobs.first().chapter.url)?.name
+        val pacingStatus =
+            DownloadPacingUiPlanning.storyStatus(
+                storyId = group.storyId,
+                providerName = providerName,
+                storyJobs = jobs,
+                snapshots = pacingSnapshots,
+                nowMillis = nowMillis,
+                allJobs = queue,
+            )
+        val nextSubtitle =
+            buildString {
+                append(DownloadManagerPlanning.storySubtitle(DownloadCounts.from(jobs), waitingByJobId.size))
+                DownloadPacingUiPlanning.groupHeadline(pacingStatus)?.let {
+                    append('\n')
+                    append(it)
+                }
+            }
+        if (subtitle.text.toString() != nextSubtitle) subtitle.text = nextSubtitle
+        statusLabels.forEach { (jobId, label) ->
+            queue.firstOrNull { it.id == jobId }?.let { job ->
+                label.text = queueJobStatusLabel(job, waitingByJobId[jobId])
             }
         }
     }
@@ -398,16 +458,16 @@ private fun ScreenHost.storyActionButton(
     when (action) {
         QueueAction.PAUSE ->
             iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause story", 44) {
-                jobs.filter { it.status in DownloadJobStatus.activeWires }.forEach { downloadEngine.pauseJob(it.id) }
+                launchQueueControl("pauseStory") { downloadEngine.pauseStory(storyId) }
             }
         QueueAction.RESUME ->
             iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume story", 44) {
-                jobs.filter { it.status == DownloadJobStatus.Paused.wire }.forEach { downloadEngine.resumeJob(it.id) }
+                launchQueueControl("resumeStory") { downloadEngine.resumeStory(storyId) }
                 startDownloadForegroundService()
             }
         QueueAction.CANCEL ->
             iconAction(R.drawable.wna_stop, ThemeManager.colors.error, "Cancel story", 44) {
-                jobs.filter { it.status in DownloadJobStatus.cancellableWires }.forEach { downloadEngine.cancelJob(it.id) }
+                launchQueueControl("cancelStory") { downloadEngine.cancelStory(storyId) }
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry story", 44) {
@@ -416,78 +476,22 @@ private fun ScreenHost.storyActionButton(
                         .firstOrNull { it.errorCategory == "source_blocked" }
                         ?.let {
                             showSourceAccessBlockedDialog(it.chapter.url) {
-                                downloadEngine.retryFailedForStory(storyId)
+                                launchQueueControl("retryFailedForStory") { downloadEngine.retryFailedForStory(storyId) }
                                 startDownloadForegroundService()
                             }
                         }
                     return@iconAction
                 }
-                downloadEngine.retryFailedForStory(storyId)
+                launchQueueControl("retryFailedForStory") { downloadEngine.retryFailedForStory(storyId) }
                 startDownloadForegroundService()
             }
         QueueAction.REMOVE ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove story", 44) {
-                jobs.forEach { downloadEngine.removeJob(it.id) }
+                launchQueueControl("removeStory") { downloadEngine.removeStory(storyId) }
             }
     }
 
-internal fun ScreenHost.addQueueJobRow(
-    job: DownloadJob,
-    waitingForDelay: com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus? = null,
-): View {
-    val row =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(Space.XS), dp(Space.SM), dp(Space.XS), dp(Space.SM))
-        }
-    row.addView(jobStatusDot(job.status))
-    row.addView(
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(
-                makeText(app, "${job.chapterIndex + 1}. ${job.chapter.title}", Type.TITLE_SMALL, ThemeManager.colors.onSurface).apply {
-                    maxLines =
-                        2
-                    ; ellipsize = TextUtils.TruncateAt.END
-                },
-            )
-            val retryDetail = if (job.retryCount > 0) " • retries ${job.retryCount}/${job.maxRetries}" else ""
-            val nextRetry = job.nextRetryAt?.let { " • retry in ${formatRelativeTime(it)}" }.orEmpty()
-            val statusLabel =
-                waitingForDelay?.let {
-                    "Waiting for delay • next request in ${DownloadPacingUiPlanning.formatDuration(requireNotNull(it.remainingSeconds))}"
-                } ?: job.status
-            addView(
-                makeText(
-                    app,
-                    "$statusLabel${job.error?.let { " • $it" } ?: ""}$retryDetail$nextRetry",
-                    Type.LABEL_SMALL,
-                    statusColor(job.status),
-                ).apply {
-                    setPadding(0, dp(2), 0, 0)
-                },
-            )
-            job.errorCategory?.let {
-                addView(
-                    makeText(
-                        app,
-                        "Category: $it${job.errorCode?.let { code ->
-                            " ($code)"
-                        } ?: ""}",
-                        Type.LABEL_SMALL,
-                        ThemeManager.colors.onSurfaceVariant,
-                    ).apply { setPadding(0, dp(2), 0, 0) },
-                )
-            }
-        },
-        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-    )
-    addChapterActions(row, job)
-    return row
-}
-
-private fun ScreenHost.addChapterActions(
+internal fun ScreenHost.addChapterActions(
     container: LinearLayout,
     job: DownloadJob,
 ) {
@@ -503,32 +507,32 @@ private fun ScreenHost.chapterActionButton(
     when (action) {
         QueueAction.PAUSE ->
             iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause", 36) {
-                downloadEngine.pauseJob(job.id)
+                launchQueueControl("pauseJob") { downloadEngine.pauseJob(job.id) }
             }
         QueueAction.RESUME ->
             iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume", 36) {
-                downloadEngine.resumeJob(job.id)
+                launchQueueControl("resumeJob") { downloadEngine.resumeJob(job.id) }
                 startDownloadForegroundService()
             }
         QueueAction.RETRY ->
             iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry", 36) {
                 if (job.errorCategory == "source_blocked") {
                     showSourceAccessBlockedDialog(job.chapter.url) {
-                        downloadEngine.retryJob(job.id)
+                        launchQueueControl("retryJob") { downloadEngine.retryJob(job.id) }
                         startDownloadForegroundService()
                     }
                     return@iconAction
                 }
-                downloadEngine.retryJob(job.id)
+                launchQueueControl("retryJob") { downloadEngine.retryJob(job.id) }
                 startDownloadForegroundService()
             }
         QueueAction.CANCEL ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.error, "Cancel", 36) {
-                downloadEngine.cancelJob(job.id)
+                launchQueueControl("cancelJob") { downloadEngine.cancelJob(job.id) }
             }
         QueueAction.REMOVE ->
             iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove", 36) {
-                downloadEngine.removeJob(job.id)
+                launchQueueControl("removeJob") { downloadEngine.removeJob(job.id) }
             }
     }
 

@@ -37,8 +37,15 @@ class MaintenanceCoordinator {
         synchronized(ownerLock) {
             check(_state.value == MaintenanceState.Idle) { "Another maintenance operation is already running" }
             _state.value = MaintenanceState.Running(operation)
+            val startedAt = System.nanoTime() / 1_000_000L
             try {
-                block()
+                val outcome = runCatching(block)
+                com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics.recordOperation(
+                    "maintenance_${operation.name}",
+                    System.nanoTime() / 1_000_000L - startedAt,
+                    failed = outcome.isFailure,
+                )
+                outcome.getOrThrow()
             } finally {
                 _state.value = MaintenanceState.Idle
             }

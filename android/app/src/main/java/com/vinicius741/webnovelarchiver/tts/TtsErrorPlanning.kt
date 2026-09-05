@@ -14,6 +14,9 @@ enum class TtsPlaybackErrorKind {
     SpeakFailed,
     SynthesisFailed,
     Stalled,
+
+    /** Next-chapter preparation failed; the session stays resumable at the current position (R16). */
+    PreparationFailed,
 }
 
 data class TtsPlaybackError(
@@ -49,6 +52,7 @@ object TtsErrorPlanning {
             TtsPlaybackErrorKind.SpeakFailed -> R.string.tts_error_speak_failed
             TtsPlaybackErrorKind.SynthesisFailed -> R.string.tts_error_synthesis_failed
             TtsPlaybackErrorKind.Stalled -> R.string.tts_error_stalled
+            TtsPlaybackErrorKind.PreparationFailed -> R.string.tts_error_preparation_failed
         }
 
     fun logMessage(error: TtsPlaybackError): String {
@@ -66,6 +70,7 @@ object TtsErrorPlanning {
             TtsPlaybackErrorKind.SpeakFailed -> "TTS speak() returned ERROR$suffix"
             TtsPlaybackErrorKind.SynthesisFailed -> "TTS synthesis failed (${synthesisCodeName(error.code)})$suffix"
             TtsPlaybackErrorKind.Stalled -> "TTS playback stalled$suffix"
+            TtsPlaybackErrorKind.PreparationFailed -> "TTS next-chapter preparation failed; session kept resumable$suffix"
         }
     }
 }

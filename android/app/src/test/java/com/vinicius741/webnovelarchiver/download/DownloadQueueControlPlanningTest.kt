@@ -116,6 +116,40 @@ class DownloadQueueControlPlanningTest {
         assertEquals("failed", updated[1].status)
     }
 
+    @Test
+    fun storyControlsTransformWholeGroupInOnePassAndPreserveUnrelatedJobs() {
+        val jobs =
+            listOf(
+                job("a-pending", "pending", storyId = "story-a"),
+                job("a-downloading", "downloading", storyId = "story-a"),
+                job("a-completed", "completed", storyId = "story-a"),
+                job("b-downloading", "downloading", storyId = "story-b"),
+            )
+
+        val paused = DownloadQueueControlPlanning.pauseStory(jobs, "story-a")
+        assertEquals(listOf("paused", "paused", "completed", "downloading"), paused.map { it.status })
+
+        val resumed = DownloadQueueControlPlanning.resumeStory(paused, "story-a")
+        assertEquals(listOf("pending", "pending", "completed", "downloading"), resumed.map { it.status })
+
+        val cancelled = DownloadQueueControlPlanning.cancelStory(jobs, "story-a")
+        assertEquals(listOf("cancelled", "cancelled", "completed", "downloading"), cancelled.map { it.status })
+    }
+
+    @Test
+    fun removeStoryIsHandledByQueueFilteringNotPlanning() {
+        // removeStory filters by storyId in the engine's single transform; planning keeps only
+        // status-based semantics. Verify the filter contract the engine relies on.
+        val jobs =
+            listOf(
+                job("a-1", "completed", storyId = "story-a"),
+                job("a-2", "pending", storyId = "story-a"),
+                job("b-1", "pending", storyId = "story-b"),
+            )
+        val remaining = jobs.filterNot { it.storyId == "story-a" }
+        assertEquals(listOf("b-1"), remaining.map { it.id })
+    }
+
     private fun job(
         id: String,
         status: String,

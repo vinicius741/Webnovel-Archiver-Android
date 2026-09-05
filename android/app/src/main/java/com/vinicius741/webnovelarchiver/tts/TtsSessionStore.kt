@@ -1,6 +1,10 @@
 package com.vinicius741.webnovelarchiver.tts
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.clearTtsSession
+import com.vinicius741.webnovelarchiver.data.repository.clearTtsStoryPosition
+import com.vinicius741.webnovelarchiver.data.repository.saveTtsSession
+import com.vinicius741.webnovelarchiver.data.repository.saveTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import kotlinx.coroutines.CoroutineDispatcher

@@ -12,14 +12,23 @@ import com.vinicius741.webnovelarchiver.domain.model.RewriteVerificationSummary
 /*
  * Chapter-rewrite storage transactions, split out of [AppRepository] to keep that class inside
  * the file-size budget. They ride the same storage monitor as every other mutation: the manifest
- * is only ever read-modified-written under the repository's storageTransaction lock.
+ * is only ever read-modify-written under the repository's storageTransaction lock.
  */
 
-internal suspend fun AppRepository.saveChapterRewriteDraft(output: AiChapterRewriteDraftOutput) {
+/**
+ * Saves a finished rewrite draft. False when the story no longer exists: the existence check rides
+ * the same transaction as the save (R05), closing the deleted-mid-run check/write race instead of
+ * recreating rewrite state for a story [AppStorage.deleteStory] already cleaned.
+ */
+internal suspend fun AppRepository.saveChapterRewriteDraft(output: AiChapterRewriteDraftOutput): Boolean =
     storageTransaction {
-        storage.chapterRewrites.saveDraft(output.storyId, output.toDraftRecord(), output.polishedHtml)
+        if (storage.getStory(output.storyId) == null) {
+            false
+        } else {
+            storage.chapterRewrites.saveDraft(output.storyId, output.toDraftRecord(), output.polishedHtml)
+            true
+        }
     }
-}
 
 internal suspend fun AppRepository.applyChapterRewrite(
     storyId: String,
@@ -28,7 +37,7 @@ internal suspend fun AppRepository.applyChapterRewrite(
     storageTransaction {
         storage.chapterRewrites.applyDraft(storyId, chapterId)
     }.also {
-        if (it != null) republishAfterRewriteChange(storyId)
+        if (it != null) republishLibrarySnapshot()
     }
 
 internal suspend fun AppRepository.discardChapterRewriteDraft(
@@ -44,7 +53,7 @@ internal suspend fun AppRepository.removeChapterRewrite(
     chapterId: String,
 ) {
     storageTransaction { storage.chapterRewrites.removeRewrite(storyId, chapterId) }
-    republishAfterRewriteChange(storyId)
+    republishLibrarySnapshot()
 }
 
 /**
@@ -59,7 +68,7 @@ internal suspend fun AppRepository.setChapterRewriteActive(
     storageTransaction {
         storage.chapterRewrites.setActive(storyId, chapterId, active)
     }.also {
-        if (it != null) republishAfterRewriteChange(storyId)
+        if (it != null) republishLibrarySnapshot()
     }
 
 internal suspend fun AppRepository.setChapterRewriteStrength(
@@ -84,6 +93,13 @@ internal fun AppRepository.appliedRewriteHtml(
     chapterId: String,
 ): String? = storage.chapterRewrites.appliedHtml(storyId, chapterId)
 
+/**
+ * HTML read from an already-selected record (R26): callers that resolved the record from one
+ * manifest snapshot must not trigger a second manifest lookup just to read the file.
+ */
+internal fun AppRepository.appliedRewriteHtmlForRecord(record: AppliedChapterRewrite): String? =
+    storage.chapterRewrites.appliedHtmlForRecord(record)
+
 /** The chapter's pending preview draft HTML, or null when there is none. */
 internal fun AppRepository.draftRewriteHtml(
     storyId: String,
@@ -98,12 +114,3 @@ internal fun AppRepository.appliedRewritePreviewHtml(
     storage.chapterRewrites.appliedRecord(storyId, chapterId)?.let { record ->
         storage.chapterRewrites.appliedHtmlForRecord(record)
     }
-
-/**
- * Makes a content-version change visible to screens observing library state. The rewrite itself
- * lives in the manifest, not the story JSON, so an identity [AppRepository.updateStory] write is
- * enough to bump the library version and republish under the storage lock.
- */
-private suspend fun AppRepository.republishAfterRewriteChange(storyId: String) {
-    updateStory(storyId) { it }
-}

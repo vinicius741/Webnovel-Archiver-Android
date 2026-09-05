@@ -14,6 +14,17 @@ import java.io.IOException
 internal suspend fun <T> OkHttpClient.executeOpenRouterJson(
     request: Request,
     parse: (JsonObject, Int) -> T,
+): T = executeOpenRouterJson(request, MAX_JSON_BODY_BYTES, parse)
+
+/**
+ * Body-bounded variant (R24): the response is capped at [maxBodyBytes] — image generations get a
+ * deliberately larger budget than text/catalog responses, and an oversized body fails instead of
+ * buffering unbounded.
+ */
+internal suspend fun <T> OkHttpClient.executeOpenRouterJson(
+    request: Request,
+    maxBodyBytes: Long,
+    parse: (JsonObject, Int) -> T,
 ): T =
     suspendCancellableCoroutine { continuation ->
         val call = newCall(request)
@@ -33,7 +44,8 @@ internal suspend fun <T> OkHttpClient.executeOpenRouterJson(
                 ) {
                     response.use {
                         runCatching {
-                            val json = runCatching { JsonParser.parseString(response.body.string()) }.getOrNull()
+                            val bodyString = response.body.stringBounded(maxBodyBytes)
+                            val json = runCatching { JsonParser.parseString(bodyString) }.getOrNull()
                             val root = json?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
                             parse(root, response.code)
                         }.onSuccess { continuation.resumeWith(Result.success(it)) }
@@ -43,3 +55,18 @@ internal suspend fun <T> OkHttpClient.executeOpenRouterJson(
             },
         )
     }
+
+/** Reads the body with a byte cap; fails instead of buffering past [maxBytes]. */
+private fun okhttp3.ResponseBody.stringBounded(maxBytes: Long): String {
+    if (contentLength() > maxBytes) throw IOException("Response body exceeded $maxBytes bytes")
+    val source = source()
+    source.request(maxBytes + 1)
+    if (source.buffer.size > maxBytes) throw IOException("Response body exceeded $maxBytes bytes")
+    return source.buffer.readUtf8()
+}
+
+/** Text/catalog budget; image-generation callers pass [MAX_IMAGE_JSON_BODY_BYTES]. */
+internal const val MAX_JSON_BODY_BYTES = 20_000_000L
+
+/** Image JSON is ~4/3 the decoded bitmap bytes; sized for large generated covers (R24). */
+internal const val MAX_IMAGE_JSON_BODY_BYTES = 48_000_000L

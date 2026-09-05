@@ -38,16 +38,25 @@ object WebViewSafety {
         settings.mediaPlaybackRequiresUserGesture = true
     }
 
+    /** Normal teardown: stop, detach, and destroy. Each step is independent so one failure (R18)
+     *  cannot skip the remaining disposal. The shared HTTP cache is NOT cleared here — that would
+     *  also drop resources the source-access WebViews rely on; use [destroyAndClearSharedCache]
+     *  only for the explicit source/session reset action. */
     fun destroy(web: WebView) {
+        runCatching { web.stopLoading() }
+        runCatching { web.clearHistory() }
+        runCatching { web.clearFormData() }
+        runCatching { (web.parent as? android.view.ViewGroup)?.removeView(web) }
         runCatching {
-            web.stopLoading()
-            web.clearHistory()
-            web.clearCache(true)
-            web.clearFormData()
-            (web.parent as? android.view.ViewGroup)?.removeView(web)
             web.removeAllViews()
-            web.destroy()
         }
+        runCatching { web.destroy() }
+    }
+
+    /** Explicit session reset path: full teardown plus the app-wide WebView resource cache. */
+    fun destroyAndClearSharedCache(web: WebView) {
+        runCatching { web.clearCache(true) }
+        destroy(web)
     }
 
     fun disposeAll(root: android.view.View) {

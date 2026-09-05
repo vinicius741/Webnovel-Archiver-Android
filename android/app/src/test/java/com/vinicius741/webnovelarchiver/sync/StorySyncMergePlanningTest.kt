@@ -50,8 +50,8 @@ class StorySyncMergePlanningTest {
 
     @Test
     fun foldKeepsLocalAiDescriptionCarriedByTheSyncedStory() {
-        // StorySyncEngine carries the local AI synopsis onto the fresh synced Story; the fold must
-        // not drop it while folding on-disk download state back in.
+        // StorySyncEngine carries the local AI synopsis onto the fresh synced Story; the on-disk
+        // record (re-read after the window) carries the same value when nothing changed locally.
         val synced =
             syncedStory(chapters = listOf(chapter("10", downloaded = false)))
                 .copy(aiDescription = "local ai synopsis", showAiDescription = true)
@@ -61,7 +61,7 @@ class StorySyncMergePlanningTest {
                     listOf(
                         chapter("10", downloaded = true, filePath = "/chapters/10.html"),
                     ),
-            )
+            ).copy(aiDescription = "local ai synopsis", showAiDescription = true)
 
         val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
 
@@ -85,9 +85,23 @@ class StorySyncMergePlanningTest {
     }
 
     @Test
+    fun foldKeepsExplicitAiDescriptionResetMadeDuringSyncWindow() {
+        // The stale pre-window snapshot still carries the AI synopsis, but the user deleted it
+        // while the sync was in flight: null must win, not the stale value (R04).
+        val staleSynced =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiDescription = "old synopsis", showAiDescription = true)
+        val currentOnDisk = syncedStory(chapters = listOf(chapter("10")))
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertNull(folded.aiDescription)
+    }
+
+    @Test
     fun foldKeepsAiCoverCarriedByTheSyncedStory() {
-        // StorySyncEngine carries the local AI cover onto the fresh synced Story; the fold must not
-        // drop it while folding on-disk download state back in.
+        // StorySyncEngine carries the local AI cover onto the fresh synced Story; the on-disk
+        // record carries the same path when nothing changed locally during the window.
         val synced =
             syncedStory(chapters = listOf(chapter("10", downloaded = false)))
                 .copy(aiCoverPath = "covers/s.png", showAiCover = true)
@@ -97,12 +111,24 @@ class StorySyncMergePlanningTest {
                     listOf(
                         chapter("10", downloaded = true, filePath = "/chapters/10.html"),
                     ),
-            )
+            ).copy(aiCoverPath = "covers/s.png", showAiCover = true)
 
         val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
 
         assertEquals("covers/s.png", folded.aiCoverPath)
         assertTrue(folded.showAiCover)
+    }
+
+    @Test
+    fun foldKeepsExplicitCoverDeletionMadeDuringSyncWindow() {
+        val staleSynced =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiCoverPath = "covers/s.png", showAiCover = true)
+        val currentOnDisk = syncedStory(chapters = listOf(chapter("10")))
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertNull(folded.aiCoverPath)
     }
 
     @Test
@@ -123,7 +149,7 @@ class StorySyncMergePlanningTest {
     @Test
     fun foldKeepsAiContextChaptersCarriedByTheSyncedStory() {
         // StorySyncEngine carries the local context-chapter selection onto the fresh synced Story;
-        // the fold must not drop it while folding on-disk download state back in.
+        // the on-disk record carries the same selection when nothing changed locally.
         val synced =
             syncedStory(chapters = listOf(chapter("10", downloaded = false)))
                 .copy(aiContextChapterIndices = mutableListOf(0, 2))
@@ -133,11 +159,58 @@ class StorySyncMergePlanningTest {
                     listOf(
                         chapter("10", downloaded = true, filePath = "/chapters/10.html"),
                     ),
-            )
+            ).copy(aiContextChapterIndices = mutableListOf(0, 2))
 
         val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
 
         assertEquals(listOf(0, 2), folded.aiContextChapterIndices)
+    }
+
+    @Test
+    fun foldKeepsExplicitContextSelectionResetMadeDuringSyncWindow() {
+        val staleSynced =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiContextChapterIndices = mutableListOf(0, 2))
+        val currentOnDisk = syncedStory(chapters = listOf(chapter("10")))
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertNull(folded.aiContextChapterIndices)
+    }
+
+    @Test
+    fun foldKeepsExplicitStrengthResetMadeDuringSyncWindow() {
+        val staleSynced =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(chapterRewriteStrength = "balanced")
+        val currentOnDisk = syncedStory(chapters = listOf(chapter("10")))
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertNull(folded.chapterRewriteStrength)
+    }
+
+    @Test
+    fun foldKeepsTabMoveMadeDuringSyncWindow() {
+        val staleSynced = syncedStory(chapters = listOf(chapter("10"))).copy(tabId = "reading")
+        val currentOnDisk = syncedStory(chapters = listOf(chapter("10"))).copy(tabId = "wishlist")
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertEquals("wishlist", folded.tabId)
+    }
+
+    @Test
+    fun foldKeepsEpubGenerationCompletedDuringSyncWindow() {
+        val staleSynced = syncedStory(chapters = listOf(chapter("10")))
+        val currentOnDisk =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(epubPath = "epubs/s/out.epub", epubStale = false)
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
+
+        assertEquals("epubs/s/out.epub", folded.epubPath)
+        assertEquals(false, folded.epubStale)
     }
 
     @Test

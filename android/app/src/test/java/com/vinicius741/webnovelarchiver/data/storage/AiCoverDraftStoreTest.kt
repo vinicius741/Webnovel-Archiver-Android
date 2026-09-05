@@ -119,4 +119,52 @@ class AiCoverDraftStoreTest {
         assertTrue(one.bytes.contentEquals(loadedOne.draft.bytes))
         assertTrue(two.bytes.contentEquals(loadedTwo.draft.bytes))
     }
+
+    @Test
+    fun interruptedRepaintKeepsThePreviousPromptAndBytesPaired() {
+        store.saveImage("story-1", AiCoverDraft("first prompt", byteArrayOf(1), "image/png"))
+
+        // Fail only the meta commit: the new image lands but the meta still references the old
+        // generation, so loading must keep serving the old bytes with the old prompt (R09).
+        AtomicFileWrites.ops =
+            object : AtomicFileOps by DefaultAtomicFileOps {
+                override fun rename(
+                    temp: File,
+                    destination: File,
+                ): Boolean = destination.extension != "json" && DefaultAtomicFileOps.rename(temp, destination)
+            }
+        runCatching { store.saveImage("story-1", AiCoverDraft("second prompt", byteArrayOf(2), "image/png")) }
+        AtomicFileWrites.useDefaultOps()
+
+        val loaded = store.load("story-1") as AiCoverDraftRecord.Image
+        assertEquals("first prompt", loaded.draft.prompt)
+        assertTrue(byteArrayOf(1).contentEquals(loaded.draft.bytes))
+    }
+
+    @Test
+    fun legacyDraftWithoutImageFileFieldIsDiscoveredByName() {
+        // Pre-R27/R09 documents carry prompt/mediaType only; the image sat at <story>.<ext>.
+        val draftsDir = File(root, "ai_cover_drafts").apply { mkdirs() }
+        draftsDir.resolve("story-1.png").writeBytes(byteArrayOf(7, 7))
+        draftsDir.resolve("story-1.json").writeText("""{"prompt":"legacy prompt","mediaType":"image/png"}""")
+
+        val loaded = store.load("story-1") as AiCoverDraftRecord.Image
+
+        assertEquals("legacy prompt", loaded.draft.prompt)
+        assertTrue(byteArrayOf(7, 7).contentEquals(loaded.draft.bytes))
+        assertEquals("image/png", loaded.draft.mediaType)
+    }
+
+    @Test
+    fun metaWireNamesStayStableForMinifiedBuilds() {
+        store.saveImage("story-1", AiCoverDraft("stable prompt", byteArrayOf(3), "image/webp"))
+
+        val json = File(root, "ai_cover_drafts").resolve("story-1.json").readText()
+
+        // R27: the persisted field names must be the literal wire names, independent of
+        // minification or future class renaming.
+        assertTrue(json.contains("\"prompt\""))
+        assertTrue(json.contains("\"mediaType\""))
+        assertTrue(json.contains("\"imageFile\""))
+    }
 }

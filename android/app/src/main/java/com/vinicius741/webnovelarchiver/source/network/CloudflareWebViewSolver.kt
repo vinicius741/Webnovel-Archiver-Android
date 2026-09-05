@@ -186,6 +186,9 @@ object CloudflareWebViewSolver {
                 detail: RenderProcessGoneDetail?,
             ): Boolean {
                 finishWith(CloudflareRenderFailure.RenderProcessGone)
+                // A gone renderer leaves the WebView unusable; destroy it (R18) so a clean
+                // replacement can be created, instead of only dropping the session reference.
+                view?.let(WebViewSafety::destroy)
                 session.webView = null
                 return true
             }

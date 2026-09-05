@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.feature.reader
 import com.vinicius741.webnovelarchiver.cleanup.HtmlCleanup
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
@@ -38,6 +39,22 @@ internal data class ReaderDocument(
     val hasAppliedRewrite: Boolean = false,
 )
 
+/**
+ * Explicit preparation outcome (R12): missing ids, a read failure, and success are distinct states
+ * so the screen can render a message instead of an eternal spinner.
+ */
+internal sealed interface ReaderPreparation {
+    data class Ready(
+        val document: ReaderDocument,
+    ) : ReaderPreparation
+
+    data object Missing : ReaderPreparation
+
+    data class Failed(
+        val cause: Throwable,
+    ) : ReaderPreparation
+}
+
 internal interface ReaderDocumentSource {
     fun story(id: String): Story?
 
@@ -72,28 +89,48 @@ internal class ReaderDocumentPreparer(
         storyId: String,
         chapterId: String,
         palette: ReaderDocumentPalette,
-    ): ReaderDocument? {
+    ): ReaderPreparation {
+        val startedAt = System.nanoTime() / 1_000_000L
+        val result =
+            prepareInternal(storyId, chapterId, palette)
+        com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics.recordOperation(
+            "reader_prepare",
+            System.nanoTime() / 1_000_000L - startedAt,
+            failed = result is ReaderPreparation.Failed,
+        )
+        return result
+    }
+
+    private suspend fun prepareInternal(
+        storyId: String,
+        chapterId: String,
+        palette: ReaderDocumentPalette,
+    ): ReaderPreparation {
         val input =
-            withContext(ioDispatcher) {
-                val story = source.story(storyId) ?: return@withContext null
-                val chapterIndex = story.chapters.indexOfFirst { it.id == chapterId }
-                if (chapterIndex < 0) return@withContext null
-                val chapter = story.chapters[chapterIndex]
-                val resolved = source.resolvedContent(storyId, chapter)
-                ReaderDocumentInput(
-                    story = story,
-                    chapter = chapter,
-                    chapterIndex = chapterIndex,
-                    rawContent = resolved.html ?: chapter.content,
-                    contentVersion = resolved.version,
-                    contentStale = resolved.stale,
-                    hasAppliedRewrite = resolved.availableApplied != null,
-                    settings = source.ttsSettings(),
-                    rules = source.regexRules(),
-                    display = source.displayPreferences(),
-                    persistedSession = source.ttsSession(),
-                )
-            } ?: return null
+            try {
+                withContext(ioDispatcher) {
+                    val story = source.story(storyId) ?: return@withContext null
+                    val chapterIndex = story.chapters.indexOfFirst { it.id == chapterId }
+                    if (chapterIndex < 0) return@withContext null
+                    val chapter = story.chapters[chapterIndex]
+                    val resolved = source.resolvedContent(storyId, chapter)
+                    ReaderDocumentInput(
+                        story = story,
+                        chapter = chapter,
+                        chapterIndex = chapterIndex,
+                        rawContent = resolved.html ?: chapter.content,
+                        contentVersion = resolved.version,
+                        contentStale = resolved.stale,
+                        hasAppliedRewrite = resolved.availableApplied != null,
+                        settings = source.ttsSettings(),
+                        rules = source.regexRules(),
+                        display = source.displayPreferences(),
+                        persistedSession = source.ttsSession(),
+                    )
+                }
+            } catch (error: java.io.IOException) {
+                return ReaderPreparation.Failed(error)
+            } ?: return ReaderPreparation.Missing
 
         return withContext(computationDispatcher) {
             val rawContent = ReaderContentRenderer.contentOrUndownloadedMessage(input.rawContent)
@@ -103,26 +140,28 @@ internal class ReaderDocumentPreparer(
                     input.rules,
                 )
             val colors = if (input.display.readerDark) palette.forcedDark else palette.normal
-            ReaderDocument(
-                story = input.story,
-                chapter = input.chapter,
-                chapterIndex = input.chapterIndex,
-                annotated = annotated,
-                formattedText = HtmlCleanup.htmlToFormattedText(rawContent),
-                display = input.display,
-                persistedSession = input.persistedSession,
-                colors = colors,
-                webViewHtml =
-                    ReaderContentRenderer.document(
-                        input.chapter.title,
-                        annotated.annotatedHtml,
-                        input.display.readerFontScale,
-                        colors,
-                        includeTtsScript = true,
-                    ),
-                contentVersion = input.contentVersion,
-                contentStale = input.contentStale,
-                hasAppliedRewrite = input.hasAppliedRewrite,
+            ReaderPreparation.Ready(
+                ReaderDocument(
+                    story = input.story,
+                    chapter = input.chapter,
+                    chapterIndex = input.chapterIndex,
+                    annotated = annotated,
+                    formattedText = HtmlCleanup.htmlToFormattedText(rawContent),
+                    display = input.display,
+                    persistedSession = input.persistedSession,
+                    colors = colors,
+                    webViewHtml =
+                        ReaderContentRenderer.document(
+                            input.chapter.title,
+                            annotated.annotatedHtml,
+                            input.display.readerFontScale,
+                            colors,
+                            includeTtsScript = true,
+                        ),
+                    contentVersion = input.contentVersion,
+                    contentStale = input.contentStale,
+                    hasAppliedRewrite = input.hasAppliedRewrite,
+                ),
             )
         }
     }

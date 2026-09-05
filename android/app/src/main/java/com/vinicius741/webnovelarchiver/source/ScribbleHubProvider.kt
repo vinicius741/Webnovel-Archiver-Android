@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.NetworkParseException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
+import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 import com.vinicius741.webnovelarchiver.source.network.SourceNetworkPolicy
 import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
@@ -57,7 +58,6 @@ object ScribbleHubProvider : SourceProvider {
                 ),
         )
     private const val AJAX_URL = "https://www.scribblehub.com/wp-admin/admin-ajax.php"
-    private const val MAX_TOC_PAGE_SIZE = 50
 
     override fun classifyUrl(url: String): SourceUrlKind? {
         val path = sourcePath(url) ?: return null
@@ -201,37 +201,23 @@ object ScribbleHubProvider : SourceProvider {
         progress("Parsing chapter list...")
         val doc = Jsoup.parse(html, url)
         val postId = doc.selectFirst("#mypostid")?.attr("value")
-        val chapters = parseToc(doc).toMutableList()
-        val seen = chapters.map { it.url }.toMutableSet()
-        if (!postId.isNullOrBlank() && chapters.size >= 15) {
-            progress("Fetching chapter page 1 · ${chapterCountLabel(chapters.size)} found...")
-            val firstPage =
-                try {
-                    fetchTocPage(network, url, postId, 1)
-                } catch (_: SourceAccessBlockedException) {
-                    emptyList()
-                }
-            if (firstPage.size >= chapters.size) {
-                chapters.clear()
-                chapters.addAll(firstPage)
-                seen.clear()
-                seen.addAll(chapters.map { it.url })
-            }
-            for (page in 2..500) {
-                progress("Fetching chapter page $page · ${chapterCountLabel(chapters.size)} found...")
-                val pageChapters =
-                    try {
-                        fetchTocPage(network, url, postId, page)
-                    } catch (_: SourceAccessBlockedException) {
-                        break
-                    }
-                if (pageChapters.isEmpty()) break
-                val newOnes = pageChapters.filter { seen.add(it.url) }
-                if (newOnes.isEmpty()) break
-                chapters.addAll(newOnes)
-                if (pageChapters.size < MAX_TOC_PAGE_SIZE) break
-            }
+        val inline = parseToc(doc)
+        if (postId.isNullOrBlank() || inline.size < 15) {
+            progress("${chapterCountLabel(inline.size)} found")
+            return inline.asReversed()
         }
+        progress("Fetching chapter page 1 · ${chapterCountLabel(inline.size)} found...")
+        // The paginated list is the authoritative full list: a blocked or truncated page must
+        // fail the fetch instead of returning a partial list that a full sync would treat as
+        // "author removed chapters" (R03). Latest-only paths keep their fallback behavior.
+        val firstPage =
+            try {
+                fetchTocPage(network, url, postId, 1)
+            } catch (error: SourceAccessBlockedException) {
+                throw incompleteTocException(1, error)
+            }
+        val start = if (firstPage.size >= inline.size) firstPage else inline
+        val chapters = paginateTocPages(start, { page -> fetchTocPage(network, url, postId, page) }, progress)
         progress("${chapterCountLabel(chapters.size)} found")
         return chapters.asReversed()
     }

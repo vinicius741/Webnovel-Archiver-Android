@@ -50,7 +50,9 @@ class AiChapterRewriteStoreTest {
         store.saveDraft(STORY, draft(chapterId = "ch3", operationId = "op2"), POLISHED_HTML + "<p>more</p>")
         store.discardDraft(STORY, "ch3")
         assertNull(store.draftRecord(STORY, "ch3"))
+        assertNull(store.draftHtml(STORY, "ch3"))
         assertNotNull(store.appliedRecord(STORY, "ch3"))
+        assertEquals(POLISHED_HTML, store.appliedHtml(STORY, "ch3"))
     }
 
     @Test
@@ -79,9 +81,104 @@ class AiChapterRewriteStoreTest {
         manifest.writeText("{ this is not json")
         assertTrue(store.manifest(STORY).drafts.isEmpty())
         assertNull(store.draftHtml(STORY, "ch1"))
-        // Recovery: the next save rewrites the manifest cleanly.
+        // Recovery: the corrupt file was quarantined (preserved aside), so the next save starts clean.
         store.saveDraft(STORY, draft(chapterId = "ch9"), POLISHED_HTML)
         assertNotNull(store.draftRecord(STORY, "ch9"))
+    }
+
+    @Test
+    fun `malformed manifest is fenced as corrupt and quarantined`() {
+        store.saveDraft(STORY, draft(), POLISHED_HTML)
+        val manifest = java.io.File(root, "chapter_rewrites/$STORY/manifest.json")
+        manifest.writeText("{ this is not json")
+
+        val read = store.manifestRead(STORY)
+
+        assertTrue(read is com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced)
+        assertEquals(
+            com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced.Reason.Corrupt,
+            (read as com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced).reason,
+        )
+        // The unreadable original is preserved aside, not deleted.
+        assertTrue(manifest.parentFile!!.listFiles()!!.any { it.name.startsWith("manifest.json.corrupt") })
+    }
+
+    @Test
+    fun `future manifest version fences the story and blocks writes`() {
+        store.saveDraft(STORY, draft(), POLISHED_HTML)
+        val manifest = java.io.File(root, "chapter_rewrites/$STORY/manifest.json")
+        val future = manifest.readText().replace("\"version\":1", "\"version\":99")
+        manifest.writeText(future)
+        val bytesBefore = manifest.readBytes()
+
+        val read = store.manifestRead(STORY)
+        val writeError = runCatching { store.saveDraft(STORY, draft(chapterId = "ch7"), POLISHED_HTML) }.exceptionOrNull()
+
+        assertTrue(read is com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced)
+        assertEquals(
+            com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced.Reason.UnsupportedVersion,
+            (read as com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced).reason,
+        )
+        // A blocked write must not replace the unreadable document with a single-record manifest.
+        assertTrue(writeError is IllegalStateException)
+        assertTrue(manifest.readBytes().contentEquals(bytesBefore))
+    }
+
+    @Test
+    fun `explicit null collections in manifest json coerce to empty maps`() {
+        val manifest = java.io.File(root, "chapter_rewrites/$STORY/manifest.json")
+        manifest.parentFile!!.mkdirs()
+        manifest.writeText("""{"format":"webnovel_archiver.chapter_rewrites","version":1,"applied":null,"drafts":null}""")
+
+        val read = store.manifestRead(STORY)
+
+        assertTrue(read is RewriteManifestRead.Ok)
+        assertTrue((read as RewriteManifestRead.Ok).manifest.applied.isEmpty())
+        assertTrue(read.manifest.drafts.isEmpty())
+    }
+
+    @Test
+    fun `interrupted regeneration keeps the old generation content and reference`() {
+        store.saveDraft(STORY, draft(operationId = "op1"), POLISHED_HTML)
+
+        // Fail only the manifest commit: content lands, metadata does not (R09 acceptance).
+        AtomicFileWrites.ops =
+            object : AtomicFileOps by DefaultAtomicFileOps {
+                override fun rename(
+                    temp: java.io.File,
+                    destination: java.io.File,
+                ): Boolean = destination.name != "manifest.json" && DefaultAtomicFileOps.rename(temp, destination)
+            }
+        runCatching { store.saveDraft(STORY, draft(operationId = "op2"), POLISHED_HTML + "<p>regen</p>") }
+        AtomicFileWrites.useDefaultOps()
+
+        // The still-committed manifest references op1, and the served content is op1's.
+        assertEquals(POLISHED_HTML, store.draftHtml(STORY, "ch1"))
+        assertEquals("op1", store.draftRecord(STORY, "ch1")!!.operationId)
+
+        // After a clean retry, the new generation wins and the old file is collected.
+        store.saveDraft(STORY, draft(operationId = "op2"), POLISHED_HTML + "<p>regen</p>")
+        assertEquals(POLISHED_HTML + "<p>regen</p>", store.draftHtml(STORY, "ch1"))
+        val chapterDir = java.io.File(root, "chapter_rewrites/$STORY/${store.fileStem("ch1")}")
+        assertEquals(listOf("draft-op2.html"), chapterDir.listFiles()!!.map { it.name }.filter { it.endsWith(".html") })
+    }
+
+    @Test
+    fun `legacy applied html stays readable through the null contentFile fallback`() {
+        store.saveDraft(STORY, draft(), POLISHED_HTML)
+        store.applyDraft(STORY, "ch1")
+        // Rewrite the manifest as a legacy document: no contentFile, applied.html on disk.
+        val manifest = java.io.File(root, "chapter_rewrites/$STORY/manifest.json")
+        val legacy =
+            manifest
+                .readText()
+                .replace(Regex(""""contentFile":"[^"]*","""), "")
+                .replace(Regex(""""contentFile":\w+,"""), "")
+        val stemDir = java.io.File(root, "chapter_rewrites/$STORY/${store.fileStem("ch1")}")
+        stemDir.resolve("applied-op1.html").renameTo(stemDir.resolve("applied.html"))
+        manifest.writeText(legacy)
+
+        assertEquals(POLISHED_HTML, store.appliedHtml(STORY, "ch1"))
     }
 
     @Test
@@ -95,7 +192,7 @@ class AiChapterRewriteStoreTest {
         val payload = store.backupPayloadForStory(STORY) ?: error("expected a backup payload")
         assertEquals("chapter_rewrites/$STORY/manifest.json", payload.manifestPath)
         assertEquals(
-            listOf("chapter_rewrites/$STORY/${store.fileStem("ch1")}/applied.html"),
+            listOf("chapter_rewrites/$STORY/${store.fileStem("ch1")}/applied-op1.html"),
             payload.appliedFiles.map { it.first },
         )
         // The pending ch2 draft never ships: its record is stripped from the backed-up manifest,
@@ -115,7 +212,7 @@ class AiChapterRewriteStoreTest {
         val expectedDir = unicodeStory.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120)
         assertEquals("chapter_rewrites/$expectedDir/manifest.json", payload.manifestPath)
         assertEquals(
-            "chapter_rewrites/$expectedDir/${store.fileStem("ch1")}/applied.html",
+            "chapter_rewrites/$expectedDir/${store.fileStem("ch1")}/applied-op1.html",
             payload.appliedFiles.single().first,
         )
     }

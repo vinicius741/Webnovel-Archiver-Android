@@ -19,11 +19,18 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class DownloadForegroundService : Service() {
     private lateinit var engine: DownloadEngine
     private var foregroundStarted = false
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
@@ -40,6 +47,7 @@ class DownloadForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         engine.close()
         super.onDestroy()
     }
@@ -69,17 +77,24 @@ class DownloadForegroundService : Service() {
                 engine.start()
             }
             ACTION_PAUSE -> {
-                engine.pauseAll()
-                updateNotification(engine.currentProgress())
+                startForegroundIfNeeded(engine.currentProgress())
+                launchControl { engine.pauseAll() }
             }
             ACTION_RESUME -> {
                 startForegroundIfNeeded(engine.currentProgress())
-                engine.resumeAll()
+                launchControl { engine.resumeAll() }
             }
             ACTION_STOP -> {
-                engine.pauseAll()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                // The pause must land before teardown: onDestroy cancels serviceScope, so stopping
+                // on main here could kill the write and wedge jobs as "downloading" until restart.
+                launchControl {
+                    try {
+                        engine.pauseAll()
+                    } finally {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                }
             }
             ACTION_ABORT_PREPARE -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -90,6 +105,16 @@ class DownloadForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** Queue controls are suspend repository transactions; run them off onStartCommand's main thread. */
+    private val launchControl: (suspend () -> Unit) -> Unit = { block ->
+        serviceScope.launch {
+            runCatching { block() }.onFailure { error ->
+                if (error is CancellationException) throw error
+                Timber.w(error, "Download queue control failed")
+            }
+        }
+    }
 
     /**
      * Android 15+ limits data-sync foreground services while the app is in the background. Persist

@@ -52,6 +52,7 @@
   <string name="tts_error_speak_failed">TTS could not speak the current chunk</string>
   <string name="tts_error_synthesis_failed">TTS synthesis failed</string>
   <string name="tts_error_stalled">TTS playback stalled</string>
+  <string name="tts_error_preparation_failed">Could not prepare the next chapter; playback paused here</string>
   <string name="tts_error_unknown">TTS playback failed</string>
 
   <!-- AI cover generation notification (AiCoverForegroundService). -->

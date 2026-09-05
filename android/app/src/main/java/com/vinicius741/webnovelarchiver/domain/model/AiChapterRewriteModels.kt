@@ -76,6 +76,12 @@ data class AppliedChapterRewrite(
     val active: Boolean = true,
     /** Directory name under the story's chapter_rewrites folder. */
     val fileStem: String = "",
+    /**
+     * Generation-specific content filename inside [fileStem] (e.g. `applied-b12f.html`). Null on
+     * legacy records = the pre-generation name `applied.html`. Content and metadata always commit
+     * as one generation (R09).
+     */
+    val contentFile: String? = null,
     val cadence: RewriteCadenceSummary = RewriteCadenceSummary(),
 )
 
@@ -100,6 +106,8 @@ data class ChapterRewriteDraftRecord(
     /** Which provider routing tier produced the rewrite: "strict" | "relaxed" | "none". */
     val providerTier: String = "strict",
     val fileStem: String = "",
+    /** Generation-specific draft filename inside [fileStem]; null = legacy `draft.html` (R09). */
+    val contentFile: String? = null,
     val cadence: RewriteCadenceSummary = RewriteCadenceSummary(),
 )
 

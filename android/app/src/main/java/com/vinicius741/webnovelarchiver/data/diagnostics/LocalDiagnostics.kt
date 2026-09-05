@@ -25,6 +25,44 @@ object LocalDiagnostics {
         )
     }
 
+    /**
+     * Records one timed operation (R30): privacy-safe static [operation] name, duration, and a
+     * failure flag — enough to distinguish slow-but-successful from failing boundaries after the
+     * fact, without retaining text, prompts, keys, or URLs.
+     */
+    @Synchronized
+    fun recordOperation(
+        operation: String,
+        durationMillis: Long,
+        failed: Boolean = false,
+    ) {
+        if (events.size == MAX_EVENTS) events.removeFirst()
+        events.addLast(
+            DiagnosticEvent(
+                timestampMillis = System.currentTimeMillis(),
+                priority = if (failed) Log.WARN else Log.INFO,
+                throwableType = null,
+                operation = safeToken(operation),
+                durationMillis = durationMillis.coerceAtLeast(0L),
+                failed = failed,
+            ),
+        )
+    }
+
+    /** Measures [block] and records it under [operation]; failures rethrow after being recorded. */
+    inline fun <T> measuring(
+        operation: String,
+        block: () -> T,
+    ): T {
+        val startedAt = System.nanoTime() / 1_000_000L
+        return try {
+            block().also { recordOperation(operation, System.nanoTime() / 1_000_000L - startedAt, failed = false) }
+        } catch (error: Throwable) {
+            recordOperation(operation, System.nanoTime() / 1_000_000L - startedAt, failed = true)
+            throw error
+        }
+    }
+
     @Synchronized
     fun snapshot(): List<DiagnosticEvent> = events.toList()
 

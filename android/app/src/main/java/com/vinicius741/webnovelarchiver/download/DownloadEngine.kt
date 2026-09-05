@@ -41,7 +41,7 @@ class DownloadEngine(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
     private val acceptsWorkerResults = AtomicBoolean(true)
-    private val requestGateFactory = DownloadRequestGateFactory(storage, downloadPacer)
+    private val requestGateFactory = DownloadRequestGateFactory(repository, downloadPacer)
     private val sourceReliability =
         DownloadSourceReliability(storage, network, acceptsWorkerResults::get) { providerId, url ->
             onSourceBlocked?.invoke(providerId, url)
@@ -103,37 +103,50 @@ class DownloadEngine(
         repository.publishDownloadState(changedStoryIds = setOf(story.id), queueChanged = true)
     }
 
-    fun pauseAll() = mutateQueue { DownloadQueueControlPlanning.pauseAll(it) }
+    /*
+     * Queue controls. Each is a suspend operation that persists one durable transaction on the
+     * repository's I/O path (R01/R02): UI and service callers launch them off the main thread, and
+     * every grouped action (pause/resume/cancel/remove per story) saves + publishes exactly once.
+     */
 
-    fun pauseJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.pauseJob(it, jobId) }
+    suspend fun pauseAll() = mutateQueue { DownloadQueueControlPlanning.pauseAll(it) }
 
-    fun resumeJob(jobId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.resumeJob(it, jobId) }
+    suspend fun pauseJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.pauseJob(it, jobId) }
 
-    fun cancelAll() = mutateQueue { DownloadQueueControlPlanning.cancelAll(it) }
+    suspend fun pauseStory(storyId: String) = mutateQueue { DownloadQueueControlPlanning.pauseStory(it, storyId) }
 
-    fun cancelJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.cancelJob(it, jobId) }
+    suspend fun resumeJob(jobId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.resumeJob(it, jobId) }
 
-    fun resumeAll() = mutateQueueAndStart(DownloadQueueControlPlanning::resumeAll)
+    suspend fun resumeStory(storyId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.resumeStory(it, storyId) }
 
-    fun clearFinished() {
+    suspend fun cancelAll() = mutateQueue { DownloadQueueControlPlanning.cancelAll(it) }
+
+    suspend fun cancelJob(jobId: String) = mutateQueue { DownloadQueueControlPlanning.cancelJob(it, jobId) }
+
+    suspend fun cancelStory(storyId: String) = mutateQueue { DownloadQueueControlPlanning.cancelStory(it, storyId) }
+
+    suspend fun resumeAll() = mutateQueueAndStart(DownloadQueueControlPlanning::resumeAll)
+
+    suspend fun clearFinished() {
         mutateQueue { jobs -> jobs.filterNot { it.status in DownloadJobStatus.terminalWires } }
     }
 
-    fun removeJob(jobId: String) = mutateQueue { jobs -> jobs.filterNot { it.id == jobId } }
+    suspend fun removeJob(jobId: String) = mutateQueue { jobs -> jobs.filterNot { it.id == jobId } }
 
-    fun retryFailed() = mutateQueueAndStart(DownloadQueueControlPlanning::retryFailed)
+    suspend fun removeStory(storyId: String) = mutateQueue { jobs -> jobs.filterNot { it.storyId == storyId } }
 
-    fun retryJob(jobId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailedJob(it, jobId) }
+    suspend fun retryFailed() = mutateQueueAndStart(DownloadQueueControlPlanning::retryFailed)
 
-    fun retryFailedForStory(storyId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailed(it, storyId) }
+    suspend fun retryJob(jobId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailedJob(it, jobId) }
 
-    /** Queue read-modify-write under the storage monitor; non-suspending so UI callers never block the main thread. */
-    private fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
-        storage.mutateQueueInPlace { transform(it) }
-        repository.publishDownloadState(queueChanged = true)
+    suspend fun retryFailedForStory(storyId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailed(it, storyId) }
+
+    /** Queue read-modify-write as one repository transaction (single save + single publish). */
+    private suspend fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
+        repository.updateQueue(transform)
     }
 
-    private fun mutateQueueAndStart(transform: (List<DownloadJob>) -> List<DownloadJob>) {
+    private suspend fun mutateQueueAndStart(transform: (List<DownloadJob>) -> List<DownloadJob>) {
         mutateQueue(transform)
         start()
     }
@@ -176,11 +189,14 @@ class DownloadEngine(
     /**
      * Synchronously recovers the queue before Android terminates a timed-out data-sync service.
      * Rejects worker results first so a late response can't overwrite the recovered pending state.
+     * Deliberately synchronous: the callback's grace period requires the recovery to be persisted
+     * before returning.
      */
     internal fun recoverAfterForegroundServiceTimeout() {
         acceptsWorkerResults.set(false)
         stopAndCancel()
-        mutateQueue(DownloadForegroundServiceTimeoutHandler::recoverQueue)
+        storage.mutateQueueInPlace(DownloadForegroundServiceTimeoutHandler::recoverQueue)
+        repository.publishDownloadState(queueChanged = true)
     }
 
     /** Releases the engine's coroutine scope. Call from the owning service's onDestroy. */
@@ -215,8 +231,10 @@ class DownloadEngine(
 
     @Suppress("TooGenericExceptionCaught")
     private suspend fun processJob(job: DownloadJob) {
-        emitProgress(job, storage.getQueue())
+        emitProgress(job, repository.queue())
         var providerName: String? = null
+        // R05: remember the library this work belongs to; a clear/restore mid-download rejects it.
+        val startedGeneration = repository.libraryGeneration()
         try {
             val story = storage.getStory(job.storyId) ?: error("Story not found")
             val provider = SourceRegistry.getProvider(job.sourceId, job.chapter.url) ?: error("Unsupported source")
@@ -227,7 +245,7 @@ class DownloadEngine(
                 sourceReliability.preflightSourceIfNeeded(
                     sourceId = provider.id,
                     activeJob = job,
-                    queue = storage.getQueue(),
+                    queue = repository.queue(),
                     requestGate = requestGate,
                 )
             preflight.mutation?.let(::publishQueueMutation)
@@ -246,6 +264,10 @@ class DownloadEngine(
                     storage.getRegexRules(),
                 )
             if (!acceptsWorkerResults.get()) return
+            if (startedGeneration != repository.libraryGeneration()) return
+            // Cancelled or removed mid-download: do not publish the chapter (R05). A paused job is
+            // deliberately allowed to finish its in-flight chapter — pause keeps the work.
+            if (isCancelledOrGone(job.id, repository.queue())) return
             val path = storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean)
             if (!acceptsWorkerResults.get()) return
             check(
@@ -257,13 +279,13 @@ class DownloadEngine(
                 ) != null,
             ) { "Chapter not found" }
             // Re-read the queue after network I/O so a cancellation issued during the fetch is observed.
-            if (!isCancelled(job.id, storage.getQueue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
+            if (!isCancelledOrGone(job.id, repository.queue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
         } catch (error: CancellationException) {
             // Cancellation must propagate, from scope teardown or a user pause/cancel.
             Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
             throw error
         } catch (error: SourceAccessBlockedException) {
-            if (!isCancelled(job.id, storage.getQueue())) {
+            if (!isCancelledOrGone(job.id, repository.queue())) {
                 val mutation =
                     providerName?.let { sourceReliability.blockSourceJobs(it, error) }
                         ?: sourceReliability.handleJobError(job, error, null)
@@ -271,7 +293,7 @@ class DownloadEngine(
             }
         } catch (error: Exception) {
             // Exception, not Throwable, so OutOfMemoryError and StackOverflowError propagate.
-            if (!isCancelled(job.id, storage.getQueue())) {
+            if (!isCancelledOrGone(job.id, repository.queue())) {
                 sourceReliability.handleJobError(job, error, providerName)?.let(::publishQueueMutation)
             }
         }
@@ -310,12 +332,17 @@ class DownloadEngine(
         repository.publishDownloadState(queueChanged = true)
     }
 
-    private fun isCancelled(
+    /**
+     * A job counts as no longer publishable when it was cancelled *or removed* from the queue
+     * (R05): a removed job must not reappear as a completion. A paused job stays publishable.
+     */
+    private fun isCancelledOrGone(
         id: String,
         queue: List<DownloadJob>,
-    ): Boolean = queue.any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
+    ): Boolean = queue.none { it.id == id } || queue.any { it.id == id && it.status == DownloadJobStatus.Cancelled.wire }
 
-    fun currentProgress(): DownloadProgress = buildProgress(null, storage.getQueue())
+    /** Progress built from the repository's cached queue snapshot; safe from the main thread. */
+    fun currentProgress(): DownloadProgress = buildProgress(null, repository.queue())
 
     private fun emitProgress(
         activeJob: DownloadJob?,

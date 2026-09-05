@@ -15,6 +15,7 @@ object RegexRuleCleanup {
         )
     private const val MAX_REGEX_PATTERN_LENGTH = 500
     private const val MAX_RULE_NAME_LENGTH = 80
+    private const val MAX_PREVIEW_INPUT_CHARS = 20_000
 
     internal fun regexOptions(flags: String): Set<RegexOption> =
         buildSet {
@@ -37,6 +38,9 @@ object RegexRuleCleanup {
                 }
         return { input ->
             compiled.fold(input) { text, (regex, rule) ->
+                // R19: recheck the breaker per application so a rule disabled after this runner
+                // was created stops applying to later invocations (TTS/reader reuse runners).
+                if (RegexCircuitBreaker.isDisabled(rule)) return@fold text
                 val start = System.nanoTime()
                 val result =
                     try {
@@ -161,7 +165,7 @@ object RegexRuleCleanup {
         return QuickPattern(pattern, flags, "Remove $display ($minCount+) $scope")
     }
 
-    /** Validates an in-progress editor rule and applies it to [sampleInput]. */
+    /** Validates an in-progress editor rule and applies it to a bounded [sampleInput] prefix. */
     fun previewRegexRule(
         pattern: String,
         flags: String,
@@ -176,7 +180,9 @@ object RegexRuleCleanup {
             runCatching {
                 Regex(normalizedPattern, regexOptions(normalizedFlags))
             }.getOrNull() ?: return null
-        return compiled.replace(sampleInput, "")
+        // R19: bound editor preview work — a keystroke-time preview never matches an unbounded sample.
+        val bounded = sampleInput.take(MAX_PREVIEW_INPUT_CHARS)
+        return compiled.replace(bounded, "")
     }
 
     private data class NormalizedRegexInput(

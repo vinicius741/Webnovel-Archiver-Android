@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.GridLayout
@@ -24,6 +25,7 @@ import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.verticalFill
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrary() {
@@ -60,9 +62,12 @@ internal fun ScreenHost.showLibrary() {
 
         fun persistTab(id: String?) {
             val encoded = LibraryTabSelection.encode(id)
-            val display = repository.getDisplayPreferences()
-            if (display.libraryTabId != encoded) {
-                scope.launch { repository.saveDisplayPreferences(display.copy(libraryTabId = encoded)) }
+            // Transactional read-modify-write on the latest value (R28); a failed save is
+            // reported instead of silently dropped (R12).
+            runUiOperation("save library tab") {
+                repository.updateDisplayPreferences { latest ->
+                    if (latest.libraryTabId == encoded) latest else latest.copy(libraryTabId = encoded)
+                }
             }
         }
 
@@ -104,16 +109,21 @@ internal fun ScreenHost.showLibrary() {
                 sortAscending = persistedSort.librarySortAscending,
             )
 
+        // R22: keystroke debounce for the expensive per-page grid rebuild.
+        var searchApplyGeneration = 0
+
         fun persistSort(
             option: String,
             ascending: Boolean,
         ) {
-            val display = repository.getDisplayPreferences()
-            if (display.librarySortOption != option || display.librarySortAscending != ascending) {
-                scope.launch {
-                    repository.saveDisplayPreferences(
-                        display.copy(librarySortOption = option, librarySortAscending = ascending),
-                    )
+            // Transactional read-modify-write on the latest value (R28) with a visible failure (R12).
+            runUiOperation("save library sort") {
+                repository.updateDisplayPreferences { latest ->
+                    if (latest.librarySortOption == option && latest.librarySortAscending == ascending) {
+                        latest
+                    } else {
+                        latest.copy(librarySortOption = option, librarySortAscending = ascending)
+                    }
                 }
             }
         }
@@ -164,7 +174,11 @@ internal fun ScreenHost.showLibrary() {
             // Indicators and chip options track the live query too.
             filters.syncActiveFilters(filterState.selectedTags)
             refreshFilters(filterState.selectedTabId, filterState.selectedTags)
-            applyFilters()
+            // R22: rebuilding every page's grid per keystroke is the library's biggest avoidable
+            // cost — debounce the actual filtering to the pause between keystrokes. The snapshot
+            // captured at fire time keeps a fast typist's late keystroke authoritative.
+            searchApplyGeneration += 1
+            debounceLibraryFilterApply(scope, searchApplyGeneration, { searchApplyGeneration }, applyFilters)
         }
 
         if (pageTabs.size >= 2) {
@@ -272,5 +286,21 @@ internal fun ScreenHost.showLibrary() {
                     refresh(snapshot.library)
                 }
             }
+    }
+}
+
+/** R22: pause between keystrokes before rebuilding every library page's grid. */
+private const val SEARCH_APPLY_DEBOUNCE_MS = 200L
+
+/** Applies the filter snapshot after the debounce pause unless a newer keystroke superseded it. */
+private fun debounceLibraryFilterApply(
+    scope: kotlinx.coroutines.CoroutineScope,
+    generation: Int,
+    currentGeneration: () -> Int,
+    apply: () -> Unit,
+) {
+    scope.launch {
+        delay(SEARCH_APPLY_DEBOUNCE_MS)
+        if (generation == currentGeneration()) apply()
     }
 }

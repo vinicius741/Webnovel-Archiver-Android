@@ -41,8 +41,13 @@ class AppContainer(
     private val appContext = context.applicationContext
 
     // Orphaned .tmp.N backup temps mean a process death mid-write; nothing else can be writing at process start.
+    // R07: recover an interrupted full restore BEFORE AppStorage creates or hydrates the live root.
     private val storage =
-        AppStorage(context).also { BackupFilePlanning.sweepOrphanTempFiles(it.backupRoot) }
+        run {
+            com.vinicius741.webnovelarchiver.data.storage.RestoreStartupRecovery
+                .recover(context)
+            AppStorage(context).also { BackupFilePlanning.sweepOrphanTempFiles(it.backupRoot) }
+        }
 
     private val reliabilityStore = SourceReliabilityStore(storage.root)
 
@@ -103,14 +108,38 @@ class AppContainer(
     private val repositoryStartup =
         RepositoryStartup {
             // One storage monitor guards the whole migration/recovery/hydration transaction; concurrent file APIs wait on it.
+            // R20: the library is read exactly once — path coercion, source-identity backfill, and
+            // hydration all operate on that one pass's list, and only changed story documents are
+            // written back. Phase timings below are the R30 startup evidence.
             synchronized(storage) {
-                storage.migrateChapterPathsToRelative()
-                storage.migrateSourceIdentities(
-                    sourceIdForUrl = { url -> SourceRegistry.getProvider(url)?.id },
-                    sourceIdForSettingKey = SourceRegistry::sourceIdForPersistedKey,
-                )
+                val startedAt = System.currentTimeMillis()
+                val load = storage.loadLibraryForStartup()
+                val loadFinishedAt = System.currentTimeMillis()
+
+                val changedBySourceId =
+                    storage.migrateSourceIdentities(
+                        library = load.stories,
+                        sourceIdForUrl = { url -> SourceRegistry.getProvider(url)?.id },
+                        sourceIdForSettingKey = SourceRegistry::sourceIdForPersistedKey,
+                    )
+                val changedIds = load.changedStoryIds + changedBySourceId
+                if (changedIds.isNotEmpty()) {
+                    storage.persistStartupStories(load.stories.filter { it.id in changedIds })
+                }
+                val migrationsFinishedAt = System.currentTimeMillis()
+
                 storage.recoverInterruptedDownloads()
-                repository.refresh()
+                repository.refresh(load.stories)
+                val readyAt = System.currentTimeMillis()
+                Timber.i(
+                    "startup pass: stories=%d changed=%d loadMs=%d migrateMs=%d hydrateMs=%d totalMs=%d",
+                    load.stories.size,
+                    changedIds.size,
+                    loadFinishedAt - startedAt,
+                    migrationsFinishedAt - loadFinishedAt,
+                    readyAt - migrationsFinishedAt,
+                    readyAt - startedAt,
+                )
             }
         }
     val ttsEngine: TtsEngine =

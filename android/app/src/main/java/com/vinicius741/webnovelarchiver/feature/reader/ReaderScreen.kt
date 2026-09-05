@@ -8,6 +8,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.clearTtsStoryPosition
+import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.data.repository.setChapterRewriteActive
 import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
 import com.vinicius741.webnovelarchiver.feature.ai.confirmChapterPolish
@@ -73,6 +75,7 @@ internal fun ScreenHost.showReader(
     chapterId: String,
 ) {
     detachReaderTtsListener()
+    lastRequestedReaderChapterId = chapterId
     rerender = { showReader(storyId, chapterId) }
     val palette = ReaderDocumentPalette(normal = readerDocumentColors(false), forcedDark = readerDocumentColors(true))
     screen(
@@ -92,9 +95,64 @@ internal fun ScreenHost.showReader(
     }
     screenObserver =
         scope.launch {
-            ReaderDocumentPreparer(repository).prepare(storyId, chapterId, palette)?.let(::renderPreparedReader)
+            // R12: missing ids, a failed read, and success each render a real state; delivery is
+            // guarded by route identity so a late result cannot replace an unrelated screen.
+            fun readerStillCurrent(): Boolean =
+                navigator.current.let { it is AppRoute.Reader && it.storyId == storyId && it.chapterId == chapterId }
+
+            when (val preparation = ReaderDocumentPreparer(repository).prepare(storyId, chapterId, palette)) {
+                is ReaderPreparation.Ready ->
+                    if (readerStillCurrent()) renderPreparedReader(preparation.document)
+                ReaderPreparation.Missing ->
+                    if (readerStillCurrent()) {
+                        renderReaderUnavailable(
+                            storyId,
+                            "Chapter unavailable",
+                            "This story or chapter is no longer in your library.",
+                        )
+                    }
+                is ReaderPreparation.Failed ->
+                    if (readerStillCurrent()) {
+                        timber.log.Timber.w(preparation.cause, "Reader preparation failed")
+                        renderReaderUnavailable(
+                            storyId,
+                            "Could not open chapter",
+                            preparation.cause.message ?: "The chapter file could not be read.",
+                            retry = true,
+                        )
+                    }
+            }
         }
 }
+
+/** Terminal Reader state for missing/failed preparation (R12): explicit message + Back/Retry. */
+private fun ScreenHost.renderReaderUnavailable(
+    storyId: String,
+    title: String,
+    message: String,
+    retry: Boolean = false,
+) {
+    screen(
+        route = AppRoute.Reader(storyId, "unavailable"),
+        title = "Reader",
+        subtitle = title,
+        onBack = { showDetails(storyId) },
+    ) {
+        addView(
+            com.vinicius741.webnovelarchiver.ui.makeEmptyState(
+                context,
+                title = title,
+                message = message,
+                iconRes = R.drawable.wna_menu_book,
+                actionLabel = if (retry) "Retry" else null,
+                onAction = if (retry) ({ showReader(storyId, lastRequestedReaderChapterId ?: return@makeEmptyState) }) else null,
+            ),
+        )
+    }
+}
+
+/** The chapter id of the most recent Reader request, so Retry can re-issue it after a failure. */
+internal var lastRequestedReaderChapterId: String? = null
 
 private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     val story = document.story

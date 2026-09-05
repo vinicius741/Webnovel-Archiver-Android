@@ -18,13 +18,21 @@ internal class RetryBackoff(
         retryAfterHeader: String?,
         policy: SourceNetworkPolicy,
     ): Long {
-        val requested =
-            retryAfterMillis(retryAfterHeader, policy)
-                ?: (policy.baseRetryDelayMillis.coerceAtLeast(0L) * attempt)
-                    .coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
-        val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), requested / 5L)
-        val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
-        return (requested + jitter).coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
+        // An accepted server deadline is honored as-is (already sanity-capped by
+        // [retryAfterMillis]); clamping it to the ordinary backoff cap would make this client
+        // retry early against the server's explicit instruction (R14).
+        val serverRequested = retryAfterMillis(retryAfterHeader, policy)
+        val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), (serverRequested ?: 0L) / 5L)
+        if (serverRequested != null) {
+            val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
+            return serverRequested + jitter
+        }
+        val clientBackoff =
+            (policy.baseRetryDelayMillis.coerceAtLeast(0L) * attempt)
+                .coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
+        val clientJitterMax = min(policy.maximumJitterMillis.coerceAtLeast(0L), clientBackoff / 5L)
+        val jitter = jitterMillis(clientJitterMax).coerceIn(0L, clientJitterMax)
+        return (clientBackoff + jitter).coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
     }
 
     fun retryAfterMillis(
