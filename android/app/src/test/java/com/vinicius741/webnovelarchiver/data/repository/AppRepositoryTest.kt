@@ -243,7 +243,11 @@ class AppRepositoryTest {
             val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
             repository.saveQueue(listOf(job))
 
-            val outcome = repository.completeDownloadedChapter(job, "/tmp/one.html", 5L, repository.libraryGeneration())
+            val outcome =
+                repository.completeDownloadedChapter(job, {
+                    assertTrue("Chapter bytes must share the commit lock", Thread.holdsLock(store.transactionLock))
+                    "/tmp/one.html"
+                }, 5L, repository.libraryGeneration())
 
             assertEquals(AppRepository.ChapterCommit.COMMITTED, outcome)
             assertTrue(
@@ -271,7 +275,10 @@ class AppRepositoryTest {
             repository.saveQueue(listOf(job))
             store.saveQueue(store.queue().map { it.copy(status = DownloadJobStatus.Cancelled.wire) })
 
-            val outcome = repository.completeDownloadedChapter(job, "/tmp/one.html", 5L, repository.libraryGeneration())
+            val outcome =
+                repository.completeDownloadedChapter(job, {
+                    error("Cancelled download must not write chapter bytes")
+                }, 5L, repository.libraryGeneration())
 
             assertEquals(AppRepository.ChapterCommit.SKIPPED, outcome)
             assertFalse(
@@ -300,7 +307,10 @@ class AppRepositoryTest {
             val staleGeneration = repository.libraryGeneration()
             repository.invalidateLibraryGeneration()
 
-            val outcome = repository.completeDownloadedChapter(job, "/tmp/one.html", 5L, staleGeneration)
+            val outcome =
+                repository.completeDownloadedChapter(job, {
+                    error("Stale download must not overwrite restored content")
+                }, 5L, staleGeneration)
 
             assertEquals(AppRepository.ChapterCommit.SKIPPED, outcome)
             assertFalse(
@@ -328,7 +338,12 @@ class AppRepositoryTest {
 
             assertEquals(
                 AppRepository.ChapterCommit.CHAPTER_MISSING,
-                repository.completeDownloadedChapter(job, "/tmp/gone.html", 5L, repository.libraryGeneration()),
+                repository.completeDownloadedChapter(
+                    job,
+                    { error("Missing chapter must not write a file") },
+                    5L,
+                    repository.libraryGeneration(),
+                ),
             )
         }
 

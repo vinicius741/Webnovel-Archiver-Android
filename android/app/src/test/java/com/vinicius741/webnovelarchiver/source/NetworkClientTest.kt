@@ -60,6 +60,59 @@ class NetworkClientTest {
         }
 
     @Test
+    fun fetchPreservesDeclaredCharset() =
+        runBlocking {
+            val expected = "<p>café</p>"
+            server.enqueue(
+                MockResponse()
+                    .setHeader("Content-Type", "text/html; charset=iso-8859-1")
+                    .setBody(okio.Buffer().write(expected.toByteArray(Charsets.ISO_8859_1))),
+            )
+            assertEquals(expected, client.fetch(server.url("/latin1").toString()))
+        }
+
+    @Test
+    fun cancellationDuringBodyReadCancelsTheCall() =
+        runBlocking {
+            val readingBody = java.util.concurrent.CountDownLatch(1)
+            val activeCall =
+                java.util.concurrent.atomic
+                    .AtomicReference<okhttp3.Call>()
+            val callFailed = java.util.concurrent.CountDownLatch(1)
+            val httpClient =
+                OkHttpClient
+                    .Builder()
+                    .readTimeout(3, TimeUnit.SECONDS)
+                    .eventListener(
+                        object : okhttp3.EventListener() {
+                            override fun responseBodyStart(call: okhttp3.Call) {
+                                activeCall.set(call)
+                                readingBody.countDown()
+                            }
+
+                            override fun callFailed(
+                                call: okhttp3.Call,
+                                ioe: IOException,
+                            ) {
+                                callFailed.countDown()
+                            }
+                        },
+                    ).build()
+            client = NetworkClient(client = httpClient)
+            server.enqueue(MockResponse().setBody("slow body").throttleBody(1, 3, TimeUnit.SECONDS))
+            val job = launch(Dispatchers.IO) { client.fetch(server.url("/slow-body").toString(), maximumAttemptsOverride = 1) }
+            try {
+                assertTrue("body read never started", readingBody.await(2, TimeUnit.SECONDS))
+                kotlinx.coroutines.withTimeout(1_000) { job.cancelAndJoin() }
+                assertTrue("body read call was not cancelled", activeCall.get().isCanceled())
+                assertTrue("cancelled body read did not release its socket", callFailed.await(2, TimeUnit.SECONDS))
+            } finally {
+                httpClient.dispatcher.cancelAll()
+                job.cancelAndJoin()
+            }
+        }
+
+    @Test
     fun reusablePageCoalescesConcurrentRequestsForTheSameReaderPage() =
         runBlocking {
             server.enqueue(MockResponse().setBody("<html>reader batch</html>").setBodyDelay(100, TimeUnit.MILLISECONDS))

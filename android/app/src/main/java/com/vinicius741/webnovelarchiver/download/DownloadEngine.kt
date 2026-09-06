@@ -268,12 +268,17 @@ class DownloadEngine(
             // Cancelled or removed mid-download: do not publish the chapter (R05). A paused job is
             // deliberately allowed to finish its in-flight chapter — pause keeps the work.
             if (isCancelledOrGone(job.id, repository.queue())) return
-            val path = storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean)
-            if (!acceptsWorkerResults.get()) return
             // Chapter + queue commit is one transaction that re-verifies job status and the
             // library generation (R05), so a cancel/remove/restore landing between the fetch and
             // this call can never publish the chapter or flip a cancelled row to completed.
-            when (repository.completeDownloadedChapter(job, path, System.currentTimeMillis(), startedGeneration)) {
+            when (
+                repository.completeDownloadedChapter(
+                    job,
+                    { storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean) },
+                    System.currentTimeMillis(),
+                    startedGeneration,
+                )
+            ) {
                 AppRepository.ChapterCommit.COMMITTED -> Unit
                 // Cancelled, removed, cleared, restored, or the story vanished: drop silently.
                 AppRepository.ChapterCommit.SKIPPED -> return

@@ -45,6 +45,17 @@ Review date: 2026-09-04. Baseline: `94c03e7` plus the existing working-tree chan
 > batch polish surfaces service-start failure; retry covers cancelled jobs; diagnostics keep
 > operation timings on a separate bounded ring.
 
+## Merge review, 2026-09-06
+
+The comparison against `main` found and fixed four remaining problems:
+
+- Restore recovery could delete a durable snapshot when its journal was unreadable or missing. Recovery now preserves ambiguous data, checks that the committed root exists, and keeps the journal until snapshot cleanup succeeds. A failed new import cannot roll back an older transaction's snapshot.
+- Source-request cancellation stopped reaching OkHttp after response headers arrived. Body consumption now stays inside the cancellable call, and regression tests check both cancellation and socket release during a throttled response.
+- Bounded text responses decoded every body as UTF-8. The bounded reader now preserves OkHttp's charset and byte-order-mark handling.
+- Downloads wrote chapter files before checking whether a cancellation or restore invalidated the result. The file write now runs after those checks under the repository transaction lock. Library replacement invalidates work at both boundaries and holds that lock through refresh.
+
+The full local gate includes unit tests, Kotlin formatting, file-size checks, Detekt, Android lint, and debug assembly. Emulator checks on `webnovel_api36` covered the populated library, queue empty state, settings, updates, following review, add-story form, details, reader chapter navigation, and TTS play/pause/stop. Reader Settings dismissed when opening Voice settings. No live source import, mass download, paid AI generation, destructive emulator restore, release build, phone operation, or landscape test was performed.
+
 This report recommends changes only. No app implementation, tests, build configuration, or device data were changed for this review.
 
 The best first steps are to make queue controls safe for the main thread, reject incomplete source chapter lists, protect concurrent local edits during sync, and stop treating unreadable rewrite metadata as an empty document. These address hangs and lost or misleading state without replacing the app's architecture. Batch queue operations and remove redundant file work next.

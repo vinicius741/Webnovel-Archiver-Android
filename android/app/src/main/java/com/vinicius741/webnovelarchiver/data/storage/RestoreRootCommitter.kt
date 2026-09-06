@@ -5,17 +5,35 @@ import timber.log.Timber
 import java.io.File
 
 internal class RestoreRootCommitter(
-    private val storage: AppStorage,
+    private val liveRoot: File,
+    private val snapshot: File,
+    private val journal: RestoreTransactionJournal,
+    private val initializeRoot: () -> Unit,
     private val rootSwap: RestoreRootSwap = RestoreRootSwap(),
 ) {
-    private val journal: RestoreTransactionJournal =
-        RestoreTransactionJournal(File(storage.context.filesDir, RestoreTransactionJournal.FILE_NAME))
+    constructor(storage: AppStorage) : this(
+        liveRoot = storage.root,
+        snapshot = storage.preRestoreSnapshotDir,
+        journal = RestoreTransactionJournal(File(storage.context.filesDir, RestoreTransactionJournal.FILE_NAME)),
+        initializeRoot = {
+            storage.root.mkdirs()
+            storage.storyDir.mkdirs()
+            storage.metricDir.mkdirs()
+            storage.chapterRoot.mkdirs()
+            storage.epubRoot.mkdirs()
+            storage.coverFiles.ensureDirectory()
+            storage.backupRoot.mkdirs()
+        },
+    )
+
+    private var rollbackRequired = false
+    private var preparedByThisAttempt = false
 
     fun stageBesideLiveRoot(staged: File): File {
         // When the staged tree already shares a parent directory with the live root, rename can
         // replace it directly. Otherwise copy beside the live root first (cache vs filesDir).
-        if (sharesParentDirectory(staged, storage.root)) return staged
-        val parent = checkNotNull(storage.root.parentFile) { "Live storage root has no parent" }
+        if (sharesParentDirectory(staged, liveRoot)) return staged
+        val parent = checkNotNull(liveRoot.parentFile) { "Live storage root has no parent" }
         val candidate = File(parent, "webnovel_restore_swap_${System.currentTimeMillis()}")
         val stagedBytes = directoryByteCount(staged)
         check(BackupInputLimits.hasSwapSpace(parent.usableSpace, stagedBytes)) {
@@ -27,15 +45,26 @@ internal class RestoreRootCommitter(
     fun commit(source: File) {
         // R07: the durable phase journal makes a process death between root moves recoverable at
         // the next startup; it is cleared only once the swap (including snapshot cleanup) returned.
+        check(!snapshot.exists() && !journal.exists()) {
+            "A previous restore still requires recovery"
+        }
         journal.write(RestoreTransactionJournal.Phase.PREPARED)
+        preparedByThisAttempt = true
         rootSwap.swap(
             source = source,
-            liveRoot = storage.root,
-            snapshot = storage.preRestoreSnapshotDir,
-            initializeRoot = ::initializeStorageDirectories,
-            onPhase = journal::write,
+            liveRoot = liveRoot,
+            snapshot = snapshot,
+            initializeRoot = initializeRoot,
+            onPhase = { phase ->
+                if (phase == RestoreTransactionJournal.Phase.OLD_ROOT_MOVED) rollbackRequired = true
+                journal.write(phase)
+                if (phase == RestoreTransactionJournal.Phase.COMMITTED) {
+                    rollbackRequired = false
+                    preparedByThisAttempt = false
+                }
+            },
         )
-        journal.clear()
+        if (!snapshot.exists()) journal.clear()
     }
 
     /**
@@ -45,17 +74,28 @@ internal class RestoreRootCommitter(
      * snapshot was successfully restored; `false` when a snapshot existed but rollback failed.
      */
     fun rollback(): Boolean {
-        if (!storage.preRestoreSnapshotDir.exists()) {
+        // Validation failures and leftover snapshots from an earlier attempt do not belong to
+        // this transaction. Never roll those over the current library.
+        if (!rollbackRequired) {
+            if (preparedByThisAttempt && !snapshot.exists()) {
+                journal.clear()
+                preparedByThisAttempt = false
+            }
+            return true
+        }
+        if (!snapshot.exists()) {
             journal.clear()
             return true
         }
         val restored =
             rootSwap.rollback(
-                liveRoot = storage.root,
-                snapshot = storage.preRestoreSnapshotDir,
-                initializeRoot = ::initializeStorageDirectories,
+                liveRoot = liveRoot,
+                snapshot = snapshot,
+                initializeRoot = initializeRoot,
             )
         if (restored) {
+            rollbackRequired = false
+            preparedByThisAttempt = false
             // The rollback undid the swap and consumed the snapshot; a leftover OLD_ROOT_MOVED
             // journal would make the next startup treat the intact root as a half-installed one.
             journal.clear()
@@ -82,16 +122,6 @@ internal class RestoreRootCommitter(
         } finally {
             if (!completed) candidate.deleteRecursively()
         }
-    }
-
-    private fun initializeStorageDirectories() {
-        storage.root.mkdirs()
-        storage.storyDir.mkdirs()
-        storage.metricDir.mkdirs()
-        storage.chapterRoot.mkdirs()
-        storage.epubRoot.mkdirs()
-        storage.coverFiles.ensureDirectory()
-        storage.backupRoot.mkdirs()
     }
 
     private fun sharesParentDirectory(

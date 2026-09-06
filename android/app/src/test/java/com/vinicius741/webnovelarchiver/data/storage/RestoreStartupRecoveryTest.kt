@@ -204,6 +204,41 @@ class RestoreStartupRecoveryTest {
     }
 
     @Test
+    fun committedPhaseWithoutLiveRootPreservesSnapshot() {
+        try {
+            state(RestoreTransactionJournal.Phase.COMMITTED, null, durableSnapshotContent = "original.json")
+            fail("A missing committed root must prevent snapshot cleanup")
+        } catch (expected: IllegalStateException) {
+            assertTrue(File(tmp.root, "durable_snapshot/original.json").isFile)
+        }
+    }
+
+    @Test
+    fun unreadableJournalPreservesBothRoots() {
+        val journalFile = File(tmp.root, RestoreTransactionJournal.FILE_NAME)
+        journalFile.writeText("unrecognized phase")
+        try {
+            state(null, "partial.json", durableSnapshotContent = "original.json")
+            fail("An unreadable journal must prevent cleanup")
+        } catch (expected: IllegalStateException) {
+            assertTrue(File(tmp.root, "durable_snapshot/original.json").isFile)
+            assertTrue(File(tmp.root, "live/partial.json").isFile)
+            assertEquals("unrecognized phase", journalFile.readText())
+        }
+    }
+
+    @Test
+    fun missingJournalPreservesUnclassifiedDurableSnapshot() {
+        try {
+            state(null, null, durableSnapshotContent = "original.json")
+            fail("A durable snapshot without a journal must not be deleted")
+        } catch (expected: IllegalStateException) {
+            assertTrue(File(tmp.root, "durable_snapshot/original.json").isFile)
+            assertFalse(File(tmp.root, "live").exists())
+        }
+    }
+
+    @Test
     fun noJournalNoSnapshotLeavesEverythingAlone() {
         state(journalPhase = null, liveContent = "library.json")
 

@@ -31,7 +31,7 @@ suspend fun NetworkClient.fetchImage(
         withContext(ioDispatcher) {
             val call = client.newCall(request)
             call.timeout().timeout(NetworkClient.DEFAULT_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-            call.executeCancellable().use { response ->
+            call.executeCancellable { response ->
                 if (!response.isSuccessful) {
                     if (response.code == 429) {
                         reliability.recordRateLimit(
@@ -40,15 +40,15 @@ suspend fun NetworkClient.fetchImage(
                             retryBackoff.retryAfterMillis(response.header("Retry-After"), policy),
                         )
                     }
-                    return@use null
+                    return@executeCancellable null
                 }
                 val contentType = response.header("Content-Type").orEmpty()
-                if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@use null
-                val body = response.body ?: return@use null
-                if (body.contentLength() > maxBytes) return@use null
+                if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@executeCancellable null
+                val body = response.body ?: return@executeCancellable null
+                if (body.contentLength() > maxBytes) return@executeCancellable null
                 val source = body.source()
                 source.request(maxBytes + 1)
-                if (source.buffer.size > maxBytes) return@use null
+                if (source.buffer.size > maxBytes) return@executeCancellable null
                 val bytes = source.buffer.readByteArray()
                 reliability.recordSuccess(request.url.host, policy)
                 FetchedImage(bytes = bytes, contentType = contentType.takeIf { it.isNotBlank() })

@@ -248,9 +248,9 @@ class NetworkClient(
                 // cancellation — cancelling the coroutine cancels the in-flight OkHttp call so a
                 // dead UI operation stops occupying a worker.
                 call.timeout().timeout(callTimeoutMillis ?: DEFAULT_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
-                call.executeCancellable().use { response ->
+                call.executeCancellable { response ->
                     if (response.isSuccessful) {
-                        return@withContext AttemptResult.Success(
+                        return@executeCancellable AttemptResult.Success(
                             read(response),
                             response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER) == "1",
                         )
@@ -335,7 +335,7 @@ class NetworkClient(
         if (source.buffer.size > maxBytes) {
             throw NetworkTransportException(url, IOException("Response body exceeded $maxBytes bytes"))
         }
-        return source.buffer.readUtf8()
+        return body.string()
     }
 
     /** First [maxBytes] of a body, for detection-only reads that must not fail on size. */

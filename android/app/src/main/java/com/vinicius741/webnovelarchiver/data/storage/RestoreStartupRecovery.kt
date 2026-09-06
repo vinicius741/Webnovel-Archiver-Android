@@ -39,6 +39,8 @@ internal class RestoreTransactionJournal(
             .getOrNull()
             ?.let { text -> Phase.entries.firstOrNull { it.name == text } }
 
+    fun exists(): Boolean = journalFile.exists()
+
     fun clear() {
         journalFile.delete()
     }
@@ -105,11 +107,14 @@ internal object RestoreStartupRecovery {
         legacyCacheSnapshot: File,
         journal: RestoreTransactionJournal,
     ) {
-        when (journal.read()) {
+        val phase = journal.read()
+        check(phase != null || !journal.exists()) { "Restore journal is unreadable; preserving recovery data" }
+        when (phase) {
             RestoreTransactionJournal.Phase.COMMITTED -> {
                 // New data is authoritative; a leftover snapshot is cleanup debris, not a rollback.
-                durableSnapshot.deleteRecursively()
-                legacyCacheSnapshot.deleteRecursively()
+                check(liveRoot.isDirectory) { "Committed restore root is missing; preserving recovery data" }
+                check(durableSnapshot.deleteRecursively()) { "Could not clean the committed restore snapshot" }
+                check(legacyCacheSnapshot.deleteRecursively()) { "Could not clean the legacy restore snapshot" }
                 journal.clear()
                 Timber.i("Recovered an interrupted restore: committed root kept, leftover snapshot removed")
             }
@@ -154,7 +159,7 @@ internal object RestoreStartupRecovery {
         durableSnapshot: File,
         legacyCacheSnapshot: File,
     ) {
-        if (durableSnapshot.exists()) durableSnapshot.deleteRecursively()
+        check(!durableSnapshot.exists()) { "Durable restore snapshot has no journal; preserving it for recovery" }
         if (!legacyCacheSnapshot.exists()) return
         val contents = legacyCacheSnapshot.listFiles().orEmpty()
         if (contents.isEmpty()) {

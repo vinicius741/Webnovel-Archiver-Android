@@ -337,25 +337,22 @@ class AppRepository private constructor(
     suspend fun exportFullBackup(onProgress: (String) -> Unit = {}): File =
         withContext(ioDispatcher) { requiredStorage.exportFullBackup(onProgress) }
 
-    suspend fun importBackupUri(uri: Uri): String =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) { invalidateLibraryGeneration() }
-            requiredStorage.importBackupUri(uri).also { refresh() }
-        }
+    suspend fun importBackupUri(uri: Uri): String = replaceLibrary { requiredStorage.importBackupUri(uri) }
 
-    suspend fun importFullBackupUri(uri: Uri): String =
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) { invalidateLibraryGeneration() }
-            requiredStorage.importFullBackupUri(uri).also { refresh() }
-        }
+    suspend fun importFullBackupUri(uri: Uri): String = replaceLibrary { requiredStorage.importFullBackupUri(uri) }
 
-    suspend fun clearAll() {
-        withContext(ioDispatcher) {
-            synchronized(transactionLock) { invalidateLibraryGeneration() }
-            requiredStorage.clearAll()
-            refresh()
+    suspend fun clearAll() = replaceLibrary { requiredStorage.clearAll() }
+
+    private suspend fun <T> replaceLibrary(block: () -> T): T =
+        storageTransaction {
+            invalidateLibraryGeneration()
+            try {
+                block().also { refresh() }
+            } finally {
+                // Work started against the old published snapshot during maintenance is stale too.
+                invalidateLibraryGeneration()
+            }
         }
-    }
 
     /** Invalidates in-flight library-scoped work (R05); called by clear/restore/import. */
     internal fun invalidateLibraryGeneration() {
@@ -545,7 +542,7 @@ class AppRepository private constructor(
      */
     suspend fun completeDownloadedChapter(
         job: DownloadJob,
-        path: String,
+        writeChapter: () -> String,
         completedAt: Long,
         startedGeneration: Long,
     ): ChapterCommit =
@@ -556,6 +553,8 @@ class AppRepository private constructor(
             if (!stillActive) return@storageTransaction ChapterCommit.SKIPPED
             val story =
                 storyStore.story(job.storyId) ?: return@storageTransaction ChapterCommit.SKIPPED
+            if (story.chapters.none { it.id == job.chapter.id }) return@storageTransaction ChapterCommit.CHAPTER_MISSING
+            val path = writeChapter()
             val marked =
                 StoryMutations.markChapterDownloaded(story, job.chapter.id, path, completedAt)
                     ?: return@storageTransaction ChapterCommit.CHAPTER_MISSING
