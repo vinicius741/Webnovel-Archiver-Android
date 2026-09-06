@@ -32,6 +32,9 @@ data class RestoredRewriteFileIndex(
 )
 
 object FullBackupRestorePlanning {
+    /** Prefix of every restore-failure message returned to the UI; the only success return is [restoreSummary]. */
+    const val RESTORE_FAILED_PREFIX = "Restore failed"
+
     fun scrubTransientState(stories: MutableList<Story>): MutableList<Story> {
         stories.forEach { story ->
             story.epubPath = null

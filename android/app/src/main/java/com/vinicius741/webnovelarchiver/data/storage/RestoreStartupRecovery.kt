@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
+import android.util.Log
+import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics
 import timber.log.Timber
 import java.io.File
 
@@ -70,8 +72,31 @@ internal object RestoreStartupRecovery {
         val durableSnapshot = File(appContext.filesDir, SNAPSHOT_DIR_NAME)
         val legacyCacheSnapshot = File(appContext.cacheDir, SNAPSHOT_DIR_NAME)
         val journal = RestoreTransactionJournal(File(appContext.filesDir, RestoreTransactionJournal.FILE_NAME))
+        recoverSafely(liveRoot, durableSnapshot, legacyCacheSnapshot, journal)
+    }
+
+    /**
+     * Fail-closed wrapper: a recovery error must never crash startup, but it does leave a durable
+     * metadata-only trace — the exception class in the sticky WARN ring, and a sanitized phase
+     * token (never paths) that attributes the failure to an interrupted restore.
+     */
+    internal fun recoverSafely(
+        liveRoot: File,
+        durableSnapshot: File,
+        legacyCacheSnapshot: File,
+        journal: RestoreTransactionJournal,
+    ) {
+        val startedAt = System.nanoTime() / 1_000_000L
         runCatching { recoverState(liveRoot, durableSnapshot, legacyCacheSnapshot, journal) }
-            .onFailure { Timber.e(it, "Restore startup recovery failed; failing closed") }
+            .onFailure { failure ->
+                Timber.e(failure, "Restore startup recovery failed; failing closed")
+                LocalDiagnostics.record(Log.ERROR, failure)
+                LocalDiagnostics.recordOperation(
+                    operation = "restore_recovery_failed_" + (journal.read()?.name?.lowercase() ?: "legacy"),
+                    durationMillis = System.nanoTime() / 1_000_000L - startedAt,
+                    failed = true,
+                )
+            }
     }
 
     internal fun recoverState(

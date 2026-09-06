@@ -270,16 +270,16 @@ class DownloadEngine(
             if (isCancelledOrGone(job.id, repository.queue())) return
             val path = storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean)
             if (!acceptsWorkerResults.get()) return
-            check(
-                repository.markChapterDownloaded(
-                    storyId = job.storyId,
-                    chapterId = job.chapter.id,
-                    path = path,
-                    completedAt = System.currentTimeMillis(),
-                ) != null,
-            ) { "Chapter not found" }
-            // Re-read the queue after network I/O so a cancellation issued during the fetch is observed.
-            if (!isCancelledOrGone(job.id, repository.queue())) updateJob(job.id, DownloadJobStatus.Completed.wire, null)
+            // Chapter + queue commit is one transaction that re-verifies job status and the
+            // library generation (R05), so a cancel/remove/restore landing between the fetch and
+            // this call can never publish the chapter or flip a cancelled row to completed.
+            when (repository.completeDownloadedChapter(job, path, System.currentTimeMillis(), startedGeneration)) {
+                AppRepository.ChapterCommit.COMMITTED -> Unit
+                // Cancelled, removed, cleared, restored, or the story vanished: drop silently.
+                AppRepository.ChapterCommit.SKIPPED -> return
+                // The story exists but the chapter id no longer matches (sync changed the list).
+                AppRepository.ChapterCommit.CHAPTER_MISSING -> error("Chapter not found")
+            }
         } catch (error: CancellationException) {
             // Cancellation must propagate, from scope teardown or a user pause/cancel.
             Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
@@ -297,34 +297,6 @@ class DownloadEngine(
                 sourceReliability.handleJobError(job, error, providerName)?.let(::publishQueueMutation)
             }
         }
-    }
-
-    private fun updateJob(
-        id: String,
-        status: String,
-        error: String?,
-    ) {
-        if (!acceptsWorkerResults.get()) return
-        lateinit var queue: List<DownloadJob>
-        var accepted = false
-        storage.mutateQueueInPlace { current ->
-            queue = current
-            if (!acceptsWorkerResults.get()) return@mutateQueueInPlace current
-            current.find { it.id == id }?.let {
-                it.status = status
-                it.error = error
-                if (status == DownloadJobStatus.Completed.wire) {
-                    it.errorCategory = null
-                    it.errorCode = null
-                    it.nextRetryAt = null
-                }
-            }
-            accepted = true
-            current
-        }
-        if (!accepted) return
-        emitProgress(queue.find { it.id == id }, queue)
-        repository.publishDownloadState(queueChanged = true)
     }
 
     private fun publishQueueMutation(mutation: DownloadQueueMutation) {

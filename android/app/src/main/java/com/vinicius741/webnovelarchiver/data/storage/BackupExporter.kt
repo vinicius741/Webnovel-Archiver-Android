@@ -67,8 +67,16 @@ internal class BackupExporter(
         val missingContent =
             FullBackupContentPlanning.missingContentReport(
                 chapterPlan = chapterPlan,
+                // Stories whose applied files ALL vanished produce no payload, so the store is
+                // asked directly — otherwise they would escape the report (R10).
                 missingAppliedByStory =
-                    rewritePayloads.associate { payload -> payload.storyId to payload.missingAppliedCount }.filterValues { it > 0 },
+                    library
+                        .mapNotNull { story ->
+                            val missing =
+                                rewritePayloads.firstOrNull { it.storyId == story.id }?.missingAppliedCount
+                                    ?: storage.chapterRewrites.missingAppliedCountForStory(story.id)
+                            if (missing > 0) story.id to missing else null
+                        }.toMap(),
             )
         val chapterFiles =
             chapterPlan.mapNotNull { entry ->

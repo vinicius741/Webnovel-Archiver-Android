@@ -28,6 +28,22 @@ Review date: 2026-09-04. Baseline: `94c03e7` plus the existing working-tree chan
 > - R30: startup-phase timings (Timber), `LocalDiagnostics.recordOperation` for
 >   maintenance/queue-save/reader-preparation durations, and the per-recommendation failure tests
 >   added throughout this change.
+>
+> **QA round (2026-09-05, same branch, uncommitted)**: a live emulator pass plus a code-level
+> review round fixed the residual defects: the Queue screen's live collector could be stranded
+> after a group-control rebuild (the action-flip rebuild is now synchronous); the chapter commit
+> re-verifies job status and library generation inside one repository transaction
+> (`completeDownloadedChapter`); cover-draft generation ids are UUID-based (survive restarts);
+> the R29 page-lock eviction is reachable and race-free; TTS keeps the resume position when the
+> next chapter exists but cannot be prepared, and retries init immediately after a failed init;
+> restore-recovery failures record diagnostics while staying fail-closed; backup exports report
+> stories whose applied rewrites all vanished; the rewrite GC skips fenced reads; empty manifests
+> quarantine like corrupt ones; `clearAll` removes restore leftovers; incomplete chapter lists
+> classify as access-restricted; server Retry-After can no longer overshoot the sanity cap;
+> queue controls surface save failures; failed restores return to the backup screen; the explicit
+> session reset clears the shared WebView cache; undecodable cover drafts offer Discard only;
+> batch polish surfaces service-start failure; retry covers cancelled jobs; diagnostics keep
+> operation timings on a separate bounded ring.
 
 This report recommends changes only. No app implementation, tests, build configuration, or device data were changed for this review.
 

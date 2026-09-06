@@ -17,6 +17,7 @@ object DiagnosticExportPlanning {
         queue: List<DownloadJob>,
         events: List<DiagnosticEvent>,
         generatedAtMillis: Long,
+        operationEvents: List<DiagnosticEvent> = emptyList(),
     ): DiagnosticExportPayload =
         DiagnosticExportPayload(
             generatedAtMillis = generatedAtMillis,
@@ -31,6 +32,7 @@ object DiagnosticExportPlanning {
                 },
             queue = queueSummary(queue),
             warningAndErrorEvents = events.takeLast(LocalDiagnostics.MAX_EVENTS),
+            operationEvents = operationEvents.takeLast(LocalDiagnostics.MAX_OPERATION_EVENTS),
         )
 
     fun queueSummary(queue: List<DownloadJob>): DiagnosticQueueSummary =
@@ -89,6 +91,7 @@ object LocalDiagnosticsExporter {
                 queue = queue,
                 events = LocalDiagnostics.snapshot(),
                 generatedAtMillis = generatedAtMillis,
+                operationEvents = LocalDiagnostics.snapshotOperations(),
             )
         val json = GsonBuilder().setPrettyPrinting().create().toJson(payload)
         check(json.toByteArray().size <= MAX_EXPORT_BYTES) { "Diagnostic export exceeded its size limit" }

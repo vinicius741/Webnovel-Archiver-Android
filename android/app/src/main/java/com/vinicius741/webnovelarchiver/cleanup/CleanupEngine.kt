@@ -120,7 +120,10 @@ class CleanupEngine {
         // still in the cached set. Skipping it here makes the trip effective on the very next chapter.
         compiled.downloadRules.forEach { compiledRule ->
             val rule = compiledRule.source
-            if (RegexCircuitBreaker.isDisabled(rule)) return@forEach
+            if (RegexCircuitBreaker.isDisabled(rule)) {
+                Timber.d("Regex cleanup rule '%s' skipped by circuit breaker", rule.name)
+                return@forEach
+            }
             val start = System.nanoTime()
             var threw = false
             try {

@@ -142,6 +142,29 @@ class AiCoverDraftStoreTest {
     }
 
     @Test
+    fun interruptedRepaintAfterRestartKeepsTheReferencedBytesPaired() {
+        store.saveImage("story-1", AiCoverDraft("first prompt", byteArrayOf(1), "image/png"))
+
+        // A fresh store over the same files simulates a restart: the generation name must not
+        // restart with the process, or the save would overwrite the exact bytes the current meta
+        // still references (R09 across restarts).
+        val restarted = AiCoverDraftStore(root) { it.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120) }
+        AtomicFileWrites.ops =
+            object : AtomicFileOps by DefaultAtomicFileOps {
+                override fun rename(
+                    temp: File,
+                    destination: File,
+                ): Boolean = destination.extension != "json" && DefaultAtomicFileOps.rename(temp, destination)
+            }
+        runCatching { restarted.saveImage("story-1", AiCoverDraft("second prompt", byteArrayOf(2), "image/png")) }
+        AtomicFileWrites.useDefaultOps()
+
+        val loaded = restarted.load("story-1") as AiCoverDraftRecord.Image
+        assertEquals("first prompt", loaded.draft.prompt)
+        assertTrue(byteArrayOf(1).contentEquals(loaded.draft.bytes))
+    }
+
+    @Test
     fun legacyDraftWithoutImageFileFieldIsDiscoveredByName() {
         // Pre-R27/R09 documents carry prompt/mediaType only; the image sat at <story>.<ext>.
         val draftsDir = File(root, "ai_cover_drafts").apply { mkdirs() }

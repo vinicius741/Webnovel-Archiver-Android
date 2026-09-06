@@ -15,6 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.app.renderRouteDispatch
+import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -147,8 +148,16 @@ class MainActivity :
                     showDataBackup()
                 },
             ) {
-                toast(repository.importFullBackupUri(uri))
-                showLibrary()
+                val outcome = repository.importFullBackupUri(uri)
+                toast(outcome)
+                // R12: restore failures return a message string, not an exception. Most carry
+                // RESTORE_FAILED_PREFIX; verify-stage ("Restore verify failed: …") and missing-input
+                // returns don't, so only restoreSummary's "Restored …" counts as success.
+                if (outcome.startsWith(FullBackupRestorePlanning.RESTORE_FAILED_PREFIX) || !outcome.startsWith("Restored")) {
+                    showDataBackup()
+                } else {
+                    showLibrary()
+                }
             }
         }
 

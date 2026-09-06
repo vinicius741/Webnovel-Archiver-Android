@@ -67,7 +67,7 @@ class DownloadQueueControlPlanningTest {
     }
 
     @Test
-    fun retryManualOnlyRetriesFailedJobsNotCancelledJobs() {
+    fun retryManualRequeuesFailedAndCancelledJobsAndClearsCancelReasons() {
         val updated =
             DownloadQueueControlPlanning.retryFailed(
                 listOf(
@@ -84,7 +84,7 @@ class DownloadQueueControlPlanningTest {
                         "cancelled",
                         "cancelled",
                         retryCount = 1,
-                        error = "cancelled",
+                        error = "cancelled by user",
                         errorCategory = "cancelled",
                         errorCode = "CANCELLED",
                     ),
@@ -97,8 +97,27 @@ class DownloadQueueControlPlanningTest {
         assertNull(updated[0].errorCategory)
         assertNull(updated[0].errorCode)
         assertNull(updated[0].nextRetryAt)
+        assertEquals("pending", updated[1].status)
+        assertEquals(2, updated[1].retryCount)
+        assertNull(updated[1].error)
+        assertNull(updated[1].errorCategory)
+        assertNull(updated[1].errorCode)
+    }
+
+    @Test
+    fun retryFailedJobRequeuesSingleCancelledJob() {
+        val updated =
+            DownloadQueueControlPlanning.retryFailedJob(
+                listOf(
+                    job("cancelled", "cancelled", error = "cancelled by user", errorCategory = "cancelled", errorCode = "CANCELLED"),
+                    job("other-cancelled", "cancelled", error = "cancelled", errorCategory = "cancelled", errorCode = "CANCELLED"),
+                ),
+                jobId = "cancelled",
+            )
+
+        assertEquals("pending", updated[0].status)
+        assertNull(updated[0].error)
         assertEquals("cancelled", updated[1].status)
-        assertEquals(1, updated[1].retryCount)
     }
 
     @Test

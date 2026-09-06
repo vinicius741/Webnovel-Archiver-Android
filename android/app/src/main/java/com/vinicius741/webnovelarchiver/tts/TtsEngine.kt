@@ -116,6 +116,10 @@ class TtsEngine(
                     pendingSpeakOnInit = false
                     handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.InitFailed))
                     notifyVoiceAvailabilityListeners()
+                    // Discard the dead engine: a kept instance never re-fires onInit, so the next
+                    // play would wait out the init watchdog against it instead of retrying (R16).
+                    tts?.shutdown()
+                    tts = null
                     return@withLock
                 }
                 ttsInitialized = true
@@ -616,25 +620,27 @@ class TtsEngine(
         }
         val request = commandVersion.incrementAndGet()
         scope.launch {
-            var preparationFailure: Throwable? = null
-            val prepared =
+            val outcome =
                 runCatching { preparer.nextChapter(currentSession) }
-                    .onFailure {
-                        preparationFailure = it
-                        Timber.e(it, "TTS next-chapter preparation failed")
-                    }.getOrNull()
+                    .onFailure { Timber.e(it, "TTS next-chapter preparation failed") }
             stateMutex.withLock {
                 if (request != commandVersion.get()) return@withLock
-                val failure = preparationFailure
+                val failure = outcome.exceptionOrNull()
+                val result = outcome.getOrNull()
                 when {
-                    // R16: an I/O/preparation failure keeps the resumable session and position —
-                    // only a genuine end of story clears them below.
+                    // R16: every failure — thrown, or a next chapter that exists but cannot be
+                    // played yet (e.g. still downloading) — keeps the resumable session and
+                    // position; only a genuine end of story clears them below.
                     failure != null ->
                         handlePlaybackErrorLocked(
                             TtsPlaybackError(TtsPlaybackErrorKind.PreparationFailed, detail = failure.message),
                         )
-                    prepared == null -> finishPlaybackLocked()
-                    else -> startPreparedPlaybackLocked(prepared)
+                    result is NextChapterOutcome.Prepared -> startPreparedPlaybackLocked(result.playback)
+                    result is NextChapterOutcome.Unprepared ->
+                        handlePlaybackErrorLocked(
+                            TtsPlaybackError(TtsPlaybackErrorKind.PreparationFailed, detail = "next chapter exists but is not playable"),
+                        )
+                    else -> finishPlaybackLocked()
                 }
             }
         }

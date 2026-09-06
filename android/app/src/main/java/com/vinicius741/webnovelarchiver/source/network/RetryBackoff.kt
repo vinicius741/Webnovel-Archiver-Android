@@ -25,7 +25,9 @@ internal class RetryBackoff(
         val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), (serverRequested ?: 0L) / 5L)
         if (serverRequested != null) {
             val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
-            return serverRequested + jitter
+            // Jitter must not push a server-directed sleep past the sanity cap that already
+            // bounded the server's own request (R14).
+            return (serverRequested + jitter).coerceAtMost(policy.maximumRetryAfterMillis.coerceAtLeast(0L))
         }
         val clientBackoff =
             (policy.baseRetryDelayMillis.coerceAtLeast(0L) * attempt)

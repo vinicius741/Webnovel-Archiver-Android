@@ -8,9 +8,15 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class BypassEventLogTest {
+    // The log is process-global; earlier test classes in the same JVM pollute it.
+    @Before fun resetState() {
+        BypassEventLog.clear()
+    }
+
     @After fun tearDown() {
         BypassEventLog.clear()
     }

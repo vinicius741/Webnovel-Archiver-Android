@@ -38,9 +38,6 @@ internal class AiCoverDraftStore(
 ) {
     private val dir = File(root, "ai_cover_drafts")
     private val gson = com.google.gson.Gson()
-    private val generationCounter =
-        java.util.concurrent.atomic
-            .AtomicLong()
 
     @Synchronized
     fun savePrompt(
@@ -114,7 +111,14 @@ internal class AiCoverDraftStore(
         mediaType: String?,
     ): String {
         val extension = AiCoverPlanning.coverFileExtension(mediaType)
-        val generation = generationCounter.incrementAndGet().toString(16)
+        // Random per save, not per process: a restarted counter would reuse the previous
+        // process's filename and overwrite the bytes the current meta still references (R09).
+        val generation =
+            java.util.UUID
+                .randomUUID()
+                .toString()
+                .replace("-", "")
+                .take(12)
         return "${safeName(storyId)}-g$generation.$extension"
     }
 

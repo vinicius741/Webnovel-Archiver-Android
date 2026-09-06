@@ -120,6 +120,68 @@ class NetworkClientTest {
         }
 
     @Test
+    fun reusablePageLocksStayBoundedAcrossManyUniquePages() =
+        runBlocking {
+            val uniquePages = 60
+            repeat(uniquePages) { index ->
+                server.enqueue(MockResponse().setBody("<html>reader batch $index</html>"))
+                client.fetchReusablePage(server.url("/reader/page-$index").toString())
+            }
+
+            // R29: eviction runs after every page; only keys with a still-cached page keep their
+            // lock, so the map converges to the page-cache bound (24) instead of growing per key.
+            assertEquals(uniquePages, server.requestCount)
+            assertTrue(client.reusablePageLocks.size <= 24)
+        }
+
+    @Test
+    fun failedReusablePageFetchesDoNotAccumulatePageLocks() =
+        runBlocking {
+            val throwingClient =
+                OkHttpClient
+                    .Builder()
+                    .addInterceptor { throw UnknownHostException("offline.test") }
+                    .build()
+            client = NetworkClient(client = throwingClient)
+
+            repeat(30) { index ->
+                runCatching { client.fetchReusablePage("https://offline.test/reader/page-$index") }
+            }
+
+            // R29: a failed fetch admits no page, so its lock is evicted instead of lingering.
+            assertTrue(client.reusablePageLocks.isEmpty())
+        }
+
+    @Test
+    fun concurrentReusablePageFetchesCoalesceWhileLocksStayBounded() =
+        runBlocking {
+            val uniquePages = 40
+            // Serve each path its own body so the assertion does not depend on cross-key arrival
+            // order (a FIFO queue crosses bodies when concurrent fetches complete out of order).
+            server.dispatcher =
+                object : okhttp3.mockwebserver.Dispatcher() {
+                    override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse =
+                        MockResponse()
+                            .setBody("<html>reader batch ${request.path!!.removePrefix("/reader/page-")}</html>")
+                            .setBodyDelay(50, TimeUnit.MILLISECONDS)
+                }
+
+            val bodies =
+                (0 until uniquePages)
+                    .flatMap { index ->
+                        val url = server.url("/reader/page-$index").toString()
+                        List(3) { async { client.fetchReusablePage(url) } }
+                    }.awaitAll()
+
+            // R29: each key's concurrent callers still share one fetch and one lock, and eviction
+            // reclaims the locks of pages evicted from the bounded cache along the way.
+            val expected = (0 until uniquePages).flatMap { index -> List(3) { "<html>reader batch $index</html>" } }
+            assertEquals(expected, bodies)
+            assertEquals(uniquePages, server.requestCount)
+            assertTrue(client.reusablePageLocks.size < uniquePages)
+        }
+
+    @Test
     fun preparedPageBypassesGateOnlyWhileTheCachedResponseExists() =
         runBlocking {
             val firstUrl = server.url("/prepared").toString()

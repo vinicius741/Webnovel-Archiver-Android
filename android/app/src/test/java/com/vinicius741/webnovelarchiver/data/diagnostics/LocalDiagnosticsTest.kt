@@ -75,6 +75,32 @@ class LocalDiagnosticsTest {
     }
 
     @Test
+    fun operationRecordsDoNotEvictWarningEventsAndStaySeparatelyBounded() {
+        LocalDiagnostics.record(Log.WARN, IllegalStateException("kept"), timestampMillis = 1)
+        repeat(LocalDiagnostics.MAX_OPERATION_EVENTS + 10) { LocalDiagnostics.recordOperation("queue_save", 5) }
+
+        val warnings = LocalDiagnostics.snapshot()
+        val operations = LocalDiagnostics.snapshotOperations()
+
+        assertEquals(1, warnings.size)
+        assertEquals("IllegalStateException", warnings.single().throwableType)
+        assertEquals(LocalDiagnostics.MAX_OPERATION_EVENTS, operations.size)
+        assertTrue(operations.all { it.operation == "queue_save" })
+
+        val payload =
+            DiagnosticExportPlanning.payload(
+                appInfo(),
+                StorageHealthSnapshot(emptyList()),
+                emptyList(),
+                warnings,
+                generatedAtMillis = 2,
+                operationEvents = operations,
+            )
+        assertEquals(1, payload.warningAndErrorEvents.size)
+        assertEquals(LocalDiagnostics.MAX_OPERATION_EVENTS, payload.operationEvents.size)
+    }
+
+    @Test
     fun exportPlanBoundsStorageIssueMetadata() {
         val issues =
             (0..DiagnosticExportPlanning.MAX_STORAGE_ISSUES).map { index ->

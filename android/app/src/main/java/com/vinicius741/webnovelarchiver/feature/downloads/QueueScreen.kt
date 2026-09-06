@@ -49,6 +49,7 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.statusColor
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
+import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -159,10 +160,10 @@ private fun ScreenHost.observeQueueUpdates(
                     if (root.parent === frame) {
                         val nextGlobalActions = DownloadManagerPlanning.globalActions(DownloadCounts.from(snapshot.queue))
                         if (queueChanged && nextGlobalActions != observedGlobalActions) {
-                            observedGlobalActions = nextGlobalActions
-                            frame.post {
-                                if (root.parent === frame) showQueue()
-                            }
+                            // Rebuild synchronously. A deferred frame.post let the resume publish
+                            // burst interleave with the observer handoff and could strand the
+                            // screen on a cancelled collector that never re-registered.
+                            showQueue()
                             return@collect
                         }
                         updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue, pacing, now)
@@ -312,14 +313,19 @@ private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): Li
  * Runs one queue control on the screen scope; the repository moves the durable work to its I/O
  * dispatcher, so the click handler never touches storage. A failed save is logged, not crashed on.
  */
+@Suppress("TooGenericExceptionCaught")
 internal fun ScreenHost.launchQueueControl(
     name: String,
     block: suspend () -> Unit,
 ) {
     scope.launch {
-        runCatching { block() }.onFailure { error ->
-            if (error is kotlinx.coroutines.CancellationException) throw error
+        try {
+            block()
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
             timber.log.Timber.w(error, "Queue control failed: %s", name)
+            toast("Couldn't save that change")
         }
     }
 }

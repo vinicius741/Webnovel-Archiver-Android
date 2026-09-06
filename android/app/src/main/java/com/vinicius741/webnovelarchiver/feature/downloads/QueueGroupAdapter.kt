@@ -82,11 +82,17 @@ internal class QueueGroupAdapter(
             holder.container.addView(card.view)
         }
         boundCards[group.storyId] = card
+        holder.boundStoryId = group.storyId
         card.bind(group, queue, pacing.values, nowMillis, onExpansionChanged)
     }
 
     override fun onViewRecycled(holder: GroupHolder) {
-        boundCards.values.remove(holder.card)
+        // Remove exactly the key this holder owns: boundCards.values.remove(card) could drop a
+        // stale storyId→card entry and leave the live storyId pointing at this recycled card (R23).
+        holder.boundStoryId?.let { storyId ->
+            if (boundCards[storyId] === holder.card) boundCards.remove(storyId)
+        }
+        holder.boundStoryId = null
         holder.card = null
     }
 
@@ -144,6 +150,9 @@ internal class QueueGroupAdapter(
         val container: FrameLayout,
     ) : RecyclerView.ViewHolder(container) {
         var card: QueueGroupCard? = null
+
+        // The storyId this holder's card is currently bound to; drives exact recycle cleanup above.
+        var boundStoryId: String? = null
     }
 }
 

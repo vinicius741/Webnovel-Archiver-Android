@@ -39,6 +39,7 @@ internal class DownloadProcessLoop(
                 cleanupUnsupportedSourceJobs()
                 lateinit var queue: MutableList<DownloadJob>
                 lateinit var pending: List<DownloadJob>
+                var redeferredBlockedJobs = false
                 synchronized(storage) {
                     queue = storage.getQueue()
                     val now = nowMillis()
@@ -58,7 +59,6 @@ internal class DownloadProcessLoop(
                     // the circuit is open; when verification succeeds the deferral simply expires
                     // and the queue resumes. Without this, the passed recheck time would look like
                     // no scheduled work and the loop would exit with jobs stranded as pending.
-                    var redeferredBlockedJobs = false
                     queue.forEach { job ->
                         val source = sourceIdForJob(job) ?: return@forEach
                         if (job.status == DownloadJobStatus.Pending.wire && source in blockedSources &&
@@ -85,8 +85,10 @@ internal class DownloadProcessLoop(
                         storage.saveQueue(queue)
                     }
                 }
+                // Re-deferred jobs persisted new nextRetryAt values; publish so the visible queue
+                // cannot lag disk until the next unrelated change.
+                if (redeferredBlockedJobs || pending.isNotEmpty()) publishQueueChanged()
                 if (pending.isNotEmpty()) {
-                    publishQueueChanged()
                     pending.forEach { job ->
                         val sourceId = sourceIdForJob(job) ?: return@forEach
                         val child =

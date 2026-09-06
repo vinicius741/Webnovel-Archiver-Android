@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.cleanup
 
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
+import timber.log.Timber
 
 /** Regex rule validation, normalization, and editor helpers. */
 object RegexRuleCleanup {
@@ -40,7 +41,10 @@ object RegexRuleCleanup {
             compiled.fold(input) { text, (regex, rule) ->
                 // R19: recheck the breaker per application so a rule disabled after this runner
                 // was created stops applying to later invocations (TTS/reader reuse runners).
-                if (RegexCircuitBreaker.isDisabled(rule)) return@fold text
+                if (RegexCircuitBreaker.isDisabled(rule)) {
+                    Timber.d("Regex cleanup rule '%s' skipped by circuit breaker", rule.name)
+                    return@fold text
+                }
                 val start = System.nanoTime()
                 val result =
                     try {

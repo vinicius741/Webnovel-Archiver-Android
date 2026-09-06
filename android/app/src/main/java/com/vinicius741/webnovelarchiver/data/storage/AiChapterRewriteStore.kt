@@ -89,7 +89,10 @@ internal class AiChapterRewriteStore(
             }
         val parsed =
             try {
+                // An empty/null document is as unreadable as malformed JSON; the marker below
+                // lands in the same quarantine so the fence self-heals on the next save.
                 gson.fromJson(text, ChapterRewriteManifestModel::class.java)
+                    ?: error("Manifest JSON was empty")
             } catch (
                 // Gson surfaces malformed documents through several unchecked exception types;
                 // every one of them means "unreadable document", which is the handled outcome.
@@ -98,7 +101,7 @@ internal class AiChapterRewriteStore(
                 DurableJson.quarantineCorrupt(file, error, reason = "parse")
                 manifestCache.remove(storyId)
                 return RewriteManifestRead.Fenced(RewriteManifestRead.Fenced.Reason.Corrupt, "Manifest JSON was malformed and quarantined")
-            } ?: return RewriteManifestRead.Fenced(RewriteManifestRead.Fenced.Reason.Corrupt, "Manifest JSON was empty")
+            }
         if (parsed.format != FORMAT) {
             return RewriteManifestRead.Fenced(RewriteManifestRead.Fenced.Reason.Corrupt, "Unexpected manifest format '${parsed.format}'")
         }
@@ -301,6 +304,18 @@ internal class AiChapterRewriteStore(
         )
     }
 
+    /**
+     * Applied records whose content file is missing on disk, for stories [backupPayloadForStory]
+     * returns null for because EVERY applied file vanished — without this the full backup's
+     * missingContent report would silently skip them (R10).
+     */
+    @Synchronized
+    fun missingAppliedCountForStory(storyId: String): Int {
+        val current = manifest(storyId)
+        if (current.applied.isEmpty()) return 0
+        return current.applied.values.count { !appliedContentFile(storyId, it).isFile }
+    }
+
     fun fileStem(chapterId: String): String = "${safeName(chapterId).take(80)}-${Integer.toHexString(chapterId.hashCode())}"
 
     private fun writeManifest(
@@ -333,7 +348,15 @@ internal class AiChapterRewriteStore(
         storyId: String,
         stem: String,
     ) {
-        val current = manifest(storyId)
+        val current =
+            when (val read = manifestRead(storyId)) {
+                is RewriteManifestRead.Ok -> read.manifest
+                RewriteManifestRead.Absent -> ChapterRewriteManifestModel()
+                // A fenced read is unknown, not empty: [manifest] would coerce it to an empty
+                // model whose empty referenced set deletes live content (R09). Skip; retry on the
+                // next save.
+                is RewriteManifestRead.Fenced -> return
+            }
         val referenced =
             buildSet {
                 current.applied.values

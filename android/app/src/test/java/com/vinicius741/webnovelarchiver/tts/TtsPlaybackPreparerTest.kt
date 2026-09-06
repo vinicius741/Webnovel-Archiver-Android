@@ -51,8 +51,10 @@ class TtsPlaybackPreparerTest {
             val dispatcher = StandardTestDispatcher(testScheduler)
 
             val prepared =
-                TtsPlaybackPreparer(source, dispatcher, dispatcher)
-                    .nextChapter(TtsSession(storyId = "story", chapterId = "one"))
+                (
+                    TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                        .nextChapter(TtsSession(storyId = "story", chapterId = "one")) as? NextChapterOutcome.Prepared
+                )?.playback
                     ?: error("Expected next chapter")
 
             assertEquals("one", source.markedChapterId)
@@ -139,14 +141,111 @@ class TtsPlaybackPreparerTest {
             val source = FakeTtsPlaybackSource(story, null)
             val dispatcher = StandardTestDispatcher(testScheduler)
 
-            val prepared =
+            val outcome =
                 TtsPlaybackPreparer(source, dispatcher, dispatcher)
                     .nextChapter(TtsSession(storyId = "story", chapterId = TtsDescriptionPlanning.DESCRIPTION_CHAPTER_ID))
 
-            assertEquals(null, prepared)
+            assertEquals(NextChapterOutcome.NoNextChapter, outcome)
             // The sentinel must never be persisted as the story's last-read chapter.
             assertEquals(null, source.markedChapterId)
             assertEquals(null, story.lastReadChapterId)
+        }
+
+    @Test
+    fun nextChapterNotDownloadedReportsUnpreparedSoPositionIsRetained() =
+        runTest {
+            // Listening while a download runs: chapter N+1 exists in the story but has no readable
+            // content yet — that must never be reported as the end of the book.
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First.</p>", downloaded = true),
+                            Chapter(id = "two", content = null, downloaded = false),
+                            Chapter(id = "three", content = "<p>Third.</p>", downloaded = true),
+                        ),
+                )
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val outcome =
+                TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                    .nextChapter(TtsSession(storyId = "story", chapterId = "one"))
+
+            assertEquals(NextChapterOutcome.Unprepared, outcome)
+            // Progress on the finished chapter still persists; a later retry can advance.
+            assertEquals("one", source.markedChapterId)
+        }
+
+    @Test
+    fun nextChapterOnLastChapterReportsNoNextChapter() =
+        runTest {
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First.</p>", downloaded = true),
+                            Chapter(id = "two", content = "<p>Second.</p>", downloaded = true),
+                        ),
+                )
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val outcome =
+                TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                    .nextChapter(TtsSession(storyId = "story", chapterId = "two"))
+
+            assertEquals(NextChapterOutcome.NoNextChapter, outcome)
+        }
+
+    @Test
+    fun nextChapterWithBlankContentReportsUnpreparedSoPositionIsRetained() =
+        runTest {
+            // The next chapter's file resolves to whitespace: no speakable chunks, but the story
+            // does not end here.
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First.</p>", downloaded = true),
+                            Chapter(id = "two", content = "   ", downloaded = true),
+                        ),
+                )
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val outcome =
+                TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                    .nextChapter(TtsSession(storyId = "story", chapterId = "one"))
+
+            assertEquals(NextChapterOutcome.Unprepared, outcome)
+        }
+
+    @Test
+    fun nextChapterWithUnknownCurrentChapterReportsUnpreparedNotEnd() =
+        runTest {
+            // The session's chapter fell out of the story's list; that is ambiguity, not a proven
+            // end of story, so the saved position must stay.
+            val story =
+                Story(
+                    id = "story",
+                    chapters =
+                        mutableListOf(
+                            Chapter(id = "one", content = "<p>First.</p>", downloaded = true),
+                            Chapter(id = "two", content = "<p>Second.</p>", downloaded = true),
+                        ),
+                )
+            val source = FakeTtsPlaybackSource(story, null)
+            val dispatcher = StandardTestDispatcher(testScheduler)
+
+            val outcome =
+                TtsPlaybackPreparer(source, dispatcher, dispatcher)
+                    .nextChapter(TtsSession(storyId = "story", chapterId = "ghost"))
+
+            assertEquals(NextChapterOutcome.Unprepared, outcome)
         }
 
     @Test

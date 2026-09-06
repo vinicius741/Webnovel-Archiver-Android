@@ -101,6 +101,15 @@ class AiChapterRewriteStoreTest {
         )
         // The unreadable original is preserved aside, not deleted.
         assertTrue(manifest.parentFile!!.listFiles()!!.any { it.name.startsWith("manifest.json.corrupt") })
+
+        // An empty document must fence AND quarantine the same way, so the next draft save
+        // succeeds instead of the fence sticking forever.
+        manifest.writeText("")
+        val emptyRead = store.manifestRead(STORY)
+        assertTrue(emptyRead is com.vinicius741.webnovelarchiver.data.storage.RewriteManifestRead.Fenced)
+        assertFalse(manifest.exists())
+        store.saveDraft(STORY, draft(chapterId = "ch8"), POLISHED_HTML)
+        assertNotNull(store.draftRecord(STORY, "ch8"))
     }
 
     @Test
@@ -164,6 +173,28 @@ class AiChapterRewriteStoreTest {
     }
 
     @Test
+    fun `generation gc leaves content alone when the manifest read fences`() {
+        store.saveDraft(STORY, draft(operationId = "op1"), POLISHED_HTML)
+
+        // Corrupt the manifest bytes during the save's own commit (the fsync seam runs between the
+        // write and the post-commit GC read): the typed read fences, and collecting against an
+        // "empty" manifest would delete both generations (R09).
+        AtomicFileWrites.ops =
+            object : AtomicFileOps by DefaultAtomicFileOps {
+                override fun fsync(file: java.io.File) {
+                    if (file.name.startsWith("manifest.json.tmp")) file.writeText("{ this is not json")
+                }
+            }
+        store.saveDraft(STORY, draft(operationId = "op2"), POLISHED_HTML + "<p>regen</p>")
+        AtomicFileWrites.useDefaultOps()
+
+        val stemDir = java.io.File(root, "chapter_rewrites/$STORY/${store.fileStem("ch1")}")
+        val names = stemDir.listFiles()!!.map { it.name }
+        assertTrue(names.contains("draft-op1.html"))
+        assertTrue(names.contains("draft-op2.html"))
+    }
+
+    @Test
     fun `legacy applied html stays readable through the null contentFile fallback`() {
         store.saveDraft(STORY, draft(), POLISHED_HTML)
         store.applyDraft(STORY, "ch1")
@@ -215,6 +246,20 @@ class AiChapterRewriteStoreTest {
             "chapter_rewrites/$expectedDir/${store.fileStem("ch1")}/applied-op1.html",
             payload.appliedFiles.single().first,
         )
+    }
+
+    @Test
+    fun `story whose applied files all vanished is still reported as missing`() {
+        store.saveDraft(STORY, draft(), POLISHED_HTML)
+        store.applyDraft(STORY, "ch1")
+        assertEquals(0, store.missingAppliedCountForStory(STORY))
+
+        // Every applied file disappears (e.g. a partial wipe): the payload drops to null so the
+        // zip stays unchanged, but the export's missingAppliedByStory must still count them (R10).
+        java.io.File(root, "chapter_rewrites/$STORY/${store.fileStem("ch1")}/applied-op1.html").delete()
+
+        assertNull(store.backupPayloadForStory(STORY))
+        assertEquals(1, store.missingAppliedCountForStory(STORY))
     }
 
     @Test

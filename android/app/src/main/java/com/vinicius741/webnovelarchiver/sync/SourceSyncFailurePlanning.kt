@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkTimeoutException
 import com.vinicius741.webnovelarchiver.source.network.NetworkTransportException
 import com.vinicius741.webnovelarchiver.source.network.RateLimitNetworkException
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
+import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 
 data class SourceSyncFailure(
     val kind: SourceFailureKind,
@@ -22,6 +23,10 @@ object SourceSyncFailurePlanning {
     fun classify(error: Throwable): SourceSyncFailure =
         when (error) {
             is SourceAccessBlockedException ->
+                SourceSyncFailure(SourceFailureKind.access_restricted, SourceAvailability.access_restricted)
+            // Blocked or over-cap pagination means the source is withholding pages mid-list; the
+            // story page is not freely usable, so it counts as restricted like a direct block.
+            is SourceChapterListIncompleteException ->
                 SourceSyncFailure(SourceFailureKind.access_restricted, SourceAvailability.access_restricted)
             is RateLimitNetworkException ->
                 SourceSyncFailure(SourceFailureKind.rate_limited, httpStatus = error.statusCode)

@@ -2,11 +2,13 @@ package com.vinicius741.webnovelarchiver.data.repository
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
+import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -226,6 +228,109 @@ class AppRepositoryTest {
 
     private val readResults = java.util.Collections.synchronizedList(mutableListOf<String?>())
     private val readLatch = java.util.concurrent.CountDownLatch(1)
+
+    @Test
+    fun completedChapterCommitMarksStoryAndQueueInOneTransaction() =
+        runTest {
+            val job =
+                DownloadJob(
+                    id = "story_0",
+                    storyId = "story",
+                    status = DownloadJobStatus.Downloading.wire,
+                    chapter = Chapter(id = "one", title = "One"),
+                )
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.saveQueue(listOf(job))
+
+            val outcome = repository.completeDownloadedChapter(job, "/tmp/one.html", 5L, repository.libraryGeneration())
+
+            assertEquals(AppRepository.ChapterCommit.COMMITTED, outcome)
+            assertTrue(
+                store.stories
+                    .getValue("story")
+                    .chapters
+                    .first { it.id == "one" }
+                    .downloaded,
+            )
+            assertEquals(DownloadJobStatus.Completed.wire, repository.queue().single { it.id == "story_0" }.status)
+        }
+
+    @Test
+    fun completedChapterCommitIsRejectedWhenJobWasCancelledMidFetch() =
+        runTest {
+            val job =
+                DownloadJob(
+                    id = "story_0",
+                    storyId = "story",
+                    status = DownloadJobStatus.Downloading.wire,
+                    chapter = Chapter(id = "one", title = "One"),
+                )
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.saveQueue(listOf(job))
+            store.saveQueue(store.queue().map { it.copy(status = DownloadJobStatus.Cancelled.wire) })
+
+            val outcome = repository.completeDownloadedChapter(job, "/tmp/one.html", 5L, repository.libraryGeneration())
+
+            assertEquals(AppRepository.ChapterCommit.SKIPPED, outcome)
+            assertFalse(
+                store.stories
+                    .getValue("story")
+                    .chapters
+                    .first { it.id == "one" }
+                    .downloaded,
+            )
+            assertEquals(DownloadJobStatus.Cancelled.wire, store.queue().single { it.id == "story_0" }.status)
+        }
+
+    @Test
+    fun completedChapterCommitIsRejectedAfterLibraryReplacement() =
+        runTest {
+            val job =
+                DownloadJob(
+                    id = "story_0",
+                    storyId = "story",
+                    status = DownloadJobStatus.Downloading.wire,
+                    chapter = Chapter(id = "one", title = "One"),
+                )
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.saveQueue(listOf(job))
+            val staleGeneration = repository.libraryGeneration()
+            repository.invalidateLibraryGeneration()
+
+            val outcome = repository.completeDownloadedChapter(job, "/tmp/one.html", 5L, staleGeneration)
+
+            assertEquals(AppRepository.ChapterCommit.SKIPPED, outcome)
+            assertFalse(
+                store.stories
+                    .getValue("story")
+                    .chapters
+                    .first { it.id == "one" }
+                    .downloaded,
+            )
+        }
+
+    @Test
+    fun completedChapterCommitReportsMissingChapterInsteadOfSilentlySkipping() =
+        runTest {
+            val job =
+                DownloadJob(
+                    id = "story_0",
+                    storyId = "story",
+                    status = DownloadJobStatus.Downloading.wire,
+                    chapter = Chapter(id = "gone", title = "Gone"),
+                )
+            val store = FakeRepositoryStoryStore(story())
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.saveQueue(listOf(job))
+
+            assertEquals(
+                AppRepository.ChapterCommit.CHAPTER_MISSING,
+                repository.completeDownloadedChapter(job, "/tmp/gone.html", 5L, repository.libraryGeneration()),
+            )
+        }
 
     private class FakeRepositoryStoryStore(
         vararg initial: Story,

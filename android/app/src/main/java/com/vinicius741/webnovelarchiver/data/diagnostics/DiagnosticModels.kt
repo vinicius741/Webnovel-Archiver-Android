@@ -37,4 +37,6 @@ data class DiagnosticExportPayload(
     val storageIssues: List<DiagnosticStorageIssue>,
     val queue: DiagnosticQueueSummary,
     val warningAndErrorEvents: List<DiagnosticEvent>,
+    /** INFO-level operation timings (R30); kept in a separate ring so they cannot evict warnings. */
+    val operationEvents: List<DiagnosticEvent> = emptyList(),
 )

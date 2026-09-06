@@ -1,7 +1,9 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
 import android.graphics.BitmapFactory
+import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
@@ -186,6 +188,7 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
             // dimension sanity check before any large allocation.
             val previewSlot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             addView(previewSlot)
+            var applyButton: Button? = null
             scope.launch(kotlinx.coroutines.Dispatchers.Default) {
                 val bitmap = decodeSampledDraftPreview(draft.bytes)
                 app.runOnUiThread {
@@ -202,6 +205,9 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
                                 colors.onSurfaceVariant,
                             ),
                         )
+                        // Undecodable bytes must not become the permanent cover — Discard is the
+                        // only outcome, so Apply is hidden once the decode verdict is in.
+                        applyButton?.visibility = View.GONE
                     }
                 }
             }
@@ -221,7 +227,7 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
                 }
             }
             row {
-                button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiCoverDraft(story, draft) }
+                applyButton = button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiCoverDraft(story, draft) }
                 button("Discard", Btn.TEXT) { discardAiCoverDraft(story) }
             }
         }

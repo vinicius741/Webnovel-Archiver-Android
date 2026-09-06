@@ -155,7 +155,11 @@ internal fun ScreenHost.confirmBatchPolish(
                     toast("Nothing queued — the chapters are already polishing or queued")
                     return@confirm
                 }
-                AiChapterRewriteForegroundService.start(app)
+                if (!AiChapterRewriteForegroundService.start(app)) {
+                    // R15: same as the single-chapter path — the jobs still run, but the user
+                    // learns foreground protection (and its notifications) failed.
+                    toast("Started in background — foreground notifications unavailable")
+                }
                 toast(
                     "Queued $queuedCount chapter${if (queuedCount == 1) "" else "s"} for polishing — " +
                         "cancel any time from AI Controls",

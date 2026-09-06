@@ -70,6 +70,10 @@ class NetworkClient(
     internal val reusablePages = ConcurrentHashMap<String, PreparedPage>()
     internal val reusablePageLocks = ConcurrentHashMap<String, Mutex>()
 
+    // R29: callers registered between lock get-or-create and completed withLock; eviction must
+    // never drop their mutex, so concurrent same-key callers keep sharing one fetch.
+    internal val acquiringPageLockCounts = ConcurrentHashMap<String, Int>()
+
     suspend fun fetch(
         url: String,
         callTimeoutMillis: Long? = null,
@@ -109,34 +113,37 @@ class NetworkClient(
             if (cached.expiresAt > now && cacheValidator(cached.html)) return cached.html
             reusablePages.remove(cacheKey, cached)
         }
-        val lock = reusablePageLocks.getOrPut(cacheKey) { Mutex() }
-        return lock.withLock {
-            val lockedNow = nowMillis()
-            reusablePages[cacheKey]?.let { cached ->
-                if (cached.expiresAt > lockedNow && cacheValidator(cached.html)) return@withLock cached.html
-                reusablePages.remove(cacheKey, cached)
-            }
-            fetch(
-                url = url,
-                callTimeoutMillis = callTimeoutMillis,
-                maximumAttemptsOverride = maximumAttemptsOverride,
-                requestGate = requestGate,
-            ).also { html ->
-                if (cacheValidator(html)) {
-                    val cachedAt = nowMillis()
-                    reusablePages.entries
-                        .filter { (_, page) -> page.expiresAt <= cachedAt }
-                        .forEach { (key, page) -> reusablePages.remove(key, page) }
-                    if (reusablePages.size >= MAX_REUSABLE_PAGES) {
-                        reusablePages.entries.minByOrNull { it.value.expiresAt }?.let { oldest ->
-                            reusablePages.remove(oldest.key, oldest.value)
+        val lock = acquirePageLock(cacheKey)
+        try {
+            return lock.withLock {
+                val lockedNow = nowMillis()
+                reusablePages[cacheKey]?.let { cached ->
+                    if (cached.expiresAt > lockedNow && cacheValidator(cached.html)) return@withLock cached.html
+                    reusablePages.remove(cacheKey, cached)
+                }
+                fetch(
+                    url = url,
+                    callTimeoutMillis = callTimeoutMillis,
+                    maximumAttemptsOverride = maximumAttemptsOverride,
+                    requestGate = requestGate,
+                ).also { html ->
+                    if (cacheValidator(html)) {
+                        val cachedAt = nowMillis()
+                        reusablePages.entries
+                            .filter { (_, page) -> page.expiresAt <= cachedAt }
+                            .forEach { (key, page) -> reusablePages.remove(key, page) }
+                        if (reusablePages.size >= MAX_REUSABLE_PAGES) {
+                            reusablePages.entries.minByOrNull { it.value.expiresAt }?.let { oldest ->
+                                reusablePages.remove(oldest.key, oldest.value)
+                            }
                         }
+                        reusablePages[cacheKey] = PreparedPage(html, cachedAt + ttlMillis.coerceAtLeast(0L))
                     }
-                    reusablePages[cacheKey] = PreparedPage(html, cachedAt + ttlMillis.coerceAtLeast(0L))
                 }
             }
+        } finally {
+            releasePageLock(cacheKey)
         }
-        evictIdlePageLocks()
     }
 
     suspend fun postForm(

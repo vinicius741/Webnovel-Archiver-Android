@@ -206,6 +206,10 @@ class AppStorage(
         chapterRoot.mkdirs()
         epubRoot.mkdirs()
         backupRoot.mkdirs()
+        // Restore-transaction leftovers live beside the root in filesDir; with a stuck journal a
+        // stale snapshot could later be moved over this deliberately wiped library (R07).
+        File(context.filesDir, RestoreTransactionJournal.FILE_NAME).delete()
+        preRestoreSnapshotDir.deleteRecursively()
         // Health fences are process-local; wipe them so recreated same-named documents can write again.
         _storageHealth.value = StorageHealthSnapshot()
         // The rewrite tree was deleted wholesale; drop its cached manifests too (R26).

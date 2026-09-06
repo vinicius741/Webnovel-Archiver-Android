@@ -3,10 +3,15 @@ package com.vinicius741.webnovelarchiver.data.diagnostics
 import android.util.Log
 import timber.log.Timber
 
-/** Process-local, metadata-only warning/error ring. Log messages are intentionally never retained. */
+/** Process-local, metadata-only rings: WARN+ log events plus operation timings (R30). Log messages are intentionally never retained. */
 object LocalDiagnostics {
     const val MAX_EVENTS = 200
     private val events = ArrayDeque<DiagnosticEvent>(MAX_EVENTS)
+
+    // R30: operation timings are INFO-level and high-frequency (queue_save, reader_prepare);
+    // a separate small ring keeps them from evicting genuine warnings before an export.
+    const val MAX_OPERATION_EVENTS = 50
+    private val operations = ArrayDeque<DiagnosticEvent>(MAX_OPERATION_EVENTS)
 
     @Synchronized
     fun record(
@@ -36,8 +41,8 @@ object LocalDiagnostics {
         durationMillis: Long,
         failed: Boolean = false,
     ) {
-        if (events.size == MAX_EVENTS) events.removeFirst()
-        events.addLast(
+        if (operations.size == MAX_OPERATION_EVENTS) operations.removeFirst()
+        operations.addLast(
             DiagnosticEvent(
                 timestampMillis = System.currentTimeMillis(),
                 priority = if (failed) Log.WARN else Log.INFO,
@@ -67,7 +72,13 @@ object LocalDiagnostics {
     fun snapshot(): List<DiagnosticEvent> = events.toList()
 
     @Synchronized
-    internal fun clear() = events.clear()
+    fun snapshotOperations(): List<DiagnosticEvent> = operations.toList()
+
+    @Synchronized
+    internal fun clear() {
+        events.clear()
+        operations.clear()
+    }
 
     internal fun safeToken(value: String?): String? =
         value

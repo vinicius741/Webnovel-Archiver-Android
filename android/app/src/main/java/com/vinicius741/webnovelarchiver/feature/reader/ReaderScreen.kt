@@ -113,11 +113,12 @@ internal fun ScreenHost.showReader(
                     }
                 is ReaderPreparation.Failed ->
                     if (readerStillCurrent()) {
+                        // IOException messages can embed absolute file paths; the detail stays in logs only.
                         timber.log.Timber.w(preparation.cause, "Reader preparation failed")
                         renderReaderUnavailable(
                             storyId,
                             "Could not open chapter",
-                            preparation.cause.message ?: "The chapter file could not be read.",
+                            "Couldn't open this chapter.",
                             retry = true,
                         )
                     }

@@ -24,6 +24,20 @@ internal data class PreparedTtsPlayback(
     val startIndex: Int,
 )
 
+/**
+ * Tri-state outcome of advancing past a chapter's last chunk. Only [NoNextChapter] proves the story
+ * ended; [Unprepared] must keep the session resumable instead of wiping the saved position.
+ */
+internal sealed interface NextChapterOutcome {
+    data class Prepared(
+        val playback: PreparedTtsPlayback,
+    ) : NextChapterOutcome
+
+    data object NoNextChapter : NextChapterOutcome
+
+    data object Unprepared : NextChapterOutcome
+}
+
 internal interface TtsPlaybackSource {
     fun story(id: String): Story?
 
@@ -99,20 +113,34 @@ internal class TtsPlaybackPreparer(
         return prepared.copy(startIndex = TtsSessionPlanning.boundedChunkIndex(persisted, prepared.chunks.size))
     }
 
-    suspend fun nextChapter(session: TtsSession): PreparedTtsPlayback? {
+    suspend fun nextChapter(session: TtsSession): NextChapterOutcome {
         // Description narration has no following chapter; finish playback instead of marking the
         // sentinel id as last-read (which would corrupt the story's reading position).
-        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return null
-        val target =
-            withContext(ioDispatcher) {
-                val story = source.story(session.storyId) ?: return@withContext null
-                source.markChapterRead(session.storyId, session.chapterId)
-                val nextIndex = TtsSessionPlanning.nextChapterIndex(story, session.chapterId) ?: return@withContext null
-                story to story.chapters[nextIndex]
-            } ?: return null
-        val input = load(target.first.id, target.second.id) ?: return null
-        return build(input, 0)
+        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return NextChapterOutcome.NoNextChapter
+        return when (val next = lookupNextChapter(session)) {
+            NextChapterLookup.NoNextChapter -> NextChapterOutcome.NoNextChapter
+            // A missing story or a current chapter dropped from the list is ambiguity, not a proven
+            // end of story — the caller must keep the session resumable.
+            NextChapterLookup.Ambiguous -> NextChapterOutcome.Unprepared
+            is NextChapterLookup.Found -> {
+                // Unreadable/blank/undownloaded next chapter: it exists, so never treat as end.
+                val input = load(session.storyId, next.chapter.id) ?: return NextChapterOutcome.Unprepared
+                NextChapterOutcome.Prepared(build(input, 0) ?: return NextChapterOutcome.Unprepared)
+            }
+        }
     }
+
+    private suspend fun lookupNextChapter(session: TtsSession): NextChapterLookup =
+        withContext(ioDispatcher) {
+            val story = source.story(session.storyId) ?: return@withContext NextChapterLookup.Ambiguous
+            source.markChapterRead(session.storyId, session.chapterId)
+            val current = story.chapters.indexOfFirst { it.id == session.chapterId }
+            when {
+                current < 0 -> NextChapterLookup.Ambiguous
+                current >= story.chapters.lastIndex -> NextChapterLookup.NoNextChapter
+                else -> NextChapterLookup.Found(story.chapters[current + 1])
+            }
+        }
 
     /** Manual chapter skip ([delta] is -1 or +1); null when no chapter exists in that direction. */
     suspend fun chapterAt(
@@ -187,6 +215,17 @@ private data class PreparationInput(
     val settings: TtsSettings,
     val rules: List<RegexCleanupRule>,
 )
+
+private sealed interface NextChapterLookup {
+    data class Found(
+        val chapter: Chapter,
+    ) : NextChapterLookup
+
+    data object NoNextChapter : NextChapterLookup
+
+    /** The story or the current chapter vanished mid-playback; not a provable end of story. */
+    data object Ambiguous : NextChapterLookup
+}
 
 /** Production source: repository owns story/session/settings state and chapter reads. */
 private class RepositoryTtsPlaybackSource(

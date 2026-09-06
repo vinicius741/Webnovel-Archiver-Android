@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceFailureKind
 import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
 import com.vinicius741.webnovelarchiver.source.network.NetworkOfflineException
+import com.vinicius741.webnovelarchiver.source.network.SourceChapterListIncompleteException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -42,6 +43,25 @@ class SourceSyncFailurePlanningTest {
         assertEquals(SourceFailureKind.offline, result.lastFailure)
         assertEquals(100L, result.lastCheckedAt)
         assertNull(result.unavailableSince)
+    }
+
+    @Test
+    fun incompleteChapterListMarksTheSourceAccessRestricted() {
+        val previous =
+            SourceSyncState(
+                availability = SourceAvailability.available,
+                lastCheckedAt = 50L,
+            )
+        val failure =
+            SourceSyncFailurePlanning.classify(
+                SourceChapterListIncompleteException("chapter page 3 was blocked by the source"),
+            )
+
+        val result = SourceSyncFailurePlanning.afterFailure(previous, failure, checkedAt = 100L)
+
+        assertEquals(SourceFailureKind.access_restricted, result.lastFailure)
+        assertEquals(SourceAvailability.access_restricted, result.availability)
+        assertEquals(100L, result.unavailableSince)
     }
 
     @Test

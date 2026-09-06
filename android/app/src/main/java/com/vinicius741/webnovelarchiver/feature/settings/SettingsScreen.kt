@@ -222,7 +222,11 @@ internal fun ScreenHost.showDataBackup() {
         ) {
             exportAndShare({ BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue()) })
         }
-        settingRow(R.drawable.wna_cleaning, "Reset Source Web Session", "Clear source cookies, browser storage, and access cooldowns") {
+        settingRow(
+            R.drawable.wna_cleaning,
+            "Reset Source Web Session",
+            "Clear source cookies, browser storage, shared cache, and access cooldowns",
+        ) {
             confirm("Reset source browser sessions? The next request may require verification.", confirmLabel = "Reset") {
                 resetSourceWebSessions(browserSessionSources)
             }

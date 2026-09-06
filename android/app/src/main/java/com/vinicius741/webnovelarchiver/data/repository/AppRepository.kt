@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
+import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -398,6 +399,7 @@ class AppRepository private constructor(
         storageTransaction {
             val latest = PreferenceNormalization.displayPreferences(storyStore.displayPreferences())
             val normalized = PreferenceNormalization.displayPreferences(block(latest.copy()))
+            if (normalized == latest) return@storageTransaction
             storyStore.saveDisplayPreferences(normalized)
             displayPreferences = normalized.copy()
         }
@@ -528,6 +530,57 @@ class AppRepository private constructor(
             StoryMutations.markChapterDownloaded(it, chapterId, path, completedAt)
         }
 
+    /** Outcome of [completeDownloadedChapter]; rejected commits must not surface as job failures. */
+    enum class ChapterCommit {
+        COMMITTED,
+        SKIPPED,
+        CHAPTER_MISSING,
+    }
+
+    /**
+     * Commits one downloaded chapter and its queue job in a single transaction (R05): the job
+     * must still exist and be downloading, and the library generation must be unchanged, so a
+     * cancel, remove, clear, or restore landing between the chapter fetch and this call can
+     * never publish the chapter or flip a cancelled row to completed.
+     */
+    suspend fun completeDownloadedChapter(
+        job: DownloadJob,
+        path: String,
+        completedAt: Long,
+        startedGeneration: Long,
+    ): ChapterCommit =
+        storageTransaction {
+            if (startedGeneration != libraryGeneration.get()) return@storageTransaction ChapterCommit.SKIPPED
+            val queue = storyStore.queue()
+            val stillActive = queue.any { it.id == job.id && it.status == DownloadJobStatus.Downloading.wire }
+            if (!stillActive) return@storageTransaction ChapterCommit.SKIPPED
+            val story =
+                storyStore.story(job.storyId) ?: return@storageTransaction ChapterCommit.SKIPPED
+            val marked =
+                StoryMutations.markChapterDownloaded(story, job.chapter.id, path, completedAt)
+                    ?: return@storageTransaction ChapterCommit.CHAPTER_MISSING
+            storyStore.addOrUpdateStory(marked)
+            libraryById[marked.id] = StoryMutations.snapshot(marked)
+            val updated =
+                queue.map { current ->
+                    if (current.id != job.id) {
+                        current
+                    } else {
+                        current.copy(
+                            status = DownloadJobStatus.Completed.wire,
+                            error = null,
+                            errorCategory = null,
+                            errorCode = null,
+                            nextRetryAt = null,
+                        )
+                    }
+                }
+            storyStore.saveQueue(updated)
+            queueJobs = updated.map(::snapshotJob)
+            publishDownloadStateLocked(libraryChanged = true, queueChanged = true)
+            ChapterCommit.COMMITTED
+        }
+
     /**
      * Commits a sync atomically with optional archive and metric snapshots.
      *
@@ -606,9 +659,11 @@ class AppRepository private constructor(
     }
 
     /** Read-modify-write the queue under the shared storage monitor, the same serialization point the download engine uses. */
+    @Suppress("TooGenericExceptionCaught")
     suspend fun updateQueue(block: (List<DownloadJob>) -> List<DownloadJob>): List<DownloadJob> =
         storageTransaction {
             val startedAt = System.nanoTime() / 1_000_000L
+            var failed = false
             try {
                 val current = storyStore.queue()
                 val updated = block(current)
@@ -616,10 +671,14 @@ class AppRepository private constructor(
                 queueJobs = updated.map(::snapshotJob)
                 publishDownloadStateLocked(libraryChanged = false, queueChanged = true)
                 queueJobs
+            } catch (error: Exception) {
+                failed = true
+                throw error
             } finally {
                 com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics.recordOperation(
                     "queue_save",
                     System.nanoTime() / 1_000_000L - startedAt,
+                    failed,
                 )
             }
         }

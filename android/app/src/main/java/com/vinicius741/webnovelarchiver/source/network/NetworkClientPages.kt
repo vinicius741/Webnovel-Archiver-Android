@@ -24,9 +24,33 @@ internal fun NetworkClient.admitPreparedPage(
 }
 
 /**
- * Drops per-key coalescing state whose page is gone; never evicts a lock a caller currently
- * holds, so duplicate concurrent fetches for the same key remain impossible (R29).
+ * Registers the caller and fetches-or-creates the key's mutex under one monitor, so eviction can
+ * never drop a mutex that is locked or about to be acquired (R29).
+ */
+internal fun NetworkClient.acquirePageLock(cacheKey: String): kotlinx.coroutines.sync.Mutex =
+    synchronized(reusablePageLocks) {
+        acquiringPageLockCounts.merge(cacheKey, 1, Int::plus)
+        reusablePageLocks.getOrPut(cacheKey) { kotlinx.coroutines.sync.Mutex() }
+    }
+
+/** Pairs with [acquirePageLock]: unregisters after the lock scope ends, then evicts idle locks. */
+internal fun NetworkClient.releasePageLock(cacheKey: String) {
+    synchronized(reusablePageLocks) {
+        val remaining = acquiringPageLockCounts.computeIfPresent(cacheKey) { _, count -> count - 1 }
+        if (remaining == null || remaining <= 0) acquiringPageLockCounts.remove(cacheKey)
+    }
+    evictIdlePageLocks()
+}
+
+/**
+ * Drops per-key coalescing state whose page is gone. Runs under the lock-map monitor and skips
+ * keys that are locked or still acquiring, so eviction can never orphan a mutex a caller holds
+ * or is about to lock — duplicate concurrent fetches for the same key remain impossible (R29).
  */
 internal fun NetworkClient.evictIdlePageLocks() {
-    reusablePageLocks.entries.removeIf { (key, lock) -> !lock.isLocked && !reusablePages.containsKey(key) }
+    synchronized(reusablePageLocks) {
+        reusablePageLocks.entries.removeIf { (key, lock) ->
+            !lock.isLocked && !acquiringPageLockCounts.containsKey(key) && !reusablePages.containsKey(key)
+        }
+    }
 }

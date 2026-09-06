@@ -7,6 +7,10 @@ object DownloadQueueControlPlanning {
     private val activeStatuses = DownloadJobStatus.activeWires
     private val cancellableStatuses = DownloadJobStatus.cancellableWires
 
+    // The queue UI offers RETRY for both terminal-failure rows; a cancelled job is re-queued
+    // through the same path as a failed one.
+    private val retryableStatuses = setOf(DownloadJobStatus.Failed.wire, DownloadJobStatus.Cancelled.wire)
+
     fun pauseAll(jobs: List<DownloadJob>): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.status in activeStatuses) {
@@ -108,7 +112,7 @@ object DownloadQueueControlPlanning {
     ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             val storyMatches = storyId == null || job.storyId == storyId
-            if (storyMatches && job.status == DownloadJobStatus.Failed.wire) {
+            if (storyMatches && job.status in retryableStatuses) {
                 markPendingForRetry(job)
             }
         }
@@ -118,7 +122,7 @@ object DownloadQueueControlPlanning {
         jobId: String,
     ): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
-            if (job.id == jobId && job.status == DownloadJobStatus.Failed.wire) {
+            if (job.id == jobId && job.status in retryableStatuses) {
                 markPendingForRetry(job)
             }
         }

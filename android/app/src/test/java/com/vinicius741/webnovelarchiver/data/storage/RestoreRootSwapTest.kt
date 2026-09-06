@@ -105,6 +105,31 @@ class RestoreRootSwapTest {
     }
 
     @Test
+    fun rollbackWithMissingSnapshotLeavesLiveRootUntouched() {
+        // OLD_ROOT_MOVED-style journal with a vanished snapshot: with nothing to install, rollback
+        // must never remove the live root.
+        val live = tree("live", "old")
+
+        val restored = RestoreRootSwap().rollback(live, File(dir, "snapshot")) { }
+
+        assertFalse(restored)
+        assertEquals("old", File(live, "value.txt").readText())
+    }
+
+    @Test
+    fun rollbackWithEmptySnapshotLeavesLiveRootUntouched() {
+        // An empty snapshot is not a replacement either; the live root survives.
+        val live = tree("live", "partial")
+        val snapshot = File(dir, "snapshot").apply { mkdirs() }
+
+        val restored = RestoreRootSwap().rollback(live, snapshot) { }
+
+        assertFalse(restored)
+        assertEquals("partial", File(live, "value.txt").readText())
+        assertTrue(snapshot.exists())
+    }
+
+    @Test
     fun snapshotCleanupFailureDoesNotRollBackCommittedRoot() {
         val live = tree("live", "old")
         val source = tree("source", "new")

@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
+import android.util.Log
+import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -110,6 +112,34 @@ class RestoreStartupRecoveryTest {
 
         assertEquals("old_library.json", liveRoot.listFiles()!!.single().name)
         assertEquals(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, journal.read())
+    }
+
+    @Test
+    fun recoveryFailureRecordsDiagnosticsAndStillFailsClosed() {
+        LocalDiagnostics.clear()
+        val liveRoot = File(tmp.root, "live")
+        liveRoot.mkdirs()
+        File(liveRoot, "old_library.json").writeText("data")
+        val journal = RestoreTransactionJournal(File(tmp.root, RestoreTransactionJournal.FILE_NAME))
+        journal.write(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED)
+
+        // The production entry point swallows the failure (startup must not crash) but records it.
+        RestoreStartupRecovery.recoverSafely(
+            liveRoot,
+            File(tmp.root, "durable_snapshot"),
+            File(tmp.root, "cache_snapshot"),
+            journal,
+        )
+
+        // Fail closed: root and journal stay untouched for manual recovery.
+        assertEquals("old_library.json", liveRoot.listFiles()!!.single().name)
+        assertEquals(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, journal.read())
+        // The WARN ring keeps the exception class; the operation record names the failed phase.
+        assertEquals("IllegalStateException", LocalDiagnostics.snapshot().single().throwableType)
+        val operation = LocalDiagnostics.snapshotOperations().single()
+        assertEquals("restore_recovery_failed_old_root_moved", operation.operation)
+        assertEquals(Log.WARN, operation.priority)
+        assertTrue(operation.failed)
     }
 
     @Test
