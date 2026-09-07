@@ -8,7 +8,6 @@ import android.widget.CheckBox
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
-import com.vinicius741.webnovelarchiver.data.repository.clearAiCover
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
@@ -22,7 +21,6 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
-import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeBadge
@@ -69,7 +67,7 @@ internal fun ScreenHost.addAiCoverCard(
                     colors.onSurfaceVariant,
                 )
             }
-            if (hasAiCover && hasSourceCover) {
+            if (hasAiCover && hasSourceCover && story.isArchived != true) {
                 spacer(Space.SM)
                 addAiCoverDisplayToggleRow(this, story)
             }
@@ -82,8 +80,8 @@ internal fun ScreenHost.addAiCoverCard(
                         when {
                             generating != null -> "Generating..."
                             oneStep ->
-                                if (hasAiCover) "Regenerate Cover" else "Generate Cover with AI"
-                            hasPromptDraft -> "Regenerate Prompt"
+                                if (hasAiCover) "Try a new cover" else "Generate Cover with AI"
+                            hasPromptDraft -> "Try a new AI prompt"
                             else -> "Generate Prompt with AI"
                         },
                     variant = Btn.FILLED,
@@ -91,9 +89,9 @@ internal fun ScreenHost.addAiCoverCard(
                     enabled = generating == null && !isBusy,
                     bottomMarginDp = if (hasAiCover) Space.MD else 0,
                 ) { generateAiCoverDraft(story) }
-                if (hasAiCover) {
+                if (hasAiCover && hasSourceCover) {
                     fullButton(
-                        label = "Delete AI cover",
+                        label = "Use source cover",
                         variant = Btn.TEXT,
                         enabled = generating == null && !isBusy,
                         bottomMarginDp = 0,
@@ -110,6 +108,10 @@ internal fun ScreenHost.addAiCoverCard(
                     colors.onSurfaceVariant,
                 ).apply { setPadding(0, dp(Space.SM), 0, 0) }
             }
+            if (canGenerate) {
+                fullButton("Write your own prompt", Btn.TEXT) { editAiCoverPrompt(story, "") }
+            }
+            addAiCoverVersions(this, story)
         }
     container.addView(cardView)
 }
@@ -169,17 +171,26 @@ private fun ScreenHost.addAiCoverModeRow(
     }
 }
 
-/** Draft preview: Current|New comparison + the prompt + Apply/Discard. Nothing is persisted until Apply. */
+/** Compares a saved candidate with the active cover before changing the display choice. */
 internal fun ScreenHost.addAiCoverDraftPreviewCard(
     container: LinearLayout,
     story: Story,
     draft: AiCoverDraft,
+    savedVersion: Boolean = false,
+    currentVersion: Boolean = false,
+    onDone: () -> Unit = {},
 ) {
+    val editable = story.isArchived != true && aiCoverOperationFor(story.id) == null
     val colors = ThemeManager.colors
     val cardView =
         container.card {
             addView(
-                makeBadge(context, "AI-generated · preview", colors.tertiaryContainer, colors.onTertiaryContainer),
+                makeBadge(
+                    context,
+                    if (savedVersion) "Saved cover" else "New cover · saved to history",
+                    colors.tertiaryContainer,
+                    colors.onTertiaryContainer,
+                ),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                     bottomMargin = dp(Space.SM)
                 },
@@ -195,7 +206,11 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
                     if (app.isFinishing || app.isDestroyed) return@runOnUiThread
                     previewSlot.removeAllViews()
                     if (bitmap != null) {
-                        addAiCoverDraftCompareRow(previewSlot, story, bitmap)
+                        addAiCoverDraftCompareRow(previewSlot, story, bitmap, currentVersion)
+                        applyButton?.apply {
+                            isEnabled = editable && !currentVersion
+                            alpha = if (editable && !currentVersion) 1f else 0.4f
+                        }
                     } else {
                         previewSlot.addView(
                             makeText(
@@ -213,24 +228,50 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
             }
             spacer(Space.SM)
             text("Image prompt", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
-            text(draft.prompt, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+            text(
+                draft.prompt.ifBlank { "The prompt for this older cover is unavailable." },
+                Type.BODY_SMALL,
+                colors.onSurfaceVariant,
+            ).apply {
                 setLineSpacing(dp(Space.XS).toFloat(), 1f)
             }
             text(
-                "Preview — not saved yet",
+                if (currentVersion) "This is the cover currently in use." else "Your current cover stays in use until you choose this one.",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
-            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)?.let { cost ->
+            val costLine =
+                if (savedVersion) {
+                    null
+                } else {
+                    latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_IMAGE)
+                }
+            costLine?.let { cost ->
                 text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
                     setPadding(0, 0, 0, dp(Space.SM))
                 }
             }
             row {
-                applyButton = button("Apply", Btn.FILLED, R.drawable.wna_check) { applyAiCoverDraft(story, draft) }
-                button("Discard", Btn.TEXT) { discardAiCoverDraft(story) }
+                applyButton =
+                    button(if (currentVersion) "Current cover" else "Use this cover", Btn.FILLED, R.drawable.wna_check, enabled = false) {
+                        applyAiCoverDraft(story, draft, clearPreview = !savedVersion)
+                        onDone()
+                    }
+            }
+            if (editable && story.chapters.any { it.downloaded }) {
+                fullButton(if (draft.prompt.isBlank()) "Write a new prompt" else "Edit prompt / try again", Btn.OUTLINED) {
+                    onDone()
+                    editAiCoverPrompt(story, draft.prompt)
+                }
+            }
+            if (!savedVersion) {
+                fullButton("Close preview", Btn.TEXT, enabled = aiCoverOperationFor(story.id) == null) { discardAiCoverDraft(story) }
             }
         }
+    if (savedVersion) {
+        cardView.background = null
+        cardView.setPadding(0, 0, 0, 0)
+    }
     container.addView(cardView)
 }
 
@@ -264,42 +305,42 @@ private const val MAX_PREVIEW_DIMENSION_PX = 8192
 internal fun ScreenHost.applyAiCoverDraft(
     story: Story,
     draft: AiCoverDraft,
+    clearPreview: Boolean = true,
 ) {
+    if (story.isArchived == true || aiCoverOperationFor(story.id) != null) return
     scope.launch {
-        repository.setAiCover(story.id, draft.bytes, draft.mediaType)
-        repository.deleteAiCoverDraft(story.id)
-        aiControlsScreenState.coverDrafts.remove(story.id)
-        aiControlsScreenState.coverPrompts.remove(story.id)
-        toast("AI cover applied")
-        showAiControls(story.id)
+        coverUiAttempt {
+            repository.setAiCover(story.id, draft.bytes, draft.mediaType)
+            if (clearPreview) {
+                repository.deleteAiCoverDraft(story.id)
+                aiControlsScreenState.coverDrafts.remove(story.id)
+                aiControlsScreenState.coverPrompts.remove(story.id)
+            }
+            toast("AI cover applied")
+            if (frameIsAiControls(story.id)) showAiControls(story.id)
+        }
     }
 }
 
 internal fun ScreenHost.discardAiCoverDraft(story: Story) {
-    aiControlsScreenState.coverDrafts.remove(story.id)
-    scope.launch { repository.deleteAiCoverDraft(story.id) }
-    toast("Draft discarded")
-    showAiControls(story.id)
-}
-
-/** Deletes the generated cover file/record — switching which cover shows is the "Show AI cover"
- *  toggle. The untouched source [Story.coverUrl] applies again. */
-internal fun ScreenHost.revertAiCover(story: Story) {
-    val hasSourceCover = !story.coverUrl.isNullOrBlank()
-    val message =
-        if (hasSourceCover) {
-            "Delete the generated cover image? The novel will go back to its source cover."
-        } else {
-            "Remove the generated cover? The novel will have no cover."
-        }
-    confirm(message, confirmLabel = "Delete") {
-        scope.launch {
-            repository.clearAiCover(story.id)
+    scope.launch {
+        coverUiAttempt {
             repository.deleteAiCoverDraft(story.id)
             aiControlsScreenState.coverDrafts.remove(story.id)
             aiControlsScreenState.coverPrompts.remove(story.id)
-            toast("AI cover deleted")
-            showAiControls(story.id)
+            toast("Cover kept in saved covers")
+            if (frameIsAiControls(story.id)) showAiControls(story.id)
+        }
+    }
+}
+
+/** Selects the source cover while retaining every generated version. */
+internal fun ScreenHost.revertAiCover(story: Story) {
+    scope.launch {
+        coverUiAttempt {
+            repository.setShowAiCover(story.id, false)
+            toast("Source cover selected")
+            if (frameIsAiControls(story.id)) showAiControls(story.id)
         }
     }
 }

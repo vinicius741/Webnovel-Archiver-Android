@@ -11,18 +11,16 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   public, no pricing) — same searchable dialog shape as the text-model picker, minus price labels
   and the Free filter, with a pinned manual-id row. Defaults to `x-ai/grok-imagine-image-2.0`
   (from ~$0.04/image; supports 2:3 portrait).
-- **Details → More options → AI Controls → Cover Art**: the cover card shows the applied AI cover
-  (badge + thumbnail) or the current state (source cover / no cover), the generation-mode checkbox,
-  `Generate` (label follows the mode: `Generate Cover with AI` / `Generate Prompt with AI` /
-  `Regenerate …`), and `Delete AI cover` when a generated image exists.
-- **Generation modes** — the `Generate prompt + image in one step` checkbox (persisted in
-  `AiSettings.coverOneStep`, default on) picks between:
-  - **One step**: the button runs both billable stages in a single uninterrupted flow, exactly as
-    before. A pending staged prompt is discarded by the run.
-  - **Staged**: the button runs only the prompt-writing call. The prompt appears in an editable
-    draft card (`Image prompt · draft`, multiline field, `Generate Image` / `Discard`); the user
-    can rewrite it before the billable image call, and re-painting after an edit re-bills only the
-    image stage. Regenerating the prompt discards a preview painted from the old one.
+- **Details → More options → AI Controls → Cover Art** shows the current cover and a horizontal
+  Saved covers gallery. Tap any version to compare it with the current cover, zoom in, choose
+  `Use this cover`, or `Edit prompt / try again`. Applying a version keeps the previous cover.
+- **Generation modes**: `Generate prompt + image in one step` runs both billable stages.
+  Turn it off to generate a prompt first, edit it, and then choose `Generate Image`.
+  `Write your own prompt` skips the text-model call. `Save edits` persists the working prompt.
+- **Iteration**: each generated image retains the prompt that produced it. Editing a saved
+  version's prompt creates a new working prompt; generating from it bills only the image call.
+  Earlier images remain available even if generation fails or the app restarts. This is text-to-image
+  generation from a reused description, not an image-to-image edit of the selected cover.
 - **Two billable stages** (both on the user's key):
   1. The **description model** (the same model chosen for synopses) writes an image-generation
      prompt from the novel's material: title, author, tags, the currently displayed description
@@ -38,9 +36,12 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
      minimal model+prompt request. When supported, the request explicitly asks for PNG or another
      raster format. SVG-only models are hidden from the picker and blocked before the paid image
      call; an explicit vector response is never stored as a bitmap.
-- **Preview → apply**: the draft card shows the decoded image (tap to zoom), the exact prompt sent
-  to the image model (for transparency), and `Apply` / `Discard`. Nothing is persisted until
-  `Apply`, which writes the image to `covers/<safeName(id)>.<ext>` and points the story at it.
+- **Preview → apply**: the candidate is saved locally before it appears. `Use this cover` writes
+  the display copy to `covers/<safeName(id)>.<ext>` and selects it. `Close preview` keeps the
+  candidate in Saved covers. Viewing a historical version leaves any pending experiment intact.
+  Comparison and prompt editing use custom themed dialogs, including their headings and actions.
+  The current version shows one image and a disabled Current cover action. Archived novels can
+  close a pending preview while cover application remains disabled.
   The prompt-writing system prompt treats all novel fields as untrusted data, requires supported
   visual facts, asks for a concrete portrait composition, and excludes lettering, logos,
   watermarks, borders, and mockups. The generated image contains no title lettering because image
@@ -55,17 +56,16 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   that marks completeness) the moment it arrives, so even a process death after the API replied
   cannot lose a billed image. The one-step flow persists its prompt immediately after the first
   billable stage, before starting the image request. Reopening AI Controls rehydrates the persisted
-  draft (prompt-only or full preview) into its card; `Apply`/`Discard`/`Delete AI cover` clear the
-  files. Starting the image stage persists the edited prompt with it, so a mid-paint death recovers
+  draft (prompt-only or full preview) into its card. Applying or closing clears only the working
+  draft; version history retains its image and prompt. Starting the image stage persists the edited prompt with it, so a mid-paint death recovers
   the prompt for a retry.
 - **Show AI cover toggle**: when both a source cover and an applied AI cover exist, a `Show AI
   cover` checkbox (mirroring the synopsis toggle) switches which one the app displays — nothing is
   deleted either way. Applying a new AI cover always switches the display to it; a story whose
   source has no cover keeps showing the AI cover regardless of the toggle
   (`AiCoverPlanning.isAiCoverActive`).
-- **Delete**: `Delete AI cover` removes the generated file and record — for giving up the
-  generated image entirely. The source `coverUrl` is never modified anywhere in the flow, so the
-  original always survives.
+- **Source cover**: `Use source cover` switches back without deleting generated versions.
+  The source `coverUrl` is never modified. Deleting the novel removes its local cover history.
 
 ## Where the AI cover applies
 
@@ -75,17 +75,24 @@ zoom viewer (which also becomes available for stories that never had a source co
 EPUBs embed the AI cover bytes in place of the source URL's image. Toggling it off switches all of
 those surfaces — EPUBs included — back to the source cover without deleting anything. Syncs carry
 `aiCoverPath` + `showAiCover` forward like `aiDescription`, and the sync fold protects a cover
-applied or toggled during a sync's network window.
+applied or toggled during a sync's network window. Local image cache keys include file modification
+time and size so applying another version refreshes the visible cover even when its path is reused.
 
 ## Storage, cost, and failure handling
 
-- One file per story under `files/webnovel_archiver/covers/`, written atomically; a regenerate
-  overwrites it (removing any earlier file saved under a different extension). Deleting the story
-  removes its cover.
+- One active display copy per story under `files/webnovel_archiver/covers/`, written atomically.
+  `ai_cover_versions/<safeName(id)>/` retains immutable image files with prompt metadata. Image
+  hashes deduplicate repeated saves; metadata commits after the bytes. Legacy applied covers are
+  preserved before replacement, with an unavailable-prompt message when no prompt survives.
+  Gallery reads never migrate or write files. Legacy applied covers appear as read-only fallback
+  entries until a cover mutation preserves them; their streamed hashes are cached by file revision
+  outside the repository transaction lock. Gallery and cover-action storage failures show a retry
+  message instead of escaping into the activity. Legacy pending previews are preserved before starting another experiment. Deleting the story
+  removes both its draft and version history.
 - Cost controls: the text call reuses the description context budgets (5 chapters, 12k chars each,
   60k total, `max_tokens 1600`, low reasoning); the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
-  repainting an edited prompt over a pending preview; the shared `storyOperation` guard
+  generating from an edited prompt; the shared `storyOperation` guard
   (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited
   prompt is re-cleaned (trimmed, whitespace-collapsed, capped at 1,500 chars) exactly like a model
   reply.
@@ -94,6 +101,9 @@ applied or toggled during a sync's network window.
   replies are rejected instead of being passed to the image model.
 
 ## Backups
+
+Experiment history and working prompts remain local to this device and are excluded from backups.
+Full backups retain the applied cover as described below.
 
 - **JSON backup**: `aiCoverPath` is stripped like other device-local file paths; covers are not
   included. Stories fall back to their source cover URL after a JSON-only restore.
@@ -117,7 +127,9 @@ applied or toggled during a sync's network window.
 | `ai/AiContextChapters.kt` | Shared capped chapter reading used by both the description and cover engines. |
 | `app/AiCoverJobUiBridge.kt` | Activity-side bridge: mirrors coordinator state into the shared `storyOperation` slot (Details progress, AI Controls gating) and surfaces terminal events as toasts/draft cards. |
 | `data/storage/AiCoverDraftStore.kt` | Pending-draft persistence under `ai_cover_drafts/` (prompt JSON + image bytes, image-first completeness marker); excluded from backups by design. |
-| `feature/ai/AiCoverControls.kt` | Cover Art section UI: state card (thumbnail, show-AI toggle, mode checkbox), draft preview, apply/discard/delete actions. |
+| `feature/ai/AiCoverControls.kt` | Cover Art section UI: state card (thumbnail, show-AI toggle, mode checkbox), draft preview, compare, select, and close-preview actions. |
+| `data/storage/AiCoverVersionStore.kt` | Immutable local image and prompt history, deduplicated by image hash. |
+| `feature/ai/AiCoverVersionsUi.kt` | Saved-cover gallery, comparison dialog, and prompt reuse editor. |
 | `feature/ai/AiCoverGeneration.kt` | Generation flows: mode dispatch, job launches through the coordinator + service, the staged prompt card, draft rehydration from disk. |
 | `feature/settings/SettingsAiImageModel.kt` | Image-model picker dialog + catalog cache for the AI Settings row. |
 

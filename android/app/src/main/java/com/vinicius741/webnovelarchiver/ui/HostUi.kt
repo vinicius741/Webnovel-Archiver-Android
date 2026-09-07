@@ -135,6 +135,10 @@ internal fun ScreenHost.loadImage(
     // Coil gives cover loads caching, downsampling, view-detach cancellation, and placeholder/error
     // drawables. `source` is a remote URL or a local java.io.File (generated AI cover).
     image.load(source) {
+        // Applied covers reuse their path. Include the file revision so Apply refreshes every surface.
+        if (source is java.io.File) {
+            memoryCacheKey("${source.absolutePath}:${source.lastModified()}:${source.length()}")
+        }
         crossfade(true)
     }
 }

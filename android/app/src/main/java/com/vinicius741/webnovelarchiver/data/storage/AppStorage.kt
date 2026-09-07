@@ -189,7 +189,7 @@ class AppStorage(
         // The generated cover is per-story too; drop it so it does not outlive the story.
         coverFiles.delete(id)
         // Pending AI cover drafts (with their preview images) are per-story as well.
-        aiCoverDrafts.delete(id)
+        aiCoverDrafts.delete(id, keepHistory = false)
         // Applied chapter rewrites and pending polish drafts are per-story as well.
         chapterRewrites.delete(id)
         // Drop the per-story trend history too so its file does not outlive the story.

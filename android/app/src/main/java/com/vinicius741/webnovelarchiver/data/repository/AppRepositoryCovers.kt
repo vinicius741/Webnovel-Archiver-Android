@@ -24,6 +24,7 @@ internal suspend fun AppRepository.setAiCover(
 ): Story? =
     updateStory(storyId) { latest ->
         latest?.let { story ->
+            preserveAppliedCover(story)
             val file = storage.coverFiles.save(storyId, bytes, AiCoverPlanning.coverFileExtension(mediaType))
             StoryMutations.setAiCoverPath(story, storage.relativize(file))
         }
@@ -33,6 +34,7 @@ internal suspend fun AppRepository.setAiCover(
 internal suspend fun AppRepository.clearAiCover(storyId: String): Story? =
     updateStory(storyId) { latest ->
         latest?.let { story ->
+            preserveAppliedCover(story)
             storage.coverFiles.delete(storyId)
             StoryMutations.clearAiCover(story)
         }

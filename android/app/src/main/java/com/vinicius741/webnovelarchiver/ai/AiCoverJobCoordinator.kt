@@ -113,6 +113,9 @@ class AiCoverJobCoordinator(
         prompt: String,
     ): Boolean =
         start(storyId, AiCoverJobKind.IMAGE, "Painting cover...") {
+            if (!repository.persistAiCoverDraftIfStoryExists(storyId, AiCoverDraftRecord.PromptOnly(prompt))) {
+                error("This novel is no longer in the library")
+            }
             AiCoverDraftRecord.Image(engine.draftImage(storyId, prompt, progressReporter(storyId)))
         }
 

@@ -57,7 +57,7 @@ internal fun ScreenHost.generateAiCoverDraft(story: Story) {
         val message =
             "Generate a new AI cover with ${settings.imageModel}? This makes two OpenRouter calls " +
                 "(image prompt + image) and uses your API credits." +
-                (if (hasPendingWork) " The pending preview will be replaced." else "")
+                (if (hasPendingWork) " Earlier covers remain in Saved covers." else "")
         confirm(message, confirmLabel = "Generate") { startAiCoverDraft(story) }
         return
     }
@@ -67,7 +67,7 @@ internal fun ScreenHost.generateAiCoverDraft(story: Story) {
     }
     val message =
         "Write a new image prompt with ${settings.descriptionModel}? This calls OpenRouter and uses your API credits." +
-            (if (hasPendingWork) " The pending prompt and preview will be replaced." else "")
+            (if (hasPendingWork) " Earlier covers remain in Saved covers." else "")
     confirm(message, confirmLabel = "Generate") { startAiCoverPromptDraft(story) }
 }
 
@@ -129,7 +129,7 @@ internal fun ScreenHost.addAiCoverPromptDraftCard(
                 }
             addView(field)
             text(
-                "Repainting after an edit re-bills only the image call.",
+                "Generate another option from this prompt. Only the image call uses API credits; earlier covers stay saved.",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
@@ -142,7 +142,25 @@ internal fun ScreenHost.addAiCoverPromptDraftCard(
                 button("Generate Image", Btn.FILLED, R.drawable.wna_auto_awesome, enabled = !isBusy) {
                     generateAiCoverImageDraft(story, field.text.toString())
                 }
-                button("Discard", Btn.TEXT) { discardAiCoverPromptDraft(story) }
+                button("Save edits", Btn.TEXT, enabled = !isBusy) {
+                    val edited = field.text.toString().trim()
+                    if (edited.isBlank()) {
+                        field.error = "Enter an image description"
+                    } else {
+                        scope.launch {
+                            coverUiAttempt {
+                                repository.saveAiCoverPromptDraft(story.id, edited)
+                                aiControlsScreenState.coverPrompts[story.id] = edited
+                                aiControlsScreenState.coverDrafts.remove(story.id)
+                                toast("Prompt saved")
+                                if (frameIsAiControls(story.id)) showAiControls(story.id)
+                            }
+                        }
+                    }
+                }
+            }
+            row {
+                button("Close prompt", Btn.TEXT, enabled = !isBusy) { discardAiCoverPromptDraft(story) }
             }
         }
     container.addView(cardView)
@@ -161,15 +179,14 @@ internal fun ScreenHost.generateAiCoverImageDraft(
     story: Story,
     prompt: String,
 ) {
-    val model = repository.getAiSettings().imageModel
-    val hasPendingDraft = aiControlsScreenState.coverDrafts[story.id] != null
-    if (!hasPendingDraft) {
-        startAiCoverImageDraft(story, prompt)
+    if (prompt.isBlank()) {
+        toast("Enter an image description")
         return
     }
+    val model = repository.getAiSettings().imageModel
     val message =
         "Generate the image with $model? This calls OpenRouter and uses your API credits. " +
-            "The pending preview will be replaced."
+            "Earlier covers remain in Saved covers."
     confirm(message, confirmLabel = "Generate") { startAiCoverImageDraft(story, prompt) }
 }
 
@@ -181,20 +198,22 @@ internal fun ScreenHost.startAiCoverImageDraft(
         story,
         "Painting cover...",
         onAccepted = {
-            // Persist the field content with the job so the prompt survives a mid-paint process
-            // death. Persisting the prompt drops the disk preview, so drop its in-memory mirror too.
+            // The coordinator persists this prompt before calling the image model.
             aiControlsScreenState.coverPrompts[story.id] = prompt
             aiControlsScreenState.coverDrafts.remove(story.id)
-            scope.launch { repository.saveAiCoverPromptDraft(story.id, prompt) }
         },
     ) { coordinator -> coordinator.startImageDraft(story.id, prompt) }
 }
 
 internal fun ScreenHost.discardAiCoverPromptDraft(story: Story) {
-    aiControlsScreenState.coverPrompts.remove(story.id)
-    scope.launch { repository.deleteAiCoverDraft(story.id) }
-    toast("Prompt discarded")
-    showAiControls(story.id)
+    scope.launch {
+        coverUiAttempt {
+            repository.deleteAiCoverDraft(story.id)
+            aiControlsScreenState.coverPrompts.remove(story.id)
+            aiControlsScreenState.coverDrafts.remove(story.id)
+            if (frameIsAiControls(story.id)) showAiControls(story.id)
+        }
+    }
 }
 
 /**

@@ -29,13 +29,14 @@ sealed interface AiCoverDraftRecord {
  * (R09): replacing a draft can never pair new bytes with the previous generation's prompt or
  * media type. The replaced generation is deleted only after the meta commit.
  *
- * Drafts are deliberately excluded from backups — they are unbilled-choice previews, not library
- * content; applying or discarding deletes the files.
+ * Drafts and experiment history are local to this device and excluded from backups.
+ * Closing or applying a preview keeps its image and prompt in version history.
  */
 internal class AiCoverDraftStore(
     root: File,
     private val safeName: (String) -> String,
 ) {
+    val versions = AiCoverVersionStore(root, safeName)
     private val dir = File(root, "ai_cover_drafts")
     private val gson = com.google.gson.Gson()
 
@@ -44,9 +45,11 @@ internal class AiCoverDraftStore(
         storyId: String,
         prompt: String,
     ) {
-        // A fresh prompt invalidates any preview painted from the previous one.
-        referencedImage(storyId)?.delete()
+        (load(storyId) as? AiCoverDraftRecord.Image)?.let { versions.save(storyId, it.draft) }
+        // A fresh prompt starts a new experiment; the previous image remains in history.
+        val previous = referencedImage(storyId)
         writeMeta(storyId, AiCoverDraftMeta(prompt = prompt, mediaType = null, imageFile = null))
+        previous?.delete()
     }
 
     @Synchronized
@@ -54,6 +57,8 @@ internal class AiCoverDraftStore(
         storyId: String,
         draft: AiCoverDraft,
     ) {
+        (load(storyId) as? AiCoverDraftRecord.Image)?.let { versions.save(storyId, it.draft) }
+        versions.save(storyId, draft)
         // Generation-specific name: the bytes the current meta references are never overwritten
         // in place (R09).
         val imageFile = generationImageName(storyId, draft.mediaType)
@@ -74,11 +79,18 @@ internal class AiCoverDraftStore(
         return AiCoverDraftRecord.Image(AiCoverDraft(prompt = meta.prompt, bytes = bytes, mediaType = meta.mediaType))
     }
 
-    /** Removes the story's draft entirely; a no-op if there is none. */
+    /** Closes a working draft, retaining its image unless the novel itself is being deleted. */
     @Synchronized
-    fun delete(storyId: String) {
+    fun delete(
+        storyId: String,
+        keepHistory: Boolean = true,
+    ) {
+        if (keepHistory) {
+            (load(storyId) as? AiCoverDraftRecord.Image)?.let { versions.save(storyId, it.draft) }
+        }
         referencedImage(storyId)?.delete()
         metaFile(storyId).delete()
+        if (!keepHistory) versions.deleteAll(storyId)
     }
 
     /** The image the current meta references, with legacy-name discovery as fallback. */

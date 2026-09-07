@@ -71,6 +71,7 @@ internal fun ScreenHost.addAiCoverDraftCompareRow(
     container: LinearLayout,
     story: Story,
     draftBitmap: Bitmap?,
+    currentVersion: Boolean = false,
 ) {
     if (draftBitmap == null) return
     val row =
@@ -78,11 +79,11 @@ internal fun ScreenHost.addAiCoverDraftCompareRow(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-    row.addView(compareCoverThumb(app, activeCoverSource(story), "Current"))
+    if (!currentVersion) row.addView(compareCoverThumb(app, activeCoverSource(story), "Current"))
     row.addView(
-        compareCoverThumb(app, draftBitmap, "New"),
+        compareCoverThumb(app, draftBitmap, if (currentVersion) "Current cover" else "Selected"),
         LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            marginStart = app.dp(Space.LG)
+            marginStart = if (currentVersion) 0 else app.dp(Space.LG)
         },
     )
     container.addView(
