@@ -78,3 +78,4 @@ Provider architecture and the workflow for extending supported novel sites.
 | File | Description |
 |------|-------------|
 | `adding-a-source.md` | Stable source descriptors, URL matching, parsing/fetching hooks, registration, fixtures, compatibility rules, and validation checklist for a new provider. |
+| `ao3.md` | AO3 imports, chapter identity, metadata, access limits, and provider validation. |

@@ -115,6 +115,7 @@ object SourceRegistry {
             ScribbleHubProvider,
             SpaceBattlesProvider,
             FanFictionProvider,
+            Ao3Provider,
         )
 
     init {
