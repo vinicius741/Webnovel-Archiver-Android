@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import okhttp3.Headers
+import org.jsoup.Jsoup
 import java.io.IOException
 
 // IOException so it survives OkHttp's async boundary unwrapped: enqueue wraps non-IO throwables in
@@ -32,23 +33,24 @@ object SourceAccessBlockDetector {
     }
 
     /**
-     * Strong Cloudflare challenge HTML markers. These are structural interstitial fragments that
-     * effectively never appear in chapter prose. NOTE: the older "enable javascript and cookies to
-     * continue" phrase is deliberately omitted — it is plausible in story prose and a strong marker
-     * always accompanies it on a real interstitial, so it adds risk without aiding detection.
-     *
-     * The `cf_chl` marker is matched as `cf_chl_opt` — the interstitial's inline config object —
-     * because bare `cf_chl` also matches the `__cf_chl_rt_tk` query token. That token rides inside
-     * ordinary URLs (e.g. a description link to another Cloudflare-proxied site pasted by the
-     * author), and matching it turned a perfectly served fiction page into a source-wide block.
+     * Inspect interstitial structure, not words in chapter prose. Cloudflare also injects
+     * challenge-platform scripts into successfully served pages for JavaScript Detections;
+     * only challenge orchestration or the interstitial config identifies a blocking script.
      */
     fun isChallengeHtml(body: String): Boolean {
-        val lower = body.take(BODY_SCAN_LIMIT).lowercase()
-        return lower.contains("cf_chl_opt") ||
-            lower.contains("cf-mitigated") ||
-            lower.contains("challenge-platform") ||
-            lower.contains("<title>just a moment...</title>")
+        val document = Jsoup.parse(body.take(BODY_SCAN_LIMIT))
+        if (document.title().trim().equals("Just a moment...", ignoreCase = true)) return true
+        return document.select("script").any { script ->
+            val source = script.attr("src")
+            val code = script.data()
+            CHALLENGE_CONFIG.containsMatchIn(code) ||
+                CHALLENGE_ORCHESTRATION.containsMatchIn(source) ||
+                CHALLENGE_ORCHESTRATION.containsMatchIn(code)
+        }
     }
 
+    private val CHALLENGE_CONFIG = Regex("""\b(?:window\s*\.\s*)?_cf_chl_opt\s*=""", RegexOption.IGNORE_CASE)
+    private val CHALLENGE_ORCHESTRATION =
+        Regex("""/cdn-cgi/challenge-platform/[^\s'"<>]*/orchestrate/""", RegexOption.IGNORE_CASE)
     private const val BODY_SCAN_LIMIT = 12_000
 }

@@ -205,6 +205,10 @@ class CloudflareBypassInterceptor internal constructor(
             .build()
 
     private fun isChallengeResponse(response: Response): Boolean {
+        // The authoritative header needs no body read. Ordinary non-Cloudflare responses need
+        // no inspection either, especially binary bodies that may still be streaming.
+        if (response.header("cf-mitigated").equals("challenge", ignoreCase = true)) return true
+        if (!response.header("server").equals("cloudflare", ignoreCase = true)) return false
         val bodyString =
             runCatching { response.peekBody(BODY_PEEK_BYTES).string() }.getOrNull().orEmpty()
         return SourceAccessBlockDetector.isChallengeResponse(response.headers, bodyString)

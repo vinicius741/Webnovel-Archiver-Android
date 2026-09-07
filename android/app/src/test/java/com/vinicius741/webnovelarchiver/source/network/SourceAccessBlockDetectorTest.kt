@@ -112,6 +112,40 @@ class SourceAccessBlockDetectorTest {
     }
 
     @Test
+    fun passiveDetectionScriptsDoNotBlockReadablePages() {
+        listOf(
+            "<script src='/cdn-cgi/challenge-platform/scripts/jsd/api.js'></script>",
+            "<script src='/cdn-cgi/challenge-platform/h/g/jsd/r/example'></script>",
+            "<script>var s=document.createElement('script');" +
+                "s.src='/cdn-cgi/challenge-platform/h/g/jsd/r/example';</script>",
+            "<script src='https://challenges.cloudflare.com/turnstile/v0/api.js'></script>",
+        ).forEach { script ->
+            val html = "<html><head><title>Chapter one</title>$script</head><body>Chapter content</body></html>"
+            assertFalse(script, SourceAccessBlockDetector.isChallengeHtml(html))
+            assertFalse(script, SourceAccessBlockDetector.isChallengeResponse(headersOf("server", "cloudflare"), html))
+        }
+    }
+
+    @Test
+    fun documentationAndEscapedScriptsInProseAreNotChallenges() {
+        val html =
+            "<p>cf-mitigated: challenge, _cf_chl_opt = {}, challenge-platform</p>" +
+                "<pre>&lt;script&gt;window._cf_chl_opt = {};&lt;/script&gt;</pre>"
+        assertFalse(SourceAccessBlockDetector.isChallengeHtml(html))
+    }
+
+    @Test
+    fun inlineOrchestrationAndFormattedChallengeTitleRemainDetected() {
+        assertTrue(
+            SourceAccessBlockDetector.isChallengeHtml(
+                "<script>var s=document.createElement('script');" +
+                    "s.src='/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1';</script>",
+            ),
+        )
+        assertTrue(SourceAccessBlockDetector.isChallengeHtml("<title class='check'> Just a moment... </title>"))
+    }
+
+    @Test
     fun challengeRedirectTokenInsideContentUrlIsNotABlock() {
         // Regression: an author pasted a link to their fiction on another Cloudflare-proxied site,
         // and that link carried a __cf_chl_rt_tk query token. The bare cf_chl substring matched it

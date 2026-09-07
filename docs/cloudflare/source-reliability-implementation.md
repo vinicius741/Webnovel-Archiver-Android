@@ -24,6 +24,11 @@ one request stream instead of enforcing independent limits.
 
 OkHttp remains the inexpensive first transport. `cf-mitigated: challenge` is authoritative at any
 HTTP status; Cloudflare headers plus strong challenge DOM markers are the conservative fallback.
+Header-confirmed challenges do not wait for a body preview. The fallback checks script configuration,
+challenge orchestration paths, and the interstitial title. It ignores prose, escaped script examples,
+embedded Turnstile, and passive JavaScript Detection scripts on readable pages. A generic
+`challenge-platform` path is not a block signal: Cloudflare injects these paths into normal HTML too.
+See [Cloudflare JavaScript Detections](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/).
 
 After a detected challenge:
 

@@ -258,6 +258,32 @@ class CloudflareBypassInterceptorTest {
         assertEquals(0, server.requestCount)
     }
 
+    @Test
+    fun passiveDetectionReturnsOriginalPageWithoutOpeningSourceCircuit() {
+        val html =
+            "<html><head><script src='/cdn-cgi/challenge-platform/scripts/jsd/api.js'></script>" +
+                "</head><body>Readable chapter</body></html>"
+        server.enqueue(MockResponse().setHeader("server", "cloudflare").setBody(html))
+        val reliability = SourceReliabilityCoordinator()
+        val client =
+            OkHttpClient
+                .Builder()
+                .addInterceptor(
+                    CloudflareBypassInterceptor(
+                        CloudflarePageRenderer { error("A readable page must not start verification") },
+                        reliability,
+                    ),
+                ).build()
+
+        client.newCall(Request.Builder().url(server.url("/chapter")).build()).execute().use { response ->
+            assertEquals(html, response.body?.string())
+            assertNull(response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER))
+        }
+        assertFalse(reliability.browserTransportActive(server.hostName))
+        assertFalse(reliability.isManualVerificationRequired(server.hostName))
+        assertEquals(1, server.requestCount)
+    }
+
     private fun clientWithRenderer(render: (CloudflareWebViewRequest) -> CloudflareRenderOutcome): OkHttpClient =
         OkHttpClient
             .Builder()

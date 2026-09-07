@@ -130,6 +130,19 @@ class CloudflareRenderedPageValidatorTest {
         )
     }
 
+    @Test
+    fun acceptsReadableChapterWithPassiveCloudflareDetection() {
+        val request = request("https://www.scribblehub.com/read/story/chapter/123/")
+        assertTrue(
+            CloudflareRenderedPageValidator.isExpectedPage(
+                request,
+                request.url,
+                "<html><head><script src='/cdn-cgi/challenge-platform/scripts/jsd/api.js'></script></head>" +
+                    "<body><div id='chp_raw'>Readable chapter</div></body></html>",
+            ),
+        )
+    }
+
     private fun request(url: String) =
         CloudflareWebViewRequest(
             url = url,
