@@ -17,6 +17,10 @@ object LibraryTabSelection {
     /** Encodes a runtime selection into its persisted form ([DisplayPreferences.libraryTabId]). */
     fun encode(selectedTabId: String?): String = selectedTabId ?: ALL_TAB_ID
 
+    /** Key for per-tab in-memory state (scroll offsets). Unlike [encode], `null` (Unassigned) must
+     *  not collide with [ALL_TAB_ID]. */
+    fun memoryKey(tabId: String?): String = tabId ?: UNASSIGNED_TAB_ID
+
     /** Resolves a persisted id against the live tabs: blank/null and [ALL_TAB_ID] → [ALL_TAB_ID];
      *  an existing tab id → itself; a deleted tab id → [ALL_TAB_ID]; `"unassigned"` → `null` (only
      *  when unassigned stories exist, else [ALL_TAB_ID]). "unassigned" is never written today but
@@ -32,5 +36,5 @@ object LibraryTabSelection {
         return tabs.firstOrNull { it.id == stored }?.id ?: ALL_TAB_ID
     }
 
-    private const val UNASSIGNED_TAB_ID = "unassigned"
+    internal const val UNASSIGNED_TAB_ID = "unassigned"
 }

@@ -25,6 +25,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
+import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
@@ -36,6 +37,7 @@ import com.vinicius741.webnovelarchiver.navigation.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportState
+import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
@@ -80,6 +82,7 @@ class MainActivity :
     override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
     override val backupExportState: BackupExportState = BackupExportState()
     override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
+    override val libraryScreenState: LibraryScreenState = LibraryScreenState()
 
     // Lazy: seeded from cached DisplayPreferences after repository startup hydration.
     override val updateFollowSelectionState: UpdateFollowSelectionState by lazy {
@@ -323,6 +326,7 @@ class MainActivity :
         val scrollEntries = routeScrollPositions.entries.sortedBy { it.key }
         outState.putStringArrayList(STATE_SCROLL_KEYS, ArrayList(scrollEntries.map { it.key }))
         outState.putIntArray(STATE_SCROLL_VALUES, scrollEntries.map { it.value }.toIntArray())
+        LibraryScreenStatePersistence.save(libraryScreenState, outState)
         super.onSaveInstanceState(outState)
     }
 
@@ -330,6 +334,8 @@ class MainActivity :
 
     private fun restoreNavigationState(state: Bundle?): Boolean {
         state ?: return false
+        // Library view memory restores even when the route stack can't: the root Library screen uses it too.
+        LibraryScreenStatePersistence.restore(libraryScreenState, state)
         val stack = state.getStringArrayList(STATE_ROUTE_STACK) ?: return false
         if (!navigator.restore(stack)) return false
         if (navigator.current == AppRoute.Working) {

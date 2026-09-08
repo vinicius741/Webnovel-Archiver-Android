@@ -53,6 +53,8 @@ internal fun ScreenHost.makeLibraryFilters(
     sortAscending: Boolean,
     onSortChanged: (Pair<String, Boolean>) -> Unit,
     onTagToggled: (String) -> Unit,
+    expandedInitially: Boolean = false,
+    onExpandedChanged: (Boolean) -> Unit = {},
 ): LibraryFiltersView {
     val filtersContainer =
         LinearLayout(context).apply {
@@ -344,11 +346,13 @@ internal fun ScreenHost.makeLibraryFilters(
     }
     syncActiveFilters(selectedTags)
 
-    var expanded = false
-    filtersContainer.visibility = View.GONE
+    var expanded = expandedInitially
+    filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+    toggleIcon.rotation = if (expanded) 180f else 0f
     val toggleAction = {
         expanded = !expanded
         filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+        onExpandedChanged(expanded)
         toggleIcon
             .animate()
             .rotation(if (expanded) 180f else 0f)

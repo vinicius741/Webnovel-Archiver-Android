@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.library
 
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class LibraryTabSelectionTest {
@@ -54,5 +55,18 @@ class LibraryTabSelectionTest {
     fun encodeRoundTripsThroughResolve() {
         val encoded = LibraryTabSelection.encode("done")
         assertEquals("done", LibraryTabSelection.resolve(encoded, tabs, hasUnassignedStories = false))
+    }
+
+    @Test
+    fun memoryKeyNullDoesNotCollideWithAllTab() {
+        // Unlike encode(), per-tab memory keys must tell Unassigned apart from All.
+        assertNotEquals(LibraryTabSelection.ALL_TAB_ID, LibraryTabSelection.memoryKey(null))
+        assertNotEquals(LibraryTabSelection.memoryKey(null), LibraryTabSelection.memoryKey(LibraryTabSelection.ALL_TAB_ID))
+    }
+
+    @Test
+    fun memoryKeyRoundTripsAllAndRealTabIds() {
+        assertEquals(LibraryTabSelection.ALL_TAB_ID, LibraryTabSelection.memoryKey(LibraryTabSelection.ALL_TAB_ID))
+        assertEquals("reading", LibraryTabSelection.memoryKey("reading"))
     }
 }

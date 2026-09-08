@@ -146,6 +146,19 @@ class UpdateFollowSelectionState {
 }
 
 /**
+ * Library view memory so returning to the Library (back navigation, config re-render, process
+ * restore) reopens it where the user left it: the active search query, selected tag chips, and
+ * each tab's scroll offset (keyed by [com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection.memoryKey]).
+ * Tab choice and sort re-enter through DisplayPreferences and are not duplicated here.
+ */
+class LibraryScreenState {
+    var query: String = ""
+    var selectedTags: Set<String> = emptySet()
+    var filtersExpanded: Boolean = false
+    val tabScrollPositions: MutableMap<String, Int> = mutableMapOf()
+}
+
+/**
  * The contract between [MainActivity] and the screen/action extension functions split across
  * the `screens/`, `actions/`, and `ui/` files. Exposes only the shared dependencies and the
  * root view — everything else (navigation, business actions, the view DSL, shared helpers)
@@ -222,6 +235,9 @@ interface ScreenHost {
      * those choices survive the screen's in-place list re-renders.
      */
     val updateFollowSelectionState: UpdateFollowSelectionState
+
+    /** Library view memory (query/tags/per-tab scroll) surviving navigation; see [LibraryScreenState]. */
+    val libraryScreenState: LibraryScreenState
 
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by

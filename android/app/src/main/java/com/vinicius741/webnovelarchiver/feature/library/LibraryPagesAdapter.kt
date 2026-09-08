@@ -96,6 +96,11 @@ internal class LibraryPagesAdapter(
         val tabId = pageTabs[position]
         val snap = filterSnapshot
         host.renderTabGrid(stories, holder.grid, layout, snap.text, tabId, snap.tags, snap.sortOption, snap.sortAscending)
+        // Per-tab scroll memory: capture continuously from the bound page, then restore the saved
+        // offset once it lays out. A recycled far-away page rebound later also regains its position.
+        val scrollKey = LibraryTabSelection.memoryKey(tabId)
+        holder.scrollView.trackScrollInto(host.libraryScreenState.tabScrollPositions, scrollKey)
+        holder.scrollView.restoreScrollOnce(host.libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
     }
 
     /** Apply a new search/tag/sort snapshot to every page. Re-renders bound pages in place without
@@ -120,7 +125,7 @@ internal class LibraryPagesAdapter(
     }
 
     class PageViewHolder(
-        view: android.view.View,
+        val scrollView: ScrollView,
         val grid: GridLayout,
-    ) : RecyclerView.ViewHolder(view)
+    ) : RecyclerView.ViewHolder(scrollView)
 }

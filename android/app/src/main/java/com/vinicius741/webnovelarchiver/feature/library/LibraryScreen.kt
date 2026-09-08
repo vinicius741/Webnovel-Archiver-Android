@@ -2,10 +2,12 @@ package com.vinicius741.webnovelarchiver.feature.library
 
 import android.view.Gravity
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
@@ -51,7 +53,6 @@ internal fun ScreenHost.showLibrary() {
             ),
         fab = { showAddStory() },
     ) {
-        // Tabs stay visible when the library is empty; hiding them makes tab creation look ineffective.
         val hasUnassigned = stories.any { it.tabId == null }
         val initialSelectedTabId: String? =
             LibraryTabSelection.resolve(
@@ -60,38 +61,15 @@ internal fun ScreenHost.showLibrary() {
                 hasUnassigned,
             )
 
-        fun persistTab(id: String?) {
-            val encoded = LibraryTabSelection.encode(id)
-            // Transactional read-modify-write on the latest value (R28); a failed save is
-            // reported instead of silently dropped (R12).
-            runUiOperation("save library tab") {
-                repository.updateDisplayPreferences { latest ->
-                    if (latest.libraryTabId == encoded) latest else latest.copy(libraryTabId = encoded)
-                }
-            }
-        }
-
         if (stories.isEmpty()) {
-            val sourceNames = SourceRegistry.all().joinToString(", ") { it.name }
-            addView(
-                makeLibraryTabBar(context, tabs, stories, initialSelectedTabId) { newTabId ->
-                    persistTab(newTabId)
-                }.view,
-            )
-            addView(
-                makeEmptyState(
-                    context,
-                    message = "Import a story from $sourceNames to start building your library.",
-                    title = "Your library is empty",
-                    iconRes = R.drawable.wna_menu_book,
-                    actionLabel = "Add a story",
-                    onAction = { showAddStory() },
-                ),
-            )
+            renderEmptyLibrary(this, tabs, stories, initialSelectedTabId)
             return@screen
         }
 
         val search = makeSearchField(context, "Search stories")
+        // Re-seeded before the doAfterTextChanged registration below, so restoring fires no debounce;
+        // the chip builder reads search.text and narrows to the restored query on first build.
+        if (libraryScreenState.query.isNotEmpty()) search.setText(libraryScreenState.query)
 
         // Shared bar+pager tab ordering: Unassigned (null sentinel) first when present, then tabs, then All.
         val pageTabs: List<String?> =
@@ -105,28 +83,14 @@ internal fun ScreenHost.showLibrary() {
         var filterState =
             LibraryFilterState(
                 selectedTabId = initialSelectedTabId,
+                query = libraryScreenState.query,
+                selectedTags = libraryScreenState.selectedTags,
                 sortOption = persistedSort.librarySortOption.ifBlank { "lastUpdated" },
                 sortAscending = persistedSort.librarySortAscending,
             )
 
         // R22: keystroke debounce for the expensive per-page grid rebuild.
         var searchApplyGeneration = 0
-
-        fun persistSort(
-            option: String,
-            ascending: Boolean,
-        ) {
-            // Transactional read-modify-write on the latest value (R28) with a visible failure (R12).
-            runUiOperation("save library sort") {
-                repository.updateDisplayPreferences { latest ->
-                    if (latest.librarySortOption == option && latest.librarySortAscending == ascending) {
-                        latest
-                    } else {
-                        latest.copy(librarySortOption = option, librarySortAscending = ascending)
-                    }
-                }
-            }
-        }
 
         // One closure applies filters to whichever grid surface (shared grid or pager adapter) is showing.
         var applyFilters: () -> Unit = {}
@@ -145,16 +109,19 @@ internal fun ScreenHost.showLibrary() {
                 filterState.sortAscending,
                 { newSort ->
                     filterState = filterState.copy(sortOption = newSort.first, sortAscending = newSort.second)
-                    persistSort(filterState.sortOption, filterState.sortAscending)
+                    persistLibrarySort(filterState.sortOption, filterState.sortAscending)
                     applyFilters()
                 },
                 { tag ->
                     val nextTags = filterState.selectedTags.toMutableSet()
                     if (!nextTags.add(tag)) nextTags.remove(tag)
                     filterState = filterState.copy(selectedTags = nextTags)
+                    libraryScreenState.selectedTags = filterState.selectedTags
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
+                expandedInitially = libraryScreenState.filtersExpanded,
+                onExpandedChanged = { libraryScreenState.filtersExpanded = it },
             )
         // Chips follow the active tab: All = union, a specific tab = only its labels.
         refreshFilters = filters.rebuildChips
@@ -162,7 +129,7 @@ internal fun ScreenHost.showLibrary() {
         val tabBar =
             makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
                 filterState = filterState.copy(selectedTabId = newTabId)
-                persistTab(newTabId)
+                persistLibraryTab(newTabId)
                 refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                 applyFilters()
             }
@@ -171,6 +138,7 @@ internal fun ScreenHost.showLibrary() {
 
         search.doAfterTextChanged {
             filterState = filterState.copy(query = it?.toString().orEmpty())
+            libraryScreenState.query = filterState.query
             // Indicators and chip options track the live query too.
             filters.syncActiveFilters(filterState.selectedTags)
             refreshFilters(filterState.selectedTabId, filterState.selectedTags)
@@ -212,7 +180,7 @@ internal fun ScreenHost.showLibrary() {
                         val newTabId = pageTabs.getOrNull(position) ?: return
                         if (newTabId != filterState.selectedTabId) {
                             filterState = filterState.copy(selectedTabId = newTabId)
-                            persistTab(newTabId)
+                            persistLibraryTab(newTabId)
                             tabBar.selectVisual(newTabId)
                             refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                             applyFilters()
@@ -269,8 +237,12 @@ internal fun ScreenHost.showLibrary() {
                         ),
                     )
                 }
-            addView(scroll(gridShell), verticalFill().apply { topMargin = dp(Space.LG) })
+            val scrollKey = LibraryTabSelection.memoryKey(filterState.selectedTabId)
+            val scroller = scroll(gridShell)
+            scroller.trackScrollInto(libraryScreenState.tabScrollPositions, scrollKey)
+            addView(scroller, verticalFill().apply { topMargin = dp(Space.LG) })
             applyFilters()
+            scroller.restoreScrollOnce(libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
         }
     }
     refreshLibraryContent?.let { refresh ->
@@ -291,6 +263,58 @@ internal fun ScreenHost.showLibrary() {
 
 /** R22: pause between keystrokes before rebuilding every library page's grid. */
 private const val SEARCH_APPLY_DEBOUNCE_MS = 200L
+
+/** Persists the selected tab. Transactional read-modify-write on the latest value (R28); a failed
+ *  save is reported instead of silently dropped (R12). */
+private fun ScreenHost.persistLibraryTab(id: String?) {
+    val encoded = LibraryTabSelection.encode(id)
+    runUiOperation("save library tab") {
+        repository.updateDisplayPreferences { latest ->
+            if (latest.libraryTabId == encoded) latest else latest.copy(libraryTabId = encoded)
+        }
+    }
+}
+
+/** Persists the sort choice; same transactional discipline as [persistLibraryTab]. */
+private fun ScreenHost.persistLibrarySort(
+    option: String,
+    ascending: Boolean,
+) {
+    runUiOperation("save library sort") {
+        repository.updateDisplayPreferences { latest ->
+            if (latest.librarySortOption == option && latest.librarySortAscending == ascending) {
+                latest
+            } else {
+                latest.copy(librarySortOption = option, librarySortAscending = ascending)
+            }
+        }
+    }
+}
+
+/** Empty-library body. The tab bar stays visible; hiding it makes tab creation look ineffective. */
+private fun ScreenHost.renderEmptyLibrary(
+    container: LinearLayout,
+    tabs: List<Tab>,
+    stories: List<Story>,
+    initialSelectedTabId: String?,
+) {
+    val sourceNames = SourceRegistry.all().joinToString(", ") { it.name }
+    container.addView(
+        makeLibraryTabBar(container.context, tabs, stories, initialSelectedTabId) { newTabId ->
+            persistLibraryTab(newTabId)
+        }.view,
+    )
+    container.addView(
+        makeEmptyState(
+            container.context,
+            message = "Import a story from $sourceNames to start building your library.",
+            title = "Your library is empty",
+            iconRes = R.drawable.wna_menu_book,
+            actionLabel = "Add a story",
+            onAction = { showAddStory() },
+        ),
+    )
+}
 
 /** Applies the filter snapshot after the debounce pause unless a newer keystroke superseded it. */
 private fun debounceLibraryFilterApply(
