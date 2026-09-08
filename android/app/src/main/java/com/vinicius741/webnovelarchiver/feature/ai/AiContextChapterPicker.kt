@@ -10,7 +10,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.widget.doAfterTextChanged
+import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
+import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -29,27 +31,24 @@ import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-/*
- * Context-chapter selection for the AI Controls screen. Generation sends the first downloaded
- * chapters by default (AiDescriptionPlanning.selectContextChapters); this row lets the user pick
- * exactly which downloaded chapters are sent instead. The selection persists per story on
- * Story.aiContextChapterIndices, so it also reaches the process-wide cover-job coordinator.
- */
+// Independent persisted chapter selectors for descriptions and covers.
 
 /** Context-chapter selector row: which downloaded chapters are sent to OpenRouter. */
 internal fun ScreenHost.addAiContextChaptersRow(
     container: LinearLayout,
     story: Story,
+    forCover: Boolean = false,
 ) {
     var valueView: TextView? = null
     val (selectorView, textVal) =
         container.context.makeSelectorField(
             iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_menu_book,
-            label = "Chapters sent to AI",
-            value = AiDescriptionPlanning.contextChaptersLabel(story),
+            label = if (forCover) "Cover context chapters" else "Description context chapters",
+            value = if (forCover) AiCoverContextPlanning.contextChaptersLabel(story) else AiDescriptionPlanning.contextChaptersLabel(story),
         ) {
-            showAiContextChapterDialog(story) { saved ->
-                valueView?.text = AiDescriptionPlanning.contextChaptersLabel(saved)
+            showAiContextChapterDialog(story, forCover) { saved ->
+                valueView?.text =
+                    if (forCover) AiCoverContextPlanning.contextChaptersLabel(saved) else AiDescriptionPlanning.contextChaptersLabel(saved)
                 // Re-render so the captured story (and this dialog's next open) sees the
                 // saved selection instead of the pre-save snapshot.
                 if (frameIsAiControls(story.id)) showAiControls(story.id)
@@ -64,16 +63,15 @@ internal fun ScreenHost.addAiContextChaptersRow(
 /** Multi-select dialog over the story's downloaded chapters, with a Reset-to-default action. */
 private fun ScreenHost.showAiContextChapterDialog(
     story: Story,
+    forCover: Boolean,
     onChanged: (Story) -> Unit,
 ) {
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
     val downloaded = story.chapters.withIndex().filter { it.value.downloaded }
-    val defaults = AiDescriptionPlanning.selectContextChapters(story).toSet()
-    val saved = story.aiContextChapterIndices?.toSet()
-    // With no explicit selection the dialog opens pre-checked with the default chapters, so
-    // saving unchanged keeps the default (persisted as null) rather than freezing it explicitly.
-    val checked = (saved ?: defaults).toMutableSet()
+    val config = contextPickerConfig(story, forCover)
+    val defaults = config.defaults
+    val checked = config.checked
 
     val dialogView =
         LinearLayout(app).apply {
@@ -84,7 +82,12 @@ private fun ScreenHost.showAiContextChapterDialog(
         }
     dialogView.addView(makeText(app, "Chapters sent to AI", Type.TITLE_LARGE, colors.onSurface))
     dialogView.addView(
-        makeText(app, "Only downloaded chapters can be sent.", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+        makeText(
+            app,
+            config.hint,
+            Type.BODY_SMALL,
+            colors.onSurfaceVariant,
+        ).apply {
             setPadding(0, app.dp(Space.XS), 0, app.dp(Space.MD))
         },
     )
@@ -113,7 +116,7 @@ private fun ScreenHost.showAiContextChapterDialog(
         val query = search.text.toString().trim()
         val filtered =
             downloaded.filter { (index, chapter) ->
-                query.isEmpty() || "chapter ${index + 1} ${chapter.title}".contains(query, ignoreCase = true)
+                matchesChapterQuery(index, chapter.title, query)
             }
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "chapter" else "chapters"}"
         list.removeAllViews()
@@ -177,7 +180,7 @@ private fun ScreenHost.showAiContextChapterDialog(
 
     fun applySelection(indices: List<Int>?) {
         scope.launch {
-            val saved = repository.setAiContextChapters(story.id, indices)
+            val saved = config.save(indices)
             if (saved != null) {
                 toast("Chapters sent to AI updated")
                 onChanged(saved)
@@ -191,7 +194,7 @@ private fun ScreenHost.showAiContextChapterDialog(
             orientation = LinearLayout.VERTICAL
             setPadding(0, app.dp(Space.MD), 0, 0)
             addView(
-                makeButton(app, "Reset to default (first downloaded)", Btn.TEXT, 0) {
+                makeButton(app, config.resetLabel, Btn.TEXT, 0) {
                     applySelection(null)
                 }.apply { gravity = Gravity.CENTER_VERTICAL or Gravity.START },
             )
@@ -224,3 +227,40 @@ private fun ScreenHost.showAiContextChapterDialog(
 
 // Render cap for the dialog list; scrolling hundreds of rows on a phone dialog gets sluggish.
 private const val MAX_RENDERED_CHAPTERS = 80
+
+private data class ContextPickerConfig(
+    val defaults: Set<Int>,
+    val checked: MutableSet<Int>,
+    val hint: String,
+    val resetLabel: String,
+    val save: suspend (List<Int>?) -> Story?,
+)
+
+private fun ScreenHost.contextPickerConfig(
+    story: Story,
+    forCover: Boolean,
+): ContextPickerConfig {
+    val defaults = if (forCover) AiCoverContextPlanning.selectContextChapters(story) else AiDescriptionPlanning.selectContextChapters(story)
+    val saved = if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices
+    return ContextPickerConfig(
+        defaults = defaults.toSet(),
+        checked = (saved ?: defaults).toMutableSet(),
+        hint =
+            if (forCover) {
+                "Samples across downloaded chapters, regardless of reading progress. " +
+                    "Limited downloads may only describe the introduction."
+            } else {
+                "Only downloaded chapters can be sent."
+            },
+        resetLabel = if (forCover) "Reset to automatic sampling" else "Reset to default (first downloaded)",
+        save = { indices ->
+            if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
+        },
+    )
+}
+
+private fun matchesChapterQuery(
+    index: Int,
+    title: String,
+    query: String,
+): Boolean = query.isEmpty() || "chapter ${index + 1} $title".contains(query, ignoreCase = true)

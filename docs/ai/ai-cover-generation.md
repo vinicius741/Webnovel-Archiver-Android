@@ -24,8 +24,12 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
 - **Two billable stages** (both on the user's key):
   1. The **description model** (the same model chosen for synopses) writes an image-generation
      prompt from the novel's material: title, author, tags, the currently displayed description
-     (AI synopsis when active, else source), and the same capped earliest-5-downloaded-chapters
-     context the description flow uses.
+     (AI synopsis when active, else source), and up to nine chapters spread evenly across all downloaded chapters.
+     Cover context has its own saved selector, independent of synopsis context and reading progress.
+     Existing shared selections remain description-only; covers start with automatic sampling.
+     The prompt identifies a supported established story phase and keeps age, equipment, action,
+     and setting consistent within it, without automatically favoring the opening or finale.
+     Sparse downloads cannot establish unseen developments; the selector explains that limitation.
   2. The **image model** paints the prompt via `POST /api/v1/images` with `aspect_ratio 2:3`
      (matches the app's 80×120dp / 150×225dp cover cards), `resolution 1K`, `quality medium`.
      Optional parameters are sent only when the selected model lists them in its catalog
@@ -89,8 +93,8 @@ time and size so applying another version refreshes the visible cover even when 
   outside the repository transaction lock. Gallery and cover-action storage failures show a retry
   message instead of escaping into the activity. Legacy pending previews are preserved before starting another experiment. Deleting the story
   removes both its draft and version history.
-- Cost controls: the text call reuses the description context budgets (5 chapters, 12k chars each,
-  60k total, `max_tokens 1600`, low reasoning); the image call requests one 1K image. Generating over an applied cover
+- Cost controls: the text call shares a 60k-character budget equally across selected chapters, capped at 12k each
+  (up to nine automatic samples, `max_tokens 1600`, low reasoning); the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
   generating from an edited prompt; the shared `storyOperation` guard
   (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited

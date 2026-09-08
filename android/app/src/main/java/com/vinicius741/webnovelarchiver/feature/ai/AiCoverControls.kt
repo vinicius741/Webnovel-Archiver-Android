@@ -73,6 +73,8 @@ internal fun ScreenHost.addAiCoverCard(
             }
             if (canGenerate) {
                 spacer(Space.SM)
+                addAiContextChaptersRow(this, story, forCover = true)
+                spacer(Space.SM)
                 addAiCoverModeRow(this, story, oneStep)
                 spacer(Space.SM)
                 fullButton(

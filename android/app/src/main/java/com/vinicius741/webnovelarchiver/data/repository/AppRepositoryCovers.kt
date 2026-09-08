@@ -103,3 +103,12 @@ internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDra
 internal suspend fun AppRepository.deleteAiCoverDraft(storyId: String) {
     withContext(Dispatchers.IO) { storage.aiCoverDrafts.delete(storyId) }
 }
+
+/** Stores cover context independently from the description selection. */
+internal suspend fun AppRepository.setAiCoverContextChapters(
+    storyId: String,
+    indices: List<Int>?,
+): Story? =
+    updateStory(storyId) { latest ->
+        latest?.copy(aiCoverContextChapterIndices = indices?.distinct()?.sorted()?.toMutableList())
+    }

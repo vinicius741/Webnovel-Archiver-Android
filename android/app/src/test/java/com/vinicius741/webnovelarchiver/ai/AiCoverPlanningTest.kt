@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.ai
 
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,6 +9,52 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiCoverPlanningTest {
+    private fun storyWithChapters(count: Int): Story =
+        Story(
+            id = "sampling",
+            title = "Story",
+            chapters = (0 until count).map { Chapter(id = "c$it", title = "Chapter $it", downloaded = true) }.toMutableList(),
+        )
+
+    @Test
+    fun `automatic cover sampling spans the story independently of description selection`() {
+        val story = storyWithChapters(101).copy(aiContextChapterIndices = mutableListOf(0, 1))
+        assertEquals(listOf(0, 12, 25, 37, 50, 62, 75, 87, 100), AiCoverContextPlanning.resolveContextChapters(story))
+        assertEquals(listOf(0, 1), AiDescriptionPlanning.resolveContextChapters(story, story.aiContextChapterIndices))
+    }
+
+    @Test
+    fun `short and sparse libraries only sample downloaded chapters`() {
+        assertEquals(emptyList<Int>(), AiCoverContextPlanning.resolveContextChapters(storyWithChapters(0)))
+        assertEquals(listOf(0), AiCoverContextPlanning.resolveContextChapters(storyWithChapters(1)))
+        val story = storyWithChapters(101)
+        story.chapters.forEachIndexed { index, chapter -> chapter.downloaded = index % 10 == 0 }
+        val selected = AiCoverContextPlanning.resolveContextChapters(story)
+        assertEquals(9, selected.size)
+        assertEquals(0, selected.first())
+        assertEquals(100, selected.last())
+        assertTrue(selected.all { it % 10 == 0 })
+    }
+
+    @Test
+    fun `explicit cover selection ignores invalid entries and never falls back when stale`() {
+        val story = storyWithChapters(20).copy(aiCoverContextChapterIndices = mutableListOf(19, -1, 4, 4, 100))
+        assertEquals(listOf(4, 19), AiCoverContextPlanning.resolveContextChapters(story))
+        assertEquals(
+            emptyList<Int>(),
+            AiCoverContextPlanning.resolveContextChapters(story.copy(aiCoverContextChapterIndices = mutableListOf(100))),
+        )
+    }
+
+    @Test
+    fun `context budget preserves later excerpts even with many long manual selections`() {
+        val chapters = (1..30).map { AiDescriptionPlanning.ChapterText(it, "Chapter $it", "x".repeat(12000)) }
+        val balanced = AiCoverContextPlanning.balanceContext(chapters)
+        assertEquals((1..30).toList(), balanced.map { it.number })
+        assertTrue(balanced.sumOf { it.text.length } <= 60000)
+        assertTrue(balanced.all { it.text.isNotEmpty() && it.text.length <= 2000 })
+    }
+
     @Test
     fun `buildPromptMessages sends metadata description and chapters`() {
         val story =

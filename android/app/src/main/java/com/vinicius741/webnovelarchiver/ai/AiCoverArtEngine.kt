@@ -55,10 +55,10 @@ class AiCoverArtEngine(
     ): String {
         val context = coverContext(storyId)
         val contextIndices =
-            AiDescriptionPlanning.resolveContextChapters(context.story, context.story.aiContextChapterIndices)
+            AiCoverContextPlanning.resolveContextChapters(context.story)
         if (contextIndices.isEmpty()) {
             error(
-                if (context.story.aiContextChapterIndices != null) {
+                if (!context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
                     "The selected chapters are no longer downloaded — pick chapters again in AI Controls"
                 } else {
                     "Download at least one chapter before generating an AI cover"

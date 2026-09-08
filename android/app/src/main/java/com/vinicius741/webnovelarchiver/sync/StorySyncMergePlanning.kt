@@ -106,6 +106,7 @@ object StorySyncMergePlanning {
             aiCoverPath = onDisk.aiCoverPath,
             showAiCover = onDisk.showAiCover,
             aiContextChapterIndices = onDisk.aiContextChapterIndices,
+            aiCoverContextChapterIndices = onDisk.aiCoverContextChapterIndices,
             chapterRewriteStrength = onDisk.chapterRewriteStrength,
             // A chapter downloaded during the window leaves the pending set; drop it here so the
             // committed story's pending list matches its own merged chapter state.

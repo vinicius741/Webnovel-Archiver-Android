@@ -147,6 +147,24 @@ class StorySyncMergePlanningTest {
     }
 
     @Test
+    fun foldPreservesIndependentCoverSelectionAndResetDuringSync() {
+        val stale =
+            syncedStory(chapters = listOf(chapter("10")))
+                .copy(aiCoverContextChapterIndices = mutableListOf(0))
+        val current = stale.copy(aiContextChapterIndices = mutableListOf(0), aiCoverContextChapterIndices = mutableListOf(2, 4))
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(stale, current, RoyalRoadProvider)
+        assertEquals(listOf(2, 4), folded.aiCoverContextChapterIndices)
+        assertEquals(listOf(0), folded.aiContextChapterIndices)
+        val reset =
+            StorySyncMergePlanning.foldConcurrentChanges(
+                stale,
+                current.copy(aiCoverContextChapterIndices = null),
+                RoyalRoadProvider,
+            )
+        assertNull(reset.aiCoverContextChapterIndices)
+    }
+
+    @Test
     fun foldKeepsAiContextChaptersCarriedByTheSyncedStory() {
         // StorySyncEngine carries the local context-chapter selection onto the fresh synced Story;
         // the on-disk record carries the same selection when nothing changed locally.

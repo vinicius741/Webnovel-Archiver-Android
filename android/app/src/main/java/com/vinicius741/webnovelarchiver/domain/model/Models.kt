@@ -176,6 +176,8 @@ data class Story(
      * never breaks generation. Not saveable empty: the picker requires one chapter; empty = null.
      */
     var aiContextChapterIndices: MutableList<Int>? = null,
+    /** Cover-only chapter selection. Null samples across all downloaded chapters, regardless of reading progress. */
+    var aiCoverContextChapterIndices: MutableList<Int>? = null,
     /**
      * Per-novel Chapter polish edit strength ("light" | "balanced"; null = light, the product
      * default after the blind ballot favored least-intervention rewrites). Local-only like the

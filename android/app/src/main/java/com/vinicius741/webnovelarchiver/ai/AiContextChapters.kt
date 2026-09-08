@@ -7,8 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 /**
  * Reads a story's context chapters — the first downloaded ones [AiDescriptionPlanning] selects,
  * or the story's explicit per-story selection when one exists — into capped plain text for AI
- * prompts. Shared by the description and cover engines so every AI
- * feature bases its output on identical context. Chapters whose files are missing and that carry
+ * prompts. Shared text reader for independently selected description and cover context. Chapters whose files are missing and that carry
  * no in-memory content are dropped; an empty result means nothing readable was available.
  */
 internal object AiContextChapters {
