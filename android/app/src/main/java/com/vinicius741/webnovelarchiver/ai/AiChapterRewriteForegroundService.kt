@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.ai
 
 import android.Manifest
 import android.app.Notification
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -10,15 +9,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
-import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.AiChapterRewriteJobEvent
 import com.vinicius741.webnovelarchiver.app.AiChapterRewriteJobState
-import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -157,24 +153,7 @@ class AiChapterRewriteForegroundService : Service() {
                 is AiChapterRewriteJobEvent.Failed -> "Chapter polish failed" to event.message
             }
         val text = storyTitle?.let { "$it — $body" } ?: body
-        val openIntent =
-            PendingIntent.getActivity(
-                this,
-                3,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-        val notification =
-            NotificationCompat
-                .Builder(this, AppNotificationCategory.AI_GENERATION.channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                .setContentIntent(openIntent)
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .build()
+        val notification = aiJobNotification(title, text, requestCode = 3, ongoing = false)
         runCatching {
             NotificationManagerCompat.from(this).notify(OUTCOME_NOTIFICATION_ID, notification)
         }.onFailure { Timber.w(it, "Could not post chapter rewrite outcome notification") }
@@ -185,24 +164,7 @@ class AiChapterRewriteForegroundService : Service() {
         queuedCount: Int,
     ): Notification {
         val text = if (queuedCount > 0) "$message · $queuedCount queued" else message
-        val openIntent =
-            PendingIntent.getActivity(
-                this,
-                4,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
-        return NotificationCompat
-            .Builder(this, AppNotificationCategory.AI_GENERATION.channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(getString(R.string.ai_chapter_rewrite_notif_active))
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(openIntent)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setProgress(0, 0, true)
-            .build()
+        return aiJobNotification(getString(R.string.ai_chapter_rewrite_notif_active), text, requestCode = 4, ongoing = true)
     }
 
     companion object {
