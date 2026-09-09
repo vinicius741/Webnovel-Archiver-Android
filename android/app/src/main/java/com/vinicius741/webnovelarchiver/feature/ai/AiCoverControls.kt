@@ -11,7 +11,6 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.setAiCover
-import com.vinicius741.webnovelarchiver.data.repository.setShowAiCover
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
@@ -69,13 +68,9 @@ internal fun ScreenHost.addAiCoverCard(
             }
             if (hasAiCover && hasSourceCover && story.isArchived != true) {
                 spacer(Space.SM)
-                addAiCoverDisplayToggleRow(this, story)
+                addAiCoverDisplaySelector(this, story)
             }
             if (canGenerate) {
-                spacer(Space.SM)
-                addAiContextChaptersRow(this, story, forCover = true)
-                spacer(Space.SM)
-                addAiCoverModeRow(this, story, oneStep)
                 spacer(Space.SM)
                 fullButton(
                     label =
@@ -91,14 +86,6 @@ internal fun ScreenHost.addAiCoverCard(
                     enabled = generating == null && !isBusy,
                     bottomMarginDp = if (hasAiCover) Space.MD else 0,
                 ) { generateAiCoverDraft(story) }
-                if (hasAiCover && hasSourceCover) {
-                    fullButton(
-                        label = "Use source cover",
-                        variant = Btn.TEXT,
-                        enabled = generating == null && !isBusy,
-                        bottomMarginDp = 0,
-                    ) { revertAiCover(story) }
-                }
             } else {
                 text(
                     if (story.isArchived == true) {
@@ -111,41 +98,17 @@ internal fun ScreenHost.addAiCoverCard(
                 ).apply { setPadding(0, dp(Space.SM), 0, 0) }
             }
             if (canGenerate) {
-                fullButton("Write your own prompt", Btn.TEXT) { editAiCoverPrompt(story, "") }
+                addAiCoverGenerationOptions(this, story, oneStep)
             }
             addAiCoverVersions(this, story)
         }
     container.addView(cardView)
 }
 
-private fun ScreenHost.addAiCoverDisplayToggleRow(
-    container: LinearLayout,
-    story: Story,
-) {
-    var toggle: CheckBox? = null
-    container.row {
-        addView(
-            makeText(context, "Show AI cover", Type.BODY_MEDIUM, ThemeManager.colors.onSurface),
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-        )
-        val checkBox =
-            CheckBox(context).apply {
-                text = ""
-                isChecked = story.showAiCover
-            }
-        styledCheckBox(checkBox)
-        addView(checkBox)
-        toggle = checkBox
-    }
-    toggle!!.setOnCheckedChangeListener { _, checked ->
-        scope.launch { repository.setShowAiCover(story.id, checked) }
-    }
-}
-
 /** "Generate prompt + image in one step" preference; persists into AiSettings.coverOneStep and
  *  re-renders so the button/hint follow the new mode. Unchecked = staged generation (prompt
  *  editor in AiCoverGeneration.kt). */
-private fun ScreenHost.addAiCoverModeRow(
+internal fun ScreenHost.addAiCoverModeRow(
     container: LinearLayout,
     story: Story,
     oneStep: Boolean,
@@ -331,17 +294,6 @@ internal fun ScreenHost.discardAiCoverDraft(story: Story) {
             aiControlsScreenState.coverDrafts.remove(story.id)
             aiControlsScreenState.coverPrompts.remove(story.id)
             toast("Cover kept in saved covers")
-            if (frameIsAiControls(story.id)) showAiControls(story.id)
-        }
-    }
-}
-
-/** Selects the source cover while retaining every generated version. */
-internal fun ScreenHost.revertAiCover(story: Story) {
-    scope.launch {
-        coverUiAttempt {
-            repository.setShowAiCover(story.id, false)
-            toast("Source cover selected")
             if (frameIsAiControls(story.id)) showAiControls(story.id)
         }
     }
