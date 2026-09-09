@@ -105,6 +105,7 @@ internal fun makeStoryOperationProgress(
     context: Context,
     operation: StoryOperationState,
     indeterminate: Boolean,
+    onMessageView: (android.widget.TextView) -> Unit = {},
 ): LinearLayout =
     LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
@@ -136,6 +137,7 @@ internal fun makeStoryOperationProgress(
         addView(
             makeText(context, operation.message, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
                 gravity = Gravity.CENTER
+                onMessageView(this)
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
             },

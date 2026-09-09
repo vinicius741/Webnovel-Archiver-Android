@@ -7,7 +7,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.feature.details.makeStoryOperationSlot
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -45,29 +44,26 @@ internal fun ScreenHost.showAiControls(storyId: String) {
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {
+        val binding = AiControlsBinding(story.id, this, storyOperation?.takeIf { it.storyId == story.id }?.kind)
+        aiControlsScreenState.binding = binding
         section("Models")
         addAiModelsCard(this, story)
 
         section("Cover Art")
         addAiCoverCard(this, story, generatingCover)
-        if (generatingCover != null) addView(makeStoryOperationSlot(app, generatingCover))
+        generatingCover?.let { binding.addProgress(it) }
         aiControlsScreenState.coverPrompts[story.id]?.let { prompt -> addAiCoverPromptDraftCard(this, story, prompt) }
         aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
 
         section("Chapter Polish")
         addAiChapterPolishCard(this, story)
         aiChapterRewriteOperationFor(story.id)?.let { rewriteJob ->
-            addView(
-                makeStoryOperationSlot(
-                    app,
-                    StoryOperationState(story.id, StoryOperationKind.AI_CHAPTER_REWRITE, rewriteJob.message),
-                ),
-            )
+            binding.addProgress(StoryOperationState(story.id, StoryOperationKind.AI_CHAPTER_REWRITE, rewriteJob.message))
         }
 
         section("Description")
         addAiDescriptionCard(this, story, generating)
-        if (generating != null) addView(makeStoryOperationSlot(app, generating))
+        generating?.let { binding.addProgress(it) }
         aiControlsScreenState.drafts[story.id]?.let { draft -> addAiDraftPreviewCard(this, story, draft) }
     }
     rerender = { showAiControls(storyId) }
@@ -258,7 +254,7 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
 }
 
 /** Patches progress in place; setStoryOperation's first tick would rebuild Details and pull the user off this screen. */
-private fun ScreenHost.patchAiDraftProgress(
+internal fun ScreenHost.patchAiDraftProgress(
     storyId: String,
     message: String,
 ) {
@@ -266,7 +262,7 @@ private fun ScreenHost.patchAiDraftProgress(
     val next = operation.copy(message = message)
     storyOperation = next
     detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
-    if (frameIsAiControls(storyId)) showAiControls(storyId)
+    updateAiControlsProgress(next)
 }
 
 internal fun ScreenHost.applyAiDescriptionDraft(

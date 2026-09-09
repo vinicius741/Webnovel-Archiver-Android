@@ -50,6 +50,7 @@ internal fun ScreenHost.screen(
     onSubtitleClick: (() -> Unit)? = null,
     block: LinearLayout.() -> Unit,
 ) {
+    aiControlsScreenState.binding = null
     screenObserver?.cancel()
     screenObserver = null
     // The reader's TTS collector (highlight/auto-follow) must die with the reader screen: its

@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.showChapterRewritePreview
+import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
@@ -34,7 +35,7 @@ internal fun MainActivity.attachAiChapterRewriteJobBridge() {
                     storyOperation = next
                     if (renderedMessage != job.message) {
                         detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
-                        if (frameIsAiControls(job.storyId)) showAiControls(job.storyId)
+                        updateAiControlsProgress(next)
                     }
                     renderedMessage = job.message
                 }

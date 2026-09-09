@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
+import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
@@ -48,7 +49,7 @@ internal fun MainActivity.attachAiCoverJobBridge() {
                     storyOperation = next
                     if (promptChanged || renderedMessages[job.storyId] != job.message) {
                         detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
-                        if (frameIsAiControls(job.storyId)) showAiControls(job.storyId)
+                        updateAiControlsProgress(next, structuralChange = promptChanged)
                     }
                 }
             } else {

@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.navigation
 
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
+import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

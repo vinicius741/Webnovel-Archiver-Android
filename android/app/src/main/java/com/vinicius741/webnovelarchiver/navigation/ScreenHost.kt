@@ -5,12 +5,12 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AppCompatActivity
-import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
+import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
@@ -101,29 +101,6 @@ class BackupExportState {
             progressMessage = null
             progressSlot = null
         }
-    }
-}
-
-/**
- * Transient UI state for the AI Controls screen. Holds the pending (generated but not yet applied)
- * synopsis drafts keyed by story id, so a preview survives navigating back to Details and returning
- * to the screen while the user decides. Cleared on Apply/Discard; deliberately not persisted — an
- * unapplied draft is process-transient. Cover-art drafts get their own map of image bytes, and
- * staged cover generation adds an editable prompt draft between the two billable calls.
- */
-class AiControlsScreenState {
-    val drafts: MutableMap<String, String> = linkedMapOf()
-    val coverDrafts: MutableMap<String, AiCoverDraft> = linkedMapOf()
-    val coverPrompts: MutableMap<String, String> = linkedMapOf()
-
-    /** Replaces a painted preview after the one-step flow has persisted its newer prompt. */
-    internal fun replaceCoverPreviewWithPrompt(
-        storyId: String,
-        prompt: String,
-    ): Boolean {
-        val removedPreview = coverDrafts.remove(storyId) != null
-        val changedPrompt = coverPrompts.put(storyId, prompt) != prompt
-        return removedPreview || changedPrompt
     }
 }
 

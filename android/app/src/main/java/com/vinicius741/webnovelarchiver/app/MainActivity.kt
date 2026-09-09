@@ -21,6 +21,7 @@ import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
+import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
@@ -33,7 +34,6 @@ import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
-import com.vinicius741.webnovelarchiver.navigation.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportState
@@ -305,6 +305,7 @@ class MainActivity :
     }
 
     override fun onDestroy() {
+        aiControlsScreenState.binding = null
         screenObserver?.cancel()
         // Destroy lingering reader WebViews so they can't leak the activity reference.
         com.vinicius741.webnovelarchiver.platform.WebViewSafety
