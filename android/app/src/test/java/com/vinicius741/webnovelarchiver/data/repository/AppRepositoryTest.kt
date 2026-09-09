@@ -17,6 +17,29 @@ import java.util.concurrent.TimeUnit
 
 class AppRepositoryTest {
     @Test
+    fun chapterSelectionsAreIsolatedOnInputAndEveryPublishedSnapshot() =
+        runTest {
+            val input = story().copy(aiContextChapterIndices = mutableListOf(0), aiCoverContextChapterIndices = mutableListOf(1))
+            val store = FakeRepositoryStoryStore(input)
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            repository.upsertStory(input)
+            input.aiContextChapterIndices!!.clear()
+            input.aiCoverContextChapterIndices!!.clear()
+            val old = repository.story(input.id)!!
+            old.aiContextChapterIndices!!.add(3)
+            repository
+                .library()
+                .single()
+                .aiCoverContextChapterIndices!!
+                .clear()
+            assertEquals(listOf(0), repository.story(input.id)!!.aiContextChapterIndices)
+            assertEquals(listOf(1), repository.story(input.id)!!.aiCoverContextChapterIndices)
+            repository.updateStory(input.id) { it!!.copy(sourceSyncState = it.sourceSyncState.copy(lastCheckedAt = 200)) }
+            assertNull(old.sourceSyncState.lastCheckedAt)
+            assertEquals(200L, repository.story(input.id)!!.sourceSyncState.lastCheckedAt)
+        }
+
+    @Test
     fun singleStoryMutationPublishesDetachedSnapshotWithoutReadingWholeLibrary() =
         runTest {
             val store = FakeRepositoryStoryStore(story())

@@ -56,7 +56,7 @@ object StoryNormalization {
             story.sourceSyncState = SourceSyncState()
             changed = true
         } else if (story.sourceSyncState.availability == null) {
-            story.sourceSyncState.availability = SourceAvailability.available
+            story.sourceSyncState = story.sourceSyncState.copy(availability = SourceAvailability.available)
             changed = true
         }
         if (story.sourceMetadata == null) {

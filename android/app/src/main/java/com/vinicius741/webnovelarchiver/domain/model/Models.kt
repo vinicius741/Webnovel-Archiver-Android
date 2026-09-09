@@ -49,12 +49,12 @@ enum class SourceFailureKind {
  * without hiding an otherwise available story.
  */
 data class SourceSyncState(
-    var availability: SourceAvailability = SourceAvailability.available,
-    var lastCheckedAt: Long? = null,
-    var unavailableSince: Long? = null,
-    var consecutiveNotFoundCount: Int = 0,
-    var lastFailure: SourceFailureKind? = null,
-    var lastHttpStatus: Int? = null,
+    val availability: SourceAvailability = SourceAvailability.available,
+    val lastCheckedAt: Long? = null,
+    val unavailableSince: Long? = null,
+    val consecutiveNotFoundCount: Int = 0,
+    val lastFailure: SourceFailureKind? = null,
+    val lastHttpStatus: Int? = null,
 )
 
 /**

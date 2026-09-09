@@ -152,13 +152,12 @@ internal object StoryMutations {
             epubPaths = story.epubPaths?.toMutableList(),
             pendingNewChapterIds = story.pendingNewChapterIds?.toMutableList(),
             tags = story.tags?.toMutableList(),
-            sourceSyncState = story.sourceSyncState.copy(),
+            aiContextChapterIndices = story.aiContextChapterIndices?.toMutableList(),
+            aiCoverContextChapterIndices = story.aiCoverContextChapterIndices?.toMutableList(),
+            patreonStats = story.patreonStats?.let { it.copy(tiers = it.tiers?.toList()) },
             sourceMetadata =
                 story.sourceMetadata.copy(
-                    metrics =
-                        story.sourceMetadata.metrics
-                            .map { it.copy() }
-                            .toMutableList(),
+                    metrics = story.sourceMetadata.metrics.toMutableList(),
                     contentWarnings = story.sourceMetadata.contentWarnings.toMutableList(),
                     genres = story.sourceMetadata.genres.toMutableList(),
                     fandoms = story.sourceMetadata.fandoms.toMutableList(),
