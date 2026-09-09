@@ -10,17 +10,13 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
-import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.sync.StorySyncMode
 import com.vinicius741.webnovelarchiver.ui.centerLoading
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 internal fun ScreenHost.queueDownload(
@@ -92,21 +88,10 @@ internal fun ScreenHost.syncStory(
     app.runOnUiThread { onStatus("Starting...") }
     scope.launch {
         try {
-            val existingBeforeSync =
-                withContext(Dispatchers.IO) {
-                    SourceRegistry.getProvider(url)?.let { provider ->
-                        runCatching { repository.story(provider.getStoryId(url)) }.getOrNull()
-                    }
+            val (story, downloadPlan) =
+                ManualStorySync(repository, syncEngine).run(url, tabId, mode) { msg ->
+                    app.runOnUiThread { onStatus(msg) }
                 }
-            val story =
-                withContext(Dispatchers.IO) {
-                    syncEngine.fetchOrSync(
-                        url,
-                        tabId,
-                        mode,
-                    ) { msg -> app.runOnUiThread { onStatus(msg) } }
-                }
-            val downloadPlan = SyncDownloadPlanning.plan(existingBeforeSync, story)
             onDone(story)
             handleManualSyncDownloads(story, downloadPlan)
         } catch (error: Throwable) {
@@ -149,21 +134,15 @@ internal fun ScreenHost.syncStory(
     setStoryOperation(story.id, StoryOperationKind.SYNC, "Starting...")
     scope.launch {
         try {
-            // Pre-sync state lets download planning distinguish chapters discovered by this sync
-            // from an older cancelled/failed backlog.
-            val existingBeforeSync =
-                withContext(Dispatchers.IO) {
-                    SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let { provider ->
-                        runCatching { repository.story(provider.getStoryId(story.sourceUrl)) }.getOrNull()
-                    }
+            val (synced, downloadPlan) =
+                ManualStorySync(repository, syncEngine).run(
+                    story.sourceUrl,
+                    story.tabId,
+                    mode,
+                    story.sourceId,
+                ) { msg ->
+                    app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
                 }
-            val synced =
-                withContext(Dispatchers.IO) {
-                    syncEngine.fetchOrSync(story.sourceUrl, story.tabId, mode) { msg ->
-                        app.runOnUiThread { setStoryOperation(story.id, StoryOperationKind.SYNC, msg) }
-                    }
-                }
-            val downloadPlan = SyncDownloadPlanning.plan(existingBeforeSync, synced)
             clearStoryOperation(synced.id, StoryOperationKind.SYNC, rerender = false)
             showDetails(synced.id)
             handleManualSyncDownloads(synced, downloadPlan)
