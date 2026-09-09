@@ -15,7 +15,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting, configurable chapter ranges, timestamped outputs, and an EPUB Files screen for leftovers.
 - **Background Downloads** — Foreground service with a persistent queue, two parallel source lanes, sequential per-source pacing, isolated bulk preflight and Cloudflare circuit breaking, `Retry-After` cooldowns, and automatic recovery.
 - **Text Cleanup** — Sentence removal and regex rules with scoped targets (download, TTS, or both), live sample previews, and circuit-breaking for pathological user regex.
-- **AI Features** — Per-novel AI-generated synopses and cover art through the user's own OpenRouter key: per-task model pickers, preview-then-apply drafts, one-step or editable staged covers with independent chapter selection and automatic sampling across downloaded chapters, saved cover versions with prompt reuse and comparison, background generation that survives navigation/app exit, exact per-request cost receipts and local spend totals, live current-key usage/limits, and a show-AI/show-source switch for both descriptions and covers.
+- **AI Features** — Per-novel AI-generated synopses and cover art through the user's own OpenRouter key: per-task model pickers, preview-then-apply drafts, one-step or editable staged covers with independent chapter selection and automatic sampling across downloaded chapters, saved cover versions with prompt reuse and comparison, background generation that survives navigation/app exit, exact per-request cost receipts and local spend totals, live current-key usage/limits, a Source/Generated cover selector, and generation options that expand without hiding previews or saved covers. Routine AI progress updates keep the current screen attached.
 - **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, tag filtering, persisted sort controls (including Patreon earnings/members), and archive snapshots.
 - **Trends** — Per-novel metric history captured on every sync (score, Patreon members, monthly earnings, plus per-source engagement metrics — Watchers/Replies/Views/Likes on SpaceBattles, Favorites/Follows/Reviews on FanFiction.net, Followers/Readers on Royal Road/ScribbleHub) and graphed over time on a Trends sub-screen reached from the detail page's score row, Patreon card, tappable engagement chips, and overflow menu, with current-value/delta/range summaries and same-day coalescing + bounded retention.
 - **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
@@ -145,7 +145,7 @@ android/
           navigation/          # AppRoute, AppNavigator, ScreenHost
           feature/             # UI by flow: library, details, reader, player (TTS mini-player
                                # + Now Playing), browser, downloads, updates, settings, cleanup,
-                               # ai, story actions
+                               # ai (screen state and progress binding), shared manual story sync
           domain/              # Models + pure domain rules (story, archive)
           data/
             repository/        # AppRepository — single owner of library/queue/settings

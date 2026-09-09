@@ -28,7 +28,8 @@ under `android/`.
 
 | File | Description |
 |------|-------------|
-| `simplification-implementation-handoff-2026-09-07.md` | Proposed phased implementation handoff for simpler cover controls, shared manual sync and AI notifications, narrower screen updates, and a conditional immutable-model pilot; includes preservation rules and unit/emulator acceptance tests. |
+| `simplification-implementation-handoff-2026-09-07.md` | Implementation plan and execution record for simpler cover controls, shared manual sync and AI notifications, in-place AI progress, and the bounded immutable source-state pilot; includes regression tests and emulator evidence. |
+| `simplification-continuation-prompt-2026-09-08.md` | Coding-agent continuation prompt with implemented changes, passing validation, remaining emulator QA, and compatibility constraints. |
 | `performance-reliability-review-2026-09-04.md` | Static review of the native app with 30 prioritized reliability and performance recommendations, effort estimates, and acceptance checks. All 30 recommendations (R01–R30) are implemented on branch `perf-reliability-review-2026-09-04`; the doc's header records per-item implementation notes. |
 | `code-simplification-audit-2026-07-31.html` | Current repository-wide simplification audit with 40 prioritized deletion, function-merging, state-consolidation, UI-structure, and tooling opportunities, including Kotlin examples and preservation guardrails. |
 | `product-architecture-review-2026-07-09.html` | Current product-wide architecture review covering stability, maintainability, runtime validation, prioritized findings, and an implementation roadmap. |

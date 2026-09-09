@@ -63,20 +63,21 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   draft (prompt-only or full preview) into its card. Applying or closing clears only the working
   draft; version history retains its image and prompt. Starting the image stage persists the edited prompt with it, so a mid-paint death recovers
   the prompt for a retry.
-- **Show AI cover toggle**: when both a source cover and an applied AI cover exist, a `Show AI
-  cover` checkbox (mirroring the synopsis toggle) switches which one the app displays — nothing is
-  deleted either way. Applying a new AI cover always switches the display to it; a story whose
-  source has no cover keeps showing the AI cover regardless of the toggle
-  (`AiCoverPlanning.isAiCoverActive`).
-- **Source cover**: `Use source cover` switches back without deleting generated versions.
-  The source `coverUrl` is never modified. Deleting the novel removes its local cover history.
+- **Displayed cover**: when both covers exist on a mutable story, Source and Generated radio
+  choices select which cover the app displays. Applying a new cover selects Generated. Choosing
+  Source preserves every generated version and leaves `coverUrl` unchanged. With only one cover,
+  the app uses that cover without offering an unavailable choice. Archives remain read-only.
+- **Generation options**: chapter selection, the saved one-step preference, and Write your own
+  prompt live in a collapsed section. Its expansion state belongs to the story for the activity's
+  lifetime. The main action stays visible and describes the saved mode, including prompt-only
+  generation. Generated prompts, previews, errors, costs, and saved covers remain outside it.
 
 ## Where the AI cover applies
 
-While `Show AI cover` is on (the default after an Apply), the local cover file is what every cover
-surface displays: library cards, the Details header, the Follow Updates list, and the full-screen
+Applying a cover selects Generated. While Generated is selected, the app displays the local
+cover file in library cards, the Details header, the Follow Updates list, and the full-screen
 zoom viewer (which also becomes available for stories that never had a source cover). Generated
-EPUBs embed the AI cover bytes in place of the source URL's image. Toggling it off switches all of
+EPUBs embed the AI cover bytes in place of the source URL's image. Choosing Source switches all of
 those surfaces — EPUBs included — back to the source cover without deleting anything. Syncs carry
 `aiCoverPath` + `showAiCover` forward like `aiDescription`, and the sync fold protects a cover
 applied or toggled during a sync's network window. Local image cache keys include file modification

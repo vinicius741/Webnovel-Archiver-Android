@@ -1,6 +1,6 @@
 # App simplification implementation handoff
 
-Date: 2026-09-07. Status: proposed; no implementation performed for this document.
+Date: 2026-09-07. Status: implemented 2026-09-08 (S1–S4 plus the bounded S5 pilot); execution record at the bottom of this document. Scope kept to the bounded pilot — the wider immutable Story/Chapter migration remains deferred.
 
 The objective is to preserve the app's functionality while reducing duplicated code, state-management work, and the number of controls a user must consider at once. This handoff expands the five recommendations from the read-only simplification investigation. It is not a request to remove features or rewrite the app.
 
@@ -226,14 +226,76 @@ After S4 or a completed S5 migration, run the full emulator QA workflow because 
 
 ## Completion checklist for the implementing agent
 
-- [ ] S1: all cover capabilities preserved; redundant selector removed; disclosure tested.
-- [ ] S2: one manual fetch-and-plan operation; both presentation paths tested.
-- [ ] S3: notification sharing complete; feature-specific service/queue semantics retained; any rejected further consolidation explained.
-- [ ] S4: AI message updates patch live controls; lifecycle/navigation regression checks pass.
-- [ ] S5: pilot completed and either safely extended or explicitly deferred with evidence.
-- [ ] Relevant tests, lint, Detekt, and final full gate pass, or exact blockers are recorded.
-- [ ] Required emulator checks have screenshots and observed outcomes, not only build logs.
-- [ ] Documentation matches resulting behavior; `docs/README.md` and root README updated where applicable.
-- [ ] Existing unrelated worktree changes remain intact.
+- [x] S1: all cover capabilities preserved; redundant selector removed; disclosure tested.
+- [x] S2: one manual fetch-and-plan operation; both presentation paths tested.
+- [x] S3: notification sharing complete; feature-specific service/queue semantics retained; further consolidation rejected (see record).
+- [x] S4: AI message updates patch live controls; lifecycle/navigation regression checks pass.
+- [x] S5: pilot completed and kept bounded; wider migration explicitly deferred with rationale (see record).
+- [x] Relevant tests, lint, Detekt, and final full gate pass (1,103 unit tests, zero failures).
+- [x] Required emulator checks have screenshots and observed outcomes, not only build logs (record lists exactly what was exercised).
+- [x] Documentation matches resulting behavior; `docs/README.md`, root README, `android/AGENTS.md`, and `docs/ai/ai-cover-generation.md` updated.
+- [x] Existing unrelated worktree changes remain intact.
 
 The final implementation report should identify the duplicated code or state rules actually removed, the behavior checks performed, and anything intentionally retained. Do not claim a percentage reduction from file counts, or describe the entire plan as implemented when the conditional model migration was deferred.
+
+## Execution record (2026-09-08)
+
+All paths relative to `android/app/src/main/java/com/vinicius741/webnovelarchiver/`. Every phase below landed as one uncommitted working-tree change; nothing was committed or pushed.
+
+### S1 — cover controls
+
+Changed `feature/ai/AiCoverControls.kt`; added `feature/ai/AiCoverOptions.kt`.
+
+- Removed `addAiCoverDisplayToggleRow` (Show AI cover checkbox), the "Use source cover" text button, and the `revertAiCover` action. One `addAiCoverDisplaySelector` radio group (Source/Generated) now owns display choice; both choices call `repository.setShowAiCover` through `coverUiAttempt` and keep every generated image/version.
+- Selector appears only when both covers exist and the story is not archived. Source-only and generated-only stories keep their existing one-line status text.
+- Context chapters, the `AiSettings.coverOneStep` checkbox (its persistence scope unchanged), and "Write your own prompt" moved under a collapsible "Generation options" disclosure (`addAiCoverGenerationOptions`). The staged primary button keeps its "Generate Prompt with AI" label. Expansion is a per-story set (`AiControlsScreenState.coverOptionsExpanded`), activity-lifetime only, no new persisted fields. Saved versions, prompt drafts, previews, costs, and errors stay outside the collapsed section.
+- Behavior check evidence: `AiSimplificationDeviceTest.coverChoicesPersistAndOptionsRetainTheirStoryScope` and `.unavailableAndArchivedCoverChoicesAreHidden` (both passes). Manual QA 2026-09-08 confirmed live: radio persists across re-render (verified `showAiCover` flips both ways in stored JSON), options expand/collapse without losing saved covers, source-only story shows status text without a selector, and the card renders identically at 720dp expanded width.
+
+### S2 — manual sync
+
+Added `feature/story/ManualStorySync.kt`; both `syncStory` overloads in `feature/story/StoryActions.kt` became thin wrappers. Removed the duplicated lookup/fetch/plan blocks.
+
+- The shared operation runs lookup → `fetchOrSync` → `SyncDownloadPlanning.plan` on `Dispatchers.IO`, takes an optional `sourceId` (existing-story lookup retains the source-ID fallback; URL import resolves by URL), and rethrows `CancellationException` from lookup. Progress callbacks may arrive off the main thread; wrappers keep `runOnUiThread` dispatch and all presentation (URL validation, archives, callbacks, navigation, source-access retry closures, completion order: URL `onDone` before downloads; existing-story clears its operation, shows Details, then downloads).
+- Bulk Updates orchestration untouched; `StorySyncEngine` merge rules untouched.
+- Behavior check evidence: `ManualStorySyncTest` (ordering, Full-mode forwarding, backlog/missing-prior planning, error/cancellation propagation). Device fixture `manualSyncFailurePreservesPresentationAndQueuesNothing` covers both UI entry points failing without queueing. Not run: live URL import, full sync, or large downloads (deliberately avoided per rules).
+
+### S3 — AI notifications
+
+Added `ai/AiJobNotifications.kt`; removed four near-identical builders from both foreground services.
+
+- `Context.aiJobNotification(title, text, requestCode, ongoing)` preserves channel, icon, big text, `setOnlyAlertOnce`, ongoing/indeterminate progress vs auto-cancel, and PendingIntent flags. IDs stay cover 1003/1004, polish 1005/1006; request codes stay 1/2 (cover) and 3/4 (polish).
+- Deliberately rejected further consolidation: coordinator merging and a shared service base class would have to reconcile one-active-job vs sequential queue, prompt-recovery vs partial drafts, stop vs cancel-on-timeout, and log-only vs Boolean start failure. Per the phase rules, notification sharing is the entire change; no coordinator behavior changed.
+- Behavior check evidence: `AiJobNotificationDeviceTest` (4 payloads with distinct PendingIntents coexisting on 1003–1006, plus both services idle-start → `startForeground` → clean stop with no leftover notifications). Android lint passed. Not exercised: denied POST_NOTIFICATIONS at runtime, synthetic timeout/cancellation matrices, coordinator persistence races — code paths were retained, not rewritten.
+
+### S4 — AI progress binding
+
+Added `feature/ai/AiControlsBinding.kt` and `feature/ai/AiControlsScreenState.kt` (state moved out of `navigation/ScreenHost.kt`). Changed `feature/ai/AiControlsScreen.kt`, both `app/*JobUiBridge.kt`, `app/MainActivity.kt`, `ui/Scaffold.kt`, `feature/details/DetailsScreenDownload.kt`.
+
+- `AiControlsBinding` holds only the attached AI Controls root plus per-kind progress message labels; `updateAiControlsProgress` patches message-only updates and rebuilds on busy-kind change, structural change (cover prompt arrival), or a missing label. Guards: story match, `frameIsAiControls` (route + story), and root attached-to-window, so late messages for another story or a detached tree are ignored without navigation.
+- `screen()` clears the binding before tearing down the outgoing tree; `MainActivity.onDestroy` also clears it. `makeStoryOperationProgress` gained an optional message-view callback so AI Controls reuses the existing progress styling (AI kinds were already indeterminate; layout is unchanged).
+- Details progress slots, terminal-event rebuilds, queue-structure rebuilds, navigation keys, scroll storage, mini-player, and WebView disposal are unchanged.
+- Behavior check evidence: `AiSimplificationDeviceTest.progressPatchesTheAttachedTreeAndIgnoresLateMessages` — 100 description patches and 100 cover patches leave the root and binding identical, expansion survives, disabled "Generating…" button stays, operation-kind change rebuilds, late message after `showDetails` changes nothing, and the screen survives activity recreation. Manual QA 2026-09-08 exercised the rebuilt screens (selector, options, busy gating) with no stuck states.
+
+### S5 — bounded immutability pilot
+
+Changed `domain/model/Models.kt`, `domain/story/StoryNormalization.kt`, `data/repository/StoryMutations.kt`.
+
+- `SourceSyncState` is now fully immutable (six `val`s, enums/numbers only). Normalization replaces the state via `.copy(availability = …)`; sync mutations already used copies. Defensive snapshots dropped `sourceSyncState.copy()` and per-element `SourceMetric.copy()` (owning collections still copied).
+- Characterization tests first found three real gaps — snapshots did not copy `aiContextChapterIndices`, `aiCoverContextChapterIndices`, or Patreon tier lists; the test failed before the fix and passes after. This matches the phase's "prove before removing a copy path" rule.
+- Kept bounded: Story/Chapter/SourceMetadata stay mutable; no parallel model hierarchy or adapters. The wider migration stays deferred — the pilot removes a bounded copying responsibility but does not justify a repository-wide rewrite, which the handoff allows.
+- Behavior check evidence: `StorySnapshotIsolationTest` (legacy wire names/defaults for the now-immutable state, full nested-collection detach), extended `AppRepositoryTest` (input/output chapter-selection isolation and stale-snapshot checks), and the device fixture's JSON export/import + full ZIP restore round trip through production repository APIs in the isolated instrumentation package (source state, both AI chapter lists, chapter order, bookmark, restored chapter text). Not run: large user-library restore, minified/R8 serialization.
+
+### Validation
+
+- Final full gate: `android/gradlew -p android :app:lintKotlin :app:ci -x copyDebugApkToProjectRoot --console=plain` → BUILD SUCCESSFUL; log confirms `lintKotlin`, `checkKotlinFileSize`, `detekt`, `testInstrumentationUnitTest`, `assembleDebug`, `lintDebug`, `ci`. JUnit XML: 1,103 tests, 0 failures/errors/skipped. (Early lint failures — wildcard imports in new tests, one long fixture line — were fixed; don't re-diagnose.)
+- Device classes run against the final build on `emulator-5554` (`webnovel_api36`): `AiSimplificationDeviceTest` 5/5 and `AiJobNotificationDeviceTest` 2/2, zero failures/errors/skips.
+- Final manual QA (2026-09-08, debug build installed with `install -r`, 169-novel library preserved): Library tabs/Following filter/filters panel/search ("Tanya" → 1 hit)/scroll; Details header + overflow (AI Controls, Text Cleanup, EPUB, Trends); AI Controls for a both-covers story (selector both directions with stored-state verification, options expand/collapse, saved covers visible) and a source-only story (status text, no selector); Details → AI Controls → app-bar Back → Details; system Back from a cold-started dev screen pops to Library (pre-existing navigator behavior: dev launch pushes onto the Library route); Reader chapter Next/Previous, TTS start (media session `WNA-TtsMediaSession` active) → transport → Stop, Reader Settings → Voice settings → Back returns to the reader; Updates + Following Review ("8 of 166 following"); Queue empty state; Settings, Notifications categories, AI Settings (spend/receipts); Add Story empty-URL stays on form; EPUB regeneration wrote `epubs/rr_173710/…Ch1-32.epub`; expanded width via `wm density 240` (2-column grid + AI Controls correct), density restored to 420. Zero `FATAL EXCEPTION` entries across the session.
+- Known automation limits of that QA: the library long-press story-actions dialog could not be triggered with synthetic input (pre-existing UI, untouched by this change); rotation itself was not toggled — expanded width was covered via density instead, and the emulator state was restored.
+
+### Remaining limitations (explicit)
+
+- No live source import/full sync/large download, no paid AI request, and no real cover generation were performed. AI flow checks used synthetic/device fixtures.
+- Denied-notification-permission execution, exhaustive timeout/cancellation combinations, and coordinator persistence races were not exercised; their code paths were retained unchanged (S3).
+- A live paid job surviving process death remains untested by design; no automatic replay exists (S4).
+- The full pre-existing connected instrumentation suite was not run after these changes; only the two classes above plus the gate's JVM suite.
+- S5's wider Story/Chapter immutability migration is deferred, not abandoned.
