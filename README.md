@@ -28,14 +28,14 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Kotlin 2.1.20 |
+| Language | Kotlin 2.4.20 |
 | UI | Programmatic Android Views (no XML layouts) |
-| Build | Gradle 9.0 + AGP 8.13.2 |
-| HTTP Client | OkHttp 4.12 + shared source coordinator + sticky Chromium transport for challenged hosts |
-| HTML Parsing | Jsoup 1.21 |
-| JSON | Gson 2.13 |
-| Async | Kotlin Coroutines 1.10 |
-| Images | Coil 2.7 |
+| Build | Gradle 9.7 + AGP 9.4.0 |
+| HTTP Client | OkHttp 5.5 + shared source coordinator + sticky Chromium transport for challenged hosts |
+| HTML Parsing | Jsoup 1.23 |
+| JSON | Gson 2.14 |
+| Async | Kotlin Coroutines 1.11 |
+| Images | Coil 3.6 |
 | Charts | MPAndroidChart 3.1 (trend graphs; JitPack) |
 | Logging | Timber 5 (debug-gated in release) |
 | Storage | File-based JSON via `AppStorage` / `AppRepository` (no Room/SQLite) |
@@ -51,7 +51,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 
 - Android Studio (latest)
 - JDK 17
-- Android SDK with compileSdk 36
+- Android SDK with compileSdk 37
 
 ### Build an APK to Install on a Phone
 
@@ -103,8 +103,8 @@ WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
 ### Development
 
 Open the `android/` directory in Android Studio. The project uses:
-- `compileSdk` 36, `minSdk` 26, `targetSdk` 36
-- Kotlin 2.1.20, AGP 8.13.2, Gradle wrapper 9.0
+- `compileSdk` 37, `minSdk` 26, `targetSdk` 36
+- Kotlin 2.4.20, AGP 9.4.0, Gradle wrapper 9.7
 
 For a side-by-side development build:
 
