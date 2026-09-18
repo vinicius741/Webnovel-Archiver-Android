@@ -31,6 +31,9 @@ __pycache__/
 *.aab
 /apk-output/
 
+# Local performance runs (reports, raw sessions, baselines, perfetto traces)
+/perf-runs/
+
 # Test coverage
 coverage/
 
