@@ -93,6 +93,7 @@ internal fun ScreenHost.showReader(
                 ).apply { gravity = Gravity.CENTER_HORIZONTAL },
         )
     }
+    recordReaderPreparingForPerf(storyId, chapterId)
     screenObserver =
         scope.launch {
             // R12: missing ids, a failed read, and success each render a real state; delivery is
@@ -100,7 +101,7 @@ internal fun ScreenHost.showReader(
             fun readerStillCurrent(): Boolean =
                 navigator.current.let { it is AppRoute.Reader && it.storyId == storyId && it.chapterId == chapterId }
 
-            when (val preparation = ReaderDocumentPreparer(repository).prepare(storyId, chapterId, palette)) {
+            when (val preparation = prepareReaderDocumentWithPerf(storyId, chapterId, palette)) {
                 is ReaderPreparation.Ready ->
                     if (readerStillCurrent()) renderPreparedReader(preparation.document)
                 ReaderPreparation.Missing ->
@@ -167,6 +168,8 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         WebView(app).apply {
             // JS is safe only because the HTML was sanitized; file/content access stays locked down.
             WebViewSafety.applyReaderSettings(this, enableTtsHighlight = true)
+            // Perf sessions only: onPageFinished marks actual content presentation.
+            attachReaderPaintTracking(this)
         }
 
     // Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap.
@@ -193,6 +196,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             "utf-8",
             null,
         )
+        recordReaderPresentedForPerf()
         // After a re-render, re-apply the live highlight so the speaking chunk stays marked.
         val liveSession = document.persistedSession
         if (liveSession != null && liveSession.storyId == story.id && liveSession.chapterId == chapter.id) {

@@ -140,6 +140,16 @@ class AppContainer(
                     readyAt - migrationsFinishedAt,
                     readyAt - startedAt,
                 )
+                if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) {
+                    com.vinicius741.webnovelarchiver.perf.PerfInstrumentation.recordStartupPass(
+                        stories = load.stories.size,
+                        changed = changedIds.size,
+                        loadMillis = loadFinishedAt - startedAt,
+                        migrateMillis = migrationsFinishedAt - loadFinishedAt,
+                        hydrateMillis = readyAt - migrationsFinishedAt,
+                        totalMillis = readyAt - startedAt,
+                    )
+                }
             }
         }
     val ttsEngine: TtsEngine =

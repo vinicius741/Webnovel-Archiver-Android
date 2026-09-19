@@ -167,6 +167,7 @@ class MainActivity :
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
+        startPerfSessionIfRequested()
         // Process-wide AppContainer: one storage, one network client, one set of engines shared with the services.
         val container = appContainer
         repository = container.repository
@@ -264,6 +265,7 @@ class MainActivity :
             foldTracker.isFoldingFeature.collect { runOnUiThread { rerender?.invoke() } }
         }
         uiReady = true
+        recordUiReadyForPerf()
         routeInitialIntent(intent, startupState)
     }
 
@@ -304,7 +306,13 @@ class MainActivity :
         if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
     }
 
+    override fun onUserInteraction() {
+        recordInteractionForPerf()
+        super.onUserInteraction()
+    }
+
     override fun onDestroy() {
+        finishPerfSession()
         aiControlsScreenState.binding = null
         screenObserver?.cancel()
         // Destroy lingering reader WebViews so they can't leak the activity reference.

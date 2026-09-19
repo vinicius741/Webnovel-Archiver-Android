@@ -188,6 +188,21 @@ Ignore force-stop noise (`Shutting down VM` during intentional restarts).
 - Explicitly list what was **not** run (live network, phone, landscape, …)
 - Leave the app on `library` when finished
 
+## 10. Optional short perf pass
+
+After the interactive section, a ~5–8 min performance pass catches startup/render/jank
+regressions (build+install already done, so `--skip-install`):
+
+```bash
+python3 scripts/perf/perf_runner.py run --suite short --skip-install
+```
+
+Read `perf-runs/<runId>/report.md`: every scenario should be `ok` or an expected `skipped`;
+compare against a saved baseline with `--baseline <label>` when one exists (see the
+`perf-suite` skill and `docs/architecture/performance-tracking.md`). Numbers are advisory
+debug/emulator signals — never report them as release or device performance. A longer
+`--suite full` pass is the pre-merge ritual for startup/reader/navigation-affecting changes.
+
 ## Previously fixed (regression-check only)
 
 These were fixed after the 2026-07-10 QA pass. Confirm they stay fixed; re-open if regressed.

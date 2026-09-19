@@ -50,6 +50,7 @@ internal fun ScreenHost.screen(
     onSubtitleClick: (() -> Unit)? = null,
     block: LinearLayout.() -> Unit,
 ) {
+    val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
     aiControlsScreenState.binding = null
     screenObserver?.cancel()
     screenObserver = null
@@ -118,6 +119,14 @@ internal fun ScreenHost.screen(
         frame.addView(fabView, lp)
     }
     onScreenBuilt?.invoke()
+    if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) {
+        com.vinicius741.webnovelarchiver.perf.PerfInstrumentation.recordScreenBuilt(
+            route = route.name,
+            title = title,
+            subtitle = subtitle,
+            buildDurationNanos = System.nanoTime() - perfBuildStartedNanos,
+        )
+    }
 }
 
 /** Tags the screen FAB so the TTS mini-player can lift it out of the bar's way. */
