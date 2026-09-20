@@ -37,6 +37,9 @@ __pycache__/
 # Test coverage
 coverage/
 
+# Performance run artifacts and benchmark outputs
+/perf-runs/
+
 # Chapter-polish spike: API key, copyrighted corpus chapters, model outputs, caches
 /scripts/chapter_polish_spike/local/
 /scripts/chapter_polish_spike/results/
