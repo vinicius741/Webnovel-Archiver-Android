@@ -21,15 +21,15 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   version's prompt creates a new working prompt; generating from it bills only the image call.
   Earlier images remain available even if generation fails or the app restarts. This is text-to-image
   generation from a reused description, not an image-to-image edit of the selected cover.
-- **Two billable stages** (both on the user's key):
+- **Evidence selection and two generation stages** (using the user's provider keys):
   1. The **description model** (the same model chosen for synopses) writes an image-generation
      prompt from the novel's material: title, author, tags, the currently displayed description
-     (AI synopsis when active, else source), and up to nine chapters spread evenly across all downloaded chapters.
+     (AI synopsis when active, else source), and selected original passages from downloaded chapters.
      Cover context has its own saved selector, independent of synopsis context and reading progress.
-     Existing shared selections remain description-only; covers start with automatic sampling.
+     Existing shared selections remain description-only; covers start with automatic TypeSafe selection.
      The prompt identifies a supported established story phase and keeps age, equipment, action,
      and setting consistent within it, without automatically favoring the opening or finale.
-     Sparse downloads cannot establish unseen developments; the selector explains that limitation.
+     Sparse downloads cannot establish unseen developments; the prompt writer must respect that limitation.
   2. The **image model** paints the prompt via `POST /api/v1/images` with `aspect_ratio 2:3`
      (matches the app's 80×120dp / 150×225dp cover cards), `resolution 1K`, `quality medium`.
      Optional parameters are sent only when the selected model lists them in its catalog
@@ -94,8 +94,7 @@ time and size so applying another version refreshes the visible cover even when 
   outside the repository transaction lock. Gallery and cover-action storage failures show a retry
   message instead of escaping into the activity. Legacy pending previews are preserved before starting another experiment. Deleting the story
   removes both its draft and version history.
-- Cost controls: the text call shares a 60k-character budget equally across selected chapters, capped at 12k each
-  (up to nine automatic samples, `max_tokens 1600`, low reasoning); the image call requests one 1K image. Generating over an applied cover
+- Cost controls: automatic evidence is capped at 24k characters and 12 passages. Manual context shares a 60k-character budget equally across selected chapters, capped at 12k each. The text call uses `max_tokens 1600` and low reasoning; the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
   generating from an edited prompt; the shared `storyOperation` guard
   (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited
@@ -153,3 +152,17 @@ The description → cover progression generalizes: a new generator adds an `AiSe
 settings row, a pure planning object, an engine method returning a draft, a card on AI Controls
 with the preview-then-apply pattern, and (when it produces files) a per-story storage root plus
 backup/restore handling like `covers/`.
+
+## Automatic TypeSafe evidence selection
+
+Add a separate TypeSafe key in Settings → AI Settings. Automatic mode sends novel metadata and overlapping passages from **all downloaded chapters** to TypeSafe using the pinned `jev-1.13.0` model. The scan reads full chapter text, including text beyond the former chapter-prefix cap. Passages target paragraph boundaries, contain at most 4,000 characters, and overlap by 400 characters for context. Missing chapter files are skipped; no useful evidence produces an actionable error instead of silently reverting to sampling.
+
+Each request scores appearance, premise/role, and distinctive imagery separately, plus a yes/no probability for an explicitly temporary scene. Questions run together over the same state. These are relevance judgments, not verified facts or proof of recurrence. The selector retains contenders across four book regions and each evidence dimension, then reduces repetition and rewards complementary coverage within 24,000 characters including provenance labels. Original excerpts retain chapter order and character offsets. The prompt writer chooses a coherent story phase and must not infer recurrence from multiple excerpts of one chapter.
+
+The first scan can take minutes and bills the TypeSafe account. Four requests run at once per scan; rate-limit/overload responses retry twice with exponential backoff. Cancellation cancels active HTTP calls. Progress reports chapters, passages and reused scores. Completed responses are cached immediately, so restarting resumes from cached work. Cache identities hash the complete request, including text, relevant metadata, questions and pinned model; changed inputs are rescored. No chapter text or API key is stored in the cache. Cache files live in `cache/cover_evidence`, are excluded from backups and may be evicted by Android; completed scans trim to 20,000 responses. Eviction means those passages will be billed again if needed.
+
+TypeSafe response token counts appear as `TypeSafe cover selection` in the local usage ledger. The API does not report monetary cost in its documented response, so these calls have unknown cost rather than an invented exact charge. OpenRouter current-key counters do not include TypeSafe.
+
+Saving an explicit chapter selection bypasses TypeSafe, including when all downloaded chapters are selected. Reset to TypeSafe selection restores automatic mode. Missing credentials or provider failures stop automatic generation with a corrective message; they do not silently change its evidence strategy. Image-only generation from an existing prompt does not call TypeSafe.
+
+Implementation: `CoverEvidencePlanning.kt`, `CoverEvidenceSelector.kt`, `TypeSafeCoverClient.kt`, and `data/storage/CoverEvidenceCache.kt`. Mock-server and pure planning tests cover full-text scanning, input invalidation, diverse bounded selection, interruption/restart, response validation, authentication, rate-limit retry and cancellation. Selection weights remain heuristics; evaluate cover faithfulness on known novels before claiming quality improvements.

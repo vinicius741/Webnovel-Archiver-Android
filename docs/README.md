@@ -9,12 +9,12 @@ Keep this index current whenever the set of documents changes.
 
 ### `ai/`
 
-OpenRouter-backed AI features for the native app.
+OpenRouter generation and TypeSafe evidence selection for the native app.
 
 | File | Description |
 |------|-------------|
 | `ai-description-generation.md` | AI-generated novel descriptions: user flow, settings/key handling, cost controls, `ai/` package map, and how to extend the layer to more generators. |
-| `ai-cover-generation.md` | AI-generated cover art: two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
+| `ai-cover-generation.md` | AI-generated cover art: cached TypeSafe passage selection, two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
 | `ai-cost-tracking.md` | Exact OpenRouter receipt capture, device-local per-request history and aggregates, live current-key counters, preview cost labels, and privacy/backup behavior. |
 | `ai-chapter-rewrite-plan.html` | Research-backed product and implementation plan for reversible, verified AI chapter polishing that preserves source chapters, story canon, formatting, Reader/TTS parity, cost visibility, and provider privacy controls. |
 | `ai-chapter-rewrite-spike.md` | Phase 1 go/no-go spike results: prompt v1 vs v1.1 (merge semantics), three-model comparison incl. frontier, verifier holdout, cadence-report evidence, cost/privacy findings, and the blind-ballot verdict (harness: `scripts/chapter_polish_spike/`). |

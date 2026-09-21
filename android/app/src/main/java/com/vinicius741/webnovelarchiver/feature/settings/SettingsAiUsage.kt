@@ -197,6 +197,7 @@ private fun recentRequestRow(
     val feature =
         when (record.feature) {
             "description" -> "Description"
+            "cover_selection" -> "TypeSafe cover selection"
             "cover_prompt" -> "Cover prompt"
             "cover_image" -> "Cover image"
             else -> record.feature.takeIf(String::isNotBlank) ?: "AI request"

@@ -106,6 +106,7 @@ object PreferenceNormalization {
     fun aiSettings(settings: AiSettings): AiSettings =
         settings.copy(
             apiKey = settings.apiKey?.trim()?.takeIf { it.isNotBlank() },
+            typeSafeApiKey = settings.typeSafeApiKey?.trim()?.takeIf { it.isNotBlank() },
             descriptionModel =
                 settings.descriptionModel
                     .trim()

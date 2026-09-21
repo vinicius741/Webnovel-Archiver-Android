@@ -212,9 +212,8 @@ private fun ScreenHost.showAiContextChapterDialog(
                             toast("Select at least one chapter, or use Reset to default")
                             return@makeButton
                         }
-                        // Saving a selection identical to the default keeps the default semantics
-                        // (null) so future CONTEXT_CHAPTER_COUNT changes still apply.
-                        applySelection(checked.takeIf { it != defaults }?.sorted())
+                        // An explicit cover selection always bypasses TypeSafe, including all chapters.
+                        applySelection(if (forCover) checked.sorted() else checked.takeIf { it != defaults }?.sorted())
                     },
                 )
             }
@@ -247,12 +246,12 @@ private fun ScreenHost.contextPickerConfig(
         checked = (saved ?: defaults).toMutableSet(),
         hint =
             if (forCover) {
-                "Samples across downloaded chapters, regardless of reading progress. " +
-                    "Limited downloads may only describe the introduction."
+                "Automatic mode uses TypeSafe to select passages across downloaded chapters. " +
+                    "Save a manual selection to send those chapters directly without TypeSafe."
             } else {
                 "Only downloaded chapters can be sent."
             },
-        resetLabel = if (forCover) "Reset to automatic sampling" else "Reset to default (first downloaded)",
+        resetLabel = if (forCover) "Reset to TypeSafe selection" else "Reset to default (first downloaded)",
         save = { indices ->
             if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
         },

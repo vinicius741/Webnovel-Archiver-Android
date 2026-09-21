@@ -176,7 +176,7 @@ data class Story(
      * never breaks generation. Not saveable empty: the picker requires one chapter; empty = null.
      */
     var aiContextChapterIndices: MutableList<Int>? = null,
-    /** Cover-only chapter selection. Null samples across all downloaded chapters, regardless of reading progress. */
+    /** Cover-only chapter selection. Null selects evidence across all downloaded chapters, regardless of reading progress. */
     var aiCoverContextChapterIndices: MutableList<Int>? = null,
     /**
      * Per-novel Chapter polish edit strength ("light" | "balanced"; null = light, the product
@@ -294,6 +294,7 @@ data class TtsSettings(
  */
 data class AiSettings(
     val apiKey: String? = null,
+    val typeSafeApiKey: String? = null,
     val descriptionModel: String = DEFAULT_DESCRIPTION_MODEL,
     val imageModel: String = DEFAULT_IMAGE_MODEL,
     /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */

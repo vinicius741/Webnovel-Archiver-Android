@@ -56,7 +56,7 @@ internal fun ScreenHost.generateAiCoverDraft(story: Story) {
         }
         val message =
             "Generate a new AI cover with ${settings.imageModel}? This makes two OpenRouter calls " +
-                "(image prompt + image) and uses your API credits." +
+                "(image prompt + image) and uses your API credits. Automatic selection also uses TypeSafe credits for uncached passages." +
                 (if (hasPendingWork) " Earlier covers remain in Saved covers." else "")
         confirm(message, confirmLabel = "Generate") { startAiCoverDraft(story) }
         return
@@ -66,7 +66,8 @@ internal fun ScreenHost.generateAiCoverDraft(story: Story) {
         return
     }
     val message =
-        "Write a new image prompt with ${settings.descriptionModel}? This calls OpenRouter and uses your API credits." +
+        "Write a new image prompt with ${settings.descriptionModel}? This calls OpenRouter and uses your API credits. " +
+            "Automatic selection also uses TypeSafe credits for uncached passages." +
             (if (hasPendingWork) " Earlier covers remain in Saved covers." else "")
     confirm(message, confirmLabel = "Generate") { startAiCoverPromptDraft(story) }
 }

@@ -17,9 +17,16 @@ class AiCoverPlanningTest {
         )
 
     @Test
-    fun `automatic cover sampling spans the story independently of description selection`() {
+    fun `system prompt uses real newlines in evidence guidance`() {
+        val prompt = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList()).first().content
+        assertFalse(prompt.contains("\\n"))
+        assertTrue(prompt.contains("independent evidence of recurrence.\n        Consider the premise"))
+    }
+
+    @Test
+    fun `automatic cover scan spans the story independently of description selection`() {
         val story = storyWithChapters(101).copy(aiContextChapterIndices = mutableListOf(0, 1))
-        assertEquals(listOf(0, 12, 25, 37, 50, 62, 75, 87, 100), AiCoverContextPlanning.resolveContextChapters(story))
+        assertEquals((0..100).toList(), AiCoverContextPlanning.resolveContextChapters(story))
         assertEquals(listOf(0, 1), AiDescriptionPlanning.resolveContextChapters(story, story.aiContextChapterIndices))
     }
 
@@ -30,7 +37,7 @@ class AiCoverPlanningTest {
         val story = storyWithChapters(101)
         story.chapters.forEachIndexed { index, chapter -> chapter.downloaded = index % 10 == 0 }
         val selected = AiCoverContextPlanning.resolveContextChapters(story)
-        assertEquals(9, selected.size)
+        assertEquals(11, selected.size)
         assertEquals(0, selected.first())
         assertEquals(100, selected.last())
         assertTrue(selected.all { it % 10 == 0 })

@@ -38,7 +38,7 @@ internal fun ScreenHost.showAiSettings() {
         spacer(Space.SM)
         text(
             "Description and cover generation send the novel title, author, tags, current " +
-                "description, and downloaded chapter excerpts (the first five by default) to " +
+                "description, and downloaded chapter excerpts to " +
                 "OpenRouter and the selected model provider. Provider retention depends on your " +
                 "OpenRouter privacy settings. Models and chapters are chosen in Details → More " +
                 "options → AI Controls — the model applies to every novel, the chapter selection " +
@@ -63,10 +63,29 @@ internal fun ScreenHost.showAiSettings() {
                     }
             },
         )
+        section("TypeSafe cover selection")
+        text(
+            "Automatic cover selection sends passages from all downloaded chapters and novel metadata to TypeSafe. " +
+                "Scores are cached on this device. The first scan may take several minutes and uses TypeSafe credits. " +
+                "Create a key at console.typesafe.ai. Manual chapter selection does not use TypeSafe.",
+            Type.BODY_SMALL,
+            ThemeManager.colors.onSurfaceVariant,
+        )
+        val typeSafeKeyField =
+            labeledField(
+                "TypeSafe API key",
+                settings.typeSafeApiKey.orEmpty(),
+                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+            ).apply { transformationMethod = PasswordTransformationMethod.getInstance() }
         showAiUsageSection(this) { apiKeyField?.text?.toString() }
         fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.MD) {
             scope.launch {
-                repository.saveAiSettings(settings.copy(apiKey = apiKeyField?.text?.toString()))
+                repository.saveAiSettings(
+                    repository.getAiSettings().copy(
+                        apiKey = apiKeyField?.text?.toString(),
+                        typeSafeApiKey = typeSafeKeyField.text.toString(),
+                    ),
+                )
                 toast("AI settings saved")
             }
         }

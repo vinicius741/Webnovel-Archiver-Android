@@ -2,17 +2,9 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
-/** Cover-only sampling and text budgets, independent of synopsis context and reading progress. */
+/** Cover-only scan scope and manual text budgets, independent of synopsis context and reading progress. */
 object AiCoverContextPlanning {
-    private const val CONTEXT_CHAPTER_COUNT = 9
-
-    fun selectContextChapters(story: Story): List<Int> {
-        val downloaded = story.chapters.indices.filter { story.chapters[it].downloaded }
-        if (downloaded.size <= CONTEXT_CHAPTER_COUNT) return downloaded
-        return (0 until CONTEXT_CHAPTER_COUNT).map { sample ->
-            downloaded[(sample.toLong() * (downloaded.size - 1) / (CONTEXT_CHAPTER_COUNT - 1)).toInt()]
-        }
-    }
+    fun selectContextChapters(story: Story): List<Int> = story.chapters.indices.filter { story.chapters[it].downloaded }
 
     fun resolveContextChapters(story: Story): List<Int> {
         val explicit = story.aiCoverContextChapterIndices
@@ -22,7 +14,7 @@ object AiCoverContextPlanning {
 
     fun contextChaptersLabel(story: Story): String =
         if (story.aiCoverContextChapterIndices.isNullOrEmpty()) {
-            "Across downloaded chapters (automatic)"
+            "Relevant passages (TypeSafe)"
         } else {
             "${resolveContextChapters(story).size} selected"
         }

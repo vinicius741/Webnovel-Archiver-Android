@@ -22,9 +22,10 @@ data class AiCoverDraft(
  * expose the stages so the user can edit the prompt in between.
  */
 @Suppress("TooGenericExceptionCaught") // Track any terminal request failure; receipt persistence remains best effort.
-class AiCoverArtEngine(
+class AiCoverArtEngine internal constructor(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
+    private val evidenceSelector: CoverEvidenceSelector,
 ) {
     /** Catalog cache for the process lifetime; null until first success, so failures fall back to the minimal request shape. */
     @Volatile
@@ -67,7 +68,17 @@ class AiCoverArtEngine(
         }
 
         onProgress("Reading chapters...")
-        val chapters = AiContextChapters.read(repository, context.story, contextIndices)
+        val chapters =
+            if (context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
+                val key =
+                    context.settings.typeSafeApiKey?.takeIf { it.isNotBlank() }
+                        ?: error(
+                            "Add your TypeSafe API key in Settings → AI Settings for automatic cover selection, or select chapters manually.",
+                        )
+                evidenceSelector.select(context.story, key, onProgress)
+            } else {
+                AiContextChapters.read(repository, context.story, contextIndices)
+            }
         if (chapters.isEmpty()) {
             error("Downloaded chapter files are missing; re-download the novel's chapters")
         }

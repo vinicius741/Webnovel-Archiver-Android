@@ -7,10 +7,13 @@ import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
+import com.vinicius741.webnovelarchiver.ai.CoverEvidenceSelector
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
+import com.vinicius741.webnovelarchiver.ai.TypeSafeCoverClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceCache
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -26,6 +29,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.File
 
 /**
  * Process-wide manual service locator (deliberately not a DI framework): one instance of each
@@ -96,7 +100,12 @@ class AppContainer(
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     val openRouter: OpenRouterClient = OpenRouterClient()
     val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
-    val aiCoverArtEngine: AiCoverArtEngine = AiCoverArtEngine(repository, openRouter)
+    val aiCoverArtEngine: AiCoverArtEngine =
+        AiCoverArtEngine(
+            repository,
+            openRouter,
+            CoverEvidenceSelector(repository, TypeSafeCoverClient(), CoverEvidenceCache(File(appContext.cacheDir, "cover_evidence"))),
+        )
 
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
