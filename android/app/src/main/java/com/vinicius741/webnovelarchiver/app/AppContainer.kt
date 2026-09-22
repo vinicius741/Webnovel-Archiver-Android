@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceCache
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceSelectionStore
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -100,11 +101,14 @@ class AppContainer(
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     val openRouter: OpenRouterClient = OpenRouterClient()
     val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
+    val coverEvidenceSelectionStore =
+        CoverEvidenceSelectionStore(File(appContext.cacheDir, "cover_evidence_selections.json"))
     val aiCoverArtEngine: AiCoverArtEngine =
         AiCoverArtEngine(
             repository,
             openRouter,
             CoverEvidenceSelector(repository, TypeSafeCoverClient(), CoverEvidenceCache(File(appContext.cacheDir, "cover_evidence"))),
+            coverEvidenceSelectionStore,
         )
 
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */

@@ -3,31 +3,42 @@ package com.vinicius741.webnovelarchiver.ai
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoverEvidencePlanningTest {
-    @Test fun `scan covers the end of long chapters and preserves source positions`() {
+    @Test fun `sampling takes the opening and a mid chapter window and skips blank text`() {
         val text = (1..600).joinToString("\n\n") { "Paragraph $it contains an important description." }
-        val passages = CoverEvidencePlanning.passages(17, "Later", text)
-        assertTrue(passages.size > 3)
-        assertTrue(passages.last().text.contains("Paragraph 600"))
-        assertTrue(passages.all { it.chapter == 17 && it.text.length <= CoverEvidencePlanning.PASSAGE_CHARS })
-        for (index in text.indices.filter { !text[it].isWhitespace() }) {
-            assertTrue("Uncovered character $index", passages.any { index >= it.offset && index < it.offset + it.text.length })
-        }
+        val sample = CoverEvidencePlanning.sample(17, "Later", text)!!
+        assertTrue(sample.opening.contains("Paragraph 1"))
+        assertTrue(sample.middle.isNotEmpty())
+        assertTrue(sample.opening.length <= 2_200 && sample.middle.length <= 2_200)
+        val short = CoverEvidencePlanning.sample(3, "Short", "A copper automaton tends an orchard.")
+        assertEquals("A copper automaton tends an orchard.", short!!.opening)
+        assertEquals("", short.middle)
+        assertNull(CoverEvidencePlanning.sample(4, "Blank", " \n "))
+    }
+
+    @Test fun `state carries both excerpts for long chapters and omits middle when absent`() {
+        val story = Story(title = "Orchard", description = "A machine learns farming")
+        val long = CoverEvidencePlanning.state(story, CoverEvidencePlanning.ChapterSample(2, "Two", "Opening text.", "Middle text."))
+        assertEquals("Opening text.", long.get("opening").asString)
+        assertEquals("Middle text.", long.get("middle").asString)
+        val short = CoverEvidencePlanning.state(story, CoverEvidencePlanning.ChapterSample(2, "Two", "Opening text.", ""))
+        assertFalse(short.has("middle"))
     }
 
     @Test fun `cache identity changes with evidence metadata model and questions but not credentials`() {
-        val passage = CoverEvidencePlanning.Passage(1, "Opening", 0, "A copper automaton tends an orchard.")
+        val sample = CoverEvidencePlanning.ChapterSample(1, "Opening", "A copper automaton tends an orchard.", "The orchard hums at dusk.")
         val story = Story(title = "Orchard", description = "A machine learns farming")
-        val body = TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, passage))
+        val body = TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, sample))
         val original = CoverEvidencePlanning.cacheKey(body)
         assertEquals(original, CoverEvidencePlanning.cacheKey(body.deepCopy()))
         val changed =
             listOf(
-                TypeSafeCoverClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), passage)),
-                TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, passage.copy(text = "New text"))),
+                TypeSafeCoverClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample)),
+                TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text"))),
                 body.deepCopy().apply { addProperty("model", "new-model") },
                 body.deepCopy().apply { getAsJsonObject("questions").remove("appearance") },
             )
@@ -35,38 +46,32 @@ class CoverEvidencePlanningTest {
         assertFalse(body.toString().contains("apiKey"))
     }
 
-    @Test fun `selection covers complementary dimensions with a bounded prompt and chapter order`() {
-        fun candidate(
-            chapter: Int,
-            text: String,
-            a: Double,
-            p: Double,
-            i: Double,
-        ) = CoverEvidencePlanning.Candidate(
-            CoverEvidencePlanning.Passage(chapter, "Chapter $chapter", 0, text),
-            CoverEvidencePlanning.Judgments(a, p, i, 0.0),
+    @Test fun `useful chapters need visual evidence that is not a temporary scene`() {
+        assertTrue(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.6, 0.0, 0.3, 0.0)))
+        assertTrue(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.0, 0.0, 1.0, 0.5)))
+        // Premise alone never qualifies and neither does a likely temporary scene.
+        assertFalse(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.4, 1.0, 0.4, 0.0)))
+        assertFalse(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(1.0, 0.0, 1.0, 0.6)))
+        assertTrue(
+            CoverEvidencePlanning.utility(CoverEvidencePlanning.Judgments(1.0, 1.0, 1.0, 0.0)) >
+                CoverEvidencePlanning.utility(CoverEvidencePlanning.Judgments(1.0, 1.0, 1.0, 1.0)),
         )
-        val character = candidate(20, "bronze automaton copper limbs orchard".repeat(80), 1.0, 0.0, 0.0)
-        val premise = candidate(2, "farming family harvest friendship community".repeat(80), 0.0, 1.0, 0.0)
-        val setting = candidate(31, "crystal valley mountains river moonlight".repeat(80), 0.0, 0.0, 1.0)
-        val duplicates = (40..100).map { character.copy(passage = character.passage.copy(chapter = it)) }
-        val selected = CoverEvidencePlanning.select(listOf(character, premise, setting) + duplicates)
-        assertEquals(listOf(2, 20, 31), selected.map { it.number })
-        assertTrue(selected.sumOf { it.text.length } <= CoverEvidencePlanning.CONTEXT_CHARS)
     }
 
-    @Test fun `shortlist stays bounded while retaining different book phases`() {
-        val candidates =
-            (1..1000).map { chapter ->
-                CoverEvidencePlanning.Candidate(
-                    CoverEvidencePlanning.Passage(chapter, "", 0, "Chapter $chapter"),
-                    CoverEvidencePlanning.Judgments(1.0, 0.5, 0.5, 0.0),
-                )
-            }
-        val shortlist = CoverEvidencePlanning.shortlist(candidates, 1000)
-        assertTrue(shortlist.size <= 144)
-        assertEquals(setOf(0, 1, 2, 3), shortlist.map { (it.passage.chapter - 1) / 250 }.toSet())
-        assertTrue(CoverEvidencePlanning.passages(1, "", " \n ").isEmpty())
-        assertTrue(CoverEvidencePlanning.select(emptyList()).isEmpty())
+    @Test fun `choose keeps the strongest chapters within the target in reading order`() {
+        fun scored(
+            chapter: Int,
+            evidence: Double,
+            temporary: Double = 0.0,
+        ) = CoverEvidencePlanning.ScoredChapter(
+            CoverEvidencePlanning.ChapterSample(chapter, "Chapter $chapter", "Text $chapter", ""),
+            CoverEvidencePlanning.Judgments(evidence, evidence, evidence, temporary),
+        )
+        val useful = (1..25).map { chapter -> scored(chapter, if (chapter % 2 == 0) 1.0 else 0.5) }
+        val chosen = CoverEvidencePlanning.choose(useful, target = 10)
+        assertEquals(10, chosen.size)
+        assertEquals(chosen.map { it.sample.chapter }, chosen.map { it.sample.chapter }.sorted())
+        assertEquals((2..20 step 2).toList(), chosen.map { it.sample.chapter })
+        assertTrue(CoverEvidencePlanning.choose(emptyList(), target = 10).isEmpty())
     }
 }

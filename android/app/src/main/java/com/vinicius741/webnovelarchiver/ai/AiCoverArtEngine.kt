@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceSelectionStore
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -26,6 +27,7 @@ class AiCoverArtEngine internal constructor(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
     private val evidenceSelector: CoverEvidenceSelector,
+    private val evidenceSelectionStore: CoverEvidenceSelectionStore,
 ) {
     /** Catalog cache for the process lifetime; null until first success, so failures fall back to the minimal request shape. */
     @Volatile
@@ -75,7 +77,13 @@ class AiCoverArtEngine internal constructor(
                         ?: error(
                             "Add your TypeSafe API key in Settings → AI Settings for automatic cover selection, or select chapters manually.",
                         )
-                evidenceSelector.select(context.story, key, onProgress)
+                val selected =
+                    evidenceSelector.select(context.story, key, context.settings.coverEvidenceChapters, onProgress)
+
+                // Display hint for the picker; losing it never fails a finished cover run.
+                runCatching { evidenceSelectionStore.record(context.story.id, selected.map { it.number - 1 }) }
+                    .onFailure { Timber.w(it, "Could not persist TypeSafe chapter selection") }
+                selected
             } else {
                 AiContextChapters.read(repository, context.story, contextIndices)
             }

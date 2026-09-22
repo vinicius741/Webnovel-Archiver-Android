@@ -4,6 +4,7 @@ import android.text.InputType
 import android.text.method.PasswordTransformationMethod
 import android.widget.EditText
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -65,9 +66,10 @@ internal fun ScreenHost.showAiSettings() {
         )
         section("TypeSafe cover selection")
         text(
-            "Automatic cover selection sends passages from all downloaded chapters and novel metadata to TypeSafe. " +
-                "Scores are cached on this device. The first scan may take several minutes and uses TypeSafe credits. " +
-                "Create a key at console.typesafe.ai. Manual chapter selection does not use TypeSafe.",
+            "Automatic cover selection sends two excerpts per chapter and novel metadata to TypeSafe. " +
+                "Chapters are validated in batches and the scan stops once enough useful chapters are found. " +
+                "Scores are cached on this device. Create a key at console.typesafe.ai. " +
+                "Manual chapter selection does not use TypeSafe.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
@@ -77,6 +79,13 @@ internal fun ScreenHost.showAiSettings() {
                 settings.typeSafeApiKey.orEmpty(),
                 InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
             ).apply { transformationMethod = PasswordTransformationMethod.getInstance() }
+        val evidenceChaptersField =
+            labeledField(
+                "Chapters to validate",
+                settings.coverEvidenceChapters.toString(),
+                InputType.TYPE_CLASS_NUMBER,
+                hint = "${AiSettings.MIN_COVER_EVIDENCE_CHAPTERS}–${AiSettings.MAX_COVER_EVIDENCE_CHAPTERS}",
+            )
         showAiUsageSection(this) { apiKeyField?.text?.toString() }
         fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.MD) {
             scope.launch {
@@ -84,6 +93,12 @@ internal fun ScreenHost.showAiSettings() {
                     repository.getAiSettings().copy(
                         apiKey = apiKeyField?.text?.toString(),
                         typeSafeApiKey = typeSafeKeyField.text.toString(),
+                        coverEvidenceChapters =
+                            evidenceChaptersField.text
+                                .toString()
+                                .trim()
+                                .toIntOrNull()
+                                ?: repository.getAiSettings().coverEvidenceChapters,
                     ),
                 )
                 toast("AI settings saved")

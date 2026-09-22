@@ -146,8 +146,8 @@ object AiCoverPlanning {
         Never age up a protagonist without evidence. If only introductory material is available, use
         what it supports and do not invent later developments. If a representative character scene is
         uncertain, prefer a supported setting or signature object. Do not infer recurrence from one scene.
-        Multiple passages from the same chapter are not independent evidence of recurrence.
-        Consider the premise across passages before choosing vivid imagery. Prefer details supported across chapters.
+        Neighboring chapters often repeat the same scene; that is not independent evidence of recurrence.
+        Consider the premise across chapters before choosing vivid imagery. Prefer details supported across chapters.
     """ + AiPromptSourceData.METADATA_GUIDANCE + """
 
         TITLE LETTERING

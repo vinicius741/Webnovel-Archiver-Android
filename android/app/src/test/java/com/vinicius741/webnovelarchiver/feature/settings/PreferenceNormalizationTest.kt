@@ -165,4 +165,20 @@ class PreferenceNormalizationTest {
         val legacy = Gson().fromJson("""{"apiKey":"k"}""", AiSettings::class.java)
         assertEquals(AiSettings.DEFAULT_IMAGE_MODEL, legacy.imageModel)
     }
+
+    @Test
+    fun aiSettingsClampsCoverEvidenceChaptersAndLegacyJsonKeepsTheDefault() {
+        assertEquals(
+            AiSettings.MIN_COVER_EVIDENCE_CHAPTERS,
+            PreferenceNormalization.aiSettings(AiSettings(coverEvidenceChapters = 0)).coverEvidenceChapters,
+        )
+        assertEquals(
+            AiSettings.MAX_COVER_EVIDENCE_CHAPTERS,
+            PreferenceNormalization.aiSettings(AiSettings(coverEvidenceChapters = 99)).coverEvidenceChapters,
+        )
+        assertEquals(12, PreferenceNormalization.aiSettings(AiSettings(coverEvidenceChapters = 12)).coverEvidenceChapters)
+        // Settings persisted before the TypeSafe selection count existed keep the constructor default.
+        val legacy = Gson().fromJson("""{"apiKey":"k"}""", AiSettings::class.java)
+        assertEquals(AiSettings.DEFAULT_COVER_EVIDENCE_CHAPTERS, legacy.coverEvidenceChapters)
+    }
 }

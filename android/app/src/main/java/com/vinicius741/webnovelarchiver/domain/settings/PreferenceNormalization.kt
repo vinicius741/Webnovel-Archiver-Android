@@ -127,5 +127,10 @@ object PreferenceNormalization {
                     .trim()
                     .takeIf { it.isNotBlank() }
                     ?: AiSettings.DEFAULT_CHAPTER_VERIFIER_MODEL,
+            coverEvidenceChapters =
+                settings.coverEvidenceChapters.coerceIn(
+                    AiSettings.MIN_COVER_EVIDENCE_CHAPTERS,
+                    AiSettings.MAX_COVER_EVIDENCE_CHAPTERS,
+                ),
         )
 }

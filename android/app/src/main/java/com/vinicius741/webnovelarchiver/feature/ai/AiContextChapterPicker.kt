@@ -12,6 +12,7 @@ import android.widget.TextView
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -40,15 +41,25 @@ internal fun ScreenHost.addAiContextChaptersRow(
     forCover: Boolean = false,
 ) {
     var valueView: TextView? = null
+    val typeSafeSelection = app.appContainer.coverEvidenceSelectionStore.selection(story.id)
     val (selectorView, textVal) =
         container.context.makeSelectorField(
             iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_menu_book,
             label = if (forCover) "Cover context chapters" else "Description context chapters",
-            value = if (forCover) AiCoverContextPlanning.contextChaptersLabel(story) else AiDescriptionPlanning.contextChaptersLabel(story),
+            value =
+                if (forCover) {
+                    AiCoverContextPlanning.contextChaptersLabel(story, typeSafeSelection)
+                } else {
+                    AiDescriptionPlanning.contextChaptersLabel(story)
+                },
         ) {
             showAiContextChapterDialog(story, forCover) { saved ->
                 valueView?.text =
-                    if (forCover) AiCoverContextPlanning.contextChaptersLabel(saved) else AiDescriptionPlanning.contextChaptersLabel(saved)
+                    if (forCover) {
+                        AiCoverContextPlanning.contextChaptersLabel(saved, typeSafeSelection)
+                    } else {
+                        AiDescriptionPlanning.contextChaptersLabel(saved)
+                    }
                 // Re-render so the captured story (and this dialog's next open) sees the
                 // saved selection instead of the pre-save snapshot.
                 if (frameIsAiControls(story.id)) showAiControls(story.id)
@@ -241,13 +252,27 @@ private fun ScreenHost.contextPickerConfig(
 ): ContextPickerConfig {
     val defaults = if (forCover) AiCoverContextPlanning.selectContextChapters(story) else AiDescriptionPlanning.selectContextChapters(story)
     val saved = if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices
+    val automatic = app.appContainer.coverEvidenceSelectionStore.selection(story.id) ?: emptyList()
+    // Automatic cover mode has no persisted manual selection — the picker shows the chapters
+    // TypeSafe kept on the last scan, or nothing before the first scan ever runs.
+    val initialChecked =
+        when {
+            saved != null -> saved
+            forCover -> automatic
+            else -> defaults
+        }
     return ContextPickerConfig(
         defaults = defaults.toSet(),
-        checked = (saved ?: defaults).toMutableSet(),
+        checked = initialChecked.toMutableSet(),
         hint =
             if (forCover) {
-                "Automatic mode uses TypeSafe to select passages across downloaded chapters. " +
-                    "Save a manual selection to send those chapters directly without TypeSafe."
+                if (saved == null && automatic.isNotEmpty()) {
+                    "TypeSafe checked these chapters automatically on the last scan. " +
+                        "Adjust them and Save to send a manual selection instead."
+                } else {
+                    "Automatic mode validates chapters with TypeSafe until enough useful ones are found. " +
+                        "Check chapters to send a manual selection instead, without TypeSafe."
+                }
             } else {
                 "Only downloaded chapters can be sent."
             },

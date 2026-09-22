@@ -299,6 +299,8 @@ data class AiSettings(
     val imageModel: String = DEFAULT_IMAGE_MODEL,
     /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
     val coverOneStep: Boolean = true,
+    /** Chapters automatic cover selection must validate with TypeSafe; scanned in batches of this size. */
+    val coverEvidenceChapters: Int = DEFAULT_COVER_EVIDENCE_CHAPTERS,
     /** Chapter polish (rewrite) model; global like the other AI models, chosen for rewrite quality. */
     val chapterRewriteModel: String = DEFAULT_CHAPTER_REWRITE_MODEL,
     /** Independent preservation verifier; must differ from the rewriter (spike rule). */
@@ -319,6 +321,11 @@ data class AiSettings(
 
         /** Default verifier; grok-4.6 returned short clean verdicts on correctly aligned pairs in the spike. */
         const val DEFAULT_CHAPTER_VERIFIER_MODEL = "x-ai/grok-4.6"
+
+        /** Chapters TypeSafe validates per automatic cover scan (also the batch size). */
+        const val DEFAULT_COVER_EVIDENCE_CHAPTERS = 10
+        const val MIN_COVER_EVIDENCE_CHAPTERS = 3
+        const val MAX_COVER_EVIDENCE_CHAPTERS = 25
 
         /** Alternate verifier used when the user picks verifier == rewriter; also spike-verified. */
         const val ALTERNATE_CHAPTER_VERIFIER_MODEL = "openai/gpt-5.6-sol"

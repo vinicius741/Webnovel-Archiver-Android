@@ -4,19 +4,21 @@ import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.security.MessageDigest
 
-/** Pure passage boundaries, cache identities and complementary evidence selection. */
+/** Pure chapter sampling, cache identities and chapter-level usefulness rules for TypeSafe selection. */
 internal object CoverEvidencePlanning {
     const val MODEL = "jev-1.13.0"
-    const val PASSAGE_CHARS = 4_000
-    const val CONTEXT_CHARS = 24_000
-    private const val OVERLAP_CHARS = 400
-    private const val MAX_PASSAGES = 12
+    const val DEFAULT_TARGET_CHAPTERS = 10
 
-    data class Passage(
+    private const val SAMPLE_CHARS = 2_200
+    private const val USEFUL_EVIDENCE = 0.5
+    private const val TEMPORARY_LIMIT = 0.5
+
+    /** Two excerpts per chapter — the opening and a mid-chapter window — keep one request per chapter. */
+    data class ChapterSample(
         val chapter: Int,
         val title: String,
-        val offset: Int,
-        val text: String,
+        val opening: String,
+        val middle: String,
     )
 
     data class Judgments(
@@ -24,40 +26,37 @@ internal object CoverEvidencePlanning {
         val premise: Double,
         val imagery: Double,
         val temporary: Double,
-    ) {
-        fun dimensions(): List<Double> = listOf(appearance, premise, imagery)
-    }
+    )
 
-    data class Candidate(
-        val passage: Passage,
+    data class ScoredChapter(
+        val sample: ChapterSample,
         val judgments: Judgments,
     )
 
-    fun passages(
+    fun sample(
         chapter: Int,
         title: String,
         text: String,
-    ): List<Passage> {
-        val result = mutableListOf<Passage>()
-        var start = 0
-        while (start < text.length) {
-            val limit = minOf(start + PASSAGE_CHARS, text.length)
-            val boundary = text.lastIndexOf("\n\n", limit)
-            val end = if (limit < text.length && boundary > start + PASSAGE_CHARS / 2) boundary else limit
-            val part = text.substring(start, end).trim()
-            if (part.isNotBlank()) {
-                result +=
-                    Passage(chapter, title, start + text.substring(start, end).indexOfFirst { !it.isWhitespace() }, part)
-            }
-            if (end == text.length) break
-            start = maxOf(start + 1, end - OVERLAP_CHARS)
-        }
-        return result
+    ): ChapterSample? {
+        if (text.isBlank()) return null
+        if (text.length <= SAMPLE_CHARS) return ChapterSample(chapter, title, text.trim(), "")
+        val middleStart = ((text.length - SAMPLE_CHARS) / 2).coerceIn(SAMPLE_CHARS, text.length - SAMPLE_CHARS)
+        return ChapterSample(chapter, title, excerpt(text, 0).trim(), excerpt(text, middleStart).trim())
+    }
+
+    private fun excerpt(
+        text: String,
+        start: Int,
+    ): String {
+        val limit = minOf(start + SAMPLE_CHARS, text.length)
+        val boundary = text.lastIndexOf("\n\n", limit)
+        val end = if (limit < text.length && boundary > start + SAMPLE_CHARS / 2) boundary else limit
+        return text.substring(start, end)
     }
 
     fun state(
         story: Story,
-        passage: Passage,
+        sample: ChapterSample,
     ): JsonObject =
         JsonObject().apply {
             addProperty("title", story.title.take(500))
@@ -69,9 +68,10 @@ internal object CoverEvidencePlanning {
                     .joinToString(", ")
                     .take(1_000),
             )
-            addProperty("chapter_position", passage.chapter)
-            addProperty("chapter_title", passage.title.take(500))
-            addProperty("passage", passage.text)
+            addProperty("chapter_position", sample.chapter)
+            addProperty("chapter_title", sample.title.take(500))
+            addProperty("opening", sample.opening)
+            if (sample.middle.isNotEmpty()) addProperty("middle", sample.middle)
         }
 
     fun cacheKey(request: JsonObject): String =
@@ -80,68 +80,19 @@ internal object CoverEvidencePlanning {
             .digest(request.toString().toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
 
-    /** Keep contenders for each dimension and book quarter so a long novel stays memory bounded. */
-    fun shortlist(
-        candidates: List<Candidate>,
-        chapterCount: Int,
-    ): List<Candidate> =
-        candidates
-            .groupBy { minOf(3, (it.passage.chapter - 1) * 4 / maxOf(1, chapterCount)) }
-            .values
-            .flatMap { group ->
-                (0..2).flatMap { dimension ->
-                    group.sortedByDescending { it.judgments.dimensions()[dimension] }.take(12)
-                }
-            }.distinctBy { it.passage.chapter to it.passage.offset }
+    /** A cover needs identifiable visual evidence that is not confined to a temporary scene. */
+    fun isUseful(judgments: Judgments): Boolean =
+        maxOf(judgments.appearance, judgments.imagery) >= USEFUL_EVIDENCE && judgments.temporary <= TEMPORARY_LIMIT
 
-    fun select(candidates: List<Candidate>): List<AiDescriptionPlanning.ChapterText> {
-        val remaining = candidates.distinctBy { it.passage.text }.toMutableList()
-        val selected = mutableListOf<Candidate>()
-        var budget = CONTEXT_CHARS
-        while (remaining.isNotEmpty() && selected.size < MAX_PASSAGES) {
-            val eligible = remaining.filter { excerpt(it.passage).length <= budget }
-            val best = eligible.maxByOrNull { utility(it, selected) } ?: break
-            if (utility(best, selected) <= 0.0) break
-            selected += best
-            remaining.remove(best)
-            budget -= excerpt(best.passage).length
-        }
-        return selected.sortedWith(compareBy({ it.passage.chapter }, { it.passage.offset })).map {
-            AiDescriptionPlanning.ChapterText(
-                number = it.passage.chapter,
-                title = it.passage.title,
-                text = excerpt(it.passage),
-            )
-        }
-    }
+    fun utility(judgments: Judgments): Double =
+        (judgments.appearance + judgments.premise + judgments.imagery) / 3.0 * (1.0 - judgments.temporary)
 
-    private fun excerpt(passage: Passage): String =
-        "[Passage at character ${passage.offset + 1}; surrounding text omitted]\n${passage.text}"
-
-    private fun utility(
-        candidate: Candidate,
-        selected: List<Candidate>,
-    ): Double {
-        val scores = candidate.judgments.dimensions()
-        val coverage = (0..2).map { dim -> selected.sumOf { it.judgments.dimensions()[dim] } }
-        val value = scores.indices.sumOf { scores[it] / (1.0 + coverage[it]) }
-        val repeated = selected.maxOfOrNull { similarity(candidate.passage.text, it.passage.text) } ?: 0.0
-        val sameChapter = selected.count { it.passage.chapter == candidate.passage.chapter }
-        return value * (1.0 - repeated) * (1.0 - 0.5 * candidate.judgments.temporary) / (1 + sameChapter)
-    }
-
-    private fun similarity(
-        first: String,
-        second: String,
-    ): Double {
-        fun words(text: String) =
-            text
-                .lowercase()
-                .split(Regex("\\W+"))
-                .filter { it.length > 3 }
-                .toSet()
-        val a = words(first)
-        val b = words(second)
-        return if (a.isEmpty() || b.isEmpty()) 0.0 else a.intersect(b).size.toDouble() / minOf(a.size, b.size)
-    }
+    fun choose(
+        useful: List<ScoredChapter>,
+        target: Int,
+    ): List<ScoredChapter> =
+        useful
+            .sortedByDescending { utility(it.judgments) }
+            .take(target)
+            .sortedBy { it.sample.chapter }
 }

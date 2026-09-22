@@ -12,9 +12,12 @@ object AiCoverContextPlanning {
         return explicit.distinct().sorted().filter { it in story.chapters.indices && story.chapters[it].downloaded }
     }
 
-    fun contextChaptersLabel(story: Story): String =
+    fun contextChaptersLabel(
+        story: Story,
+        typeSafeSelection: List<Int>? = null,
+    ): String =
         if (story.aiCoverContextChapterIndices.isNullOrEmpty()) {
-            "Relevant passages (TypeSafe)"
+            typeSafeSelection?.takeIf { it.isNotEmpty() }?.let { "TypeSafe: ${it.size} chapters" } ?: "Automatic (TypeSafe)"
         } else {
             "${resolveContextChapters(story).size} selected"
         }
