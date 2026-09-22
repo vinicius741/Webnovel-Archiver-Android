@@ -195,8 +195,9 @@ class AiCoverArtEngine internal constructor(
     )
 
     /**
-     * Retries exactly once on an empty reply: reasoning models sometimes burn the whole token
-     * budget before writing text. HTTP failures are not retried — a second call can't fix auth or credits.
+     * Retries exactly once on an empty reply (reasoning models sometimes burn the whole token
+     * budget before writing text) and once with a doubled budget on a truncated reply. HTTP
+     * failures are not retried — a second call can't fix auth or credits.
      */
     private suspend fun writeImagePrompt(
         apiKey: String,
@@ -208,11 +209,22 @@ class AiCoverArtEngine internal constructor(
     ): String {
         val messages = AiCoverPlanning.buildPromptMessages(story, chapters)
         return try {
-            trackedPromptCompletion(apiKey, model, messages, story.id, operationId)
+            trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, story.id, operationId)
         } catch (error: OpenRouterEmptyCompletionException) {
             Timber.d(error, "Empty image-prompt completion; retrying once")
             onProgress("Empty reply from the model — retrying the image prompt...")
-            trackedPromptCompletion(apiKey, model, messages, story.id, operationId)
+            trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, story.id, operationId)
+        } catch (error: OpenRouterTruncatedException) {
+            Timber.d(error, "Truncated image-prompt completion; retrying with a larger budget")
+            onProgress("The model overran its response limit — retrying the image prompt...")
+            trackedPromptCompletion(
+                apiKey,
+                model,
+                messages,
+                AiCoverPlanning.MAX_OUTPUT_TOKENS * 2,
+                story.id,
+                operationId,
+            )
         }
     }
 
@@ -222,12 +234,13 @@ class AiCoverArtEngine internal constructor(
         apiKey: String,
         model: String,
         messages: List<OpenRouterMessage>,
+        maxTokens: Int,
         storyId: String,
         operationId: String,
     ): String {
         val result =
             try {
-                client.chatCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS)
+                client.chatCompletion(apiKey, model, messages, maxTokens)
             } catch (error: OpenRouterEmptyCompletionException) {
                 recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, error.receipt, OUTCOME_EMPTY)
                 throw error
@@ -240,7 +253,7 @@ class AiCoverArtEngine internal constructor(
             }
         if (result.finishReason == "length") {
             recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, result.receipt, OUTCOME_TRUNCATED)
-            throw OpenRouterException(
+            throw OpenRouterTruncatedException(
                 "The model reached its response limit before finishing the image prompt. Try again or pick a different model.",
                 result.receipt,
             )
