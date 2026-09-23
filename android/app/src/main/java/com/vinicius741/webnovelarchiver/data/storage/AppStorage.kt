@@ -662,43 +662,7 @@ class AppStorage(
      * on-disk model becomes portable. Non-existent absolute paths are left untouched (they may live
      * under a different install's filesDir and will be re-derived on next download).
      */
-    private fun migrateChapterPaths(story: Story): Story {
-        var changed = false
-        val chapters =
-            story.chapters
-                .map { chapter ->
-                    val absolute = chapter.filePath ?: return@map chapter
-                    val file = File(absolute)
-                    if (file.isAbsolute && file.startsWith(root)) {
-                        changed = true
-                        chapter.copy(filePath = relativize(file))
-                    } else {
-                        chapter
-                    }
-                }.toMutableList()
-        val epubPaths =
-            story.epubPaths
-                ?.mapNotNull { path ->
-                    val file = File(path)
-                    if (file.isAbsolute && file.startsWith(root)) {
-                        changed = true
-                        relativize(file)
-                    } else {
-                        path
-                    }
-                }?.toMutableList()
-        val epubPath =
-            story.epubPath?.let { path ->
-                val file = File(path)
-                if (file.isAbsolute && file.startsWith(root)) {
-                    changed = true
-                    relativize(file)
-                } else {
-                    path
-                }
-            }
-        return if (!changed) story else story.copy(chapters = chapters, epubPaths = epubPaths, epubPath = epubPath)
-    }
+    private fun migrateChapterPaths(story: Story): Story = migrateStoryPaths(story, root)
 
     /** Read + coerce Gson defaults + relative-path migration for a story document. */
     private fun readStory(file: File): Story? {
