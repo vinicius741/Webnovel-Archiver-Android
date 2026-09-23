@@ -80,7 +80,7 @@ class ColdFrameWindowTest(unittest.TestCase):
     def test_window_bounds(self):
         doc = cold_session()
         window = aggregate.cold_frame_window(doc)
-        self.assertEqual(window, (1_000_000_000 + 800 * 1_000_000, 1_000_000_000 + 1200 * 1_000_000 + 2))
+        self.assertEqual(window, (1_000_000_000 + 800 * 1_000_000, 1_000_000_000 + 2200 * 1_000_000 + 2))
 
     def test_no_window_without_ui_ready(self):
         doc = make_session_doc(events=[{"name": "scenario_complete", "t": 5}])
@@ -108,6 +108,16 @@ class AggregateScenarioTest(unittest.TestCase):
         self.assertEqual(result["ok_iterations"], 1)
         empty = aggregate.aggregate_cold_scenario([iterations[1]], "library")
         self.assertEqual(empty["status"], "failed")
+
+    def test_cold_evidence_is_visible_at_scenario_level(self):
+        iterations = [
+            {"status": "ok", "session": cold_session(), "metrics": {"x": 1.0}, "frame_samples": [],
+             "evidence": {"crashCount": 0, "strictModeCount": 4}},
+            {"status": "ok", "session": cold_session(), "metrics": {"x": 2.0}, "frame_samples": [],
+             "evidence": {"crashCount": 0, "strictModeCount": 3}},
+        ]
+        result = aggregate.aggregate_cold_scenario(iterations, "library")
+        self.assertEqual(result["evidence"]["strictModeCount"], 7)
 
 
 class WarmedNavigationTest(unittest.TestCase):

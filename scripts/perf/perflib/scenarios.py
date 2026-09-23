@@ -17,7 +17,7 @@ import time
 from . import adb
 from . import aggregate
 from .device import MAIN_ACTIVITY
-from .session import parse_session_json, parse_frames_jsonl, iteration_status
+from .session import event_by_name, parse_session_json, parse_frames_jsonl, iteration_status
 
 COLD_SCENARIOS = {
     "cold_library": {"token": "library", "route": "library", "completeOn": "screen_built:library"},
@@ -32,7 +32,7 @@ MARKERS = {
     "library": ["Library"],
     "settings": ["Settings"],
     "queue": ["Downloads"],
-    "details": ["Download"],
+    "details": [],
     "reader": ["Read aloud"],
 }
 
@@ -311,19 +311,32 @@ def run_cold_scenario(
             result["error"] = status_error
             result["session"] = doc
             if status == "ok":
-                # Reader WebView onPageFinished lands shortly after scenario_complete; re-read
-                # the settled file (event timestamps are app-side, unaffected by read timing).
+                # Reader WebView onPageFinished lands after the presentation event that
+                # completes the scenario. Wait for it before extracting the paint metric.
                 try:
-                    doc = refresh_session(serial, app_id, run_id, timeout_s=6)
+                    if config["route"] == "reader":
+                        doc = wait_for_session_event(
+                            serial, app_id, run_id, "reader_content_painted", None, 4,
+                            after_nanos=(event_by_name(doc, "reader_content_presented") or {}).get("t", 0),
+                        )
+                    else:
+                        doc = refresh_session(serial, app_id, run_id, timeout_s=6)
                     result["session"] = doc
                 except TimeoutError:
                     pass
                 result["metrics"] = aggregate.extract_cold_metrics(doc, config["route"])
                 if launch.get("amTotalTimeMs") is not None:
                     result["metrics"]["am_total_ms"] = float(launch["amTotalTimeMs"])
+                # Capture the first second of completed draws, then let the app's
+                # one-second frame-file flush publish those samples before reading.
+                # Verification dumps start only after this measured window.
+                time.sleep(2.1)
             result["frame_samples"], _ = pull_frames(serial, app_id)
         verified, xml, verify_detail = verify_screen_settled(serial, markers, absent, package=app_id)
         result["verify"] = {"ok": verified, **verify_detail}
+        if not verified and result["status"] == "ok":
+            result["status"] = "execution_failure"
+            result["error"] = f"screen verification failed: {verify_detail}"
         logcat_raw, evidence = crash_evidence(serial, app_id)
         result["evidence"] = evidence
         if evidence["crashCount"]:

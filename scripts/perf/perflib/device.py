@@ -94,9 +94,13 @@ def probe_dataset(serial, app_id, timeout_s=60):
     Returns the parsed report dict, or raises TimeoutError.
     """
     adb.force_stop(serial, app_id)
-    adb.launch_and_wait_foreground(
+    # The app keeps this report in cache across launches. Remove it before probing so a
+    # failed hydration cannot silently reuse an older library fingerprint.
+    adb.run(serial, "shell", "run-as", app_id, "rm", "-f", "cache/dev_library_report.json")
+    if not adb.launch_and_wait_foreground(
         serial, app_id, f"am start -n {app_id}/{MAIN_ACTIVITY} --es dev_start_screen library --es dev_library_report 1"
-    )
+    ):
+        raise EnvironmentError_("library probe did not reach the app foreground")
 
     def parse(text):
         try:

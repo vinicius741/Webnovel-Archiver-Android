@@ -9,6 +9,7 @@ from .session import event_by_name, events_named, elapsed_ms_since_process_start
 
 # Frame percentiles are only reported when at least this many samples exist in the window.
 DEFAULT_MIN_FRAME_SAMPLES = 100
+COLD_FRAME_TAIL_MS = 1000.0
 
 
 def extract_cold_metrics(session, expected_route):
@@ -173,13 +174,15 @@ def frame_stats(samples, min_samples=DEFAULT_MIN_FRAME_SAMPLES):
 
 
 def cold_frame_window(session):
-    """Cold-start frame window: first ui_ready .. scenario_complete (or last event)."""
+    """Cold-start frame window: ui_ready through the first second after completion.
+
+    screen_built is emitted before the first completed draw. Ending the window at that
+    event excludes nearly all cold-start frames.
+    """
     ui_ready = event_by_name(session, "ui_ready")
     complete = event_by_name(session, "scenario_complete")
-    events = session.get("events", [])
-    last_t = events[-1].get("t") if events else None
     t0 = ui_ready.get("t") if ui_ready else None
-    t1 = complete.get("t") if complete else last_t
+    t1 = complete.get("t") + int(COLD_FRAME_TAIL_MS * 1_000_000) if complete and complete.get("t") is not None else None
     if t0 is None or t1 is None or t1 <= t0:
         return None
     return (t0, t1)
@@ -208,6 +211,10 @@ def aggregate_cold_scenario(iterations, expected_route):
         "total_iterations": len(iterations),
         "metrics": aggregated,
         "frames": frame_stats(windowed_frames) | {"tags": sorted({s["tag"] for s in windowed_frames})},
+        "evidence": {
+            "crashCount": sum((i.get("evidence") or {}).get("crashCount", 0) for i in iterations),
+            "strictModeCount": sum((i.get("evidence") or {}).get("strictModeCount", 0) for i in iterations),
+        },
         "variability_cv": {
             key: round(stats.coefficient_of_variation(values), 4)
             for key, values in metric_series.items()

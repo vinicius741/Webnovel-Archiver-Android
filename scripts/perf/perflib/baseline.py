@@ -98,6 +98,14 @@ def compatibility_reasons(current_env, baseline_env):
     base_ds = baseline_env.get("dataset") or {}
     if cur_ds.get("storyIdsSha256") != base_ds.get("storyIdsSha256"):
         reasons.append("library dataset fingerprint differs (stories added/removed/reordered)")
+    for field in ("downloadedChapterEntries", "totalChapterEntries", "storageIssues"):
+        if cur_ds.get(field) != base_ds.get(field):
+            reasons.append(f"library dataset {field} differs ({base_ds.get(field)!r} vs {cur_ds.get(field)!r})")
+    cur_target = current_env.get("readerTarget") or {}
+    base_target = baseline_env.get("readerTarget") or {}
+    for field in ("storyId", "chapterId"):
+        if cur_target.get(field) != base_target.get(field):
+            reasons.append(f"reader target {field} differs")
     if (cur_ds.get("appId") or (current_env.get("device") or {}).get("appId")) != (
         base_ds.get("appId") or (baseline_env.get("device") or {}).get("appId")
     ):

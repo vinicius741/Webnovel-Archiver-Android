@@ -184,6 +184,12 @@ def render_scenario(name, scenario, comparison):
                 f"Frames (n={frames.get('count')}): median {fmt(frames.get('median_ms'))} ms · p90 {fmt(frames.get('p90_ms'))} ms · "
                 f"p95 {fmt(frames.get('p95_ms'))} ms · p99 {fmt(frames.get('p99_ms'))} ms · jank {fmt(frames.get('jank_pct'))}%"
             )
+    variable = [
+        key for key, cv in (scenario.get("variability_cv") or {}).items()
+        if key.endswith("_ms") and cv >= 0.3 and (metrics.get(key) or {}).get("median", 0) >= 50
+    ]
+    if variable:
+        lines.append(f"- High iteration variability ({', '.join(variable)}); rerun before interpreting these medians.")
     for key in ("interactions_recorded", "legs_observed", "cycles_requested"):
         if scenario.get(key) is not None:
             lines.append(f"- {key}: {scenario[key]}")

@@ -149,7 +149,7 @@ def cmd_run(args):
     app_id = device.VARIANTS[args.variant]
     build_if_requested(args)
     apk = device.apk_identity(args.variant, args.apk)
-    if not device.app_installed(serial, app_id):
+    if args.skip_install and not device.app_installed(serial, app_id):
         raise SystemExit(f"{app_id} is not installed on {serial}; run without --skip-install or install the APK")
     if not args.skip_install:
         print(f"[perf] installing {apk['path']} …", flush=True)
@@ -256,7 +256,7 @@ def cmd_run(args):
             print(f"[perf] ADVISORY REGRESSIONS: {', '.join(regressions)}")
             if args.fail_on_regression:
                 return 2
-    failures = [n for n, s in scenario_results.items() if s.get("status") in ("failed", "incomplete")]
+    failures = [n for n, s in scenario_results.items() if s.get("status") in ("failed", "incomplete", "partial")]
     if failures:
         print(f"[perf] execution problems in: {', '.join(failures)}")
         return 1

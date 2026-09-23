@@ -31,10 +31,16 @@ internal class PerfSessionRunner(
         Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "perf-session").apply { isDaemon = true } }
     private val scheduler: java.util.concurrent.ScheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "perf-session-timer").apply { isDaemon = true } }
-    private val framesFile = File(File(appContext.cacheDir, PerfSessionContract.SESSION_DIR), PerfSessionContract.FRAMES_FILE)
-    private val sessionFile = File(File(appContext.cacheDir, PerfSessionContract.SESSION_DIR), PerfSessionContract.SESSION_FILE)
+    private val sessionFile by lazy {
+        File(File(appContext.cacheDir, PerfSessionContract.SESSION_DIR), PerfSessionContract.SESSION_FILE)
+    }
     private val frameCollector =
-        PerfFrameCollector(framesFile, refreshRateHz, tagProvider = { screenTag }, nowNanos = nowNanos)
+        PerfFrameCollector(
+            outputFile = { File(File(appContext.cacheDir, PerfSessionContract.SESSION_DIR), PerfSessionContract.FRAMES_FILE) },
+            refreshRateHz = refreshRateHz,
+            tagProvider = { screenTag },
+            nowNanos = nowNanos,
+        )
     private val flushScheduled =
         java.util.concurrent.atomic
             .AtomicBoolean(false)
@@ -46,7 +52,6 @@ internal class PerfSessionRunner(
         window: Window,
         maxDurationMillis: Long,
     ) {
-        framesFile.parentFile?.mkdirs()
         offerEvent(PerfSessionContract.EVENT_SESSION_START)
         frameCollector.start(window)
         submitMemorySnapshot("session_start")

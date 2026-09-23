@@ -174,6 +174,7 @@ logcat: `FATAL EXCEPTION` / `ANR in` lines mark the iteration `execution_failure
 `StrictMode policy violation` lines (the existing debug `penaltyLog()` output — reused,
 not duplicated; `penaltyListener` is not in the public SDK surface) are counted and saved.
 Raw logcat + meminfo + the verification UI dump are artifacts per iteration.
+Cold scenario summaries total the per-iteration crash/ANR and StrictMode counts.
 
 ## Methodology
 
@@ -182,13 +183,16 @@ Raw logcat + meminfo + the verification UI dump are artifacts per iteration.
   repeats library→details→reader→details→library tap cycles; per-leg timings and the
   memory trend come from that single process.
 - **Repeats and statistics.** Every metric reports sample count, median, mean, stdev,
-  min/max, and the coefficient of variation; short suite = 2 iterations per cold scenario,
-  full = 5. Frame stats pool windowed samples across iterations.
+  min/max, and the coefficient of variation; the summary warns when a cold timing metric
+  with a median of at least 50 ms varies by at least 30% across iterations. Short suite =
+  2 iterations per cold scenario, full = 5. Frame stats pool windowed samples across iterations.
 - **Captures never pollute timing windows.** In-app event timestamps drive all metrics.
   The host polls only `cache/perf/session.json` (a `run-as cat` of a small file — no UI
-  thread involvement) while a window is open. `uiautomator dump` verification and any
-  screenshots happen *after* the terminal event; frame windows are capped at
-  `scenario_complete`/interaction timestamps so verification-driven frames cannot count.
+  thread involvement) while a window is open. Cold frame windows extend from `ui_ready`
+  through one second after `scenario_complete`, since the first completed draw follows
+  screen construction. The host waits for the frame collector's periodic flush before
+  reading samples. `uiautomator dump` verification and any screenshots happen after
+  the cold frame window, so verification-driven frames cannot count.
   Exception by design: scroll scenarios measure the swipes themselves.
 - **Fallback navigation is not success.** The session's first `screen_built` route must
   equal the expected route (e.g. `details`); a dev-target fallback to `library` (empty
@@ -203,7 +207,8 @@ Raw logcat + meminfo + the verification UI dump are artifacts per iteration.
   report's `environment.readerTarget`.
 - **Dataset fingerprint.** Each run starts with the app's own `dev_library_report` probe;
   its `storyIdsSha256` (hash over the ordered story-id list) is the compatibility token
-  for baselines.
+  for baselines. The runner removes any prior probe report before launch, so a failed
+  hydration cannot reuse a stale fingerprint.
 - **Incidental state.** The run diffs the persisted library file listing before/after and
   reports changes (expected: none beyond app-managed indexes; navigation via dev tokens
   may persist the navigation stack, which the next dev-target launch overrides).
@@ -214,9 +219,9 @@ Raw logcat + meminfo + the verification UI dump are artifacts per iteration.
   perfetto-traced or fingerprint-less runs). A run compares only when `--baseline` names
   one — there is no implicit "latest baseline".
 - **Compatibility is mandatory.** A comparison is rejected (`not_comparable`, no metric
-  verdicts) unless: report format version, device model + SDK, app id/variant, and the
-  dataset fingerprint all match. Debug and instrumentation runs are therefore never
-  comparable, by construction.
+  verdicts) unless: report format version, device model + SDK, app id/variant, ordered
+  story-id fingerprint, chapter counts, storage-issue count, and selected reader
+  story/chapter all match. Debug and instrumentation runs are therefore never comparable.
 - **Advisory thresholds** (both absolute AND relative must be exceeded; lower is better;
   `--thresholds file.json` overrides):
 
@@ -236,7 +241,7 @@ Raw logcat + meminfo + the verification UI dump are artifacts per iteration.
   missing terminal event, missed interactions), `skipped` (prerequisite missing),
   `not_comparable` (environment mismatch), `inconclusive` (insufficient samples or
   non-ok execution — an incomplete run is never a regression).
-- Exit codes: `run` exits 1 on execution failures/incomplete scenarios, 2 with
+- Exit codes: `run` exits 1 on failed, incomplete, or partially failed scenarios, 2 with
   `--fail-on-regression` and any advisory regression, 0 otherwise. `compare` exits 3 on
   not-comparable.
 - Synthetic-data verification: `selftest` proves regression/improved/stable/inconclusive

@@ -17,7 +17,7 @@ import java.io.FileWriter
  * the jank flag marks frames slower than twice the display frame interval.
  */
 internal class PerfFrameCollector(
-    private val outputFile: File,
+    private val outputFile: () -> File,
     refreshRateHz: Double,
     private val tagProvider: () -> String,
     private val nowNanos: () -> Long = SystemClock::elapsedRealtimeNanos,
@@ -27,9 +27,11 @@ internal class PerfFrameCollector(
     private val thread = HandlerThread("perf-frames").apply { start() }
     private val handler = Handler(thread.looper)
     private var writer: BufferedWriter? = null
-    var sampleCount = 0L
+
+    @Volatile var sampleCount = 0L
         private set
-    var droppedCount = 0L
+
+    @Volatile var droppedCount = 0L
         private set
 
     private val frameListener =
@@ -46,8 +48,14 @@ internal class PerfFrameCollector(
         }
 
     fun start(window: Window) {
+        handler.post {
+            runCatching {
+                val file = outputFile()
+                file.parentFile?.mkdirs()
+                writer = BufferedWriter(FileWriter(file, false))
+            }
+        }
         runCatching {
-            writer = BufferedWriter(FileWriter(outputFile, false))
             window.addOnFrameMetricsAvailableListener(frameListener, handler)
             handler.postDelayed(periodicFlush, FLUSH_PERIOD_MILLIS)
         }
@@ -58,7 +66,11 @@ internal class PerfFrameCollector(
             droppedCount++
             return
         }
-        val target = writer ?: return
+        val target =
+            writer ?: run {
+                droppedCount++
+                return
+            }
         val sample =
             PerfFrameSampleExport(
                 t = nowNanos(),
@@ -69,8 +81,8 @@ internal class PerfFrameCollector(
         runCatching {
             target.write(gson.toJson(sample))
             target.write("\n")
-        }.onFailure { droppedCount++ }
-        sampleCount++
+        }.onSuccess { sampleCount++ }
+            .onFailure { droppedCount++ }
     }
 
     /** Flushes pending lines and stops collection; safe to call from the main thread. */

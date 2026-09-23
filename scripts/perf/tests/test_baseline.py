@@ -57,6 +57,17 @@ class CompatibilityTest(unittest.TestCase):
         reasons = baseline_lib.compatibility_reasons(env_block(), env_block(sha="different"))
         self.assertTrue(any("dataset" in r for r in reasons))
 
+    def test_chapter_count_and_reader_target_changes_rejected(self):
+        current = env_block()
+        baseline = env_block()
+        current["dataset"]["downloadedChapterEntries"] = 11
+        baseline["dataset"]["downloadedChapterEntries"] = 10
+        current["readerTarget"] = {"storyId": "s", "chapterId": "new"}
+        baseline["readerTarget"] = {"storyId": "s", "chapterId": "old"}
+        reasons = baseline_lib.compatibility_reasons(current, baseline)
+        self.assertTrue(any("downloadedChapterEntries" in r for r in reasons))
+        self.assertTrue(any("chapterId" in r for r in reasons))
+
     def test_variant_change_rejected(self):
         reasons = baseline_lib.compatibility_reasons(env_block(), env_block(app_id="pkg.instrumentation"))
         self.assertTrue(any("app id" in r for r in reasons))
