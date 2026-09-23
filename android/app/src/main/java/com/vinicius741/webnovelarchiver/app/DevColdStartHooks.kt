@@ -19,22 +19,21 @@ import java.io.File
  * [DevRestorePlanning] for the extra and the path contract.
  */
 internal suspend fun MainActivity.maybeRestoreFullBackupForDev(): Boolean {
-    val zip =
-        DevRestorePlanning.resolveSandboxZipPath(
-            cacheDir,
-            intent.getStringExtra(DevRestorePlanning.EXTRA_DEV_RESTORE_FULL_BACKUP),
-        ) ?: return false
-    try {
-        if (!zip.isFile) {
-            Timber.e("Dev full-backup restore: %s not found in cacheDir", zip.path)
-            return true
+    val requested = intent.getStringExtra(DevRestorePlanning.EXTRA_DEV_RESTORE_FULL_BACKUP) ?: return false
+    return withContext(Dispatchers.IO) {
+        val zip = DevRestorePlanning.resolveSandboxZipPath(cacheDir, requested) ?: return@withContext false
+        try {
+            if (!zip.isFile) {
+                Timber.e("Dev full-backup restore: %s not found in cacheDir", zip.path)
+                return@withContext true
+            }
+            val summary = repository.importFullBackupUri(Uri.fromFile(zip))
+            Timber.i("Dev full-backup restore: %s", summary)
+        } finally {
+            if (!zip.delete()) Timber.w("Dev full-backup restore: could not remove staged zip %s", zip.name)
         }
-        val summary = repository.importFullBackupUri(Uri.fromFile(zip))
-        Timber.i("Dev full-backup restore: %s", summary)
-    } finally {
-        if (!zip.delete()) Timber.w("Dev full-backup restore: could not remove staged zip %s", zip.name)
+        true
     }
-    return true
 }
 
 /**

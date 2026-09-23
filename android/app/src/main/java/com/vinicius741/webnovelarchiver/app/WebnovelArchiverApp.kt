@@ -10,9 +10,12 @@ import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 
 /**
@@ -20,8 +23,14 @@ import timber.log.Timber
  * network client, and engines — duplicate engines would race on the same JSON files.
  */
 class WebnovelArchiverApp : Application() {
-    lateinit var container: AppContainer
-        private set
+    private lateinit var containerSetup: Deferred<AppContainer>
+
+    @Volatile private var readyContainer: AppContainer? = null
+
+    val container: AppContainer
+        get() = readyContainer ?: runBlocking { awaitContainer() }
+
+    suspend fun awaitContainer(): AppContainer = readyContainer ?: containerSetup.await()
 
     private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -43,7 +52,12 @@ class WebnovelArchiverApp : Application() {
         // caused a startup ANR. resolveAsync posts the read; the fallback UA is safe since no
         // OkHttp request fires before the user navigates somewhere.
         SourceUserAgent.resolveAsync(this)
-        container = AppContainer(this).apply { init() }
+        // Restore recovery and storage construction can touch thousands of files after an
+        // interrupted restore. Keep them off the launch thread before the first activity paints.
+        containerSetup =
+            startupScope.async {
+                AppContainer(this@WebnovelArchiverApp).apply { init() }.also { readyContainer = it }
+            }
         // CookieManager.getInstance() also lazy-loads the WebView provider; defer seeding to the
         // background. OkHttp's cookie jar reads CookieManager lazily per request, so seeds land in time.
         startupScope.launch { enableAndSeedCookies() }

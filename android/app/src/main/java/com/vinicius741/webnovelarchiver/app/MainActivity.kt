@@ -13,7 +13,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.vinicius741.webnovelarchiver.BuildConfig
-import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.app.renderRouteDispatch
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupRestorePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -50,8 +49,10 @@ import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.vinicius741.webnovelarchiver.app.notificationPermissionActionLabel as notificationPermissionActionLabelExt
 import com.vinicius741.webnovelarchiver.app.performNotificationPermissionAction as performNotificationPermissionActionExt
 import com.vinicius741.webnovelarchiver.app.requestNotificationPermissionForDownload as requestNotificationPermissionForDownloadExt
@@ -168,24 +169,6 @@ class MainActivity :
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
         startPerfSessionIfRequested()
-        // Process-wide AppContainer: one storage, one network client, one set of engines shared with the services.
-        val container = appContainer
-        repository = container.repository
-        syncEngine = container.syncEngine
-        epubEngine = container.epubEngine
-        // Control/enqueue handle only (ownsProcessLoop = false): the foreground service owns the
-        // single process loop — two loops would each honor their own concurrency cap and double
-        // the parallelism.
-        downloadEngine =
-            DownloadEngine(
-                repository,
-                container.network,
-                container.downloadPacer,
-                ownsProcessLoop = false,
-            )
-        // Same instance the TtsForegroundService plays through, so the reader's listener fires
-        // for service-driven playback.
-        ttsEngine = container.ttsEngine
         // Screens render into `frame`; the TTS mini-player floats above them in `root` so it
         // survives every screen rebuild.
         frame = FrameLayout(this)
@@ -196,18 +179,30 @@ class MainActivity :
         )
         setContentView(root)
         holdSplashScreenUntilFirstContent { uiReady }
-        attachTtsMiniPlayer(root)
-        // Background AI cover jobs outlive this activity. Attach only after `frame` exists: the
-        // collectors run inline on Main.immediate and their first pass reads frame.tag.
-        attachAiCoverJobBridge()
-        attachAiChapterRewriteJobBridge()
         onBackPressedDispatcher.addCallback(this, backCallback)
-        // First paint precedes hydration; seed from the hint written on every theme change / start.
-        StartupThemeHint.read(this)?.let(ThemeManager::apply)
-        showStartupLoading()
         scope.launch {
             val startup =
                 runCatching {
+                    // Read the first-frame theme hint off the UI thread while container setup runs.
+                    withContext(Dispatchers.IO) { StartupThemeHint.read(this@MainActivity) }
+                        ?.let(ThemeManager::apply)
+                    showStartupLoading()
+                    val container = (application as WebnovelArchiverApp).awaitContainer()
+                    repository = container.repository
+                    syncEngine = container.syncEngine
+                    epubEngine = container.epubEngine
+                    // Control/enqueue handle only; the service owns the process loop.
+                    downloadEngine =
+                        DownloadEngine(
+                            repository,
+                            container.network,
+                            container.downloadPacer,
+                            ownsProcessLoop = false,
+                        )
+                    ttsEngine = container.ttsEngine
+                    attachTtsMiniPlayer(root)
+                    attachAiCoverJobBridge()
+                    attachAiChapterRewriteJobBridge()
                     container.awaitRepositoryReady()
                     initializeUiAfterRepositoryReady()
                 }
@@ -248,7 +243,7 @@ class MainActivity :
                 )
             }
         ThemeManager.apply(startupState.activeThemeId)
-        StartupThemeHint.write(this, startupState.activeThemeId)
+        withContext(Dispatchers.IO) { StartupThemeHint.write(this@MainActivity, startupState.activeThemeId) }
         applyWindowTheme()
         if (BuildConfig.DEBUG &&
             (
