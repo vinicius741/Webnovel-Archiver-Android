@@ -3,11 +3,13 @@ package com.vinicius741.webnovelarchiver.data.storage
 import android.util.AtomicFile
 import com.google.gson.Gson
 import com.google.gson.JsonParseException
-import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
+import java.io.StringReader
 
 /**
  * Crash-safe JSON I/O: writes go through [AtomicFile] (temp + rename), reads distinguish
@@ -92,43 +94,86 @@ object DurableJson {
     ): T? = (readAtomicResult<T>(file, gson) as? DurableReadResult.Present)?.value
 
     /** Pure decoder used by tests and by the AtomicFile adapter above. */
+    @Suppress("NestedBlockDepth") // The streaming envelope reader handles keys without building a JSON tree.
     inline fun <reified T> decodeText(
         text: String,
         gson: Gson,
     ): DurableReadResult<T> {
-        val root =
-            try {
-                JsonParser.parseString(text)
-            } catch (error: JsonParseException) {
-                return DurableReadResult.Corrupt(error)
-            } catch (error: IllegalStateException) {
-                return DurableReadResult.Corrupt(error)
-            }
-        val payload =
-            if (root.isJsonObject && root.asJsonObject.has("payload")) {
-                val schema =
-                    runCatching {
-                        root.asJsonObject
-                            .get("schemaVersion")
-                            ?.takeIf { it.isJsonPrimitive }
-                            ?.asInt
-                    }.getOrNull()
-                        ?: return DurableReadResult.Corrupt(JsonParseException("Envelope is missing schemaVersion"))
-                if (schema != CURRENT_SCHEMA_VERSION) {
-                    return DurableReadResult.UnsupportedSchema(schema, CURRENT_SCHEMA_VERSION)
-                }
-                root.asJsonObject.get("payload")
-            } else {
-                root
-            }
+        val type = object : TypeToken<T>() {}.type
         return try {
-            val value =
-                gson.fromJson<T>(payload, object : TypeToken<T>() {}.type)
-                    ?: return DurableReadResult.Corrupt(JsonParseException("Decoded payload was null"))
-            DurableReadResult.Present(value)
+            JsonReader(StringReader(text)).use { reader ->
+                if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                    val legacy = gson.fromJson<T>(text, type)
+                    return@use if (legacy == null) {
+                        DurableReadResult.Corrupt(JsonParseException("Decoded payload was null"))
+                    } else {
+                        DurableReadResult.Present(legacy)
+                    }
+                }
+                reader.beginObject()
+                var schema: Int? = null
+                var hasPayload = false
+                var deferredPayload = false
+                var payload: T? = null
+                while (reader.hasNext()) {
+                    when (reader.nextName()) {
+                        "schemaVersion" -> schema = reader.nextInt()
+                        "payload" -> {
+                            hasPayload = true
+                            if (schema == null) {
+                                // An envelope may put payload first. Inspect the schema before
+                                // decoding a shape that this version may not understand.
+                                deferredPayload = true
+                                reader.skipValue()
+                            } else if (schema != CURRENT_SCHEMA_VERSION) {
+                                reader.skipValue()
+                            } else {
+                                payload = gson.fromJson(reader, type)
+                            }
+                        }
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                check(reader.peek() == JsonToken.END_DOCUMENT) { "Trailing content after JSON document" }
+                if (!hasPayload) {
+                    val legacy = gson.fromJson<T>(text, type)
+                    if (legacy == null) {
+                        DurableReadResult.Corrupt(JsonParseException("Decoded payload was null"))
+                    } else {
+                        DurableReadResult.Present(legacy)
+                    }
+                } else if (schema == null) {
+                    DurableReadResult.Corrupt(JsonParseException("Envelope is missing schemaVersion"))
+                } else if (schema != CURRENT_SCHEMA_VERSION) {
+                    DurableReadResult.UnsupportedSchema(schema, CURRENT_SCHEMA_VERSION)
+                } else {
+                    if (deferredPayload) {
+                        JsonReader(StringReader(text)).use { retry ->
+                            retry.beginObject()
+                            while (retry.hasNext()) {
+                                if (retry.nextName() == "payload") {
+                                    payload = gson.fromJson(retry, type)
+                                    break
+                                }
+                                retry.skipValue()
+                            }
+                        }
+                    }
+                    if (payload == null) {
+                        DurableReadResult.Corrupt(JsonParseException("Decoded payload was null"))
+                    } else {
+                        DurableReadResult.Present(payload)
+                    }
+                }
+            }
         } catch (error: JsonParseException) {
             DurableReadResult.Corrupt(error)
         } catch (error: IllegalStateException) {
+            DurableReadResult.Corrupt(error)
+        } catch (error: IOException) {
+            DurableReadResult.Corrupt(error)
+        } catch (error: NumberFormatException) {
             DurableReadResult.Corrupt(error)
         }
     }

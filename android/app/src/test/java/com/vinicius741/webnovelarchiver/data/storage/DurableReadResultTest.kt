@@ -17,10 +17,22 @@ class DurableReadResultTest {
                 """{"schemaVersion":99,"payload":["one"]}""",
                 gson,
             )
+        val incompatibleFuturePayload =
+            DurableJson.decodeText<List<String>>(
+                """{"schemaVersion":99,"payload":{"futureShape":true}}""",
+                gson,
+            )
+        val reorderedFuturePayload =
+            DurableJson.decodeText<List<String>>(
+                """{"payload":{"futureShape":true},"schemaVersion":99}""",
+                gson,
+            )
 
         assertEquals(listOf("one"), (present as DurableReadResult.Present).value)
         assertTrue(corrupt is DurableReadResult.Corrupt)
         assertEquals(99, (unsupported as DurableReadResult.UnsupportedSchema).foundVersion)
+        assertEquals(99, (incompatibleFuturePayload as DurableReadResult.UnsupportedSchema).foundVersion)
+        assertEquals(99, (reorderedFuturePayload as DurableReadResult.UnsupportedSchema).foundVersion)
     }
 
     @Test
@@ -32,5 +44,27 @@ class DurableReadResultTest {
 
         assertEquals(listOf("one", "two"), (enveloped as DurableReadResult.Present).value)
         assertEquals(listOf("legacy"), (legacy as DurableReadResult.Present).value)
+    }
+
+    @Test
+    fun decoderStreamsPayloadEvenWhenEnvelopeFieldsAreReordered() {
+        val result =
+            DurableJson.decodeText<List<String>>(
+                """{"payload":["one","two"],"appVersion":"test","schemaVersion":1}""",
+                gson,
+            )
+
+        assertEquals(listOf("one", "two"), (result as DurableReadResult.Present).value)
+    }
+
+    @Test
+    fun decoderPreservesLegacyObjectAndRejectsMalformedEnvelope() {
+        val legacy = DurableJson.decodeText<Map<String, Int>>("""{"count":2}""", gson)
+        val missingSchema = DurableJson.decodeText<List<String>>("""{"payload":["one"]}""", gson)
+        val trailing = DurableJson.decodeText<List<String>>("""{"schemaVersion":1,"payload":[]} true""", gson)
+
+        assertEquals(mapOf("count" to 2), (legacy as DurableReadResult.Present).value)
+        assertTrue(missingSchema is DurableReadResult.Corrupt)
+        assertTrue(trailing is DurableReadResult.Corrupt)
     }
 }
