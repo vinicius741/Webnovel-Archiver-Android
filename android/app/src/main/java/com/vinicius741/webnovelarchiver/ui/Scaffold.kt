@@ -269,7 +269,7 @@ internal fun ScreenHost.systemBarBottom(): Int {
  * preference reads identically everywhere.
  */
 internal fun ScreenHost.activeCoverSource(story: Story): Any? =
-    repository.coverFile(story)?.takeIf { AiCoverPlanning.isAiCoverActive(story) }
+    repository.coverFile(story, checkExists = false)?.takeIf { AiCoverPlanning.isAiCoverActive(story) }
         ?: story.coverUrl?.takeIf { it.isNotBlank() }
 
 /**
@@ -291,7 +291,11 @@ internal fun ScreenHost.coverImage(
         }
     if (source != null) {
         if (tapToOpen) coverView.setOnClickListener { showCoverDialog(story) }
-        loadImage(source, coverView as ImageView)
+        loadImage(
+            source,
+            coverView as ImageView,
+            fallbackOnError = if (source is java.io.File) story.coverUrl?.takeIf { it.isNotBlank() } else null,
+        )
     }
     return coverView
 }

@@ -59,6 +59,7 @@ internal class RestoreRootCommitter(
                 if (phase == RestoreTransactionJournal.Phase.OLD_ROOT_MOVED) rollbackRequired = true
                 journal.write(phase)
                 if (phase == RestoreTransactionJournal.Phase.COMMITTED) {
+                    LocalImageRevision.rootReplaced()
                     rollbackRequired = false
                     preparedByThisAttempt = false
                 }

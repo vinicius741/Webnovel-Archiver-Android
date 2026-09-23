@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.data.repository
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
+import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,6 +27,7 @@ internal suspend fun AppRepository.setAiCover(
         latest?.let { story ->
             preserveAppliedCover(story)
             val file = storage.coverFiles.save(storyId, bytes, AiCoverPlanning.coverFileExtension(mediaType))
+            LocalImageRevision.changed(file)
             StoryMutations.setAiCoverPath(story, storage.relativize(file))
         }
     }
@@ -50,7 +52,10 @@ internal suspend fun AppRepository.setShowAiCover(
     }
 
 /** The story's locally generated cover file, when one is recorded and present on disk. */
-internal fun AppRepository.coverFile(story: Story): File? = storage.resolveAbsolutePath(story.aiCoverPath)
+internal fun AppRepository.coverFile(
+    story: Story,
+    checkExists: Boolean = true,
+): File? = storage.resolveAbsolutePath(story.aiCoverPath, checkExists)
 
 /*
  * Pending (preview-only) AI cover drafts. Unlike the cover transactions above these do not mutate

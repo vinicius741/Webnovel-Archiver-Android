@@ -17,6 +17,7 @@ import androidx.window.layout.WindowMetricsCalculator
 import coil3.load
 import coil3.request.crossfade
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
@@ -131,13 +132,17 @@ internal fun ScreenHost.clipboardText(): String? {
 internal fun ScreenHost.loadImage(
     source: Any?,
     image: ImageView,
+    fallbackOnError: Any? = null,
 ) {
     // Coil gives cover loads caching, downsampling, view-detach cancellation, and placeholder/error
     // drawables. `source` is a remote URL or a local java.io.File (generated AI cover).
     image.load(source) {
         // Applied covers reuse their path. Include the file revision so Apply refreshes every surface.
         if (source is java.io.File) {
-            memoryCacheKey("${source.absolutePath}:${source.lastModified()}:${source.length()}")
+            memoryCacheKey("${source.absolutePath}:${LocalImageRevision.current(source)}")
+        }
+        if (fallbackOnError != null) {
+            listener(onError = { _, _ -> image.load(fallbackOnError) })
         }
         crossfade(true)
     }

@@ -559,11 +559,14 @@ class AppStorage(
     }
 
     /** Resolve a possibly-relative chapter/epub path to an absolute filesystem path. */
-    fun resolveAbsolutePath(path: String?): File? {
+    fun resolveAbsolutePath(
+        path: String?,
+        checkExists: Boolean = true,
+    ): File? {
         if (path.isNullOrBlank()) return null
         val direct = File(path)
-        if (direct.isAbsolute) return direct.takeIf(File::exists)
-        return File(root, path).takeIf(File::exists)
+        val resolved = if (direct.isAbsolute) direct else File(root, path)
+        return resolved.takeIf { !checkExists || it.exists() }
     }
 
     /**

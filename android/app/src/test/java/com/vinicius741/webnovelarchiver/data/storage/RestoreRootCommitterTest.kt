@@ -103,4 +103,15 @@ class RestoreRootCommitterTest {
         assertFalse(snapshot.exists())
         assertFalse(journal.exists())
     }
+
+    @Test
+    fun committedRestoreInvalidatesCoverCacheKeys() {
+        seed(live, "current")
+        val cover = File(live, "covers/story.jpg")
+        val previousKey = LocalImageRevision.current(cover)
+
+        committer().commit(seed(File(tmp.root, "staged"), "new"))
+
+        assertTrue(previousKey != LocalImageRevision.current(cover))
+    }
 }
