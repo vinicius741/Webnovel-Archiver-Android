@@ -15,15 +15,12 @@ import com.vinicius741.webnovelarchiver.feature.library.LibraryQuery
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.ui.GridLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -45,89 +42,38 @@ private data class LibraryProgressTag(
     val storyId: String,
 )
 
-internal fun ScreenHost.renderTabGrid(
-    stories: List<Story>,
-    list: GridLayout,
-    layout: ScreenLayoutResult,
-    filter: String,
-    selectedTabId: String?,
-    selectedTags: Set<String>,
-    sortOption: String,
-    sortAscending: Boolean,
+internal fun ScreenHost.bindLibraryStoryCard(
+    card: LinearLayout,
+    story: Story,
 ) {
-    list.removeAllViews()
-    // Re-apply the column count in case the window refolded since the grid was created.
-    list.columnCount = layout.numColumns.coerceAtLeast(1)
-    val visible = LibraryQuery.filterAndSort(stories, filter, selectedTabId, selectedTags, sortOption, sortAscending)
-    if (visible.isEmpty()) {
-        // An empty state is page-level content, not a story card. Let it span the grid so it stays
-        // centered instead of being constrained to the first cell on multi-column layouts.
-        list.columnCount = 1
-        // Distinguish "this tab is just empty" (no search/tag filter active) from "your filters
-        // excluded everything". The first invites an action; the second should not, since the fix
-        // is to clear filters, not add a story.
-        val hasActiveFilter = filter.isNotBlank() || selectedTags.isNotEmpty()
-        val state =
-            if (hasActiveFilter) {
-                makeEmptyState(app, message = "Try clearing your search or filters.", title = "No matches", iconRes = R.drawable.wna_search)
-            } else {
-                makeEmptyState(
-                    app,
-                    message = "Novels you add or move here will show up in this tab.",
-                    title = "Nothing here yet",
-                    iconRes = R.drawable.wna_menu_book,
-                    actionLabel = "Add a story",
-                    onAction = { showAddStory() },
-                )
-            }
-        list.addView(
-            state,
-            ViewGroup.MarginLayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-            ),
-        )
-        return
+    card.removeAllViews()
+    val content = buildStoryCard(story)
+    content.background = selectableRipple(ThemeManager.colors.onSurface)
+    content.isClickable = true
+    content.setOnClickListener { showDetails(story.id) }
+    content.setOnLongClickListener {
+        repository.story(story.id)?.let(::showStoryActionsDialog)
+        true
     }
-    // The library always uses the horizontal story card (80×120 cover on the left, text on the right)
-    // regardless of column count — the same layout as phone mode, just reflowed into N columns on
-    // wider windows.
-    visible.forEach { story ->
-        list.addView(
-            list.card {
-                val content = buildStoryCard(story)
-                content.background = selectableRipple(ThemeManager.colors.onSurface)
-                content.isClickable = true
-                content.setOnClickListener { showDetails(story.id) }
-                content.setOnLongClickListener {
-                    // Progress is patched without rebuilding this card, so resolve the latest story
-                    // before an action that may persist it; never act on the pre-download snapshot.
-                    repository.story(story.id)?.let(::showStoryActionsDialog)
-                    true
-                }
-                addView(content)
-                if (story.totalChapters > 0) {
-                    addView(
-                        makeChapterCoverageSummary(
-                            context,
-                            StoryBookmarkPlanning.downloadedFlags(story),
-                            StoryBookmarkPlanning.bookmarkFraction(story),
-                            story.downloadedChapters,
-                            story.totalChapters,
+    card.addView(content)
+    if (story.totalChapters > 0) {
+        card.addView(
+            makeChapterCoverageSummary(
+                card.context,
+                StoryBookmarkPlanning.downloadedFlags(story),
+                StoryBookmarkPlanning.bookmarkFraction(story),
+                story.downloadedChapters,
+                story.totalChapters,
+            ).apply {
+                tag = LibraryProgressTag(story.id)
+                layoutParams =
+                    LinearLayout
+                        .LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
                         ).apply {
-                            tag = LibraryProgressTag(story.id)
-                            layoutParams =
-                                LinearLayout
-                                    .LayoutParams(
-                                        LinearLayout.LayoutParams.MATCH_PARENT,
-                                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                                    ).apply {
-                                        topMargin =
-                                            dp(Space.MD)
-                                    }
-                        },
-                    )
-                }
+                            topMargin = dp(Space.MD)
+                        }
             },
         )
     }

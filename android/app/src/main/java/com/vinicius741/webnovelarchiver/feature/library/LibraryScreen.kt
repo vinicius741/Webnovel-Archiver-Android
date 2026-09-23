@@ -4,6 +4,7 @@ import android.view.Gravity
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -16,7 +17,6 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.GridLayout
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
@@ -25,7 +25,6 @@ import com.vinicius741.webnovelarchiver.ui.layout.libraryMaxContentWidth
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -200,20 +199,12 @@ internal fun ScreenHost.showLibrary() {
             addView(pager, verticalFill().apply { topMargin = dp(Space.LG) })
             applyFilters()
         } else {
-            val list =
-                GridLayout(context).apply {
-                    columnCount = layoutResult.numColumns.coerceAtLeast(1)
-                    horizontalSpacingDp = Space.LG
-                    // Cards carry their own bottom margin; a larger grid gap would stretch rows apart.
-                    verticalSpacingDp = Space.XS
-                }
+            val list = RecyclerView(context)
+            val adapter = LibraryStoryAdapter(host, layoutResult.numColumns, filterState.selectedTabId, stories)
+            adapter.attachTo(list)
             applyFilters = {
-                renderTabGrid(
-                    stories,
-                    list,
-                    layoutResult,
+                adapter.updateFilter(
                     filterState.query,
-                    filterState.selectedTabId,
                     filterState.selectedTags,
                     filterState.sortOption,
                     filterState.sortAscending,
@@ -223,6 +214,7 @@ internal fun ScreenHost.showLibrary() {
                 val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
                 renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
                 stories = latest
+                adapter.replaceStories(latest)
                 changed.forEach { patchLibraryProgress(frame, it) }
             }
             val gridShell =
@@ -232,17 +224,16 @@ internal fun ScreenHost.showLibrary() {
                         list,
                         FrameLayout.LayoutParams(
                             FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
                             Gravity.CENTER_HORIZONTAL,
                         ),
                     )
                 }
             val scrollKey = LibraryTabSelection.memoryKey(filterState.selectedTabId)
-            val scroller = scroll(gridShell)
-            scroller.trackScrollInto(libraryScreenState.tabScrollPositions, scrollKey)
-            addView(scroller, verticalFill().apply { topMargin = dp(Space.LG) })
+            list.trackScrollInto(libraryScreenState.tabScrollPositions, scrollKey)
+            addView(gridShell, verticalFill().apply { topMargin = dp(Space.LG) })
             applyFilters()
-            scroller.restoreScrollOnce(libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
+            list.restoreScrollOnce(libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
         }
     }
     refreshLibraryContent?.let { refresh ->

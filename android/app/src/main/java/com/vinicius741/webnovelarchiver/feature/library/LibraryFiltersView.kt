@@ -168,6 +168,9 @@ internal fun ScreenHost.makeLibraryFilters(
     // first build and tab switches use LibraryQuery's frequency-then-name order.
     var lastSourceOrder: List<String> = emptyList()
     var lastTagOrder: List<String> = emptyList()
+    var expanded = !hasCustomTabs || expandedInitially
+    var pendingTabId = selectedTabId
+    var pendingTags = selectedTags
     // Only one layout listener at a time: each rebuild removes the previous one, so bursts of
     // rebuilds can't stack stale `scrollTo` calls.
     var pendingScrollListener: ViewTreeObserver.OnGlobalLayoutListener? = null
@@ -214,7 +217,15 @@ internal fun ScreenHost.makeLibraryFilters(
         tagScroll.viewTreeObserver.addOnGlobalLayoutListener(listener)
     }
 
-    val populateChips: (String?, Set<String>) -> Unit = { currentTabId, currentTags ->
+    val populateChips: (String?, Set<String>) -> Unit = populate@{ currentTabId, currentTags ->
+        pendingTabId = currentTabId
+        pendingTags = currentTags
+        // Most visits leave Filters collapsed. Building the entire chip row here would allocate
+        // views that cannot be seen and make every Library navigation pay for them.
+        if (!expanded) {
+            syncActiveFilters(currentTags)
+            return@populate
+        }
         val tabChanged = currentTabId != lastTabId
         lastTabId = currentTabId
 
@@ -346,12 +357,12 @@ internal fun ScreenHost.makeLibraryFilters(
     }
     syncActiveFilters(selectedTags)
 
-    var expanded = expandedInitially
     filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
     toggleIcon.rotation = if (expanded) 180f else 0f
     val toggleAction = {
         expanded = !expanded
         filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+        if (expanded) populateChips(pendingTabId, pendingTags)
         onExpandedChanged(expanded)
         toggleIcon
             .animate()

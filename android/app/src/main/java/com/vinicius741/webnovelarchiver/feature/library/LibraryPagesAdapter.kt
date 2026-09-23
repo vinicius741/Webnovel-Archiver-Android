@@ -3,20 +3,13 @@ package com.vinicius741.webnovelarchiver.feature.library
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ScrollView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.GridLayout
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
-import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.grid
 import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
 import com.vinicius741.webnovelarchiver.ui.layout.libraryMaxContentWidth
-import com.vinicius741.webnovelarchiver.ui.scroll
-import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.text
 
 /**
  * Backs the Library's swipe-between-tabs [ViewPager2] (Gap #6 parity with the legacy RN `PagerView`).
@@ -41,6 +34,7 @@ internal class LibraryPagesAdapter(
     )
 
     private var filterSnapshot: FilterSnapshot = FilterSnapshot("", emptySet(), "lastUpdated", false)
+    private val bound = mutableSetOf<PageViewHolder>()
 
     init {
         // ViewPager2 plays nicely with stable item ids when set before the adapter is attached.
@@ -56,37 +50,25 @@ internal class LibraryPagesAdapter(
         viewType: Int,
     ): PageViewHolder {
         val context = parent.context
-        val grid =
-            GridLayout(context).apply {
-                columnCount = layout.numColumns.coerceAtLeast(1)
-                horizontalSpacingDp = Space.LG
-                // See the single-grid path: cards already have a bottom margin, so keep the grid's
-                // vertical gap small to avoid stretched vertical spacing.
-                verticalSpacingDp = Space.XS
-            }
+        val list = RecyclerView(context)
         // Same shell as the single-grid path: cap width at the size-class content max and center it,
         // inside a scroller so a long list scrolls vertically within its page.
         val shell =
             MaxWidthFrameLayout(context).apply {
                 maxContentWidthDp = libraryMaxContentWidth(layout.numColumns)
                 addView(
-                    grid,
+                    list,
                     FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
                         Gravity.CENTER_HORIZONTAL,
                     ),
                 )
             }
-        val scroll =
-            ScrollView(context).apply {
-                isFillViewport = true
-                addView(shell)
-            }
         // ViewPager2 requires every page's root view to fill the whole pager (match_parent on both
         // axes); otherwise it throws "Pages must fill the whole ViewPager2 (use match_parent)".
-        scroll.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        return PageViewHolder(scroll, grid)
+        shell.layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        return PageViewHolder(shell, list)
     }
 
     override fun onBindViewHolder(
@@ -95,12 +77,24 @@ internal class LibraryPagesAdapter(
     ) {
         val tabId = pageTabs[position]
         val snap = filterSnapshot
-        host.renderTabGrid(stories, holder.grid, layout, snap.text, tabId, snap.tags, snap.sortOption, snap.sortAscending)
+        holder.storyAdapter =
+            LibraryStoryAdapter(host, layout.numColumns, tabId, stories).also { adapter ->
+                adapter.updateFilter(snap.text, snap.tags, snap.sortOption, snap.sortAscending)
+                adapter.attachTo(holder.list)
+            }
+        bound.add(holder)
         // Per-tab scroll memory: capture continuously from the bound page, then restore the saved
         // offset once it lays out. A recycled far-away page rebound later also regains its position.
         val scrollKey = LibraryTabSelection.memoryKey(tabId)
-        holder.scrollView.trackScrollInto(host.libraryScreenState.tabScrollPositions, scrollKey)
-        holder.scrollView.restoreScrollOnce(host.libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
+        holder.list.trackScrollInto(host.libraryScreenState.tabScrollPositions, scrollKey)
+        holder.list.restoreScrollOnce(host.libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
+    }
+
+    override fun onViewRecycled(holder: PageViewHolder) {
+        bound.remove(holder)
+        holder.list.clearOnScrollListeners()
+        holder.list.adapter = null
+        holder.storyAdapter = null
     }
 
     /** Apply a new search/tag/sort snapshot to every page. Re-renders bound pages in place without
@@ -115,17 +109,20 @@ internal class LibraryPagesAdapter(
         val next = FilterSnapshot(text, tags, sortOption, sortAscending)
         if (next == filterSnapshot) return
         filterSnapshot = next
-        notifyItemRangeChanged(0, itemCount)
+        bound.forEach { it.storyAdapter?.updateFilter(text, tags, sortOption, sortAscending) }
     }
 
     /** Updates the backing snapshot for pages bound later; already-bound progress views are patched
      *  directly by the screen so RecyclerView never rebinds during a vertical gesture. */
     fun replaceStories(latest: List<Story>) {
         stories = latest
+        bound.forEach { it.storyAdapter?.replaceStories(latest) }
     }
 
     class PageViewHolder(
-        val scrollView: ScrollView,
-        val grid: GridLayout,
-    ) : RecyclerView.ViewHolder(scrollView)
+        root: MaxWidthFrameLayout,
+        val list: RecyclerView,
+    ) : RecyclerView.ViewHolder(root) {
+        var storyAdapter: LibraryStoryAdapter? = null
+    }
 }
