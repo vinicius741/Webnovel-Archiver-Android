@@ -11,9 +11,9 @@ import kotlinx.coroutines.launch
 /**
  * Subscribes the in-place download-refresh loop for the Details screen. Extracted from
  * [DetailsScreen.kt] so that file stays within its size budget. Download state is emitted
- * process-wide by the shared repository; this patches only the chapter rows and banner after a
- * coherent event and never polls disk or rebuilds the screen for progress ticks. If the list is
- * being dragged/flung, events are coalesced until it becomes idle so an adapter update cannot
+ * process-wide by the shared repository; this patches the chapter rows, download controls, and
+ * banner after a coherent event and never polls disk or rebuilds the screen for progress ticks.
+ * If the list is being dragged/flung, events are coalesced until it becomes idle so an adapter update cannot
  * interfere with the gesture.
  */
 internal fun ScreenHost.observeDetailsDownload(

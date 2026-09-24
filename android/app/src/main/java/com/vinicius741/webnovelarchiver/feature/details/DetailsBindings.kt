@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -22,6 +23,7 @@ internal data class DetailsBindings(
     val headerProgressSummary: View?,
     val bannerSlot: ViewGroup?,
     val downloadActionSlot: LinearLayout?,
+    val generateEpubButton: Button,
 )
 
 /** Applies one coherent download snapshot to every live Details surface. */
@@ -44,6 +46,8 @@ internal fun DetailsBindings.patchDownloadStatus(
         )
     }
     downloadActionSlot?.let { host.renderDetailsDownloadAction(it, story, summary, isBusy) }
+    generateEpubButton.isEnabled = story.downloadedChapters > 0 && !isBusy
+    generateEpubButton.alpha = if (generateEpubButton.isEnabled) 1f else 0.4f
 
     val adapter =
         when (val current = chapters.adapter) {

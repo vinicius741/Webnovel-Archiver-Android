@@ -107,7 +107,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     }
     val hasEpub = (!story.epubPaths.isNullOrEmpty()) || !story.epubPath.isNullOrBlank()
     val generateLabel = if (operation?.kind == StoryOperationKind.EPUB) "Generating..." else "Generate EPUB"
-    infoPanel.addView(
+    val generateEpubButton =
         makeFullWidthButton(
             app,
             generateLabel,
@@ -125,8 +125,8 @@ internal fun ScreenHost.buildDetailsInfoPanel(
                     startAtBookmark = false,
                 )
             generateConfiguredEpub(story, config)
-        },
-    )
+        }
+    infoPanel.addView(generateEpubButton)
     if (operation?.kind == StoryOperationKind.EPUB) {
         operationSlot = makeStoryOperationSlot(app, operation)
         infoPanel.addView(operationSlot!!)
@@ -160,7 +160,15 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     }
     addDetailsTags(infoPanel, story)
 
-    return DetailsInfoPanel(infoPanel, header.progressSummary, bannerSlot, downloadActionSlot, operationSlot, descriptionViews.listenButton)
+    return DetailsInfoPanel(
+        infoPanel,
+        header.progressSummary,
+        bannerSlot,
+        downloadActionSlot,
+        generateEpubButton,
+        operationSlot,
+        descriptionViews.listenButton,
+    )
 }
 
 /** Stable container whose children are swapped per tick by [renderStoryOperationProgress] without tearing down Details. */
@@ -183,6 +191,8 @@ internal data class DetailsInfoPanel(
     val bannerSlot: LinearLayout?,
     /** "Download Remaining" action slot, non-null only when downloads can be queued. */
     val downloadActionSlot: LinearLayout?,
+    /** Generate action enabled when the first downloaded chapter arrives. */
+    val generateEpubButton: Button,
     /** In-flight operation progress slot, patched in place per tick; null when no operation runs. */
     val operationSlot: LinearLayout?,
     /** Description "Listen" button, patched in place by the description-TTS observer. */

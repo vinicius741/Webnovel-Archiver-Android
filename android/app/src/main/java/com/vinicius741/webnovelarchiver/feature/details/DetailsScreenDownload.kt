@@ -38,7 +38,7 @@ internal fun shouldShowDetailsBanner(summary: DownloadDetailsPlanning.StoryDownl
         (summary.isActive || summary.isPaused || (summary.isFinished && (summary.failed > 0 || summary.cancelled > 0)))
 
 /**
- * Patches the Details download UI (header summary, chapter rows, banner slot) in place instead of
+ * Patches the Details download UI (header summary, chapter rows, actions, banner slot) in place instead of
  * a full re-render. The banner slot must be the reference captured at render time — a tree lookup
  * misses it once the RecyclerView header is recycled/detached.
  */

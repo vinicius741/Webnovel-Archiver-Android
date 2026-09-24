@@ -123,24 +123,34 @@ internal fun ScreenHost.generateConfiguredEpub(
     story: Story,
     config: EpubConfig,
 ) {
-    val selectedEntries = EpubSelection.selectDownloadedChapters(story, config)
+    val latest = repository.story(story.id) ?: return
+    val currentConfig = latest.epubConfig ?: config
+    val selectedEntries = EpubSelection.selectDownloadedChapters(latest, currentConfig)
     if (selectedEntries.isEmpty()) {
         toast("No downloaded chapters in selected EPUB range")
         return
     }
-    val run = {
+    val run = run@{
+        // Downloads can complete while the confirmation dialog is open. Include those chapters too.
+        val current = repository.story(story.id) ?: return@run
+        val configAtGeneration = current.epubConfig ?: currentConfig
+        val entries = EpubSelection.selectDownloadedChapters(current, configAtGeneration)
+        if (entries.isEmpty()) {
+            toast("No downloaded chapters in selected EPUB range")
+            return@run
+        }
         generateEpub(
-            story,
-            selectedEntries.map { it.chapter },
-            config,
-            selectedEntries.map { it.originalChapterNumber },
+            current,
+            entries.map { it.chapter },
+            configAtGeneration,
+            entries.map { it.originalChapterNumber },
         )
     }
     // Warn before producing a partial EPUB: non-downloaded chapters in range are silently skipped by
     // EpubSelection, so surface the gap and let the user confirm rather than generating unawares.
-    val coverage = EpubSelection.rangeCoverage(story, config)
+    val coverage = EpubSelection.rangeCoverage(latest, currentConfig)
     if (coverage.missing > 0) {
-        showConfirmEpubWithMissingChaptersDialog(coverage) { run() }
+        showConfirmEpubWithMissingChaptersDialog(story.id, currentConfig, coverage) { run() }
     } else {
         run()
     }

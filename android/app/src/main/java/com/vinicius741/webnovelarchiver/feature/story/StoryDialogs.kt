@@ -21,6 +21,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
+import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -41,6 +42,7 @@ import com.vinicius741.webnovelarchiver.ui.styledDialogField
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showEpubConfigDialog(story: Story) {
@@ -175,22 +177,43 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
  * this gate the user could generate a partial EPUB with no notice. [onConfirm] runs only on "Generate".
  */
 internal fun ScreenHost.showConfirmEpubWithMissingChaptersDialog(
+    storyId: String,
+    config: EpubConfig,
     coverage: EpubRangeCoverage,
     onConfirm: () -> Unit,
 ) {
-    val message =
-        "${coverage.missing} of ${coverage.inRange} chapter(s) in range aren't downloaded and will be skipped.\nGenerate anyway?"
     val dialog =
         AlertDialog
             .Builder(app)
             .setTitle("Incomplete download")
-            .setMessage(message)
+            .setMessage(epubCoverageMessage(coverage))
             .setPositiveButton("Generate") { _, _ -> onConfirm() }
             .setNegativeButton("Cancel", null)
             .create()
     dialog.show()
     dialog.applyAppTheme()
+    var displayedCoverage = coverage
+    val observer =
+        scope.launch {
+            repository.downloadState.collect { snapshot ->
+                val current = snapshot.library.firstOrNull { it.id == storyId } ?: return@collect
+                val updated = EpubSelection.rangeCoverage(current, current.epubConfig ?: config)
+                if (updated != displayedCoverage) {
+                    displayedCoverage = updated
+                    dialog.setTitle(if (updated.missing == 0) "Ready to generate" else "Incomplete download")
+                    dialog.setMessage(epubCoverageMessage(updated))
+                }
+            }
+        }
+    dialog.setOnDismissListener { observer.cancel() }
 }
+
+private fun epubCoverageMessage(coverage: EpubRangeCoverage): String =
+    if (coverage.missing == 0) {
+        "All chapters in range are downloaded. Generate EPUB?"
+    } else {
+        "${coverage.missing} of ${coverage.inRange} chapter(s) in range aren't downloaded and will be skipped.\nGenerate anyway?"
+    }
 
 internal fun ScreenHost.showDescriptionDialog(
     title: String,

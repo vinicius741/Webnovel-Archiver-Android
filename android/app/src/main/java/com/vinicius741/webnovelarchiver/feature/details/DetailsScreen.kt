@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
@@ -68,6 +69,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     var headerProgressSummary: View? = null
     var bannerSlot: ViewGroup? = null
     var downloadActionSlot: LinearLayout? = null
+    var generateEpubButton: Button? = null
     var chaptersBinding: androidx.recyclerview.widget.RecyclerView? = null
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
@@ -85,6 +87,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         headerProgressSummary = panel.headerProgressSummary
         bannerSlot = panel.bannerSlot
         downloadActionSlot = panel.downloadActionSlot
+        generateEpubButton = panel.generateEpubButton
         // Direct ref, not a tree walk: in compact layout the slot can detach inside the RecyclerView header.
         detailsOperationSlot = panel.operationSlot
 
@@ -235,6 +238,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             headerProgressSummary = headerProgressSummary,
             bannerSlot = bannerSlot,
             downloadActionSlot = downloadActionSlot,
+            generateEpubButton = requireNotNull(generateEpubButton),
         )
     observeDetailsDownload(storyId, bindings, isBusy, initialPacingStatus)
 }
