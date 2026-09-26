@@ -95,6 +95,9 @@ object EpubSelection {
                 .lastOrNull()
                 ?.ifBlank { null }
                 ?: "Unknown File"
-        return filename.replace(Regex("\\.epub$", RegexOption.IGNORE_CASE), "").replace('_', ' ')
+        return filename
+            .replace(Regex("\\.epub$", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("_g[0-9a-f]{32}$"), "")
+            .replace('_', ' ')
     }
 }

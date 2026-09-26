@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URL
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -60,6 +61,9 @@ class EpubEngine(
                     EpubConfig.MAX_CHAPTERS_PER_EPUB_MAX,
                 )
             val chaptersOnly = config.chaptersOnly
+            // A fresh URI makes EPUB readers import regenerated content instead of reopening a
+            // cached copy of an earlier export for the same chapter range.
+            val generationId = UUID.randomUUID().toString().replace("-", "")
             val chunks = available.chunked(chaptersPerFile)
             val results = mutableListOf<EpubResult>()
             val chapterNumberById =
@@ -79,7 +83,7 @@ class EpubEngine(
                 progress(EpubProgress(completed = index + 1, total = chunks.size))
                 val start = chapterNumberById[chunk.first().id] ?: (chapters.indexOf(chunk.first()) + 1)
                 val end = chapterNumberById[chunk.last().id] ?: (chapters.indexOf(chunk.last()) + 1)
-                val filename = EpubFilename.forRange(story.title, start, end)
+                val filename = EpubFilename.forRange(story.title, start, end, generationId)
                 // Streamed into a temp file and renamed on success; a failure inside the write
                 // block (e.g. a chapter going missing mid-generation) aborts before any partial
                 // output is committed (R25).

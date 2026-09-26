@@ -14,6 +14,15 @@ class EpubFilenameTest {
     }
 
     @Test
+    fun regeneratedRangeUsesFreshFilenameForReaderImport() {
+        val first = EpubFilename.forRange("Story", 1, 4, "first")
+        val second = EpubFilename.forRange("Story", 1, 4, "second")
+
+        assertEquals("story_Ch1-4_gfirst.epub", first)
+        assertEquals("story_Ch1-4_gsecond.epub", second)
+    }
+
+    @Test
     fun sanitizeBaseFallsBackForBlankOrSymbolOnlyTitles() {
         assertEquals("story", EpubFilename.sanitizeBase(""))
         assertEquals("story", EpubFilename.sanitizeBase("!@#$"))

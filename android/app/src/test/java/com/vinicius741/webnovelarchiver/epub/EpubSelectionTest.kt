@@ -73,6 +73,10 @@ class EpubSelectionTest {
             "Volume 2",
             EpubSelection.displayNameForPath("content://provider/tree/backup%3AVolume_2.epub"),
         )
+        assertEquals(
+            "Story Ch1-4",
+            EpubSelection.displayNameForPath("/epubs/Story_Ch1-4_g0123456789abcdef0123456789abcdef.epub"),
+        )
     }
 
     @Test

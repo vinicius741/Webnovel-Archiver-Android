@@ -7,9 +7,11 @@ object EpubFilename {
         title: String,
         startChapter: Int,
         endChapter: Int,
+        generationId: String? = null,
     ): String {
         val base = sanitizeBase(title)
-        return "${base}_Ch$startChapter-$endChapter.epub"
+        val version = generationId?.let { "_g$it" }.orEmpty()
+        return "${base}_Ch$startChapter-$endChapter$version.epub"
     }
 
     fun sanitizeBase(title: String): String =
