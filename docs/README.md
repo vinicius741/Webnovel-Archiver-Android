@@ -82,3 +82,6 @@ Provider architecture and the workflow for extending supported novel sites.
 |------|-------------|
 | `adding-a-source.md` | Stable source descriptors, URL matching, parsing/fetching hooks, registration, fixtures, compatibility rules, and validation checklist for a new provider. |
 | `ao3.md` | AO3 imports, chapter identity, metadata, access limits, and provider validation. |
+| `patreon-integration-plan.md` | Patreon feasibility research and implementation handoff: observed collection/post behavior, Android-only acquisition gates, combined-source chapters, public-edition matching, persistence, and validation. |
+| `patreon-acquisition-proof-2026-09-11.md` | Emulator proof results for native Patreon acquisition: built probe app, unauthenticated fetch/API baselines (no Cloudflare gate; content entitlement-gated), OAuth documentation findings (custom-scheme redirects rejected, no PKCE, creator-token diagnostic), and the pending member-token test steps. |
+| `patreon-investigation-continuation.md` | Superseded 2026-09-11 handoff for the emulator acquisition proof; the proof ran and is recorded in `patreon-acquisition-proof-2026-09-11.md`. |
