@@ -20,6 +20,16 @@ class CoverEvidencePlanningTest {
         assertNull(CoverEvidencePlanning.sample(4, "Blank", " \n "))
     }
 
+    @Test fun `sampling handles chapters shorter than two full excerpts`() {
+        for (length in listOf(2_200, 2_201, 2_746, 4_399, 4_400)) {
+            val text = (0 until length).joinToString("") { (it % 10).toString() }
+            val sample = CoverEvidencePlanning.sample(1, "Boundary", text)!!
+            assertEquals(text.take(2_200), sample.opening)
+            assertEquals(if (length <= 2_200) "" else text.substring(2_200), sample.middle)
+            assertTrue(sample.middle.length <= 2_200)
+        }
+    }
+
     @Test fun `state carries both excerpts for long chapters and omits middle when absent`() {
         val story = Story(title = "Orchard", description = "A machine learns farming")
         val long = CoverEvidencePlanning.state(story, CoverEvidencePlanning.ChapterSample(2, "Two", "Opening text.", "Middle text."))

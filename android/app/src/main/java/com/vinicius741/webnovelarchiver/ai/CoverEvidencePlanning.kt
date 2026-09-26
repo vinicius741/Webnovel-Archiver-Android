@@ -40,7 +40,8 @@ internal object CoverEvidencePlanning {
     ): ChapterSample? {
         if (text.isBlank()) return null
         if (text.length <= SAMPLE_CHARS) return ChapterSample(chapter, title, text.trim(), "")
-        val middleStart = ((text.length - SAMPLE_CHARS) / 2).coerceIn(SAMPLE_CHARS, text.length - SAMPLE_CHARS)
+        // Chapters shorter than two full windows still have a useful remainder after the opening.
+        val middleStart = maxOf(SAMPLE_CHARS, (text.length - SAMPLE_CHARS) / 2)
         return ChapterSample(chapter, title, excerpt(text, 0).trim(), excerpt(text, middleStart).trim())
     }
 
