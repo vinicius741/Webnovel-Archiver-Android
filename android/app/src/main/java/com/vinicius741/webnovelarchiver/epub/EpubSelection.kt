@@ -24,6 +24,16 @@ data class EpubRangeCoverage(
 }
 
 object EpubSelection {
+    /** Clears a bookmark-derived start saved by older app versions when that option is turned off. */
+    fun rangeStartAfterDisablingBookmark(
+        story: Story,
+        config: EpubConfig,
+    ): Int? {
+        if (!config.startAtBookmark) return null
+        val bookmarkNumber = story.chapters.indexOfFirst { it.id == story.lastReadChapterId } + 1
+        return if (bookmarkNumber > 0 && config.rangeStart == bookmarkNumber) 1 else null
+    }
+
     fun selectDownloadedChapters(
         story: Story,
         config: EpubConfig,

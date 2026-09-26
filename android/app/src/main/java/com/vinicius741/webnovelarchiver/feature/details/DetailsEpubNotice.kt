@@ -4,7 +4,6 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -37,14 +36,7 @@ internal fun ScreenHost.buildStaleEpubNotice(
         )
         val regenerateButton =
             makeButton(app, "Regenerate", Btn.TEXT, R.drawable.wna_refresh) {
-                val config =
-                    story.epubConfig ?: EpubConfig(
-                        maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
-                        rangeStart = 1,
-                        rangeEnd = story.chapters.size,
-                        startAtBookmark = false,
-                    )
-                generateConfiguredEpub(story, config)
+                generateConfiguredEpub(story)
             }
         if (isBusy) disableButton(regenerateButton)
         addView(

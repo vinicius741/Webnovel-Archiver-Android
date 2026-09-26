@@ -12,22 +12,19 @@ object StoryBookmarkPlanning {
         val nextLastReadChapterId = if (toggleExisting && story.lastReadChapterId == chapterId) null else chapterId
         return story.copy(
             lastReadChapterId = nextLastReadChapterId,
-            epubConfig = updatedEpubConfig(story, nextLastReadChapterId),
+            epubConfig = clearLegacyAnchoredStart(story),
         )
     }
 
-    private fun updatedEpubConfig(
-        story: Story,
-        nextLastReadChapterId: String?,
-    ): EpubConfig? {
-        val config = story.epubConfig ?: return story.epubConfig
-        if (!config.startAtBookmark || nextLastReadChapterId == null) return config
-
-        val bookmarkIndex = story.chapters.indexOfFirst { it.id == nextLastReadChapterId }
-        if (bookmarkIndex < 0) return config
-
-        // Anchor the range start AT the bookmarked chapter (1-based), so it is included rather than skipped.
-        return config.copy(rangeStart = bookmarkIndex + 1)
+    // Older versions rewrote rangeStart to the bookmark's chapter number on every bookmark move, so a
+    // saved start equal to the previous bookmark position is machine-derived; clear it so the bookmark
+    // alone drives the effective range and backward bookmark moves keep tracking.
+    private fun clearLegacyAnchoredStart(story: Story): EpubConfig? {
+        val config = story.epubConfig ?: return null
+        if (!config.startAtBookmark) return config
+        val previousBookmarkNumber = story.chapters.indexOfFirst { it.id == story.lastReadChapterId } + 1
+        if (previousBookmarkNumber <= 0 || config.rangeStart != previousBookmarkNumber) return config
+        return config.copy(rangeStart = 1)
     }
 
     /**

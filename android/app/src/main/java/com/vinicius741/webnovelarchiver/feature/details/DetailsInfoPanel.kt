@@ -7,7 +7,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
-import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
@@ -117,14 +116,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
             enabled =
                 story.downloadedChapters > 0 && !isBusy,
         ) {
-            val config =
-                story.epubConfig ?: EpubConfig(
-                    maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
-                    rangeStart = 1,
-                    rangeEnd = story.chapters.size,
-                    startAtBookmark = false,
-                )
-            generateConfiguredEpub(story, config)
+            generateConfiguredEpub(story)
         }
     infoPanel.addView(generateEpubButton)
     if (operation?.kind == StoryOperationKind.EPUB) {

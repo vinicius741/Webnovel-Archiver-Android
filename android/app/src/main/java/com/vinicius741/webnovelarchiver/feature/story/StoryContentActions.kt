@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
@@ -119,12 +120,9 @@ private fun ScreenHost.runCleanup(
     }
 }
 
-internal fun ScreenHost.generateConfiguredEpub(
-    story: Story,
-    config: EpubConfig,
-) {
+internal fun ScreenHost.generateConfiguredEpub(story: Story) {
     val latest = repository.story(story.id) ?: return
-    val currentConfig = latest.epubConfig ?: config
+    val currentConfig = EpubConfigPlanning.resolve(latest, repository.getSettings().maxChaptersPerEpub)
     val selectedEntries = EpubSelection.selectDownloadedChapters(latest, currentConfig)
     if (selectedEntries.isEmpty()) {
         toast("No downloaded chapters in selected EPUB range")
@@ -133,7 +131,7 @@ internal fun ScreenHost.generateConfiguredEpub(
     val run = run@{
         // Downloads can complete while the confirmation dialog is open. Include those chapters too.
         val current = repository.story(story.id) ?: return@run
-        val configAtGeneration = current.epubConfig ?: currentConfig
+        val configAtGeneration = EpubConfigPlanning.resolve(current, repository.getSettings().maxChaptersPerEpub)
         val entries = EpubSelection.selectDownloadedChapters(current, configAtGeneration)
         if (entries.isEmpty()) {
             toast("No downloaded chapters in selected EPUB range")
@@ -150,7 +148,7 @@ internal fun ScreenHost.generateConfiguredEpub(
     // EpubSelection, so surface the gap and let the user confirm rather than generating unawares.
     val coverage = EpubSelection.rangeCoverage(latest, currentConfig)
     if (coverage.missing > 0) {
-        showConfirmEpubWithMissingChaptersDialog(story.id, currentConfig, coverage) { run() }
+        showConfirmEpubWithMissingChaptersDialog(story.id, coverage) { run() }
     } else {
         run()
     }
@@ -164,7 +162,7 @@ internal fun ScreenHost.generateConfiguredEpub(
 internal fun ScreenHost.generateEpub(
     story: Story,
     chapters: List<Chapter>,
-    config: EpubConfig = EpubConfig(maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub),
+    config: EpubConfig = EpubConfigPlanning.resolve(story, repository.getSettings().maxChaptersPerEpub),
     originalChapterNumbers: List<Int>? = null,
 ) {
     if (storyOperation != null) {

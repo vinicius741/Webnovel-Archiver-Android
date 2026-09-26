@@ -9,7 +9,7 @@ import org.junit.Test
 
 class StoryBookmarkPlanningTest {
     @Test
-    fun withBookmarkAnchorsEpubRangeStartAtBookmarkWhenStartAtBookmarkIsEnabled() {
+    fun withBookmarkDoesNotOverwriteManualEpubRangeStart() {
         val story =
             story().apply {
                 epubConfig =
@@ -24,9 +24,49 @@ class StoryBookmarkPlanningTest {
         val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = false)
 
         assertEquals("c2", updated.lastReadChapterId)
-        // Chapter c2 is at index 1 → 1-based range start is 2, so the bookmarked chapter is included.
-        assertEquals(2, updated.epubConfig?.rangeStart)
+        assertEquals(1, updated.epubConfig?.rangeStart)
         assertEquals(4, updated.epubConfig?.rangeEnd)
+    }
+
+    @Test
+    fun withBookmarkClearsLegacyAnchoredRangeStartOnBackwardMove() {
+        val story =
+            story().apply {
+                lastReadChapterId = "c3"
+                epubConfig =
+                    EpubConfig(
+                        maxChaptersPerEpub = 150,
+                        rangeStart = 3,
+                        rangeEnd = 4,
+                        startAtBookmark = true,
+                    )
+            }
+
+        val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = false)
+
+        assertEquals("c2", updated.lastReadChapterId)
+        assertEquals(1, updated.epubConfig?.rangeStart)
+        assertEquals(4, updated.epubConfig?.rangeEnd)
+    }
+
+    @Test
+    fun withBookmarkClearsLegacyAnchoredRangeStartOnToggleOff() {
+        val story =
+            story().apply {
+                lastReadChapterId = "c3"
+                epubConfig =
+                    EpubConfig(
+                        maxChaptersPerEpub = 150,
+                        rangeStart = 3,
+                        rangeEnd = 4,
+                        startAtBookmark = true,
+                    )
+            }
+
+        val updated = StoryBookmarkPlanning.withBookmark(story, "c3", toggleExisting = true)
+
+        assertNull(updated.lastReadChapterId)
+        assertEquals(1, updated.epubConfig?.rangeStart)
     }
 
     @Test
@@ -85,8 +125,7 @@ class StoryBookmarkPlanningTest {
         val updated = StoryBookmarkPlanning.withBookmark(story, "c2", toggleExisting = false)
 
         assertEquals("c2", updated.lastReadChapterId)
-        // Bookmark on c2 (index 1) → range start anchors at chapter 2 (1-based), including it.
-        assertEquals(2, updated.epubConfig?.rangeStart)
+        assertEquals(1, updated.epubConfig?.rangeStart)
     }
 
     private fun story(): Story =

@@ -20,6 +20,7 @@ import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubRangeCoverage
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
@@ -52,17 +53,8 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     // persisted story so the dialog always matches on-disk state.
     val story = repository.story(story.id) ?: story
     if (story.chapters.isEmpty()) return toast("No chapters available")
-    val current =
-        story.epubConfig ?: EpubConfig(
-            maxChaptersPerEpub = repository.getSettings().maxChaptersPerEpub,
-            rangeStart = 1,
-            rangeEnd = story.chapters.size,
-            startAtBookmark = false,
-        )
-    // Mirrors DetailsScreen.hasBookmark: a bookmark only counts when its chapter still exists, so a
-    // stale lastReadChapterId (e.g. after a sync that changed chapter ids) doesn't enable the checkbox.
-    val hasBookmark =
-        story.lastReadChapterId != null && story.chapters.any { it.id == story.lastReadChapterId }
+    val current = EpubConfigPlanning.resolve(story, repository.getSettings().maxChaptersPerEpub)
+    val hasBookmark = EpubConfigPlanning.hasBookmark(story)
     val view =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -85,6 +77,12 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
             isChecked = current.startAtBookmark && hasBookmark
             isEnabled = hasBookmark
         }
+    val restoredRangeStart = EpubSelection.rangeStartAfterDisablingBookmark(story, current)
+    startAtBookmark.setOnCheckedChangeListener { _, checked ->
+        if (!checked && restoredRangeStart != null && rangeStart.text.toString() == current.rangeStart.toString()) {
+            rangeStart.setText(restoredRangeStart.toString())
+        }
+    }
     styledCheckBox(startAtBookmark)
     val chaptersOnly =
         CheckBox(app).apply {
@@ -178,7 +176,6 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
  */
 internal fun ScreenHost.showConfirmEpubWithMissingChaptersDialog(
     storyId: String,
-    config: EpubConfig,
     coverage: EpubRangeCoverage,
     onConfirm: () -> Unit,
 ) {
@@ -197,7 +194,8 @@ internal fun ScreenHost.showConfirmEpubWithMissingChaptersDialog(
         scope.launch {
             repository.downloadState.collect { snapshot ->
                 val current = snapshot.library.firstOrNull { it.id == storyId } ?: return@collect
-                val updated = EpubSelection.rangeCoverage(current, current.epubConfig ?: config)
+                val currentConfig = EpubConfigPlanning.resolve(current, repository.getSettings().maxChaptersPerEpub)
+                val updated = EpubSelection.rangeCoverage(current, currentConfig)
                 if (updated != displayedCoverage) {
                     displayedCoverage = updated
                     dialog.setTitle(if (updated.missing == 0) "Ready to generate" else "Incomplete download")

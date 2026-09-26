@@ -45,6 +45,25 @@ class EpubSelectionTest {
     }
 
     @Test
+    fun disablingBookmarkStartIncludesEarlierChaptersAgain() {
+        val story = storyWithChapters(downloaded = listOf(true, true, true, true)).apply { lastReadChapterId = "c2" }
+        val oldConfig = EpubConfig(rangeStart = 2, rangeEnd = 4, startAtBookmark = true, chaptersOnly = true)
+        val restoredStart = EpubSelection.rangeStartAfterDisablingBookmark(story, oldConfig)
+        val newConfig = oldConfig.copy(rangeStart = restoredStart ?: oldConfig.rangeStart, startAtBookmark = false, chaptersOnly = false)
+
+        assertEquals(1, restoredStart)
+        assertEquals(listOf("c1", "c2", "c3", "c4"), EpubSelection.selectDownloadedChapters(story, newConfig).map { it.chapter.id })
+    }
+
+    @Test
+    fun disablingBookmarkStartPreservesExplicitManualRange() {
+        val story = storyWithChapters(downloaded = listOf(true, true, true, true)).apply { lastReadChapterId = "c2" }
+        val config = EpubConfig(rangeStart = 3, rangeEnd = 4, startAtBookmark = true)
+
+        assertEquals(null, EpubSelection.rangeStartAfterDisablingBookmark(story, config))
+    }
+
+    @Test
     fun displayNameForPathDecodesFilenameAndRemovesEpubExtension() {
         assertEquals(
             "My Story Ch1-150",
