@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import android.content.Context
+import okhttp3.FormBody
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -35,13 +36,15 @@ internal data class CloudflareWebViewRequest(
             val postData =
                 when (request.method) {
                     "GET" -> null
-                    "POST" ->
+                    "POST" -> {
+                        if (request.body !is FormBody) return null
                         runCatching {
                             val buffer = Buffer()
                             request.body?.writeTo(buffer)
                             if (buffer.size > MAX_POST_BYTES) return null
                             buffer.readByteArray()
                         }.getOrNull() ?: return null
+                    }
                     else -> return null
                 }
             return CloudflareWebViewRequest(
@@ -149,7 +152,7 @@ class CloudflareBypassInterceptor internal constructor(
             }
             is CloudflareRenderOutcome.OriginHttpError -> {
                 challengedResponse?.close()
-                statusResponse(request, outcome.statusCode)
+                statusResponse(request, outcome.statusCode, outcome.retryAfter)
             }
             CloudflareRenderOutcome.TransportError -> {
                 challengedResponse?.close()
@@ -194,6 +197,7 @@ class CloudflareBypassInterceptor internal constructor(
     private fun statusResponse(
         request: Request,
         statusCode: Int,
+        retryAfter: String?,
     ): Response =
         Response
             .Builder()
@@ -201,6 +205,7 @@ class CloudflareBypassInterceptor internal constructor(
             .protocol(Protocol.HTTP_1_1)
             .code(statusCode)
             .message("Browser Rendered")
+            .apply { if (retryAfter != null) header("Retry-After", retryAfter) }
             .body(ByteArray(0).toResponseBody(null))
             .build()
 

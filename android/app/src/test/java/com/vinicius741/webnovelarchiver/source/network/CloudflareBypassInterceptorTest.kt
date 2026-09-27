@@ -66,7 +66,7 @@ class CloudflareBypassInterceptorTest {
             clientWithRenderer { request ->
                 renderedRequest = request
                 CloudflareRenderOutcome.Rendered(
-                    CloudflareRenderedPage("<html><body><li>chapter</li></body></html>", request.url),
+                    CloudflareRenderedPage("<li>chapter</li>0", request.url),
                 )
             }
         val request =
@@ -79,14 +79,18 @@ class CloudflareBypassInterceptorTest {
                         .add("action", "wi_gettocchp")
                         .add("pagenum", "2")
                         .build(),
-                ).build()
+                ).header("X-Requested-With", "XMLHttpRequest")
+                .build()
 
-        client.newCall(request).execute().close()
+        client.newCall(request).execute().use { response ->
+            assertEquals("<li>chapter</li>0", response.body?.string())
+        }
 
         assertEquals("POST", renderedRequest?.method)
         val postData = renderedRequest?.postData?.toString(Charsets.UTF_8).orEmpty()
         assertTrue(postData.contains("action=wi_gettocchp"))
         assertTrue(postData.contains("pagenum=2"))
+        assertEquals("XMLHttpRequest", renderedRequest?.headers?.get("X-Requested-With"))
     }
 
     @Test
@@ -157,6 +161,17 @@ class CloudflareBypassInterceptorTest {
             assertEquals(404, response.code)
         }
         assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun browserRateLimitPreservesRetryAfter() {
+        server.enqueue(cloudflareChallenge())
+        val client = clientWithRenderer { CloudflareRenderOutcome.OriginHttpError(429, "120") }
+
+        client.newCall(Request.Builder().url(server.url("/chapter/slow")).build()).execute().use { response ->
+            assertEquals(429, response.code)
+            assertEquals("120", response.header("Retry-After"))
+        }
     }
 
     @Test
@@ -236,6 +251,40 @@ class CloudflareBypassInterceptorTest {
         client.newCall(Request.Builder().url(server.url("/chapter")).build()).execute().close()
 
         assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun activeBrowserTransportSendsFormPostToBrowser() {
+        val reliability = SourceReliabilityCoordinator()
+        reliability.recordChallengeDetected(server.hostName)
+        var browserRequest: CloudflareWebViewRequest? = null
+        val client =
+            OkHttpClient
+                .Builder()
+                .addInterceptor(
+                    CloudflareBypassInterceptor(
+                        CloudflarePageRenderer {
+                            browserRequest = it
+                            CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<li>chapter</li>0", it.url))
+                        },
+                        reliability,
+                    ),
+                ).build()
+        val request =
+            Request
+                .Builder()
+                .url(server.url("/wp-admin/admin-ajax.php"))
+                .post(FormBody.Builder().add("pagenum", "2").build())
+                .header("X-Requested-With", "XMLHttpRequest")
+                .build()
+
+        client.newCall(request).execute().use { response ->
+            assertEquals("<li>chapter</li>0", response.body?.string())
+        }
+
+        assertEquals(0, server.requestCount)
+        assertEquals("POST", browserRequest?.method)
+        assertEquals("XMLHttpRequest", browserRequest?.headers?.get("X-Requested-With"))
     }
 
     @Test

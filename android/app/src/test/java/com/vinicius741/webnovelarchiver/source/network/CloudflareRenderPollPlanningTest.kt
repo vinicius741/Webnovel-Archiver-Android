@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.source.network
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CloudflareRenderPollPlanningTest {
@@ -151,6 +152,48 @@ class CloudflareRenderPollPlanningTest {
                 isRequestedResource = true,
                 isExpected = { false },
             ),
+        )
+    }
+
+    @Test
+    fun waitsForExpectedContentDuringSettlingPeriod() {
+        assertEquals(
+            CloudflareRenderPollDecision.KEEP_POLLING,
+            CloudflareRenderPollPlanning.decide(
+                isStaleDocument = false,
+                documentUrl = "https://www.scribblehub.com/read/story/chapter/1/",
+                readyState = "interactive",
+                isChallenge = false,
+                isRequestedResource = true,
+                contentWaitExpired = false,
+                isExpected = { false },
+            ),
+        )
+    }
+
+    @Test
+    fun contentWaitStartsOnlyAfterRequestedDocumentIsInteractive() {
+        val page = CloudflarePageState("https://www.scribblehub.com/chapter/1", "loading", "<html></html>")
+        assertFalse(CloudflareRenderPollPlanning.shouldStartContentWait(page, false, true, 0L))
+        assertTrue(CloudflareRenderPollPlanning.shouldStartContentWait(page.copy(readyState = "interactive"), false, true, 0L))
+        assertFalse(CloudflareRenderPollPlanning.shouldStartContentWait(page.copy(readyState = "complete"), true, true, 0L))
+    }
+
+    @Test
+    fun completePageWithoutExpectedContentFailsOnePage() {
+        val page = CloudflarePageState("https://www.scribblehub.com/chapter/1", "complete", "<html></html>")
+        assertTrue(
+            CloudflareRenderPollPlanning.failureAfterPolls(page, page.documentUrl, false, true, contentWaitExpired = true) is
+                CloudflareRenderFailure.PageContentUnexpected,
+        )
+    }
+
+    @Test
+    fun completePageInsideSettlingGraceFailsAsNeverSettled() {
+        val page = CloudflarePageState("https://www.scribblehub.com/chapter/1", "complete", "<html></html>")
+        assertTrue(
+            CloudflareRenderPollPlanning.failureAfterPolls(page, page.documentUrl, false, true, contentWaitExpired = false) is
+                CloudflareRenderFailure.NeverSettled,
         )
     }
 }

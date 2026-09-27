@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Renders a Cloudflare-blocked request in a detached WebView and returns the DOM to OkHttp. A
+ * Renders a Cloudflare-blocked request in a detached WebView and returns its content to OkHttp. A
  * cf_clearance cookie replayed through OkHttp's different network fingerprint can be re-challenged,
  * so the response WebView actually loaded is kept instead of retried. Interactive challenges still
  * fall through to [com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity].
@@ -50,6 +50,7 @@ object CloudflareWebViewSolver {
         val failure = AtomicReference<CloudflareRenderFailure?>(null)
         // The poll budget races the await timeout; the last observed document state carries the reason either way.
         val lastPollNote = AtomicReference("no poll completed")
+        var contentWaitStartedAt = 0L
         val session = sessions.getOrPut(hostKey(request.url)) { BrowserSession() }
         val renderId = BypassEventLog.nextId("r")
         BypassEventLog.record(
@@ -92,6 +93,19 @@ object CloudflareWebViewSolver {
                     )
                     val isRequestedResource =
                         CloudflareRenderedPageValidator.matchesRequestedResource(request, documentUrl)
+                    if (
+                        CloudflareRenderPollPlanning.shouldStartContentWait(
+                            state,
+                            isChallenge,
+                            isRequestedResource,
+                            contentWaitStartedAt,
+                        )
+                    ) {
+                        contentWaitStartedAt = android.os.SystemClock.elapsedRealtime()
+                    }
+                    val contentWaitExpired =
+                        contentWaitStartedAt != 0L &&
+                            android.os.SystemClock.elapsedRealtime() - contentWaitStartedAt >= CONTENT_WAIT_MILLIS
                     val decision =
                         CloudflareRenderPollPlanning.decide(
                             isStaleDocument = state.stale,
@@ -99,6 +113,7 @@ object CloudflareWebViewSolver {
                             readyState = state.readyState,
                             isChallenge = isChallenge,
                             isRequestedResource = isRequestedResource,
+                            contentWaitExpired = contentWaitExpired,
                             isExpected = {
                                 CloudflareRenderedPageValidator.isExpectedPage(request, documentUrl, state.html)
                             },
@@ -118,12 +133,15 @@ object CloudflareWebViewSolver {
                                     DOM_POLL_INTERVAL_MILLIS,
                                 )
                             } else {
-                                when {
-                                    isChallenge -> finishWith(CloudflareRenderFailure.ChallengeActive)
-                                    state.stale -> finishWith(CloudflareRenderFailure.StaleDocumentPersisted)
-                                    !isRequestedResource -> finishWith(CloudflareRenderFailure.NavigationNeverCommitted)
-                                    else -> finishWith(CloudflareRenderFailure.NeverSettled)
-                                }
+                                finishWith(
+                                    CloudflareRenderPollPlanning.failureAfterPolls(
+                                        state,
+                                        documentUrl,
+                                        isChallenge,
+                                        isRequestedResource,
+                                        contentWaitExpired,
+                                    ),
+                                )
                             }
 
                         CloudflareRenderPollDecision.REJECT_PAGE ->
@@ -138,7 +156,24 @@ object CloudflareWebViewSolver {
                 }
             }
 
-            web.webViewClient = renderClient(session, ::finishWith)
+            web.webViewClient = renderClient(session, request.method == "POST", ::finishWith)
+            if (request.method == "POST") {
+                CloudflareWebViewFormPost(
+                    web = web,
+                    request = request,
+                    mainHandler = mainHandler,
+                    isClosed = requestClosed::get,
+                    onPage = { page ->
+                        if (renderedPage.compareAndSet(null, page)) {
+                            CloudflareCookies.flush()
+                            latch.countDown()
+                        }
+                    },
+                    onFailure = ::finishWith,
+                    onPoll = lastPollNote::set,
+                ).start()
+                return@post
+            }
             // The persistent session WebView still shows the previous request's page; mark it stale
             // before navigating (from the marker's own callback) so a fresh document is never marked.
             web.evaluateJavascript(STALE_MARKER_SCRIPT) {
@@ -146,10 +181,6 @@ object CloudflareWebViewSolver {
                     when (request.method) {
                         "GET" -> {
                             web.loadUrl(request.url, request.headers)
-                            true
-                        }
-                        "POST" -> {
-                            web.postUrl(request.url, request.postData ?: byteArrayOf())
                             true
                         }
                         else -> false
@@ -178,6 +209,7 @@ object CloudflareWebViewSolver {
 
     private fun renderClient(
         session: BrowserSession,
+        isFormPost: Boolean,
         finishWith: (CloudflareRenderFailure) -> Unit,
     ): WebViewClient =
         object : WebViewClient() {
@@ -210,6 +242,7 @@ object CloudflareWebViewSolver {
             ) {
                 if (
                     failingRequest?.isForMainFrame == true &&
+                    !isFormPost &&
                     errorResponse?.statusCode !in setOf(403, 429, 503)
                 ) {
                     finishWith(
@@ -322,6 +355,7 @@ object CloudflareWebViewSolver {
 
     private const val DEFAULT_TIMEOUT_MS = 20_000L
     private const val DOM_POLL_INTERVAL_MILLIS = 500L
+    private const val CONTENT_WAIT_MILLIS = 2_000L
     private const val MAX_DOM_POLLS = 40
 }
 

@@ -15,12 +15,22 @@ internal enum class CloudflareRenderPollDecision {
 }
 
 internal object CloudflareRenderPollPlanning {
+    fun shouldStartContentWait(
+        state: CloudflarePageState,
+        isChallenge: Boolean,
+        isRequestedResource: Boolean,
+        startedAt: Long,
+    ): Boolean =
+        startedAt == 0L && isRequestedResource && !isChallenge && !state.stale &&
+            state.readyState in setOf("interactive", "complete")
+
     fun decide(
         isStaleDocument: Boolean,
         documentUrl: String,
         readyState: String,
         isChallenge: Boolean,
         isRequestedResource: Boolean,
+        contentWaitExpired: Boolean = true,
         isExpected: () -> Boolean,
     ): CloudflareRenderPollDecision =
         when {
@@ -32,10 +42,29 @@ internal object CloudflareRenderPollPlanning {
             !isSettled(readyState) -> CloudflareRenderPollDecision.KEEP_POLLING
             !isRequestedResource -> CloudflareRenderPollDecision.KEEP_POLLING
             isExpected() -> CloudflareRenderPollDecision.ACCEPT_PAGE
+            !contentWaitExpired -> CloudflareRenderPollDecision.KEEP_POLLING
             else -> CloudflareRenderPollDecision.REJECT_PAGE
         }
 
     private fun isSettled(readyState: String): Boolean = readyState == "interactive" || readyState == "complete"
+
+    fun failureAfterPolls(
+        state: CloudflarePageState,
+        documentUrl: String,
+        isChallenge: Boolean,
+        isRequestedResource: Boolean,
+        contentWaitExpired: Boolean,
+    ): CloudflareRenderFailure =
+        when {
+            isChallenge -> CloudflareRenderFailure.ChallengeActive
+            state.stale -> CloudflareRenderFailure.StaleDocumentPersisted
+            !isRequestedResource -> CloudflareRenderFailure.NavigationNeverCommitted
+            // A page still inside its settling grace has not had the chance to render the expected
+            // content, so it fails as unsettled rather than unexpected content.
+            state.readyState == "complete" && contentWaitExpired ->
+                CloudflareRenderFailure.PageContentUnexpected(CloudflareRenderedPage(state.html, documentUrl))
+            else -> CloudflareRenderFailure.NeverSettled
+        }
 }
 
 internal data class CloudflarePageState(
@@ -77,6 +106,7 @@ internal sealed interface CloudflareRenderFailure {
 
     data class MainFrameHttpError(
         val statusCode: Int,
+        val retryAfter: String? = null,
     ) : CloudflareRenderFailure {
         override val note = "main_frame_http_error"
     }
@@ -109,6 +139,7 @@ internal sealed interface CloudflareRenderOutcome {
 
     data class OriginHttpError(
         val statusCode: Int,
+        val retryAfter: String? = null,
     ) : CloudflareRenderOutcome
 
     data object TransportError : CloudflareRenderOutcome
@@ -125,7 +156,7 @@ internal object CloudflareRenderOutcomePlanning {
             is CloudflareRenderFailure.PageContentUnexpected ->
                 CloudflareRenderOutcome.PageContentUnexpected(failure.page)
             is CloudflareRenderFailure.MainFrameHttpError ->
-                CloudflareRenderOutcome.OriginHttpError(failure.statusCode)
+                CloudflareRenderOutcome.OriginHttpError(failure.statusCode, failure.retryAfter)
             CloudflareRenderFailure.MainFrameTransportError -> CloudflareRenderOutcome.TransportError
             CloudflareRenderFailure.ChallengeActive,
             CloudflareRenderFailure.StaleDocumentPersisted,

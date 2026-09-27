@@ -33,12 +33,17 @@ See [Cloudflare JavaScript Detections](https://developers.cloudflare.com/cloudfl
 After a detected challenge:
 
 1. The host enters sticky browser mode.
-2. The original GET or form POST is loaded through a serialized persistent WebView session.
+2. GET pages load through a serialized persistent WebView session. Form POSTs reuse a settled
+   same-origin page when available, or open one before running `fetch` with the original form body
+   and the source's AJAX headers. The returned response text, not a WebView-generated HTML wrapper,
+   reaches the existing parser. Android `WebView.postUrl()` cannot carry those custom headers.
 3. The solver polls the document state on a main-Looper timer started directly when navigation is
    issued. It does not use `onPageStarted`/`onPageFinished`, which some physical-device WebView
    builds can omit for the detached renderer, or `View.post`, which can defer work until a View is
    attached. A page is accepted only after `document.readyState` reaches
    `interactive`/`complete` — so a mid-stream DOM cannot be serialized as a truncated chapter —
+   and a requested page missing its expected selector receives a short settling period before it
+   is treated as unexpected content.
    and only when its stable story/chapter identity (or exact non-story path) matches the request, so
    the persistent session's previous document is never mistaken for the new one. Identity comparison
    prefers stable provider chapter ids over URL kind, because chapter URLs can classify as a story
@@ -54,7 +59,7 @@ After a detected challenge:
    making every render time out as blocked while the interactive verifier (which decodes
    correctly) showed the page as fine. Render give-ups log the last observed document state so the
    branch that stalled is identifiable from logcat.
-4. The validated rendered DOM is returned to the existing Jsoup parser.
+4. The validated rendered DOM or original form response text is returned to the existing parser.
 5. Later pages go directly through the same Chromium session without first sending the already
    rejected OkHttp TLS/HTTP fingerprint.
 
