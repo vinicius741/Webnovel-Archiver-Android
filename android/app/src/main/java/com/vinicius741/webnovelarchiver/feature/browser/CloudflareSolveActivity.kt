@@ -27,7 +27,11 @@ import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.CloudflareCookies
+import com.vinicius741.webnovelarchiver.source.network.CloudflarePageStateDecoder
+import com.vinicius741.webnovelarchiver.source.network.CloudflareRenderedPageValidator
+import com.vinicius741.webnovelarchiver.source.network.CloudflareWebViewRequest
 import com.vinicius741.webnovelarchiver.source.network.CloudflareWebViewSolver
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockDetector
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
@@ -35,27 +39,27 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import org.json.JSONArray
 
 /**
  * Interactive, in-app WebView fallback for solving a Cloudflare challenge that the background
  * [com.vinicius741.webnovelarchiver.source.network.CloudflareBypassInterceptor] could not pass
  * unattended (e.g. an interactive Turnstile the off-screen solver times out on).
  *
- * Loads the blocked URL in a full-screen WebView that shares [android.webkit.CookieManager] with
- * OkHttp. When `cf_clearance` appears and the challenge page is gone, the activity finishes
- * automatically. Because Cloudflare can also allow the browser session without minting that cookie,
- * Done offers a confirmed no-cookie escape hatch. Either path releases the caller's pending retry
- * (armed via [SourceAccessRetryCoordinator]) when the app resumes.
+ * Loads a source page in a full-screen WebView that shares [android.webkit.CookieManager] with
+ * OkHttp. When the requested page's expected content loads, the activity finishes automatically.
+ * Done offers a confirmed escape hatch when the page cannot be validated. Either path releases
+ * the caller's pending retry (armed via [SourceAccessRetryCoordinator]) when the app resumes.
  *
  * This is the narrow Cloudflare-challenge solver — distinct from OAuth, which stays in Custom Tabs
  * (see android/AGENTS.md). No login or credential handling happens here.
  */
 class CloudflareSolveActivity : AppCompatActivity() {
     private lateinit var url: String
+    private lateinit var verificationUrl: String
+    private var verifiesOriginalPage = true
     private var webView: WebView? = null
     private var statusText: TextView? = null
-    private var continueWithoutCookieDialog: AlertDialog? = null
+    private var continueWithoutVerificationDialog: AlertDialog? = null
     private var solved = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +69,13 @@ class CloudflareSolveActivity : AppCompatActivity() {
             finish()
             return
         }
+        verificationUrl =
+            if (SourceRegistry.resolve(url) != null) {
+                url
+            } else {
+                SourceRegistry.providerForHost(Uri.parse(url).host.orEmpty())?.descriptor?.browseUrl ?: url
+            }
+        verifiesOriginalPage = verificationUrl == url
 
         val colors = ThemeManager.colors
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -141,7 +152,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         val web =
             WebView(this).apply {
                 WebViewSafety.applyBrowserSettings(this)
-                val ua = SourceUserAgent.forUrl(this@CloudflareSolveActivity.url)
+                val ua = SourceUserAgent.forUrl(verificationUrl)
                 if (ua.isNotBlank()) settings.userAgentString = ua
                 webViewClient =
                     object : WebViewClient() {
@@ -149,9 +160,8 @@ class CloudflareSolveActivity : AppCompatActivity() {
                             view: WebView?,
                             pageUrl: String?,
                         ) {
-                            // Check the actual loaded URL first (clearance is often scoped to it),
-                            // then fall back to the URL we were asked to unblock.
-                            checkSolved(view, pageUrl)
+                            // The loaded document must match the requested source resource.
+                            checkSolved(view)
                         }
 
                         override fun onRenderProcessGone(
@@ -203,20 +213,20 @@ class CloudflareSolveActivity : AppCompatActivity() {
         }
 
         setContentView(root)
-        // Pre-emptively clear a stale clearance so a fresh grant is detectable; mirrors the solver.
-        CloudflareCookies.clearClearanceAsync(url) {
-            web.post {
-                BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "started")
-                web.loadUrl(url)
-                scheduleSolvePolling()
-            }
-        }
+        BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "started")
+        web.loadUrl(verificationUrl)
+        scheduleSolvePolling()
     }
 
-    private fun onSolved() {
+    private fun onSolved(verified: Boolean = true) {
         if (solved) return
         solved = true
-        BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "verified")
+        BypassEventLog.record(
+            BypassEventCategory.CF,
+            "solve_flow",
+            Uri.parse(url).host,
+            "state" to if (verified) "verified" else "confirmed_unverified",
+        )
         CloudflareCookies.flush()
         // The failed background attempt may have left a hidden WebView on the challenge page.
         // Discard it before the retry so the confirmed browser session is followed by a fresh
@@ -240,7 +250,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         Runnable {
             val web = webView ?: return@Runnable
             if (solved || isFinishing || isDestroyed) return@Runnable
-            checkSolved(web, web.url ?: url)
+            checkSolved(web)
             web.postDelayed(solvePollRunnable, SOLVE_POLL_INTERVAL_MILLIS)
         }
 
@@ -250,70 +260,72 @@ class CloudflareSolveActivity : AppCompatActivity() {
 
     private fun checkSolved(
         view: WebView?,
-        pageUrl: String?,
+        confirmIfNotVerified: Boolean = false,
     ) {
-        val effectiveUrl = pageUrl ?: url
-        val hasClearance = hasClearance(effectiveUrl)
-        view?.evaluateJavascript("document.documentElement.outerHTML") { htmlJson ->
-            val html = decodeJavascriptString(htmlJson)
-            when (
+        val request =
+            CloudflareWebViewRequest(
+                url = verificationUrl,
+                method = "GET",
+                userAgent = SourceUserAgent.forUrl(verificationUrl),
+                headers = emptyMap(),
+                postData = null,
+            )
+        view?.evaluateJavascript(PAGE_STATE_SCRIPT) { stateJson ->
+            val page = CloudflarePageStateDecoder.decode(stateJson)
+            val state =
                 CloudflareSolvePlanning.pageState(
-                    hasClearance = hasClearance(effectiveUrl),
-                    isChallenge = SourceAccessBlockDetector.isChallengeHtml(html),
-                    hasPageContent = html.isNotBlank(),
+                    isChallenge = SourceAccessBlockDetector.isChallengeHtml(page.html),
+                    isSettled = page.readyState == "interactive" || page.readyState == "complete",
+                    isRequestedResource = CloudflareRenderedPageValidator.matchesRequestedResource(request, page.documentUrl),
+                    isExpectedPage = CloudflareRenderedPageValidator.isExpectedPage(request, page.documentUrl, page.html),
                 )
-            ) {
-                CloudflareSolvePageState.VERIFIED -> onSolved()
+            when (state) {
+                CloudflareSolvePageState.VERIFIED -> {
+                    if (verifiesOriginalPage || confirmIfNotVerified) {
+                        onSolved(verified = verifiesOriginalPage)
+                    } else {
+                        statusText?.text = "The source page is open. Tap Done when ready to retry the original request."
+                    }
+                }
                 CloudflareSolvePageState.CHALLENGE_ACTIVE ->
                     statusText?.text = "Cloudflare is still verifying this page. Complete the check, then tap Done."
-                CloudflareSolvePageState.READY_WITHOUT_CLEARANCE ->
-                    statusText?.text =
-                        "The page is open, but no clearance cookie was detected. If it works, tap Done to continue."
                 CloudflareSolvePageState.PAGE_UNAVAILABLE ->
                     statusText?.text = "The page is still loading. Wait for it to open, then tap Done."
+                CloudflareSolvePageState.DIFFERENT_PAGE ->
+                    statusText?.text = "Waiting for the source page to finish opening."
+            }
+            if (confirmIfNotVerified && state != CloudflareSolvePageState.VERIFIED) {
+                showContinueWithoutVerificationConfirmation()
             }
         } ?: run {
-            statusText?.text =
-                if (hasClearance) {
-                    "Clearance detected. Wait for the page to finish loading, then tap Done."
-                } else {
-                    "No clearance cookie was detected. Tap Done if you want to continue anyway."
-                }
+            statusText?.text = "The source page is unavailable. Try again or tap Done to retry anyway."
+            if (confirmIfNotVerified) showContinueWithoutVerificationConfirmation()
         }
     }
 
     private fun onDone() {
-        val effectiveUrl = webView?.url ?: url
-        if (CloudflareSolvePlanning.requiresConfirmation(hasClearance(effectiveUrl))) {
-            showContinueWithoutCookieConfirmation()
-            return
-        }
-        checkSolved(webView, effectiveUrl)
+        checkSolved(webView, confirmIfNotVerified = true)
     }
 
-    private fun showContinueWithoutCookieConfirmation() {
-        if (continueWithoutCookieDialog?.isShowing == true || isFinishing) return
+    private fun showContinueWithoutVerificationConfirmation() {
+        if (continueWithoutVerificationDialog?.isShowing == true || isFinishing) return
         val dialog =
             AlertDialog
                 .Builder(this)
-                .setTitle("Continue without a clearance cookie?")
+                .setTitle("Continue without a verified source page?")
                 .setMessage(
-                    "The app could not detect a Cloudflare clearance cookie. Continue anyway and " +
+                    "The app could not confirm that the source page opened. Continue anyway and " +
                         "retry the request? If access is still blocked, verification may be requested again.",
-                ).setPositiveButton("Continue anyway") { _, _ -> onSolved() }
+                ).setPositiveButton("Continue anyway") { _, _ -> onSolved(verified = false) }
                 .setNegativeButton("Keep checking", null)
                 .create()
         dialog.setOnDismissListener {
-            if (continueWithoutCookieDialog === dialog) continueWithoutCookieDialog = null
+            if (continueWithoutVerificationDialog === dialog) continueWithoutVerificationDialog = null
         }
-        continueWithoutCookieDialog = dialog
+        continueWithoutVerificationDialog = dialog
         dialog.show()
         dialog.applyAppTheme()
     }
-
-    private fun hasClearance(pageUrl: String): Boolean = CloudflareCookies.hasClearanceForSite(pageUrl)
-
-    private fun decodeJavascriptString(value: String?): String = runCatching { JSONArray("[$value]").getString(0) }.getOrDefault("")
 
     private fun openInBrowser() {
         // Secondary escape hatch: a real browser is a supported Cloudflare environment and can solve
@@ -321,15 +333,15 @@ class CloudflareSolveActivity : AppCompatActivity() {
         // WebView remains the primary path; this is only for stubborn cases.)
         BypassEventLog.record(BypassEventCategory.CF, "solve_flow", Uri.parse(url).host, "state" to "opened_external")
         runCatching {
-            CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(url))
+            CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(verificationUrl))
         }.onFailure {
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(verificationUrl))) }
         }
     }
 
     override fun onDestroy() {
-        continueWithoutCookieDialog?.dismiss()
-        continueWithoutCookieDialog = null
+        continueWithoutVerificationDialog?.dismiss()
+        continueWithoutVerificationDialog = null
         super.onDestroy()
         webView?.let { web ->
             web.removeCallbacks(solvePollRunnable)
@@ -340,6 +352,9 @@ class CloudflareSolveActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val PAGE_STATE_SCRIPT =
+            "(function(){return JSON.stringify({documentUrl:location.href,readyState:document.readyState," +
+                "html:document.documentElement?document.documentElement.outerHTML:''})})()"
         const val EXTRA_URL = "cloudflare_solve_url"
         private const val MENU_DONE = 1
         private const val MENU_OPEN_BROWSER = 2

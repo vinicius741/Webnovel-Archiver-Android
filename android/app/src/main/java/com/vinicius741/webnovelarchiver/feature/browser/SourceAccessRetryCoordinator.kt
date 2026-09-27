@@ -36,9 +36,8 @@ internal fun ScreenHost.showSourceAccessBlockedDialog(
         "Cloudflare is blocking automated access to this source. Open the in-app browser, pass the " +
             "Cloudflare check, then return here and the request will retry automatically.",
     )
-    // Primary: in-app WebView that shares CookieManager with OkHttp, so the earned cf_clearance is
-    // replayed on the retry (armed below, fired from MainActivity.onResume). This replaces the old
-    // Chrome Custom Tab path, whose cookies were isolated from the app and never reached OkHttp.
+    // Primary: in-app WebView that shares CookieManager with source requests. The retry is armed
+    // below and fired from MainActivity.onResume; the challenged host stays on Chromium transport.
     builder.setPositiveButton("Verify access") { _, _ ->
         SourceAccessRetryCoordinator.arm(retryAfterBrowser)
         CloudflareSolveActivity.launch(app, url)

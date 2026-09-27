@@ -111,6 +111,11 @@ job ids. The ring is trimmed to the newest 1500 events and the export to 256 KiB
 “Reset Source Web Session” destroys persistent solver WebViews, clears WebView storage and source
 cookies, closes the circuit, and disables sticky mode. The next request begins a fresh source session.
 
+The visible verification screen preserves existing clearance and waits for the requested source
+page's expected content instead of treating cookie presence as proof of access. For source endpoints
+that are not navigable pages, it opens the provider's browse page and waits for an explicit Done
+before retrying the original request. A user can still confirm an unverified page explicitly.
+
 Aggregates and events carry host names, timings, decisions, and fixed-vocabulary failure notes.
 No URLs, story names, chapter titles, cookies, or response bodies are retained in these
 diagnostics.
