@@ -30,7 +30,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 |-------|-----------|
 | Language | Kotlin 2.4.20 |
 | UI | Programmatic Android Views (no XML layouts) |
-| Build | Gradle 9.7 + AGP 9.4.0 |
+| Build | Gradle 9.8 + AGP 9.4.1 |
 | HTTP Client | OkHttp 5.5 + shared source coordinator + sticky Chromium transport for challenged hosts |
 | HTML Parsing | Jsoup 1.23 |
 | JSON | Gson 2.14 |
@@ -104,7 +104,7 @@ WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
 
 Open the `android/` directory in Android Studio. The project uses:
 - `compileSdk` 37, `minSdk` 26, `targetSdk` 36
-- Kotlin 2.4.20, AGP 9.4.0, Gradle wrapper 9.7
+- Kotlin 2.4.20, AGP 9.4.1, Gradle wrapper 9.8
 
 For a side-by-side development build:
 
