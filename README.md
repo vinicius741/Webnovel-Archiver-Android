@@ -119,6 +119,12 @@ There is also an `instrumentation` build type (`…nativeapp.instrumentation`) u
 
 For emulator redeploy scripts and the debug-only “cold-start into a screen” helper, see `android/AGENTS.md`.
 
+The default `webnovel_api36` emulator approximates the Galaxy Z Fold7's cover and inner displays.
+Use its fold/unfold controls to check both layouts. The reproducible profile and migration helpers
+live under `scripts/emulator/`; they preserve the existing debug library. See `android/AGENTS.md`
+for setup and screenshot selection. The emulator uses Google's Android image and approximate
+display scaling, so Samsung One UI still requires a separate device check.
+
 ### Testing
 
 ```bash

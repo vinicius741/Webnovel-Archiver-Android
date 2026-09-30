@@ -11,7 +11,7 @@ Use this workflow for simulator-based development and QA of the native Kotlin ap
 
 - AVD name: `webnovel_api36`
 - System image: `system-images;android-36;google_apis;arm64-v8a`
-- Hardware profile: `pixel_8`
+- Hardware profile: Galaxy Z Fold7 approximation using `pixel_9_pro_fold` as the supported base; inner 1968×2184, cover 1080×2520, logical density 420 dpi. This runs Google's Android image, not One UI. Scaling is approximate until measured from the owner's device.
 - Debug package: `com.vinicius741.webnovelarchiver.nativeapp.debug`
 - Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`
 - Emulator tmux session: `webnovel-emulator`
@@ -102,8 +102,29 @@ Create the AVD if `webnovel_api36` is missing:
 printf 'no\n' | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd \
   -n webnovel_api36 \
   -k "system-images;android-36;google_apis;arm64-v8a" \
-  -d pixel_8
+  -d pixel_9_pro_fold
+python3 scripts/emulator/configure_fold7.py
 ```
+
+For an existing AVD, stop it before running `configure_fold7.py`. The script preserves data images
+and saves `config.ini.before-fold7`; never recreate or wipe the existing AVD. Cold boot after a
+hardware change.
+
+After the first boot of a converted phone AVD, run `python3 scripts/emulator/initialize_fold7.py`.
+It supplies the SDK's fold/display system configuration without wiping the library and reboots
+only when needed. Verify `adb -s "$EMULATOR_SERIAL" shell dumpsys device_state` reports
+`CLOSED` or `OPENED`, not `DEFAULT`; `wm size` must change with the selected display.
+Use the same AVD/library for both configurations:
+
+```bash
+adb -s "$EMULATOR_SERIAL" emu fold     # smaller cover display
+adb -s "$EMULATOR_SERIAL" emu unfold   # larger inner display
+```
+
+Check both sizes and a live fold/unfold transition for UI changes. Leave it unfolded on Library.
+For foldable screenshots, select the active physical display explicitly using
+`dumpsys SurfaceFlinger --display-id` and `dumpsys display`, then `screencap -d <id> -p`.
+Otherwise a capture can show the inactive screen, and stderr warnings can corrupt an `exec-out` PNG.
 
 ## Starting the Emulator
 

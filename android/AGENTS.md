@@ -72,6 +72,11 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 
 ## Emulator Workflow
 
+- Default hardware is a **Galaxy Z Fold7 approximation** on the existing `webnovel_api36` AVD: inner 1968×2184, cover 1080×2520, logical density 420 dpi. It uses the supported `pixel_9_pro_fold` base and Google's API 36 image, not Samsung One UI. Density/font scaling are approximations, not measurements from the owner's phone.
+- Apply the checked-in profile to a **stopped** AVD with `python3 scripts/emulator/configure_fold7.py`. It backs up the original config and preserves all data images. Never use `-wipe-data` when changing profiles. Cold boot after hardware changes.
+- After converting an existing phone AVD, run `python3 scripts/emulator/initialize_fold7.py` once it has booted. It installs the SDK's fold/display XMLs into the emulator's system configuration and reboots if needed, preserving the app/library. Hardware config alone leaves Android in `DEFAULT` state and stretches the inner framebuffer into the cover window. Verify `dumpsys device_state` reports `CLOSED`/`OPENED`, and `wm size` changes to the corresponding dimensions.
+- For UI QA, check both `adb -s "$EMULATOR_SERIAL" emu fold` (cover) and `adb -s "$EMULATOR_SERIAL" emu unfold` (inner), plus transitions while a screen is open. Leave the emulator unfolded on Library when finished. Screenshots must follow settled UI, not a fixed sleep alone.
+- Foldables expose multiple physical displays. For `screencap`, use an explicit active physical display ID from `dumpsys SurfaceFlinger --display-id`, cross-checked against `dumpsys display`. Pass `screencap -d <id> -p`; an unqualified display capture can select the inactive screen, and stderr warnings can corrupt a redirected `exec-out` PNG.
 - Reuse a running `webnovel_api36` emulator; do not start another unnecessarily.
 - When starting `webnovel_api36` manually, include `-dns-server 8.8.8.8,1.1.1.1` so the emulator does not inherit stale host DNS.
 - Use `scripts/redeploy.sh` for a one-shot debug rebuild/install/relaunch and `scripts/watch-redeploy.sh` for iterative UI work.

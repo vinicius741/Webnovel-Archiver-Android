@@ -26,6 +26,7 @@ prevents the common agent failure mode: screenshotting too early (spinner /
 - Target **only** an `emulator-*` serial (default AVD `webnovel_api36`). Never
   touch the physical phone unless the current message explicitly authorizes it.
 - Debug package only: `com.vinicius741.webnovelarchiver.nativeapp.debug`
+- `webnovel_api36` now uses the Galaxy Z Fold7 approximation documented in `android/AGENTS.md`. Check the major screens folded and unfolded, then live transitions on Library and Reader. Use explicit `adb -s "$SERIAL" emu fold` / `emu unfold` and wait for settled content after each switch. Leave Library unfolded at the end.
 - Main activity: `com.vinicius741.webnovelarchiver.app.MainActivity`
   (note the `.app.` segment — wrong path launches nothing useful)
 - Unqualified `adb devices -l` is discovery-only. Every device op uses
