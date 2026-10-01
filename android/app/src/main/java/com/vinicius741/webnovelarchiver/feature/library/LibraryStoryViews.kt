@@ -45,9 +45,10 @@ private data class LibraryProgressTag(
 internal fun ScreenHost.bindLibraryStoryCard(
     card: LinearLayout,
     story: Story,
+    alignToTop: Boolean,
 ) {
     card.removeAllViews()
-    val content = buildStoryCard(story)
+    val content = buildStoryCard(story, if (alignToTop) Gravity.TOP else Gravity.CENTER_VERTICAL)
     content.background = selectableRipple(ThemeManager.colors.onSurface)
     content.isClickable = true
     content.setOnClickListener { showDetails(story.id) }
@@ -55,7 +56,11 @@ internal fun ScreenHost.bindLibraryStoryCard(
         repository.story(story.id)?.let(::showStoryActionsDialog)
         true
     }
-    card.addView(content)
+    // Extra row height belongs to the content, keeping the progress summary at the card's bottom.
+    card.addView(
+        content,
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+    )
     if (story.totalChapters > 0) {
         card.addView(
             makeChapterCoverageSummary(
@@ -98,12 +103,15 @@ internal fun patchLibraryProgress(
     }
 }
 
-/** Full-width horizontal card content for the single-column library: 80×120 cover + stacked text. */
-private fun ScreenHost.buildStoryCard(story: Story): LinearLayout {
+/** Horizontal library card content: 80×120 cover + stacked text. */
+private fun ScreenHost.buildStoryCard(
+    story: Story,
+    contentGravity: Int,
+): LinearLayout {
     val row =
         LinearLayout(app).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = contentGravity
         }
     row.addView(coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false))
     row.addView(

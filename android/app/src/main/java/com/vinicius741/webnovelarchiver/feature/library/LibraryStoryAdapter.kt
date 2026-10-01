@@ -95,7 +95,8 @@ internal class LibraryStoryAdapter(
         card?.let {
             root.addView(
                 it,
-                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+                // GridLayoutManager remeasures each item to the tallest height in its row.
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
             )
         }
         return Holder(root, card)
@@ -107,7 +108,7 @@ internal class LibraryStoryAdapter(
     ) {
         val card = holder.card
         if (card != null) {
-            host.bindLibraryStoryCard(card, visible[position])
+            host.bindLibraryStoryCard(card, visible[position], alignToTop = columns > 1)
             return
         }
         holder.root.removeAllViews()
