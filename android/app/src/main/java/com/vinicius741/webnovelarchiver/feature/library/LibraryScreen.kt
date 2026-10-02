@@ -90,6 +90,7 @@ internal fun ScreenHost.showLibrary() {
 
         // R22: keystroke debounce for the expensive per-page grid rebuild.
         var searchApplyGeneration = 0
+        var clearingFilters = false
 
         // One closure applies filters to whichever grid surface (shared grid or pager adapter) is showing.
         var applyFilters: () -> Unit = {}
@@ -119,6 +120,18 @@ internal fun ScreenHost.showLibrary() {
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
+                onClearFilters = {
+                    filterState = filterState.clearFilters()
+                    libraryScreenState.query = filterState.query
+                    libraryScreenState.selectedTags = filterState.selectedTags
+                    clearingFilters = true
+                    search.text.clear()
+                    clearingFilters = false
+                    // Cancel any pending search debounce and show the unfiltered results now.
+                    searchApplyGeneration += 1
+                    refreshFilters(filterState.selectedTabId, filterState.selectedTags)
+                    applyFilters()
+                },
                 expandedInitially = libraryScreenState.filtersExpanded,
                 onExpandedChanged = { libraryScreenState.filtersExpanded = it },
             )
@@ -136,6 +149,7 @@ internal fun ScreenHost.showLibrary() {
         addView(filters.view)
 
         search.doAfterTextChanged {
+            if (clearingFilters) return@doAfterTextChanged
             filterState = filterState.copy(query = it?.toString().orEmpty())
             libraryScreenState.query = filterState.query
             // Indicators and chip options track the live query too.

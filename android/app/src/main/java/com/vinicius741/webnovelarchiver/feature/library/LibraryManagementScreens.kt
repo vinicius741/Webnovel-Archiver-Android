@@ -52,6 +52,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
         // Select All / Deselect All re-filter in place ([applyFilters]), and configChanges keeps
         // the tree alive across rotation/fold.
         var filterState = LibraryFilterState()
+        var clearingFilters = false
 
         // Declared up front as reassignable lambdas so the search watcher, chip callbacks, tab
         // bar, and bulk actions can close over them before their real bodies are assigned.
@@ -85,6 +86,14 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
+                onClearFilters = {
+                    filterState = filterState.clearFilters()
+                    clearingFilters = true
+                    search.text.clear()
+                    clearingFilters = false
+                    refreshFilters(filterState.selectedTabId, filterState.selectedTags)
+                    applyFilters()
+                },
             )
         refreshFilters = filters.rebuildChips
         val tabBar =
@@ -99,6 +108,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
         // Wire the search watcher after filters/refreshFilters exist so typing updates the header
         // indicators and narrows the chip row, not just the visible rows.
         search.doAfterTextChanged {
+            if (clearingFilters) return@doAfterTextChanged
             filterState = filterState.copy(query = it?.toString().orEmpty())
             filters.syncActiveFilters(filterState.selectedTags)
             refreshFilters(filterState.selectedTabId, filterState.selectedTags)

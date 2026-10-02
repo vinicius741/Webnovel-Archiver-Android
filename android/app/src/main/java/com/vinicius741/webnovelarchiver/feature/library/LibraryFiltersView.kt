@@ -15,12 +15,14 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.library.LibraryQuery
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.chip
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.iconButton
+import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeSourceChip
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -53,6 +55,7 @@ internal fun ScreenHost.makeLibraryFilters(
     sortAscending: Boolean,
     onSortChanged: (Pair<String, Boolean>) -> Unit,
     onTagToggled: (String) -> Unit,
+    onClearFilters: () -> Unit,
     expandedInitially: Boolean = false,
     onExpandedChanged: (Boolean) -> Unit = {},
 ): LibraryFiltersView {
@@ -157,7 +160,7 @@ internal fun ScreenHost.makeLibraryFilters(
 
     // Labels derive from stories visible under the tab + search + selected tags
     // ([LibraryQuery.availableFilterGroups]; falls back to the tab's full label set when nothing
-    // matches). syncActiveFilters — assigned below when tabs exist — keeps the header honest.
+    // matches). syncActiveFilters below updates the header.
     var syncActiveFilters: (Set<String>) -> Unit = { _ -> }
     // The chip the user just tapped, pinned by the next rebuild at its viewport position — without
     // a pin, the narrowed row re-sorts by the new counts and the selected chip can jump out of view.
@@ -298,11 +301,6 @@ internal fun ScreenHost.makeLibraryFilters(
     }
     populateChips(selectedTabId, selectedTags)
 
-    if (!hasCustomTabs) {
-        filtersContainer.layoutParams = filterTopMargin
-        return LibraryFiltersView(filtersContainer, populateChips, syncActiveFilters)
-    }
-
     val wrapper = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     // Decorative only: if clickable, Android dispatches the touch to this ImageView (which has its
     // own no-op listener), consumes it, and the parent never expands.
@@ -346,12 +344,16 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     headerRow.addView(activeLabel)
     headerRow.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
-    headerRow.addView(toggleWrap)
+    val clearButton = makeButton(context, "Clear filters", Btn.TEXT, onClick = onClearFilters)
+    headerRow.addView(clearButton)
+    if (hasCustomTabs) headerRow.addView(toggleWrap)
     wrapper.addView(headerRow)
     wrapper.addView(filtersContainer)
 
     syncActiveFilters = { tags ->
-        val active = tags.isNotEmpty() || search.text.isNotBlank()
+        val active = LibraryFiltersPlanning.hasActiveFilters(search.text, tags)
+        clearButton.visibility = if (active) View.VISIBLE else View.GONE
+        headerRow.visibility = if (hasCustomTabs || active) View.VISIBLE else View.GONE
         activeDot.visibility = if (active) View.VISIBLE else View.GONE
         activeLabel.visibility = if (active) View.VISIBLE else View.GONE
     }
@@ -370,11 +372,13 @@ internal fun ScreenHost.makeLibraryFilters(
             .setDuration(200)
             .start()
     }
-    headerRow.isClickable = true
-    headerRow.isFocusable = true
-    headerRow.background = selectableRipple(ThemeManager.colors.onSurface)
-    headerRow.setOnClickListener { toggleAction() }
-    toggleWrap.setOnClickListener { toggleAction() }
+    if (hasCustomTabs) {
+        headerRow.isClickable = true
+        headerRow.isFocusable = true
+        headerRow.background = selectableRipple(ThemeManager.colors.onSurface)
+        headerRow.setOnClickListener { toggleAction() }
+        toggleWrap.setOnClickListener { toggleAction() }
+    }
     wrapper.layoutParams = filterTopMargin
     return LibraryFiltersView(wrapper, populateChips, syncActiveFilters)
 }

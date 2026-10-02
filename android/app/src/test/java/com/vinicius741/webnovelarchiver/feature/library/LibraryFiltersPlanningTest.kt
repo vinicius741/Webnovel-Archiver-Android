@@ -6,6 +6,42 @@ import org.junit.Test
 
 class LibraryFiltersPlanningTest {
     @Test
+    fun activeFiltersIncludeSearchSourcesAndTags() {
+        assertEquals(false, LibraryFiltersPlanning.hasActiveFilters("", emptySet()))
+        assertEquals(false, LibraryFiltersPlanning.hasActiveFilters(" \t\n", emptySet()))
+        assertEquals(true, LibraryFiltersPlanning.hasActiveFilters("alpha", emptySet()))
+        assertEquals(true, LibraryFiltersPlanning.hasActiveFilters("", setOf("Royal Road")))
+        assertEquals(true, LibraryFiltersPlanning.hasActiveFilters("", setOf("fantasy")))
+    }
+
+    @Test
+    fun clearingFiltersRestoresTabResultsAndKeepsSort() {
+        val state =
+            LibraryFilterState(
+                query = "missing",
+                selectedTabId = "tab-a",
+                selectedTags = setOf("Royal Road", "fantasy"),
+                sortOption = "title",
+                sortAscending = true,
+            )
+        val stories =
+            listOf(
+                Story(id = "2", title = "Beta", tabId = "tab-a"),
+                Story(id = "1", title = "Alpha", tabId = "tab-a"),
+                Story(id = "3", title = "Other tab", tabId = "tab-b"),
+            )
+        assertEquals(emptyList<Story>(), state.applyTo(stories))
+
+        val cleared = state.clearFilters()
+        assertEquals("", cleared.query)
+        assertEquals(emptySet<String>(), cleared.selectedTags)
+        assertEquals("tab-a", cleared.selectedTabId)
+        assertEquals("title", cleared.sortOption)
+        assertEquals(true, cleared.sortAscending)
+        assertEquals(listOf("1", "2"), cleared.applyTo(stories).map { it.id })
+    }
+
+    @Test
     fun filterStateAppliesQueryTabTagsAndSortTogether() {
         val state =
             LibraryFilterState(

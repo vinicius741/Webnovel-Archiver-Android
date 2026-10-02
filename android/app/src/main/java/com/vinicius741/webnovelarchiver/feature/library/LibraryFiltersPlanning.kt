@@ -2,13 +2,13 @@ package com.vinicius741.webnovelarchiver.feature.library
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
-/**
- * Pure sort-key helpers for the Library filter bar, split out of [LibraryFilters] so the
- * deterministic sort normalization/labeling can be unit-tested and reused by both the sort chip
- * and the sort dialog. No Android dependencies — matches the repo's `*Planning` convention for
- * pure domain logic.
- */
+/** Pure rules for Library filtering and sort controls. */
 object LibraryFiltersPlanning {
+    fun hasActiveFilters(
+        query: CharSequence,
+        selectedTags: Set<String>,
+    ): Boolean = query.isNotBlank() || selectedTags.isNotEmpty()
+
     /** Default ascending/descending direction when a user picks a *new* sort option. */
     fun defaultDirectionFor(option: String): Boolean =
         when (option) {
@@ -50,6 +50,8 @@ data class LibraryFilterState(
     val sortOption: String = "lastUpdated",
     val sortAscending: Boolean = false,
 ) {
+    fun clearFilters(): LibraryFilterState = copy(query = "", selectedTags = emptySet())
+
     fun applyTo(stories: List<Story>): List<Story> =
         LibraryQuery.filterAndSort(
             stories,
