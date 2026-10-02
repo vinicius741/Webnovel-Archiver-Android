@@ -20,16 +20,16 @@ import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
 /**
- * Validates downloaded chapters with TypeSafe in batches of the target size and stops as soon as
+ * Validates downloaded chapters with Jev in batches of the target size and stops as soon as
  * enough useful chapters are found, so cost scales with what the novel needs, not its length.
  */
 internal class CoverEvidenceSelector(
     private val readChapter: suspend (Chapter) -> String?,
     private val saveUsage: suspend (AiUsageRecord) -> Unit,
-    private val client: TypeSafeCoverClient,
+    private val client: JevCoverClient,
     private val cache: CoverEvidenceCache,
 ) {
-    constructor(repository: AppRepository, client: TypeSafeCoverClient, cache: CoverEvidenceCache) :
+    constructor(repository: AppRepository, client: JevCoverClient, cache: CoverEvidenceCache) :
         this(repository::readChapter, { repository.recordAiUsage(it) }, client, cache)
 
     /** One judged chapter; [cached] marks a content-addressed reuse that did not bill. */
@@ -101,9 +101,9 @@ internal class CoverEvidenceSelector(
         val sample =
             CoverEvidencePlanning.sample(entry.index + 1, entry.value.title, HtmlCleanup.htmlToFormattedText(html))
                 ?: return Outcome(null, cached = false, readable = true)
-        val body = TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, sample))
+        val body = JevCoverClient.request(CoverEvidencePlanning.state(story, sample))
         val key = CoverEvidencePlanning.cacheKey(body)
-        val saved = cache.read(key)?.let { runCatching { TypeSafeCoverClient.parse(it) }.getOrNull() }
+        val saved = cache.read(key)?.let { runCatching { JevCoverClient.parse(it) }.getOrNull() }
         val judgments =
             saved
                 ?: client
@@ -113,7 +113,7 @@ internal class CoverEvidenceSelector(
                     ) { json, code -> recordUsage(story.id, operationId, json, code) }
                     .let { response ->
                         cache.write(key, response)
-                        TypeSafeCoverClient.parse(response)
+                        JevCoverClient.parse(response)
                     }
         return Outcome(CoverEvidencePlanning.ScoredChapter(sample, judgments), cached = saved != null, readable = true)
     }
@@ -128,23 +128,30 @@ internal class CoverEvidenceSelector(
         try {
             val usage = json.get("usage")?.takeIf { it.isJsonObject }?.asJsonObject
 
-            fun tokens(field: String) = runCatching { usage?.get(field)?.asLong?.takeIf { it >= 0 } }.getOrNull()
+            fun scalar(
+                json: JsonObject?,
+                field: String,
+            ): String? = json?.get(field)?.takeIf { it.isJsonPrimitive && !it.asJsonPrimitive.isBoolean }?.asString
+
+            fun tokens(field: String) = scalar(usage, field)?.toLongOrNull()?.takeIf { it >= 0 }
             saveUsage(
                 AiUsageRecord(
                     id = UUID.randomUUID().toString(),
                     operationId = operationId,
                     storyId = storyId,
                     feature = "cover_selection",
-                    model = CoverEvidencePlanning.MODEL,
+                    model = scalar(json, "model") ?: CoverEvidencePlanning.MODEL,
+                    generationId = scalar(json, "id"),
                     promptTokens = tokens("input_tokens"),
                     completionTokens = tokens("output_tokens"),
-                    outcome = if (code in 200..299) "completed" else "failed",
+                    costUsd = AiUsagePlanning.normalizeCost(scalar(usage, "cost")),
+                    outcome = if (code in 200..299 && runCatching { JevCoverClient.parse(json) }.isSuccess) "completed" else "failed",
                 ),
             )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            Timber.w(error, "Could not persist TypeSafe usage")
+            Timber.w(error, "Could not persist Jev usage")
         }
     }
 

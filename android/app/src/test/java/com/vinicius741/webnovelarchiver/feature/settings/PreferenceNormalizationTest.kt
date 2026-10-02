@@ -10,9 +10,28 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PreferenceNormalizationTest {
+    @Test
+    fun legacyTypeSafeKeyIsIgnoredAndDroppedWhileOpenRouterSettingsSurvive() {
+        val gson = Gson()
+        val legacy =
+            gson.fromJson(
+                """{"apiKey":" openrouter-key ","typeSafeApiKey":"retired-key","descriptionModel":"chosen-model","coverEvidenceChapters":7}""",
+                AiSettings::class.java,
+            )
+        val normalized = PreferenceNormalization.aiSettings(legacy)
+        assertEquals("openrouter-key", normalized.apiKey)
+        assertEquals("chosen-model", normalized.descriptionModel)
+        assertEquals(7, normalized.coverEvidenceChapters)
+        assertFalse(gson.toJson(normalized).contains("typeSafeApiKey"))
+        val typeSafeOnly = gson.fromJson("""{"typeSafeApiKey":"retired-key"}""", AiSettings::class.java)
+        assertNull(PreferenceNormalization.aiSettings(typeSafeOnly).apiKey)
+    }
+
     @Test
     fun legacySettingsWithoutParallelSourceFieldMigrateToTwoLanes() {
         val legacy =

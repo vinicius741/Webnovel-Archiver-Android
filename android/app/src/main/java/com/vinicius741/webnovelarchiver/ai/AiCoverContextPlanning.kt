@@ -14,10 +14,10 @@ object AiCoverContextPlanning {
 
     fun contextChaptersLabel(
         story: Story,
-        typeSafeSelection: List<Int>? = null,
+        automaticSelection: List<Int>? = null,
     ): String =
         if (story.aiCoverContextChapterIndices.isNullOrEmpty()) {
-            typeSafeSelection?.takeIf { it.isNotEmpty() }?.let { "TypeSafe: ${it.size} chapters" } ?: "Automatic (TypeSafe)"
+            automaticSelection?.takeIf { it.isNotEmpty() }?.let { "Jev: ${it.size} chapters" } ?: "Automatic (Jev)"
         } else {
             "${resolveContextChapters(story).size} selected"
         }

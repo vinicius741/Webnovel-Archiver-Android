@@ -3,34 +3,21 @@ package com.vinicius741.webnovelarchiver.ai
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
-/** TypeSafe wire fields are explicit to remain stable under R8. Uses the plain AI HTTP stack. */
-internal class TypeSafeCoverClient(
-    private val endpoint: String = "https://api.typesafe.ai/v1/systemone",
-    private val http: OkHttpClient = OkHttpClient.Builder().callTimeout(60, TimeUnit.SECONDS).build(),
+/** Typed Jev judgments through the shared OpenRouter client. Wire fields remain explicit for R8. */
+internal class JevCoverClient(
+    private val openRouter: OpenRouterClient,
 ) {
     suspend fun evaluate(
         apiKey: String,
         body: JsonObject,
         onReceipt: suspend (JsonObject, Int) -> Unit = { _, _ -> },
     ): JsonObject {
-        val request =
-            Request
-                .Builder()
-                .url(endpoint)
-                .header("Authorization", "Bearer $apiKey")
-                .post(body.toString().toRequestBody("application/json".toMediaType()))
-                .build()
         repeat(3) { attempt ->
-            val (json, code) = http.executeOpenRouterJson(request, 64_000L) { json, code -> json to code }
+            val (json, code) = openRouter.submitDecisions(apiKey, body)
             onReceipt(json, code)
-            if (code in listOf(429, 529) && attempt < 2) {
+            if (code in listOf(429, 503, 529) && attempt < 2) {
                 delay(1_000L shl attempt)
             } else {
                 checkResponse(code)
@@ -38,12 +25,19 @@ internal class TypeSafeCoverClient(
                 return json
             }
         }
-        error("TypeSafe request failed")
+        error("OpenRouter Jev request failed")
     }
 
     private fun checkResponse(code: Int) {
-        if (code == 401 || code == 403) throw IOException("Invalid TypeSafe API key. Check Settings → AI Settings.")
-        if (code !in 200..299) throw IOException("TypeSafe selection failed (HTTP $code). Completed passage scores are saved; try again.")
+        val message =
+            when (code) {
+                in 200..299 -> return
+                401, 403 -> "Invalid OpenRouter API key. Check Settings → AI Settings."
+                402 -> "OpenRouter reports insufficient credits for this API key."
+                404 -> "Jev cover selection is unavailable on OpenRouter. Try again later or select chapters manually."
+                else -> "OpenRouter Jev selection failed (HTTP $code). Completed passage scores are saved; try again."
+            }
+        throw IOException(message)
     }
 
     companion object {
@@ -104,7 +98,7 @@ internal class TypeSafeCoverClient(
         fun parse(json: JsonObject): CoverEvidencePlanning.Judgments {
             val answers =
                 json.get("answers")?.takeIf { it.isJsonObject }?.asJsonObject
-                    ?: throw IOException("TypeSafe returned no chapter judgments")
+                    ?: throw IOException("Jev returned no chapter judgments")
 
             fun value(
                 name: String,
@@ -115,7 +109,7 @@ internal class TypeSafeCoverClient(
                 val answer = answers.get(name)?.takeIf { it.isJsonObject }?.asJsonObject
                 val number = runCatching { answer?.get(field)?.asDouble }.getOrNull()
                 if (answer?.get("type")?.asString != type || number == null || !number.isFinite() || number !in 0.0..max) {
-                    throw IOException("TypeSafe returned an invalid $name judgment")
+                    throw IOException("Jev returned an invalid $name judgment")
                 }
                 return number / max
             }

@@ -288,18 +288,17 @@ data class TtsSettings(
 )
 
 /**
- * OpenRouter-backed AI feature settings: description and cover-art generation share one API key;
+ * OpenRouter-backed AI feature settings: generation and Jev cover selection share one API key;
  * future generators (tags) add their own model fields here. The API key is deliberately NOT part
  * of full backups — it stays device-local.
  */
 data class AiSettings(
     val apiKey: String? = null,
-    val typeSafeApiKey: String? = null,
     val descriptionModel: String = DEFAULT_DESCRIPTION_MODEL,
     val imageModel: String = DEFAULT_IMAGE_MODEL,
     /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
     val coverOneStep: Boolean = true,
-    /** Chapters automatic cover selection must validate with TypeSafe; scanned in batches of this size. */
+    /** Chapters automatic cover selection must validate with Jev; scanned in batches of this size. */
     val coverEvidenceChapters: Int = DEFAULT_COVER_EVIDENCE_CHAPTERS,
     /** Chapter polish (rewrite) model; global like the other AI models, chosen for rewrite quality. */
     val chapterRewriteModel: String = DEFAULT_CHAPTER_REWRITE_MODEL,
@@ -322,7 +321,7 @@ data class AiSettings(
         /** Default verifier; grok-4.6 returned short clean verdicts on correctly aligned pairs in the spike. */
         const val DEFAULT_CHAPTER_VERIFIER_MODEL = "x-ai/grok-4.6"
 
-        /** Chapters TypeSafe validates per automatic cover scan (also the batch size). */
+        /** Chapters Jev validates per automatic cover scan (also the batch size). */
         const val DEFAULT_COVER_EVIDENCE_CHAPTERS = 10
         const val MIN_COVER_EVIDENCE_CHAPTERS = 3
         const val MAX_COVER_EVIDENCE_CHAPTERS = 25

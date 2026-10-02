@@ -18,10 +18,10 @@ class AiCoverContextPlanningTest {
         )
 
     @Test fun `labels distinguish automatic scans from manual selections`() {
-        assertEquals("Automatic (TypeSafe)", AiCoverContextPlanning.contextChaptersLabel(story(null)))
-        assertEquals("TypeSafe: 2 chapters", AiCoverContextPlanning.contextChaptersLabel(story(null), listOf(0, 2)))
+        assertEquals("Automatic (Jev)", AiCoverContextPlanning.contextChaptersLabel(story(null)))
+        assertEquals("Jev: 2 chapters", AiCoverContextPlanning.contextChaptersLabel(story(null), listOf(0, 2)))
         // A manual choice always wins; unavailable chapters drop out of its label count.
-        assertEquals("Automatic (TypeSafe)", AiCoverContextPlanning.contextChaptersLabel(story(null), emptyList()))
+        assertEquals("Automatic (Jev)", AiCoverContextPlanning.contextChaptersLabel(story(null), emptyList()))
         assertEquals("1 selected", AiCoverContextPlanning.contextChaptersLabel(story(mutableListOf(0, 1, 5)), listOf(0, 2)))
     }
 

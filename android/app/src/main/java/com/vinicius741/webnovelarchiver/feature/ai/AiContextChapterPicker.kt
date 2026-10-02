@@ -41,14 +41,14 @@ internal fun ScreenHost.addAiContextChaptersRow(
     forCover: Boolean = false,
 ) {
     var valueView: TextView? = null
-    val typeSafeSelection = app.appContainer.coverEvidenceSelectionStore.selection(story.id)
+    val automaticSelection = app.appContainer.coverEvidenceSelectionStore.selection(story.id)
     val (selectorView, textVal) =
         container.context.makeSelectorField(
             iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_menu_book,
             label = if (forCover) "Cover context chapters" else "Description context chapters",
             value =
                 if (forCover) {
-                    AiCoverContextPlanning.contextChaptersLabel(story, typeSafeSelection)
+                    AiCoverContextPlanning.contextChaptersLabel(story, automaticSelection)
                 } else {
                     AiDescriptionPlanning.contextChaptersLabel(story)
                 },
@@ -56,7 +56,7 @@ internal fun ScreenHost.addAiContextChaptersRow(
             showAiContextChapterDialog(story, forCover) { saved ->
                 valueView?.text =
                     if (forCover) {
-                        AiCoverContextPlanning.contextChaptersLabel(saved, typeSafeSelection)
+                        AiCoverContextPlanning.contextChaptersLabel(saved, automaticSelection)
                     } else {
                         AiDescriptionPlanning.contextChaptersLabel(saved)
                     }
@@ -223,7 +223,7 @@ private fun ScreenHost.showAiContextChapterDialog(
                             toast("Select at least one chapter, or use Reset to default")
                             return@makeButton
                         }
-                        // An explicit cover selection always bypasses TypeSafe, including all chapters.
+                        // An explicit cover selection always bypasses Jev, including all chapters.
                         applySelection(if (forCover) checked.sorted() else checked.takeIf { it != defaults }?.sorted())
                     },
                 )
@@ -254,7 +254,7 @@ private fun ScreenHost.contextPickerConfig(
     val saved = if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices
     val automatic = app.appContainer.coverEvidenceSelectionStore.selection(story.id) ?: emptyList()
     // Automatic cover mode has no persisted manual selection — the picker shows the chapters
-    // TypeSafe kept on the last scan, or nothing before the first scan ever runs.
+    // Jev kept on the last scan, or nothing before the first scan ever runs.
     val initialChecked =
         when {
             saved != null -> saved
@@ -267,16 +267,16 @@ private fun ScreenHost.contextPickerConfig(
         hint =
             if (forCover) {
                 if (saved == null && automatic.isNotEmpty()) {
-                    "TypeSafe checked these chapters automatically on the last scan. " +
+                    "Jev checked these chapters automatically on the last scan. " +
                         "Adjust them and Save to send a manual selection instead."
                 } else {
-                    "Automatic mode validates chapters with TypeSafe until enough useful ones are found. " +
-                        "Check chapters to send a manual selection instead, without TypeSafe."
+                    "Automatic mode validates chapters with Jev until enough useful ones are found. " +
+                        "Check chapters to send a manual selection instead, without Jev."
                 }
             } else {
                 "Only downloaded chapters can be sent."
             },
-        resetLabel = if (forCover) "Reset to TypeSafe selection" else "Reset to default (first downloaded)",
+        resetLabel = if (forCover) "Reset to Jev selection" else "Reset to default (first downloaded)",
         save = { indices ->
             if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
         },

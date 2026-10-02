@@ -42,13 +42,13 @@ class CoverEvidencePlanningTest {
     @Test fun `cache identity changes with evidence metadata model and questions but not credentials`() {
         val sample = CoverEvidencePlanning.ChapterSample(1, "Opening", "A copper automaton tends an orchard.", "The orchard hums at dusk.")
         val story = Story(title = "Orchard", description = "A machine learns farming")
-        val body = TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, sample))
+        val body = JevCoverClient.request(CoverEvidencePlanning.state(story, sample))
         val original = CoverEvidencePlanning.cacheKey(body)
         assertEquals(original, CoverEvidencePlanning.cacheKey(body.deepCopy()))
         val changed =
             listOf(
-                TypeSafeCoverClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample)),
-                TypeSafeCoverClient.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text"))),
+                JevCoverClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample)),
+                JevCoverClient.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text"))),
                 body.deepCopy().apply { addProperty("model", "new-model") },
                 body.deepCopy().apply { getAsJsonObject("questions").remove("appearance") },
             )

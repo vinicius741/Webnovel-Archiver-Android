@@ -48,9 +48,9 @@ internal fun ScreenHost.showAiUsageSection(
     container.section("AI spend")
     container.addView(
         container.card {
-            text("Tracked by this app", Type.TITLE_SMALL)
+            text("This app", Type.TITLE_SMALL)
             text(
-                "Starts with requests made after this update. Live key totals below can also include older requests or usage outside this app.",
+                "Requests since tracking began.",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             )
@@ -58,7 +58,7 @@ internal fun ScreenHost.showAiUsageSection(
             usageRow(this, "Today", formatUsd(today.costUsd))
             usageRow(this, "This month", formatUsd(month.costUsd))
             usageRow(this, "All time", formatUsd(allTime.costUsd))
-            usageRow(this, "Calls without a reported cost", allTime.unknownCallCount.toString())
+            usageRow(this, "Calls with unknown cost", allTime.unknownCallCount.toString())
 
             spacer(Space.MD)
             text("Recent requests", Type.TITLE_SMALL)
@@ -78,7 +78,7 @@ internal fun ScreenHost.showAiUsageSection(
             spacer(Space.MD)
             text("Current OpenRouter key", Type.TITLE_SMALL)
             text(
-                "Live counters from the API key entered above. This does not use a management key.",
+                "Includes all usage for this key, across apps.",
                 Type.BODY_SMALL,
                 colors.onSurfaceVariant,
             )
@@ -120,11 +120,11 @@ internal fun ScreenHost.showAiUsageSection(
             fun refreshKeyUsage() {
                 val apiKey = apiKeyProvider()?.trim().orEmpty()
                 if (apiKey.isBlank()) {
-                    renderKeyUnavailable("Add an OpenRouter API key above to view live usage.")
+                    renderKeyUnavailable("Add a key to see usage.")
                     return
                 }
                 refreshButton?.isEnabled = false
-                keyStatus.text = "Loading current key usage…"
+                keyStatus.text = "Loading usage…"
                 clearKeyRows()
                 scope.launch {
                     val result = runCatching { app.appContainer.openRouter.fetchCurrentKeyUsage(apiKey) }
@@ -133,7 +133,7 @@ internal fun ScreenHost.showAiUsageSection(
                             .onSuccess { usage -> renderKeyUsage(usage) }
                             .onFailure { error ->
                                 clearKeyRows()
-                                keyStatus.text = error.message ?: "Current key usage is unavailable."
+                                keyStatus.text = error.message ?: "Usage unavailable."
                                 refreshButton?.isEnabled = true
                             }
                     }
@@ -152,7 +152,7 @@ internal fun ScreenHost.showAiUsageSection(
                 }
 
             if (apiKeyProvider()?.isNullOrBlank() == true) {
-                renderKeyUnavailable("Add an OpenRouter API key above to view live usage.")
+                renderKeyUnavailable("Add a key to see usage.")
             } else {
                 refreshKeyUsage()
             }
@@ -197,7 +197,7 @@ private fun recentRequestRow(
     val feature =
         when (record.feature) {
             "description" -> "Description"
-            "cover_selection" -> "TypeSafe cover selection"
+            "cover_selection" -> "Automatic cover selection"
             "cover_prompt" -> "Cover prompt"
             "cover_image" -> "Cover image"
             else -> record.feature.takeIf(String::isNotBlank) ?: "AI request"

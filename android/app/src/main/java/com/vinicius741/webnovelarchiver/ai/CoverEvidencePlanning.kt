@@ -4,9 +4,9 @@ import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.security.MessageDigest
 
-/** Pure chapter sampling, cache identities and chapter-level usefulness rules for TypeSafe selection. */
+/** Pure chapter sampling, cache identities and chapter-level usefulness rules for Jev selection. */
 internal object CoverEvidencePlanning {
-    const val MODEL = "jev-1.13.0"
+    const val MODEL = "typesafe/jev-1.13"
     const val DEFAULT_TARGET_CHAPTERS = 10
 
     private const val SAMPLE_CHARS = 2_200

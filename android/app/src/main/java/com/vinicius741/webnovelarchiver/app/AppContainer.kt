@@ -8,8 +8,8 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
 import com.vinicius741.webnovelarchiver.ai.CoverEvidenceSelector
+import com.vinicius741.webnovelarchiver.ai.JevCoverClient
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
-import com.vinicius741.webnovelarchiver.ai.TypeSafeCoverClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
@@ -107,7 +107,7 @@ class AppContainer(
         AiCoverArtEngine(
             repository,
             openRouter,
-            CoverEvidenceSelector(repository, TypeSafeCoverClient(), CoverEvidenceCache(File(appContext.cacheDir, "cover_evidence"))),
+            CoverEvidenceSelector(repository, JevCoverClient(openRouter), CoverEvidenceCache(File(appContext.cacheDir, "cover_evidence"))),
             coverEvidenceSelectionStore,
         )
 

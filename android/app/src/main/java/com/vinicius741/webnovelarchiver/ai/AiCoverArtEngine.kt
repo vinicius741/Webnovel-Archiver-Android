@@ -72,17 +72,12 @@ class AiCoverArtEngine internal constructor(
         onProgress("Reading chapters...")
         val chapters =
             if (context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
-                val key =
-                    context.settings.typeSafeApiKey?.takeIf { it.isNotBlank() }
-                        ?: error(
-                            "Add your TypeSafe API key in Settings → AI Settings for automatic cover selection, or select chapters manually.",
-                        )
                 val selected =
-                    evidenceSelector.select(context.story, key, context.settings.coverEvidenceChapters, onProgress)
+                    evidenceSelector.select(context.story, context.apiKey, context.settings.coverEvidenceChapters, onProgress)
 
                 // Display hint for the picker; losing it never fails a finished cover run.
                 runCatching { evidenceSelectionStore.record(context.story.id, selected.map { it.number - 1 }) }
-                    .onFailure { Timber.w(it, "Could not persist TypeSafe chapter selection") }
+                    .onFailure { Timber.w(it, "Could not persist Jev chapter selection") }
                 selected
             } else {
                 AiContextChapters.read(repository, context.story, contextIndices)

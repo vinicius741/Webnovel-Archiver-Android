@@ -6,7 +6,7 @@ import com.google.gson.JsonParser
 import java.io.File
 
 /**
- * Last automatic TypeSafe chapter selection per story — a display hint for the cover context
+ * Last automatic Jev chapter selection per story — a display hint for the cover context
  * picker, not a manual override. Disposable and device-local like the evidence cache itself:
  * loss just means the picker shows the pre-scan empty state until the next generation.
  */
@@ -28,7 +28,7 @@ class CoverEvidenceSelectionStore(
             file.parentFile?.mkdirs()
             val pending = File(file.parentFile, file.name + ".tmp")
             pending.writeText(serialize())
-            check(pending.renameTo(file)) { "Could not save TypeSafe chapter selection" }
+            check(pending.renameTo(file)) { "Could not save Jev chapter selection" }
         }
     }
 

@@ -3,7 +3,7 @@
 The native app records the billing receipt OpenRouter returns with each successful AI response.
 This gives users a device-local, per-request history without storing prompts or exposing the API
 key. Tracking covers description generation, cover-prompt generation (including billed empty
-replies and retries), and cover-image generation.
+replies and retries), cover-image generation, and automatic Jev chapter selection through OpenRouter. Selection records retain the served Jev snapshot, generation ID, input/output tokens and exact `usage.cost`; cached judgments add no new receipt.
 
 ## User surfaces
 
@@ -43,6 +43,7 @@ writes until a later refresh succeeds instead of overwriting the unreadable sour
 | File | Role |
 |------|------|
 | `ai/OpenRouterClient.kt` | Parses response receipts and live key usage without converting money to `Double`. |
+| `ai/CoverEvidenceSelector.kt` | Records each Jev Decisions response, preserving decimal cost and unknown-cost failures. |
 | `ai/AiUsagePlanning.kt` | Normalization, exact aggregation, retention, summaries, and cost formatting. |
 | `domain/model/AiUsageModels.kt` | `AiUsageRecord`, period summaries, and `AiUsageLedger`. |
 | `data/storage/AiUsageFileStore.kt` | Device-local durable reads, guarded failures, and atomic writes. |

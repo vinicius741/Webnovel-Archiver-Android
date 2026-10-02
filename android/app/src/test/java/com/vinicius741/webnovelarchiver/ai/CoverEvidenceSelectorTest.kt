@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceCache
+import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.runBlocking
@@ -56,11 +57,11 @@ class CoverEvidenceSelectorTest {
     ) = CoverEvidenceSelector(
         readChapter = readChapter,
         saveUsage = { recorded[0]++ },
-        client = TypeSafeCoverClient(server.url("/").toString()),
+        client = JevCoverClient(OpenRouterClient(server.url("/").toString())),
         cache = CoverEvidenceCache(folder),
     )
 
-    @Test fun `missing downloaded files direct the user to redownload without calling TypeSafe`() =
+    @Test fun `missing downloaded files direct the user to redownload without calling Jev`() =
         runBlocking {
             MockWebServer().use { server ->
                 server.dispatcher = chapterDispatcher { MockResponse().setBody(response) }
@@ -126,6 +127,55 @@ class CoverEvidenceSelectorTest {
                 assertEquals((2..20 step 2).toList(), selected.map { it.number })
                 // The 21st chapter is never scanned: the second batch reached the target.
                 assertEquals(20, server.requestCount)
+            }
+        }
+
+    @Test fun `OpenRouter cost and served model are recorded exactly and cache reuse adds no receipt`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                val records = mutableListOf<AiUsageRecord>()
+                val receipt =
+                    response
+                        .replace("{\"answers\":", "{\"id\":\"gen-dec-test\",\"model\":\"typesafe/jev-1.13-20260917\",\"answers\":")
+                        .replace("\"output_tokens\":20", "\"output_tokens\":20,\"cost\":0.000016800123456789")
+                server.enqueue(MockResponse().setBody(receipt))
+                val selector =
+                    CoverEvidenceSelector(
+                        readChapter = { it.content },
+                        saveUsage = { records += it },
+                        client = JevCoverClient(OpenRouterClient(server.url("/").toString())),
+                        cache = CoverEvidenceCache(temporary.newFolder()),
+                    )
+                selector.select(story(1), "openrouter-key", 1) {}
+                val record = records.single()
+                assertEquals("cover_selection", record.feature)
+                assertEquals("gen-dec-test", record.generationId)
+                assertEquals("typesafe/jev-1.13-20260917", record.model)
+                assertEquals("0.000016800123456789", record.costUsd)
+                assertEquals(400L, record.promptTokens)
+                assertEquals(20L, record.completionTokens)
+                assertEquals("completed", record.outcome)
+                selector.select(story(1), "replacement-openrouter-key", 1) {}
+                assertEquals(1, records.size)
+                assertEquals(1, server.requestCount)
+            }
+        }
+
+    @Test fun `missing or invalid costs remain unknown even on successful responses`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                val records = mutableListOf<AiUsageRecord>()
+                for (cost in listOf("", ",\"cost\":-1", ",\"cost\":\"invalid\"")) {
+                    server.enqueue(MockResponse().setBody(response.replace("\"output_tokens\":20", "\"output_tokens\":20$cost")))
+                    CoverEvidenceSelector(
+                        readChapter = { it.content },
+                        saveUsage = { records += it },
+                        client = JevCoverClient(OpenRouterClient(server.url("/").toString())),
+                        cache = CoverEvidenceCache(temporary.newFolder()),
+                    ).select(story(1), "test", 1) {}
+                }
+                assertTrue(records.all { it.costUsd == null })
+                assertTrue(records.all { it.outcome == "completed" })
             }
         }
 

@@ -31,19 +31,8 @@ internal fun ScreenHost.showAiSettings() {
     screen(route = AppRoute.AiSettings, title = "AI Settings", onBack = { showSettings() }, scrollable = true) {
         section("OpenRouter")
         text(
-            "AI features use your own OpenRouter account. Create a key at openrouter.ai/keys; " +
-                "generation costs depend on the model you pick.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
-        text(
-            "Description and cover generation send the novel title, author, tags, current " +
-                "description, and downloaded chapter excerpts to " +
-                "OpenRouter and the selected model provider. Provider retention depends on your " +
-                "OpenRouter privacy settings. Models and chapters are chosen in Details → More " +
-                "options → AI Controls — the model applies to every novel, the chapter selection " +
-                "is per novel.",
+            "Get a key at openrouter.ai/keys. Requests use paid credits and share novel details " +
+                "and chapter excerpts with OpenRouter and model providers.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
@@ -64,24 +53,16 @@ internal fun ScreenHost.showAiSettings() {
                     }
             },
         )
-        section("TypeSafe cover selection")
+        section("Automatic cover selection")
         text(
-            "Automatic cover selection sends two excerpts per chapter and novel metadata to TypeSafe. " +
-                "Chapters are validated in batches and the scan stops once enough useful chapters are found. " +
-                "Scores are cached on this device. Create a key at console.typesafe.ai. " +
-                "Manual chapter selection does not use TypeSafe.",
+            "Scans chapters for cover ideas using OpenRouter credits. " +
+                "Picking chapters manually skips the scan.",
             Type.BODY_SMALL,
             ThemeManager.colors.onSurfaceVariant,
         )
-        val typeSafeKeyField =
-            labeledField(
-                "TypeSafe API key",
-                settings.typeSafeApiKey.orEmpty(),
-                InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
-            ).apply { transformationMethod = PasswordTransformationMethod.getInstance() }
         val evidenceChaptersField =
             labeledField(
-                "Chapters to validate",
+                "Chapter scan limit",
                 settings.coverEvidenceChapters.toString(),
                 InputType.TYPE_CLASS_NUMBER,
                 hint = "${AiSettings.MIN_COVER_EVIDENCE_CHAPTERS}–${AiSettings.MAX_COVER_EVIDENCE_CHAPTERS}",
@@ -92,7 +73,6 @@ internal fun ScreenHost.showAiSettings() {
                 repository.saveAiSettings(
                     repository.getAiSettings().copy(
                         apiKey = apiKeyField?.text?.toString(),
-                        typeSafeApiKey = typeSafeKeyField.text.toString(),
                         coverEvidenceChapters =
                             evidenceChaptersField.text
                                 .toString()

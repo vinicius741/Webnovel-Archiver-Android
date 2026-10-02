@@ -23,6 +23,7 @@ class OpenRouterClient(
     private val client: OkHttpClient = defaultClient(),
 ) {
     private val rootUrl = baseUrl.trimEnd('/')
+    private val decisionsClient = client.newBuilder().callTimeout(60, TimeUnit.SECONDS).build()
 
     /** POST /api/v1/chat/completions; throws [OpenRouterException] with friendly messages for auth/credit/model/rate-limit failures. */
     suspend fun chatCompletion(
@@ -72,6 +73,21 @@ class OpenRouterClient(
                 else -> throw OpenRouterException("OpenRouter request failed (HTTP $httpCode): ${serverMessage(responseJson)}", receipt)
             }
         }
+    }
+
+    /** Raw Decisions response so Jev selection can record each receipt and retry transient failures. */
+    internal suspend fun submitDecisions(
+        apiKey: String,
+        body: JsonObject,
+    ): Pair<JsonObject, Int> {
+        val request =
+            Request
+                .Builder()
+                .url("$rootUrl/api/alpha/decisions")
+                .header("Authorization", "Bearer $apiKey")
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+        return decisionsClient.executeOpenRouterJson(request, 64_000L) { json, code -> json to code }
     }
 
     /** GET /api/v1/key — current usage and limit counters for [apiKey]. */
