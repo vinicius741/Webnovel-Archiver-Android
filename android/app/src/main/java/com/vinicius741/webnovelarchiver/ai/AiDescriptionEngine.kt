@@ -55,9 +55,16 @@ class AiDescriptionEngine(
         onProgress("Writing synopsis with ${settings.descriptionModel}...")
         val messages = AiDescriptionPlanning.buildMessages(story, chapters)
         val operationId = UUID.randomUUID().toString()
+        val reasoningEffort = client.reasoningEffortFor(settings, settings.descriptionModel)
         val result =
             try {
-                client.chatCompletion(apiKey, settings.descriptionModel, messages, AiDescriptionPlanning.MAX_OUTPUT_TOKENS)
+                client.chatCompletion(
+                    apiKey,
+                    settings.descriptionModel,
+                    messages,
+                    AiDescriptionPlanning.MAX_OUTPUT_TOKENS,
+                    reasoningEffort = reasoningEffort,
+                )
             } catch (error: OpenRouterEmptyCompletionException) {
                 recordUsage(
                     storyId = storyId,

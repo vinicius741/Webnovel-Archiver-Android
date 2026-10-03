@@ -81,9 +81,6 @@ class AiChapterRewriteEngine(
         client,
     )
 
-    @Volatile
-    private var modelCatalogCache: List<OpenRouterModel>? = null
-
     private val usage = AiChapterRewriteUsageRecorder { source.recordUsage(it) }
 
     suspend fun draft(
@@ -114,7 +111,7 @@ class AiChapterRewriteEngine(
         val systemPrompt = AiChapterRewritePrompts.rewritePromptFor(promptVersion)
         val storyContext = RewriteStoryContext(story.title, story.author, context.chapter.title)
         val userMessage = AiChapterRewritePlanning.buildRewriteUserMessage(storyContext, parsed, strength)
-        val catalog = modelCatalog()
+        val catalog = client.modelsOrNull().orEmpty()
         val rewriteModelInfo = catalog.firstOrNull { it.id == context.settings.chapterRewriteModel }
         val maxTokens = AiChapterRewritePlanning.rewriteMaxTokens(userMessage, rewriteModelInfo?.maxCompletionTokens)
 
@@ -134,6 +131,12 @@ class AiChapterRewriteEngine(
                         provider = provider,
                         storyId = storyId,
                         operationId = operationId,
+                        reasoningEffort =
+                            AiReasoningPlanning.effortFor(
+                                context.settings,
+                                context.settings.chapterRewriteModel,
+                                rewriteModelInfo,
+                            ),
                     ),
                     providerTier = tier,
                 )
@@ -158,6 +161,12 @@ class AiChapterRewriteEngine(
                             provider = provider,
                             storyId = storyId,
                             operationId = operationId,
+                            reasoningEffort =
+                                AiReasoningPlanning.effortFor(
+                                    context.settings,
+                                    context.settings.chapterRewriteModel,
+                                    rewriteModelInfo,
+                                ),
                         ),
                         providerTier = tier,
                     )
@@ -268,6 +277,7 @@ class AiChapterRewriteEngine(
                                     provider = provider,
                                     storyId = context.story.id,
                                     operationId = operationId,
+                                    reasoningEffort = client.reasoningEffortFor(context.settings, context.effectiveVerifierModel),
                                 ),
                                 providerTier = tier,
                             )
@@ -319,6 +329,7 @@ class AiChapterRewriteEngine(
                     spec.temperature,
                     spec.responseFormat,
                     spec.provider,
+                    spec.reasoningEffort,
                 )
             } catch (error: OpenRouterException) {
                 // Routing failures are rethrown unrecorded so routedCall can step down and retry;
@@ -368,13 +379,6 @@ class AiChapterRewriteEngine(
             )
         }
         return validation
-    }
-
-    private suspend fun modelCatalog(): List<OpenRouterModel> {
-        modelCatalogCache?.let { return it }
-        val catalog = runCatching { client.fetchModels() }.getOrDefault(emptyList())
-        if (catalog.isNotEmpty()) modelCatalogCache = catalog
-        return catalog
     }
 
     private companion object {

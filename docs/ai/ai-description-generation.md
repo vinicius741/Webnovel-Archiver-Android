@@ -6,11 +6,20 @@ the layer is built to grow tag and cover-image generation later.
 
 ## User flow
 
-- **Settings → AI Settings**: the user enters their own OpenRouter API key (masked input) and picks
-  the model used for description generation. The model picker fetches OpenRouter's live catalog
+- **Settings → AI Settings**: the user enters their own OpenRouter API key (masked input).
+  **AI Controls → Models** selects the model used for description generation. The model picker fetches OpenRouter's live catalog
   (`GET /api/v1/models`, public endpoint) into a searchable dialog with All/Free filters and
   per-million-token pricing labels; a manual-id entry row covers new/offline models. Defaults to
   `deepseek/deepseek-v4-flash-0731` (cheap) so a fresh install works immediately.
+  The model picker confirms the choice from a selection bar above the buttons: the drafted model
+  plus, for adjustable models, its reasoning level as a segmented control. Tap Use model to save
+  both together; Cancel discards both edits.
+  Default and the levels in `reasoning.supported_efforts` appear for adjustable models;
+  mandatory reasoning hides Off. Manual ids and unavailable catalogs allow explicit choices.
+  Levels are saved by model id in `AiSettings.reasoningEfforts`, so switching back restores the
+  choice. The description model's level also applies when it writes cover prompts. Image models
+  have no reasoning control. The chosen level appears inside the model's field on AI Controls.
+  Higher levels can take longer and use more output tokens.
 - **Details → More options → AI Controls**: all per-novel AI features live on the AI Controls screen
   (route `ai_controls`), not on the Details body, so new generators (tags, cover art) join a hub
   instead of scattering more buttons across Details. Its description card shows the applied AI
@@ -35,7 +44,9 @@ the layer is built to grow tag and cover-image generation later.
 ## Cost controls
 
 - Context: earliest 5 downloaded chapters, 12k chars/chapter cap, 60k chars total.
-- Output: `max_tokens = 2000`, with OpenRouter reasoning set to low and excluded from the reply.
+- Output: `max_tokens = 2000`, with the saved reasoning level and reasoning text excluded from the reply.
+  Existing settings keep Low where supported; Model default and unsupported saved levels omit
+  `reasoning.effort`. Catalog options follow the [OpenRouter reasoning reference](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
   Replies stopped by the output limit, over 2,400 characters, or over 260 words are rejected rather
   than shown as complete.
 - Regenerating (over an applied description or a pending preview) requires a confirm dialog; every
@@ -54,11 +65,12 @@ the layer is built to grow tag and cover-image generation later.
 | `AiDescriptionPlanning.kt` | Pure logic: chapter selection, char caps, prompt assembly, response cleanup, and `activeDescription(story)` (the displayed-synopsis rule shared with the Details UI and description TTS). |
 | `AiDescriptionEngine.kt` | Orchestration: reads chapters via the repository, extracts text (`HtmlCleanup`), calls the client, and returns the draft — persisting is the caller's job (`AppRepository.setAiDescription` on Apply). |
 | `AiModelPresentation.kt` | Pure picker helpers: pricing labels, search/free-only filtering. |
+| `AiReasoningPlanning.kt` | Pure catalog filtering and per-model reasoning effort resolution shared by UI and engines. |
 
 Supporting pieces: `AiSettings` (in `domain/model/Models.kt`) persisted to
 `files/webnovel_archiver/ai_settings.json`; `Story.aiDescription` + `Story.showAiDescription`;
 `StoryMutations.setAiDescription`/`setShowAiDescription`; UI in
-`feature/settings/SettingsAi.kt` (key + model) and `feature/ai/AiControlsScreen.kt` (per-novel
+`feature/settings/SettingsAi.kt` (key) and `feature/ai/AiControlsScreen.kt` (models, reasoning, per-novel
 generate/preview/apply hub); wired in `AppContainer` (`openRouter`, `aiDescriptionEngine`).
 
 ## Secrets and backups

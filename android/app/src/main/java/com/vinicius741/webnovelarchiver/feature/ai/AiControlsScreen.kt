@@ -47,7 +47,7 @@ internal fun ScreenHost.showAiControls(storyId: String) {
         val binding = AiControlsBinding(story.id, this, storyOperation?.takeIf { it.storyId == story.id }?.kind)
         aiControlsScreenState.binding = binding
         section("Models")
-        addAiModelsCard(this, story)
+        addAiModelsCard(this)
 
         section("Cover Art")
         addAiCoverCard(this, story, generatingCover)

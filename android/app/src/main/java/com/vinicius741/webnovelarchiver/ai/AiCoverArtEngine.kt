@@ -89,9 +89,7 @@ class AiCoverArtEngine internal constructor(
         onProgress("Writing image prompt with ${context.settings.descriptionModel}...")
         val rawPrompt =
             writeImagePrompt(
-                context.apiKey,
-                context.settings.descriptionModel,
-                context.story,
+                context,
                 chapters,
                 onProgress,
                 operationId,
@@ -195,20 +193,22 @@ class AiCoverArtEngine internal constructor(
      * failures are not retried — a second call can't fix auth or credits.
      */
     private suspend fun writeImagePrompt(
-        apiKey: String,
-        model: String,
-        story: Story,
+        context: CoverContext,
         chapters: List<AiDescriptionPlanning.ChapterText>,
         onProgress: (String) -> Unit,
         operationId: String,
     ): String {
-        val messages = AiCoverPlanning.buildPromptMessages(story, chapters)
+        val apiKey = context.apiKey
+        val model = context.settings.descriptionModel
+        val storyId = context.story.id
+        val messages = AiCoverPlanning.buildPromptMessages(context.story, chapters)
+        val reasoningEffort = client.reasoningEffortFor(context.settings, model)
         return try {
-            trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, story.id, operationId)
+            trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, storyId, operationId, reasoningEffort)
         } catch (error: OpenRouterEmptyCompletionException) {
             Timber.d(error, "Empty image-prompt completion; retrying once")
             onProgress("Empty reply from the model — retrying the image prompt...")
-            trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, story.id, operationId)
+            trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, storyId, operationId, reasoningEffort)
         } catch (error: OpenRouterTruncatedException) {
             Timber.d(error, "Truncated image-prompt completion; retrying with a larger budget")
             onProgress("The model overran its response limit — retrying the image prompt...")
@@ -217,8 +217,9 @@ class AiCoverArtEngine internal constructor(
                 model,
                 messages,
                 AiCoverPlanning.MAX_OUTPUT_TOKENS * 2,
-                story.id,
+                storyId,
                 operationId,
+                reasoningEffort,
             )
         }
     }
@@ -232,10 +233,11 @@ class AiCoverArtEngine internal constructor(
         maxTokens: Int,
         storyId: String,
         operationId: String,
+        reasoningEffort: String?,
     ): String {
         val result =
             try {
-                client.chatCompletion(apiKey, model, messages, maxTokens)
+                client.chatCompletion(apiKey, model, messages, maxTokens, reasoningEffort = reasoningEffort)
             } catch (error: OpenRouterEmptyCompletionException) {
                 recordUsage(storyId, operationId, FEATURE_COVER_PROMPT, model, error.receipt, OUTCOME_EMPTY)
                 throw error

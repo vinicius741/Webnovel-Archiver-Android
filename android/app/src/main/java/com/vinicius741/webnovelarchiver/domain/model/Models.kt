@@ -304,6 +304,8 @@ data class AiSettings(
     val chapterRewriteModel: String = DEFAULT_CHAPTER_REWRITE_MODEL,
     /** Independent preservation verifier; must differ from the rewriter (spike rule). */
     val chapterVerifierModel: String = DEFAULT_CHAPTER_VERIFIER_MODEL,
+    /** Reasoning effort by OpenRouter text-model id; "default" leaves the choice to the provider. */
+    val reasoningEfforts: Map<String, String> = emptyMap(),
 ) {
     companion object {
         /** Cheap default so a fresh install works without forcing a model choice first. */

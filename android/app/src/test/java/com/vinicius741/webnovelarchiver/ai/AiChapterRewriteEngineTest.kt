@@ -45,6 +45,7 @@ class AiChapterRewriteEngineTest {
     @Test
     fun `happy path rewrites verifies and records a ready draft`() =
         runBlocking {
+            source.settings = source.settings.copy(reasoningEfforts = mapOf("test/model" to "high", "test/verifier" to "none"))
             enqueueModels()
             val parsed = ChapterBlockParsing.parseChapter(SOURCE_HTML)
             enqueueRewrite(successReply(parsed) { it })
@@ -62,9 +63,11 @@ class AiChapterRewriteEngineTest {
             assertTrue(rewriteBody.contains("\"response_format\":{\"type\":\"json_schema\""))
             assertTrue(rewriteBody.contains("\"temperature\":0.6"))
             assertTrue(rewriteBody.contains("\"max_tokens\":"))
+            assertTrue(rewriteBody.contains("\"effort\":\"high\""))
             val verifyBody = server.takeRequest().body.readUtf8()
             assertTrue(verifyBody.contains("\"model\":\"test/verifier\""))
             assertTrue(verifyBody.contains("merged into the block above"))
+            assertTrue(verifyBody.contains("\"effort\":\"none\""))
             assertEquals(2, source.recordedUsage.size)
             assertTrue(source.recordedUsage.all { it.operationId == output.operationId })
             assertTrue(source.recordedUsage.map { it.feature }.containsAll(listOf("chapter_rewrite", "chapter_verify")))
@@ -115,6 +118,7 @@ class AiChapterRewriteEngineTest {
     @Test
     fun `invalid first reply gets exactly one repair`() =
         runBlocking {
+            source.settings = source.settings.copy(reasoningEfforts = mapOf("test/model" to "high"))
             enqueueModels()
             val parsed = ChapterBlockParsing.parseChapter(SOURCE_HTML)
             server.enqueue(
@@ -135,6 +139,7 @@ class AiChapterRewriteEngineTest {
             repeat(2) { server.takeRequest() }
             val repairBody = server.takeRequest().body.readUtf8()
             assertTrue(repairBody.contains("failed validation"))
+            assertTrue(repairBody.contains("\"effort\":\"high\""))
             assertTrue(source.recordedUsage.any { it.feature == "chapter_repair" })
         }
 
@@ -214,7 +219,9 @@ class AiChapterRewriteEngineTest {
                 """
                 {"data": [{"id": "test/model", "name": "Test Model", "pricing": {"prompt": "0.000001", "completion": "0.000005"},
                 "context_length": 100000, "top_provider": {"max_completion_tokens": 8000},
-                "supported_parameters": ["response_format", "temperature"]}]}
+                "supported_parameters": ["response_format", "temperature"],
+                "reasoning": {"supported_efforts": ["high", "low"], "mandatory": true}},
+                {"id": "test/verifier", "reasoning": {"supported_efforts": ["low", "none"]}}]}
                 """.trimIndent(),
             ),
         )

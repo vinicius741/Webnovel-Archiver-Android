@@ -94,7 +94,7 @@ time and size so applying another version refreshes the visible cover even when 
   outside the repository transaction lock. Gallery and cover-action storage failures show a retry
   message instead of escaping into the activity. Legacy pending previews are preserved before starting another experiment. Deleting the story
   removes both its draft and version history.
-- Cost controls: automatic selection validates chapters with Jev in batches and stops at the configured chapter count (default 10, Settings → AI Settings). Manual context shares a 60k-character budget equally across selected chapters, capped at 12k each; automatic context uses the same cap. The text call uses `max_tokens 1600` and low reasoning; the image call requests one 1K image. Generating over an applied cover
+- Cost controls: automatic selection validates chapters with Jev in batches and stops at the configured chapter count (default 10, Settings → AI Settings). Manual context shares a 60k-character budget equally across selected chapters, capped at 12k each; automatic context uses the same cap. The text call uses `max_tokens 1600` and the description model's saved reasoning level from AI Controls, including on retries; the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
   generating from an edited prompt; the shared `storyOperation` guard
   (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited

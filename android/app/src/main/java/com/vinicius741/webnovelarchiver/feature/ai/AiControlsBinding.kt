@@ -14,6 +14,7 @@ internal class AiControlsBinding(
     val busyKind: StoryOperationKind?,
 ) {
     private val messages = mutableMapOf<StoryOperationKind, TextView>()
+    var refreshModels: () -> Unit = {}
 
     fun addProgress(operation: StoryOperationState) {
         root.addView(makeStoryOperationProgress(root.context, operation, indeterminate = true) { messages[operation.kind] = it })
@@ -24,6 +25,14 @@ internal class AiControlsBinding(
         label.text = operation.message
         return true
     }
+}
+
+/** Picker callbacks can outlive a fold-triggered render; always refresh the attached model fields. */
+internal fun ScreenHost.refreshAiModelFields() {
+    aiControlsScreenState.binding
+        ?.takeIf { it.root.isAttachedToWindow }
+        ?.refreshModels
+        ?.invoke()
 }
 
 /** Rebuild only for changed controls/drafts. Late messages cannot update a detached or different story. */

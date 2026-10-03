@@ -18,12 +18,19 @@ data class OpenRouterModel(
     val maxCompletionTokens: Long? = null,
     /** Request parameters the chat model supports (chat catalog reports a string array). */
     val supportedParameters: List<String> = emptyList(),
+    val reasoning: OpenRouterReasoningOptions? = null,
 ) {
     val isFree: Boolean
         get() = priceIsZero(promptPricePerToken) && priceIsZero(completionPricePerToken)
 
     private fun priceIsZero(price: String?): Boolean = price?.toDoubleOrNull() == 0.0
 }
+
+/** Null efforts accept all gateway levels; an empty list exposes no effort selector. */
+data class OpenRouterReasoningOptions(
+    val supportedEfforts: List<String>? = emptyList(),
+    val mandatory: Boolean = false,
+)
 
 /** Model and supported request parameters returned by the public image catalog. */
 data class OpenRouterImageModel(

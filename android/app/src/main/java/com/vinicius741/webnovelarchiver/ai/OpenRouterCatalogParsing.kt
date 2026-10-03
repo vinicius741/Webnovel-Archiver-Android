@@ -60,3 +60,18 @@ internal fun JsonObject.chatSupportedParameters(): List<String> {
         else -> emptyList()
     }
 }
+
+internal fun JsonObject.reasoningOptions(): OpenRouterReasoningOptions? {
+    val options = get("reasoning")?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+    val efforts = options.get("supported_efforts")
+    return OpenRouterReasoningOptions(
+        supportedEfforts =
+            when {
+                efforts == null -> emptyList()
+                efforts.isJsonNull -> null
+                efforts.isJsonArray -> efforts.asJsonArray.mapNotNull { it.takeIf { it.isJsonPrimitive }?.asString }
+                else -> emptyList()
+            },
+        mandatory = options.get("mandatory")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean == true,
+    )
+}

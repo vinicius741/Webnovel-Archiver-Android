@@ -23,6 +23,7 @@ internal data class RewriteCallSpec(
     val provider: JsonObject?,
     val storyId: String,
     val operationId: String,
+    val reasoningEffort: String?,
 )
 
 /** One provider-routed call outcome plus the tier that actually served it. */

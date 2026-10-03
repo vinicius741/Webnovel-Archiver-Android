@@ -93,6 +93,13 @@ an equal pick is swapped to a spike-verified alternate (`openai/gpt-5.6-sol`) an
 Per-novel strength lives on `Story.chapterRewriteStrength` (null = Light) and is carried
 forward by sync like the other local-only AI fields.
 
+The rewrite and verifier model pickers in AI Controls confirm model and level from a selection bar
+above the buttons, with the reasoning level as a segmented control. Use model saves both together;
+Cancel discards edits. Choices are saved by model
+id in `AiSettings.reasoningEfforts` and restricted by the live catalog. Rewrite repairs retain the rewrite model's level; verifier retries retain the verifier
+model's level. Model default omits an explicit effort. Existing Low behavior remains where the
+model accepts it; unsupported levels fall back to the model default. Output budgets stay bounded.
+
 Usage receipts use features `chapter_rewrite`, `chapter_repair`, and `chapter_verify` under one
 operation id, so the ledger's grouped cost matches the record's cost line exactly.
 

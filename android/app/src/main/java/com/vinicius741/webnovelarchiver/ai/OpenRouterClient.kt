@@ -25,7 +25,12 @@ class OpenRouterClient(
     private val rootUrl = baseUrl.trimEnd('/')
     private val decisionsClient = client.newBuilder().callTimeout(60, TimeUnit.SECONDS).build()
 
+    @Volatile
+    internal var cachedModels: List<OpenRouterModel>? = null
+        private set
+
     /** POST /api/v1/chat/completions; throws [OpenRouterException] with friendly messages for auth/credit/model/rate-limit failures. */
+    @Suppress("LongParameterList") // Named optional REST parameters keep callers explicit about request behavior.
     suspend fun chatCompletion(
         apiKey: String,
         model: String,
@@ -34,6 +39,7 @@ class OpenRouterClient(
         temperature: Double? = null,
         responseFormat: JsonObject? = null,
         provider: JsonObject? = null,
+        reasoningEffort: String? = "low",
     ): OpenRouterChatCompletionResult {
         val body =
             JsonObject().apply {
@@ -46,7 +52,7 @@ class OpenRouterClient(
                 add(
                     "reasoning",
                     JsonObject().apply {
-                        addProperty("effort", "low")
+                        reasoningEffort?.let { addProperty("effort", it) }
                         addProperty("exclude", true)
                     },
                 )
@@ -145,9 +151,11 @@ class OpenRouterClient(
                         contextLength = model.longValue("context_length"),
                         maxCompletionTokens = model.getAsJsonObject("top_provider")?.longValue("max_completion_tokens"),
                         supportedParameters = model.chatSupportedParameters(),
+                        reasoning = model.reasoningOptions(),
                     )
                 }.orEmpty()
                 .sortedBy { it.id }
+                .also { cachedModels = it }
         }
     }
 
