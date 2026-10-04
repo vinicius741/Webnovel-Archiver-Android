@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
+import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
@@ -215,6 +216,8 @@ interface ScreenHost {
 
     /** Library view memory (query/tags/per-tab scroll) surviving navigation; see [LibraryScreenState]. */
     val libraryScreenState: LibraryScreenState
+
+    val cleanupScreenState: CleanupScreenState
 
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by

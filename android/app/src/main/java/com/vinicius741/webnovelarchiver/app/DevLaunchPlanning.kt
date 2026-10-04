@@ -31,6 +31,7 @@ object DevLaunchPlanning {
         ADD_STORY("addstory"),
         FOLLOW_UPDATES("followupdates"),
         AI_SETTINGS("aisettings"),
+        CLEANUP("cleanup"),
         ;
 
         companion object {
@@ -53,6 +54,7 @@ object DevLaunchPlanning {
             DevStartScreen.QUEUE -> AppRoute.Queue
             DevStartScreen.SETTINGS -> AppRoute.Settings
             DevStartScreen.AI_SETTINGS -> AppRoute.AiSettings
+            DevStartScreen.CLEANUP -> AppRoute.CleanupRules
             DevStartScreen.NOTIFICATIONS -> AppRoute.Notifications
             DevStartScreen.UPDATES -> AppRoute.Updates
             DevStartScreen.ADD_STORY -> AppRoute.AddStory

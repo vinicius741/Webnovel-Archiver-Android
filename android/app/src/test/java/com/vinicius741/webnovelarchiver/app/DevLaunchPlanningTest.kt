@@ -58,6 +58,10 @@ class DevLaunchPlanningTest {
             AppRoute.AiSettings,
             DevLaunchPlanning.resolve("aisettings", null, null, provider),
         )
+        assertEquals(
+            AppRoute.CleanupRules,
+            DevLaunchPlanning.resolve("cleanup", null, null, provider),
+        )
     }
 
     @Test
