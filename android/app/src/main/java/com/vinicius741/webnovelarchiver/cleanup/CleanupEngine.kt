@@ -12,6 +12,7 @@ class CleanupEngine {
     data class CleanupResult(
         val html: String,
         val sentencesRemoved: Int,
+        val regexMatchesRemoved: Int = 0,
     )
 
     data class CompiledRule(
@@ -89,7 +90,7 @@ class CleanupEngine {
         rules: List<RegexCleanupRule>,
     ): String = applyDownloadWithStats(html, sentences, rules).html
 
-    /** Applies download cleanup and reports sentence-blocklist matches removed for UI feedback. */
+    /** Reports nonempty matches actually deleted by sentence and download-scoped regex rules. */
     @Suppress("TooGenericExceptionCaught")
     fun applyDownloadWithStats(
         html: String,
@@ -99,6 +100,7 @@ class CleanupEngine {
         val compiled = compiled(sentences, rules)
         val doc = Jsoup.parseBodyFragment(html)
         var sentencesRemoved = 0
+        var regexMatchesRemoved = 0
         doc.select("script,style,noscript,iframe").remove()
         val textNodes = traverseTextNodes(doc.body())
         // Sentence-blocklist patterns are author-controlled (escaped literals), not user regex, so
@@ -127,16 +129,25 @@ class CleanupEngine {
             val start = System.nanoTime()
             var threw = false
             try {
-                textNodes.forEach { node -> node.text(compiledRule.regex.replace(node.text(), "")) }
+                textNodes.forEach { node ->
+                    var nodeMatchesRemoved = 0
+                    val cleaned =
+                        compiledRule.regex.replace(node.text()) { match ->
+                            if (match.value.isNotEmpty()) nodeMatchesRemoved += 1
+                            ""
+                        }
+                    node.text(cleaned)
+                    // Count only completed node edits, including earlier nodes if a later one fails.
+                    regexMatchesRemoved += nodeMatchesRemoved
+                }
             } catch (e: Throwable) {
                 threw = true
-                // Re-run with a defensive fallback so one rule's failure does not abort cleanup. The
-                // breaker will disable it after enough strikes.
+                // Keep completed edits and continue with other rules; the breaker tracks the failure.
                 Timber.w(e, "Regex cleanup rule '%s' threw during application; will be circuit-broken.", rule.name)
             }
             RegexCircuitBreaker.report(rule, System.nanoTime() - start, failed = threw)
         }
-        return CleanupResult(doc.body().html(), sentencesRemoved)
+        return CleanupResult(doc.body().html(), sentencesRemoved, regexMatchesRemoved)
     }
 
     private fun traverseTextNodes(root: Node): List<TextNode> {

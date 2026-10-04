@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.cleanup
 
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -80,5 +81,6 @@ class RegexCircuitBreakerTest {
 
         // "marker" would have been removed if the rule applied; since it is disabled, it survives.
         assertTrue("disabled rule must not alter the text", result.html.contains("marker"))
+        assertEquals(0, result.regexMatchesRemoved)
     }
 }

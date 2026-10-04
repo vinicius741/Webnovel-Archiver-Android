@@ -64,6 +64,7 @@ private fun ScreenHost.runCleanup(
             var processed = 0
             var errors = 0
             var sentencesRemoved = 0
+            var regexMatchesRemoved = 0
             downloaded.forEachIndexed { index, chapter ->
                 withContext(Dispatchers.Main) {
                     setStoryOperation(
@@ -82,6 +83,7 @@ private fun ScreenHost.runCleanup(
                     }
                     processed += 1
                     sentencesRemoved += result.sentencesRemoved
+                    regexMatchesRemoved += result.regexMatchesRemoved
                 } catch (cancelled: CancellationException) {
                     // The per-chapter boundary must rethrow cancellation, not count it as an error.
                     throw cancelled
@@ -92,17 +94,20 @@ private fun ScreenHost.runCleanup(
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
                 showDetails(story.id)
-                val sentenceLine =
-                    "$sentencesRemoved sentence${if (sentencesRemoved == 1) "" else "s"} removed."
+                val removals = sentencesRemoved + regexMatchesRemoved
+                val removalLine =
+                    "$removals removal${if (removals == 1) "" else "s"}. " +
+                        "$sentencesRemoved sentence match${if (sentencesRemoved == 1) "" else "es"} and " +
+                        "$regexMatchesRemoved regex match${if (regexMatchesRemoved == 1) "" else "es"} removed."
                 if (errors > 0) {
                     alert(
                         "Processing Complete with Errors",
-                        "Processed $processed chapters; $errors had errors. $sentenceLine",
+                        "Processed $processed chapters; $errors had errors. $removalLine",
                     )
                 } else {
                     alert(
                         "Processing Complete",
-                        "Successfully applied text cleanup to $processed chapters. $sentenceLine " +
+                        "Successfully applied text cleanup to $processed chapters. $removalLine " +
                             "Please regenerate the EPUB.",
                     )
                 }
