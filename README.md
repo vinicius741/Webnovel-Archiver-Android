@@ -167,7 +167,7 @@ android/
           tts/                 # TTS engine + foreground service
           ai/                  # OpenRouter client + Jev cover selection, AI engines and background jobs
           notification/        # Notification channels + permission helpers
-          ui/                  # Programmatic View DSL, themes, widgets
+          ui/                  # Programmatic View DSL, shared form spacing, themes, widgets
         AndroidManifest.xml
       test/                    # Unit tests mirroring production packages
       androidTest/             # Instrumentation tests

@@ -9,7 +9,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.cleanup.RegexCleanupPresets
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
@@ -19,26 +18,19 @@ import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.section
-import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
     body.apply {
-        text(
-            "Use a preset to shorten repeated characters or remove separator lines. Try it on sample text before saving.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.SM)
         flow {
             button("Add preset", Btn.FILLED, R.drawable.wna_add) { showCleanupPresetPicker() }
             button("Add custom regex", Btn.TONAL, R.drawable.wna_add) { showRegexRuleDialog(null) }
         }
         section("Your rules")
         if (repository.getRegexRules().isEmpty()) {
-            text("No regex rules yet. Add a preset above or create a custom rule.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+            text("No regex rules yet.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         }
         repository.getRegexRules().forEach { rule ->
             val preset = RegexCleanupPresets.identify(rule)

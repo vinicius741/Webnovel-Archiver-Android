@@ -50,7 +50,7 @@ internal fun ScreenHost.showCleanupRules() {
         val body =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                spacer(Space.SM)
+                spacer(Space.LG)
             }
         when (mode) {
             CleanupMode.SENTENCES -> buildSentenceRules(body)

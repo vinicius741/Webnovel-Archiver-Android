@@ -16,22 +16,21 @@ import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.FormLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.applyAppTheme
+import com.vinicius741.webnovelarchiver.ui.applyFormStyle
 import com.vinicius741.webnovelarchiver.ui.applyInputStyle
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.makeField
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
-import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
-import com.vinicius741.webnovelarchiver.ui.styledDialogField
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
@@ -85,26 +84,18 @@ internal fun ScreenHost.compactRuleRow(
 }
 
 internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
-    val view =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), dp(12))
-        }
-    val name = styledDialogField(existing?.name.orEmpty(), "Rule name")
-    val pattern = styledDialogField(existing?.pattern.orEmpty(), "Regex pattern")
-    val flags = styledDialogField(existing?.flags ?: "i", "Flags, e.g. im")
-    val appliesTo = styledDialogField(existing?.appliesTo ?: "both", "download, tts, or both")
-    view.addView(name)
-    view.addView(pattern)
-    view.addView(flags)
-    view.addView(appliesTo)
+    val view = FormLayout(app, dialog = true)
+    val name = makeField(app, existing?.name.orEmpty(), "Rule name", InputType.TYPE_CLASS_TEXT)
+    val pattern = makeField(app, existing?.pattern.orEmpty(), "Regex pattern", InputType.TYPE_CLASS_TEXT)
+    val flags = makeField(app, existing?.flags ?: "i", "Flags, e.g. im", InputType.TYPE_CLASS_TEXT)
+    val appliesTo = makeField(app, existing?.appliesTo ?: "both", "download, tts, or both", InputType.TYPE_CLASS_TEXT)
+    view.addItem(name)
+    view.addItem(pattern)
+    view.addItem(flags)
+    view.addItem(appliesTo)
     val quickRow =
         LinearLayout(app).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams =
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(Space.XS)
-                }
             addView(
                 makeButton(app, "Quick Separator", Btn.TONAL, R.drawable.wna_brush) {
                     showQuickRegexBuilder { generated ->
@@ -115,28 +106,23 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
                 },
             )
         }
-    view.addView(quickRow)
+    view.addItem(quickRow)
 
     // Live "test your rule" pane. The user pastes sample
     // text and the in-progress rule (pattern + flags) is applied to it in real time via
     // [RegexRuleCleanup.previewRegexRule], so they see what the rule removes before saving. Reuses the
     // same monospace preview styling as [showQuickRegexBuilder]'s pattern preview.
-    view.addView(
-        makeText(app, "Test Preview", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(0, dp(Space.MD), 0, dp(Space.XS))
-        },
-    )
     val previewInput =
         EditText(app).apply {
             applyInputStyle(
-                "Try text like ----- or ===== to test your rule",
+                "Text to test",
                 InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE,
                 singleLine = false,
             )
             minLines = 2
             maxLines = 4
         }
-    view.addView(previewInput)
+    view.addItem(previewInput, "Before")
     val previewOutput =
         makeText(app, "(No output)", Type.BODY_SMALL, ThemeManager.colors.onSurface).apply {
             setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
@@ -148,14 +134,9 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
                     ThemeManager.colors.onSurface,
                 )
             // Keep the box tall enough that a single-line output doesn't collapse it.
-            layoutParams =
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(Space.XS)
-                    bottomMargin = dp(Space.SM)
-                }
             minHeight = dp(52)
         }
-    view.addView(previewOutput)
+    view.addItem(previewOutput, "After")
 
     // R19: preview matching runs off main (bounded input), and a newer keystroke discards the
     // stale result instead of letting a slow pattern jank or overwrite the editor.
@@ -250,34 +231,29 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
         }
     }
     dialog.show()
-    dialog.applyAppTheme()
+    dialog.applyFormStyle()
 }
 
 internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.QuickPattern) -> Unit) {
-    val view =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), dp(12))
-        }
-    val characters = styledDialogField("", "Character(s), e.g. =, -, ##")
-    val minCount = styledDialogField("5", "Minimum repetitions")
+    val view = FormLayout(app, dialog = true)
+    val characters = makeField(app, "", "e.g. =, -, ##", InputType.TYPE_CLASS_TEXT)
+    val minCount = makeField(app, "5", "Minimum repetitions", InputType.TYPE_CLASS_NUMBER)
     val wholeLine =
         CheckBox(app).apply {
             text = "Whole line only"
             isChecked = true
         }
     styledCheckBox(wholeLine)
-    view.addView(characters)
-    view.addView(minCount)
-    view.addView(wholeLine)
+    view.addItem(characters, "Characters")
+    view.addItem(minCount, "Minimum repetitions")
+    view.addItem(wholeLine)
     // C5: live preview of the pattern that will be generated, so the user sees what it matches
     // before tapping "Use Pattern".
     val preview =
-        makeText(app, "Pattern preview: —", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
-            setPadding(0, dp(8), 0, dp(4))
+        makeText(app, "", Type.BODY_SMALL, ThemeManager.colors.onSurface).apply {
             typeface = Typeface.MONOSPACE
         }
-    view.addView(preview)
+    view.addItem(preview, "Pattern")
     val updatePreview = {
         val generated =
             RegexRuleCleanup.generateQuickPattern(
@@ -289,9 +265,9 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.Qui
             if (generated ==
                 null
             ) {
-                "Pattern preview: enter characters and count"
+                "Enter characters and a count"
             } else {
-                "Pattern preview: /${generated.pattern}/${generated.flags}"
+                "/${generated.pattern}/${generated.flags}"
             }
     }
     characters.doAfterTextChanged { updatePreview() }
@@ -324,5 +300,5 @@ internal fun ScreenHost.showQuickRegexBuilder(onGenerated: (RegexRuleCleanup.Qui
         }
     }
     dialog.show()
-    dialog.applyAppTheme()
+    dialog.applyFormStyle()
 }

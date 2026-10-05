@@ -45,6 +45,13 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
   preserving existing saved stats.
 - Archived snapshots remain read-only for sync and download.
 
+## UI spacing and copy
+
+- Use the shared `ui/Spacing` scale for new padding and gaps. Use 8dp between a label and its control, 16dp between related controls/actions, and 24dp between independent groups. Screen side padding is 24dp and comes from `screen()`; do not add it again inside the body.
+- Build new or substantially revised forms with `ui/FormLayout` and `addItem(control, label)`. It owns full-width controls, accessible label associations, an 8dp label gap, and a 24dp group gap. Use `FormLayout(app, dialog = true)` for dialog content; it also supplies 24dp horizontal and 16dp vertical padding. After showing a form dialog, call `applyFormStyle()` to theme it and resize above the keyboard, keeping its actions reachable. Do not stack manual spacers or child margins on top of those defaults.
+- Keep titles and control labels concise. Add helper copy only when it explains a necessary choice or consequence that the label cannot convey. Show validation errors when needed rather than permanent instructions beside every field.
+- For spacing changes, inspect settled screenshots on the cover and inner emulator displays, including a live fold transition, before considering the UI verified. Check field/label separation, group gaps, scrolling, and access to the dialog actions with the keyboard open. See `docs/architecture/ui-spacing.md` for examples.
+
 ## Build and Validation
 
 - Debug build: `android/gradlew -p android :app:assembleDebug`

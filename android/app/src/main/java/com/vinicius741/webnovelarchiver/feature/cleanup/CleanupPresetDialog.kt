@@ -4,25 +4,24 @@ import android.app.AlertDialog
 import android.graphics.Typeface
 import android.text.InputType
 import android.widget.EditText
-import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.cleanup.RegexCleanupPresets
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.FormLayout
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
+import com.vinicius741.webnovelarchiver.ui.applyFormStyle
 import com.vinicius741.webnovelarchiver.ui.applyInputStyle
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.labeledField
+import com.vinicius741.webnovelarchiver.ui.makeField
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.makeThemedSpinner
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.scroll
-import com.vinicius741.webnovelarchiver.ui.spacer
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -44,42 +43,22 @@ internal fun ScreenHost.showCleanupPresetDialog(
     initialCount: Int = preset.defaultCount,
 ) {
     val separator = preset == RegexCleanupPresets.Preset.SEPARATOR_LINES
-    val view =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(12), dp(24), dp(12))
-            text(preset.description, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
-        }
+    val view = FormLayout(app, dialog = true)
+    val countLabel = if (separator) "Minimum symbols on a line" else "Maximum copies to keep"
     val count =
-        view.labeledField(
-            if (separator) "Minimum symbols on a line" else "Maximum copies to keep",
+        makeField(
+            app,
             initialCount.toString(),
+            countLabel,
             InputType.TYPE_CLASS_NUMBER,
         )
-    view.text(
-        if (separator) {
-            "Lines with fewer symbols stay unchanged."
-        } else {
-            "Runs at or below this limit stay unchanged. Only the excess is removed."
-        },
-        Type.BODY_SMALL,
-        ThemeManager.colors.onSurfaceVariant,
-    )
-    view.spacer(Space.MD)
-    view.text("Apply to", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+    view.addItem(count, countLabel)
     val targets = listOf("tts", "download", "both")
     val target =
         makeThemedSpinner(app, listOf("Read aloud only", "Downloaded text only", "Both")).apply {
             setSelection(targets.indexOf(existing?.appliesTo ?: "tts").coerceAtLeast(0))
         }
-    view.addView(target)
-    view.text(
-        "Read aloud changes playback text. Downloaded text changes new downloads and chapters you explicitly clean again.",
-        Type.BODY_SMALL,
-        ThemeManager.colors.onSurfaceVariant,
-    )
-    view.spacer(Space.MD)
-    view.text("Before · try your own text", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+    view.addItem(target, "Apply to")
     val before =
         EditText(app).apply {
             applyInputStyle("Text to test", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE, singleLine = false)
@@ -87,18 +66,16 @@ internal fun ScreenHost.showCleanupPresetDialog(
             maxLines = 5
             setText(preset.sample)
         }
-    view.addView(before)
-    view.spacer(Space.SM)
-    view.text("After", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant)
+    view.addItem(before, "Before")
     val after =
         makeText(app, "", Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
             typeface = Typeface.MONOSPACE
-            setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
+            setPadding(dp(Spacing.MD), dp(Spacing.MD), dp(Spacing.MD), dp(Spacing.MD))
             minHeight = dp(64)
             background = roundedBg(ThemeManager.colors.elevation1, dp(6).toFloat())
             setTextIsSelectable(true)
         }
-    view.addView(after)
+    view.addItem(after, "After")
     var previewGeneration = 0
 
     fun updatePreview() {
@@ -160,5 +137,5 @@ internal fun ScreenHost.showCleanupPresetDialog(
         }
     }
     dialog.show()
-    dialog.applyAppTheme()
+    dialog.applyFormStyle()
 }

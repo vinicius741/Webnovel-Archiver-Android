@@ -28,6 +28,7 @@ under `android/`.
 
 | File | Description |
 |------|-------------|
+| `ui-spacing.md` | Shared spacing scale, form layout defaults, concise control copy, and foldable visual checks for new screens and dialogs. |
 | `simplification-implementation-handoff-2026-09-07.md` | Implementation plan and execution record for simpler cover controls, shared manual sync and AI notifications, in-place AI progress, and the bounded immutable source-state pilot; includes regression tests and emulator evidence. |
 | `simplification-continuation-prompt-2026-09-08.md` | Coding-agent continuation prompt with implemented changes, passing validation, remaining emulator QA, and compatibility constraints. |
 | `performance-reliability-review-2026-09-04.md` | Static review of the native app with 30 prioritized reliability and performance recommendations, effort estimates, and acceptance checks. All 30 recommendations (R01–R30) are implemented on branch `perf-reliability-review-2026-09-04`; the doc's header records per-item implementation notes. |
