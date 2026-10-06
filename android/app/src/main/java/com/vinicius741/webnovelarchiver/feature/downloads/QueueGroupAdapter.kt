@@ -156,6 +156,8 @@ internal class QueueGroupAdapter(
     }
 }
 
+private const val MAX_AUTO_EXPANDED_JOBS = 50
+
 private fun ScreenHost.queueGroups(
     queue: List<DownloadJob>,
     pacingSnapshots: Collection<DownloadPacingSnapshot>,
@@ -168,13 +170,10 @@ private fun ScreenHost.queueGroups(
         .sortedByDescending { group -> group.maxOfOrNull { it.addedAt } ?: 0L }
         .map { jobs ->
             val counts = DownloadCounts.from(jobs)
+            // A large active queue stays collapsed until the user asks to see it.
             val expanded =
-                QueueGroupExpansionPlanning.shouldExpand(
-                    userOverride = storyExpandOverride[jobs.first().storyId],
-                    jobCount = jobs.size,
-                    hasActive = counts.hasActive,
-                    hasFailed = counts.hasFailed,
-                )
+                storyExpandOverride[jobs.first().storyId]
+                    ?: ((counts.hasActive || counts.hasFailed) && jobs.size <= MAX_AUTO_EXPANDED_JOBS)
             val providerName = SourceRegistry.getProvider(jobs.first().sourceId, jobs.first().chapter.url)?.name
             QueueStoryGroupUi(
                 storyId = jobs.first().storyId,

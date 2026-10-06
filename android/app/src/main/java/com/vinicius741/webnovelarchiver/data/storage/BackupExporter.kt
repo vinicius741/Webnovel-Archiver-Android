@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
-import com.vinicius741.webnovelarchiver.data.backup.BackupProgressPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -9,6 +8,9 @@ import java.io.File
 import java.time.Instant
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+
+/** The zip loop reports only the first file, every 25th, and the last. */
+private const val PROGRESS_REPORT_EVERY = 25
 
 internal class BackupExporter(
     private val storage: AppStorage,
@@ -48,7 +50,7 @@ internal class BackupExporter(
     /**
      * Writes the full-backup ZIP. [onProgress] receives user-facing messages from the zip loop
      * (called on the caller's dispatcher, not the UI thread); it is invoked only at throttled
-     * milestones — see [BackupProgressPlanning.shouldReport].
+     * milestones — the first file, every 25th, and the last.
      */
     fun exportFull(onProgress: (String) -> Unit = {}): File {
         val library = storage.getLibrary()
@@ -112,12 +114,12 @@ internal class BackupExporter(
 
         fun markFileWritten() {
             filesWritten += 1
-            if (BackupProgressPlanning.shouldReport(filesWritten, totalFiles)) {
-                onProgress(BackupProgressPlanning.fileMessage(filesWritten, totalFiles))
+            if (filesWritten == totalFiles || filesWritten == 1 || filesWritten % PROGRESS_REPORT_EVERY == 0) {
+                onProgress("Zipping files $filesWritten of $totalFiles")
             }
         }
 
-        onProgress(BackupProgressPlanning.startMessage(library.size))
+        onProgress("Backing up ${library.size} novels…")
         if (missingContent.isNotEmpty()) {
             onProgress(
                 "Warning: ${missingContent.size} item${if (missingContent.size == 1) "" else "s"} the library lists as available " +

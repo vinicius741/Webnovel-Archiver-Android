@@ -21,7 +21,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
-import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
+import com.vinicius741.webnovelarchiver.feature.browser.ACTION_IMPORT_CURRENT_URL
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
@@ -385,7 +385,12 @@ class MainActivity :
         requestNotificationPermissionForDownloadExt()
     }
 
-    private fun browserImportUrl(intent: Intent?): String? = BrowserImportPlanning.importUrl(intent?.action, intent?.dataString)
+    private fun browserImportUrl(intent: Intent?): String? =
+        intent
+            ?.dataString
+            ?.takeIf { intent.action == ACTION_IMPORT_CURRENT_URL }
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
 
     private data class InitialStartupState(
         val activeThemeId: String,

@@ -18,6 +18,11 @@ import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 
+/** Explicit Custom Tab import action; only URLs delivered with it are accepted as imports. */
+internal const val ACTION_IMPORT_CURRENT_URL = "com.vinicius741.webnovelarchiver.action.IMPORT_BROWSER_URL"
+
+private const val IMPORT_REQUEST_CODE = 741
+
 /**
  * Opens third-party novel sites in a browser-powered Custom Tab. Unlike an embedded WebView, this
  * is an approved user agent for Google OAuth and shares the user's browser cookies, accounts, and
@@ -29,14 +34,14 @@ internal fun ScreenHost.showBrowser(startUrl: String) {
 
     val importIntent =
         Intent(app, MainActivity::class.java).apply {
-            action = BrowserImportPlanning.ACTION_IMPORT_CURRENT_URL
+            action = ACTION_IMPORT_CURRENT_URL
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
     val mutableFlag = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
     val importPendingIntent =
         PendingIntent.getActivity(
             app,
-            BrowserImportPlanning.IMPORT_REQUEST_CODE,
+            IMPORT_REQUEST_CODE,
             importIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or mutableFlag,
         )
