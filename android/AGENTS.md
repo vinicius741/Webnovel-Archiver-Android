@@ -27,7 +27,7 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 
 ## Architecture Rules
 
-- Build UI programmatically with Android Views. Do not add XML layout files.
+- Build UI programmatically with Android Views. Do not add XML layout files. Screen architecture decision (2026-10-06 roadmap, Phase 4): screens migrate to per-screen controller/state classes (option B) — each screen owns its state and a single render path, and `ScreenHost` shrinks toward shared dependencies + navigation. Jetpack Compose (option A) stays a possible later migration once the structural debt is paid; do not add it ad hoc.
 - Put non-trivial deterministic decisions and transformations in pure planning functions; keep Android, network, storage, and other I/O in engines or orchestration code. Trivial one-line decisions stay inline at their call site — do not create a `*Planning` file for them.
 - Add or update the matching JUnit test when changing planning logic.
 - Use the existing `AppContainer` for process-wide dependencies and explicit constructor dependencies elsewhere. Do not add a dependency-injection framework without an explicit architectural request.

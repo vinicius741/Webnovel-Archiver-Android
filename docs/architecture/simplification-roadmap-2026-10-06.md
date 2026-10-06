@@ -290,8 +290,16 @@ holds five nullable view refs so `DetailsDownloadObserver.kt` can patch them.
 
 Checklist:
 
-- [ ] Decide A or B (or B now, A later) and update `android/AGENTS.md`
+- [x] Decide A or B (or B now, A later) and update `android/AGENTS.md`
+  - **B now, A later** (`5fc4b8b0` follow-up docs commit): per-screen controller/state classes with
+    no new dependencies; Compose remains a possible later migration once the structural debt is
+    paid. Recorded in `android/AGENTS.md` Architecture Rules.
 - [ ] Pilot on one high-churn screen (Details recommended), with emulator fold QA
+  - Deferred to the dedicated Phase 4 effort. Scope note from the branch work: `detailsOperationSlot`
+    is shared by Details, AI Controls, the AI job bridges, and story actions — it is cross-screen
+    story-operation state, so the pilot must introduce the controller pattern and re-home that slot
+    deliberately, not as a drive-by. `DetailsBindings` already centralizes the five patchable view
+    refs, so the pilot starts from an existing seam.
 - [ ] Measure pilot: lines before/after, files before/after, bugs found
 - [ ] Move screen state off `ScreenHost` as each screen migrates
   - [ ] Library
@@ -323,7 +331,12 @@ and three in-memory copies of the library in `AppRepository` (working map, publi
 observation built in); DataStore or Phase 3 documents for settings. Backup formats stay JSON/ZIP and
 are produced from and restored into the database. Chapter text files stay on disk.
 
-- [ ] Decide: go / no-go (Phase 3 + Phase 4 may make this less urgent)
+- [x] Decide: go / no-go (Phase 3 + Phase 4 may make this less urgent)
+  - **No-go for now** (2026-10-06): Phase 3 landed and Phase 4 has not shrunk the screen layer yet,
+    so the urgency read holds. A Room migration is the highest-risk item in this roadmap
+    (persisted user data, backup compatibility, one-time import) and deserves a dedicated effort
+    with its own migration design and restore verification. Revisit after Phase 4's per-screen
+    migration lands.
 - [ ] Write a migration design: first-launch import from JSON, rollback plan, backup compatibility
 - [ ] Add Room (KSP, lockfiles) and schema for stories, chapters, queue
 - [ ] One-time JSON → Room import with verification via the dev library report
@@ -348,6 +361,8 @@ in `../tts/tts-media3-migration-evaluation.md`. Best done after Phase 4 if the p
 Compose.
 
 - [ ] Prototype a TTS-backed Media3 `Player`
+  - Optional and deferred (2026-10-06): the roadmap itself scopes this after Phase 4; nothing in
+    the shipped phases changes the TTS layer's risk profile.
 - [ ] Migrate service, session, notification, focus, and media buttons
 - [ ] QA: start, pause, resume, prev/next, stop, lock screen, Bluetooth/headset, resume after process death
 - [ ] Delete superseded managers
@@ -369,3 +384,15 @@ These areas are complex because the problem is, and are out of scope for this ro
 | Date | Phase item | Commit | Main lines after | Notes |
 |------|-----------|--------|-----------------:|-------|
 | 2026-10-06 | Baseline | `9131e1f8` | 52,700 | Roadmap written |
+| 2026-10-06 | Phase 1.1 file cap → 1,000 + merges | `822f4ccb`..`c35deffa` | 52,545 | 22 split files merged back; baseline emptied |
+| 2026-10-06 | Phase 1.2 planning inlines | `de4e7a0f` | — | 4 inlined, 10 kept with rationale |
+| 2026-10-06 | Phase 1.3 comment history | `61b49660` | — | 103 `(Rnn)` tags in 41 files |
+| 2026-10-06 | Phase 1.4 shared helpers | `d3c66a8c` | — | SharedGson, sha256Hex, AtomicFileWrites routing |
+| 2026-10-06 | Phase 2.1 generic AI job pipeline | `61021660`, `0c46e576` | — | One coordinator/service/bridge; emulator QA + lifecycle tests |
+| 2026-10-06 | Phase 2.2 cover stores | `7b47289f` | — | CoverStore + CoverEvidenceStore; layouts unchanged |
+| 2026-10-06 | Phase 2.3 model picker | `7d745389` | — | Table-driven rows; shared picker pieces |
+| 2026-10-06 | Phase 3 JsonDocument | `78a26400` | 52,391 | 10 documents; repository mirrors deleted; on-device read/write proof |
+| 2026-10-06 | Phase 4 decision / 5 no-go / 6 defer | docs | — | B now A later; Room no-go until after Phase 4; Media3 deferred |
+
+Net after Phases 1–3: 52,700 → 52,391 lines in 379 → 351 files, with the structural moves (fewer
+files, one pipeline, one settings mechanism) carrying more weight than the raw line count.
