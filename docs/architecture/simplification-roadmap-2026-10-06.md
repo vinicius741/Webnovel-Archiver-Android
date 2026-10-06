@@ -71,7 +71,7 @@ find android/app/src/main/java -name '*.kt' | xargs wc -l | tail -1
 
 ## Master checklist
 
-- [ ] Phase 1: Quick wins (file cap, planning ceremony, comment noise)
+- [x] Phase 1: Quick wins (file cap, planning ceremony, comment noise) — commits `822f4ccb`..`d3c66a8c`
 - [ ] Phase 2: One AI job pipeline, fewer AI stores
 - [ ] Phase 3: Generic cached settings documents
 - [ ] Phase 4: Screen architecture (biggest payoff)
@@ -113,14 +113,14 @@ feature/details/DetailsDownloadObserver.kt  feature/reader/ReaderPerfHooks.kt
 complexity rules (`LongMethod`, `LargeClass`, `ComplexMethod`). Then merge pieces back where the split
 was only for size.
 
-- [ ] Decide: raise cap to ___ lines / remove cap and rely on detekt
-- [ ] Update `quality.gradle`, the baseline file, and `android/AGENTS.md`
-- [ ] Merge the size-only splits listed above back into their owners (tick per area)
-  - [ ] `source/network/` (NetworkClient pieces)
-  - [ ] `data/repository/` (AppRepository extensions)
-  - [ ] `feature/details/`
-  - [ ] Remaining files from the list
-- [ ] Remove "kept here so X stays within its size budget" comments
+- [x] Decide: raise cap to ___ lines / remove cap and rely on detekt → **1,000 lines** (`822f4ccb`)
+- [x] Update `quality.gradle`, the baseline file, and `android/AGENTS.md` (`822f4ccb`)
+- [x] Merge the size-only splits listed above back into their owners (tick per area)
+  - [x] `source/network/` (NetworkClient pieces) (`fb9c1bf4`)
+  - [x] `data/repository/` (AppRepository extensions) (`b7003e5b`)
+  - [x] `feature/details/` (`3add53d9`)
+  - [x] Remaining files from the list (`c35deffa`)
+- [x] Remove "kept here so X stays within its size budget" comments (gone with the merges; verified by grep)
 
 ### 1.2 Inline ceremonial `*Planning` functions
 
@@ -144,24 +144,30 @@ data/backup/BackupExportPlanning.kt (24)        feature/browser/CloudflareSolveP
 render planning, backup validation, chapter parsing). Inline trivial ones at their single call site
 and delete their tests. Reword the `android/AGENTS.md` rule to "non-trivial decisions".
 
-- [ ] Reword the planning rule in `android/AGENTS.md`
-- [ ] Review each candidate above; inline and delete trivial ones with their tests
-- [ ] Record kept vs. inlined here: ___
+- [x] Reword the planning rule in `android/AGENTS.md` (`de4e7a0f`)
+- [x] Review each candidate above; inline and delete trivial ones with their tests (`de4e7a0f`)
+- [x] Record kept vs. inlined here:
+  - Inlined: `EpubOpenPlan`, `QueueGroupExpansionPlanning`, `BrowserImportPlanning`, `BackupProgressPlanning`
+  - Kept (real rules): `EpubConfigPlanning` (compat-sensitive defaults), `SourceMetadataPlanning`
+    (UI metric curation), `BrowserUrlPlanning` (URL/search resolution), `SourcePickerPlanning`
+    (host extraction), `ChapterSelectionPlanning` (range clamping), `TtsHeadsetTapPlanning`
+    (tap codes), `AiReasoningPlanning` (catalog filtering), `StartupPlanning` (splash grace),
+    `BackupExportPlanning` (backup validation), `CloudflareSolvePlanning` (page state machine)
 
 ### 1.3 Remove history from comments
 
 **Problem.** 48 files cite review IDs (`(R05)`, `(R26)`, ...) and many comments narrate why an earlier
 design changed. That history belongs in git and in the review documents.
 
-- [ ] Strip `(Rnn)` tags, keeping the sentence only when it explains a current invariant
-- [ ] Remove comments that describe past designs ("previously", "used to", "moved from")
+- [x] Strip `(Rnn)` tags, keeping the sentence only when it explains a current invariant (`61b49660`, 103 tags in 41 files)
+- [x] Remove comments that describe past designs ("previously", "used to", "moved from") (`61b49660`, six reworded)
 
 ### 1.4 Small duplicate helpers
 
-- [ ] One shared `Gson` instance (10 separate `Gson()`/`GsonBuilder()` today)
-- [ ] Route `CoverEvidenceSelectionStore` and `CoverEvidenceCache` through `AtomicFileWrites` instead
-      of hand-written temp-file + rename
-- [ ] One SHA-256 hex helper (`AiCoverVersionStore`, `DevLibraryReportPlanning`, 6 `%02x` encoders)
+- [x] One shared `Gson` instance (10 separate `Gson()`/`GsonBuilder()` today) (`d3c66a8c`)
+- [x] Route `CoverEvidenceSelectionStore` and `CoverEvidenceCache` through `AtomicFileWrites` instead
+      of hand-written temp-file + rename (`d3c66a8c`)
+- [x] One SHA-256 hex helper (`AiCoverVersionStore`, `DevLibraryReportPlanning`, 6 `%02x` encoders) (`d3c66a8c`)
 
 ---
 
