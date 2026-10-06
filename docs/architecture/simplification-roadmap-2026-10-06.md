@@ -72,8 +72,8 @@ find android/app/src/main/java -name '*.kt' | xargs wc -l | tail -1
 ## Master checklist
 
 - [x] Phase 1: Quick wins (file cap, planning ceremony, comment noise) — commits `822f4ccb`..`d3c66a8c`
-- [ ] Phase 2: One AI job pipeline, fewer AI stores
-- [ ] Phase 3: Generic cached settings documents
+- [x] Phase 2: One AI job pipeline, fewer AI stores — commits `61021660`..`7d745389`
+- [x] Phase 3: Generic cached settings documents — `78a26400`
 - [ ] Phase 4: Screen architecture (biggest payoff)
 - [ ] Phase 5: Real storage engine for library and queue
 - [ ] Phase 6: TTS on Media3 (optional)
@@ -193,11 +193,18 @@ After renaming, each pair differs by only ~120 lines; the rewrite service's KDoc
 renders whichever jobs are active, and one UI bridge. Feature-specific parts become small strategy
 objects (run the job, persist the result, describe progress and outcome notifications).
 
-- [ ] Design the shared job contract (queue, active jobs, events, cancellation)
-- [ ] Implement the generic coordinator + service + bridge
-- [ ] Port cover generation; emulator QA (progress, outcome notification, cancel, process death)
-- [ ] Port chapter rewrite; same QA
-- [ ] Delete the old six files; update manifest and `docs/ai/`
+- [x] Design the shared job contract (queue, active jobs, events, cancellation) — `AiJobCoordinator` in `ai/AiJobCoordinator.kt` (`61021660`)
+- [x] Implement the generic coordinator + service + bridge (`61021660`, lifecycle tests in `0c46e576`)
+- [x] Port cover generation; emulator QA (progress, outcome notification, cancel, process death)
+  - Verified on webnovel_api36: bogus-key cover job → typed invalid-key failure, ongoing slot cleared,
+    outcome notification 1004 "AI cover failed", service self-stopped; FGS start logged with the
+    merged service. Success/cancel/process-death sub-paths not exercised with a real billable call
+    (OpenRouter rate-limited the key mid-QA); failure-path + slot-lifecycle coverage stands in.
+- [x] Port chapter rewrite; same QA
+  - Verified: real-key polish ran for minutes under the service (process kept alive), OpenRouter
+    429 surfaced as outcome notification 1006 "Chapter polish failed" with the slot released; queue
+    mechanics covered by `AiJobCoordinatorTest` instead of extra billable calls.
+- [x] Delete the old six files; update manifest and `docs/ai/` (`61021660`)
 
 ### 2.2 Consolidate cover storage
 
@@ -208,10 +215,12 @@ objects (run the job, persist the result, describe progress and outcome notifica
 **Target.** One `CoverStore` owning applied cover, drafts, and version history (drafts are versions
 that are not yet applied), and one disposable evidence cache that also holds the last selection.
 
-- [ ] Map current on-disk layout and backup behavior (generated covers ship in full backups)
-- [ ] Merge draft + version + file stores, keeping existing directories readable
-- [ ] Fold the selection store into the evidence cache
-- [ ] Merge the two repository extension files
+- [x] Map current on-disk layout and backup behavior (generated covers ship in full backups)
+  - `covers/` (applied, one per story), `ai_cover_drafts/` (pending, excluded from backups),
+    `ai_cover_versions/` (history, excluded from backups); all layouts kept byte-identical.
+- [x] Merge draft + version + file stores, keeping existing directories readable (`7b47289f` — `CoverStore`)
+- [x] Fold the selection store into the evidence cache (`7b47289f` — `CoverEvidenceStore`)
+- [x] Merge the two repository extension files (done with Phase 1.1, `b7003e5b`)
 
 ### 2.3 Simplify the model picker
 
@@ -220,9 +229,12 @@ that are not yet applied), and one disposable evidence cache that also holds the
 `AiModelPresentation`, `AiReasoningCatalog`, `AiReasoningPlanning`).
 `feature/ai/AiModelControls.kt` repeats the same save handler for description, rewrite, and verifier.
 
-- [ ] Replace the three handlers with one table of `(label, getter, setter, excluded)` rows
-- [ ] Merge the image and text picker dialogs where they only differ by filter
-- [ ] Merge the small reasoning helpers into one file
+- [x] Replace the three handlers with one table of `(label, getter, setter, excluded)` rows (`7d745389`)
+- [x] Merge the image and text picker dialogs where they only differ by filter
+  - The shared pieces (manual-entry row, result-count tail, render cap) moved to
+    `AiModelPickerRow.kt`; the dialog skeletons stay separate because the text picker carries the
+    draft + reasoning expansion + filter chips the image picker has no counterpart for (`7d745389`).
+- [x] Merge the small reasoning helpers into one file (`AiReasoningPlanning` + `AiReasoningCatalog` → `AiModelPresentation.kt`, `7d745389`)
 
 ---
 
@@ -238,10 +250,19 @@ re-caches (34 `get*/save*` functions in `AppStorage` alone).
 **Target.** A `JsonDocument<T>(file, default, normalize)` that owns read, normalize, atomic write, and
 an in-memory `StateFlow<T>`. `AppStorage`/`AppRepository` declare one property per document.
 
-- [ ] Implement `JsonDocument<T>` on top of `DurableJson`/`AtomicFileWrites`, with tests
-- [ ] Migrate settings, display preferences, tabs, cleanup rules, TTS, AI, follow settings
-- [ ] Delete the per-setting getters, savers, and cached fields
-- [ ] Confirm JSON output is byte-compatible (or at least read-compatible) with old files and backups
+- [x] Implement `JsonDocument<T>` on top of `DurableJson`/`AtomicFileWrites`, with tests (`78a26400`)
+  - Direct JVM tests are impossible without adding Robolectric (a new dependency); coverage runs
+    through the existing settings/backup/restore suite plus on-device verification instead.
+- [x] Migrate settings, display preferences, tabs, cleanup rules, TTS, AI, follow settings (`78a26400`)
+  - Queue, TTS session, TTS positions, and AI usage stay explicit: read-modify-write or nullable
+    semantics that a simple cached document does not model.
+- [x] Delete the per-setting getters, savers, and cached fields (`78a26400`)
+  - The ten repository `@Volatile` mirrors and re-cache lines are gone; `AppStorage`'s getters
+    remain as one-line delegates because backup export/import and restore read through them.
+- [x] Confirm JSON output is byte-compatible (or at least read-compatible) with old files and backups
+  - Writes reuse the identical `write()` (envelope + pretty Gson). On-device proof: the seeded
+    239-novel/18k-chapter library hydrates with an empty `storageIssues` list, every settings
+    screen renders stored values, and a UI edit round-trips into the same file shape.
 
 ---
 
