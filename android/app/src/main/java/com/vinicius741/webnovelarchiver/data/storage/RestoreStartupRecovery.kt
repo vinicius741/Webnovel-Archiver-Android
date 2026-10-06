@@ -7,7 +7,7 @@ import java.io.File
 
 /**
  * Durable restore-transaction record kept beside the live root (not in cache), with explicit
- * phases (R07). A process death between root moves bypasses every in-process `catch`/`finally`;
+ * phases. A process death between root moves bypasses every in-process `catch`/`finally`;
  * this journal is what lets the next startup recover instead of silently proceeding on a missing
  * or half-installed root.
  *
@@ -52,7 +52,7 @@ internal class RestoreTransactionJournal(
 }
 
 /**
- * Runs once at process start, BEFORE [AppStorage] creates or hydrates the live root (R07).
+ * Runs once at process start, BEFORE [AppStorage] creates or hydrates the live root.
  *
  * - `COMMITTED`: the new library is good; a leftover partially deleted snapshot is removed, never
  *   restored over it.

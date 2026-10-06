@@ -47,7 +47,7 @@ class TtsEngine(
     private var ttsInitialized = false
     private var pendingSpeakOnInit = false
 
-    /** Bounded initialization wait (R16); cancelled on successful init and every terminal path. */
+    /** Bounded initialization wait; cancelled on successful init and every terminal path. */
     private var initWatchdog: kotlinx.coroutines.Job? = null
     private var chunks: List<String> = emptyList()
     private var currentChunkIndex = 0
@@ -117,7 +117,7 @@ class TtsEngine(
                     handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.InitFailed))
                     notifyVoiceAvailabilityListeners()
                     // Discard the dead engine: a kept instance never re-fires onInit, so the next
-                    // play would wait out the init watchdog against it instead of retrying (R16).
+                    // play would wait out the init watchdog against it instead of retrying.
                     tts?.shutdown()
                     tts = null
                     return@withLock
@@ -646,7 +646,7 @@ class TtsEngine(
         }
     }
 
-    /** Bounded wait for the engine's init callback (R16); fires a recoverable InitFailed error. */
+    /** Bounded wait for the engine's init callback; fires a recoverable InitFailed error. */
     private fun scheduleInitWatchdogLocked() {
         initWatchdog?.cancel()
         initWatchdog =
@@ -697,7 +697,7 @@ class TtsEngine(
     }
 
     private companion object {
-        /** Upper bound for the engine's init callback before a pending play surfaces as an error (R16). */
+        /** Upper bound for the engine's init callback before a pending play surfaces as an error. */
         const val INIT_WATCHDOG_TIMEOUT_MS = 15_000L
     }
 }

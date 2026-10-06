@@ -260,7 +260,7 @@ class NetworkClient(
                             response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER) == "1",
                         )
                     }
-                    // Error bodies only feed challenge detection; a bounded prefix is enough (R24).
+                    // Error bodies only feed challenge detection; a bounded prefix is enough.
                     val responseBody = response.bodyStringPrefix(url, MAX_ERROR_BODY_BYTES)
                     if (SourceAccessBlockDetector.isChallengeResponse(response.headers, responseBody)) {
                         throw SourceAccessBlockedException(url)
@@ -323,7 +323,7 @@ class NetworkClient(
     fun reliabilitySnapshots(): List<SourceReliabilitySnapshot> = reliability.snapshots()
 
     /**
-     * Reads a text body with an application-level byte cap (R24): content-length and chunked
+     * Reads a text body with an application-level byte cap: content-length and chunked
      * bodies alike are bounded, so an oversized response fails instead of buffering unbounded.
      */
     private fun Response.bodyStringCapped(
@@ -362,13 +362,13 @@ class NetworkClient(
         internal const val MAX_PREPARED_PAGES = 24
 
         /**
-         * Default total budget for one source request (R13), sized to also cover a background
+         * Default total budget for one source request, sized to also cover a background
          * Cloudflare render inside the interceptor; callers with tighter classes pass
          * `callTimeoutMillis` explicitly.
          */
         const val DEFAULT_CALL_TIMEOUT_MILLIS = 180_000L
 
-        /** Application-level caps for text/catalog bodies (R24). */
+        /** Application-level caps for text/catalog bodies. */
         const val MAX_TEXT_RESPONSE_BYTES = 6_000_000L
         const val MAX_ERROR_BODY_BYTES = 64_000L
 
@@ -387,7 +387,7 @@ class NetworkClient(
          * Production client: [AndroidCookieJar] so cookies persist and WebViews share the store,
          * plus [CloudflareBypassInterceptor] to solve challenges in a background WebView. Per-host
          * pacing belongs to SourceReliabilityCoordinator, so the dispatcher's host cap is raised:
-         * OkHttp's default of 5 would queue same-host waits outside the call-timeout budget (R13).
+         * OkHttp's default of 5 would queue same-host waits outside the call-timeout budget.
          */
         fun buildDefault(
             context: Context,
@@ -474,13 +474,13 @@ internal class RetryBackoff(
     ): Long {
         // An accepted server deadline is honored as-is (already sanity-capped by
         // [retryAfterMillis]); clamping it to the ordinary backoff cap would make this client
-        // retry early against the server's explicit instruction (R14).
+        // retry early against the server's explicit instruction.
         val serverRequested = retryAfterMillis(retryAfterHeader, policy)
         val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), (serverRequested ?: 0L) / 5L)
         if (serverRequested != null) {
             val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
             // Jitter must not push a server-directed sleep past the sanity cap that already
-            // bounded the server's own request (R14).
+            // bounded the server's own request.
             return (serverRequested + jitter).coerceAtMost(policy.maximumRetryAfterMillis.coerceAtLeast(0L))
         }
         val clientBackoff =
@@ -593,14 +593,14 @@ internal object SourceRequestEvents {
     }
 }
 
-/** Bounded binary payload plus the response's declared image content type (R25). */
+/** Bounded binary payload plus the response's declared image content type. */
 data class FetchedImage(
     val bytes: ByteArray,
     val contentType: String?,
 )
 
 /**
- * Fetches a bounded binary body together with the response's declared content type (R25), so
+ * Fetches a bounded binary body together with the response's declared content type, so
  * callers embed images with a validated media type instead of guessing from the URL extension.
  * Null on non-2xx, non-image, or oversize.
  */
@@ -656,7 +656,7 @@ suspend fun NetworkClient.fetchBytes(
 ): ByteArray? = fetchImage(url, maxBytes)?.bytes
 
 /**
- * Bounded admission (R29): expired entries are dropped and the map is capped, so abandoned
+ * Bounded admission: expired entries are dropped and the map is capped, so abandoned
  * preflights cannot accumulate unused HTML for a whole session.
  */
 internal fun NetworkClient.admitPreparedPage(
@@ -675,7 +675,7 @@ internal fun NetworkClient.admitPreparedPage(
 
 /**
  * Registers the caller and fetches-or-creates the key's mutex under one monitor, so eviction can
- * never drop a mutex that is locked or about to be acquired (R29).
+ * never drop a mutex that is locked or about to be acquired.
  */
 internal fun NetworkClient.acquirePageLock(cacheKey: String): Mutex =
     synchronized(reusablePageLocks) {
@@ -695,7 +695,7 @@ internal fun NetworkClient.releasePageLock(cacheKey: String) {
 /**
  * Drops per-key coalescing state whose page is gone. Runs under the lock-map monitor and skips
  * keys that are locked or still acquiring, so eviction can never orphan a mutex a caller holds
- * or is about to lock — duplicate concurrent fetches for the same key remain impossible (R29).
+ * or is about to lock — duplicate concurrent fetches for the same key remain impossible.
  */
 internal fun NetworkClient.evictIdlePageLocks() {
     synchronized(reusablePageLocks) {

@@ -15,7 +15,7 @@ enum class TtsPlaybackErrorKind {
     SynthesisFailed,
     Stalled,
 
-    /** Next-chapter preparation failed; the session stays resumable at the current position (R16). */
+    /** Next-chapter preparation failed; the session stays resumable at the current position. */
     PreparationFailed,
 }
 

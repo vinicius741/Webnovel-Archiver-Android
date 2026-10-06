@@ -185,7 +185,7 @@ object SpaceBattlesProvider : SourceProvider {
         val chapters = parseThreadmarks(firstHtml, root).toMutableList()
         val seen = chapters.mapNotNull { it.id }.toMutableSet()
         // The declared page count is authoritative: hitting the fetch cap means the list would be
-        // silently truncated, so fail instead of letting a full sync delete unseen chapters (R03).
+        // silently truncated, so fail instead of letting a full sync delete unseen chapters.
         val declaredLastPage = threadmarkPageCount(firstHtml)
         val lastPage = declaredLastPage.coerceAtMost(MAX_THREADMARK_PAGES)
         if (declaredLastPage > MAX_THREADMARK_PAGES) {

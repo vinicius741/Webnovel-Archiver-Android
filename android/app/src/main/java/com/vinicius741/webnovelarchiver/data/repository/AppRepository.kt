@@ -113,7 +113,7 @@ class AppRepository private constructor(
     /**
      * Monotonic identity of the persisted library. Clear and restore replace the whole library, so
      * they bump the generation; long-running network work captures it at start and rechecks at
-     * commit, rejecting results that belong to an obsolete library (R05).
+     * commit, rejecting results that belong to an obsolete library.
      */
     private val libraryGeneration =
         java.util.concurrent.atomic
@@ -124,7 +124,7 @@ class AppRepository private constructor(
     /**
      * Immutable published view of library + queue. UI reads ([library], [story], [queue]) take this
      * reference without the storage monitor, so a long backup/restore/EPUB transaction holding the
-     * monitor can never block a render or a click handler (R01).
+     * monitor can never block a render or a click handler.
      */
     private class PublishedState(
         val libraryById: Map<String, Story> = emptyMap(),
@@ -192,7 +192,7 @@ class AppRepository private constructor(
 
     /**
      * Loads the current library + queue + settings into the state flows. Call once at startup.
-     * [preloadedLibrary] lets startup reuse the one library pass it already ran (R20) instead of
+     * [preloadedLibrary] lets startup reuse the one library pass it already ran instead of
      * re-reading every story document.
      */
     fun refresh(preloadedLibrary: List<Story>? = null) {
@@ -244,7 +244,7 @@ class AppRepository private constructor(
 
     /**
      * Bumps the published snapshot versions with no storage reads — for manifest-only changes
-     * (chapter-rewrite toggles) that leave every story document untouched (R26). Safe on Main.
+     * (chapter-rewrite toggles) that leave every story document untouched. Safe on Main.
      */
     internal fun republishLibrarySnapshot() {
         synchronized(transactionLock) {
@@ -367,7 +367,7 @@ class AppRepository private constructor(
             }
         }
 
-    /** Invalidates in-flight library-scoped work (R05); called by clear/restore/import. */
+    /** Invalidates in-flight library-scoped work; called by clear/restore/import. */
     internal fun invalidateLibraryGeneration() {
         libraryGeneration.incrementAndGet()
     }
@@ -402,7 +402,7 @@ class AppRepository private constructor(
 
     /**
      * Read-modify-write display preferences against the LATEST persisted value inside one
-     * transaction (R28): two rapid independent changes (tab + sort) can no longer race and restore
+     * transaction: two rapid independent changes (tab + sort) can no longer race and restore
      * each other's previous field value.
      */
     suspend fun updateDisplayPreferences(block: (DisplayPreferences) -> DisplayPreferences) {
@@ -548,7 +548,7 @@ class AppRepository private constructor(
     }
 
     /**
-     * Commits one downloaded chapter and its queue job in a single transaction (R05): the job
+     * Commits one downloaded chapter and its queue job in a single transaction: the job
      * must still exist and be downloading, and the library generation must be unchanged, so a
      * cancel, remove, clear, or restore landing between the chapter fetch and this call can
      * never publish the chapter or flip a cancelled row to completed.
@@ -597,10 +597,10 @@ class AppRepository private constructor(
      * Commits a sync atomically with optional archive and metric snapshots.
      *
      * @param startedGeneration [libraryGeneration] captured when the sync began; a mismatch means
-     *   the library was cleared or replaced mid-flight, so the commit is rejected (R05).
+     *   the library was cleared or replaced mid-flight, so the commit is rejected.
      * @param requireExisting true when the sync started from an existing story; a missing current
      *   record then means the user deleted it during the network window and the sync must not
-     *   recreate it (R05).
+     *   recreate it.
      */
     suspend fun commitSyncedStory(
         story: Story,
@@ -776,7 +776,7 @@ internal suspend fun AppRepository.saveAiCoverImageDraft(
 }
 
 /**
- * Persists a finished cover draft only when the story still exists (R05): the existence check and
+ * Persists a finished cover draft only when the story still exists: the existence check and
  * the draft save run as one storage transaction, so a story deleted mid-generation cannot regain
  * orphaned draft files. False = discarded.
  */
@@ -816,7 +816,7 @@ internal suspend fun AppRepository.setAiCoverContextChapters(
 
 /**
  * Saves a finished rewrite draft. False when the story no longer exists: the existence check rides
- * the same transaction as the save (R05), closing the deleted-mid-run check/write race instead of
+ * the same transaction as the save, closing the deleted-mid-run check/write race instead of
  * recreating rewrite state for a story [AppStorage.deleteStory] already cleaned.
  */
 internal suspend fun AppRepository.saveChapterRewriteDraft(output: AiChapterRewriteDraftOutput): Boolean =
@@ -893,7 +893,7 @@ internal fun AppRepository.appliedRewriteHtml(
 ): String? = storage.chapterRewrites.appliedHtml(storyId, chapterId)
 
 /**
- * HTML read from an already-selected record (R26): callers that resolved the record from one
+ * HTML read from an already-selected record: callers that resolved the record from one
  * manifest snapshot must not trigger a second manifest lookup just to read the file.
  */
 internal fun AppRepository.appliedRewriteHtmlForRecord(record: AppliedChapterRewrite): String? =

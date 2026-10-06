@@ -35,8 +35,8 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Description-model picker for the AI Controls screen (moved from AI Settings — the model is
- * changed where generation happens, not in global settings). Bounded, searchable catalog dialog
+ * Description-model picker for the AI Controls screen — the model is changed where generation
+ * happens, not in global settings. Bounded, searchable catalog dialog
  * mirroring the TTS voice dialog (search + chips + scroll) with manual entry pinned first. The
  * drafted model's row expands in place to show its reasoning level, so there is no separate
  * selection panel; Use model commits both together.

@@ -28,7 +28,7 @@ internal class RestoreRootSwap(
 ) {
     /**
      * Runs the staged-root swap. [onPhase] records each phase into the caller's durable journal
-     * (R07) so a process death between moves is recoverable at next startup; it is invoked at:
+     * so a process death between moves is recoverable at next startup; it is invoked at:
      * old-root-moved (after the live root lands on the snapshot), committed (after the new root is
      * installed and initialized, BEFORE snapshot cleanup — a leftover snapshot after this point
      * must never be restored over the committed root).

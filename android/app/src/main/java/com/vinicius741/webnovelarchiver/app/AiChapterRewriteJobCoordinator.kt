@@ -76,7 +76,7 @@ class AiChapterRewriteJobCoordinator(
     /** Guards slot handoffs (enqueue start, batch drain) so observers always see a consistent jobs+queue view. */
     private val queueLock = Any()
 
-    /** The running job's coroutine handle; [cancelActive] cancels it so cancellation releases the slot (R15). */
+    /** The running job's coroutine handle; [cancelActive] cancels it so cancellation releases the slot. */
     private var activeHandle: kotlinx.coroutines.Job? = null
 
     fun jobFor(
@@ -89,7 +89,7 @@ class AiChapterRewriteJobCoordinator(
     fun queuedFor(storyId: String): List<AiChapterRewriteJobState> = _queue.value.filter { it.storyId == storyId }
 
     /**
-     * Drops queued chapters and cancels the running rewrite (R15): a foreground-service timeout
+     * Drops queued chapters and cancels the running rewrite: a foreground-service timeout
      * must not leave the batch draining unprotected in the background. Cancellation releases the
      * busy slot through [runJob]'s cancellation path; queued work is discarded, never replayed —
      * an AI request with an unknown billing outcome is not re-sent blind.
@@ -149,7 +149,7 @@ class AiChapterRewriteJobCoordinator(
         var slotReleased = false
         try {
             val output = engine.draft(state.storyId, state.chapterId, progressReporter(jobKey))
-            // The save's own transaction re-checks story existence (R05): a story deleted mid-run
+            // The save's own transaction re-checks story existence: a story deleted mid-run
             // cannot regain rewrite state.
             if (!repository.saveChapterRewriteDraft(output)) {
                 Timber.i("Chapter rewrite finished for deleted story %s; discarding result", state.storyId)

@@ -88,7 +88,7 @@ internal class QueueGroupAdapter(
 
     override fun onViewRecycled(holder: GroupHolder) {
         // Remove exactly the key this holder owns: boundCards.values.remove(card) could drop a
-        // stale storyId→card entry and leave the live storyId pointing at this recycled card (R23).
+        // stale storyId→card entry and leave the live storyId pointing at this recycled card.
         holder.boundStoryId?.let { storyId ->
             if (boundCards[storyId] === holder.card) boundCards.remove(storyId)
         }
@@ -143,7 +143,7 @@ internal class QueueGroupAdapter(
             ).dispatchUpdatesTo(this)
     }
 
-    /** Cards currently attached to holders; registered at bind, cleared on recycle (R23). */
+    /** Cards currently attached to holders; registered at bind, cleared on recycle. */
     private val boundCards = LinkedHashMap<String, QueueGroupCard>()
 
     class GroupHolder(

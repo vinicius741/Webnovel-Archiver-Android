@@ -86,7 +86,7 @@ class EpubEngine(
                 val filename = EpubFilename.forRange(story.title, start, end, generationId)
                 // Streamed into a temp file and renamed on success; a failure inside the write
                 // block (e.g. a chapter going missing mid-generation) aborts before any partial
-                // output is committed (R25).
+                // output is committed.
                 val file =
                     storage.saveEpubStreamed(story.id, filename) { out ->
                         writeEpub(ZipOutputStream(out), story, chunk, coverAsset, chaptersOnly)
@@ -174,7 +174,7 @@ class EpubEngine(
         runCatching {
             // Route cover downloads through the shared client with a size cap. The response's
             // declared content type wins; the URL extension is only a fallback, so extensionless
-            // or transformed URLs are not mislabeled (R25).
+            // or transformed URLs are not mislabeled.
             val fetched = network.fetchImage(url) ?: return@runCatching null
             val mediaType = fetched.contentType ?: getCoverMediaType(url)
             val extension = getCoverExtension(url, mediaType)

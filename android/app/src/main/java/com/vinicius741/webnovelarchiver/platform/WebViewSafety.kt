@@ -38,7 +38,7 @@ object WebViewSafety {
         settings.mediaPlaybackRequiresUserGesture = true
     }
 
-    /** Normal teardown: stop, detach, and destroy. Each step is independent so one failure (R18)
+    /** Normal teardown: stop, detach, and destroy. Each step is independent so one failure
      *  cannot skip the remaining disposal. The shared HTTP cache is NOT cleared here — that would
      *  also drop resources the source-access WebViews rely on; use [destroyAndClearSharedCache]
      *  only for the explicit source/session reset action. */

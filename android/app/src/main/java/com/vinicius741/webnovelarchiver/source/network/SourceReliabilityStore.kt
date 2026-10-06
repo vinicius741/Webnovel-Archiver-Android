@@ -40,7 +40,7 @@ class SourceReliabilityStore(
     }
 
     /**
-     * Returns false when the persistence attempt failed (R29): a circuit state that will not
+     * Returns false when the persistence attempt failed: a circuit state that will not
      * survive restart deserves a diagnostic signal instead of silence. The store stays advisory —
      * callers log; they never crash on it.
      */

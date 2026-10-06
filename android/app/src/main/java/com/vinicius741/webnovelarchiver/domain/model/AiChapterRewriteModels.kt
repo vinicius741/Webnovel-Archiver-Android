@@ -79,7 +79,7 @@ data class AppliedChapterRewrite(
     /**
      * Generation-specific content filename inside [fileStem] (e.g. `applied-b12f.html`). Null on
      * legacy records = the pre-generation name `applied.html`. Content and metadata always commit
-     * as one generation (R09).
+     * as one generation.
      */
     val contentFile: String? = null,
     val cadence: RewriteCadenceSummary = RewriteCadenceSummary(),
@@ -106,7 +106,7 @@ data class ChapterRewriteDraftRecord(
     /** Which provider routing tier produced the rewrite: "strict" | "relaxed" | "none". */
     val providerTier: String = "strict",
     val fileStem: String = "",
-    /** Generation-specific draft filename inside [fileStem]; null = legacy `draft.html` (R09). */
+    /** Generation-specific draft filename inside [fileStem]; null = legacy `draft.html`. */
     val contentFile: String? = null,
     val cadence: RewriteCadenceSummary = RewriteCadenceSummary(),
 )

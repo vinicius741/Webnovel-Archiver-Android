@@ -267,11 +267,11 @@ class DownloadEngine(
                 )
             if (!acceptsWorkerResults.get()) return
             if (startedGeneration != repository.libraryGeneration()) return
-            // Cancelled or removed mid-download: do not publish the chapter (R05). A paused job is
+            // Cancelled or removed mid-download: do not publish the chapter. A paused job is
             // deliberately allowed to finish its in-flight chapter — pause keeps the work.
             if (isCancelledOrGone(job.id, repository.queue())) return
             // Chapter + queue commit is one transaction that re-verifies job status and the
-            // library generation (R05), so a cancel/remove/restore landing between the fetch and
+            // library generation, so a cancel/remove/restore landing between the fetch and
             // this call can never publish the chapter or flip a cancelled row to completed.
             when (
                 repository.completeDownloadedChapter(
@@ -313,7 +313,7 @@ class DownloadEngine(
 
     /**
      * A job counts as no longer publishable when it was cancelled *or removed* from the queue
-     * (R05): a removed job must not reappear as a completion. A paused job stays publishable.
+     *: a removed job must not reappear as a completion. A paused job stays publishable.
      */
     private fun isCancelledOrGone(
         id: String,
@@ -393,7 +393,7 @@ internal class DownloadRequestGateFactory(
             }
         }
 
-    /** Liveness check against the repository's coherent cached queue (R21), not durable JSON. */
+    /** Liveness check against the repository's coherent cached queue, not durable JSON. */
     fun ensureJobActive(jobId: String) {
         val active =
             repository

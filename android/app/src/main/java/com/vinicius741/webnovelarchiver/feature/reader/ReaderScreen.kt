@@ -130,7 +130,7 @@ internal fun ScreenHost.showReader(
         }
 }
 
-/** Terminal Reader state for missing/failed preparation (R12): explicit message + Back/Retry. */
+/** Terminal Reader state for missing/failed preparation: explicit message + Back/Retry. */
 private fun ScreenHost.renderReaderUnavailable(
     storyId: String,
     title: String,

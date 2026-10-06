@@ -106,7 +106,7 @@ object BackupInputLimits {
             )
 
     /**
-     * Legacy `applied.html` plus generation-suffixed names (R09). The suffix class must cover every
+     * Legacy `applied.html` plus generation-suffixed names. The suffix class must cover every
      * character `safeName(operationId)` can emit — operation ids are UUIDs, so it includes `-` and
      * `.`; traversal is already blocked by the blank/`.`/`..` component rejection above.
      */

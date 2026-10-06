@@ -83,8 +83,8 @@ private class AndroidCloudflarePageRenderer(
  * the manual-verification circuit, but a settled page that fails the source's content rules is
  * returned for the parser to fail as a per-job error, an origin HTTP status (e.g. a removed
  * chapter's 404) is surfaced to the normal retry policy, and a transport-level render failure is a
- * retryable error. Previously every one of these opened the circuit, so a single dead chapter URL
- * could block the whole source.
+ * retryable error — only the challenge detections open the circuit, so a single dead chapter
+ * URL cannot block the whole source.
  */
 class CloudflareBypassInterceptor internal constructor(
     private val renderer: CloudflarePageRenderer,

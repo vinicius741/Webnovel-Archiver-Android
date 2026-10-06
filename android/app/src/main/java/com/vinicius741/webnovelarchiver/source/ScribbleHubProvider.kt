@@ -209,7 +209,7 @@ object ScribbleHubProvider : SourceProvider {
         progress("Fetching chapter page 1 · ${chapterCountLabel(inline.size)} found...")
         // The paginated list is the authoritative full list: a blocked or truncated page must
         // fail the fetch instead of returning a partial list that a full sync would treat as
-        // "author removed chapters" (R03). Latest-only paths keep their fallback behavior.
+        // "author removed chapters". Latest-only paths keep their fallback behavior.
         val firstPage =
             try {
                 fetchTocPage(network, url, postId, 1)
@@ -381,7 +381,7 @@ internal fun incompleteTocException(
 /**
  * Drives TOC pagination to a provably complete list. Throws [SourceChapterListIncompleteException]
  * when a page is blocked or the page limit is reached without an observed end, so callers can
- * never mistake a partial list for the full one (R03).
+ * never mistake a partial list for the full one.
  */
 internal suspend fun paginateTocPages(
     start: List<ChapterInfo>,

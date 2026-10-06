@@ -76,7 +76,7 @@ class AppStorage(
 
     /**
      * The ONLY rollback copy of the user's previous library. Durable app files, never cacheDir:
-     * the OS may purge cache between swap phases, destroying the recovery path (R07).
+     * the OS may purge cache between swap phases, destroying the recovery path.
      */
     internal val preRestoreSnapshotDir = File(this.context.filesDir, "webnovel_restore_snapshot")
     internal val maintenanceCoordinator = MaintenanceCoordinator()
@@ -207,12 +207,12 @@ class AppStorage(
         epubRoot.mkdirs()
         backupRoot.mkdirs()
         // Restore-transaction leftovers live beside the root in filesDir; with a stuck journal a
-        // stale snapshot could later be moved over this deliberately wiped library (R07).
+        // stale snapshot could later be moved over this deliberately wiped library.
         File(context.filesDir, RestoreTransactionJournal.FILE_NAME).delete()
         preRestoreSnapshotDir.deleteRecursively()
         // Health fences are process-local; wipe them so recreated same-named documents can write again.
         _storageHealth.value = StorageHealthSnapshot()
-        // The rewrite tree was deleted wholesale; drop its cached manifests too (R26).
+        // The rewrite tree was deleted wholesale; drop its cached manifests too.
         chapterRewrites.invalidateAll()
     }
 
@@ -305,7 +305,7 @@ class AppStorage(
     }
 
     /**
-     * One-pass startup library load (R20): reads the index and every story file once, applying the
+     * One-pass startup library load: reads the index and every story file once, applying the
      * same coercion + relative-path migration [readStory] applies per read, and reports which
      * story documents changed so the caller persists only those instead of rewriting the library.
      */
@@ -359,9 +359,9 @@ class AppStorage(
     /**
      * Snapshots the library index, every story file, and the tabs file into [dest], returning a
      * [JsonImportSnapshot] that [restoreJsonImportSnapshot] can use to roll a failed JSON import
-     * back to its pre-import state. Intended for [BackupRestoreCoordinator.importBackupUri] (audit
-     * gap 2): the JSON import path previously had no rollback, so a malformed or partial merge could
-     * leave the library in a mixed state. The caller wraps read+merge+write in the same `storage`
+     * back to its pre-import state. Intended for [BackupRestoreCoordinator.importBackupUri]: a
+     * malformed or partial merge must never leave the library in a mixed state. The caller wraps
+     * read+merge+write in the same `storage`
      * monitor and only restores on failure.
      */
     @Synchronized
@@ -501,8 +501,8 @@ class AppStorage(
     ): String? {
         val source = resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return null
         val destination = chapterFile(storyId, index, chapter)
-        // Streamed temp + fsync + rename: a failed archive copy must not truncate the destination
-        // (R06), which a direct copyTo(overwrite = true) could.
+        // Streamed temp + fsync + rename: a failed archive copy must not truncate the
+        // destination, which a direct copyTo(overwrite = true) could.
         AtomicFileWrites.copyAtomically(source, destination)
         return relativize(destination)
     }
@@ -513,7 +513,7 @@ class AppStorage(
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
 
-    /** File-metadata availability check: no full chapter read just to test for content (R25). */
+    /** File-metadata availability check: no full chapter read just to test for content. */
     @Synchronized
     fun chapterAvailable(chapter: Chapter): Boolean =
         chapter.content != null || resolveChapterPath(chapter.filePath)?.let { File(it).isFile } == true
@@ -624,7 +624,7 @@ class AppStorage(
 
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 
-    /** A full restore replaces the on-disk rewrite tree wholesale, so cached manifests are dropped (R26). */
+    /** A full restore replaces the on-disk rewrite tree wholesale, so cached manifests are dropped. */
     fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri).also { chapterRewrites.invalidateAll() }
 
     private fun saveStoryOnly(story: Story) {

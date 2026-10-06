@@ -173,7 +173,7 @@ class AiChapterRewriteForegroundService : Service() {
         const val ACTION_START = "com.vinicius741.webnovelarchiver.ai.CHAPTER_REWRITE_START"
 
         /** Called from the UI while foregrounded, right before a job starts. False when the
-         *  service could not start, so the enqueue flow can say so (R15). */
+         *  service could not start, so the enqueue flow can say so. */
         fun start(context: Context): Boolean {
             val intent = Intent(context, AiChapterRewriteForegroundService::class.java).setAction(ACTION_START)
             return runCatching {

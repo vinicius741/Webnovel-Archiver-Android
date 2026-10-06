@@ -132,7 +132,7 @@ class MainActivity :
     override val importBackupLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri ?: return@registerForActivityResult
-            // A failed import must return the user to the backup screen with a visible error (R12),
+            // A failed import must return the user to the backup screen with a visible error,
             // not die in the coroutine handler.
             runUiOperation(
                 "import json backup",

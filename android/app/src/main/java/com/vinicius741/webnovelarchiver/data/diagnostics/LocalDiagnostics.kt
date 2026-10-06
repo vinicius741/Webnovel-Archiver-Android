@@ -3,7 +3,7 @@ package com.vinicius741.webnovelarchiver.data.diagnostics
 import android.util.Log
 import timber.log.Timber
 
-/** Process-local, metadata-only rings: WARN+ log events plus operation timings (R30). Log messages are intentionally never retained. */
+/** Process-local, metadata-only rings: WARN+ log events plus operation timings. Log messages are intentionally never retained. */
 object LocalDiagnostics {
     const val MAX_EVENTS = 200
     private val events = ArrayDeque<DiagnosticEvent>(MAX_EVENTS)
@@ -31,7 +31,7 @@ object LocalDiagnostics {
     }
 
     /**
-     * Records one timed operation (R30): privacy-safe static [operation] name, duration, and a
+     * Records one timed operation: privacy-safe static [operation] name, duration, and a
      * failure flag — enough to distinguish slow-but-successful from failing boundaries after the
      * fact, without retaining text, prompts, keys, or URLs.
      */

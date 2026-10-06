@@ -70,7 +70,7 @@ internal class BackupExporter(
             FullBackupContentPlanning.missingContentReport(
                 chapterPlan = chapterPlan,
                 // Stories whose applied files ALL vanished produce no payload, so the store is
-                // asked directly — otherwise they would escape the report (R10).
+                // asked directly — otherwise they would escape the report.
                 missingAppliedByStory =
                     library
                         .mapNotNull { story ->
@@ -176,7 +176,7 @@ internal class BackupExporter(
         }
     }
 
-    /** Manifest-ready shape for one missing item (R10). */
+    /** Manifest-ready shape for one missing item. */
     internal fun missingEntry(it: FullBackupContentPlanning.MissingContent): Map<String, Any?> =
         mapOf(
             "kind" to it.kind,
@@ -299,7 +299,7 @@ private data class FullBackupChapterFile(
     val title: String,
     val path: String,
     val source: File?,
-    /** Legacy inline chapter content, materialized when the chapter file is missing (R10). */
+    /** Legacy inline chapter content, materialized when the chapter file is missing. */
     val inlineContent: String?,
 )
 

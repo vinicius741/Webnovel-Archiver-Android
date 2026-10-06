@@ -46,9 +46,8 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
         // Breathing room between the textarea and its Paste/Add actions, and a slightly larger gap
         // separating those actions from the saved-sentence list below — so neither edge feels cramped.
         spacer(Space.LG)
-        // Paste + Add sit in their own row beneath the textarea. With a tall multiline field the old
-        // layout (button pinned beside the field, stretched to its height) no longer makes sense, so
-        // the actions drop to a flow row below — mirroring the Add Story screen's paste affordance.
+        // Paste + Add sit in a flow row beneath the textarea — a tall multiline field leaves no
+        // room for a button beside it, and this mirrors the Add Story screen's paste affordance.
         flow {
             button("Paste", Btn.TONAL, R.drawable.wna_paste) {
                 val clip = clipboardText()?.trim()

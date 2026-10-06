@@ -3,7 +3,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteManifestModel
 
 /**
- * Typed health of one story's rewrite manifest (R08). [Fenced] blocks every write for that story:
+ * Typed health of one story's rewrite manifest. [Fenced] blocks every write for that story:
  * overwriting a document this process cannot read would silently drop the records it still holds.
  */
 sealed interface RewriteManifestRead {

@@ -142,7 +142,7 @@ class AiCoverJobCoordinator(
                 val record = run()
                 if (!repository.persistAiCoverDraftIfStoryExists(storyId, record)) {
                     // Story deleted mid-run; deleteStory already cleaned its drafts — persisting
-                    // would orphan files. The existence check rides the save transaction (R05).
+                    // would orphan files. The existence check rides the save transaction.
                     Timber.i("AI cover job finished for deleted story %s; discarding result", storyId)
                     _jobs.update { it - storyId }
                     return@launch

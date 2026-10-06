@@ -21,12 +21,12 @@ sealed interface AiCoverDraftRecord {
 
 /**
  * Owns the pending (preview-only) AI cover drafts under `ai_cover_drafts/` so a generated draft
- * survives the activity, navigation, and process death that previously discarded it. The JSON meta
+ * survives the activity, navigation, and process death. The JSON meta
  * document is the completeness marker: the image bytes are written first, the meta last, so a
  * crash between the two leaves a prompt-only draft instead of a preview without its prompt.
  *
  * Each generation writes its own image file and the meta switches the reference only afterward
- * (R09): replacing a draft can never pair new bytes with the previous generation's prompt or
+ *: replacing a draft can never pair new bytes with the previous generation's prompt or
  * media type. The replaced generation is deleted only after the meta commit.
  *
  * Drafts and experiment history are local to this device and excluded from backups.
@@ -60,7 +60,7 @@ internal class AiCoverDraftStore(
         (load(storyId) as? AiCoverDraftRecord.Image)?.let { versions.save(storyId, it.draft) }
         versions.save(storyId, draft)
         // Generation-specific name: the bytes the current meta references are never overwritten
-        // in place (R09).
+        // in place.
         val imageFile = generationImageName(storyId, draft.mediaType)
         val previous = referencedImage(storyId)
         AtomicFileWrites.writeBytes(File(dir, imageFile), draft.bytes)
@@ -124,7 +124,7 @@ internal class AiCoverDraftStore(
     ): String {
         val extension = AiCoverPlanning.coverFileExtension(mediaType)
         // Random per save, not per process: a restarted counter would reuse the previous
-        // process's filename and overwrite the bytes the current meta still references (R09).
+        // process's filename and overwrite the bytes the current meta still references.
         val generation =
             java.util.UUID
                 .randomUUID()

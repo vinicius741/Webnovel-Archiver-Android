@@ -55,7 +55,7 @@ private fun ScreenHost.runCleanup(
         try {
             val sentenceRemoval = repository.getSentenceRemovalList()
             val regexRules = repository.getRegexRules()
-            // Persist the stale marker before the first possible chapter modification (R17):
+            // Persist the stale marker before the first possible chapter modification:
             // cancellation, process death, or a later failure must never leave modified chapter
             // files under an EPUB still marked current, and a later failure must not clear it.
             check(repository.markCleanupApplied(story.id) != null) {
@@ -77,7 +77,7 @@ private fun ScreenHost.runCleanup(
                 try {
                     val html = repository.readChapter(chapter) ?: error("Downloaded chapter file is missing")
                     val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules)
-                    // Skip writes whose cleaned HTML equals the original (R17).
+                    // Skip writes whose cleaned HTML equals the original.
                     if (result.html != html) {
                         check(repository.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }
                     }

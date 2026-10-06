@@ -29,8 +29,8 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Cover-image model picker for the AI Controls screen (moved from AI Settings — the model is
- * changed where generation happens). Mirrors the description-model picker (search + capped list +
+ * Cover-image model picker for the AI Controls screen — the model is changed where generation
+ * happens. Mirrors the description-model picker (search + capped list +
  * pinned manual entry) but rides the dedicated image-model catalog (`GET /api/v1/images/models`),
  * which ships no pricing — so there are no price labels and no Free filter here, and each row
  * notes the request parameters the model supports.

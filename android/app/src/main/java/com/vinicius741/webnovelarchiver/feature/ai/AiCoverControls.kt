@@ -241,7 +241,7 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
 }
 
 /**
- * Decodes a preview-sized bitmap (R24): bounds are validated against a dimension sanity cap before
+ * Decodes a preview-sized bitmap: bounds are validated against a dimension sanity cap before
  * the sampled allocation, so a small-compressed/huge-dimension payload cannot claim unbounded
  * memory and the main thread never performs the decode.
  */
