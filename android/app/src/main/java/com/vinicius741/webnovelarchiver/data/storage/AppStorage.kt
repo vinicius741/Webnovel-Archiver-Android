@@ -764,3 +764,133 @@ class AppStorage(
             }.getOrNull() ?: "unknown"
     }
 }
+
+/**
+ * Owns the per-story generated-cover files under `covers/` (one current file per story, named by
+ * safe story id + media extension). Writes go through [AtomicFileWrites] like every other
+ * binary artifact.
+ */
+internal class CoverFileStore(
+    root: File,
+    private val safeName: (String) -> String,
+) {
+    private val dir = File(root, "covers").apply { mkdirs() }
+
+    /** Recreates the directory after a full-backup restore swapped the storage root. */
+    fun ensureDirectory() {
+        dir.mkdirs()
+    }
+
+    /**
+     * Atomically writes [storyId]'s cover and returns the file. A cover previously saved under a
+     * different extension is removed so at most one cover file per story is ever current. The
+     * caller records the returned path (relativized against the storage root) on the story.
+     */
+    @Synchronized
+    fun save(
+        storyId: String,
+        bytes: ByteArray,
+        extension: String,
+    ): File {
+        val file = File(dir, "${safeName(storyId)}.$extension")
+        find(storyId)?.takeIf { it != file }?.delete()
+        AtomicFileWrites.writeBytes(file, bytes)
+        return file
+    }
+
+    /** The story's stored cover file, whatever extension it was saved with; null when there is none. */
+    @Synchronized
+    fun find(storyId: String): File? = dir.listFiles()?.firstOrNull { it.isFile && it.nameWithoutExtension == safeName(storyId) }
+
+    /** Removes the story's cover file; a no-op if there is none. */
+    @Synchronized
+    fun delete(storyId: String) {
+        find(storyId)?.delete()
+    }
+}
+
+@Synchronized
+internal fun AppStorage.readLibraryIdsWithRecovery(): List<String> {
+    val result = DurableJson.readAtomicResult<List<String>>(libraryIndex, gson)
+    if (result is DurableReadResult.Present) {
+        clearStorageIssues(libraryIndex)
+        return result.value.filter { it.isNotBlank() }.distinct()
+    }
+
+    when (result) {
+        is DurableReadResult.Corrupt ->
+            recordStorageIssue(libraryIndex, StorageHealthKind.Corrupt, "Library index was corrupt and quarantined")
+        is DurableReadResult.UnsupportedSchema ->
+            recordStorageIssue(
+                libraryIndex,
+                StorageHealthKind.UnsupportedSchema,
+                "Library index schema ${result.foundVersion} is unsupported",
+            )
+        is DurableReadResult.IoFailure ->
+            recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, result.cause.message ?: "I/O failure")
+        DurableReadResult.Absent -> Unit
+        is DurableReadResult.Present -> Unit
+    }
+
+    val storyFiles = storyDir.listFiles()?.toList().orEmpty()
+    if (storyFiles.none { it.isFile && it.name.endsWith(".json") }) return emptyList()
+    val recovery =
+        LibraryIndexRecovery.scan(
+            files = storyFiles,
+            safeName = ::safeName,
+            readStory = { file ->
+                DurableJson.readAtomicResult<Story>(file, gson, quarantineOnCorruption = false).also { storyResult ->
+                    when (storyResult) {
+                        is DurableReadResult.Corrupt ->
+                            recordStorageIssue(file, StorageHealthKind.Corrupt, "Story document is corrupt and was left untouched")
+                        is DurableReadResult.UnsupportedSchema ->
+                            recordStorageIssue(file, StorageHealthKind.UnsupportedSchema, "Story schema is unsupported")
+                        is DurableReadResult.IoFailure ->
+                            recordStorageIssue(file, StorageHealthKind.IoFailure, storyResult.cause.message ?: "I/O failure")
+                        is DurableReadResult.Present -> clearStorageIssues(file)
+                        DurableReadResult.Absent -> Unit
+                    }
+                }
+            },
+        )
+    val recoveredIds = recovery.stories.map { it.id }
+    // Persist a rebuilt index for recoverable cases so cold starts stop re-scanning. Leave an
+    // UnsupportedSchema index untouched so a downgrade cannot clobber a newer on-disk shape.
+    if (result !is DurableReadResult.UnsupportedSchema) {
+        persistRecoveredLibraryIndex(recoveredIds)
+    } else {
+        recordStorageIssue(
+            libraryIndex,
+            StorageHealthKind.LibraryIndexRecovered,
+            "Reconstructed an in-memory library index from valid story documents; unsupported index was not rewritten",
+            recovery.stories.size,
+        )
+    }
+    return recoveredIds
+}
+
+@Synchronized
+internal fun AppStorage.persistRecoveredLibraryIndex(ids: List<String>) {
+    // Drop sticky IoFailure/Corrupt fences for the index so intentional recovery can rewrite it.
+    clearStorageIssues(libraryIndex)
+    runCatching {
+        maintenanceCoordinator.withStorageAccess(this) {
+            DurableJson.writeAtomic(libraryIndex, gson, DurableJson.envelope(ids, appVersion))
+        }
+        recordStorageIssue(
+            libraryIndex,
+            StorageHealthKind.LibraryIndexRecovered,
+            "Reconstructed and persisted library index from valid story documents",
+            ids.size,
+        )
+    }.onFailure { error ->
+        Timber.e(error, "Could not persist recovered library index")
+        recordStorageIssue(
+            libraryIndex,
+            StorageHealthKind.LibraryIndexRecovered,
+            "Reconstructed an in-memory library index from valid story documents; persistence failed",
+            ids.size,
+        )
+        recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, error.message ?: "I/O failure")
+    }
+}
