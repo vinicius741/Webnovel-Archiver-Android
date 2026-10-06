@@ -1,17 +1,6 @@
-# Existing production Kotlin files above the 400-line ceiling.
+# Production Kotlin files above the 1,000-line ceiling.
 #
 # Values are maximum line counts, not targets. Lower or remove an entry when a file shrinks; do not
 # raise a value merely to make the gate pass. Any production Kotlin file absent here is limited to
-# 400 lines by checkKotlinFileSize.
-src/main/java/com/vinicius741/webnovelarchiver/data/repository/AppRepository.kt=700
-src/main/java/com/vinicius741/webnovelarchiver/data/storage/AppStorage.kt=840
-src/main/java/com/vinicius741/webnovelarchiver/data/storage/AiChapterRewriteStore.kt=415
-src/main/java/com/vinicius741/webnovelarchiver/data/storage/BackupRestoreCoordinator.kt=33
-src/main/java/com/vinicius741/webnovelarchiver/domain/model/Models.kt=444
-src/main/java/com/vinicius741/webnovelarchiver/download/DownloadEngine.kt=427
-src/main/java/com/vinicius741/webnovelarchiver/feature/cleanup/CleanupScreen.kt=193
-src/main/java/com/vinicius741/webnovelarchiver/feature/downloads/QueueScreen.kt=576
-src/main/java/com/vinicius741/webnovelarchiver/feature/settings/SettingsScreen.kt=443
-src/main/java/com/vinicius741/webnovelarchiver/feature/story/StoryActions.kt=212
-src/main/java/com/vinicius741/webnovelarchiver/tts/TtsEngine.kt=710
-src/main/java/com/vinicius741/webnovelarchiver/tts/TtsForegroundService.kt=430
+# 1,000 lines by checkKotlinFileSize. Complexity is guarded separately by detekt (LongMethod,
+# CyclomaticComplexMethod, ComplexCondition), so prefer cohesive files over mechanical splits.

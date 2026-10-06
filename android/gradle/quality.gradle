@@ -1,5 +1,5 @@
 def kotlinFileSizeBaseline = rootProject.file('config/kotlin-file-size-baseline.txt')
-def newKotlinFileLineLimit = 400
+def newKotlinFileLineLimit = 1000
 
 tasks.register('checkKotlinFileSize') {
     group = 'verification'

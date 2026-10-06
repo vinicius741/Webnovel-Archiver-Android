@@ -54,6 +54,7 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 
 ## Build and Validation
 
+- File-size policy: production Kotlin files are capped at 1,000 lines by `checkKotlinFileSize` (baseline in `config/kotlin-file-size-baseline.txt`). Complexity is guarded by detekt (`LongMethod`, `CyclomaticComplexMethod`, `ComplexCondition`), so keep cohesive code in one file rather than splitting along arbitrary lines to dodge a budget; a deliberate baseline entry is the escape hatch for genuinely large owners.
 - Debug build: `android/gradlew -p android :app:assembleDebug`
 - Targeted test class: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "com.vinicius741.webnovelarchiver.cleanup.TextCleanupTest"`
 - Targeted test method: `android/gradlew -p android :app:testInstrumentationUnitTest --tests "*.TextCleanupTest.cleanupRemovesScripts"`
