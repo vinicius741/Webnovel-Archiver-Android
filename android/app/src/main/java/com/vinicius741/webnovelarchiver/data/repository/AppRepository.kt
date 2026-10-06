@@ -155,40 +155,10 @@ class AppRepository private constructor(
             queue = queue,
         )
 
-    @Volatile
-    private var appSettings = AppSettings()
-
-    @Volatile
-    private var sourceDownloadSettings: Map<String, SourceDownloadSettings> = emptyMap()
-
-    @Volatile
-    private var chapterFilterSettings = ChapterFilterSettings()
-
-    @Volatile
-    private var displayPreferences = DisplayPreferences()
-
-    @Volatile
-    private var tabs: List<Tab> = emptyList()
-
-    @Volatile
-    private var sentenceRemovalList: List<String> = emptyList()
-
-    @Volatile
-    private var regexRules: List<RegexCleanupRule> = emptyList()
-
-    @Volatile
-    private var ttsSettings = TtsSettings()
-
-    @Volatile
-    private var aiSettings = AiSettings()
-
     internal val aiUsage = AiUsageStore()
 
     @Volatile
     internal var ttsSession: TtsSession? = null
-
-    @Volatile
-    private var updateFollowSettings = UpdateFollowSettings()
 
     /**
      * Loads the current library + queue + settings into the state flows. Call once at startup.
@@ -204,18 +174,11 @@ class AppRepository private constructor(
             library.forEach { libraryById[it.id] = it }
             queueJobs = queue
             republishLocked()
-            appSettings = storage.getSettings()
-            sourceDownloadSettings = storage.getSourceDownloadSettings().toMap()
-            chapterFilterSettings = storage.getChapterFilterSettings()
-            displayPreferences = storage.getDisplayPreferences().copy()
-            tabs = storage.getTabs().map { it.copy() }
-            sentenceRemovalList = storage.getSentenceRemovalList().toList()
-            regexRules = storage.getRegexRules().map { it.copy() }
-            ttsSettings = storage.getTtsSettings().copy()
-            aiSettings = storage.getAiSettings().copy()
+            // Settings documents are cached by the storage layer; reload them so a restore/import
+            // that replaced the root's contents is reflected, then re-read the session cache.
+            storage.reloadJsonDocuments()
             aiUsage.reload(storage.aiUsage::load)
             ttsSession = storage.getTtsSession()?.copy()
-            updateFollowSettings = PreferenceNormalization.updateFollowSettings(storage.getUpdateFollowSettings())
             _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
         }
     }
@@ -295,25 +258,25 @@ class AppRepository private constructor(
     /** Adds or replaces one story without rebuilding/re-parsing the rest of the library. */
     suspend fun addOrUpdateStory(story: Story) = upsertStory(story)
 
-    fun getSettings(): AppSettings = appSettings.copy()
+    fun getSettings(): AppSettings = requiredStorage.getSettings().copy()
 
-    fun getSourceDownloadSettings(): Map<String, SourceDownloadSettings> = sourceDownloadSettings.toMap()
+    fun getSourceDownloadSettings(): Map<String, SourceDownloadSettings> = requiredStorage.getSourceDownloadSettings().toMap()
 
-    fun getChapterFilterSettings(): ChapterFilterSettings = chapterFilterSettings.copy()
+    fun getChapterFilterSettings(): ChapterFilterSettings = requiredStorage.getChapterFilterSettings().copy()
 
-    fun getDisplayPreferences(): DisplayPreferences = displayPreferences.copy()
+    fun getDisplayPreferences(): DisplayPreferences = storyStore.displayPreferences().copy()
 
-    fun getTabs(): List<Tab> = tabs.map { it.copy() }
+    fun getTabs(): List<Tab> = requiredStorage.getTabs().map { it.copy() }
 
-    fun getSentenceRemovalList(): List<String> = sentenceRemovalList.toList()
+    fun getSentenceRemovalList(): List<String> = requiredStorage.getSentenceRemovalList().toList()
 
-    fun getRegexRules(): List<RegexCleanupRule> = regexRules.map { it.copy() }
+    fun getRegexRules(): List<RegexCleanupRule> = requiredStorage.getRegexRules().map { it.copy() }
 
-    fun getTtsSettings(): TtsSettings = ttsSettings.copy()
+    fun getTtsSettings(): TtsSettings = requiredStorage.getTtsSettings().copy()
 
-    fun getAiSettings(): AiSettings = aiSettings.copy()
+    fun getAiSettings(): AiSettings = requiredStorage.getAiSettings().copy()
 
-    fun getUpdateFollowSettings(): UpdateFollowSettings = updateFollowSettings
+    fun getUpdateFollowSettings(): UpdateFollowSettings = requiredStorage.getUpdateFollowSettings()
 
     fun getStorageHealth(): StorageHealthSnapshot = requiredStorage.storageHealth.value
 
@@ -372,33 +335,16 @@ class AppRepository private constructor(
         libraryGeneration.incrementAndGet()
     }
 
-    suspend fun saveSettings(settings: AppSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.appSettings(settings)
-            requiredStorage.saveSettings(normalized)
-            appSettings = normalized.copy()
-        }
+    suspend fun saveSettings(settings: AppSettings) = storageTransaction { requiredStorage.saveSettings(settings) }
 
     suspend fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.sourceDownloadSettings(settings)
-            requiredStorage.saveSourceDownloadSettings(normalized)
-            sourceDownloadSettings = normalized.toMap()
-        }
+        storageTransaction { requiredStorage.saveSourceDownloadSettings(settings) }
 
     suspend fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.chapterFilterSettings(settings)
-            requiredStorage.saveChapterFilterSettings(normalized)
-            chapterFilterSettings = normalized.copy()
-        }
+        storageTransaction { requiredStorage.saveChapterFilterSettings(settings) }
 
     suspend fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.displayPreferences(preferences)
-            requiredStorage.saveDisplayPreferences(normalized)
-            displayPreferences = normalized.copy()
-        }
+        storageTransaction { requiredStorage.saveDisplayPreferences(preferences) }
 
     /**
      * Read-modify-write display preferences against the LATEST persisted value inside one
@@ -411,48 +357,21 @@ class AppRepository private constructor(
             val normalized = PreferenceNormalization.displayPreferences(block(latest.copy()))
             if (normalized == latest) return@storageTransaction
             storyStore.saveDisplayPreferences(normalized)
-            displayPreferences = normalized.copy()
         }
     }
 
-    suspend fun saveTabs(updated: List<Tab>) =
-        storageTransaction {
-            requiredStorage.saveTabs(updated)
-            tabs = updated.sortedBy { it.order }.map { it.copy() }
-        }
+    suspend fun saveTabs(updated: List<Tab>) = storageTransaction { requiredStorage.saveTabs(updated) }
 
-    suspend fun saveSentenceRemovalList(items: List<String>) =
-        storageTransaction {
-            requiredStorage.saveSentenceRemovalList(items)
-            sentenceRemovalList = items.toList()
-        }
+    suspend fun saveSentenceRemovalList(items: List<String>) = storageTransaction { requiredStorage.saveSentenceRemovalList(items) }
 
-    suspend fun saveRegexRules(updated: List<RegexCleanupRule>) =
-        storageTransaction {
-            requiredStorage.saveRegexRules(updated)
-            regexRules = updated.map { it.copy() }
-        }
+    suspend fun saveRegexRules(updated: List<RegexCleanupRule>) = storageTransaction { requiredStorage.saveRegexRules(updated) }
 
-    suspend fun saveTtsSettings(settings: TtsSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.ttsSettings(settings)
-            requiredStorage.saveTtsSettings(normalized)
-            ttsSettings = normalized.copy()
-        }
+    suspend fun saveTtsSettings(settings: TtsSettings) = storageTransaction { requiredStorage.saveTtsSettings(settings) }
 
-    suspend fun saveAiSettings(settings: AiSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.aiSettings(settings)
-            requiredStorage.saveAiSettings(normalized)
-            aiSettings = normalized.copy()
-        }
+    suspend fun saveAiSettings(settings: AiSettings) = storageTransaction { requiredStorage.saveAiSettings(settings) }
 
     suspend fun saveUpdateFollowSettings(settings: UpdateFollowSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.updateFollowSettings(settings)
-            requiredStorage.saveUpdateFollowSettings(normalized)
-            updateFollowSettings = normalized
-        }
+        storageTransaction { requiredStorage.saveUpdateFollowSettings(settings) }
 
     /** Read-modify-write a story under the shared storage monitor; a null return from [block] aborts. */
     suspend fun updateStory(

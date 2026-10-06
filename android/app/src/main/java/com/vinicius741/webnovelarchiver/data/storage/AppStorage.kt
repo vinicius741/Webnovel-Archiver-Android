@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import java.io.File
+import java.lang.reflect.Type
 
 /** Pre-import library/index snapshot used to roll back a failed JSON backup merge. */
 internal data class JsonImportSnapshot(
@@ -100,6 +102,101 @@ class AppStorage(
     private val sessionFile = File(root, "tts_session.json")
     private val ttsPositionsFile = File(root, "tts_positions.json")
     private val aiSettingsFile = File(root, "ai_settings.json")
+
+    /**
+     * One cached JSON document: owns read, normalize, atomic write, and the in-memory current
+     * value. Every access synchronizes on the owning [AppStorage] (the same monitor the
+     * maintenance coordinator and every other document use), writes reuse the shared envelope +
+     * health fences, and on-disk bytes are unchanged from the hand-written getters/savers this
+     * replaced. The value loads lazily on first access; [reload] refreshes it after a restore or
+     * wipe replaced the storage root's contents.
+     */
+    internal inner class JsonDocument<T : Any>(
+        val file: File,
+        private val type: Type,
+        private val default: () -> T,
+        private val normalize: (T) -> T = { it },
+    ) {
+        private val _state by lazy { MutableStateFlow(loadLocked()) }
+
+        val state: StateFlow<T> get() = _state
+
+        fun get(): T = _state.value
+
+        fun set(value: T) {
+            synchronized(this@AppStorage) {
+                val normalized = normalize(value)
+                write(file, normalized)
+                _state.value = normalized
+            }
+        }
+
+        fun reload() {
+            synchronized(this@AppStorage) { _state.value = loadLocked() }
+        }
+
+        private fun loadLocked(): T = normalize(readOfType(file, type) ?: default())
+    }
+
+    private val settingsDoc =
+        JsonDocument(settingsFile, typeOf<AppSettings>(), { AppSettings() }, PreferenceNormalization::appSettings)
+
+    private val sourceDownloadSettingsDoc =
+        JsonDocument<MutableMap<String, SourceDownloadSettings>>(
+            sourceSettingsFile,
+            typeOf<MutableMap<String, SourceDownloadSettings>>(),
+            { mutableMapOf() },
+            PreferenceNormalization::sourceDownloadSettings,
+        )
+
+    private val chapterFilterSettingsDoc =
+        JsonDocument(chapterFilterFile, typeOf<ChapterFilterSettings>(), {
+            ChapterFilterSettings()
+        }, PreferenceNormalization::chapterFilterSettings)
+
+    private val displayPreferencesDoc =
+        JsonDocument(
+            displayPreferencesFile,
+            typeOf<DisplayPreferences>(),
+            { DisplayPreferences() },
+            PreferenceNormalization::displayPreferences,
+        )
+
+    private val tabsDoc = JsonDocument<MutableList<Tab>>(tabsFile, typeOf<MutableList<Tab>>(), { mutableListOf() })
+
+    private val sentencesDoc =
+        JsonDocument<MutableList<String>>(sentencesFile, typeOf<MutableList<String>>(), { DefaultCleanup.sentences.toMutableList() })
+
+    private val regexRulesDoc =
+        JsonDocument<MutableList<RegexCleanupRule>>(regexFile, typeOf<MutableList<RegexCleanupRule>>(), {
+            mutableListOf()
+        }, RegexRuleCleanup::sanitizeRegexRules)
+
+    private val updateFollowSettingsDoc =
+        JsonDocument(updateFollowSettingsFile, typeOf<UpdateFollowSettings>(), {
+            UpdateFollowSettings()
+        }, PreferenceNormalization::updateFollowSettings)
+
+    private val ttsSettingsDoc = JsonDocument(ttsFile, typeOf<TtsSettings>(), { TtsSettings() }, PreferenceNormalization::ttsSettings)
+
+    private val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
+
+    private inline fun <reified T> typeOf(): Type = object : TypeToken<T>() {}.type
+
+    /** Re-reads every cached document from disk; call after restore/import/clear replaced the root. */
+    @Synchronized
+    internal fun reloadJsonDocuments() {
+        settingsDoc.reload()
+        sourceDownloadSettingsDoc.reload()
+        chapterFilterSettingsDoc.reload()
+        displayPreferencesDoc.reload()
+        tabsDoc.reload()
+        sentencesDoc.reload()
+        regexRulesDoc.reload()
+        updateFollowSettingsDoc.reload()
+        ttsSettingsDoc.reload()
+        aiSettingsDoc.reload()
+    }
 
     @Synchronized
     fun getLibrary(): MutableList<Story> {
@@ -212,53 +309,48 @@ class AppStorage(
         _storageHealth.value = StorageHealthSnapshot()
         // The rewrite tree was deleted wholesale; drop its cached manifests too.
         chapterRewrites.invalidateAll()
+        reloadJsonDocuments()
     }
 
-    fun getSettings(): AppSettings = PreferenceNormalization.appSettings(read(settingsFile) ?: AppSettings())
+    fun getSettings(): AppSettings = settingsDoc.get()
 
-    fun saveSettings(settings: AppSettings) = write(settingsFile, PreferenceNormalization.appSettings(settings))
+    fun saveSettings(settings: AppSettings) = settingsDoc.set(settings)
 
-    fun getSourceDownloadSettings(): MutableMap<String, SourceDownloadSettings> =
-        PreferenceNormalization.sourceDownloadSettings(read(sourceSettingsFile) ?: mutableMapOf())
+    fun getSourceDownloadSettings(): MutableMap<String, SourceDownloadSettings> = sourceDownloadSettingsDoc.get()
 
-    fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        write(sourceSettingsFile, PreferenceNormalization.sourceDownloadSettings(settings))
+    fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) = sourceDownloadSettingsDoc.set(settings.toMutableMap())
 
-    fun getChapterFilterSettings(): ChapterFilterSettings =
-        PreferenceNormalization.chapterFilterSettings(read(chapterFilterFile) ?: ChapterFilterSettings())
+    fun getChapterFilterSettings(): ChapterFilterSettings = chapterFilterSettingsDoc.get()
 
-    fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        write(chapterFilterFile, PreferenceNormalization.chapterFilterSettings(settings))
+    fun saveChapterFilterSettings(settings: ChapterFilterSettings) = chapterFilterSettingsDoc.set(settings)
 
-    fun getDisplayPreferences(): DisplayPreferences =
-        PreferenceNormalization.displayPreferences(read(displayPreferencesFile) ?: DisplayPreferences())
+    fun getDisplayPreferences(): DisplayPreferences = displayPreferencesDoc.get()
 
-    fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        write(displayPreferencesFile, PreferenceNormalization.displayPreferences(preferences))
+    fun saveDisplayPreferences(preferences: DisplayPreferences) = displayPreferencesDoc.set(preferences)
 
-    fun getTabs(): MutableList<Tab> = read(tabsFile) ?: mutableListOf()
+    fun getTabs(): MutableList<Tab> = tabsDoc.get()
 
-    fun saveTabs(tabs: List<Tab>) = write(tabsFile, tabs.sortedBy { it.order })
+    fun saveTabs(tabs: List<Tab>) = tabsDoc.set(tabs.sortedBy { it.order }.toMutableList())
 
-    fun getSentenceRemovalList(): MutableList<String> = read(sentencesFile) ?: DefaultCleanup.sentences.toMutableList()
+    fun getSentenceRemovalList(): MutableList<String> = sentencesDoc.get()
 
-    fun saveSentenceRemovalList(items: List<String>) = write(sentencesFile, items)
+    fun saveSentenceRemovalList(items: List<String>) = sentencesDoc.set(items.toMutableList())
 
-    fun getRegexRules(): MutableList<RegexCleanupRule> = RegexRuleCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
+    fun getRegexRules(): MutableList<RegexCleanupRule> = regexRulesDoc.get()
 
-    fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, RegexRuleCleanup.sanitizeRegexRules(rules))
+    fun saveRegexRules(rules: List<RegexCleanupRule>) = regexRulesDoc.set(rules.toMutableList())
 
-    fun getUpdateFollowSettings(): UpdateFollowSettings = read(updateFollowSettingsFile) ?: UpdateFollowSettings()
+    fun getUpdateFollowSettings(): UpdateFollowSettings = updateFollowSettingsDoc.get()
 
-    fun saveUpdateFollowSettings(settings: UpdateFollowSettings) = write(updateFollowSettingsFile, settings)
+    fun saveUpdateFollowSettings(settings: UpdateFollowSettings) = updateFollowSettingsDoc.set(settings)
 
-    fun getTtsSettings(): TtsSettings = PreferenceNormalization.ttsSettings(read(ttsFile) ?: TtsSettings())
+    fun getTtsSettings(): TtsSettings = ttsSettingsDoc.get()
 
-    fun saveTtsSettings(settings: TtsSettings) = write(ttsFile, PreferenceNormalization.ttsSettings(settings))
+    fun saveTtsSettings(settings: TtsSettings) = ttsSettingsDoc.set(settings)
 
-    fun getAiSettings(): AiSettings = PreferenceNormalization.aiSettings(read(aiSettingsFile) ?: AiSettings())
+    fun getAiSettings(): AiSettings = aiSettingsDoc.get()
 
-    fun saveAiSettings(settings: AiSettings) = write(aiSettingsFile, PreferenceNormalization.aiSettings(settings))
+    fun saveAiSettings(settings: AiSettings) = aiSettingsDoc.set(settings)
 
     fun getTtsSession(): TtsSession? = read(sessionFile)
 
@@ -673,9 +765,19 @@ class AppStorage(
 
     internal fun relativize(file: File): String = file.toRelativeString(root)
 
-    private inline fun <reified T> read(file: File): T? =
+    private fun <T> readOfType(
+        file: File,
+        type: Type,
+    ): T? = readResult(file) { DurableJson.readAtomicResultOfType<T>(file, gson, type) }
+
+    private inline fun <reified T> read(file: File): T? = readResult(file) { DurableJson.readAtomicResult<T>(file, gson) }
+
+    private fun <T> readResult(
+        file: File,
+        block: () -> DurableReadResult<T>,
+    ): T? =
         maintenanceCoordinator.withStorageAccess(this) {
-            when (val result = DurableJson.readAtomicResult<T>(file, gson)) {
+            when (val result = block()) {
                 is DurableReadResult.Present -> {
                     // A successful decode means the document is readable again; drop sticky fences.
                     clearStorageIssues(file)
