@@ -3,10 +3,14 @@ package com.vinicius741.webnovelarchiver.data.storage
 import com.google.gson.JsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class CoverEvidenceStoreTest {
     @get:Rule val temporary = TemporaryFolder()
@@ -39,5 +43,39 @@ class CoverEvidenceStoreTest {
         file.delete()
         CoverEvidenceStore(root).record("rr_1", listOf(3))
         assertEquals(listOf(3), CoverEvidenceStore(root).selection("rr_1"))
+    }
+
+    @Test fun `selection reads stay cached after the disposable file is removed`() {
+        val root = temporary.newFolder()
+        val store = CoverEvidenceStore(root)
+        val indices = mutableListOf(0, 4, 9)
+        store.record("story", indices)
+        indices.clear()
+        assertTrue(File(root, "cover_evidence_selections.json").delete())
+
+        assertEquals(listOf(0, 4, 9), store.selection("story"))
+        assertNull(CoverEvidenceStore(root).selection("story"))
+    }
+
+    @Test fun `selection reads do not wait for score cache maintenance`() {
+        val store = CoverEvidenceStore(temporary.newFolder())
+        store.record("story", listOf(0, 4, 9))
+        val executor = Executors.newFixedThreadPool(2)
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        try {
+            executor.submit {
+                synchronized(store) {
+                    locked.countDown()
+                    release.await()
+                }
+            }
+            assertTrue(locked.await(5, TimeUnit.SECONDS))
+            val selection = executor.submit<List<Int>?> { store.selection("story") }
+            assertEquals(listOf(0, 4, 9), selection.get(5, TimeUnit.SECONDS))
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+        }
     }
 }

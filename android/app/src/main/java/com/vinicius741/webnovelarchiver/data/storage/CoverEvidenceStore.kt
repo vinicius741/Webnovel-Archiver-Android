@@ -16,6 +16,13 @@ class CoverEvidenceStore(
 ) {
     private val directory = File(cacheRoot, "cover_evidence")
     private val selectionsFile = File(cacheRoot, "cover_evidence_selections.json")
+    private val selectionLock = Any()
+
+    // Construction runs on AppContainer's IO setup; render-time reads never touch disk or wait
+    // for score-cache maintenance. Published maps and their lists are never mutated in place.
+
+    @Volatile
+    private var selections: Map<String, List<Int>> = loadSelections()
 
     @Synchronized
     fun read(key: String): JsonObject? =
@@ -42,17 +49,16 @@ class CoverEvidenceStore(
             ?.forEach { it.delete() }
     }
 
-    @Synchronized
-    fun selection(storyId: String): List<Int>? = loadSelections()[storyId]
+    fun selection(storyId: String): List<Int>? = selections[storyId]?.toList()
 
-    @Synchronized
     fun record(
         storyId: String,
         chapterIndices: List<Int>,
     ) {
-        val selections = loadSelections()
-        selections[storyId] = chapterIndices
-        runCatching { AtomicFileWrites.writeText(selectionsFile, serialize(selections)) }
+        synchronized(selectionLock) {
+            selections = selections + (storyId to chapterIndices.toList())
+            runCatching { AtomicFileWrites.writeText(selectionsFile, serialize(selections)) }
+        }
     }
 
     private fun serialize(selections: Map<String, List<Int>>): String {

@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.ai
 
 import android.Manifest
-import android.app.Notification
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -11,7 +10,6 @@ import android.os.IBinder
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
@@ -51,8 +49,8 @@ class AiJobForegroundService : Service() {
                     val rewrite = rewriteJobs.values.firstOrNull()
                     val cover = coverJobs.values.firstOrNull()
                     when {
-                        rewrite != null -> updateOngoingNotification(rewrite.message, queue.size)
-                        cover != null -> updateOngoingNotification(cover.message, queuedCount = 0)
+                        rewrite != null -> updateOngoingNotification(AiJobNotificationKind.CHAPTER_REWRITE, rewrite.message, queue.size)
+                        cover != null -> updateOngoingNotification(AiJobNotificationKind.COVER, cover.message, queuedCount = 0)
                         queue.isEmpty() -> if (foregroundStarted) stopAfterFinish()
                         // Rewrite queue holds chapters but no job registered yet: a handoff is in
                         // flight — hold the service until the next job registers.
@@ -79,14 +77,26 @@ class AiJobForegroundService : Service() {
     ): Int {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
-                val idle =
-                    coverCoordinator.jobs.value.isEmpty() &&
-                        rewriteCoordinator.jobs.value.isEmpty() &&
-                        rewriteCoordinator.queue.value.isEmpty()
+                val rewrite =
+                    rewriteCoordinator.jobs.value.values
+                        .firstOrNull()
+                val cover =
+                    coverCoordinator.jobs.value.values
+                        .firstOrNull()
+                val queuedCount = rewriteCoordinator.queue.value.size
+                val idle = rewrite == null && cover == null && queuedCount == 0
+                val kind =
+                    if (rewrite != null || cover == null && queuedCount > 0) {
+                        AiJobNotificationKind.CHAPTER_REWRITE
+                    } else {
+                        AiJobNotificationKind.COVER
+                    }
+                val message =
+                    rewrite?.message ?: cover?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
                 // startForegroundService demands startForeground even on an immediate stop.
                 startForeground(
                     ONGOING_NOTIFICATION_ID,
-                    buildOngoingNotification(intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task...", 0),
+                    aiJobOngoingNotification(kind, message, if (kind == AiJobNotificationKind.CHAPTER_REWRITE) queuedCount else 0),
                 )
                 foregroundStarted = true
                 if (idle) stopAfterFinish()
@@ -113,6 +123,7 @@ class AiJobForegroundService : Service() {
     }
 
     private fun updateOngoingNotification(
+        kind: AiJobNotificationKind,
         message: String,
         queuedCount: Int,
     ) {
@@ -123,7 +134,7 @@ class AiJobForegroundService : Service() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
             runCatching {
-                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, buildOngoingNotification(message, queuedCount))
+                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(kind, message, queuedCount))
             }
         }
     }
@@ -219,18 +230,4 @@ private fun Service.postOutcome(
     runCatching {
         NotificationManagerCompat.from(this).notify(id, notification)
     }.onFailure { Timber.w(it, "Could not post AI job outcome notification") }
-}
-
-private fun Service.buildOngoingNotification(
-    message: String,
-    queuedCount: Int,
-): Notification {
-    val text = if (queuedCount > 0) "$message · $queuedCount queued" else message
-    val title =
-        if (queuedCount > 0) {
-            getString(R.string.ai_chapter_rewrite_notif_active)
-        } else {
-            getString(R.string.ai_cover_notif_active)
-        }
-    return aiJobNotification(title, text, requestCode = 2, ongoing = true)
 }
