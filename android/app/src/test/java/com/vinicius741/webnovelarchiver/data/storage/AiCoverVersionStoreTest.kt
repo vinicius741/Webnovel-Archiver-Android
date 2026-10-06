@@ -10,7 +10,7 @@ import kotlin.io.path.createTempDirectory
 
 class AiCoverVersionStoreTest {
     private val root = createTempDirectory("cover_versions").toFile()
-    private val store = AiCoverDraftStore(root) { it }
+    private val store = CoverStore(root) { it }
 
     @After
     fun cleanup() {
@@ -26,7 +26,7 @@ class AiCoverVersionStoreTest {
         store.savePrompt("story", second.prompt)
         store.saveImage("story", second)
         store.delete("story")
-        val restarted = AiCoverDraftStore(root) { it }
+        val restarted = CoverStore(root) { it }
         val versions = restarted.versions.list("story")
         assertEquals(2, versions.size)
         assertTrue(versions.any { it.prompt == first.prompt && it.image.readBytes().contentEquals(first.bytes) })

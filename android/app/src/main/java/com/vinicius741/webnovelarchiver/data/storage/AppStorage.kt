@@ -66,8 +66,7 @@ class AppStorage(
     internal val metricDir = File(root, "metrics").apply { mkdirs() }
     internal val chapterRoot = File(root, "novels").apply { mkdirs() }
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
-    internal val coverFiles = CoverFileStore(root, ::safeName)
-    internal val aiCoverDrafts = AiCoverDraftStore(root, ::safeName)
+    internal val covers = CoverStore(root, ::safeName)
     internal val chapterRewrites = AiChapterRewriteStore(root, ::safeName)
     internal val aiUsage = AiUsageFileStore(root, gson, appVersion)
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
@@ -186,9 +185,9 @@ class AppStorage(
         File(chapterRoot, safeName(id)).deleteRecursively()
         File(epubRoot, safeName(id)).deleteRecursively()
         // The generated cover is per-story too; drop it so it does not outlive the story.
-        coverFiles.delete(id)
+        covers.deleteApplied(id)
         // Pending AI cover drafts (with their preview images) are per-story as well.
-        aiCoverDrafts.delete(id, keepHistory = false)
+        covers.delete(id, keepHistory = false)
         // Applied chapter rewrites and pending polish drafts are per-story as well.
         chapterRewrites.delete(id)
         // Drop the per-story trend history too so its file does not outlive the story.
@@ -761,50 +760,6 @@ class AppStorage(
             runCatching {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName
             }.getOrNull() ?: "unknown"
-    }
-}
-
-/**
- * Owns the per-story generated-cover files under `covers/` (one current file per story, named by
- * safe story id + media extension). Writes go through [AtomicFileWrites] like every other
- * binary artifact.
- */
-internal class CoverFileStore(
-    root: File,
-    private val safeName: (String) -> String,
-) {
-    private val dir = File(root, "covers").apply { mkdirs() }
-
-    /** Recreates the directory after a full-backup restore swapped the storage root. */
-    fun ensureDirectory() {
-        dir.mkdirs()
-    }
-
-    /**
-     * Atomically writes [storyId]'s cover and returns the file. A cover previously saved under a
-     * different extension is removed so at most one cover file per story is ever current. The
-     * caller records the returned path (relativized against the storage root) on the story.
-     */
-    @Synchronized
-    fun save(
-        storyId: String,
-        bytes: ByteArray,
-        extension: String,
-    ): File {
-        val file = File(dir, "${safeName(storyId)}.$extension")
-        find(storyId)?.takeIf { it != file }?.delete()
-        AtomicFileWrites.writeBytes(file, bytes)
-        return file
-    }
-
-    /** The story's stored cover file, whatever extension it was saved with; null when there is none. */
-    @Synchronized
-    fun find(storyId: String): File? = dir.listFiles()?.firstOrNull { it.isFile && it.nameWithoutExtension == safeName(storyId) }
-
-    /** Removes the story's cover file; a no-op if there is none. */
-    @Synchronized
-    fun delete(storyId: String) {
-        find(storyId)?.delete()
     }
 }
 

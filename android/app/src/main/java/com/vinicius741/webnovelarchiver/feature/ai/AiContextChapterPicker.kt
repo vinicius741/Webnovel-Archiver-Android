@@ -41,7 +41,7 @@ internal fun ScreenHost.addAiContextChaptersRow(
     forCover: Boolean = false,
 ) {
     var valueView: TextView? = null
-    val automaticSelection = app.appContainer.coverEvidenceSelectionStore.selection(story.id)
+    val automaticSelection = app.appContainer.coverEvidence.selection(story.id)
     val (selectorView, textVal) =
         container.context.makeSelectorField(
             iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_menu_book,
@@ -252,7 +252,7 @@ private fun ScreenHost.contextPickerConfig(
 ): ContextPickerConfig {
     val defaults = if (forCover) AiCoverContextPlanning.selectContextChapters(story) else AiDescriptionPlanning.selectContextChapters(story)
     val saved = if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices
-    val automatic = app.appContainer.coverEvidenceSelectionStore.selection(story.id) ?: emptyList()
+    val automatic = app.appContainer.coverEvidence.selection(story.id) ?: emptyList()
     // Automatic cover mode has no persisted manual selection — the picker shows the chapters
     // Jev kept on the last scan, or nothing before the first scan ever runs.
     val initialChecked =

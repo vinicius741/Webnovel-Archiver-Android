@@ -722,7 +722,7 @@ internal suspend fun AppRepository.setAiCover(
     updateStory(storyId) { latest ->
         latest?.let { story ->
             preserveAppliedCover(story)
-            val file = storage.coverFiles.save(storyId, bytes, AiCoverPlanning.coverFileExtension(mediaType))
+            val file = storage.covers.saveApplied(storyId, bytes, AiCoverPlanning.coverFileExtension(mediaType))
             LocalImageRevision.changed(file)
             StoryMutations.setAiCoverPath(story, storage.relativize(file))
         }
@@ -733,7 +733,7 @@ internal suspend fun AppRepository.clearAiCover(storyId: String): Story? =
     updateStory(storyId) { latest ->
         latest?.let { story ->
             preserveAppliedCover(story)
-            storage.coverFiles.delete(storyId)
+            storage.covers.deleteApplied(storyId)
             StoryMutations.clearAiCover(story)
         }
     }
@@ -764,7 +764,7 @@ internal suspend fun AppRepository.saveAiCoverPromptDraft(
     storyId: String,
     prompt: String,
 ) {
-    withContext(Dispatchers.IO) { storage.aiCoverDrafts.savePrompt(storyId, prompt) }
+    withContext(Dispatchers.IO) { storage.covers.savePrompt(storyId, prompt) }
 }
 
 /** Persists a painted preview (with the prompt that produced it) as the story's pending draft. */
@@ -772,7 +772,7 @@ internal suspend fun AppRepository.saveAiCoverImageDraft(
     storyId: String,
     draft: AiCoverDraft,
 ) {
-    withContext(Dispatchers.IO) { storage.aiCoverDrafts.saveImage(storyId, draft) }
+    withContext(Dispatchers.IO) { storage.covers.saveImage(storyId, draft) }
 }
 
 /**
@@ -789,8 +789,8 @@ internal suspend fun AppRepository.persistAiCoverDraftIfStoryExists(
             false
         } else {
             when (record) {
-                is AiCoverDraftRecord.PromptOnly -> storage.aiCoverDrafts.savePrompt(storyId, record.prompt)
-                is AiCoverDraftRecord.Image -> storage.aiCoverDrafts.saveImage(storyId, record.draft)
+                is AiCoverDraftRecord.PromptOnly -> storage.covers.savePrompt(storyId, record.prompt)
+                is AiCoverDraftRecord.Image -> storage.covers.saveImage(storyId, record.draft)
             }
             true
         }
@@ -798,11 +798,11 @@ internal suspend fun AppRepository.persistAiCoverDraftIfStoryExists(
 
 /** The story's persisted pending draft, or null when there is none. */
 internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDraftRecord? =
-    withContext(Dispatchers.IO) { storage.aiCoverDrafts.load(storyId) }
+    withContext(Dispatchers.IO) { storage.covers.load(storyId) }
 
 /** Deletes the story's pending draft; called on Apply, Discard, and AI-cover deletion. */
 internal suspend fun AppRepository.deleteAiCoverDraft(storyId: String) {
-    withContext(Dispatchers.IO) { storage.aiCoverDrafts.delete(storyId) }
+    withContext(Dispatchers.IO) { storage.covers.delete(storyId) }
 }
 
 /** Stores cover context independently from the description selection. */
@@ -951,13 +951,13 @@ internal fun AppRepository.preserveAppliedCover(story: Story): String? =
                 "webp" -> "image/webp"
                 else -> "image/png"
             }
-        storage.aiCoverDrafts.versions.save(story.id, AiCoverDraft("", file.readBytes(), mediaType))
+        storage.covers.versions.save(story.id, AiCoverDraft("", file.readBytes(), mediaType))
     }
 
 internal suspend fun AppRepository.listAiCoverVersions(storyId: String) =
     withContext(Dispatchers.IO) {
         val story = story(storyId)
-        storage.aiCoverDrafts.versions.listForDisplay(
+        storage.covers.versions.listForDisplay(
             storyId,
             story?.let { coverFile(it) },
             story?.let(AiCoverPlanning::isAiCoverActive) == true,

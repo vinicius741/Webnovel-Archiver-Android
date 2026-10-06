@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.cleanup.HtmlCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceCache
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -27,9 +27,9 @@ internal class CoverEvidenceSelector(
     private val readChapter: suspend (Chapter) -> String?,
     private val saveUsage: suspend (AiUsageRecord) -> Unit,
     private val client: JevCoverClient,
-    private val cache: CoverEvidenceCache,
+    private val cache: CoverEvidenceStore,
 ) {
-    constructor(repository: AppRepository, client: JevCoverClient, cache: CoverEvidenceCache) :
+    constructor(repository: AppRepository, client: JevCoverClient, cache: CoverEvidenceStore) :
         this(repository::readChapter, { repository.recordAiUsage(it) }, client, cache)
 
     /** One judged chapter; [cached] marks a content-addressed reuse that did not bill. */
