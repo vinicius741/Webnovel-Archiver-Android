@@ -91,7 +91,7 @@ internal fun ScreenHost.confirmChapterPolish(
     chapter: Chapter,
     onConfirmed: () -> Unit = { startChapterPolishJob(story, chapter) },
 ) {
-    val settings = repository.getAiSettings()
+    val settings = repository.aiSettings.get()
     scope.launch {
         val estimate = estimatePolishCostUsd(story, listOf(chapter))
         app.runOnUiThread {
@@ -126,7 +126,7 @@ internal fun ScreenHost.confirmBatchPolish(
         toast("No unpolished chapters to queue")
         return
     }
-    val settings = repository.getAiSettings()
+    val settings = repository.aiSettings.get()
     scope.launch {
         val estimate = estimatePolishCostUsd(story, chapters)
         app.runOnUiThread {
@@ -177,7 +177,7 @@ private suspend fun ScreenHost.estimatePolishCostUsd(
 ): BigDecimal? =
     withContext(Dispatchers.IO) {
         runCatching {
-            val settings = repository.getAiSettings()
+            val settings = repository.aiSettings.get()
             val catalog = app.appContainer.openRouter.fetchModels()
             val rewriteModel = catalog.firstOrNull { it.id == settings.chapterRewriteModel }
             val verifierModel = catalog.firstOrNull { it.id == settings.chapterVerifierModel }

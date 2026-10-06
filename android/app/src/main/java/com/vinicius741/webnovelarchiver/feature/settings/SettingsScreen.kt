@@ -245,8 +245,8 @@ internal fun ScreenHost.showDataBackup() {
 }
 
 internal fun ScreenHost.showDownloadSettings() {
-    val settings = repository.getSettings()
-    val sourceSettings = repository.getSourceDownloadSettings()
+    val settings = repository.settings.get()
+    val sourceSettings = repository.sourceDownloadSettings.get()
     screen(route = AppRoute.DownloadSettings, title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
         // Parallelism is across sources; each source runs one sequential lane with its delay between starts.
         section("Defaults")
@@ -382,8 +382,8 @@ internal fun ScreenHost.showDownloadSettings() {
                         }
                     }.toMap()
             scope.launch {
-                repository.saveSettings(updatedSettings)
-                repository.saveSourceDownloadSettings(updatedSourceSettings)
+                repository.settings.save(updatedSettings)
+                repository.sourceDownloadSettings.save(updatedSourceSettings)
                 toast("Download settings saved")
             }
         }

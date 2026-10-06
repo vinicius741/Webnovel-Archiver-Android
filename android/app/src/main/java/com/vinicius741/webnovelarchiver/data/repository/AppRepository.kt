@@ -63,9 +63,9 @@ private class AppStorageStoryStore(
 
     override fun saveQueue(jobs: List<DownloadJob>) = storage.saveQueue(jobs)
 
-    override fun displayPreferences(): DisplayPreferences = storage.getDisplayPreferences()
+    override fun displayPreferences(): DisplayPreferences = storage.displayPreferencesDoc.get()
 
-    override fun saveDisplayPreferences(preferences: DisplayPreferences) = storage.saveDisplayPreferences(preferences)
+    override fun saveDisplayPreferences(preferences: DisplayPreferences) = storage.displayPreferencesDoc.set(preferences)
 }
 
 data class DownloadUiSnapshot(
@@ -258,25 +258,29 @@ class AppRepository private constructor(
     /** Adds or replaces one story without rebuilding/re-parsing the rest of the library. */
     suspend fun addOrUpdateStory(story: Story) = upsertStory(story)
 
-    fun getSettings(): AppSettings = requiredStorage.getSettings().copy()
+    /** One cached settings document as callers see it: defensive-copy reads and transactional saves. */
+    inner class Setting<T : Any> internal constructor(
+        private val document: () -> AppStorage.JsonDocument<T>,
+        private val snapshot: (T) -> T = { it },
+    ) {
+        fun get(): T = snapshot(document().get())
 
-    fun getSourceDownloadSettings(): Map<String, SourceDownloadSettings> = requiredStorage.getSourceDownloadSettings().toMap()
+        suspend fun save(value: T) {
+            storageTransaction { document().set(value) }
+        }
+    }
 
-    fun getChapterFilterSettings(): ChapterFilterSettings = requiredStorage.getChapterFilterSettings().copy()
+    val settings = Setting({ requiredStorage.settingsDoc }) { it.copy() }
+    val sourceDownloadSettings = Setting({ requiredStorage.sourceDownloadSettingsDoc }) { it.toMap() }
+    val chapterFilterSettings = Setting({ requiredStorage.chapterFilterSettingsDoc }) { it.copy() }
+    val tabs = Setting({ requiredStorage.tabsDoc }) { tabs -> tabs.map { it.copy() } }
+    val sentenceRemovalList = Setting({ requiredStorage.sentencesDoc }) { it.toList() }
+    val regexRules = Setting({ requiredStorage.regexRulesDoc }) { rules -> rules.map { it.copy() } }
+    val ttsSettings = Setting({ requiredStorage.ttsSettingsDoc }) { it.copy() }
+    val aiSettings = Setting({ requiredStorage.aiSettingsDoc }) { it.copy() }
+    val updateFollowSettings = Setting({ requiredStorage.updateFollowSettingsDoc })
 
     fun getDisplayPreferences(): DisplayPreferences = storyStore.displayPreferences().copy()
-
-    fun getTabs(): List<Tab> = requiredStorage.getTabs().map { it.copy() }
-
-    fun getSentenceRemovalList(): List<String> = requiredStorage.getSentenceRemovalList().toList()
-
-    fun getRegexRules(): List<RegexCleanupRule> = requiredStorage.getRegexRules().map { it.copy() }
-
-    fun getTtsSettings(): TtsSettings = requiredStorage.getTtsSettings().copy()
-
-    fun getAiSettings(): AiSettings = requiredStorage.getAiSettings().copy()
-
-    fun getUpdateFollowSettings(): UpdateFollowSettings = requiredStorage.getUpdateFollowSettings()
 
     fun getStorageHealth(): StorageHealthSnapshot = requiredStorage.storageHealth.value
 
@@ -335,16 +339,8 @@ class AppRepository private constructor(
         libraryGeneration.incrementAndGet()
     }
 
-    suspend fun saveSettings(settings: AppSettings) = storageTransaction { requiredStorage.saveSettings(settings) }
-
-    suspend fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        storageTransaction { requiredStorage.saveSourceDownloadSettings(settings) }
-
-    suspend fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        storageTransaction { requiredStorage.saveChapterFilterSettings(settings) }
-
     suspend fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        storageTransaction { requiredStorage.saveDisplayPreferences(preferences) }
+        storageTransaction { requiredStorage.displayPreferencesDoc.set(preferences) }
 
     /**
      * Read-modify-write display preferences against the LATEST persisted value inside one
@@ -359,19 +355,6 @@ class AppRepository private constructor(
             storyStore.saveDisplayPreferences(normalized)
         }
     }
-
-    suspend fun saveTabs(updated: List<Tab>) = storageTransaction { requiredStorage.saveTabs(updated) }
-
-    suspend fun saveSentenceRemovalList(items: List<String>) = storageTransaction { requiredStorage.saveSentenceRemovalList(items) }
-
-    suspend fun saveRegexRules(updated: List<RegexCleanupRule>) = storageTransaction { requiredStorage.saveRegexRules(updated) }
-
-    suspend fun saveTtsSettings(settings: TtsSettings) = storageTransaction { requiredStorage.saveTtsSettings(settings) }
-
-    suspend fun saveAiSettings(settings: AiSettings) = storageTransaction { requiredStorage.saveAiSettings(settings) }
-
-    suspend fun saveUpdateFollowSettings(settings: UpdateFollowSettings) =
-        storageTransaction { requiredStorage.saveUpdateFollowSettings(settings) }
 
     /** Read-modify-write a story under the shared storage monitor; a null return from [block] aborts. */
     suspend fun updateStory(

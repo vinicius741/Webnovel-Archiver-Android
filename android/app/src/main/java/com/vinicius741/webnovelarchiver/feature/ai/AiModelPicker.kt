@@ -92,7 +92,7 @@ private fun ScreenHost.showAiModelDialog(
             setPadding(0, 0, 0, app.dp(Space.MD))
         },
     )
-    val draft = AiModelSelectionDraft(repository.getAiSettings(), selectedId)
+    val draft = AiModelSelectionDraft(repository.aiSettings.get(), selectedId)
     val search = makeSearchField(app, "Search by name or id")
     dialogView.addView(search)
 

@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
  */
 internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
     val backAction = onBack ?: { showSettings() }
-    val ttsSettings = repository.getTtsSettings()
+    val ttsSettings = repository.ttsSettings.get()
     screen(route = AppRoute.TtsSettings, title = "Voice & Speech", onBack = backAction, scrollable = true) {
         repository.getTtsSession()?.let { session ->
             addView(
@@ -78,7 +78,7 @@ internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
         }
         fullButton("Save TTS", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
             scope.launch {
-                repository.saveTtsSettings(
+                repository.ttsSettings.save(
                     ttsSettings.copy(
                         pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
                         rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
@@ -91,7 +91,7 @@ internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
 }
 
 internal fun ScreenHost.showTtsVoicePicker(onBack: (() -> Unit)? = null) {
-    val currentVoice = repository.getTtsSettings().voiceIdentifier
+    val currentVoice = repository.ttsSettings.get().voiceIdentifier
 
     fun showLoadedVoices(voices: List<VoiceInfo>) {
         if (voices.isEmpty()) {
@@ -120,8 +120,8 @@ private fun ScreenHost.saveTtsVoice(
     onBack: (() -> Unit)?,
 ) {
     scope.launch {
-        val current = repository.getTtsSettings()
-        repository.saveTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
+        val current = repository.ttsSettings.get()
+        repository.ttsSettings.save(current.copy(voiceIdentifier = voice?.identifier))
         showTtsSettings(onBack)
     }
 }

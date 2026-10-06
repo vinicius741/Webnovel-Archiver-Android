@@ -127,13 +127,13 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 null
             }
 
-        var chapterFilter = repository.getChapterFilterSettings().filterMode
+        var chapterFilter = repository.chapterFilterSettings.get().filterMode
         var chapterQuery = ""
 
         var pick: (String) -> Unit = {}
         pick = { mode ->
             chapterFilter = mode
-            scope.launch { repository.saveChapterFilterSettings(ChapterFilterSettings(mode)) }
+            scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
             renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
             renderChapterList(
                 story,

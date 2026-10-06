@@ -53,8 +53,8 @@ private fun ScreenHost.runCleanup(
     setStoryOperation(story.id, StoryOperationKind.CLEANUP, "Processing...")
     scope.launch(Dispatchers.IO) {
         try {
-            val sentenceRemoval = repository.getSentenceRemovalList()
-            val regexRules = repository.getRegexRules()
+            val sentenceRemoval = repository.sentenceRemovalList.get()
+            val regexRules = repository.regexRules.get()
             // Persist the stale marker before the first possible chapter modification:
             // cancellation, process death, or a later failure must never leave modified chapter
             // files under an EPUB still marked current, and a later failure must not clear it.
@@ -127,7 +127,7 @@ private fun ScreenHost.runCleanup(
 
 internal fun ScreenHost.generateConfiguredEpub(story: Story) {
     val latest = repository.story(story.id) ?: return
-    val currentConfig = EpubConfigPlanning.resolve(latest, repository.getSettings().maxChaptersPerEpub)
+    val currentConfig = EpubConfigPlanning.resolve(latest, repository.settings.get().maxChaptersPerEpub)
     val selectedEntries = EpubSelection.selectDownloadedChapters(latest, currentConfig)
     if (selectedEntries.isEmpty()) {
         toast("No downloaded chapters in selected EPUB range")
@@ -136,7 +136,7 @@ internal fun ScreenHost.generateConfiguredEpub(story: Story) {
     val run = run@{
         // Downloads can complete while the confirmation dialog is open. Include those chapters too.
         val current = repository.story(story.id) ?: return@run
-        val configAtGeneration = EpubConfigPlanning.resolve(current, repository.getSettings().maxChaptersPerEpub)
+        val configAtGeneration = EpubConfigPlanning.resolve(current, repository.settings.get().maxChaptersPerEpub)
         val entries = EpubSelection.selectDownloadedChapters(current, configAtGeneration)
         if (entries.isEmpty()) {
             toast("No downloaded chapters in selected EPUB range")
@@ -167,7 +167,7 @@ internal fun ScreenHost.generateConfiguredEpub(story: Story) {
 internal fun ScreenHost.generateEpub(
     story: Story,
     chapters: List<Chapter>,
-    config: EpubConfig = EpubConfigPlanning.resolve(story, repository.getSettings().maxChaptersPerEpub),
+    config: EpubConfig = EpubConfigPlanning.resolve(story, repository.settings.get().maxChaptersPerEpub),
     originalChapterNumbers: List<Int>? = null,
 ) {
     if (storyOperation != null) {

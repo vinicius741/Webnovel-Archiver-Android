@@ -25,7 +25,7 @@ internal class BackupExporter(
                 "version" to 2,
                 "exportDate" to Instant.now().toString(),
                 "library" to library,
-                "tabs" to storage.getTabs(),
+                "tabs" to storage.tabsDoc.get(),
             )
         val json = gson.toJson(payload)
         BackupExportPlanning.validateJsonBackup(sourceLibrary.size, json.toByteArray().size.toLong())?.let { error(it) }
@@ -39,8 +39,8 @@ internal class BackupExporter(
             mapOf(
                 "version" to 1,
                 "exportDate" to Instant.now().toString(),
-                "sentenceRemovalList" to storage.getSentenceRemovalList(),
-                "regexCleanupRules" to storage.getRegexRules(),
+                "sentenceRemovalList" to storage.sentencesDoc.get(),
+                "regexCleanupRules" to storage.regexRulesDoc.get(),
             )
         return File(storage.backupRoot, "webnovel_cleanup_rules_${System.currentTimeMillis()}.json").also {
             AtomicFileWrites.writeText(it, gson.toJson(payload))
@@ -231,17 +231,17 @@ internal class BackupExporter(
         )
 
     private fun fullConfig(): Map<String, Any?> {
-        val displayPreferences = storage.getDisplayPreferences()
+        val displayPreferences = storage.displayPreferencesDoc.get()
         return mapOf(
-            "settings" to storage.getSettings(),
-            "sourceDownloadSettings" to storage.getSourceDownloadSettings(),
-            "chapterFilterSettings" to storage.getChapterFilterSettings(),
+            "settings" to storage.settingsDoc.get(),
+            "sourceDownloadSettings" to storage.sourceDownloadSettingsDoc.get(),
+            "chapterFilterSettings" to storage.chapterFilterSettingsDoc.get(),
             "displayPreferences" to displayPreferences,
-            "tabs" to storage.getTabs(),
-            "sentenceRemovalList" to storage.getSentenceRemovalList(),
-            "regexCleanupRules" to storage.getRegexRules(),
-            "updateFollowSettings" to storage.getUpdateFollowSettings(),
-            "ttsSettings" to storage.getTtsSettings(),
+            "tabs" to storage.tabsDoc.get(),
+            "sentenceRemovalList" to storage.sentencesDoc.get(),
+            "regexCleanupRules" to storage.regexRulesDoc.get(),
+            "updateFollowSettings" to storage.updateFollowSettingsDoc.get(),
+            "ttsSettings" to storage.ttsSettingsDoc.get(),
             "ttsSession" to storage.getTtsSession(),
             // R11: per-story resume positions, so stories whose playback was explicitly stopped
             // (session cleared, position kept) still resume where the listener left off.

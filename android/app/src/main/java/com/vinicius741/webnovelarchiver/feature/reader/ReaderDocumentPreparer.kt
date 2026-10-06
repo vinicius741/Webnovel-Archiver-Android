@@ -193,9 +193,9 @@ private class RepositoryReaderDocumentSource(
         chapter: Chapter,
     ): ResolvedChapterContent = contentResolver.resolve(storyId, chapter)
 
-    override fun ttsSettings(): TtsSettings = repository.getTtsSettings()
+    override fun ttsSettings(): TtsSettings = repository.ttsSettings.get()
 
-    override fun regexRules(): List<RegexCleanupRule> = repository.getRegexRules()
+    override fun regexRules(): List<RegexCleanupRule> = repository.regexRules.get()
 
     override fun displayPreferences(): DisplayPreferences = repository.getDisplayPreferences()
 

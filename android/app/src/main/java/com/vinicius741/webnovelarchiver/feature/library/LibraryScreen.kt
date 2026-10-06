@@ -39,7 +39,7 @@ internal fun ScreenHost.showLibrary() {
     var stories: List<Story> = repository.library()
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     screen(
         route = AppRoute.Library,
         title = "Library",

@@ -262,8 +262,8 @@ class DownloadEngine(
                         network = network,
                         requestGate = requestGate,
                     ),
-                    storage.getSentenceRemovalList(),
-                    storage.getRegexRules(),
+                    storage.sentencesDoc.get(),
+                    storage.regexRulesDoc.get(),
                 )
             if (!acceptsWorkerResults.get()) return
             if (startedGeneration != repository.libraryGeneration()) return
@@ -379,7 +379,7 @@ internal class DownloadRequestGateFactory(
                 claimSourcePermission = claimSourcePermission,
             ) {
                 ensureJobActive(job.id)
-                val settings = repository.getSettings()
+                val settings = repository.settings.get()
                 DownloadScheduler.settingsFor(
                     providerName = sourceId,
                     globalSettings =
@@ -388,7 +388,7 @@ internal class DownloadRequestGateFactory(
                             delay = settings.downloadDelay,
                             delayMax = settings.downloadDelayMax,
                         ),
-                    sourceSettings = repository.getSourceDownloadSettings(),
+                    sourceSettings = repository.sourceDownloadSettings.get(),
                 )
             }
         }

@@ -84,7 +84,7 @@ internal fun ScreenHost.importFromBrowser(url: String) {
         return
     }
 
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     if (tabs.isEmpty()) {
         syncStory(url, null)
     } else {

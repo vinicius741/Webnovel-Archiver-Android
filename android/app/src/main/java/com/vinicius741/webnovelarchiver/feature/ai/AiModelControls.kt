@@ -65,7 +65,7 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
         listOf(
             ModelRow(
                 label = "Description model",
-                current = { repository.getAiSettings().descriptionModel },
+                current = { repository.aiSettings.get().descriptionModel },
                 save = { settings, id, effort ->
                     settings.copy(
                         descriptionModel = id,
@@ -76,13 +76,13 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
             ),
             ModelRow(
                 label = "Cover image model",
-                current = { repository.getAiSettings().imageModel },
+                current = { repository.aiSettings.get().imageModel },
                 save = { settings, id, _ -> settings.copy(imageModel = id) },
                 image = true,
             ),
             ModelRow(
                 label = "Rewrite model",
-                current = { repository.getAiSettings().chapterRewriteModel },
+                current = { repository.aiSettings.get().chapterRewriteModel },
                 save = { settings, id, effort ->
                     settings.copy(
                         chapterRewriteModel = id,
@@ -91,12 +91,12 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                     )
                 },
                 recommended = { AiModelPresentation.isKnownGoodRewriteModel(it.id) },
-                excluded = { repository.getAiSettings().chapterVerifierModel },
+                excluded = { repository.aiSettings.get().chapterVerifierModel },
                 collisionMessage = "The rewrite model must differ from the verifier",
             ),
             ModelRow(
                 label = "Verifier model",
-                current = { repository.getAiSettings().chapterVerifierModel },
+                current = { repository.aiSettings.get().chapterVerifierModel },
                 save = { settings, id, effort ->
                     settings.copy(
                         chapterVerifierModel = id,
@@ -104,7 +104,7 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                             settings.reasoningEfforts + (id to requireNotNull(effort)),
                     )
                 },
-                excluded = { repository.getAiSettings().chapterRewriteModel },
+                excluded = { repository.aiSettings.get().chapterRewriteModel },
                 collisionMessage = "The verifier must differ from the rewrite model",
             ),
         )
@@ -126,8 +126,8 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                             toast(row.collisionMessage)
                             return@addAiModelRow
                         }
-                        val settings = repository.getAiSettings()
-                        repository.saveAiSettings(row.save(settings, picked.modelId, picked.reasoningEffort))
+                        val settings = repository.aiSettings.get()
+                        repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
                         refreshAiModelFields()
                     }
             }
@@ -184,7 +184,7 @@ private fun ScreenHost.addAiModelRow(
         val model = modelCatalogCache?.firstOrNull { it.id == modelId }
         detailView.visibility = if (!image && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
         detailView.text =
-            "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.getAiSettings(), modelId, model))
+            "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.aiSettings.get(), modelId, model))
     }
     refresh()
     return refresh

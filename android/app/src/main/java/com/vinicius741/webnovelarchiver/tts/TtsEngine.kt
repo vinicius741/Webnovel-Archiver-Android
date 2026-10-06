@@ -210,8 +210,8 @@ class TtsEngine(
         val request = commandVersion.incrementAndGet()
         scope.launch {
             awaitRepositoryReady()
-            val settings = repository.getTtsSettings().copy(rate = rate.coerceIn(0.5f, 3.0f))
-            runCatching { repository.saveTtsSettings(settings) }
+            val settings = repository.ttsSettings.get().copy(rate = rate.coerceIn(0.5f, 3.0f))
+            runCatching { repository.ttsSettings.save(settings) }
                 .onFailure { Timber.e(it, "TTS rate persist failed") }
             stateMutex.withLock {
                 activeSettings = settings

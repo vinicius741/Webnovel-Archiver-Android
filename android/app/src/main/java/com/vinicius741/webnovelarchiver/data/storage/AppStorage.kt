@@ -116,6 +116,7 @@ class AppStorage(
         private val type: Type,
         private val default: () -> T,
         private val normalize: (T) -> T = { it },
+        private val beforeWrite: (T) -> T = { it },
     ) {
         private val _state by lazy { MutableStateFlow(loadLocked()) }
 
@@ -125,7 +126,7 @@ class AppStorage(
 
         fun set(value: T) {
             synchronized(this@AppStorage) {
-                val normalized = normalize(value)
+                val normalized = normalize(beforeWrite(value))
                 write(file, normalized)
                 _state.value = normalized
             }
@@ -138,23 +139,23 @@ class AppStorage(
         private fun loadLocked(): T = normalize(readOfType(file, type) ?: default())
     }
 
-    private val settingsDoc =
+    internal val settingsDoc =
         JsonDocument(settingsFile, typeOf<AppSettings>(), { AppSettings() }, PreferenceNormalization::appSettings)
 
-    private val sourceDownloadSettingsDoc =
-        JsonDocument<MutableMap<String, SourceDownloadSettings>>(
+    internal val sourceDownloadSettingsDoc =
+        JsonDocument<Map<String, SourceDownloadSettings>>(
             sourceSettingsFile,
             typeOf<MutableMap<String, SourceDownloadSettings>>(),
             { mutableMapOf() },
             PreferenceNormalization::sourceDownloadSettings,
         )
 
-    private val chapterFilterSettingsDoc =
+    internal val chapterFilterSettingsDoc =
         JsonDocument(chapterFilterFile, typeOf<ChapterFilterSettings>(), {
             ChapterFilterSettings()
         }, PreferenceNormalization::chapterFilterSettings)
 
-    private val displayPreferencesDoc =
+    internal val displayPreferencesDoc =
         JsonDocument(
             displayPreferencesFile,
             typeOf<DisplayPreferences>(),
@@ -162,24 +163,27 @@ class AppStorage(
             PreferenceNormalization::displayPreferences,
         )
 
-    private val tabsDoc = JsonDocument<MutableList<Tab>>(tabsFile, typeOf<MutableList<Tab>>(), { mutableListOf() })
+    internal val tabsDoc =
+        JsonDocument<List<Tab>>(tabsFile, typeOf<MutableList<Tab>>(), { mutableListOf() }, beforeWrite = { tabs ->
+            tabs.sortedBy { it.order }
+        })
 
-    private val sentencesDoc =
-        JsonDocument<MutableList<String>>(sentencesFile, typeOf<MutableList<String>>(), { DefaultCleanup.sentences.toMutableList() })
+    internal val sentencesDoc =
+        JsonDocument<List<String>>(sentencesFile, typeOf<MutableList<String>>(), { DefaultCleanup.sentences.toMutableList() })
 
-    private val regexRulesDoc =
-        JsonDocument<MutableList<RegexCleanupRule>>(regexFile, typeOf<MutableList<RegexCleanupRule>>(), {
+    internal val regexRulesDoc =
+        JsonDocument<List<RegexCleanupRule>>(regexFile, typeOf<MutableList<RegexCleanupRule>>(), {
             mutableListOf()
         }, RegexRuleCleanup::sanitizeRegexRules)
 
-    private val updateFollowSettingsDoc =
+    internal val updateFollowSettingsDoc =
         JsonDocument(updateFollowSettingsFile, typeOf<UpdateFollowSettings>(), {
             UpdateFollowSettings()
         }, PreferenceNormalization::updateFollowSettings)
 
-    private val ttsSettingsDoc = JsonDocument(ttsFile, typeOf<TtsSettings>(), { TtsSettings() }, PreferenceNormalization::ttsSettings)
+    internal val ttsSettingsDoc = JsonDocument(ttsFile, typeOf<TtsSettings>(), { TtsSettings() }, PreferenceNormalization::ttsSettings)
 
-    private val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
+    internal val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
 
     private inline fun <reified T> typeOf(): Type = object : TypeToken<T>() {}.type
 
@@ -311,46 +315,6 @@ class AppStorage(
         chapterRewrites.invalidateAll()
         reloadJsonDocuments()
     }
-
-    fun getSettings(): AppSettings = settingsDoc.get()
-
-    fun saveSettings(settings: AppSettings) = settingsDoc.set(settings)
-
-    fun getSourceDownloadSettings(): MutableMap<String, SourceDownloadSettings> = sourceDownloadSettingsDoc.get()
-
-    fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) = sourceDownloadSettingsDoc.set(settings.toMutableMap())
-
-    fun getChapterFilterSettings(): ChapterFilterSettings = chapterFilterSettingsDoc.get()
-
-    fun saveChapterFilterSettings(settings: ChapterFilterSettings) = chapterFilterSettingsDoc.set(settings)
-
-    fun getDisplayPreferences(): DisplayPreferences = displayPreferencesDoc.get()
-
-    fun saveDisplayPreferences(preferences: DisplayPreferences) = displayPreferencesDoc.set(preferences)
-
-    fun getTabs(): MutableList<Tab> = tabsDoc.get()
-
-    fun saveTabs(tabs: List<Tab>) = tabsDoc.set(tabs.sortedBy { it.order }.toMutableList())
-
-    fun getSentenceRemovalList(): MutableList<String> = sentencesDoc.get()
-
-    fun saveSentenceRemovalList(items: List<String>) = sentencesDoc.set(items.toMutableList())
-
-    fun getRegexRules(): MutableList<RegexCleanupRule> = regexRulesDoc.get()
-
-    fun saveRegexRules(rules: List<RegexCleanupRule>) = regexRulesDoc.set(rules.toMutableList())
-
-    fun getUpdateFollowSettings(): UpdateFollowSettings = updateFollowSettingsDoc.get()
-
-    fun saveUpdateFollowSettings(settings: UpdateFollowSettings) = updateFollowSettingsDoc.set(settings)
-
-    fun getTtsSettings(): TtsSettings = ttsSettingsDoc.get()
-
-    fun saveTtsSettings(settings: TtsSettings) = ttsSettingsDoc.set(settings)
-
-    fun getAiSettings(): AiSettings = aiSettingsDoc.get()
-
-    fun saveAiSettings(settings: AiSettings) = aiSettingsDoc.set(settings)
 
     fun getTtsSession(): TtsSession? = read(sessionFile)
 

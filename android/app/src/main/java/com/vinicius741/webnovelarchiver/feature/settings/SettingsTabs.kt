@@ -31,7 +31,7 @@ import java.util.UUID
 
 internal fun ScreenHost.showTabs() {
     screen(route = AppRoute.Tabs, title = "Manage Tabs", onBack = { showSettings() }, scrollable = true) {
-        val tabs = TabPlanning.normalizeOrders(repository.getTabs())
+        val tabs = TabPlanning.normalizeOrders(repository.tabs.get())
         text(
             "Tabs group novels on the Library screen. Create one (e.g. \"Reading\", \"Finished\") and assign novels to it.",
             Type.BODY_SMALL,
@@ -51,7 +51,7 @@ internal fun ScreenHost.showTabs() {
                     )
                 if (next.size > tabs.size) {
                     scope.launch {
-                        repository.saveTabs(next)
+                        repository.tabs.save(next)
                         showTabs()
                     }
                 }
@@ -88,7 +88,7 @@ internal fun ScreenHost.showTabs() {
                         tabActionButton(R.drawable.wna_up, "Move ${tab.name} up", enabled = index > 0) {
                             if (index > 0) {
                                 scope.launch {
-                                    repository.saveTabs(TabPlanning.move(tabs, index, index - 1))
+                                    repository.tabs.save(TabPlanning.move(tabs, index, index - 1))
                                     showTabs()
                                 }
                             }
@@ -96,7 +96,7 @@ internal fun ScreenHost.showTabs() {
                         tabActionButton(R.drawable.wna_down, "Move ${tab.name} down", enabled = index < tabs.lastIndex) {
                             if (index < tabs.lastIndex) {
                                 scope.launch {
-                                    repository.saveTabs(TabPlanning.move(tabs, index, index + 1))
+                                    repository.tabs.save(TabPlanning.move(tabs, index, index + 1))
                                     showTabs()
                                 }
                             }
@@ -104,7 +104,7 @@ internal fun ScreenHost.showTabs() {
                         tabActionButton(R.drawable.wna_edit, "Rename ${tab.name}") {
                             showRenameTabPrompt(tab.name) { renamed ->
                                 scope.launch {
-                                    repository.saveTabs(TabPlanning.rename(tabs, tab.id, renamed))
+                                    repository.tabs.save(TabPlanning.rename(tabs, tab.id, renamed))
                                     showTabs()
                                 }
                             }
@@ -118,7 +118,7 @@ internal fun ScreenHost.showTabs() {
                                             repository.addOrUpdateStory(story)
                                         }
                                     }
-                                    repository.saveTabs(TabPlanning.delete(tabs, tab.id))
+                                    repository.tabs.save(TabPlanning.delete(tabs, tab.id))
                                     showTabs()
                                 }
                             }

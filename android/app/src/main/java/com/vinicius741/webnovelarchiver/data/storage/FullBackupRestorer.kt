@@ -150,7 +150,7 @@ internal class FullBackupRestorer(
         // Full backups deliberately exclude the OpenRouter key. The commit replaces the complete
         // storage root, so explicitly carry the current device-local settings into the staged tree
         // rather than clearing them as a side effect of restoring the library.
-        stagingWriter.writeDeviceLocalAiSettings(staged, storage.getAiSettings())
+        stagingWriter.writeDeviceLocalAiSettings(staged, storage.aiSettingsDoc.get())
         stagingWriter.writeDeviceLocalAiUsage(staged, storage.aiUsage.readOrThrow())
         FullBackupRestorePlanning.applyRestoredChapterFiles(stories, payload.chapterFiles) { path ->
             File(staged, path).takeIf(File::exists)?.toRelativeString(staged)

@@ -45,8 +45,8 @@ internal fun AppStorage.migrateQueueAndSettingsSourceIdentities(
     }
     if (queueChanged) saveQueue(jobs)
 
-    val currentSettings = getSourceDownloadSettings()
+    val currentSettings = sourceDownloadSettingsDoc.get()
     val migratedSettings =
         PreferenceNormalization.migrateSourceDownloadSettingKeys(currentSettings, sourceIdForSettingKey)
-    if (migratedSettings != currentSettings) saveSourceDownloadSettings(migratedSettings)
+    if (migratedSettings != currentSettings) sourceDownloadSettingsDoc.set(migratedSettings)
 }

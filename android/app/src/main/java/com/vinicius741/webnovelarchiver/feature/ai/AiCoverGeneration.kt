@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
  * drafts — every call bills the user's OpenRouter key.
  */
 internal fun ScreenHost.generateAiCoverDraft(story: Story) {
-    val settings = repository.getAiSettings()
+    val settings = repository.aiSettings.get()
     val hasApplied = story.aiCoverPath != null
     val hasPendingDraft = aiControlsScreenState.coverDrafts[story.id] != null
     val hasPendingPrompt = aiControlsScreenState.coverPrompts[story.id] != null
@@ -185,7 +185,7 @@ internal fun ScreenHost.generateAiCoverImageDraft(
         toast("Enter an image description")
         return
     }
-    val model = repository.getAiSettings().imageModel
+    val model = repository.aiSettings.get().imageModel
     val message =
         "Generate the image with $model? This calls OpenRouter and uses your API credits. " +
             "Earlier covers remain in Saved covers."

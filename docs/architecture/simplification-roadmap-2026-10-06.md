@@ -72,8 +72,8 @@ find android/app/src/main/java -name '*.kt' | xargs wc -l | tail -1
 ## Master checklist
 
 - [x] Phase 1: Quick wins (file cap, planning ceremony, comment noise) — commits `822f4ccb`..`d3c66a8c`
-- [x] Phase 2: One AI job pipeline, fewer AI stores — commits `61021660`..`7d745389`
-- [x] Phase 3: Generic cached settings documents — `78a26400`
+- [x] Phase 2: One AI job pipeline, fewer AI stores — commits `db499773`..`7d745389`
+- [x] Phase 3: Generic cached settings documents — `78a26400`, finished in the follow-up `Setting` handle commit
 - [ ] Phase 4: Screen architecture (biggest payoff)
 - [ ] Phase 5: Real storage engine for library and queue
 - [ ] Phase 6: TTS on Media3 (optional)
@@ -159,8 +159,8 @@ and delete their tests. Reword the `android/AGENTS.md` rule to "non-trivial deci
 **Problem.** 48 files cite review IDs (`(R05)`, `(R26)`, ...) and many comments narrate why an earlier
 design changed. That history belongs in git and in the review documents.
 
-- [x] Strip `(Rnn)` tags, keeping the sentence only when it explains a current invariant (`61b49660`, 103 tags in 41 files)
-- [x] Remove comments that describe past designs ("previously", "used to", "moved from") (`61b49660`, six reworded)
+- [x] Strip `(Rnn)` tags, keeping the sentence only when it explains a current invariant (`9185a705`, 103 tags in 41 files)
+- [x] Remove comments that describe past designs ("previously", "used to", "moved from") (`9185a705`, six reworded)
 
 ### 1.4 Small duplicate helpers
 
@@ -193,8 +193,8 @@ After renaming, each pair differs by only ~120 lines; the rewrite service's KDoc
 renders whichever jobs are active, and one UI bridge. Feature-specific parts become small strategy
 objects (run the job, persist the result, describe progress and outcome notifications).
 
-- [x] Design the shared job contract (queue, active jobs, events, cancellation) — `AiJobCoordinator` in `ai/AiJobCoordinator.kt` (`61021660`)
-- [x] Implement the generic coordinator + service + bridge (`61021660`, lifecycle tests in `0c46e576`)
+- [x] Design the shared job contract (queue, active jobs, events, cancellation) — `AiJobCoordinator` in `ai/AiJobCoordinator.kt` (`db499773`)
+- [x] Implement the generic coordinator + service + bridge (`db499773`, lifecycle tests in `0c46e576`)
 - [x] Port cover generation; emulator QA (progress, outcome notification, cancel, process death)
   - Verified on webnovel_api36: bogus-key cover job → typed invalid-key failure, ongoing slot cleared,
     outcome notification 1004 "AI cover failed", service self-stopped; FGS start logged with the
@@ -204,7 +204,7 @@ objects (run the job, persist the result, describe progress and outcome notifica
   - Verified: real-key polish ran for minutes under the service (process kept alive), OpenRouter
     429 surfaced as outcome notification 1006 "Chapter polish failed" with the slot released; queue
     mechanics covered by `AiJobCoordinatorTest` instead of extra billable calls.
-- [x] Delete the old six files; update manifest and `docs/ai/` (`61021660`)
+- [x] Delete the old six files; update manifest and `docs/ai/` (`db499773`)
 
 ### 2.2 Consolidate cover storage
 
@@ -256,13 +256,24 @@ an in-memory `StateFlow<T>`. `AppStorage`/`AppRepository` declare one property p
 - [x] Migrate settings, display preferences, tabs, cleanup rules, TTS, AI, follow settings (`78a26400`)
   - Queue, TTS session, TTS positions, and AI usage stay explicit: read-modify-write or nullable
     semantics that a simple cached document does not model.
-- [x] Delete the per-setting getters, savers, and cached fields (`78a26400`)
-  - The ten repository `@Volatile` mirrors and re-cache lines are gone; `AppStorage`'s getters
-    remain as one-line delegates because backup export/import and restore read through them.
+- [x] Delete the per-setting getters, savers, and cached fields (`78a26400` + follow-up)
+  - `78a26400` removed the ten repository `@Volatile` mirrors and re-cache lines but left 20
+    one-line `get*/save*` delegates in `AppStorage` and 18 wrappers in `AppRepository`.
+  - The follow-up deleted both sets: storage callers (backup export/import, restore, source-id
+    migration, download engine) use the `internal` `*Doc` properties directly, and the repository
+    exposes one `Setting<T>` handle per document (`repository.aiSettings.get()` /
+    `.save(...)`) with the same defensive-copy reads and transactional saves. Adding a setting is
+    now one document line in `AppStorage` plus one handle line in `AppRepository`.
+  - Display preferences keep their explicit repository functions: they route through
+    `RepositoryStoryStore` (fakeable in tests) and have the read-modify-write `updateDisplayPreferences`.
+  - Side fix: JSON backup tab merge no longer appends to the document's cached list in place.
 - [x] Confirm JSON output is byte-compatible (or at least read-compatible) with old files and backups
   - Writes reuse the identical `write()` (envelope + pretty Gson). On-device proof: the seeded
     239-novel/18k-chapter library hydrates with an empty `storageIssues` list, every settings
     screen renders stored values, and a UI edit round-trips into the same file shape.
+  - Re-verified after the follow-up on webnovel_api36: all settings JSON files byte-identical
+    across install + launch, AI Settings renders stored values, and a Save round-trips to disk
+    and survives a cold restart.
 
 ---
 
@@ -291,7 +302,7 @@ holds five nullable view refs so `DetailsDownloadObserver.kt` can patch them.
 Checklist:
 
 - [x] Decide A or B (or B now, A later) and update `android/AGENTS.md`
-  - **B now, A later** (`5fc4b8b0` follow-up docs commit): per-screen controller/state classes with
+  - **B now, A later** (`a381ab94`): per-screen controller/state classes with
     no new dependencies; Compose remains a possible later migration once the structural debt is
     paid. Recorded in `android/AGENTS.md` Architecture Rules.
 - [ ] Pilot on one high-churn screen (Details recommended), with emulator fold QA
@@ -386,13 +397,23 @@ These areas are complex because the problem is, and are out of scope for this ro
 | 2026-10-06 | Baseline | `9131e1f8` | 52,700 | Roadmap written |
 | 2026-10-06 | Phase 1.1 file cap → 1,000 + merges | `822f4ccb`..`c35deffa` | 52,545 | 22 split files merged back; baseline emptied |
 | 2026-10-06 | Phase 1.2 planning inlines | `de4e7a0f` | — | 4 inlined, 10 kept with rationale |
-| 2026-10-06 | Phase 1.3 comment history | `61b49660` | — | 103 `(Rnn)` tags in 41 files |
+| 2026-10-06 | Phase 1.3 comment history | `9185a705` | — | 103 `(Rnn)` tags in 41 files |
 | 2026-10-06 | Phase 1.4 shared helpers | `d3c66a8c` | — | SharedGson, sha256Hex, AtomicFileWrites routing |
-| 2026-10-06 | Phase 2.1 generic AI job pipeline | `61021660`, `0c46e576` | — | One coordinator/service/bridge; emulator QA + lifecycle tests |
+| 2026-10-06 | Phase 2.1 generic AI job pipeline | `db499773`, `0c46e576` | — | One coordinator/service/bridge; emulator QA + lifecycle tests |
 | 2026-10-06 | Phase 2.2 cover stores | `7b47289f` | — | CoverStore + CoverEvidenceStore; layouts unchanged |
 | 2026-10-06 | Phase 2.3 model picker | `7d745389` | — | Table-driven rows; shared picker pieces |
 | 2026-10-06 | Phase 3 JsonDocument | `78a26400` | 52,391 | 10 documents; repository mirrors deleted; on-device read/write proof |
-| 2026-10-06 | Phase 4 decision / 5 no-go / 6 defer | docs | — | B now A later; Room no-go until after Phase 4; Media3 deferred |
+| 2026-10-06 | Phase 4 decision / 5 no-go / 6 defer | `a381ab94` | — | B now A later; Room no-go until after Phase 4; Media3 deferred |
+| 2026-10-06 | Review fixes (AI) | `4a026e4a` | 52,414 | Fixed two regressions from Phase 2: cached evidence selections off the render path; rewrite notification title |
+| 2026-10-06 | Phase 3 finish: `Setting` handles | follow-up | 52,360 | 20 storage delegates + 18 repository wrappers deleted |
 
-Net after Phases 1–3: 52,700 → 52,391 lines in 379 → 351 files, with the structural moves (fewer
-files, one pipeline, one settings mechanism) carrying more weight than the raw line count.
+Net after Phases 1–3: 52,700 → 52,360 lines (−0.6%) in 379 → 352 files.
+
+**Line-savings targets were missed.** Phase 2 estimated ~1,000+ lines saved and delivered about
+−145; Phase 3 estimated a few hundred and delivered about −17 (after the follow-up). The estimates
+assumed more duplicated code than the merges actually removed: most of the pipeline and store code
+was feature-specific and moved rather than disappeared. What Phases 1–3 did deliver is structural
+(cap rule reversed, 28 fewer files, one AI job pipeline, one settings mechanism). Real size
+reduction has to come from Phase 4. Measure the Details pilot's lines before/after before
+committing to the per-screen migration; if the pilot does not shrink Details meaningfully,
+revisit the option A/B decision.

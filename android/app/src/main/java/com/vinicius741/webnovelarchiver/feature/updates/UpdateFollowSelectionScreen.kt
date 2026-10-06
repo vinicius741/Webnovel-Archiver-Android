@@ -36,10 +36,10 @@ internal fun ScreenHost.showUpdateFollowSelection() {
     activeStory = null
     rerender = { showUpdateFollowSelection() }
     val stories = UpdateTrackerPlanning.followableStories(repository.library())
-    val threshold = repository.getUpdateFollowSettings().thresholdChapters
+    val threshold = repository.updateFollowSettings.get().thresholdChapters
     val followedCount = FollowedNovelPlanning.followedStories(stories, threshold).size
     val state = updateFollowSelectionState
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     if (state.selectedTabId != null &&
         state.selectedTabId != LibraryTabSelection.ALL_TAB_ID &&
         tabs.none { it.id == state.selectedTabId }
@@ -125,7 +125,7 @@ internal fun ScreenHost.showUpdateFollowSelection() {
             .button(UpdateTrackerPlanning.thresholdLabel(threshold), Btn.TONAL) {
                 showUpdateThresholdDialog(threshold) { saved ->
                     scope.launch {
-                        repository.saveUpdateFollowSettings(UpdateFollowSettings(saved))
+                        repository.updateFollowSettings.save(UpdateFollowSettings(saved))
                         rerender?.invoke()
                     }
                 }

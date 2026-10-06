@@ -36,7 +36,7 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showAddStory() {
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     // URL text + fetch status live in ScreenHost state so they survive status-driven re-renders;
     // the flow stays on this screen (button flips to "Fetching...", spinner + status line appear).
     // Null status = fresh open: clear any leftover URL draft. Non-null = mid-fetch re-render.

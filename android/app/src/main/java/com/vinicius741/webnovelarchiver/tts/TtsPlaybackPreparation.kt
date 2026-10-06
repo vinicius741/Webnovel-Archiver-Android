@@ -240,9 +240,9 @@ private class RepositoryTtsPlaybackSource(
         chapter: Chapter,
     ): String? = contentResolver.resolve(storyId, chapter).html
 
-    override fun settings(): TtsSettings = repository.getTtsSettings()
+    override fun settings(): TtsSettings = repository.ttsSettings.get()
 
-    override fun regexRules(): List<RegexCleanupRule> = repository.getRegexRules()
+    override fun regexRules(): List<RegexCleanupRule> = repository.regexRules.get()
 
     override fun session(): TtsSession? = repository.getTtsSession()
 
