@@ -3,10 +3,12 @@ package com.vinicius741.webnovelarchiver.feature.reader
 import android.view.Gravity
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.clearTtsStoryPosition
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
@@ -18,6 +20,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
@@ -389,4 +392,48 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         transportBar = transport
         addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
     }
+}
+
+internal fun ScreenHost.recordReaderPreparingForPerf(
+    storyId: String,
+    chapterId: String,
+) {
+    if (BuildConfig.DEBUG) PerfInstrumentation.recordReaderPreparing(storyId, chapterId)
+}
+
+internal suspend fun ScreenHost.prepareReaderDocumentWithPerf(
+    storyId: String,
+    chapterId: String,
+    palette: ReaderDocumentPalette,
+): ReaderPreparation {
+    val startedNanos = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+    val preparation = ReaderDocumentPreparer(repository).prepare(storyId, chapterId, palette)
+    if (BuildConfig.DEBUG) {
+        val outcome =
+            when (preparation) {
+                is ReaderPreparation.Ready -> "ready"
+                ReaderPreparation.Missing -> "missing"
+                is ReaderPreparation.Failed -> "failed"
+            }
+        PerfInstrumentation.recordReaderPrepareDone(outcome, (System.nanoTime() - startedNanos) / 1_000_000)
+    }
+    return preparation
+}
+
+/** Release never sets a WebViewClient; debug sessions mark onPageFinished as content painted. */
+internal fun attachReaderPaintTracking(reader: WebView) {
+    if (!BuildConfig.DEBUG) return
+    reader.webViewClient =
+        object : WebViewClient() {
+            override fun onPageFinished(
+                view: WebView?,
+                url: String?,
+            ) {
+                PerfInstrumentation.recordReaderPainted()
+            }
+        }
+}
+
+internal fun recordReaderPresentedForPerf() {
+    if (BuildConfig.DEBUG) PerfInstrumentation.recordReaderPresented()
 }

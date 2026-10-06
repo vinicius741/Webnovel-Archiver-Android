@@ -43,6 +43,8 @@ import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
+import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
+import com.vinicius741.webnovelarchiver.perf.PerfRecorder
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -396,4 +398,20 @@ class MainActivity :
         const val STATE_SCROLL_KEYS = "navigation.scroll_keys"
         const val STATE_SCROLL_VALUES = "navigation.scroll_values"
     }
+}
+
+internal fun MainActivity.startPerfSessionIfRequested() {
+    if (BuildConfig.DEBUG) PerfRecorder.maybeStartFromIntent(this, intent)
+}
+
+internal fun MainActivity.recordUiReadyForPerf() {
+    if (BuildConfig.DEBUG) PerfInstrumentation.recordUiReady()
+}
+
+internal fun MainActivity.recordInteractionForPerf() {
+    if (BuildConfig.DEBUG) PerfRecorder.recordInteraction()
+}
+
+internal fun MainActivity.finishPerfSession() {
+    if (BuildConfig.DEBUG) PerfRecorder.onActivityDestroyed()
 }
