@@ -1,11 +1,17 @@
 package com.vinicius741.webnovelarchiver.ai
 
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
+import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
+import kotlinx.coroutines.CancellationException
+import timber.log.Timber
+import java.io.IOException
 import java.util.Locale
 
 /**
- * Pure presentation rules for OpenRouter model catalog entries shown in the AI settings model
- * picker: pricing labels and search filtering. Kept free of Android types so it unit-tests like
- * the other planning objects.
+ * Catalog-driven presentation and selection rules for OpenRouter models: pricing labels, search
+ * filtering, "known good" rewrite marks, and reasoning-effort selection. The OpenRouterClient
+ * extensions tolerate a missing catalog so generation with a manually entered model still works.
+ * Kept free of Android types so it unit-tests like the other planning objects.
  */
 object AiModelPresentation {
     /** e.g. "Free" or "$0.15 in · $0.60 out per 1M tokens". */
@@ -67,3 +73,45 @@ object AiModelPresentation {
         return formatted.trimEnd('0').trimEnd('.')
     }
 }
+
+/** Catalog-driven effort selection shared by the picker and generation requests. */
+object AiReasoningPlanning {
+    fun allowedEfforts(model: OpenRouterModel?): List<String> {
+        // Manual ids and an unavailable catalog still allow an explicit user choice.
+        if (model == null) return AiReasoningEffort.levels
+        val options = model.reasoning ?: return emptyList()
+        val supported = options.supportedEfforts ?: AiReasoningEffort.levels
+        return AiReasoningEffort.levels.filter { it in supported && (it != "none" || !options.mandatory) }
+    }
+
+    fun effortFor(
+        settings: AiSettings,
+        modelId: String,
+        model: OpenRouterModel?,
+    ): String? {
+        val selected = settings.reasoningEfforts[modelId] ?: AiReasoningEffort.LEGACY_DEFAULT
+        return selected.takeIf { it in allowedEfforts(model) }
+    }
+}
+
+/** A failed public catalog lookup must not prevent generation with a manually entered model. */
+internal suspend fun OpenRouterClient.reasoningEffortFor(
+    settings: AiSettings,
+    modelId: String,
+): String? {
+    val models = modelsOrNull()
+    return AiReasoningPlanning.effortFor(settings, modelId, models?.firstOrNull { it.id == modelId })
+}
+
+internal suspend fun OpenRouterClient.modelsOrNull(): List<OpenRouterModel>? =
+    cachedModels ?: try {
+        fetchModels()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: OpenRouterException) {
+        Timber.w(error, "Model catalog unavailable; using saved reasoning preferences")
+        null
+    } catch (error: IOException) {
+        Timber.w(error, "Could not fetch model catalog; using saved reasoning preferences")
+        null
+    }

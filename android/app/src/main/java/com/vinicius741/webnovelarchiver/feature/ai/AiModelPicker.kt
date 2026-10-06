@@ -193,7 +193,7 @@ private fun ScreenHost.showAiModelDialog(
             if (id == draft.modelId) selectedRow = row
             results.addView(row)
         }
-        val visible = filtered.take(MAX_RENDERED_MODELS)
+        val visible = filtered.take(MAX_RENDERED_MODEL_ROWS)
         // A drafted model that is filtered out, past the render cap, or only known by a manual id
         // stays pinned above the list so its reasoning control never disappears.
         if (visible.none { it.id == draft.modelId }) {
@@ -272,45 +272,3 @@ internal fun ScreenHost.showManualModelDialog(
 ) = prompt("Model id (e.g. deepseek/deepseek-v4-flash-0731)", currentModel) { value ->
     value.trim().takeIf { it.isNotBlank() }?.let(onPicked)
 }
-
-/** The pinned "enter id manually" row: reachable even when the catalog is empty or filtered out. */
-private fun manualEntryRow(
-    context: Context,
-    onClick: () -> Unit,
-): LinearLayout =
-    LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD))
-        isClickable = true
-        isFocusable = true
-        background = selectableRipple(ThemeManager.colors.onSurface)
-        addView(makeText(context, "Enter model id manually…", Type.BODY_LARGE, ThemeManager.colors.primary))
-        setOnClickListener { onClick() }
-    }
-
-/** "N more — refine your search" tail, or the empty state when nothing matched. */
-private fun appendResultTail(
-    context: Context,
-    results: LinearLayout,
-    matchCount: Int,
-) {
-    val colors = ThemeManager.colors
-    if (matchCount > MAX_RENDERED_MODELS) {
-        results.addView(
-            makeText(
-                context,
-                "...and ${matchCount - MAX_RENDERED_MODELS} more — refine your search",
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            ).apply { setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM)) },
-        )
-    } else if (matchCount == 0) {
-        results.addView(
-            makeText(context, "No models match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
-                .apply { setPadding(0, context.dp(Space.LG), 0, context.dp(Space.LG)) },
-        )
-    }
-}
-
-// Render cap for the dialog list; scrolling hundreds of rows on a phone dialog gets sluggish.
-private const val MAX_RENDERED_MODELS = 80

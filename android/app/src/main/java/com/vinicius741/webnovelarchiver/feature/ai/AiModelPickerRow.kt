@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
+import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
@@ -110,5 +111,56 @@ internal fun modelResultRow(
             isFocusable = true
             setOnClickListener { onPick() }
         }
+    }
+}
+
+/** Render cap for the model dialogs; scrolling hundreds of rows on a phone dialog gets sluggish. */
+internal const val MAX_RENDERED_MODEL_ROWS = 80
+
+/** The pinned "enter id manually" row: reachable even when the catalog is empty or filtered out. */
+internal fun manualEntryRow(
+    context: Context,
+    subtitle: String? = null,
+    onClick: () -> Unit,
+): LinearLayout =
+    LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.MD))
+        isClickable = true
+        isFocusable = true
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        addView(makeText(context, "Enter model id manually…", Type.BODY_LARGE, ThemeManager.colors.primary))
+        subtitle?.let {
+            addView(
+                makeText(context, it, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    setPadding(0, context.dp(Space.XS), 0, 0)
+                },
+            )
+        }
+        setOnClickListener { onClick() }
+    }
+
+/** "N more — refine your search" tail, or the empty state when nothing matched. */
+internal fun appendResultTail(
+    context: Context,
+    results: LinearLayout,
+    matchCount: Int,
+    emptyText: String = "No models match your search.",
+) {
+    val colors = ThemeManager.colors
+    if (matchCount > MAX_RENDERED_MODEL_ROWS) {
+        results.addView(
+            makeText(
+                context,
+                "...and ${matchCount - MAX_RENDERED_MODEL_ROWS} more — refine your search",
+                Type.BODY_SMALL,
+                colors.onSurfaceVariant,
+            ).apply { setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM)) },
+        )
+    } else if (matchCount == 0) {
+        results.addView(
+            makeText(context, emptyText, Type.BODY_MEDIUM, colors.onSurfaceVariant)
+                .apply { setPadding(0, context.dp(Space.LG), 0, context.dp(Space.LG)) },
+        )
     }
 }
