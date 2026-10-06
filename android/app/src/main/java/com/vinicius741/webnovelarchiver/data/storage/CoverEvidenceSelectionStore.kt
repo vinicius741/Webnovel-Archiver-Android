@@ -24,12 +24,7 @@ class CoverEvidenceSelectionStore(
         chapterIndices: List<Int>,
     ) {
         selections[storyId] = chapterIndices
-        runCatching {
-            file.parentFile?.mkdirs()
-            val pending = File(file.parentFile, file.name + ".tmp")
-            pending.writeText(serialize())
-            check(pending.renameTo(file)) { "Could not save Jev chapter selection" }
-        }
+        runCatching { AtomicFileWrites.writeText(file, serialize()) }
     }
 
     private fun serialize(): String {

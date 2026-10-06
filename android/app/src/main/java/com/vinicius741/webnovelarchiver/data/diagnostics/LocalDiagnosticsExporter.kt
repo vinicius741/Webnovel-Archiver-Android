@@ -1,9 +1,9 @@
 package com.vinicius741.webnovelarchiver.data.diagnostics
 
 import android.content.Context
-import com.google.gson.GsonBuilder
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.data.storage.AtomicFileWrites
+import com.vinicius741.webnovelarchiver.data.storage.SharedGson
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import java.io.File
@@ -93,7 +93,7 @@ object LocalDiagnosticsExporter {
                 generatedAtMillis = generatedAtMillis,
                 operationEvents = LocalDiagnostics.snapshotOperations(),
             )
-        val json = GsonBuilder().setPrettyPrinting().create().toJson(payload)
+        val json = SharedGson.pretty.toJson(payload)
         check(json.toByteArray().size <= MAX_EXPORT_BYTES) { "Diagnostic export exceeded its size limit" }
         val directory = File(context.cacheDir, "diagnostics").apply { mkdirs() }
         return File(directory, "webnovel_diagnostics_$generatedAtMillis.json").also {

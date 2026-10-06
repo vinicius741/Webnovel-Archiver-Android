@@ -1,8 +1,8 @@
 package com.vinicius741.webnovelarchiver.data.diagnostics
 
-import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.data.storage.AtomicFileWrites
+import com.vinicius741.webnovelarchiver.data.storage.SharedGson
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilitySnapshot
@@ -97,7 +97,7 @@ object BypassLogExportPlanning {
 
 object BypassLogExporter {
     private const val KEEP_DUMPS = 3
-    private val gson = Gson()
+    private val gson = SharedGson.plain
 
     /**
      * Writes the dump into [directory] (the app's backups folder, already share-whitelisted).

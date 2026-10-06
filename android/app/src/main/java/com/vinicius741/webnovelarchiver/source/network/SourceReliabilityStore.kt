@@ -1,7 +1,7 @@
 package com.vinicius741.webnovelarchiver.source.network
 
-import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.data.storage.AtomicFileWrites
+import com.vinicius741.webnovelarchiver.data.storage.SharedGson
 import timber.log.Timber
 import java.io.File
 
@@ -30,7 +30,7 @@ class SourceReliabilityStore(
     directory: File,
 ) {
     private val file = File(directory, "source_reliability.json")
-    private val gson = Gson()
+    private val gson = SharedGson.plain
 
     fun load(): List<PersistedHostReliability> {
         val raw = runCatching { file.readText() }.getOrNull() ?: return emptyList()

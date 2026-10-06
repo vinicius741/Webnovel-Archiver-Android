@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
-import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.domain.model.AppliedChapterRewrite
 import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteDraftRecord
 import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteManifestModel
@@ -44,7 +43,7 @@ internal class AiChapterRewriteStore(
     private val safeName: (String) -> String,
 ) {
     private val dir = File(root, DIRECTORY_NAME)
-    private val gson = Gson()
+    private val gson = SharedGson.plain
 
     /**
      * Per-story manifest cache: reads serve the last parsed snapshot keyed to the file's

@@ -21,10 +21,7 @@ internal class CoverEvidenceCache(
         key: String,
         value: JsonObject,
     ) {
-        directory.mkdirs()
-        val pending = File(directory, "$key.tmp")
-        pending.writeText(value.toString())
-        check(pending.renameTo(File(directory, key))) { "Could not save cover passage scores" }
+        AtomicFileWrites.writeText(File(directory, key), value.toString())
     }
 
     @Synchronized

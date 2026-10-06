@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.data.storage
 import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -61,7 +60,7 @@ class AppStorage(
     internal val appVersion: String = appVersionOf(context),
 ) {
     internal val context: Context = context.applicationContext
-    internal val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+    internal val gson: Gson = SharedGson.pretty
     internal val root = File(this.context.filesDir, "webnovel_archiver").apply { mkdirs() }
     internal val storyDir = File(root, "stories").apply { mkdirs() }
     internal val metricDir = File(root, "metrics").apply { mkdirs() }

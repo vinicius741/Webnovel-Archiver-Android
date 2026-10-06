@@ -38,7 +38,7 @@ internal class AiCoverDraftStore(
 ) {
     val versions = AiCoverVersionStore(root, safeName)
     private val dir = File(root, "ai_cover_drafts")
-    private val gson = com.google.gson.Gson()
+    private val gson = SharedGson.plain
 
     @Synchronized
     fun savePrompt(

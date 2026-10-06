@@ -4,8 +4,8 @@ import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiCoverDraftMeta
+import com.vinicius741.webnovelarchiver.domain.sha256Hex
 import java.io.File
-import java.security.MessageDigest
 
 internal data class AiCoverVersion(
     val id: String,
@@ -21,7 +21,7 @@ internal class AiCoverVersionStore(
     private val root: File,
     private val safeName: (String) -> String,
 ) {
-    private val gson = Gson()
+    private val gson = SharedGson.plain
     private val fileHashes = linkedMapOf<String, Pair<String, String>>()
 
     /** Read-only legacy fallback; hashing is streamed and cached by file revision, outside repository transactions. */
@@ -39,16 +39,7 @@ internal class AiCoverVersionStore(
             if (cached?.first == revision) {
                 cached.second
             } else {
-                val digest = MessageDigest.getInstance("SHA-256")
-                applied.inputStream().use { input ->
-                    val buffer = ByteArray(8192)
-                    var count = input.read(buffer)
-                    while (count >= 0) {
-                        digest.update(buffer, 0, count)
-                        count = input.read(buffer)
-                    }
-                }
-                val hash = digest.digest().joinToString("") { "%02x".format(it) }
+                val hash = sha256Hex(applied)
                 fileHashes[applied.absolutePath] = revision to hash
                 if (fileHashes.size > 128) fileHashes.remove(fileHashes.keys.first())
                 hash
@@ -73,7 +64,7 @@ internal class AiCoverVersionStore(
         storyId: String,
         draft: AiCoverDraft,
     ): String {
-        val id = MessageDigest.getInstance("SHA-256").digest(draft.bytes).joinToString("") { "%02x".format(it) }
+        val id = sha256Hex(draft.bytes)
         val dir = directory(storyId)
         val meta = File(dir, "$id.json")
         if (meta.isFile) return id

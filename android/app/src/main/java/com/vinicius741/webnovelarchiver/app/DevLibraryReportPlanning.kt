@@ -1,10 +1,10 @@
 package com.vinicius741.webnovelarchiver.app
 
-import com.google.gson.GsonBuilder
+import com.vinicius741.webnovelarchiver.data.storage.SharedGson
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthIssue
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
-import java.security.MessageDigest
+import com.vinicius741.webnovelarchiver.domain.sha256Hex
 
 /**
  * Debug-only "dev library report" planning (agent QA convenience).
@@ -31,7 +31,7 @@ object DevLibraryReportPlanning {
     /** Report destination, relative to the app's cacheDir. */
     const val REPORT_FILENAME = "dev_library_report.json"
 
-    private val gson = GsonBuilder().setPrettyPrinting().create()
+    private val gson = SharedGson.pretty
 
     data class DevLibraryTabReport(
         val id: String,
@@ -66,12 +66,7 @@ object DevLibraryReportPlanning {
     fun requested(extra: String?): Boolean = extra?.trim()?.lowercase() in setOf("1", "true")
 
     /** Stable identity of the loaded library; the seeding tool computes the identical value host-side. */
-    fun storyIdsSha256(ids: List<String>): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        return digest
-            .digest(ids.joinToString("\n").toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    }
+    fun storyIdsSha256(ids: List<String>): String = sha256Hex(ids.joinToString("\n"))
 
     fun build(
         library: List<Story>,
