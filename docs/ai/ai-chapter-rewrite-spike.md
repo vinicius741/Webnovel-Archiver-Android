@@ -1,6 +1,7 @@
 # Chapter polish — Phase 1 spike results (go/no-go gate)
 
-Date: 2026-08-24. Harness: `scripts/chapter_polish_spike/` (see its README).
+Date: 2026-08-24. Harness: `scripts/chapter_polish_spike/` (removed after the
+feature shipped; it survives in git history).
 Plan: `ai-chapter-rewrite-plan.html`, roadmap phase 1 — prompt and evaluation
 spike, no Android code. This document is the spike's output; the reader's blind
 preference vote (below) is the gate's final input.

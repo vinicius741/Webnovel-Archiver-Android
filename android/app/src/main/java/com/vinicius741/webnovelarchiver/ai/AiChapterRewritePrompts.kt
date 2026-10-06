@@ -2,7 +2,7 @@ package com.vinicius741.webnovelarchiver.ai
 
 /**
  * Versioned product prompts. Bump the corresponding version when wording changes so saved
- * variants retain accurate provenance. Historical spike prompts remain in scripts/chapter_polish_spike.
+ * variants retain accurate provenance. Historical spike prompts live in git history under scripts/chapter_polish_spike.
  * Light keeps the blind ballot's preference for minimal intervention; Balanced permits broader edits.
  */
 object AiChapterRewritePrompts {

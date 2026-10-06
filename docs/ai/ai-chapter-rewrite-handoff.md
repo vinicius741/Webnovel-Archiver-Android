@@ -16,7 +16,9 @@ blind markdown/web ballot could not reproduce.
    it specifies; this handoff only adds spike-proven details and scope cuts.
 2. `docs/ai/ai-chapter-rewrite-spike.md` — everything learned in the two spike
    rounds, including the corrected verification story.
-3. `scripts/chapter_polish_spike/` — the reference implementation to port:
+3. `scripts/chapter_polish_spike/` — the reference implementation to port
+   (harness removed after the port shipped; the shipped Kotlin lives in the
+   app's `ai/` package):
    - `blocks.py` — sanitize → block parse → protected classification →
      output sanitization. Port to `feature/reader`-adjacent planning code in
      Kotlin (Jsoup is already a dependency; mirror the allowlists).
