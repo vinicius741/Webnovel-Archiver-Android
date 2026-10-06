@@ -11,20 +11,20 @@ import java.io.File
 import kotlin.io.path.createTempDirectory
 
 /**
- * Round-trip coverage for the pending AI cover draft store: a background-generated draft must
+ * Round-trip coverage for the pending AI cover drafts owned by CoverStore: a background-generated draft must
  * survive exactly as it was persisted (prompt, bytes, media type), a fresh prompt must invalidate
  * a painted preview, and delete must clear both stages. These files are the user's only copy of a
  * billable image until Apply/Discard, so partial or stale recovery is a real data-loss bug.
  */
-class AiCoverDraftStoreTest {
+class CoverStoreTest {
     private lateinit var root: File
-    private lateinit var store: AiCoverDraftStore
+    private lateinit var store: CoverStore
 
     @Before
     fun setUp() {
         root = createTempDirectory("ai_cover_drafts").toFile()
         // Mirror AppStorage.safeName: story ids are arbitrary source-site strings.
-        store = AiCoverDraftStore(root) { it.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120) }
+        store = CoverStore(root) { it.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120) }
     }
 
     @After
@@ -148,7 +148,7 @@ class AiCoverDraftStoreTest {
         // A fresh store over the same files simulates a restart: the generation name must not
         // restart with the process, or the save would overwrite the exact bytes the current meta
         // still references (R09 across restarts).
-        val restarted = AiCoverDraftStore(root) { it.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120) }
+        val restarted = CoverStore(root) { it.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120) }
         AtomicFileWrites.ops =
             object : AtomicFileOps by DefaultAtomicFileOps {
                 override fun rename(

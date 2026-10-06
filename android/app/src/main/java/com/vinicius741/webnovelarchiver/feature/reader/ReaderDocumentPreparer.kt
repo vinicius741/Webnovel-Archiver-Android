@@ -40,7 +40,7 @@ internal data class ReaderDocument(
 )
 
 /**
- * Explicit preparation outcome (R12): missing ids, a read failure, and success are distinct states
+ * Explicit preparation outcome: missing ids, a read failure, and success are distinct states
  * so the screen can render a message instead of an eternal spinner.
  */
 internal sealed interface ReaderPreparation {
@@ -193,9 +193,9 @@ private class RepositoryReaderDocumentSource(
         chapter: Chapter,
     ): ResolvedChapterContent = contentResolver.resolve(storyId, chapter)
 
-    override fun ttsSettings(): TtsSettings = repository.getTtsSettings()
+    override fun ttsSettings(): TtsSettings = repository.ttsSettings.get()
 
-    override fun regexRules(): List<RegexCleanupRule> = repository.getRegexRules()
+    override fun regexRules(): List<RegexCleanupRule> = repository.regexRules.get()
 
     override fun displayPreferences(): DisplayPreferences = repository.getDisplayPreferences()
 

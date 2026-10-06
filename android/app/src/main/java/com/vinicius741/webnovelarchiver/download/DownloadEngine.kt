@@ -8,9 +8,11 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
+import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkRequestGate
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -260,16 +262,16 @@ class DownloadEngine(
                         network = network,
                         requestGate = requestGate,
                     ),
-                    storage.getSentenceRemovalList(),
-                    storage.getRegexRules(),
+                    storage.sentencesDoc.get(),
+                    storage.regexRulesDoc.get(),
                 )
             if (!acceptsWorkerResults.get()) return
             if (startedGeneration != repository.libraryGeneration()) return
-            // Cancelled or removed mid-download: do not publish the chapter (R05). A paused job is
+            // Cancelled or removed mid-download: do not publish the chapter. A paused job is
             // deliberately allowed to finish its in-flight chapter — pause keeps the work.
             if (isCancelledOrGone(job.id, repository.queue())) return
             // Chapter + queue commit is one transaction that re-verifies job status and the
-            // library generation (R05), so a cancel/remove/restore landing between the fetch and
+            // library generation, so a cancel/remove/restore landing between the fetch and
             // this call can never publish the chapter or flip a cancelled row to completed.
             when (
                 repository.completeDownloadedChapter(
@@ -311,7 +313,7 @@ class DownloadEngine(
 
     /**
      * A job counts as no longer publishable when it was cancelled *or removed* from the queue
-     * (R05): a removed job must not reappear as a completion. A paused job stays publishable.
+     *: a removed job must not reappear as a completion. A paused job stays publishable.
      */
     private fun isCancelledOrGone(
         id: String,
@@ -351,5 +353,54 @@ class DownloadEngine(
             blockedPending = blockedEvidence.pendingCount,
             blockedPendingUrl = blockedEvidence.sampleUrl,
         )
+    }
+}
+
+/**
+ * Builds the per-job [NetworkRequestGate] that combines the user-configured download delay (via
+ * [DownloadRequestPacer]) with the shared source-safety claim, and the liveness check that aborts a
+ * request when its job was paused/cancelled while still queued for pacing.
+ */
+internal class DownloadRequestGateFactory(
+    private val repository: AppRepository,
+    private val downloadPacer: DownloadRequestPacer,
+) {
+    fun gateFor(
+        sourceId: String,
+        job: DownloadJob,
+    ): NetworkRequestGate =
+        NetworkRequestGate { claimSourcePermission ->
+            val providerName = SourceRegistry.getById(sourceId)?.name ?: sourceId
+            downloadPacer.awaitTurn(
+                providerName = providerName,
+                storyId = job.storyId,
+                jobId = job.id,
+                chapterTitle = job.chapter.title,
+                claimSourcePermission = claimSourcePermission,
+            ) {
+                ensureJobActive(job.id)
+                val settings = repository.settings.get()
+                DownloadScheduler.settingsFor(
+                    providerName = sourceId,
+                    globalSettings =
+                        SourceDownloadSettings(
+                            concurrency = settings.downloadConcurrency,
+                            delay = settings.downloadDelay,
+                            delayMax = settings.downloadDelayMax,
+                        ),
+                    sourceSettings = repository.sourceDownloadSettings.get(),
+                )
+            }
+        }
+
+    /** Liveness check against the repository's coherent cached queue, not durable JSON. */
+    fun ensureJobActive(jobId: String) {
+        val active =
+            repository
+                .queue()
+                .firstOrNull { it.id == jobId }
+                ?.status
+                ?.let { it in DownloadJobStatus.activeWires } == true
+        if (!active) throw DownloadJobInactiveException(jobId)
     }
 }

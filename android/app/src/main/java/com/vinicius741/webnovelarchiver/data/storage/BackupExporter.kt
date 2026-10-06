@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
 import com.vinicius741.webnovelarchiver.data.backup.BackupExportPlanning
-import com.vinicius741.webnovelarchiver.data.backup.BackupProgressPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupContentPlanning
 import com.vinicius741.webnovelarchiver.data.backup.FullBackupPaths
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -9,6 +8,9 @@ import java.io.File
 import java.time.Instant
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+
+/** The zip loop reports only the first file, every 25th, and the last. */
+private const val PROGRESS_REPORT_EVERY = 25
 
 internal class BackupExporter(
     private val storage: AppStorage,
@@ -23,7 +25,7 @@ internal class BackupExporter(
                 "version" to 2,
                 "exportDate" to Instant.now().toString(),
                 "library" to library,
-                "tabs" to storage.getTabs(),
+                "tabs" to storage.tabsDoc.get(),
             )
         val json = gson.toJson(payload)
         BackupExportPlanning.validateJsonBackup(sourceLibrary.size, json.toByteArray().size.toLong())?.let { error(it) }
@@ -37,8 +39,8 @@ internal class BackupExporter(
             mapOf(
                 "version" to 1,
                 "exportDate" to Instant.now().toString(),
-                "sentenceRemovalList" to storage.getSentenceRemovalList(),
-                "regexCleanupRules" to storage.getRegexRules(),
+                "sentenceRemovalList" to storage.sentencesDoc.get(),
+                "regexCleanupRules" to storage.regexRulesDoc.get(),
             )
         return File(storage.backupRoot, "webnovel_cleanup_rules_${System.currentTimeMillis()}.json").also {
             AtomicFileWrites.writeText(it, gson.toJson(payload))
@@ -48,7 +50,7 @@ internal class BackupExporter(
     /**
      * Writes the full-backup ZIP. [onProgress] receives user-facing messages from the zip loop
      * (called on the caller's dispatcher, not the UI thread); it is invoked only at throttled
-     * milestones — see [BackupProgressPlanning.shouldReport].
+     * milestones — the first file, every 25th, and the last.
      */
     fun exportFull(onProgress: (String) -> Unit = {}): File {
         val library = storage.getLibrary()
@@ -68,7 +70,7 @@ internal class BackupExporter(
             FullBackupContentPlanning.missingContentReport(
                 chapterPlan = chapterPlan,
                 // Stories whose applied files ALL vanished produce no payload, so the store is
-                // asked directly — otherwise they would escape the report (R10).
+                // asked directly — otherwise they would escape the report.
                 missingAppliedByStory =
                     library
                         .mapNotNull { story ->
@@ -112,12 +114,12 @@ internal class BackupExporter(
 
         fun markFileWritten() {
             filesWritten += 1
-            if (BackupProgressPlanning.shouldReport(filesWritten, totalFiles)) {
-                onProgress(BackupProgressPlanning.fileMessage(filesWritten, totalFiles))
+            if (filesWritten == totalFiles || filesWritten == 1 || filesWritten % PROGRESS_REPORT_EVERY == 0) {
+                onProgress("Zipping files $filesWritten of $totalFiles")
             }
         }
 
-        onProgress(BackupProgressPlanning.startMessage(library.size))
+        onProgress("Backing up ${library.size} novels…")
         if (missingContent.isNotEmpty()) {
             onProgress(
                 "Warning: ${missingContent.size} item${if (missingContent.size == 1) "" else "s"} the library lists as available " +
@@ -174,7 +176,7 @@ internal class BackupExporter(
         }
     }
 
-    /** Manifest-ready shape for one missing item (R10). */
+    /** Manifest-ready shape for one missing item. */
     internal fun missingEntry(it: FullBackupContentPlanning.MissingContent): Map<String, Any?> =
         mapOf(
             "kind" to it.kind,
@@ -229,17 +231,17 @@ internal class BackupExporter(
         )
 
     private fun fullConfig(): Map<String, Any?> {
-        val displayPreferences = storage.getDisplayPreferences()
+        val displayPreferences = storage.displayPreferencesDoc.get()
         return mapOf(
-            "settings" to storage.getSettings(),
-            "sourceDownloadSettings" to storage.getSourceDownloadSettings(),
-            "chapterFilterSettings" to storage.getChapterFilterSettings(),
+            "settings" to storage.settingsDoc.get(),
+            "sourceDownloadSettings" to storage.sourceDownloadSettingsDoc.get(),
+            "chapterFilterSettings" to storage.chapterFilterSettingsDoc.get(),
             "displayPreferences" to displayPreferences,
-            "tabs" to storage.getTabs(),
-            "sentenceRemovalList" to storage.getSentenceRemovalList(),
-            "regexCleanupRules" to storage.getRegexRules(),
-            "updateFollowSettings" to storage.getUpdateFollowSettings(),
-            "ttsSettings" to storage.getTtsSettings(),
+            "tabs" to storage.tabsDoc.get(),
+            "sentenceRemovalList" to storage.sentencesDoc.get(),
+            "regexCleanupRules" to storage.regexRulesDoc.get(),
+            "updateFollowSettings" to storage.updateFollowSettingsDoc.get(),
+            "ttsSettings" to storage.ttsSettingsDoc.get(),
             "ttsSession" to storage.getTtsSession(),
             // R11: per-story resume positions, so stories whose playback was explicitly stopped
             // (session cleared, position kept) still resume where the listener left off.
@@ -297,7 +299,7 @@ private data class FullBackupChapterFile(
     val title: String,
     val path: String,
     val source: File?,
-    /** Legacy inline chapter content, materialized when the chapter file is missing (R10). */
+    /** Legacy inline chapter content, materialized when the chapter file is missing. */
     val inlineContent: String?,
 )
 

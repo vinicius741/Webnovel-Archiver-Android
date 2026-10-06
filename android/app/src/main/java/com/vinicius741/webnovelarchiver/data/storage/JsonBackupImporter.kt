@@ -107,11 +107,10 @@ internal class JsonBackupImporter(
         val tabs = rawTabs as? List<*> ?: return 0
         val incoming: List<Tab> =
             gson.fromJson(gson.toJson(tabs), object : TypeToken<MutableList<Tab>>() {}.type)
-        val current = storage.getTabs()
+        val current = storage.tabsDoc.get()
         val existingIds = current.mapTo(mutableSetOf()) { it.id }
         val additions = incoming.filter { existingIds.add(it.id) }
-        current += additions
-        storage.saveTabs(current.mapIndexed { index, tab -> tab.copy(order = index) })
+        storage.tabsDoc.set((current + additions).mapIndexed { index, tab -> tab.copy(order = index) })
         return additions.size
     }
 

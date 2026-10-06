@@ -39,7 +39,7 @@ internal fun ScreenHost.showLibrary() {
     var stories: List<Story> = repository.library()
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     screen(
         route = AppRoute.Library,
         title = "Library",
@@ -269,8 +269,8 @@ internal fun ScreenHost.showLibrary() {
 /** R22: pause between keystrokes before rebuilding every library page's grid. */
 private const val SEARCH_APPLY_DEBOUNCE_MS = 200L
 
-/** Persists the selected tab. Transactional read-modify-write on the latest value (R28); a failed
- *  save is reported instead of silently dropped (R12). */
+/** Persists the selected tab. Transactional read-modify-write on the latest value; a failed
+ *  save is reported instead of silently dropped. */
 private fun ScreenHost.persistLibraryTab(id: String?) {
     val encoded = LibraryTabSelection.encode(id)
     runUiOperation("save library tab") {

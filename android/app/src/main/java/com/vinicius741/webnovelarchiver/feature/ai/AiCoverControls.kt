@@ -46,7 +46,7 @@ internal fun ScreenHost.addAiCoverCard(
     val colors = ThemeManager.colors
     val hasAiCover = !story.aiCoverPath.isNullOrBlank()
     val hasSourceCover = !story.coverUrl.isNullOrBlank()
-    val oneStep = repository.getAiSettings().coverOneStep
+    val oneStep = repository.aiSettings.get().coverOneStep
     val hasPromptDraft = aiControlsScreenState.coverPrompts[story.id] != null
     // Same gating as descriptions: no context chapters means nothing to feed the text model.
     val canGenerate = story.isArchived != true && story.chapters.any { it.downloaded }
@@ -130,7 +130,7 @@ internal fun ScreenHost.addAiCoverModeRow(
     }
     toggle!!.setOnCheckedChangeListener { _, checked ->
         scope.launch {
-            repository.saveAiSettings(repository.getAiSettings().copy(coverOneStep = checked))
+            repository.aiSettings.save(repository.aiSettings.get().copy(coverOneStep = checked))
             if (frameIsAiControls(story.id)) showAiControls(story.id)
         }
     }
@@ -241,7 +241,7 @@ internal fun ScreenHost.addAiCoverDraftPreviewCard(
 }
 
 /**
- * Decodes a preview-sized bitmap (R24): bounds are validated against a dimension sanity cap before
+ * Decodes a preview-sized bitmap: bounds are validated against a dimension sanity cap before
  * the sampled allocation, so a small-compressed/huge-dimension payload cannot claim unbounded
  * memory and the main thread never performs the decode.
  */

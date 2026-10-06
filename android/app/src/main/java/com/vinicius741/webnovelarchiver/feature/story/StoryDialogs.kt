@@ -53,7 +53,7 @@ internal fun ScreenHost.showEpubConfigDialog(story: Story) {
     // persisted story so the dialog always matches on-disk state.
     val story = repository.story(story.id) ?: story
     if (story.chapters.isEmpty()) return toast("No chapters available")
-    val current = EpubConfigPlanning.resolve(story, repository.getSettings().maxChaptersPerEpub)
+    val current = EpubConfigPlanning.resolve(story, repository.settings.get().maxChaptersPerEpub)
     val hasBookmark = EpubConfigPlanning.hasBookmark(story)
     val view =
         LinearLayout(app).apply {
@@ -194,7 +194,7 @@ internal fun ScreenHost.showConfirmEpubWithMissingChaptersDialog(
         scope.launch {
             repository.downloadState.collect { snapshot ->
                 val current = snapshot.library.firstOrNull { it.id == storyId } ?: return@collect
-                val currentConfig = EpubConfigPlanning.resolve(current, repository.getSettings().maxChaptersPerEpub)
+                val currentConfig = EpubConfigPlanning.resolve(current, repository.settings.get().maxChaptersPerEpub)
                 val updated = EpubSelection.rangeCoverage(current, currentConfig)
                 if (updated != displayedCoverage) {
                     displayedCoverage = updated

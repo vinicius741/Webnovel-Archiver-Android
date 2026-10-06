@@ -21,7 +21,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
-import com.vinicius741.webnovelarchiver.feature.browser.BrowserImportPlanning
+import com.vinicius741.webnovelarchiver.feature.browser.ACTION_IMPORT_CURRENT_URL
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
@@ -43,6 +43,8 @@ import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
 import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
+import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
+import com.vinicius741.webnovelarchiver.perf.PerfRecorder
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
@@ -130,7 +132,7 @@ class MainActivity :
     override val importBackupLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri ?: return@registerForActivityResult
-            // A failed import must return the user to the backup screen with a visible error (R12),
+            // A failed import must return the user to the backup screen with a visible error,
             // not die in the coroutine handler.
             runUiOperation(
                 "import json backup",
@@ -203,8 +205,7 @@ class MainActivity :
                         )
                     ttsEngine = container.ttsEngine
                     attachTtsMiniPlayer(root)
-                    attachAiCoverJobBridge()
-                    attachAiChapterRewriteJobBridge()
+                    attachAiJobBridges()
                     container.awaitRepositoryReady()
                     initializeUiAfterRepositoryReady()
                 }
@@ -383,7 +384,12 @@ class MainActivity :
         requestNotificationPermissionForDownloadExt()
     }
 
-    private fun browserImportUrl(intent: Intent?): String? = BrowserImportPlanning.importUrl(intent?.action, intent?.dataString)
+    private fun browserImportUrl(intent: Intent?): String? =
+        intent
+            ?.dataString
+            ?.takeIf { intent.action == ACTION_IMPORT_CURRENT_URL }
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
 
     private data class InitialStartupState(
         val activeThemeId: String,
@@ -396,4 +402,20 @@ class MainActivity :
         const val STATE_SCROLL_KEYS = "navigation.scroll_keys"
         const val STATE_SCROLL_VALUES = "navigation.scroll_values"
     }
+}
+
+internal fun MainActivity.startPerfSessionIfRequested() {
+    if (BuildConfig.DEBUG) PerfRecorder.maybeStartFromIntent(this, intent)
+}
+
+internal fun MainActivity.recordUiReadyForPerf() {
+    if (BuildConfig.DEBUG) PerfInstrumentation.recordUiReady()
+}
+
+internal fun MainActivity.recordInteractionForPerf() {
+    if (BuildConfig.DEBUG) PerfRecorder.recordInteraction()
+}
+
+internal fun MainActivity.finishPerfSession() {
+    if (BuildConfig.DEBUG) PerfRecorder.onActivityDestroyed()
 }

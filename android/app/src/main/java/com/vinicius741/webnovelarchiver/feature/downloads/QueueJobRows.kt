@@ -72,7 +72,7 @@ internal fun ScreenHost.addQueueJobRow(
 }
 
 /**
- * The job row's status line, extracted so countdown ticks can recompute it in place (R23) instead
+ * The job row's status line, extracted so countdown ticks can recompute it in place instead
  * of rebuilding and re-diffing the whole queue presentation every second.
  */
 internal fun queueJobStatusLabel(

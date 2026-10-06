@@ -214,7 +214,7 @@ class AiSimplificationDeviceTest {
         val repository = context.appContainer.repository
         ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
             scenario.eventually { it.textView("Library") != null }
-            val settings = repository.getAiSettings()
+            val settings = repository.aiSettings.get()
             try {
                 runBlocking { repository.upsertStory(story()) }
                 scenario.onActivity { it.showAiControls(ID) }
@@ -222,7 +222,7 @@ class AiSimplificationDeviceTest {
             } finally {
                 runBlocking {
                     repository.deleteStory(ID)
-                    repository.saveAiSettings(settings)
+                    repository.aiSettings.save(settings)
                 }
             }
         }

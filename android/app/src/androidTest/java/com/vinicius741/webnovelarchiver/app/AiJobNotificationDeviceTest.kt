@@ -9,9 +9,11 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
-import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteForegroundService
-import com.vinicius741.webnovelarchiver.ai.AiCoverForegroundService
+import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
+import com.vinicius741.webnovelarchiver.ai.AiJobNotificationKind
 import com.vinicius741.webnovelarchiver.ai.aiJobNotification
+import com.vinicius741.webnovelarchiver.ai.aiJobOngoingNotification
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,6 +25,25 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AiJobNotificationDeviceTest {
     @get:Rule val permission = GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+
+    @Test
+    fun rewriteNotificationRetainsItsTitleWhenTheQueueDrains() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        AppNotificationChannels.ensureCreated(context)
+        for (queuedCount in listOf(0, 3, 0)) {
+            val notification = context.aiJobOngoingNotification(AiJobNotificationKind.CHAPTER_REWRITE, "Rewriting chapter...", queuedCount)
+            assertEquals(
+                context.getString(R.string.ai_chapter_rewrite_notif_active),
+                notification.extras.getCharSequence(Notification.EXTRA_TITLE),
+            )
+            assertEquals(
+                if (queuedCount > 0) "Rewriting chapter... · $queuedCount queued" else "Rewriting chapter...",
+                notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT),
+            )
+        }
+        val cover = context.aiJobOngoingNotification(AiJobNotificationKind.COVER, "Painting cover...", 0)
+        assertEquals(context.getString(R.string.ai_cover_notif_active), cover.extras.getCharSequence(Notification.EXTRA_TITLE))
+    }
 
     @Test
     fun ongoingAndResultNotificationsCoexistWithDistinctIntents() {
@@ -54,20 +75,20 @@ class AiJobNotificationDeviceTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
             scenario.onActivity {
-                AiCoverForegroundService.start(it)
-                assertTrue(AiChapterRewriteForegroundService.start(it))
+                assertTrue(AiJobForegroundService.start(it, "Generating AI cover..."))
+                assertTrue(AiJobForegroundService.start(it, "Polishing chapter..."))
             }
             val manager = context.getSystemService(NotificationManager::class.java)
             androidx.test.platform.app.InstrumentationRegistry
                 .getInstrumentation()
                 .waitForIdleSync()
             val deadline = System.currentTimeMillis() + 5000
-            while (manager.activeNotifications.any { it.id == 1003 || it.id == 1005 } &&
+            while (manager.activeNotifications.any { it.id == 1003 } &&
                 System.currentTimeMillis() < deadline
             ) {
                 Thread.sleep(50)
             }
-            assertFalse(manager.activeNotifications.any { it.id == 1003 || it.id == 1005 })
+            assertFalse(manager.activeNotifications.any { it.id == 1003 })
         }
     }
 }

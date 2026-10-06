@@ -2,7 +2,7 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import java.security.MessageDigest
+import com.vinicius741.webnovelarchiver.domain.sha256Hex
 
 /** Pure chapter sampling, cache identities and chapter-level usefulness rules for Jev selection. */
 internal object CoverEvidencePlanning {
@@ -75,11 +75,7 @@ internal object CoverEvidencePlanning {
             if (sample.middle.isNotEmpty()) addProperty("middle", sample.middle)
         }
 
-    fun cacheKey(request: JsonObject): String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(request.toString().toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+    fun cacheKey(request: JsonObject): String = sha256Hex(request.toString())
 
     /** A cover needs identifiable visual evidence that is not confined to a temporary scene. */
     fun isUseful(judgments: Judgments): Boolean =

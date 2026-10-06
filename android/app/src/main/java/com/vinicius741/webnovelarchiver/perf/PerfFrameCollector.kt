@@ -5,7 +5,7 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import android.view.FrameMetrics
 import android.view.Window
-import com.google.gson.Gson
+import com.vinicius741.webnovelarchiver.data.storage.SharedGson
 import java.io.BufferedWriter
 import java.io.File
 import java.io.FileWriter
@@ -22,7 +22,7 @@ internal class PerfFrameCollector(
     private val tagProvider: () -> String,
     private val nowNanos: () -> Long = SystemClock::elapsedRealtimeNanos,
 ) {
-    private val gson = Gson()
+    private val gson = SharedGson.plain
     private val jankThresholdNanos = PerfFramePlanning.jankThresholdNanos(refreshRateHz)
     private val thread = HandlerThread("perf-frames").apply { start() }
     private val handler = Handler(thread.looper)

@@ -17,7 +17,7 @@ internal suspend fun <T> OkHttpClient.executeOpenRouterJson(
 ): T = executeOpenRouterJson(request, MAX_JSON_BODY_BYTES, parse)
 
 /**
- * Body-bounded variant (R24): the response is capped at [maxBodyBytes] — image generations get a
+ * Body-bounded variant: the response is capped at [maxBodyBytes] — image generations get a
  * deliberately larger budget than text/catalog responses, and an oversized body fails instead of
  * buffering unbounded.
  */
@@ -68,5 +68,5 @@ private fun okhttp3.ResponseBody.stringBounded(maxBytes: Long): String {
 /** Text/catalog budget; image-generation callers pass [MAX_IMAGE_JSON_BODY_BYTES]. */
 internal const val MAX_JSON_BODY_BYTES = 20_000_000L
 
-/** Image JSON is ~4/3 the decoded bitmap bytes; sized for large generated covers (R24). */
+/** Image JSON is ~4/3 the decoded bitmap bytes; sized for large generated covers. */
 internal const val MAX_IMAGE_JSON_BODY_BYTES = 48_000_000L

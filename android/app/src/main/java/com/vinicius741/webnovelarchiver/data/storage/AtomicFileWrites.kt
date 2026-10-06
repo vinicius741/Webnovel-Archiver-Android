@@ -8,7 +8,7 @@ import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * File-operation seam so tests can inject rename, copy, and fsync failures (R06). Production code
+ * File-operation seam so tests can inject rename, copy, and fsync failures. Production code
  * uses [DEFAULT]; the helpers below route every mutation through it.
  */
 interface AtomicFileOps {
@@ -77,7 +77,7 @@ object DefaultAtomicFileOps : AtomicFileOps {
  * temp files are cleaned up on failure.
  *
  * If the rename or the pre-rename fsync cannot complete, the operation fails and the previous
- * destination is left fully intact (R06): a fallback copy-over would risk truncating the known
+ * destination is left fully intact: a fallback copy-over would risk truncating the known
  * good file halfway through.
  */
 object AtomicFileWrites {
@@ -154,7 +154,7 @@ object AtomicFileWrites {
      * Renames [temp] over [destination] — a same-filesystem POSIX rename (temp is a sibling)
      * atomically replaces it, so the destination is never missing. A false return is a real
      * filesystem failure (the temp is a sibling, so EXDEV cannot apply): fail the whole write,
-     * leaving the previous destination intact, rather than copying over it non-atomically (R06).
+     * leaving the previous destination intact, rather than copying over it non-atomically.
      */
     private fun renameOnto(
         temp: File,

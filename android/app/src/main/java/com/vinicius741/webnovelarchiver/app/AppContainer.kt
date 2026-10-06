@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteEngine
+import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
@@ -13,8 +14,7 @@ import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceCache
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceSelectionStore
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
@@ -101,14 +101,13 @@ class AppContainer(
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     val openRouter: OpenRouterClient = OpenRouterClient()
     val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
-    val coverEvidenceSelectionStore =
-        CoverEvidenceSelectionStore(File(appContext.cacheDir, "cover_evidence_selections.json"))
+    val coverEvidence = CoverEvidenceStore(appContext.cacheDir)
     val aiCoverArtEngine: AiCoverArtEngine =
         AiCoverArtEngine(
             repository,
             openRouter,
-            CoverEvidenceSelector(repository, JevCoverClient(openRouter), CoverEvidenceCache(File(appContext.cacheDir, "cover_evidence"))),
-            coverEvidenceSelectionStore,
+            CoverEvidenceSelector(repository, JevCoverClient(openRouter), coverEvidence),
+            coverEvidence,
         )
 
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */

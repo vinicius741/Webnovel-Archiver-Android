@@ -27,7 +27,7 @@ class AiDescriptionEngine(
         storyId: String,
         onProgress: (String) -> Unit = {},
     ): String {
-        val settings = repository.getAiSettings()
+        val settings = repository.aiSettings.get()
         val apiKey =
             settings.apiKey?.takeIf { it.isNotBlank() }
                 ?: throw IllegalArgumentException("Add your OpenRouter API key in Settings → AI Settings first")

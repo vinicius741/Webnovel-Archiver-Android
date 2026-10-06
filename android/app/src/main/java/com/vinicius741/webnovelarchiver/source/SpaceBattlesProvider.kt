@@ -185,7 +185,7 @@ object SpaceBattlesProvider : SourceProvider {
         val chapters = parseThreadmarks(firstHtml, root).toMutableList()
         val seen = chapters.mapNotNull { it.id }.toMutableSet()
         // The declared page count is authoritative: hitting the fetch cap means the list would be
-        // silently truncated, so fail instead of letting a full sync delete unseen chapters (R03).
+        // silently truncated, so fail instead of letting a full sync delete unseen chapters.
         val declaredLastPage = threadmarkPageCount(firstHtml)
         val lastPage = declaredLastPage.coerceAtMost(MAX_THREADMARK_PAGES)
         if (declaredLastPage > MAX_THREADMARK_PAGES) {
@@ -392,3 +392,61 @@ object SpaceBattlesProvider : SourceProvider {
     private val ORIGIN = Regex("""^https?://[^/]+""", RegexOption.IGNORE_CASE)
     private val PAGE_QUERY = Regex("""[?&]page=(\d+)""", RegexOption.IGNORE_CASE)
 }
+
+/**
+ * Picks a cover image for a SpaceBattles story: prefers the social `og:image`/`twitter:image`, then
+ * falls back to the first meaningful image in the starter post.
+ */
+internal fun spaceBattlesCoverUrl(
+    doc: Document,
+    author: String,
+): String? {
+    val socialImage =
+        doc
+            .selectFirst("meta[property=og:image], meta[name=twitter:image]")
+            ?.attr("content")
+            ?.trim()
+            ?.takeIf(::isMeaningfulImageUrl)
+    if (socialImage != null) return socialImage
+
+    val starterPost =
+        doc
+            .select("article.message--post")
+            .firstOrNull { it.attr("data-author").equals(author, ignoreCase = true) }
+            ?: return null
+    return starterPost
+        .select(".message-body .bbWrapper img")
+        .asSequence()
+        .filterNot { image ->
+            image.parents().any { parent ->
+                parent.hasClass("bbCodeBlock-unfurl") ||
+                    parent.hasClass("smilie") ||
+                    parent.tagName().equals("blockquote", ignoreCase = true)
+            }
+        }.mapNotNull(::spaceBattlesImageUrl)
+        .firstOrNull(::isMeaningfulImageUrl)
+}
+
+private fun spaceBattlesImageUrl(image: Element): String? {
+    val width = image.attr("width").toIntOrNull()
+    val height = image.attr("height").toIntOrNull()
+    if (width != null && height != null && width * height < MIN_COVER_AREA) return null
+    return listOf("data-url", "data-src", "src")
+        .firstNotNullOfOrNull { attribute -> safeAbsoluteUrl(image, attribute) }
+}
+
+private fun isMeaningfulImageUrl(url: String): Boolean {
+    val normalized = url.lowercase()
+    return (normalized.startsWith("http://") || normalized.startsWith("https://")) &&
+        COVER_IMAGE_EXCLUSIONS.none(normalized::contains)
+}
+
+private const val MIN_COVER_AREA = 10_000
+private val COVER_IMAGE_EXCLUSIONS =
+    setOf(
+        "favicon",
+        "/avatar/",
+        "/smilies/",
+        "/emoji/",
+        "/data/svg/",
+    )

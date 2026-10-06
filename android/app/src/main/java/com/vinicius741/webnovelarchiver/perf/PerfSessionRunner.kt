@@ -3,7 +3,7 @@ package com.vinicius741.webnovelarchiver.perf
 import android.content.Context
 import android.os.SystemClock
 import android.view.Window
-import com.google.gson.Gson
+import com.vinicius741.webnovelarchiver.data.storage.SharedGson
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -26,7 +26,7 @@ internal class PerfSessionRunner(
 ) {
     @Volatile var screenTag = "startup"
 
-    private val gson = Gson()
+    private val gson = SharedGson.plain
     private val executor: ExecutorService =
         Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "perf-session").apply { isDaemon = true } }
     private val scheduler: java.util.concurrent.ScheduledExecutorService =

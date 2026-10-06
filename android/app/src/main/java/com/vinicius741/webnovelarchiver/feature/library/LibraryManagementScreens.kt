@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = emptySet()) {
     val stories = repository.library()
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     val selectedIds = initialSelectedIds.toMutableSet()
     screen(route = AppRoute.LibrarySelection(initialSelectedIds), title = "Organize Novels", onBack = { navigateBack() }) {
         // Empty library: same empty state as the Library screen, not a bare filter bar.
@@ -226,7 +226,7 @@ internal fun ScreenHost.showLibrarySelection(initialSelectedIds: Set<String> = e
 }
 
 internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
     val options =
         tabOptions.map { (tabId, label) ->
@@ -248,7 +248,7 @@ internal fun ScreenHost.showMoveStoriesDialog(storyIds: List<String>) {
 }
 
 internal fun ScreenHost.showMoveStoryDialog(story: Story) {
-    val tabs = repository.getTabs().sortedBy { it.order }
+    val tabs = repository.tabs.get().sortedBy { it.order }
     val tabOptions = listOf(null to "Unassigned") + tabs.map { it.id to it.name }
     val options =
         tabOptions.map { (tabId, label) ->

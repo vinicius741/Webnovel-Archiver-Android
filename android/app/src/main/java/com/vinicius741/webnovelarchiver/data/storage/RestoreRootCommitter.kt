@@ -21,7 +21,7 @@ internal class RestoreRootCommitter(
             storage.metricDir.mkdirs()
             storage.chapterRoot.mkdirs()
             storage.epubRoot.mkdirs()
-            storage.coverFiles.ensureDirectory()
+            storage.covers.ensureAppliedDirectory()
             storage.backupRoot.mkdirs()
         },
     )

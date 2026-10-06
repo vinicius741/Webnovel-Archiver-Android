@@ -50,7 +50,7 @@ interface AiChapterRewriteEngineSource {
 class RepositoryAiChapterRewriteSource(
     private val repository: AppRepository,
 ) : AiChapterRewriteEngineSource {
-    override fun aiSettings(): AiSettings = repository.getAiSettings()
+    override fun aiSettings(): AiSettings = repository.aiSettings.get()
 
     override fun story(id: String): Story? = repository.story(id)
 

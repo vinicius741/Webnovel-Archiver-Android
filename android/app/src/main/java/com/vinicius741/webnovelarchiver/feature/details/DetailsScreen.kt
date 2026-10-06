@@ -8,10 +8,12 @@ import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.repository.DownloadUiSnapshot
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.readerTtsTransport
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
@@ -29,6 +31,8 @@ import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
+import com.vinicius741.webnovelarchiver.ui.tickerFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 internal fun ScreenHost.showDetails(storyId: String) {
@@ -123,13 +127,13 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 null
             }
 
-        var chapterFilter = repository.getChapterFilterSettings().filterMode
+        var chapterFilter = repository.chapterFilterSettings.get().filterMode
         var chapterQuery = ""
 
         var pick: (String) -> Unit = {}
         pick = { mode ->
             chapterFilter = mode
-            scope.launch { repository.saveChapterFilterSettings(ChapterFilterSettings(mode)) }
+            scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
             renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
             renderChapterList(
                 story,
@@ -313,3 +317,104 @@ private const val DETAILS_TWO_PANE_LEFT_WIDTH_DP = 360
 
 /** Gap (dp) between the two panes. */
 private const val DETAILS_TWO_PANE_GAP_DP = Space.MD
+
+/**
+ * Subscribes the in-place download-refresh loop for the Details screen. Download state is emitted
+ * process-wide by the shared repository; this patches the chapter rows, download controls, and
+ * banner after a coherent event and never polls disk or rebuilds the screen for progress ticks.
+ * If the list is being dragged/flung, events are coalesced until it becomes idle so an adapter update cannot
+ * interfere with the gesture.
+ */
+internal fun ScreenHost.observeDetailsDownload(
+    storyId: String,
+    bindings: DetailsBindings,
+    isBusy: Boolean,
+    initialPacingStatus: DownloadPacingUiStatus?,
+) {
+    if (frame.childCount == 0) return
+    val root = bindings.root
+    val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    var patchPosted = false
+    var pendingSnapshot: DownloadUiSnapshot? = null
+
+    fun postPatch() {
+        if (patchPosted) return
+        patchPosted = true
+        val patch =
+            object : Runnable {
+                override fun run() {
+                    if (root.parent !== frame) return
+                    if (bindings.chapters.scrollState != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE) {
+                        handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
+                        return
+                    }
+                    patchPosted = false
+                    val snapshot = pendingSnapshot
+                    pendingSnapshot = null
+                    refreshDetailsDownload(
+                        storyId,
+                        bindings,
+                        isBusy,
+                        snapshot,
+                    )
+                }
+            }
+        handler.post(patch)
+    }
+    // Capture before launching so an event before collector registration is not dropped.
+    val initialSnapshot = repository.downloadState.value
+    var observedLibraryVersion = initialSnapshot.libraryVersion
+    var observedQueueVersion = initialSnapshot.queueVersion
+    var observedPacingStatus = initialPacingStatus
+    screenObserver =
+        scope.launch {
+            launch {
+                repository.downloadState.collect { snapshot ->
+                    if (
+                        snapshot.libraryVersion == observedLibraryVersion &&
+                        snapshot.queueVersion == observedQueueVersion
+                    ) {
+                        return@collect
+                    }
+                    observedLibraryVersion = snapshot.libraryVersion
+                    observedQueueVersion = snapshot.queueVersion
+                    if (root.parent === frame) {
+                        pendingSnapshot = snapshot
+                        postPatch()
+                    }
+                }
+            }
+            launch {
+                combine(
+                    app.appContainer.downloadPacer.snapshots,
+                    tickerFlow(),
+                ) { pacing, now -> pacing.values to now }
+                    .collect { (pacing, now) ->
+                        if (root.parent !== frame) return@collect
+                        val hasLiveTimer =
+                            observedPacingStatus != null ||
+                                pacing.any { it.nextRequestAtMillis > now } ||
+                                repository.downloadState.value.queue.any {
+                                    it.storyId == storyId && (it.nextRetryAt ?: 0L) > now
+                                }
+                        if (!hasLiveTimer) return@collect
+                        val story = repository.story(storyId) ?: return@collect
+                        val queue = repository.queue()
+                        val jobsForStory = queue.filter { it.storyId == storyId }
+                        val pacingStatus =
+                            detailsPacingStatus(
+                                storyId = storyId,
+                                storySourceUrl = story.sourceUrl,
+                                jobsForStory = jobsForStory,
+                                snapshots = pacing,
+                                nowMillis = now,
+                                allJobs = queue,
+                            )
+                        if (pacingStatus != observedPacingStatus) {
+                            observedPacingStatus = pacingStatus
+                            refreshDetailsPacingBanner(storyId, bindings, pacing, now)
+                        }
+                    }
+            }
+        }
+}

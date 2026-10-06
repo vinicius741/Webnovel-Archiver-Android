@@ -29,10 +29,10 @@ internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
             button("Add custom regex", Btn.TONAL, R.drawable.wna_add) { showRegexRuleDialog(null) }
         }
         section("Your rules")
-        if (repository.getRegexRules().isEmpty()) {
+        if (repository.regexRules.get().isEmpty()) {
             text("No regex rules yet.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         }
-        repository.getRegexRules().forEach { rule ->
+        repository.regexRules.get().forEach { rule ->
             val preset = RegexCleanupPresets.identify(rule)
             val target =
                 when (rule.appliesTo) {
@@ -90,16 +90,16 @@ internal fun ScreenHost.buildRegexRules(body: LinearLayout) {
                             if (preset == null) showRegexRuleDialog(rule) else showCleanupPresetDialog(preset.preset, rule, preset.count)
                         }
                         button(if (rule.enabled) "Disable" else "Enable", Btn.TEXT) {
-                            val toggled = repository.getRegexRules().map { if (it.id == rule.id) it.copy(enabled = !it.enabled) else it }
+                            val toggled = repository.regexRules.get().map { if (it.id == rule.id) it.copy(enabled = !it.enabled) else it }
                             scope.launch {
-                                repository.saveRegexRules(toggled)
+                                repository.regexRules.save(toggled)
                                 showCleanupRules()
                             }
                         }
                         button("Delete", Btn.TEXT, R.drawable.wna_delete) {
                             scope.launch {
-                                repository.saveRegexRules(
-                                    repository.getRegexRules().filterNot { it.id == rule.id },
+                                repository.regexRules.save(
+                                    repository.regexRules.get().filterNot { it.id == rule.id },
                                 )
                                 showCleanupRules()
                             }

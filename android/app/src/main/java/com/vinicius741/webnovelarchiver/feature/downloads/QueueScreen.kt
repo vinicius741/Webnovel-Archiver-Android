@@ -345,10 +345,10 @@ internal class QueueGroupCard(
     private val actionSlot: LinearLayout,
     private val body: LinearLayout,
 ) {
-    /** Per-job status labels from the latest bind, so countdown ticks patch text in place (R23). */
+    /** Per-job status labels from the latest bind, so countdown ticks patch text in place. */
     private val statusLabels = LinkedHashMap<String, TextView>()
 
-    /** The group this card was last bound to; ticks recompute its header countdown (R23). */
+    /** The group this card was last bound to; ticks recompute its header countdown. */
     private var boundGroup: QueueStoryGroupUi? = null
 
     fun bind(
@@ -408,7 +408,7 @@ internal class QueueGroupCard(
         }
     }
 
-    /** Recomputes only the countdown texts (header subtitle + status lines); no rebind, no diff (R23). */
+    /** Recomputes only the countdown texts (header subtitle + status lines); no rebind, no diff. */
     fun patchCountdownLabels(
         queue: List<DownloadJob>,
         pacingSnapshots: Collection<DownloadPacingSnapshot>,

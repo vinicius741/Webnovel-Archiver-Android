@@ -87,7 +87,7 @@ object StorySyncMergePlanning {
             // User-owned fields below are taken from the current on-disk record *including null
             // values*: a local edit during the network window (tab move, EPUB generation, AI reset,
             // display toggle) must survive the commit, and an explicit reset to null must not be
-            // undone by the stale pre-window snapshot (R04).
+            // undone by the stale pre-window snapshot.
             tabId = onDisk.tabId,
             dateAdded = onDisk.dateAdded,
             epubPath = onDisk.epubPath,

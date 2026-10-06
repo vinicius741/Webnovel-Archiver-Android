@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * The API key is device-local and never included in backups.
  */
 internal fun ScreenHost.showAiSettings() {
-    val settings = repository.getAiSettings()
+    val settings = repository.aiSettings.get()
     screen(route = AppRoute.AiSettings, title = "AI Settings", onBack = { showSettings() }, scrollable = true) {
         section("OpenRouter")
         text(
@@ -70,15 +70,15 @@ internal fun ScreenHost.showAiSettings() {
         showAiUsageSection(this) { apiKeyField?.text?.toString() }
         fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.MD) {
             scope.launch {
-                repository.saveAiSettings(
-                    repository.getAiSettings().copy(
+                repository.aiSettings.save(
+                    repository.aiSettings.get().copy(
                         apiKey = apiKeyField?.text?.toString(),
                         coverEvidenceChapters =
                             evidenceChaptersField.text
                                 .toString()
                                 .trim()
                                 .toIntOrNull()
-                                ?: repository.getAiSettings().coverEvidenceChapters,
+                                ?: repository.aiSettings.get().coverEvidenceChapters,
                     ),
                 )
                 toast("AI settings saved")

@@ -46,9 +46,8 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
         // Breathing room between the textarea and its Paste/Add actions, and a slightly larger gap
         // separating those actions from the saved-sentence list below — so neither edge feels cramped.
         spacer(Space.LG)
-        // Paste + Add sit in their own row beneath the textarea. With a tall multiline field the old
-        // layout (button pinned beside the field, stretched to its height) no longer makes sense, so
-        // the actions drop to a flow row below — mirroring the Add Story screen's paste affordance.
+        // Paste + Add sit in a flow row beneath the textarea — a tall multiline field leaves no
+        // room for a button beside it, and this mirrors the Add Story screen's paste affordance.
         flow {
             button("Paste", Btn.TONAL, R.drawable.wna_paste) {
                 val clip = clipboardText()?.trim()
@@ -60,13 +59,13 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
                 }
             }
             button("Add", Btn.TONAL, R.drawable.wna_add) {
-                val list = repository.getSentenceRemovalList()
+                val list = repository.sentenceRemovalList.get()
                 val result = SentenceRemovalPlanning.save(list, sentence.text.toString())
                 if (!result.valid) {
                     toast(result.error ?: "Invalid sentence")
                 } else {
                     scope.launch {
-                        repository.saveSentenceRemovalList(result.sentences)
+                        repository.sentenceRemovalList.save(result.sentences)
                         cleanupScreenState.sentenceDraft = ""
                         showCleanupRules()
                     }
@@ -75,20 +74,20 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
         }
         spacer(Space.MD)
         section("Saved sentences")
-        if (repository.getSentenceRemovalList().isEmpty()) {
+        if (repository.sentenceRemovalList.get().isEmpty()) {
             text("No saved sentences yet.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
         }
         // C1: compact single-line rows (tap to edit, trailing delete) instead of a wall of full cards.
-        repository.getSentenceRemovalList().forEachIndexed { index, item ->
+        repository.sentenceRemovalList.get().forEachIndexed { index, item ->
             addView(
                 compactRuleRow(item, onEdit = {
                     prompt("Edit Sentence", item) { updated ->
-                        val result = SentenceRemovalPlanning.save(repository.getSentenceRemovalList(), updated, index)
+                        val result = SentenceRemovalPlanning.save(repository.sentenceRemovalList.get(), updated, index)
                         if (!result.valid) {
                             toast(result.error ?: "Invalid sentence")
                         } else {
                             scope.launch {
-                                repository.saveSentenceRemovalList(result.sentences)
+                                repository.sentenceRemovalList.save(result.sentences)
                                 showCleanupRules()
                             }
                         }
@@ -96,8 +95,8 @@ internal fun ScreenHost.buildSentenceRules(body: LinearLayout) {
                 }, onDelete = {
                     confirm("Remove this sentence from the blocklist?", confirmLabel = "Delete") {
                         scope.launch {
-                            repository.saveSentenceRemovalList(
-                                SentenceRemovalPlanning.delete(repository.getSentenceRemovalList(), index),
+                            repository.sentenceRemovalList.save(
+                                SentenceRemovalPlanning.delete(repository.sentenceRemovalList.get(), index),
                             )
                             showCleanupRules()
                         }

@@ -19,7 +19,7 @@ internal fun ScreenHost.showUpdates() {
     activeStory = null
     rerender = { showUpdates() }
     val stories = repository.library()
-    val threshold = repository.getUpdateFollowSettings().thresholdChapters
+    val threshold = repository.updateFollowSettings.get().thresholdChapters
     val followed = FollowedNovelPlanning.followedStories(stories, threshold)
     val syncableFollowed = followed.filter(StoryActionGuards::canAutoSync)
     val unavailableCount = followed.size - syncableFollowed.size

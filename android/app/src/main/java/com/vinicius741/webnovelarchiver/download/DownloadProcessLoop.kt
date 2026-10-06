@@ -35,7 +35,7 @@ internal class DownloadProcessLoop(
             var lastScheduledSource: String? = null
 
             while (true) {
-                val settings = storage.getSettings()
+                val settings = storage.settingsDoc.get()
                 cleanupUnsupportedSourceJobs()
                 lateinit var queue: MutableList<DownloadJob>
                 lateinit var pending: List<DownloadJob>

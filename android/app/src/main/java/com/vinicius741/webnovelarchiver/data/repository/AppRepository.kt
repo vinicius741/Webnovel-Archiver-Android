@@ -1,18 +1,30 @@
 package com.vinicius741.webnovelarchiver.data.repository
 
 import android.net.Uri
+import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteDraftOutput
+import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
+import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
+import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
+import com.vinicius741.webnovelarchiver.domain.model.AppliedChapterRewrite
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
+import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteDraftRecord
+import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteManifestModel
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
+import com.vinicius741.webnovelarchiver.domain.model.RewriteCadenceSummary
+import com.vinicius741.webnovelarchiver.domain.model.RewriteStrength
+import com.vinicius741.webnovelarchiver.domain.model.RewriteVerificationFinding
+import com.vinicius741.webnovelarchiver.domain.model.RewriteVerificationSummary
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
@@ -20,6 +32,7 @@ import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import kotlinx.coroutines.CoroutineDispatcher
@@ -50,9 +63,9 @@ private class AppStorageStoryStore(
 
     override fun saveQueue(jobs: List<DownloadJob>) = storage.saveQueue(jobs)
 
-    override fun displayPreferences(): DisplayPreferences = storage.getDisplayPreferences()
+    override fun displayPreferences(): DisplayPreferences = storage.displayPreferencesDoc.get()
 
-    override fun saveDisplayPreferences(preferences: DisplayPreferences) = storage.saveDisplayPreferences(preferences)
+    override fun saveDisplayPreferences(preferences: DisplayPreferences) = storage.displayPreferencesDoc.set(preferences)
 }
 
 data class DownloadUiSnapshot(
@@ -100,7 +113,7 @@ class AppRepository private constructor(
     /**
      * Monotonic identity of the persisted library. Clear and restore replace the whole library, so
      * they bump the generation; long-running network work captures it at start and rechecks at
-     * commit, rejecting results that belong to an obsolete library (R05).
+     * commit, rejecting results that belong to an obsolete library.
      */
     private val libraryGeneration =
         java.util.concurrent.atomic
@@ -111,7 +124,7 @@ class AppRepository private constructor(
     /**
      * Immutable published view of library + queue. UI reads ([library], [story], [queue]) take this
      * reference without the storage monitor, so a long backup/restore/EPUB transaction holding the
-     * monitor can never block a render or a click handler (R01).
+     * monitor can never block a render or a click handler.
      */
     private class PublishedState(
         val libraryById: Map<String, Story> = emptyMap(),
@@ -142,44 +155,14 @@ class AppRepository private constructor(
             queue = queue,
         )
 
-    @Volatile
-    private var appSettings = AppSettings()
-
-    @Volatile
-    private var sourceDownloadSettings: Map<String, SourceDownloadSettings> = emptyMap()
-
-    @Volatile
-    private var chapterFilterSettings = ChapterFilterSettings()
-
-    @Volatile
-    private var displayPreferences = DisplayPreferences()
-
-    @Volatile
-    private var tabs: List<Tab> = emptyList()
-
-    @Volatile
-    private var sentenceRemovalList: List<String> = emptyList()
-
-    @Volatile
-    private var regexRules: List<RegexCleanupRule> = emptyList()
-
-    @Volatile
-    private var ttsSettings = TtsSettings()
-
-    @Volatile
-    private var aiSettings = AiSettings()
-
     internal val aiUsage = AiUsageStore()
 
     @Volatile
     internal var ttsSession: TtsSession? = null
 
-    @Volatile
-    private var updateFollowSettings = UpdateFollowSettings()
-
     /**
      * Loads the current library + queue + settings into the state flows. Call once at startup.
-     * [preloadedLibrary] lets startup reuse the one library pass it already ran (R20) instead of
+     * [preloadedLibrary] lets startup reuse the one library pass it already ran instead of
      * re-reading every story document.
      */
     fun refresh(preloadedLibrary: List<Story>? = null) {
@@ -191,18 +174,11 @@ class AppRepository private constructor(
             library.forEach { libraryById[it.id] = it }
             queueJobs = queue
             republishLocked()
-            appSettings = storage.getSettings()
-            sourceDownloadSettings = storage.getSourceDownloadSettings().toMap()
-            chapterFilterSettings = storage.getChapterFilterSettings()
-            displayPreferences = storage.getDisplayPreferences().copy()
-            tabs = storage.getTabs().map { it.copy() }
-            sentenceRemovalList = storage.getSentenceRemovalList().toList()
-            regexRules = storage.getRegexRules().map { it.copy() }
-            ttsSettings = storage.getTtsSettings().copy()
-            aiSettings = storage.getAiSettings().copy()
+            // Settings documents are cached by the storage layer; reload them so a restore/import
+            // that replaced the root's contents is reflected, then re-read the session cache.
+            storage.reloadJsonDocuments()
             aiUsage.reload(storage.aiUsage::load)
             ttsSession = storage.getTtsSession()?.copy()
-            updateFollowSettings = PreferenceNormalization.updateFollowSettings(storage.getUpdateFollowSettings())
             _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
         }
     }
@@ -231,7 +207,7 @@ class AppRepository private constructor(
 
     /**
      * Bumps the published snapshot versions with no storage reads — for manifest-only changes
-     * (chapter-rewrite toggles) that leave every story document untouched (R26). Safe on Main.
+     * (chapter-rewrite toggles) that leave every story document untouched. Safe on Main.
      */
     internal fun republishLibrarySnapshot() {
         synchronized(transactionLock) {
@@ -282,25 +258,29 @@ class AppRepository private constructor(
     /** Adds or replaces one story without rebuilding/re-parsing the rest of the library. */
     suspend fun addOrUpdateStory(story: Story) = upsertStory(story)
 
-    fun getSettings(): AppSettings = appSettings.copy()
+    /** One cached settings document as callers see it: defensive-copy reads and transactional saves. */
+    inner class Setting<T : Any> internal constructor(
+        private val document: () -> AppStorage.JsonDocument<T>,
+        private val snapshot: (T) -> T = { it },
+    ) {
+        fun get(): T = snapshot(document().get())
 
-    fun getSourceDownloadSettings(): Map<String, SourceDownloadSettings> = sourceDownloadSettings.toMap()
+        suspend fun save(value: T) {
+            storageTransaction { document().set(value) }
+        }
+    }
 
-    fun getChapterFilterSettings(): ChapterFilterSettings = chapterFilterSettings.copy()
+    val settings = Setting({ requiredStorage.settingsDoc }) { it.copy() }
+    val sourceDownloadSettings = Setting({ requiredStorage.sourceDownloadSettingsDoc }) { it.toMap() }
+    val chapterFilterSettings = Setting({ requiredStorage.chapterFilterSettingsDoc }) { it.copy() }
+    val tabs = Setting({ requiredStorage.tabsDoc }) { tabs -> tabs.map { it.copy() } }
+    val sentenceRemovalList = Setting({ requiredStorage.sentencesDoc }) { it.toList() }
+    val regexRules = Setting({ requiredStorage.regexRulesDoc }) { rules -> rules.map { it.copy() } }
+    val ttsSettings = Setting({ requiredStorage.ttsSettingsDoc }) { it.copy() }
+    val aiSettings = Setting({ requiredStorage.aiSettingsDoc }) { it.copy() }
+    val updateFollowSettings = Setting({ requiredStorage.updateFollowSettingsDoc })
 
-    fun getDisplayPreferences(): DisplayPreferences = displayPreferences.copy()
-
-    fun getTabs(): List<Tab> = tabs.map { it.copy() }
-
-    fun getSentenceRemovalList(): List<String> = sentenceRemovalList.toList()
-
-    fun getRegexRules(): List<RegexCleanupRule> = regexRules.map { it.copy() }
-
-    fun getTtsSettings(): TtsSettings = ttsSettings.copy()
-
-    fun getAiSettings(): AiSettings = aiSettings.copy()
-
-    fun getUpdateFollowSettings(): UpdateFollowSettings = updateFollowSettings
+    fun getDisplayPreferences(): DisplayPreferences = storyStore.displayPreferences().copy()
 
     fun getStorageHealth(): StorageHealthSnapshot = requiredStorage.storageHealth.value
 
@@ -354,42 +334,17 @@ class AppRepository private constructor(
             }
         }
 
-    /** Invalidates in-flight library-scoped work (R05); called by clear/restore/import. */
+    /** Invalidates in-flight library-scoped work; called by clear/restore/import. */
     internal fun invalidateLibraryGeneration() {
         libraryGeneration.incrementAndGet()
     }
 
-    suspend fun saveSettings(settings: AppSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.appSettings(settings)
-            requiredStorage.saveSettings(normalized)
-            appSettings = normalized.copy()
-        }
-
-    suspend fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.sourceDownloadSettings(settings)
-            requiredStorage.saveSourceDownloadSettings(normalized)
-            sourceDownloadSettings = normalized.toMap()
-        }
-
-    suspend fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.chapterFilterSettings(settings)
-            requiredStorage.saveChapterFilterSettings(normalized)
-            chapterFilterSettings = normalized.copy()
-        }
-
     suspend fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.displayPreferences(preferences)
-            requiredStorage.saveDisplayPreferences(normalized)
-            displayPreferences = normalized.copy()
-        }
+        storageTransaction { requiredStorage.displayPreferencesDoc.set(preferences) }
 
     /**
      * Read-modify-write display preferences against the LATEST persisted value inside one
-     * transaction (R28): two rapid independent changes (tab + sort) can no longer race and restore
+     * transaction: two rapid independent changes (tab + sort) can no longer race and restore
      * each other's previous field value.
      */
     suspend fun updateDisplayPreferences(block: (DisplayPreferences) -> DisplayPreferences) {
@@ -398,48 +353,8 @@ class AppRepository private constructor(
             val normalized = PreferenceNormalization.displayPreferences(block(latest.copy()))
             if (normalized == latest) return@storageTransaction
             storyStore.saveDisplayPreferences(normalized)
-            displayPreferences = normalized.copy()
         }
     }
-
-    suspend fun saveTabs(updated: List<Tab>) =
-        storageTransaction {
-            requiredStorage.saveTabs(updated)
-            tabs = updated.sortedBy { it.order }.map { it.copy() }
-        }
-
-    suspend fun saveSentenceRemovalList(items: List<String>) =
-        storageTransaction {
-            requiredStorage.saveSentenceRemovalList(items)
-            sentenceRemovalList = items.toList()
-        }
-
-    suspend fun saveRegexRules(updated: List<RegexCleanupRule>) =
-        storageTransaction {
-            requiredStorage.saveRegexRules(updated)
-            regexRules = updated.map { it.copy() }
-        }
-
-    suspend fun saveTtsSettings(settings: TtsSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.ttsSettings(settings)
-            requiredStorage.saveTtsSettings(normalized)
-            ttsSettings = normalized.copy()
-        }
-
-    suspend fun saveAiSettings(settings: AiSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.aiSettings(settings)
-            requiredStorage.saveAiSettings(normalized)
-            aiSettings = normalized.copy()
-        }
-
-    suspend fun saveUpdateFollowSettings(settings: UpdateFollowSettings) =
-        storageTransaction {
-            val normalized = PreferenceNormalization.updateFollowSettings(settings)
-            requiredStorage.saveUpdateFollowSettings(normalized)
-            updateFollowSettings = normalized
-        }
 
     /** Read-modify-write a story under the shared storage monitor; a null return from [block] aborts. */
     suspend fun updateStory(
@@ -535,7 +450,7 @@ class AppRepository private constructor(
     }
 
     /**
-     * Commits one downloaded chapter and its queue job in a single transaction (R05): the job
+     * Commits one downloaded chapter and its queue job in a single transaction: the job
      * must still exist and be downloading, and the library generation must be unchanged, so a
      * cancel, remove, clear, or restore landing between the chapter fetch and this call can
      * never publish the chapter or flip a cancelled row to completed.
@@ -584,10 +499,10 @@ class AppRepository private constructor(
      * Commits a sync atomically with optional archive and metric snapshots.
      *
      * @param startedGeneration [libraryGeneration] captured when the sync began; a mismatch means
-     *   the library was cleared or replaced mid-flight, so the commit is rejected (R05).
+     *   the library was cleared or replaced mid-flight, so the commit is rejected.
      * @param requireExisting true when the sync started from an existing story; a missing current
      *   record then means the user deleted it during the network window and the sync must not
-     *   recreate it (R05).
+     *   recreate it.
      */
     suspend fun commitSyncedStory(
         story: Story,
@@ -696,3 +611,257 @@ class AppRepository private constructor(
 
     private fun snapshotJob(job: DownloadJob): DownloadJob = job.copy(chapter = job.chapter.copy())
 }
+
+/**
+ * Writes a generated cover image to storage and points the story at it. The source
+ * [Story.coverUrl] is never touched, so [clearAiCover] can restore it at any time.
+ */
+internal suspend fun AppRepository.setAiCover(
+    storyId: String,
+    bytes: ByteArray,
+    mediaType: String?,
+): Story? =
+    updateStory(storyId) { latest ->
+        latest?.let { story ->
+            preserveAppliedCover(story)
+            val file = storage.covers.saveApplied(storyId, bytes, AiCoverPlanning.coverFileExtension(mediaType))
+            LocalImageRevision.changed(file)
+            StoryMutations.setAiCoverPath(story, storage.relativize(file))
+        }
+    }
+
+/** Removes the generated cover file and record so the story shows its source cover again. */
+internal suspend fun AppRepository.clearAiCover(storyId: String): Story? =
+    updateStory(storyId) { latest ->
+        latest?.let { story ->
+            preserveAppliedCover(story)
+            storage.covers.deleteApplied(storyId)
+            StoryMutations.clearAiCover(story)
+        }
+    }
+
+/** Flips which cover the app displays (AI vs source) without touching either stored image. */
+internal suspend fun AppRepository.setShowAiCover(
+    storyId: String,
+    showAi: Boolean,
+): Story? =
+    updateStory(storyId) { latest ->
+        latest?.let { StoryMutations.setShowAiCover(it, showAi) }
+    }
+
+/** The story's locally generated cover file, when one is recorded and present on disk. */
+internal fun AppRepository.coverFile(
+    story: Story,
+    checkExists: Boolean = true,
+): File? = storage.resolveAbsolutePath(story.aiCoverPath, checkExists)
+
+/*
+ * Pending (preview-only) AI cover drafts. Unlike the cover transactions above these do not mutate
+ * library state — they persist the background generation result so it survives navigation and
+ * process death until the user applies or discards it.
+ */
+
+/** Persists the staged flow's editable image prompt (stage 1 result), dropping any painted preview. */
+internal suspend fun AppRepository.saveAiCoverPromptDraft(
+    storyId: String,
+    prompt: String,
+) {
+    withContext(Dispatchers.IO) { storage.covers.savePrompt(storyId, prompt) }
+}
+
+/** Persists a painted preview (with the prompt that produced it) as the story's pending draft. */
+internal suspend fun AppRepository.saveAiCoverImageDraft(
+    storyId: String,
+    draft: AiCoverDraft,
+) {
+    withContext(Dispatchers.IO) { storage.covers.saveImage(storyId, draft) }
+}
+
+/**
+ * Persists a finished cover draft only when the story still exists: the existence check and
+ * the draft save run as one storage transaction, so a story deleted mid-generation cannot regain
+ * orphaned draft files. False = discarded.
+ */
+internal suspend fun AppRepository.persistAiCoverDraftIfStoryExists(
+    storyId: String,
+    record: AiCoverDraftRecord,
+): Boolean =
+    storageTransaction {
+        if (storage.getStory(storyId) == null) {
+            false
+        } else {
+            when (record) {
+                is AiCoverDraftRecord.PromptOnly -> storage.covers.savePrompt(storyId, record.prompt)
+                is AiCoverDraftRecord.Image -> storage.covers.saveImage(storyId, record.draft)
+            }
+            true
+        }
+    }
+
+/** The story's persisted pending draft, or null when there is none. */
+internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDraftRecord? =
+    withContext(Dispatchers.IO) { storage.covers.load(storyId) }
+
+/** Deletes the story's pending draft; called on Apply, Discard, and AI-cover deletion. */
+internal suspend fun AppRepository.deleteAiCoverDraft(storyId: String) {
+    withContext(Dispatchers.IO) { storage.covers.delete(storyId) }
+}
+
+/** Stores cover context independently from the description selection. */
+internal suspend fun AppRepository.setAiCoverContextChapters(
+    storyId: String,
+    indices: List<Int>?,
+): Story? =
+    updateStory(storyId) { latest ->
+        latest?.copy(aiCoverContextChapterIndices = indices?.distinct()?.sorted()?.toMutableList())
+    }
+
+/**
+ * Saves a finished rewrite draft. False when the story no longer exists: the existence check rides
+ * the same transaction as the save, closing the deleted-mid-run check/write race instead of
+ * recreating rewrite state for a story [AppStorage.deleteStory] already cleaned.
+ */
+internal suspend fun AppRepository.saveChapterRewriteDraft(output: AiChapterRewriteDraftOutput): Boolean =
+    storageTransaction {
+        if (storage.getStory(output.storyId) == null) {
+            false
+        } else {
+            storage.chapterRewrites.saveDraft(output.storyId, output.toDraftRecord(), output.polishedHtml)
+            true
+        }
+    }
+
+internal suspend fun AppRepository.applyChapterRewrite(
+    storyId: String,
+    chapterId: String,
+): AppliedChapterRewrite? =
+    storageTransaction {
+        storage.chapterRewrites.applyDraft(storyId, chapterId)
+    }.also {
+        if (it != null) republishLibrarySnapshot()
+    }
+
+internal suspend fun AppRepository.discardChapterRewriteDraft(
+    storyId: String,
+    chapterId: String,
+) {
+    storageTransaction { storage.chapterRewrites.discardDraft(storyId, chapterId) }
+}
+
+/** Removes the chapter's rewrite entirely (draft, applied file, and records). */
+internal suspend fun AppRepository.removeChapterRewrite(
+    storyId: String,
+    chapterId: String,
+) {
+    storageTransaction { storage.chapterRewrites.removeRewrite(storyId, chapterId) }
+    republishLibrarySnapshot()
+}
+
+/**
+ * Flips which local variant the content resolver serves for this chapter, then republishes so
+ * screens observing library state reload the chapter with the new text.
+ */
+internal suspend fun AppRepository.setChapterRewriteActive(
+    storyId: String,
+    chapterId: String,
+    active: Boolean,
+): AppliedChapterRewrite? =
+    storageTransaction {
+        storage.chapterRewrites.setActive(storyId, chapterId, active)
+    }.also {
+        if (it != null) republishLibrarySnapshot()
+    }
+
+internal suspend fun AppRepository.setChapterRewriteStrength(
+    storyId: String,
+    strength: RewriteStrength?,
+) {
+    updateStory(storyId) { latest ->
+        latest?.copy(chapterRewriteStrength = strength?.wire)
+    }
+}
+
+internal fun AppRepository.chapterRewriteManifest(storyId: String): ChapterRewriteManifestModel = storage.chapterRewrites.manifest(storyId)
+
+internal fun AppRepository.appliedChapterRewrite(
+    storyId: String,
+    chapterId: String,
+): AppliedChapterRewrite? = storage.chapterRewrites.appliedRecord(storyId, chapterId)
+
+/** The chapter's active applied polished HTML, or null when the rewrite is absent or inactive. */
+internal fun AppRepository.appliedRewriteHtml(
+    storyId: String,
+    chapterId: String,
+): String? = storage.chapterRewrites.appliedHtml(storyId, chapterId)
+
+/**
+ * HTML read from an already-selected record: callers that resolved the record from one
+ * manifest snapshot must not trigger a second manifest lookup just to read the file.
+ */
+internal fun AppRepository.appliedRewriteHtmlForRecord(record: AppliedChapterRewrite): String? =
+    storage.chapterRewrites.appliedHtmlForRecord(record)
+
+/** The chapter's pending preview draft HTML, or null when there is none. */
+internal fun AppRepository.draftRewriteHtml(
+    storyId: String,
+    chapterId: String,
+): String? = storage.chapterRewrites.draftHtml(storyId, chapterId)
+
+/** The applied file even when the rewrite is inactive — the compare screen's read path. */
+internal fun AppRepository.appliedRewritePreviewHtml(
+    storyId: String,
+    chapterId: String,
+): String? =
+    storage.chapterRewrites.appliedRecord(storyId, chapterId)?.let { record ->
+        storage.chapterRewrites.appliedHtmlForRecord(record)
+    }
+
+/** The persisted active playback session, or null when playback fully stopped. */
+fun AppRepository.getTtsSession(): TtsSession? = ttsSession?.copy()
+
+suspend fun AppRepository.saveTtsSession(session: TtsSession) {
+    storageTransaction {
+        storage.saveTtsSession(session)
+        ttsSession = session.copy()
+    }
+}
+
+suspend fun AppRepository.clearTtsSession() {
+    storageTransaction {
+        storage.clearTtsSession()
+        ttsSession = null
+    }
+}
+
+suspend fun AppRepository.getTtsStoryPosition(storyId: String): TtsStoryPosition? =
+    storageTransaction { storage.getTtsStoryPositions()[storyId] }?.copy()
+
+suspend fun AppRepository.saveTtsStoryPosition(position: TtsStoryPosition) {
+    storageTransaction { storage.saveTtsStoryPosition(position) }
+}
+
+suspend fun AppRepository.clearTtsStoryPosition(storyId: String) {
+    storageTransaction { storage.clearTtsStoryPosition(storyId) }
+}
+
+/** Preserve covers applied by older app versions before they are overwritten. */
+internal fun AppRepository.preserveAppliedCover(story: Story): String? =
+    coverFile(story)?.takeIf { it.isFile }?.let { file ->
+        val mediaType =
+            when (file.extension.lowercase()) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "webp" -> "image/webp"
+                else -> "image/png"
+            }
+        storage.covers.versions.save(story.id, AiCoverDraft("", file.readBytes(), mediaType))
+    }
+
+internal suspend fun AppRepository.listAiCoverVersions(storyId: String) =
+    withContext(Dispatchers.IO) {
+        val story = story(storyId)
+        storage.covers.versions.listForDisplay(
+            storyId,
+            story?.let { coverFile(it) },
+            story?.let(AiCoverPlanning::isAiCoverActive) == true,
+        )
+    }

@@ -3,7 +3,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
-import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
 import java.io.File
+import java.lang.reflect.Type
 
 /** Pre-import library/index snapshot used to roll back a failed JSON backup merge. */
 internal data class JsonImportSnapshot(
@@ -61,14 +62,13 @@ class AppStorage(
     internal val appVersion: String = appVersionOf(context),
 ) {
     internal val context: Context = context.applicationContext
-    internal val gson: Gson = GsonBuilder().setPrettyPrinting().create()
+    internal val gson: Gson = SharedGson.pretty
     internal val root = File(this.context.filesDir, "webnovel_archiver").apply { mkdirs() }
     internal val storyDir = File(root, "stories").apply { mkdirs() }
     internal val metricDir = File(root, "metrics").apply { mkdirs() }
     internal val chapterRoot = File(root, "novels").apply { mkdirs() }
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
-    internal val coverFiles = CoverFileStore(root, ::safeName)
-    internal val aiCoverDrafts = AiCoverDraftStore(root, ::safeName)
+    internal val covers = CoverStore(root, ::safeName)
     internal val chapterRewrites = AiChapterRewriteStore(root, ::safeName)
     internal val aiUsage = AiUsageFileStore(root, gson, appVersion)
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
@@ -76,7 +76,7 @@ class AppStorage(
 
     /**
      * The ONLY rollback copy of the user's previous library. Durable app files, never cacheDir:
-     * the OS may purge cache between swap phases, destroying the recovery path (R07).
+     * the OS may purge cache between swap phases, destroying the recovery path.
      */
     internal val preRestoreSnapshotDir = File(this.context.filesDir, "webnovel_restore_snapshot")
     internal val maintenanceCoordinator = MaintenanceCoordinator()
@@ -102,6 +102,105 @@ class AppStorage(
     private val sessionFile = File(root, "tts_session.json")
     private val ttsPositionsFile = File(root, "tts_positions.json")
     private val aiSettingsFile = File(root, "ai_settings.json")
+
+    /**
+     * One cached JSON document: owns read, normalize, atomic write, and the in-memory current
+     * value. Every access synchronizes on the owning [AppStorage] (the same monitor the
+     * maintenance coordinator and every other document use), writes reuse the shared envelope +
+     * health fences, and on-disk bytes are unchanged from the hand-written getters/savers this
+     * replaced. The value loads lazily on first access; [reload] refreshes it after a restore or
+     * wipe replaced the storage root's contents.
+     */
+    internal inner class JsonDocument<T : Any>(
+        val file: File,
+        private val type: Type,
+        private val default: () -> T,
+        private val normalize: (T) -> T = { it },
+        private val beforeWrite: (T) -> T = { it },
+    ) {
+        private val _state by lazy { MutableStateFlow(loadLocked()) }
+
+        val state: StateFlow<T> get() = _state
+
+        fun get(): T = _state.value
+
+        fun set(value: T) {
+            synchronized(this@AppStorage) {
+                val normalized = normalize(beforeWrite(value))
+                write(file, normalized)
+                _state.value = normalized
+            }
+        }
+
+        fun reload() {
+            synchronized(this@AppStorage) { _state.value = loadLocked() }
+        }
+
+        private fun loadLocked(): T = normalize(readOfType(file, type) ?: default())
+    }
+
+    internal val settingsDoc =
+        JsonDocument(settingsFile, typeOf<AppSettings>(), { AppSettings() }, PreferenceNormalization::appSettings)
+
+    internal val sourceDownloadSettingsDoc =
+        JsonDocument<Map<String, SourceDownloadSettings>>(
+            sourceSettingsFile,
+            typeOf<MutableMap<String, SourceDownloadSettings>>(),
+            { mutableMapOf() },
+            PreferenceNormalization::sourceDownloadSettings,
+        )
+
+    internal val chapterFilterSettingsDoc =
+        JsonDocument(chapterFilterFile, typeOf<ChapterFilterSettings>(), {
+            ChapterFilterSettings()
+        }, PreferenceNormalization::chapterFilterSettings)
+
+    internal val displayPreferencesDoc =
+        JsonDocument(
+            displayPreferencesFile,
+            typeOf<DisplayPreferences>(),
+            { DisplayPreferences() },
+            PreferenceNormalization::displayPreferences,
+        )
+
+    internal val tabsDoc =
+        JsonDocument<List<Tab>>(tabsFile, typeOf<MutableList<Tab>>(), { mutableListOf() }, beforeWrite = { tabs ->
+            tabs.sortedBy { it.order }
+        })
+
+    internal val sentencesDoc =
+        JsonDocument<List<String>>(sentencesFile, typeOf<MutableList<String>>(), { DefaultCleanup.sentences.toMutableList() })
+
+    internal val regexRulesDoc =
+        JsonDocument<List<RegexCleanupRule>>(regexFile, typeOf<MutableList<RegexCleanupRule>>(), {
+            mutableListOf()
+        }, RegexRuleCleanup::sanitizeRegexRules)
+
+    internal val updateFollowSettingsDoc =
+        JsonDocument(updateFollowSettingsFile, typeOf<UpdateFollowSettings>(), {
+            UpdateFollowSettings()
+        }, PreferenceNormalization::updateFollowSettings)
+
+    internal val ttsSettingsDoc = JsonDocument(ttsFile, typeOf<TtsSettings>(), { TtsSettings() }, PreferenceNormalization::ttsSettings)
+
+    internal val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
+
+    private inline fun <reified T> typeOf(): Type = object : TypeToken<T>() {}.type
+
+    /** Re-reads every cached document from disk; call after restore/import/clear replaced the root. */
+    @Synchronized
+    internal fun reloadJsonDocuments() {
+        settingsDoc.reload()
+        sourceDownloadSettingsDoc.reload()
+        chapterFilterSettingsDoc.reload()
+        displayPreferencesDoc.reload()
+        tabsDoc.reload()
+        sentencesDoc.reload()
+        regexRulesDoc.reload()
+        updateFollowSettingsDoc.reload()
+        ttsSettingsDoc.reload()
+        aiSettingsDoc.reload()
+    }
 
     @Synchronized
     fun getLibrary(): MutableList<Story> {
@@ -187,9 +286,9 @@ class AppStorage(
         File(chapterRoot, safeName(id)).deleteRecursively()
         File(epubRoot, safeName(id)).deleteRecursively()
         // The generated cover is per-story too; drop it so it does not outlive the story.
-        coverFiles.delete(id)
+        covers.deleteApplied(id)
         // Pending AI cover drafts (with their preview images) are per-story as well.
-        aiCoverDrafts.delete(id, keepHistory = false)
+        covers.delete(id, keepHistory = false)
         // Applied chapter rewrites and pending polish drafts are per-story as well.
         chapterRewrites.delete(id)
         // Drop the per-story trend history too so its file does not outlive the story.
@@ -207,60 +306,15 @@ class AppStorage(
         epubRoot.mkdirs()
         backupRoot.mkdirs()
         // Restore-transaction leftovers live beside the root in filesDir; with a stuck journal a
-        // stale snapshot could later be moved over this deliberately wiped library (R07).
+        // stale snapshot could later be moved over this deliberately wiped library.
         File(context.filesDir, RestoreTransactionJournal.FILE_NAME).delete()
         preRestoreSnapshotDir.deleteRecursively()
         // Health fences are process-local; wipe them so recreated same-named documents can write again.
         _storageHealth.value = StorageHealthSnapshot()
-        // The rewrite tree was deleted wholesale; drop its cached manifests too (R26).
+        // The rewrite tree was deleted wholesale; drop its cached manifests too.
         chapterRewrites.invalidateAll()
+        reloadJsonDocuments()
     }
-
-    fun getSettings(): AppSettings = PreferenceNormalization.appSettings(read(settingsFile) ?: AppSettings())
-
-    fun saveSettings(settings: AppSettings) = write(settingsFile, PreferenceNormalization.appSettings(settings))
-
-    fun getSourceDownloadSettings(): MutableMap<String, SourceDownloadSettings> =
-        PreferenceNormalization.sourceDownloadSettings(read(sourceSettingsFile) ?: mutableMapOf())
-
-    fun saveSourceDownloadSettings(settings: Map<String, SourceDownloadSettings>) =
-        write(sourceSettingsFile, PreferenceNormalization.sourceDownloadSettings(settings))
-
-    fun getChapterFilterSettings(): ChapterFilterSettings =
-        PreferenceNormalization.chapterFilterSettings(read(chapterFilterFile) ?: ChapterFilterSettings())
-
-    fun saveChapterFilterSettings(settings: ChapterFilterSettings) =
-        write(chapterFilterFile, PreferenceNormalization.chapterFilterSettings(settings))
-
-    fun getDisplayPreferences(): DisplayPreferences =
-        PreferenceNormalization.displayPreferences(read(displayPreferencesFile) ?: DisplayPreferences())
-
-    fun saveDisplayPreferences(preferences: DisplayPreferences) =
-        write(displayPreferencesFile, PreferenceNormalization.displayPreferences(preferences))
-
-    fun getTabs(): MutableList<Tab> = read(tabsFile) ?: mutableListOf()
-
-    fun saveTabs(tabs: List<Tab>) = write(tabsFile, tabs.sortedBy { it.order })
-
-    fun getSentenceRemovalList(): MutableList<String> = read(sentencesFile) ?: DefaultCleanup.sentences.toMutableList()
-
-    fun saveSentenceRemovalList(items: List<String>) = write(sentencesFile, items)
-
-    fun getRegexRules(): MutableList<RegexCleanupRule> = RegexRuleCleanup.sanitizeRegexRules(read(regexFile) ?: mutableListOf())
-
-    fun saveRegexRules(rules: List<RegexCleanupRule>) = write(regexFile, RegexRuleCleanup.sanitizeRegexRules(rules))
-
-    fun getUpdateFollowSettings(): UpdateFollowSettings = read(updateFollowSettingsFile) ?: UpdateFollowSettings()
-
-    fun saveUpdateFollowSettings(settings: UpdateFollowSettings) = write(updateFollowSettingsFile, settings)
-
-    fun getTtsSettings(): TtsSettings = PreferenceNormalization.ttsSettings(read(ttsFile) ?: TtsSettings())
-
-    fun saveTtsSettings(settings: TtsSettings) = write(ttsFile, PreferenceNormalization.ttsSettings(settings))
-
-    fun getAiSettings(): AiSettings = PreferenceNormalization.aiSettings(read(aiSettingsFile) ?: AiSettings())
-
-    fun saveAiSettings(settings: AiSettings) = write(aiSettingsFile, PreferenceNormalization.aiSettings(settings))
 
     fun getTtsSession(): TtsSession? = read(sessionFile)
 
@@ -305,7 +359,7 @@ class AppStorage(
     }
 
     /**
-     * One-pass startup library load (R20): reads the index and every story file once, applying the
+     * One-pass startup library load: reads the index and every story file once, applying the
      * same coercion + relative-path migration [readStory] applies per read, and reports which
      * story documents changed so the caller persists only those instead of rewriting the library.
      */
@@ -359,9 +413,9 @@ class AppStorage(
     /**
      * Snapshots the library index, every story file, and the tabs file into [dest], returning a
      * [JsonImportSnapshot] that [restoreJsonImportSnapshot] can use to roll a failed JSON import
-     * back to its pre-import state. Intended for [BackupRestoreCoordinator.importBackupUri] (audit
-     * gap 2): the JSON import path previously had no rollback, so a malformed or partial merge could
-     * leave the library in a mixed state. The caller wraps read+merge+write in the same `storage`
+     * back to its pre-import state. Intended for [BackupRestoreCoordinator.importBackupUri]: a
+     * malformed or partial merge must never leave the library in a mixed state. The caller wraps
+     * read+merge+write in the same `storage`
      * monitor and only restores on failure.
      */
     @Synchronized
@@ -501,8 +555,8 @@ class AppStorage(
     ): String? {
         val source = resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return null
         val destination = chapterFile(storyId, index, chapter)
-        // Streamed temp + fsync + rename: a failed archive copy must not truncate the destination
-        // (R06), which a direct copyTo(overwrite = true) could.
+        // Streamed temp + fsync + rename: a failed archive copy must not truncate the
+        // destination, which a direct copyTo(overwrite = true) could.
         AtomicFileWrites.copyAtomically(source, destination)
         return relativize(destination)
     }
@@ -513,7 +567,7 @@ class AppStorage(
         return resolveChapterPath(chapter.filePath)?.let { File(it).takeIf(File::exists)?.readText() }
     }
 
-    /** File-metadata availability check: no full chapter read just to test for content (R25). */
+    /** File-metadata availability check: no full chapter read just to test for content. */
     @Synchronized
     fun chapterAvailable(chapter: Chapter): Boolean =
         chapter.content != null || resolveChapterPath(chapter.filePath)?.let { File(it).isFile } == true
@@ -624,7 +678,7 @@ class AppStorage(
 
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 
-    /** A full restore replaces the on-disk rewrite tree wholesale, so cached manifests are dropped (R26). */
+    /** A full restore replaces the on-disk rewrite tree wholesale, so cached manifests are dropped. */
     fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri).also { chapterRewrites.invalidateAll() }
 
     private fun saveStoryOnly(story: Story) {
@@ -675,9 +729,19 @@ class AppStorage(
 
     internal fun relativize(file: File): String = file.toRelativeString(root)
 
-    private inline fun <reified T> read(file: File): T? =
+    private fun <T> readOfType(
+        file: File,
+        type: Type,
+    ): T? = readResult(file) { DurableJson.readAtomicResultOfType<T>(file, gson, type) }
+
+    private inline fun <reified T> read(file: File): T? = readResult(file) { DurableJson.readAtomicResult<T>(file, gson) }
+
+    private fun <T> readResult(
+        file: File,
+        block: () -> DurableReadResult<T>,
+    ): T? =
         maintenanceCoordinator.withStorageAccess(this) {
-            when (val result = DurableJson.readAtomicResult<T>(file, gson)) {
+            when (val result = block()) {
                 is DurableReadResult.Present -> {
                     // A successful decode means the document is readable again; drop sticky fences.
                     clearStorageIssues(file)
@@ -762,5 +826,91 @@ class AppStorage(
             runCatching {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName
             }.getOrNull() ?: "unknown"
+    }
+}
+
+@Synchronized
+internal fun AppStorage.readLibraryIdsWithRecovery(): List<String> {
+    val result = DurableJson.readAtomicResult<List<String>>(libraryIndex, gson)
+    if (result is DurableReadResult.Present) {
+        clearStorageIssues(libraryIndex)
+        return result.value.filter { it.isNotBlank() }.distinct()
+    }
+
+    when (result) {
+        is DurableReadResult.Corrupt ->
+            recordStorageIssue(libraryIndex, StorageHealthKind.Corrupt, "Library index was corrupt and quarantined")
+        is DurableReadResult.UnsupportedSchema ->
+            recordStorageIssue(
+                libraryIndex,
+                StorageHealthKind.UnsupportedSchema,
+                "Library index schema ${result.foundVersion} is unsupported",
+            )
+        is DurableReadResult.IoFailure ->
+            recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, result.cause.message ?: "I/O failure")
+        DurableReadResult.Absent -> Unit
+        is DurableReadResult.Present -> Unit
+    }
+
+    val storyFiles = storyDir.listFiles()?.toList().orEmpty()
+    if (storyFiles.none { it.isFile && it.name.endsWith(".json") }) return emptyList()
+    val recovery =
+        LibraryIndexRecovery.scan(
+            files = storyFiles,
+            safeName = ::safeName,
+            readStory = { file ->
+                DurableJson.readAtomicResult<Story>(file, gson, quarantineOnCorruption = false).also { storyResult ->
+                    when (storyResult) {
+                        is DurableReadResult.Corrupt ->
+                            recordStorageIssue(file, StorageHealthKind.Corrupt, "Story document is corrupt and was left untouched")
+                        is DurableReadResult.UnsupportedSchema ->
+                            recordStorageIssue(file, StorageHealthKind.UnsupportedSchema, "Story schema is unsupported")
+                        is DurableReadResult.IoFailure ->
+                            recordStorageIssue(file, StorageHealthKind.IoFailure, storyResult.cause.message ?: "I/O failure")
+                        is DurableReadResult.Present -> clearStorageIssues(file)
+                        DurableReadResult.Absent -> Unit
+                    }
+                }
+            },
+        )
+    val recoveredIds = recovery.stories.map { it.id }
+    // Persist a rebuilt index for recoverable cases so cold starts stop re-scanning. Leave an
+    // UnsupportedSchema index untouched so a downgrade cannot clobber a newer on-disk shape.
+    if (result !is DurableReadResult.UnsupportedSchema) {
+        persistRecoveredLibraryIndex(recoveredIds)
+    } else {
+        recordStorageIssue(
+            libraryIndex,
+            StorageHealthKind.LibraryIndexRecovered,
+            "Reconstructed an in-memory library index from valid story documents; unsupported index was not rewritten",
+            recovery.stories.size,
+        )
+    }
+    return recoveredIds
+}
+
+@Synchronized
+internal fun AppStorage.persistRecoveredLibraryIndex(ids: List<String>) {
+    // Drop sticky IoFailure/Corrupt fences for the index so intentional recovery can rewrite it.
+    clearStorageIssues(libraryIndex)
+    runCatching {
+        maintenanceCoordinator.withStorageAccess(this) {
+            DurableJson.writeAtomic(libraryIndex, gson, DurableJson.envelope(ids, appVersion))
+        }
+        recordStorageIssue(
+            libraryIndex,
+            StorageHealthKind.LibraryIndexRecovered,
+            "Reconstructed and persisted library index from valid story documents",
+            ids.size,
+        )
+    }.onFailure { error ->
+        Timber.e(error, "Could not persist recovered library index")
+        recordStorageIssue(
+            libraryIndex,
+            StorageHealthKind.LibraryIndexRecovered,
+            "Reconstructed an in-memory library index from valid story documents; persistence failed",
+            ids.size,
+        )
+        recordStorageIssue(libraryIndex, StorageHealthKind.IoFailure, error.message ?: "I/O failure")
     }
 }

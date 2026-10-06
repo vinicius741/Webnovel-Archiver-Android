@@ -29,8 +29,8 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Cover-image model picker for the AI Controls screen (moved from AI Settings — the model is
- * changed where generation happens). Mirrors the description-model picker (search + capped list +
+ * Cover-image model picker for the AI Controls screen — the model is changed where generation
+ * happens. Mirrors the description-model picker (search + capped list +
  * pinned manual entry) but rides the dedicated image-model catalog (`GET /api/v1/images/models`),
  * which ships no pricing — so there are no price labels and no Free filter here, and each row
  * notes the request parameters the model supports.
@@ -120,29 +120,13 @@ private fun ScreenHost.showAiImageModelDialog(
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "model" else "models"}"
         results.removeAllViews()
         results.addView(
-            LinearLayout(app).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(0, app.dp(Space.MD), 0, app.dp(Space.MD))
-                isClickable = true
-                isFocusable = true
-                background = selectableRipple(colors.onSurface)
-                addView(makeText(app, "Enter model id manually…", Type.BODY_LARGE, colors.primary))
-                addView(
-                    makeText(
-                        app,
-                        "Use any OpenRouter image model id, e.g. a new release missing from the list",
-                        Type.BODY_SMALL,
-                        colors.onSurfaceVariant,
-                    ).apply { setPadding(0, app.dp(Space.XS), 0, 0) },
-                )
-                setOnClickListener {
-                    dialogRef?.dismiss()
-                    showImageManualModelDialog(selectedId, onPicked)
-                }
+            manualEntryRow(app, "Use any OpenRouter image model id, e.g. a new release missing from the list") {
+                dialogRef?.dismiss()
+                showImageManualModelDialog(selectedId, onPicked)
             },
         )
         results.addView(makeDivider(app))
-        filtered.take(MAX_RENDERED_IMAGE_MODELS).forEach { model ->
+        filtered.take(MAX_RENDERED_MODEL_ROWS).forEach { model ->
             results.addView(
                 LinearLayout(app).apply {
                     orientation = LinearLayout.VERTICAL
@@ -170,21 +154,7 @@ private fun ScreenHost.showAiImageModelDialog(
                 },
             )
         }
-        if (filtered.size > MAX_RENDERED_IMAGE_MODELS) {
-            results.addView(
-                makeText(
-                    app,
-                    "...and ${filtered.size - MAX_RENDERED_IMAGE_MODELS} more — refine your search",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ).apply { setPadding(0, app.dp(Space.SM), 0, app.dp(Space.SM)) },
-            )
-        } else if (filtered.isEmpty()) {
-            results.addView(
-                makeText(app, "No image models match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
-                    .apply { setPadding(0, app.dp(Space.LG), 0, app.dp(Space.LG)) },
-            )
-        }
+        appendResultTail(app, results, filtered.size, emptyText = "No image models match your search.")
     }
 
     search.doAfterTextChanged { renderResults() }
@@ -209,6 +179,3 @@ private fun ScreenHost.showImageManualModelDialog(
 ) = prompt("Image model id (e.g. x-ai/grok-imagine-image-2.0)", currentModel) { value ->
     value.trim().takeIf { it.isNotBlank() }?.let(onPicked)
 }
-
-/** Render cap for the dialog list; scrolling many rows on a phone dialog gets sluggish. */
-private const val MAX_RENDERED_IMAGE_MODELS = 80

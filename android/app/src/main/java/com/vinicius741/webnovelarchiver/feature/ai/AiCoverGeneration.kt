@@ -5,8 +5,8 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ai.AiCoverForegroundService
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
+import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
  * drafts — every call bills the user's OpenRouter key.
  */
 internal fun ScreenHost.generateAiCoverDraft(story: Story) {
-    val settings = repository.getAiSettings()
+    val settings = repository.aiSettings.get()
     val hasApplied = story.aiCoverPath != null
     val hasPendingDraft = aiControlsScreenState.coverDrafts[story.id] != null
     val hasPendingPrompt = aiControlsScreenState.coverPrompts[story.id] != null
@@ -99,7 +99,7 @@ private fun ScreenHost.startAiCoverJob(
     storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
     detailsOperationSlot = null
     showAiControls(story.id)
-    AiCoverForegroundService.start(app)
+    AiJobForegroundService.start(app, "Generating AI cover...")
 }
 
 /** The editable prompt draft (stage 1 result / stage 2 input). */
@@ -185,7 +185,7 @@ internal fun ScreenHost.generateAiCoverImageDraft(
         toast("Enter an image description")
         return
     }
-    val model = repository.getAiSettings().imageModel
+    val model = repository.aiSettings.get().imageModel
     val message =
         "Generate the image with $model? This calls OpenRouter and uses your API credits. " +
             "Earlier covers remain in Saved covers."

@@ -10,6 +10,7 @@ import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.io.StringReader
+import java.lang.reflect.Type
 
 /**
  * Crash-safe JSON I/O: writes go through [AtomicFile] (temp + rename), reads distinguish
@@ -64,6 +65,14 @@ object DurableJson {
         file: File,
         gson: Gson,
         quarantineOnCorruption: Boolean = true,
+    ): DurableReadResult<T> = readAtomicResultOfType(file, gson, object : TypeToken<T>() {}.type, quarantineOnCorruption)
+
+    /** [readAtomicResult] for callers that only hold a [Type] (e.g. a generic document wrapper). */
+    fun <T> readAtomicResultOfType(
+        file: File,
+        gson: Gson,
+        type: Type,
+        quarantineOnCorruption: Boolean = true,
     ): DurableReadResult<T> {
         if (!file.exists()) return DurableReadResult.Absent
         val text =
@@ -74,7 +83,7 @@ object DurableJson {
                 Timber.e(error, "DurableJson read failed for %s", file.name)
                 return DurableReadResult.IoFailure(error)
             }
-        return when (val decoded = decodeText<T>(text, gson)) {
+        return when (val decoded = decodeTextOfType<T>(text, gson, type)) {
             is DurableReadResult.Corrupt -> {
                 if (quarantineOnCorruption) {
                     val quarantined = quarantineCorrupt(file, decoded.cause, reason = "parse")
@@ -98,8 +107,15 @@ object DurableJson {
     inline fun <reified T> decodeText(
         text: String,
         gson: Gson,
+    ): DurableReadResult<T> = decodeTextOfType(text, gson, object : TypeToken<T>() {}.type)
+
+    /** [decodeText] for callers that only hold a [Type] (e.g. a generic document wrapper). */
+    @Suppress("NestedBlockDepth")
+    fun <T> decodeTextOfType(
+        text: String,
+        gson: Gson,
+        type: Type,
     ): DurableReadResult<T> {
-        val type = object : TypeToken<T>() {}.type
         return try {
             JsonReader(StringReader(text)).use { reader ->
                 if (reader.peek() != JsonToken.BEGIN_OBJECT) {

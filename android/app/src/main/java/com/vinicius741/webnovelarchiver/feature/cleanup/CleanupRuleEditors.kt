@@ -200,7 +200,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
                             .lowercase()
                     else -> "both"
                 }
-            val rules = repository.getRegexRules().toMutableList()
+            val rules = repository.regexRules.get().toMutableList()
             if (RegexRuleCleanup.hasSimilarRegexRule(
                     rules,
                     existing?.id,
@@ -224,7 +224,7 @@ internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
             val index = rules.indexOfFirst { it.id == updated.id }
             if (index >= 0) rules[index] = updated else rules.add(updated)
             scope.launch {
-                repository.saveRegexRules(rules)
+                repository.regexRules.save(rules)
                 dialog.dismiss()
                 showCleanupRules()
             }

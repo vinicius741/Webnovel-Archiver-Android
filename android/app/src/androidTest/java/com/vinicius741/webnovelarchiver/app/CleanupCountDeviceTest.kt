@@ -60,8 +60,8 @@ class CleanupCountDeviceTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         assertTrue("Device tests must never touch the debug library", context.packageName.endsWith(".instrumentation"))
         val repository = context.appContainer.repository
-        val sentences = repository.getSentenceRemovalList()
-        val rules = repository.getRegexRules()
+        val sentences = repository.sentenceRemovalList.get()
+        val rules = repository.regexRules.get()
         val preset = requireNotNull(RegexCleanupPresets.generate(RegexCleanupPresets.Preset.REPEATED_PUNCTUATION))
         val fixture =
             Story(
@@ -88,8 +88,8 @@ class CleanupCountDeviceTest {
             }
             runBlocking {
                 repository.upsertStory(fixture)
-                repository.saveSentenceRemovalList(listOf("Remove this."))
-                repository.saveRegexRules(
+                repository.sentenceRemovalList.save(listOf("Remove this."))
+                repository.regexRules.save(
                     listOf(
                         RegexCleanupRule(
                             id = "cleanup-count-preset",
@@ -105,10 +105,10 @@ class CleanupCountDeviceTest {
         } finally {
             runBlocking {
                 repository.deleteStory(ID)
-                repository.saveSentenceRemovalList(sentences)
-                repository.saveRegexRules(rules)
+                repository.sentenceRemovalList.save(sentences)
+                repository.regexRules.save(rules)
             }
-            assertEquals(rules, repository.getRegexRules())
+            assertEquals(rules, repository.regexRules.get())
         }
     }
 

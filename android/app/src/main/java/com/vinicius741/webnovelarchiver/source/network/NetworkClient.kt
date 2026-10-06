@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source.network
 
 import android.content.Context
+import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -10,6 +11,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Dispatcher
+import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -20,8 +22,11 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.math.min
 import kotlin.random.Random
 
 /** Per-request gate around the shared source-safety claim; must invoke [claimSourcePermission] exactly once. */
@@ -255,7 +260,7 @@ class NetworkClient(
                             response.header(CloudflareBypassInterceptor.BROWSER_RENDERED_HEADER) == "1",
                         )
                     }
-                    // Error bodies only feed challenge detection; a bounded prefix is enough (R24).
+                    // Error bodies only feed challenge detection; a bounded prefix is enough.
                     val responseBody = response.bodyStringPrefix(url, MAX_ERROR_BODY_BYTES)
                     if (SourceAccessBlockDetector.isChallengeResponse(response.headers, responseBody)) {
                         throw SourceAccessBlockedException(url)
@@ -318,7 +323,7 @@ class NetworkClient(
     fun reliabilitySnapshots(): List<SourceReliabilitySnapshot> = reliability.snapshots()
 
     /**
-     * Reads a text body with an application-level byte cap (R24): content-length and chunked
+     * Reads a text body with an application-level byte cap: content-length and chunked
      * bodies alike are bounded, so an oversized response fails instead of buffering unbounded.
      */
     private fun Response.bodyStringCapped(
@@ -357,13 +362,13 @@ class NetworkClient(
         internal const val MAX_PREPARED_PAGES = 24
 
         /**
-         * Default total budget for one source request (R13), sized to also cover a background
+         * Default total budget for one source request, sized to also cover a background
          * Cloudflare render inside the interceptor; callers with tighter classes pass
          * `callTimeoutMillis` explicitly.
          */
         const val DEFAULT_CALL_TIMEOUT_MILLIS = 180_000L
 
-        /** Application-level caps for text/catalog bodies (R24). */
+        /** Application-level caps for text/catalog bodies. */
         const val MAX_TEXT_RESPONSE_BYTES = 6_000_000L
         const val MAX_ERROR_BODY_BYTES = 64_000L
 
@@ -382,7 +387,7 @@ class NetworkClient(
          * Production client: [AndroidCookieJar] so cookies persist and WebViews share the store,
          * plus [CloudflareBypassInterceptor] to solve challenges in a background WebView. Per-host
          * pacing belongs to SourceReliabilityCoordinator, so the dispatcher's host cap is raised:
-         * OkHttp's default of 5 would queue same-host waits outside the call-timeout budget (R13).
+         * OkHttp's default of 5 would queue same-host waits outside the call-timeout budget.
          */
         fun buildDefault(
             context: Context,
@@ -396,5 +401,306 @@ class NetworkClient(
                 .addInterceptor(CloudflareBypassInterceptor(context.applicationContext, reliabilityCoordinator))
                 .dispatcher(Dispatcher().apply { maxRequestsPerHost = 64 })
                 .build()
+    }
+}
+
+/** OkHttp request builders shared by page, form, and binary fetches. */
+object NetworkRequests {
+    /**
+     * The default User-Agent sent on every OkHttp request. Reads [SourceUserAgent.resolved] so it
+     * stays byte-identical to the UA the solving WebView uses for sources that share the default
+     * mobile surface. FanFiction.net gets a source-specific desktop UA because its mobile page
+     * omits the complete chapter selector.
+     */
+    val USER_AGENT: String get() = SourceUserAgent.resolved
+
+    const val DEFAULT_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+    const val FORM_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=UTF-8"
+
+    fun pageRequest(url: String): Request =
+        Request
+            .Builder()
+            .url(url)
+            .header("User-Agent", SourceUserAgent.forUrl(url))
+            .header("Accept", DEFAULT_ACCEPT)
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
+
+    fun formRequest(
+        url: String,
+        fields: Map<String, Any>,
+        headers: Map<String, String> = emptyMap(),
+    ): Request {
+        val bodyBuilder = FormBody.Builder()
+        fields.forEach { (key, value) -> bodyBuilder.add(key, value.toString()) }
+        val builder =
+            Request
+                .Builder()
+                .url(url)
+                .post(bodyBuilder.build())
+                .header("User-Agent", SourceUserAgent.forUrl(url))
+                .header("Accept", FORM_ACCEPT)
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .header("Content-Type", FORM_CONTENT_TYPE)
+                .header("X-Requested-With", "XMLHttpRequest")
+        headers.forEach { (key, value) -> builder.header(key, value) }
+        return builder.build()
+    }
+
+    /** Request builder for binary downloads (cover images) — reuses the shared client (R6). */
+    fun binaryRequest(url: String): Request =
+        Request
+            .Builder()
+            .url(url)
+            .header("User-Agent", SourceUserAgent.forUrl(url))
+            .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .build()
+}
+
+/**
+ * Translates a retry attempt into the delay before the next one, honoring a server `Retry-After`
+ * header (seconds or HTTP-date) when present.
+ */
+internal class RetryBackoff(
+    private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val jitterMillis: (Long) -> Long,
+) {
+    fun delayFor(
+        attempt: Int,
+        retryAfterHeader: String?,
+        policy: SourceNetworkPolicy,
+    ): Long {
+        // An accepted server deadline is honored as-is (already sanity-capped by
+        // [retryAfterMillis]); clamping it to the ordinary backoff cap would make this client
+        // retry early against the server's explicit instruction.
+        val serverRequested = retryAfterMillis(retryAfterHeader, policy)
+        val maximumJitter = min(policy.maximumJitterMillis.coerceAtLeast(0L), (serverRequested ?: 0L) / 5L)
+        if (serverRequested != null) {
+            val jitter = jitterMillis(maximumJitter).coerceIn(0L, maximumJitter)
+            // Jitter must not push a server-directed sleep past the sanity cap that already
+            // bounded the server's own request.
+            return (serverRequested + jitter).coerceAtMost(policy.maximumRetryAfterMillis.coerceAtLeast(0L))
+        }
+        val clientBackoff =
+            (policy.baseRetryDelayMillis.coerceAtLeast(0L) * attempt)
+                .coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
+        val clientJitterMax = min(policy.maximumJitterMillis.coerceAtLeast(0L), clientBackoff / 5L)
+        val jitter = jitterMillis(clientJitterMax).coerceIn(0L, clientJitterMax)
+        return (clientBackoff + jitter).coerceAtMost(policy.maximumRetryDelayMillis.coerceAtLeast(0L))
+    }
+
+    fun retryAfterMillis(
+        header: String?,
+        policy: SourceNetworkPolicy,
+    ): Long? {
+        if (header.isNullOrBlank()) return null
+        val rawMillis =
+            header.trim().toLongOrNull()?.let { seconds ->
+                seconds
+                    .coerceIn(0L, Long.MAX_VALUE / 1_000L)
+                    .times(1_000L)
+            }
+                ?: runCatching {
+                    ZonedDateTime
+                        .parse(header.trim(), DateTimeFormatter.RFC_1123_DATE_TIME)
+                        .toInstant()
+                        .toEpochMilli()
+                        .minus(nowMillis())
+                        .coerceAtLeast(0L)
+                }.getOrNull()
+        return rawMillis?.coerceAtMost(policy.maximumRetryAfterMillis.coerceAtLeast(0L))
+    }
+}
+
+/**
+ * One-line call-site helpers for the request-lifecycle events [NetworkClient] records into
+ * [BypassEventLog]; the fields mirror what an investigating agent needs per attempt (see
+ * BypassLogExporter's instructions). Durations are derived from this object's own start stamps, so
+ * no call site threads a timer through the retry loop.
+ */
+internal object SourceRequestEvents {
+    private val attemptStarts = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Records one attempt's start and guarantees a terminal event for every exit: a thrown attempt
+     * (timeout, offline, transport, challenge block) records `finished(ok=false)` before
+     * rethrowing — these are exactly the failures the log exists to diagnose, so an unmatched
+     * `started` must be impossible. [CancellationException] is abandonment, not an outcome: no
+     * terminal event, and the start stamp is dropped with the attempt.
+     */
+    suspend fun <T> recording(
+        host: String,
+        attemptId: String,
+        attempt: Int,
+        method: String,
+        gated: Boolean,
+        block: suspend () -> T,
+    ): T {
+        started(host, attemptId, attempt, method, gated)
+        return try {
+            block()
+        } catch (error: CancellationException) {
+            attemptStarts.remove(attemptId)
+            throw error
+        } catch (error: Exception) {
+            finished(host = host, attemptId = attemptId, ok = false)
+            throw error
+        }
+    }
+
+    private fun started(
+        host: String,
+        attemptId: String,
+        attempt: Int,
+        method: String,
+        gated: Boolean,
+    ) {
+        attemptStarts[attemptId] = System.currentTimeMillis()
+        BypassEventLog.record(
+            BypassEventCategory.NET,
+            "net_request_start",
+            host,
+            "attemptId" to attemptId,
+            "attempt" to attempt,
+            "method" to method,
+            "gated" to gated,
+        )
+    }
+
+    fun finished(
+        host: String,
+        attemptId: String,
+        ok: Boolean,
+        code: Int? = null,
+        browserRendered: Boolean = false,
+    ) {
+        val durationMillis =
+            attemptStarts.remove(attemptId)?.let { startedAt ->
+                System.currentTimeMillis() - startedAt
+            }
+        BypassEventLog.record(
+            BypassEventCategory.NET,
+            "net_request_finish",
+            host,
+            "attemptId" to attemptId,
+            "ok" to ok,
+            "code" to code,
+            "browserRendered" to browserRendered,
+            "durationMs" to durationMillis,
+        )
+    }
+}
+
+/** Bounded binary payload plus the response's declared image content type. */
+data class FetchedImage(
+    val bytes: ByteArray,
+    val contentType: String?,
+)
+
+/**
+ * Fetches a bounded binary body together with the response's declared content type, so
+ * callers embed images with a validated media type instead of guessing from the URL extension.
+ * Null on non-2xx, non-image, or oversize.
+ */
+suspend fun NetworkClient.fetchImage(
+    url: String,
+    maxBytes: Long = NetworkClient.MAX_IMAGE_BYTES,
+): FetchedImage? {
+    val request = NetworkRequests.binaryRequest(url)
+    val policy = policyResolver.policyFor(request.url)
+    reliability.awaitPermission(url, request.url.host, policy)
+    return try {
+        withContext(ioDispatcher) {
+            val call = client.newCall(request)
+            call.timeout().timeout(NetworkClient.DEFAULT_CALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+            call.executeCancellable { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 429) {
+                        reliability.recordRateLimit(
+                            request.url.host,
+                            policy,
+                            retryBackoff.retryAfterMillis(response.header("Retry-After"), policy),
+                        )
+                    }
+                    return@executeCancellable null
+                }
+                val contentType = response.header("Content-Type").orEmpty()
+                if (contentType.isNotBlank() && !contentType.startsWith("image/")) return@executeCancellable null
+                val body = response.body ?: return@executeCancellable null
+                if (body.contentLength() > maxBytes) return@executeCancellable null
+                val source = body.source()
+                source.request(maxBytes + 1)
+                if (source.buffer.size > maxBytes) return@executeCancellable null
+                val bytes = source.buffer.readByteArray()
+                reliability.recordSuccess(request.url.host, policy)
+                FetchedImage(bytes = bytes, contentType = contentType.takeIf { it.isNotBlank() })
+            }
+        }
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * Fetches a binary body (covers) capped at [maxBytes]; null on non-2xx, non-image, or oversize.
+ * Shares [NetworkClient.fetch]'s per-host rate limit so cover fetches can't stack 403s. Prefer
+ * [fetchImage], which also returns the declared content type.
+ */
+suspend fun NetworkClient.fetchBytes(
+    url: String,
+    maxBytes: Long = NetworkClient.MAX_IMAGE_BYTES,
+): ByteArray? = fetchImage(url, maxBytes)?.bytes
+
+/**
+ * Bounded admission: expired entries are dropped and the map is capped, so abandoned
+ * preflights cannot accumulate unused HTML for a whole session.
+ */
+internal fun NetworkClient.admitPreparedPage(
+    key: String,
+    page: NetworkClient.PreparedPage,
+) {
+    val now = nowMillis()
+    preparedPages.entries.filter { it.value.expiresAt <= now }.forEach { preparedPages.remove(it.key, it.value) }
+    while (preparedPages.size >= NetworkClient.MAX_PREPARED_PAGES) {
+        preparedPages.entries.minByOrNull { it.value.expiresAt }?.let { oldest ->
+            preparedPages.remove(oldest.key, oldest.value)
+        } ?: break
+    }
+    preparedPages[key] = page
+}
+
+/**
+ * Registers the caller and fetches-or-creates the key's mutex under one monitor, so eviction can
+ * never drop a mutex that is locked or about to be acquired.
+ */
+internal fun NetworkClient.acquirePageLock(cacheKey: String): Mutex =
+    synchronized(reusablePageLocks) {
+        acquiringPageLockCounts.merge(cacheKey, 1, Int::plus)
+        reusablePageLocks.getOrPut(cacheKey) { Mutex() }
+    }
+
+/** Pairs with [acquirePageLock]: unregisters after the lock scope ends, then evicts idle locks. */
+internal fun NetworkClient.releasePageLock(cacheKey: String) {
+    synchronized(reusablePageLocks) {
+        val remaining = acquiringPageLockCounts.computeIfPresent(cacheKey) { _, count -> count - 1 }
+        if (remaining == null || remaining <= 0) acquiringPageLockCounts.remove(cacheKey)
+    }
+    evictIdlePageLocks()
+}
+
+/**
+ * Drops per-key coalescing state whose page is gone. Runs under the lock-map monitor and skips
+ * keys that are locked or still acquiring, so eviction can never orphan a mutex a caller holds
+ * or is about to lock — duplicate concurrent fetches for the same key remain impossible.
+ */
+internal fun NetworkClient.evictIdlePageLocks() {
+    synchronized(reusablePageLocks) {
+        reusablePageLocks.entries.removeIf { (key, lock) ->
+            !lock.isLocked && !acquiringPageLockCounts.containsKey(key) && !reusablePages.containsKey(key)
+        }
     }
 }

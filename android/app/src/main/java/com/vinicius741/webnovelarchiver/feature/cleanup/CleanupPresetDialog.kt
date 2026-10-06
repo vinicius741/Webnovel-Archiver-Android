@@ -112,7 +112,7 @@ internal fun ScreenHost.showCleanupPresetDialog(
                 return@setOnClickListener
             }
             val appliesTo = targets[target.selectedItemPosition]
-            val rules = repository.getRegexRules().toMutableList()
+            val rules = repository.regexRules.get().toMutableList()
             if (RegexRuleCleanup.hasSimilarRegexRule(rules, existing?.id, generated.pattern, generated.flags, appliesTo)) {
                 toast("This rule already exists for the selected target")
                 return@setOnClickListener
@@ -130,7 +130,7 @@ internal fun ScreenHost.showCleanupPresetDialog(
             if (index >= 0) rules[index] = rule else rules.add(rule)
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
             scope.launch {
-                repository.saveRegexRules(rules)
+                repository.regexRules.save(rules)
                 dialog.dismiss()
                 showCleanupRules()
             }

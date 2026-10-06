@@ -2,7 +2,7 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceSelectionStore
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -27,7 +27,7 @@ class AiCoverArtEngine internal constructor(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
     private val evidenceSelector: CoverEvidenceSelector,
-    private val evidenceSelectionStore: CoverEvidenceSelectionStore,
+    private val evidenceStore: CoverEvidenceStore,
 ) {
     /** Catalog cache for the process lifetime; null until first success, so failures fall back to the minimal request shape. */
     @Volatile
@@ -76,7 +76,7 @@ class AiCoverArtEngine internal constructor(
                     evidenceSelector.select(context.story, context.apiKey, context.settings.coverEvidenceChapters, onProgress)
 
                 // Display hint for the picker; losing it never fails a finished cover run.
-                runCatching { evidenceSelectionStore.record(context.story.id, selected.map { it.number - 1 }) }
+                runCatching { evidenceStore.record(context.story.id, selected.map { it.number - 1 }) }
                     .onFailure { Timber.w(it, "Could not persist Jev chapter selection") }
                 selected
             } else {
@@ -170,7 +170,7 @@ class AiCoverArtEngine internal constructor(
 
     /** Shared validation for both stages: key present, story exists, snapshot not archived. */
     private suspend fun coverContext(storyId: String): CoverContext {
-        val settings = repository.getAiSettings()
+        val settings = repository.aiSettings.get()
         val apiKey =
             settings.apiKey?.takeIf { it.isNotBlank() }
                 ?: throw IllegalArgumentException("Add your OpenRouter API key in Settings → AI Settings first")

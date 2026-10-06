@@ -24,11 +24,11 @@ internal fun ScreenHost.openFile(path: String?) {
         Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/epub+zip")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    when (planEpubOpen(hasEpubReader(intent))) {
-        EpubOpenPlan.LAUNCH ->
-            runCatching { app.startActivity(intent) }
-                .onFailure { showEpubReaderRequired() }
-        EpubOpenPlan.SHOW_READER_REQUIRED -> showEpubReaderRequired()
+    if (hasEpubReader(intent)) {
+        runCatching { app.startActivity(intent) }
+            .onFailure { showEpubReaderRequired() }
+    } else {
+        showEpubReaderRequired()
     }
 }
 

@@ -4,7 +4,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiChapterPolishPlanning
-import com.vinicius741.webnovelarchiver.app.AiChapterRewriteJobState
+import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteJobState
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setChapterRewriteStrength
 import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteManifestModel

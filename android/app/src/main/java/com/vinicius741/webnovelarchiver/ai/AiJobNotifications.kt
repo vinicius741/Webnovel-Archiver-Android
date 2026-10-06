@@ -9,6 +9,20 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 
+internal fun Context.aiJobOngoingNotification(
+    kind: AiJobNotificationKind,
+    message: String,
+    queuedCount: Int,
+): Notification {
+    val title =
+        when (kind) {
+            AiJobNotificationKind.COVER -> getString(R.string.ai_cover_notif_active)
+            AiJobNotificationKind.CHAPTER_REWRITE -> getString(R.string.ai_chapter_rewrite_notif_active)
+        }
+    val text = if (queuedCount > 0) "$message · $queuedCount queued" else message
+    return aiJobNotification(title, text, requestCode = 2, ongoing = true)
+}
+
 /** Notification presentation only. Each service retains its IDs, permission checks and lifecycle. */
 internal fun Context.aiJobNotification(
     title: String,

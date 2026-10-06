@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.ai
 
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceCache
+import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -58,7 +58,7 @@ class CoverEvidenceSelectorTest {
         readChapter = readChapter,
         saveUsage = { recorded[0]++ },
         client = JevCoverClient(OpenRouterClient(server.url("/").toString())),
-        cache = CoverEvidenceCache(folder),
+        cache = CoverEvidenceStore(folder),
     )
 
     @Test fun `missing downloaded files direct the user to redownload without calling Jev`() =
@@ -144,7 +144,7 @@ class CoverEvidenceSelectorTest {
                         readChapter = { it.content },
                         saveUsage = { records += it },
                         client = JevCoverClient(OpenRouterClient(server.url("/").toString())),
-                        cache = CoverEvidenceCache(temporary.newFolder()),
+                        cache = CoverEvidenceStore(temporary.newFolder()),
                     )
                 selector.select(story(1), "openrouter-key", 1) {}
                 val record = records.single()
@@ -171,7 +171,7 @@ class CoverEvidenceSelectorTest {
                         readChapter = { it.content },
                         saveUsage = { records += it },
                         client = JevCoverClient(OpenRouterClient(server.url("/").toString())),
-                        cache = CoverEvidenceCache(temporary.newFolder()),
+                        cache = CoverEvidenceStore(temporary.newFolder()),
                     ).select(story(1), "test", 1) {}
                 }
                 assertTrue(records.all { it.costUsd == null })

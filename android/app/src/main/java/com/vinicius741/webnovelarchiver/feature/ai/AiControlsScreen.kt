@@ -200,7 +200,7 @@ private fun ScreenHost.addAiDraftPreviewCard(
 
 /** Confirms first when an applied or pending synopsis would be replaced: each run is a billable OpenRouter call. */
 internal fun ScreenHost.generateAiDescriptionDraft(story: Story) {
-    val model = repository.getAiSettings().descriptionModel
+    val model = repository.aiSettings.get().descriptionModel
     val hasApplied = story.aiDescription != null
     val hasPendingDraft = aiControlsScreenState.drafts[story.id] != null
     if (!hasApplied && !hasPendingDraft) {

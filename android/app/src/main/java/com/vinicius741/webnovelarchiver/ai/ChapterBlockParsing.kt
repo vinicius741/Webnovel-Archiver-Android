@@ -1,10 +1,10 @@
 package com.vinicius741.webnovelarchiver.ai
 
+import com.vinicius741.webnovelarchiver.domain.sha256Hex
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
-import java.security.MessageDigest
 
 /**
  * One sanitized top-level element. Rewrites address blocks by [id]; protected blocks must return
@@ -269,12 +269,6 @@ object ChapterBlockParsing {
             .replace("&#39;", "'")
             .replace("&apos;", "'")
             .replace("&nbsp;", " ")
-
-    private fun sha256Hex(value: String): String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(value.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
     private val TOKEN = Regex("<[^>]+>|[^<]+")
     private val WHITESPACE = Regex("\\s+")

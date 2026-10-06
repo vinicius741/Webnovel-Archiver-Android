@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.ai.AiModelPresentation
 import com.vinicius741.webnovelarchiver.ai.AiModelSelection
 import com.vinicius741.webnovelarchiver.ai.AiReasoningPlanning
 import com.vinicius741.webnovelarchiver.ai.OpenRouterModel
+import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -48,77 +49,88 @@ import kotlinx.coroutines.launch
 internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
     val modelRefreshers = mutableListOf<() -> Unit>()
     aiControlsScreenState.binding?.refreshModels = { modelRefreshers.forEach { it() } }
+
+    /** One row per global model choice; [save] applies the picked id (+ reasoning effort) to settings. */
+    class ModelRow(
+        val label: String,
+        val current: () -> String,
+        val save: (AiSettings, String, String?) -> AiSettings,
+        val image: Boolean = false,
+        val recommended: ((OpenRouterModel) -> Boolean)? = null,
+        val excluded: () -> String? = { null },
+        val collisionMessage: String? = null,
+    )
+
+    val rows =
+        listOf(
+            ModelRow(
+                label = "Description model",
+                current = { repository.aiSettings.get().descriptionModel },
+                save = { settings, id, effort ->
+                    settings.copy(
+                        descriptionModel = id,
+                        reasoningEfforts =
+                            settings.reasoningEfforts + (id to requireNotNull(effort)),
+                    )
+                },
+            ),
+            ModelRow(
+                label = "Cover image model",
+                current = { repository.aiSettings.get().imageModel },
+                save = { settings, id, _ -> settings.copy(imageModel = id) },
+                image = true,
+            ),
+            ModelRow(
+                label = "Rewrite model",
+                current = { repository.aiSettings.get().chapterRewriteModel },
+                save = { settings, id, effort ->
+                    settings.copy(
+                        chapterRewriteModel = id,
+                        reasoningEfforts =
+                            settings.reasoningEfforts + (id to requireNotNull(effort)),
+                    )
+                },
+                recommended = { AiModelPresentation.isKnownGoodRewriteModel(it.id) },
+                excluded = { repository.aiSettings.get().chapterVerifierModel },
+                collisionMessage = "The rewrite model must differ from the verifier",
+            ),
+            ModelRow(
+                label = "Verifier model",
+                current = { repository.aiSettings.get().chapterVerifierModel },
+                save = { settings, id, effort ->
+                    settings.copy(
+                        chapterVerifierModel = id,
+                        reasoningEfforts =
+                            settings.reasoningEfforts + (id to requireNotNull(effort)),
+                    )
+                },
+                excluded = { repository.aiSettings.get().chapterRewriteModel },
+                collisionMessage = "The verifier must differ from the rewrite model",
+            ),
+        )
+
     val cardView =
         container.card {
-            modelRefreshers +=
-                addAiModelRow(
-                    container = this,
-                    label = "Description model",
-                    currentModel = { repository.getAiSettings().descriptionModel },
-                ) { picked ->
-                    val settings = repository.getAiSettings()
-                    repository.saveAiSettings(
-                        settings.copy(
-                            descriptionModel = picked.modelId,
-                            reasoningEfforts = settings.reasoningEfforts + (picked.modelId to requireNotNull(picked.reasoningEffort)),
-                        ),
-                    )
-                    refreshAiModelFields()
-                }
-            spacer(Space.SM)
-            modelRefreshers +=
-                addAiModelRow(
-                    container = this,
-                    label = "Cover image model",
-                    currentModel = { repository.getAiSettings().imageModel },
-                    image = true,
-                ) { picked ->
-                    repository.saveAiSettings(repository.getAiSettings().copy(imageModel = picked.modelId))
-                    refreshAiModelFields()
-                }
-            spacer(Space.SM)
-            modelRefreshers +=
-                addAiModelRow(
-                    container = this,
-                    label = "Rewrite model",
-                    currentModel = { repository.getAiSettings().chapterRewriteModel },
-                    recommended = { AiModelPresentation.isKnownGoodRewriteModel(it.id) },
-                    excluded = { repository.getAiSettings().chapterVerifierModel },
-                ) { picked ->
-                    if (picked.modelId == repository.getAiSettings().chapterVerifierModel) {
-                        toast("The rewrite model must differ from the verifier")
-                        return@addAiModelRow
+            rows.forEachIndexed { index, row ->
+                if (index > 0) spacer(Space.SM)
+                modelRefreshers +=
+                    addAiModelRow(
+                        container = this,
+                        label = row.label,
+                        currentModel = row.current,
+                        image = row.image,
+                        recommended = row.recommended,
+                        excluded = row.excluded,
+                    ) { picked ->
+                        if (row.collisionMessage != null && picked.modelId == row.excluded()) {
+                            toast(row.collisionMessage)
+                            return@addAiModelRow
+                        }
+                        val settings = repository.aiSettings.get()
+                        repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
+                        refreshAiModelFields()
                     }
-                    val settings = repository.getAiSettings()
-                    repository.saveAiSettings(
-                        settings.copy(
-                            chapterRewriteModel = picked.modelId,
-                            reasoningEfforts = settings.reasoningEfforts + (picked.modelId to requireNotNull(picked.reasoningEffort)),
-                        ),
-                    )
-                    refreshAiModelFields()
-                }
-            spacer(Space.SM)
-            modelRefreshers +=
-                addAiModelRow(
-                    container = this,
-                    label = "Verifier model",
-                    currentModel = { repository.getAiSettings().chapterVerifierModel },
-                    excluded = { repository.getAiSettings().chapterRewriteModel },
-                ) { picked ->
-                    if (picked.modelId == repository.getAiSettings().chapterRewriteModel) {
-                        toast("The verifier must differ from the rewrite model")
-                        return@addAiModelRow
-                    }
-                    val settings = repository.getAiSettings()
-                    repository.saveAiSettings(
-                        settings.copy(
-                            chapterVerifierModel = picked.modelId,
-                            reasoningEfforts = settings.reasoningEfforts + (picked.modelId to requireNotNull(picked.reasoningEffort)),
-                        ),
-                    )
-                    refreshAiModelFields()
-                }
+            }
         }
     container.addView(cardView)
     container.text(
@@ -172,7 +184,7 @@ private fun ScreenHost.addAiModelRow(
         val model = modelCatalogCache?.firstOrNull { it.id == modelId }
         detailView.visibility = if (!image && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
         detailView.text =
-            "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.getAiSettings(), modelId, model))
+            "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.aiSettings.get(), modelId, model))
     }
     refresh()
     return refresh

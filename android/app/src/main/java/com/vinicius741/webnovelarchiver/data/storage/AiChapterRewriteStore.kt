@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
-import com.google.gson.Gson
 import com.vinicius741.webnovelarchiver.domain.model.AppliedChapterRewrite
 import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteDraftRecord
 import com.vinicius741.webnovelarchiver.domain.model.ChapterRewriteManifestModel
@@ -28,7 +27,7 @@ data class StoryRewriteBackup(
  *    rewrite" instead of a record pointing at missing files).
  *  - `<safeChapterId>-<hash>/draft-<gen>.html` — a complete preview draft; never resolved by
  *    Reader/TTS. The generation suffix keeps a re-generated draft's bytes from pairing with the
- *    previous generation's metadata (R09).
+ *    previous generation's metadata.
  *  - `<safeChapterId>-<hash>/applied-<gen>.html` — the current polished version for a chapter,
  *    named after the operation that produced it; the manifest's [contentFile] reference is only
  *    switched after the new bytes are durable, and unreferenced generations are removed after
@@ -44,10 +43,10 @@ internal class AiChapterRewriteStore(
     private val safeName: (String) -> String,
 ) {
     private val dir = File(root, DIRECTORY_NAME)
-    private val gson = Gson()
+    private val gson = SharedGson.plain
 
     /**
-     * Per-story manifest cache (R26): reads serve the last parsed snapshot keyed to the file's
+     * Per-story manifest cache: reads serve the last parsed snapshot keyed to the file's
      * (mtime, length) stamp, so out-of-band edits are still detected with one stat instead of a
      * re-parse. Store writes drop the entry; [invalidateAll] clears wholesale after restores.
      */
@@ -68,7 +67,7 @@ internal class AiChapterRewriteStore(
             is RewriteManifestRead.Fenced -> ChapterRewriteManifestModel()
         }
 
-    /** Typed manifest health for UI recoverable states (R08) and one-snapshot reads (R26). */
+    /** Typed manifest health for UI recoverable states and one-snapshot reads. */
     @Synchronized
     fun manifestRead(storyId: String): RewriteManifestRead {
         val file = manifestFile(storyId)
@@ -120,7 +119,7 @@ internal class AiChapterRewriteStore(
         return RewriteManifestRead.Ok(normalized)
     }
 
-    /** Drops every cached manifest; call after a restore replaces the on-disk tree (R26). */
+    /** Drops every cached manifest; call after a restore replaces the on-disk tree. */
     @Synchronized
     fun invalidateAll() {
         manifestCache.clear()
@@ -171,7 +170,7 @@ internal class AiChapterRewriteStore(
     ) {
         val stem = fileStem(record.chapterId)
         // Generation-specific filename: a regeneration never overwrites the bytes the current
-        // manifest still references (R09).
+        // manifest still references.
         val contentFile = draftContentName(record.operationId)
         val chapterDir = chapterDir(storyId, stem).apply { mkdirs() }
         AtomicFileWrites.writeText(File(chapterDir, contentFile), draftHtml)
@@ -307,7 +306,7 @@ internal class AiChapterRewriteStore(
     /**
      * Applied records whose content file is missing on disk, for stories [backupPayloadForStory]
      * returns null for because EVERY applied file vanished — without this the full backup's
-     * missingContent report would silently skip them (R10).
+     * missingContent report would silently skip them.
      */
     @Synchronized
     fun missingAppliedCountForStory(storyId: String): Int {
@@ -336,7 +335,7 @@ internal class AiChapterRewriteStore(
             manifestFile(storyId),
             gson.toJson(update(base)).toByteArray(Charsets.UTF_8),
         )
-        // Drop the cached entry; the next read re-stats the file and re-populates (R26).
+        // Drop the cached entry; the next read re-stats the file and re-populates.
         manifestCache.remove(storyId)
     }
 
@@ -353,7 +352,7 @@ internal class AiChapterRewriteStore(
                 is RewriteManifestRead.Ok -> read.manifest
                 RewriteManifestRead.Absent -> ChapterRewriteManifestModel()
                 // A fenced read is unknown, not empty: [manifest] would coerce it to an empty
-                // model whose empty referenced set deletes live content (R09). Skip; retry on the
+                // model whose empty referenced set deletes live content. Skip; retry on the
                 // next save.
                 is RewriteManifestRead.Fenced -> return
             }
