@@ -75,9 +75,9 @@ files/webnovel_archiver/
 | `ai/AiChapterRewriteSchemas.kt` | Structured-output JSON schemas + strict/relaxed provider routing blocks. |
 | `ai/AiChapterRewriteEngine.kt` | One-chapter Verified flow: routed rewrite, validation, bounded repair, cross-model verify. |
 | `ai/AiChapterRewriteEngineSupport.kt` | Call spec, usage recorder, routing-failure rules, verifier-model resolution. |
-| `ai/AiChapterRewriteForegroundService.kt` | Keep-alive service + result notifications (ids 1005/1006, AI channel). |
-| `app/AiChapterRewriteJobCoordinator.kt` | Process-lifetime job state; persists the draft before announcing it. |
-| `app/AiChapterRewriteJobUiBridge.kt` | Mirrors job progress into the story-operation slot; opens the comparison on success. |
+| `ai/AiChapterRewriteJobs.kt` | `AiChapterRewriteJobCoordinator`: process-lifetime job state + FIFO batch queue on the shared `AiJobCoordinator` lifecycle; persists the draft before announcing it. |
+| `ai/AiJobForegroundService.kt` | Shared keep-alive service + result notifications (outcome id 1006, AI channel). |
+| `app/AiJobUiBridge.kt` | Mirrors job progress into the story-operation slot; opens the comparison on success. |
 | `domain/model/AiChapterRewriteModels.kt` | Strength, verification, cadence summary, draft/applied records, manifest. |
 | `data/storage/AiChapterRewriteStore.kt` | Atomic manifest + draft/applied files, toggling, deletion, backup enumeration. |
 | `data/repository/AppRepositoryRewrites.kt` | Storage-transaction mutations + republish. |

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteEngine
+import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine

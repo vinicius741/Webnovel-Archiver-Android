@@ -9,8 +9,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
-import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteForegroundService
-import com.vinicius741.webnovelarchiver.ai.AiCoverForegroundService
+import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.aiJobNotification
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import org.junit.Assert.assertEquals
@@ -54,20 +53,20 @@ class AiJobNotificationDeviceTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
             scenario.onActivity {
-                AiCoverForegroundService.start(it)
-                assertTrue(AiChapterRewriteForegroundService.start(it))
+                assertTrue(AiJobForegroundService.start(it, "Generating AI cover..."))
+                assertTrue(AiJobForegroundService.start(it, "Polishing chapter..."))
             }
             val manager = context.getSystemService(NotificationManager::class.java)
             androidx.test.platform.app.InstrumentationRegistry
                 .getInstrumentation()
                 .waitForIdleSync()
             val deadline = System.currentTimeMillis() + 5000
-            while (manager.activeNotifications.any { it.id == 1003 || it.id == 1005 } &&
+            while (manager.activeNotifications.any { it.id == 1003 } &&
                 System.currentTimeMillis() < deadline
             ) {
                 Thread.sleep(50)
             }
-            assertFalse(manager.activeNotifications.any { it.id == 1003 || it.id == 1005 })
+            assertFalse(manager.activeNotifications.any { it.id == 1003 })
         }
     }
 }

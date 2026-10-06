@@ -205,8 +205,7 @@ class MainActivity :
                         )
                     ttsEngine = container.ttsEngine
                     attachTtsMiniPlayer(root)
-                    attachAiCoverJobBridge()
-                    attachAiChapterRewriteJobBridge()
+                    attachAiJobBridges()
                     container.awaitRepositoryReady()
                     initializeUiAfterRepositoryReady()
                 }

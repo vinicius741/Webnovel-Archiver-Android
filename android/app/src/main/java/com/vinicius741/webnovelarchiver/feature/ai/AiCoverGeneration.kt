@@ -5,8 +5,8 @@ import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ai.AiCoverForegroundService
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
+import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
@@ -99,7 +99,7 @@ private fun ScreenHost.startAiCoverJob(
     storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
     detailsOperationSlot = null
     showAiControls(story.id)
-    AiCoverForegroundService.start(app)
+    AiJobForegroundService.start(app, "Generating AI cover...")
 }
 
 /** The editable prompt draft (stage 1 result / stage 2 input). */

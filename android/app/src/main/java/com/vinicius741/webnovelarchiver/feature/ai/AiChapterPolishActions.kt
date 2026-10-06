@@ -1,12 +1,12 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
 import com.vinicius741.webnovelarchiver.ai.AiChapterPolishPlanning
-import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteForegroundService
+import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteJobState
 import com.vinicius741.webnovelarchiver.ai.AiChapterRewritePlanning
 import com.vinicius741.webnovelarchiver.ai.AiChapterRewritePrompts
+import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.ai.ChapterBlockParsing
 import com.vinicius741.webnovelarchiver.ai.RewriteStoryContext
-import com.vinicius741.webnovelarchiver.app.AiChapterRewriteJobState
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.chapterRewriteManifest
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -70,7 +70,7 @@ internal fun ScreenHost.startChapterPolishJob(
         toast("\"${chapter.title}\" is already polishing or queued")
         return
     }
-    if (!AiChapterRewriteForegroundService.start(app)) {
+    if (!AiJobForegroundService.start(app, "Polishing chapter...")) {
         // R15: a failed service start is visible to the enqueue flow — the job still runs on the
         // process scope, but the user learns foreground protection (and its notifications) failed.
         toast("Started in background — foreground notifications unavailable")
@@ -155,7 +155,7 @@ internal fun ScreenHost.confirmBatchPolish(
                     toast("Nothing queued — the chapters are already polishing or queued")
                     return@confirm
                 }
-                if (!AiChapterRewriteForegroundService.start(app)) {
+                if (!AiJobForegroundService.start(app, "Polishing chapter...")) {
                     // R15: same as the single-chapter path — the jobs still run, but the user
                     // learns foreground protection (and its notifications) failed.
                     toast("Started in background — foreground notifications unavailable")
