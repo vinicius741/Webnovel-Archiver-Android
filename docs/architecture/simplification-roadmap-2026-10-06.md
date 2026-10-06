@@ -73,7 +73,7 @@ find android/app/src/main/java -name '*.kt' | xargs wc -l | tail -1
 
 - [x] Phase 1: Quick wins (file cap, planning ceremony, comment noise) — commits `822f4ccb`..`d3c66a8c`
 - [x] Phase 2: One AI job pipeline, fewer AI stores — commits `db499773`..`7d745389`
-- [x] Phase 3: Generic cached settings documents — `78a26400`, finished in the follow-up `Setting` handle commit
+- [x] Phase 3: Generic cached settings documents — `78a26400`, finished in `fdda4998`
 - [ ] Phase 4: Screen architecture (biggest payoff)
 - [ ] Phase 5: Real storage engine for library and queue
 - [ ] Phase 6: TTS on Media3 (optional)
@@ -256,7 +256,7 @@ an in-memory `StateFlow<T>`. `AppStorage`/`AppRepository` declare one property p
 - [x] Migrate settings, display preferences, tabs, cleanup rules, TTS, AI, follow settings (`78a26400`)
   - Queue, TTS session, TTS positions, and AI usage stay explicit: read-modify-write or nullable
     semantics that a simple cached document does not model.
-- [x] Delete the per-setting getters, savers, and cached fields (`78a26400` + follow-up)
+- [x] Delete the per-setting getters, savers, and cached fields (`78a26400` + `fdda4998`)
   - `78a26400` removed the ten repository `@Volatile` mirrors and re-cache lines but left 20
     one-line `get*/save*` delegates in `AppStorage` and 18 wrappers in `AppRepository`.
   - The follow-up deleted both sets: storage callers (backup export/import, restore, source-id
@@ -405,7 +405,7 @@ These areas are complex because the problem is, and are out of scope for this ro
 | 2026-10-06 | Phase 3 JsonDocument | `78a26400` | 52,391 | 10 documents; repository mirrors deleted; on-device read/write proof |
 | 2026-10-06 | Phase 4 decision / 5 no-go / 6 defer | `a381ab94` | — | B now A later; Room no-go until after Phase 4; Media3 deferred |
 | 2026-10-06 | Review fixes (AI) | `4a026e4a` | 52,414 | Fixed two regressions from Phase 2: cached evidence selections off the render path; rewrite notification title |
-| 2026-10-06 | Phase 3 finish: `Setting` handles | follow-up | 52,360 | 20 storage delegates + 18 repository wrappers deleted |
+| 2026-10-06 | Phase 3 finish: `Setting` handles | `fdda4998` | 52,360 | 20 storage delegates + 18 repository wrappers deleted |
 
 Net after Phases 1–3: 52,700 → 52,360 lines (−0.6%) in 379 → 352 files.
 
