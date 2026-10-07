@@ -24,6 +24,19 @@ class AiCoverPlanningTest {
     }
 
     @Test
+    fun `design direction reaches the prompt writer and varies across draws`() {
+        val design = AiCoverPlanning.CoverDesign(AiCoverPlanning.TITLE_LAYOUTS[3], AiCoverPlanning.COMPOSITIONS[1])
+        val messages = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList(), design)
+        assertTrue(messages[1].content.contains("Title layout: ${design.titleLayout}"))
+        assertTrue(messages[1].content.contains("Composition: ${design.composition}"))
+        assertTrue(messages[0].content.contains("separate caption strip, solid band"))
+        val random = kotlin.random.Random(7)
+        val draws = (1..40).map { AiCoverPlanning.randomDesign(random) }.toSet()
+        assertTrue(draws.map { it.titleLayout }.toSet().size > 1)
+        assertTrue(draws.map { it.composition }.toSet().size > 1)
+    }
+
+    @Test
     fun `automatic cover scan spans the story independently of description selection`() {
         val story = storyWithChapters(101).copy(aiContextChapterIndices = mutableListOf(0, 1))
         assertEquals((0..100).toList(), AiCoverContextPlanning.resolveContextChapters(story))
