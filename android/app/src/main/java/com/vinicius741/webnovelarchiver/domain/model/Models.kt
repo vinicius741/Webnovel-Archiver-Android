@@ -282,7 +282,7 @@ data class TtsSettings(
 )
 
 /**
- * OpenRouter-backed AI feature settings: generation and Jev cover selection share one API key;
+ * OpenRouter-backed AI feature settings: generation and decision-model cover selection share one API key;
  * future generators (tags) add their own model fields here. The API key is deliberately NOT part
  * of full backups — it stays device-local.
  */
@@ -292,7 +292,9 @@ data class AiSettings(
     val imageModel: String = DEFAULT_IMAGE_MODEL,
     /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
     val coverOneStep: Boolean = true,
-    /** Chapters automatic cover selection must validate with Jev; scanned in batches of this size. */
+    /** OpenRouter decision model (Decisions API) that scores chapters for automatic cover selection. */
+    val decisionModel: String = DEFAULT_DECISION_MODEL,
+    /** Chapters automatic cover selection must validate; scanned in batches of this size. */
     val coverEvidenceChapters: Int = DEFAULT_COVER_EVIDENCE_CHAPTERS,
     /** Reasoning effort by OpenRouter text-model id; "default" leaves the choice to the provider. */
     val reasoningEfforts: Map<String, String> = emptyMap(),
@@ -304,7 +306,10 @@ data class AiSettings(
         /** Default image generator for AI covers. */
         const val DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
 
-        /** Chapters Jev validates per automatic cover scan (also the batch size). */
+        /** Versioned TypeSafe Jev snapshot; a pinned id keeps cached chapter scores valid. */
+        const val DEFAULT_DECISION_MODEL = "typesafe/jev-1.13"
+
+        /** Chapters validated per automatic cover scan (also the batch size). */
         const val DEFAULT_COVER_EVIDENCE_CHAPTERS = 10
         const val MIN_COVER_EVIDENCE_CHAPTERS = 3
         const val MAX_COVER_EVIDENCE_CHAPTERS = 25

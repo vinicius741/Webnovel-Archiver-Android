@@ -253,6 +253,56 @@ class OpenRouterClientTest {
         }
 
     @Test
+    fun `fetchModels drops models that output images or audio`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setBody(
+                    """
+                    {"data":[
+                      {"id":"a/text","architecture":{"output_modalities":["text"]}},
+                      {"id":"b/image","architecture":{"output_modalities":["image","text"]}},
+                      {"id":"c/audio","architecture":{"output_modalities":["text","audio"]}},
+                      {"id":"d/unreported"}
+                    ]}
+                    """.trimIndent(),
+                ),
+            )
+
+            assertEquals(listOf("a/text", "d/unreported"), client.fetchModels().map { it.id })
+            assertEquals(listOf("a/text", "d/unreported"), client.cachedModels?.map { it.id })
+        }
+
+    @Test
+    fun `fetchDecisionModels requests the decisions modality without touching the chat cache`() =
+        runBlocking {
+            server.enqueue(
+                MockResponse().setBody(
+                    """{"data":[{"id":"liquid/d1","name":"LiquidAI: d1","architecture":{"output_modalities":["decisions"]},""" +
+                        """"pricing":{"prompt":"0.00000004","completion":"0"}}]}""",
+                ),
+            )
+
+            val models = client.fetchDecisionModels()
+
+            assertEquals(listOf("liquid/d1"), models.map { it.id })
+            assertEquals(listOf("decisions"), models.single().outputModalities)
+            assertEquals("/api/v1/models?output_modalities=decisions", server.takeRequest().path)
+            assertNull(client.cachedModels)
+        }
+
+    @Test
+    fun `empty or missing catalogs fail instead of caching an empty list`() =
+        runBlocking {
+            for (body in listOf("""{"data":[]}""", "{}")) {
+                server.enqueue(MockResponse().setBody(body))
+                assertTrue(runCatching { client.fetchModels() }.exceptionOrNull() is OpenRouterException)
+                server.enqueue(MockResponse().setBody(body))
+                assertTrue(runCatching { client.fetchDecisionModels() }.exceptionOrNull() is OpenRouterException)
+            }
+            assertNull(client.cachedModels)
+        }
+
+    @Test
     fun `fetchModels surfaces a friendly error when the catalog is unavailable`() =
         runBlocking {
             server.enqueue(MockResponse().setResponseCode(500).setBody("{}"))

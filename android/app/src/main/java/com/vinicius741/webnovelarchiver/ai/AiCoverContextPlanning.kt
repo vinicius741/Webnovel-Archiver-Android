@@ -17,7 +17,7 @@ object AiCoverContextPlanning {
         automaticSelection: List<Int>? = null,
     ): String =
         if (story.aiCoverContextChapterIndices.isNullOrEmpty()) {
-            automaticSelection?.takeIf { it.isNotEmpty() }?.let { "Jev: ${it.size} chapters" } ?: "Automatic (Jev)"
+            automaticSelection?.takeIf { it.isNotEmpty() }?.let { "Automatic: ${it.size} chapters" } ?: "Automatic"
         } else {
             "${resolveContextChapters(story).size} selected"
         }

@@ -6,7 +6,7 @@ import com.google.gson.JsonParser
 import java.io.File
 
 /**
- * Disposable, device-local cover-evidence state: content-addressed Jev score responses plus the
+ * Disposable, device-local cover-evidence state: content-addressed decision-model score responses plus the
  * last automatic chapter selection per story (a display hint for the cover context picker, not a
  * manual override). Contains no API keys or chapter text; excluded from backups. Loss just means
  * the picker shows the pre-scan empty state until the next generation.

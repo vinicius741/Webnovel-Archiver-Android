@@ -6,8 +6,8 @@ import android.net.Network
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
+import com.vinicius741.webnovelarchiver.ai.CoverDecisionClient
 import com.vinicius741.webnovelarchiver.ai.CoverEvidenceSelector
-import com.vinicius741.webnovelarchiver.ai.JevCoverClient
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -104,7 +104,7 @@ class AppContainer(
         AiCoverArtEngine(
             repository,
             openRouter,
-            CoverEvidenceSelector(repository, JevCoverClient(openRouter), coverEvidence),
+            CoverEvidenceSelector(repository, CoverDecisionClient(openRouter), coverEvidence),
             coverEvidence,
         )
 

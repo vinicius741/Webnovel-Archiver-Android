@@ -81,7 +81,7 @@ class OpenRouterClient(
         }
     }
 
-    /** Raw Decisions response so Jev selection can record each receipt and retry transient failures. */
+    /** Raw Decisions response so cover evidence selection can record each receipt and retry transient failures. */
     internal suspend fun submitDecisions(
         apiKey: String,
         body: JsonObject,
@@ -127,19 +127,35 @@ class OpenRouterClient(
         }
     }
 
-    /** GET /api/v1/models — public catalog, no auth required. Used by the model picker. */
-    suspend fun fetchModels(): List<OpenRouterModel> {
+    /**
+     * GET /api/v1/models — public catalog, no auth required. Used by the text-model pickers. Models
+     * that can emit images or audio are dropped: every chat caller here expects text back.
+     */
+    suspend fun fetchModels(): List<OpenRouterModel> =
+        fetchCatalog("$rootUrl/api/v1/models")
+            .filter { isTextOutputModel(it) }
+            .also { cachedModels = it }
+
+    /** GET /api/v1/models?output_modalities=decisions — typed-judgment models for the Decisions API. */
+    suspend fun fetchDecisionModels(): List<OpenRouterModel> = fetchCatalog("$rootUrl/api/v1/models?output_modalities=$DECISIONS_MODALITY")
+
+    private suspend fun fetchCatalog(url: String): List<OpenRouterModel> {
         val request =
             Request
                 .Builder()
-                .url("$rootUrl/api/v1/models")
+                .url(url)
                 .get()
                 .build()
         return execute(request) { responseJson, httpCode ->
             if (httpCode != 200) throw OpenRouterException("Could not load the OpenRouter model list (HTTP $httpCode).")
-            responseJson
-                .getAsJsonArray("data")
-                ?.mapNotNull { element ->
+            val data = responseJson.getAsJsonArray("data")
+
+            // A 200 with no list must fail loudly; the pickers cache successes, so a silent empty sticks for the process.
+            if (data == null || data.size() == 0) {
+                throw OpenRouterException("OpenRouter returned an empty model list. Try again in a moment.")
+            }
+            data
+                .mapNotNull { element ->
                     val model = element.asJsonObject
                     val id = model.string("id") ?: return@mapNotNull null
                     val pricing = model.getAsJsonObject("pricing")
@@ -152,10 +168,14 @@ class OpenRouterClient(
                         maxCompletionTokens = model.getAsJsonObject("top_provider")?.longValue("max_completion_tokens"),
                         supportedParameters = model.chatSupportedParameters(),
                         reasoning = model.reasoningOptions(),
+                        outputModalities =
+                            model
+                                .getAsJsonObject("architecture")
+                                ?.getAsJsonArray("output_modalities")
+                                ?.mapNotNull { it.takeIf { value -> value.isJsonPrimitive }?.asString }
+                                .orEmpty(),
                     )
-                }.orEmpty()
-                .sortedBy { it.id }
-                .also { cachedModels = it }
+                }.sortedBy { it.id }
         }
     }
 
@@ -359,6 +379,10 @@ class OpenRouterClient(
 
     companion object {
         internal const val PRODUCTION_BASE_URL = "https://openrouter.ai"
+        private const val DECISIONS_MODALITY = "decisions"
+
+        /** Unknown modalities stay listed (older catalog shape); anything beyond text is excluded. */
+        internal fun isTextOutputModel(model: OpenRouterModel): Boolean = model.outputModalities.all { it == "text" }
 
         private val JSON = "application/json; charset=utf-8".toMediaType()
 

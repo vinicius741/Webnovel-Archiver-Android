@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.ai.AiModelSelection
 import com.vinicius741.webnovelarchiver.ai.AiModelSelectionDraft
 import com.vinicius741.webnovelarchiver.ai.AiReasoningPlanning
 import com.vinicius741.webnovelarchiver.ai.OpenRouterModel
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -32,6 +33,7 @@ import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /*
@@ -46,21 +48,45 @@ import kotlinx.coroutines.launch
 @Volatile
 internal var modelCatalogCache: List<OpenRouterModel>? = null
 
-/** Opens the searchable model picker, fetching OpenRouter's catalog on first use. */
+/** Decision models (Decisions API) live in their own catalog slice and have no reasoning control. */
+@Volatile
+private var decisionModelCatalogCache: List<OpenRouterModel>? = null
+
+/** Which OpenRouter catalog a picker browses. */
+internal enum class AiModelCatalog(
+    val title: String,
+    val manualHint: String,
+) {
+    TEXT("AI Model", "Model id (e.g. deepseek/deepseek-v4-flash-0731)"),
+    DECISIONS("Decision Model", "Decision model id (e.g. typesafe/jev-1.13)"),
+}
+
+private suspend fun ScreenHost.loadCatalog(catalog: AiModelCatalog): List<OpenRouterModel>? =
+    when (catalog) {
+        AiModelCatalog.TEXT -> loadAiModelCatalog()
+        AiModelCatalog.DECISIONS ->
+            decisionModelCatalogCache ?: runCatching { app.appContainer.openRouter.fetchDecisionModels() }
+                .onFailure { if (it is CancellationException) throw it }
+                .getOrNull()
+                ?.also { decisionModelCatalogCache = it }
+    }
+
+/** Opens the searchable model picker, fetching the [catalog] from OpenRouter on first use. */
 internal fun ScreenHost.showAiModelPicker(
     currentModel: String,
     onPicked: (AiModelSelection) -> Unit,
+    catalog: AiModelCatalog = AiModelCatalog.TEXT,
 ) {
-    val cached = modelCatalogCache
+    val cached = if (catalog == AiModelCatalog.TEXT) modelCatalogCache else decisionModelCatalogCache
     if (cached != null) {
-        showAiModelDialog(cached, currentModel, onPicked)
+        showAiModelDialog(cached, currentModel, onPicked, catalog)
         return
     }
     toast("Loading OpenRouter models...")
     scope.launch {
-        val models = loadAiModelCatalog()
+        val models = loadCatalog(catalog)
         if (models == null) toast("Could not load models. You can enter a model id manually.")
-        app.runOnUiThread { showAiModelDialog(models.orEmpty(), currentModel, onPicked) }
+        app.runOnUiThread { showAiModelDialog(models.orEmpty(), currentModel, onPicked, catalog) }
     }
 }
 
@@ -69,6 +95,7 @@ private fun ScreenHost.showAiModelDialog(
     models: List<OpenRouterModel>,
     selectedId: String,
     onPicked: (AiModelSelection) -> Unit,
+    catalog: AiModelCatalog,
 ) {
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
@@ -80,7 +107,7 @@ private fun ScreenHost.showAiModelDialog(
             roundCorners(shapes.dialogRadius.toFloat())
         }
     dialogView.addView(
-        makeText(app, "AI Model", Type.TITLE_LARGE, colors.onSurface).apply {
+        makeText(app, catalog.title, Type.TITLE_LARGE, colors.onSurface).apply {
             setPadding(0, 0, 0, app.dp(Space.MD))
         },
     )
@@ -136,7 +163,7 @@ private fun ScreenHost.showAiModelDialog(
         // failed to load (offline) or nothing matches the search.
         results.addView(
             manualEntryRow(app) {
-                showManualModelDialog(draft.modelId) { id ->
+                showManualModelDialog(draft.modelId, catalog.manualHint) { id ->
                     draft.selectModel(id)
                     renderResults()
                 }
@@ -156,7 +183,7 @@ private fun ScreenHost.showAiModelDialog(
                     model = model,
                     selected = id == draft.modelId,
                     reasoning =
-                        if (id == draft.modelId) {
+                        if (id == draft.modelId && catalog == AiModelCatalog.TEXT) {
                             AiReasoningPlanning.allowedEfforts(model).takeIf { it.isNotEmpty() }?.let { allowed ->
                                 makeReasoningRow(
                                     app,
@@ -240,7 +267,8 @@ private fun ScreenHost.showAiModelDialog(
 /** Plain text-input dialog for model ids that are not (or not yet) in the catalog. */
 internal fun ScreenHost.showManualModelDialog(
     currentModel: String,
+    hint: String = AiModelCatalog.TEXT.manualHint,
     onPicked: (String) -> Unit,
-) = prompt("Model id (e.g. deepseek/deepseek-v4-flash-0731)", currentModel) { value ->
+) = prompt(hint, currentModel) { value ->
     value.trim().takeIf { it.isNotBlank() }?.let(onPicked)
 }

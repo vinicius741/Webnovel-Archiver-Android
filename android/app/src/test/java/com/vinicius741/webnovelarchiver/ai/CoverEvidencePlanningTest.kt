@@ -8,6 +8,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoverEvidencePlanningTest {
+    private companion object {
+        const val MODEL = "typesafe/jev-1.13"
+    }
+
+    @Test fun `scan order starts at the opening then spreads breadth first across the book`() {
+        assertEquals(emptyList<Int>(), CoverEvidencePlanning.scanOrder(0))
+        assertEquals(listOf(0), CoverEvidencePlanning.scanOrder(1))
+        assertEquals(listOf(0, 3, 2, 4, 1), CoverEvidencePlanning.scanOrder(5))
+        val order = CoverEvidencePlanning.scanOrder(30)
+        assertEquals((0 until 30).toList(), order.sorted())
+        assertEquals(listOf(0, 15, 8, 23, 4, 12, 19, 27, 2, 6), order.take(10))
+    }
+
     @Test fun `sampling takes the opening and a mid chapter window and skips blank text`() {
         val text = (1..600).joinToString("\n\n") { "Paragraph $it contains an important description." }
         val sample = CoverEvidencePlanning.sample(17, "Later", text)!!
@@ -42,13 +55,13 @@ class CoverEvidencePlanningTest {
     @Test fun `cache identity changes with evidence metadata model and questions but not credentials`() {
         val sample = CoverEvidencePlanning.ChapterSample(1, "Opening", "A copper automaton tends an orchard.", "The orchard hums at dusk.")
         val story = Story(title = "Orchard", description = "A machine learns farming")
-        val body = JevCoverClient.request(CoverEvidencePlanning.state(story, sample))
+        val body = CoverDecisionClient.request(CoverEvidencePlanning.state(story, sample), MODEL)
         val original = CoverEvidencePlanning.cacheKey(body)
         assertEquals(original, CoverEvidencePlanning.cacheKey(body.deepCopy()))
         val changed =
             listOf(
-                JevCoverClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample)),
-                JevCoverClient.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text"))),
+                CoverDecisionClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample), MODEL),
+                CoverDecisionClient.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text")), MODEL),
                 body.deepCopy().apply { addProperty("model", "new-model") },
                 body.deepCopy().apply { getAsJsonObject("questions").remove("appearance") },
             )
@@ -57,9 +70,10 @@ class CoverEvidencePlanningTest {
     }
 
     @Test fun `useful chapters need visual evidence that is not a temporary scene`() {
-        assertTrue(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.6, 0.0, 0.3, 0.0)))
+        assertTrue(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.7, 0.0, 0.3, 0.0)))
         assertTrue(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.0, 0.0, 1.0, 0.5)))
-        // Premise alone never qualifies and neither does a likely temporary scene.
+        // Generic mentions (level 1 of 3), premise alone, and likely temporary scenes never qualify.
+        assertFalse(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.6, 0.0, 0.6, 0.0)))
         assertFalse(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(0.4, 1.0, 0.4, 0.0)))
         assertFalse(CoverEvidencePlanning.isUseful(CoverEvidencePlanning.Judgments(1.0, 0.0, 1.0, 0.6)))
         assertTrue(

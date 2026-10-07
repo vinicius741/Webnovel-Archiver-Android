@@ -73,11 +73,17 @@ class AiCoverArtEngine internal constructor(
         val chapters =
             if (context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
                 val selected =
-                    evidenceSelector.select(context.story, context.apiKey, context.settings.coverEvidenceChapters, onProgress)
+                    evidenceSelector.select(
+                        context.story,
+                        context.apiKey,
+                        context.settings.decisionModel,
+                        context.settings.coverEvidenceChapters,
+                        onProgress,
+                    )
 
                 // Display hint for the picker; losing it never fails a finished cover run.
                 runCatching { evidenceStore.record(context.story.id, selected.map { it.number - 1 }) }
-                    .onFailure { Timber.w(it, "Could not persist Jev chapter selection") }
+                    .onFailure { Timber.w(it, "Could not persist automatic chapter selection") }
                 selected
             } else {
                 AiContextChapters.read(repository, context.story, contextIndices)

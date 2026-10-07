@@ -200,4 +200,12 @@ class PreferenceNormalizationTest {
         val legacy = Gson().fromJson("""{"apiKey":"k"}""", AiSettings::class.java)
         assertEquals(AiSettings.DEFAULT_COVER_EVIDENCE_CHAPTERS, legacy.coverEvidenceChapters)
     }
+
+    @Test
+    fun aiSettingsDefaultsTheDecisionModelForLegacyAndBlankValues() {
+        val legacy = Gson().fromJson("""{"apiKey":"k"}""", AiSettings::class.java)
+        assertEquals(AiSettings.DEFAULT_DECISION_MODEL, PreferenceNormalization.aiSettings(legacy).decisionModel)
+        assertEquals(AiSettings.DEFAULT_DECISION_MODEL, PreferenceNormalization.aiSettings(AiSettings(decisionModel = " ")).decisionModel)
+        assertEquals("liquid/d1", PreferenceNormalization.aiSettings(AiSettings(decisionModel = " liquid/d1 ")).decisionModel)
+    }
 }

@@ -19,6 +19,8 @@ data class OpenRouterModel(
     /** Request parameters the chat model supports (chat catalog reports a string array). */
     val supportedParameters: List<String> = emptyList(),
     val reasoning: OpenRouterReasoningOptions? = null,
+    /** Catalog `architecture.output_modalities`, e.g. `text`, `image`, `decisions`; empty when unreported. */
+    val outputModalities: List<String> = emptyList(),
 ) {
     val isFree: Boolean
         get() = priceIsZero(promptPricePerToken) && priceIsZero(completionPricePerToken)

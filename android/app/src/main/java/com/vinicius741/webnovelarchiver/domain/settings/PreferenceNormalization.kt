@@ -116,6 +116,11 @@ object PreferenceNormalization {
                     .trim()
                     .takeIf { it.isNotBlank() }
                     ?: AiSettings.DEFAULT_IMAGE_MODEL,
+            decisionModel =
+                settings.decisionModel
+                    .trim()
+                    .takeIf { it.isNotBlank() }
+                    ?: AiSettings.DEFAULT_DECISION_MODEL,
             reasoningEfforts = AiReasoningEffort.normalize(settings.reasoningEfforts),
             coverEvidenceChapters =
                 settings.coverEvidenceChapters.coerceIn(

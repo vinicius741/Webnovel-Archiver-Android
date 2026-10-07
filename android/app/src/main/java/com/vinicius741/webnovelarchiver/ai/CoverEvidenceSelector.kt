@@ -20,16 +20,17 @@ import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
 /**
- * Validates downloaded chapters with Jev in batches of the target size and stops as soon as
- * enough useful chapters are found, so cost scales with what the novel needs, not its length.
+ * Validates downloaded chapters with the chosen decision model in batches of the target size, in a
+ * book-spanning order, and stops as soon as enough useful chapters are found, so cost scales with
+ * what the novel needs, not its length.
  */
 internal class CoverEvidenceSelector(
     private val readChapter: suspend (Chapter) -> String?,
     private val saveUsage: suspend (AiUsageRecord) -> Unit,
-    private val client: JevCoverClient,
+    private val client: CoverDecisionClient,
     private val cache: CoverEvidenceStore,
 ) {
-    constructor(repository: AppRepository, client: JevCoverClient, cache: CoverEvidenceStore) :
+    constructor(repository: AppRepository, client: CoverDecisionClient, cache: CoverEvidenceStore) :
         this(repository::readChapter, { repository.recordAiUsage(it) }, client, cache)
 
     /** One judged chapter; [cached] marks a content-addressed reuse that did not bill. */
@@ -42,12 +43,16 @@ internal class CoverEvidenceSelector(
     suspend fun select(
         story: Story,
         apiKey: String,
+        model: String,
         targetChapters: Int,
         progress: (String) -> Unit,
     ): List<AiDescriptionPlanning.ChapterText> =
         withContext(Dispatchers.IO) {
             val operationId = UUID.randomUUID().toString()
-            val downloaded = story.chapters.withIndex().filter { it.value.downloaded }
+            val downloaded =
+                story.chapters.withIndex().filter { it.value.downloaded }.let { chapters ->
+                    CoverEvidencePlanning.scanOrder(chapters.size).map(chapters::get)
+                }
             val target = targetChapters.coerceIn(1, maxOf(1, downloaded.size))
             val useful = mutableListOf<CoverEvidencePlanning.ScoredChapter>()
             var scanned = 0
@@ -58,7 +63,7 @@ internal class CoverEvidenceSelector(
                 val outcomes =
                     coroutineScope {
                         batch.chunked(CONCURRENT_CALLS).flatMap { group ->
-                            group.map { entry -> async { judge(story, entry, apiKey, operationId) } }.awaitAll()
+                            group.map { entry -> async { judge(story, entry, apiKey, model, operationId) } }.awaitAll()
                         }
                     }
                 scanned += batch.size
@@ -95,25 +100,26 @@ internal class CoverEvidenceSelector(
         story: Story,
         entry: IndexedValue<Chapter>,
         apiKey: String,
+        model: String,
         operationId: String,
     ): Outcome {
         val html = readChapter(entry.value) ?: entry.value.content ?: return Outcome(null, cached = false, readable = false)
         val sample =
             CoverEvidencePlanning.sample(entry.index + 1, entry.value.title, HtmlCleanup.htmlToFormattedText(html))
                 ?: return Outcome(null, cached = false, readable = true)
-        val body = JevCoverClient.request(CoverEvidencePlanning.state(story, sample))
+        val body = CoverDecisionClient.request(CoverEvidencePlanning.state(story, sample), model)
         val key = CoverEvidencePlanning.cacheKey(body)
-        val saved = cache.read(key)?.let { runCatching { JevCoverClient.parse(it) }.getOrNull() }
+        val saved = cache.read(key)?.let { runCatching { CoverDecisionClient.parse(it) }.getOrNull() }
         val judgments =
             saved
                 ?: client
                     .evaluate(
                         apiKey,
                         body,
-                    ) { json, code -> recordUsage(story.id, operationId, json, code) }
+                    ) { json, code -> recordUsage(story.id, operationId, model, json, code) }
                     .let { response ->
                         cache.write(key, response)
-                        JevCoverClient.parse(response)
+                        CoverDecisionClient.parse(response)
                     }
         return Outcome(CoverEvidencePlanning.ScoredChapter(sample, judgments), cached = saved != null, readable = true)
     }
@@ -122,6 +128,7 @@ internal class CoverEvidenceSelector(
     private suspend fun recordUsage(
         storyId: String,
         operationId: String,
+        requestedModel: String,
         json: JsonObject,
         code: Int,
     ) {
@@ -140,18 +147,18 @@ internal class CoverEvidenceSelector(
                     operationId = operationId,
                     storyId = storyId,
                     feature = "cover_selection",
-                    model = scalar(json, "model") ?: CoverEvidencePlanning.MODEL,
+                    model = scalar(json, "model") ?: requestedModel,
                     generationId = scalar(json, "id"),
                     promptTokens = tokens("input_tokens"),
                     completionTokens = tokens("output_tokens"),
                     costUsd = AiUsagePlanning.normalizeCost(scalar(usage, "cost")),
-                    outcome = if (code in 200..299 && runCatching { JevCoverClient.parse(json) }.isSuccess) "completed" else "failed",
+                    outcome = if (code in 200..299 && runCatching { CoverDecisionClient.parse(json) }.isSuccess) "completed" else "failed",
                 ),
             )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            Timber.w(error, "Could not persist Jev usage")
+            Timber.w(error, "Could not persist decision-model usage")
         }
     }
 

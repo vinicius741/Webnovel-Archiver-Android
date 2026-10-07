@@ -223,7 +223,7 @@ private fun ScreenHost.showAiContextChapterDialog(
                             toast("Select at least one chapter, or use Reset to default")
                             return@makeButton
                         }
-                        // An explicit cover selection always bypasses Jev, including all chapters.
+                        // An explicit cover selection always bypasses the decision-model scan, including all chapters.
                         applySelection(if (forCover) checked.sorted() else checked.takeIf { it != defaults }?.sorted())
                     },
                 )
@@ -254,7 +254,7 @@ private fun ScreenHost.contextPickerConfig(
     val saved = if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices
     val automatic = app.appContainer.coverEvidence.selection(story.id) ?: emptyList()
     // Automatic cover mode has no persisted manual selection — the picker shows the chapters
-    // Jev kept on the last scan, or nothing before the first scan ever runs.
+    // the decision model kept on the last scan, or nothing before the first scan ever runs.
     val initialChecked =
         when {
             saved != null -> saved
@@ -267,16 +267,16 @@ private fun ScreenHost.contextPickerConfig(
         hint =
             if (forCover) {
                 if (saved == null && automatic.isNotEmpty()) {
-                    "Jev checked these chapters automatically on the last scan. " +
+                    "The last automatic scan picked these chapters. " +
                         "Adjust them and Save to send a manual selection instead."
                 } else {
-                    "Automatic mode validates chapters with Jev until enough useful ones are found. " +
-                        "Check chapters to send a manual selection instead, without Jev."
+                    "Automatic mode scores chapters with the decision model until enough useful ones are found. " +
+                        "Check chapters to send a manual selection instead, without the scan."
                 }
             } else {
                 "Only downloaded chapters can be sent."
             },
-        resetLabel = if (forCover) "Reset to Jev selection" else "Reset to default (first downloaded)",
+        resetLabel = if (forCover) "Reset to automatic selection" else "Reset to default (first downloaded)",
         save = { indices ->
             if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
         },

@@ -15,11 +15,11 @@ import org.junit.Test
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class JevCoverClientTest {
+class CoverDecisionClientTest {
     private val response = """{"id":"gen-dec-test","model":"typesafe/jev-1.13-20260917","answers":{
-        "appearance":{"type":"score","score":2},
-        "premise":{"type":"score","score":1},
-        "imagery":{"type":"score","score":0.5},
+        "appearance":{"type":"score","score":3},
+        "premise":{"type":"score","score":1.5},
+        "imagery":{"type":"score","score":0.75},
         "temporary":{"type":"noul","noul":0.1}},
         "usage":{"input_tokens":1000,"output_tokens":20,"cost":0.000042}}"""
 
@@ -27,16 +27,18 @@ class JevCoverClientTest {
         runBlocking {
             MockWebServer().use { server ->
                 server.enqueue(MockResponse().setBody(response))
-                val client = JevCoverClient(OpenRouterClient(server.url("/").toString()))
-                val body = JevCoverClient.request(JsonObject().apply { addProperty("passage", "A copper automaton") })
-                val answer = JevCoverClient.parse(client.evaluate("test-key", body))
+                val client = CoverDecisionClient(OpenRouterClient(server.url("/").toString()))
+                val body = CoverDecisionClient.request(JsonObject().apply { addProperty("passage", "A copper automaton") }, "liquid/d1")
+                val answer = CoverDecisionClient.parse(client.evaluate("test-key", body))
                 val request = server.takeRequest()
                 assertEquals("Bearer test-key", request.getHeader("Authorization"))
                 assertEquals("/api/alpha/decisions", request.path)
                 assertEquals("POST", request.method)
                 assertTrue(request.getHeader("Content-Type")!!.startsWith("application/json"))
                 assertEquals(body, JsonParser.parseString(request.body.readUtf8()))
-                assertEquals("typesafe/jev-1.13", body.get("model").asString)
+                assertEquals("liquid/d1", body.get("model").asString)
+                val questions = body.getAsJsonObject("questions")
+                assertEquals(4, questions.getAsJsonObject("appearance").getAsJsonArray("criteria").size())
                 assertEquals(setOf("appearance", "premise", "imagery", "temporary"), body.getAsJsonObject("questions").keySet())
                 assertEquals(1.0, answer.appearance, 0.0)
                 assertEquals(0.5, answer.premise, 0.0)
@@ -50,7 +52,7 @@ class JevCoverClientTest {
                 server.enqueue(MockResponse().setResponseCode(401).setBody("sensitive provider detail"))
                 val failure =
                     runCatching {
-                        JevCoverClient(
+                        CoverDecisionClient(
                             OpenRouterClient(server.url("/").toString()),
                         ).evaluate("secret", JsonObject())
                     }.exceptionOrNull()
@@ -67,7 +69,10 @@ class JevCoverClientTest {
                 server.enqueue(MockResponse().setResponseCode(429))
                 server.enqueue(MockResponse().setBody(response))
                 val statuses = mutableListOf<Int>()
-                JevCoverClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) { _, code -> statuses += code }
+                CoverDecisionClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) { _, code ->
+                    statuses +=
+                        code
+                }
                 assertEquals(listOf(429, 200), statuses)
             }
         }
@@ -80,7 +85,7 @@ class JevCoverClientTest {
                     val statuses = mutableListOf<Int>()
                     val failure =
                         runCatching {
-                            JevCoverClient(OpenRouterClient(server.url("/").toString()))
+                            CoverDecisionClient(OpenRouterClient(server.url("/").toString()))
                                 .evaluate("test", JsonObject()) { _, status -> statuses += status }
                         }.exceptionOrNull()
                     assertTrue(failure is IOException)
@@ -98,7 +103,7 @@ class JevCoverClientTest {
                 val statuses = mutableListOf<Int>()
                 val failure =
                     runCatching {
-                        JevCoverClient(OpenRouterClient(server.url("/").toString()))
+                        CoverDecisionClient(OpenRouterClient(server.url("/").toString()))
                             .evaluate("test", JsonObject()) { _, code -> statuses += code }
                     }.exceptionOrNull()
                 assertTrue(failure is IOException)
@@ -110,18 +115,26 @@ class JevCoverClientTest {
     @Test fun `malformed missing and out of range judgments are rejected`() {
         val json = JsonParser.parseString(response).asJsonObject
         val missing = json.deepCopy().apply { getAsJsonObject("answers").remove("premise") }
-        val wrongRange = json.deepCopy().apply { getAsJsonObject("answers").getAsJsonObject("appearance").addProperty("score", 3) }
-        for (bad in listOf(JsonObject(), missing, wrongRange)) assertTrue(runCatching { JevCoverClient.parse(bad) }.isFailure)
+        val wrongRange = json.deepCopy().apply { getAsJsonObject("answers").getAsJsonObject("appearance").addProperty("score", 3.5) }
+        for (bad in listOf(JsonObject(), missing, wrongRange)) assertTrue(runCatching { CoverDecisionClient.parse(bad) }.isFailure)
     }
 
     @Test fun `cancellation stops waiting for the network`() =
         runBlocking {
             MockWebServer().use { server ->
                 server.enqueue(MockResponse().setBody(response).setBodyDelay(3, TimeUnit.SECONDS))
-                val job = launch { JevCoverClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) }
+                val job = launch { CoverDecisionClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) }
                 kotlinx.coroutines.delay(100)
                 withTimeout(1000) { job.cancelAndJoin() }
                 assertTrue(job.isCancelled)
             }
         }
+
+    @Test fun `answers without a type discriminator parse but a mismatched type is rejected`() {
+        val json = JsonParser.parseString(response).asJsonObject
+        val untyped = json.deepCopy().apply { getAsJsonObject("answers").entrySet().forEach { it.value.asJsonObject.remove("type") } }
+        assertEquals(1.0, CoverDecisionClient.parse(untyped).appearance, 0.0)
+        val mismatched = json.deepCopy().apply { getAsJsonObject("answers").getAsJsonObject("temporary").addProperty("type", "score") }
+        assertTrue(runCatching { CoverDecisionClient.parse(mismatched) }.isFailure)
+    }
 }

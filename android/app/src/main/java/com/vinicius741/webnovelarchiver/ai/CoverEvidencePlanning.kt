@@ -4,13 +4,14 @@ import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.sha256Hex
 
-/** Pure chapter sampling, cache identities and chapter-level usefulness rules for Jev selection. */
+/** Pure chapter sampling, scan order, cache identities and usefulness rules for decision-model selection. */
 internal object CoverEvidencePlanning {
-    const val MODEL = "typesafe/jev-1.13"
     const val DEFAULT_TARGET_CHAPTERS = 10
 
     private const val SAMPLE_CHARS = 2_200
-    private const val USEFUL_EVIDENCE = 0.5
+
+    /** Normalized level 2 of 0..3: at least one specific, drawable detail. */
+    private const val USEFUL_EVIDENCE = 2.0 / 3.0
     private const val TEMPORARY_LIMIT = 0.5
 
     /** Two excerpts per chapter — the opening and a mid-chapter window — keep one request per chapter. */
@@ -32,6 +33,26 @@ internal object CoverEvidencePlanning {
         val sample: ChapterSample,
         val judgments: Judgments,
     )
+
+    /**
+     * Order in which downloaded chapters are judged: the opening first (it usually introduces the
+     * protagonist), then interval midpoints breadth-first, so every early-stopping batch already
+     * spans the whole book instead of only its first chapters.
+     */
+    fun scanOrder(count: Int): List<Int> {
+        if (count <= 0) return emptyList()
+        val order = mutableListOf(0)
+        val intervals = ArrayDeque(listOf(1 until count))
+        while (intervals.isNotEmpty()) {
+            val range = intervals.removeFirst()
+            if (range.isEmpty()) continue
+            val middle = (range.first + range.last + 1) / 2
+            order += middle
+            intervals += range.first until middle
+            intervals += middle + 1..range.last
+        }
+        return order
+    }
 
     fun sample(
         chapter: Int,

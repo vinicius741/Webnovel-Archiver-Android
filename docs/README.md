@@ -9,12 +9,12 @@ Keep this index current whenever the set of documents changes.
 
 ### `ai/`
 
-OpenRouter generation and Jev evidence selection through the same API key for the native app.
+OpenRouter generation and decision-model evidence selection through the same API key for the native app.
 
 | File | Description |
 |------|-------------|
 | `ai-description-generation.md` | AI-generated novel descriptions: user flow, settings/key handling, cost controls, `ai/` package map, and how to extend the layer to more generators. |
-| `ai-cover-generation.md` | AI-generated cover art: cached Jev passage selection through OpenRouter, two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
+| `ai-cover-generation.md` | AI-generated cover art: cached decision-model passage selection through OpenRouter, two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
 | `ai-cost-tracking.md` | Exact OpenRouter receipt capture, device-local per-request history and aggregates, live current-key counters, preview cost labels, and privacy/backup behavior. |
 
 ### `architecture/`

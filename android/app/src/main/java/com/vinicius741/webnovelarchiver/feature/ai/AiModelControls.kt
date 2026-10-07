@@ -32,13 +32,13 @@ import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import kotlinx.coroutines.launch
 
 /*
- * Model-selection controls for the AI Controls screen. Both global model choices live in one
+ * Model-selection controls for the AI Controls screen. All three global model choices live in one
  * "Models" card at the top of the screen — they apply to every novel, so presenting them inline
  * with per-feature actions made them look per-novel. Confirmed text-model and reasoning choices
  * are saved together into AiSettings and mirrored inside the model field. Manual ids remain reachable.
  */
 
-/** The single Models card: description and cover image selectors. */
+/** The single Models card: description, cover image, and cover selection (decision model) selectors. */
 internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
     val modelRefreshers = mutableListOf<() -> Unit>()
     aiControlsScreenState.binding?.refreshModels = { modelRefreshers.forEach { it() } }
@@ -48,7 +48,7 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
         val label: String,
         val current: () -> String,
         val save: (AiSettings, String, String?) -> AiSettings,
-        val image: Boolean = false,
+        val kind: AiModelRowKind = AiModelRowKind.TEXT,
     )
 
     val rows =
@@ -68,7 +68,13 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                 label = "Cover image model",
                 current = { repository.aiSettings.get().imageModel },
                 save = { settings, id, _ -> settings.copy(imageModel = id) },
-                image = true,
+                kind = AiModelRowKind.IMAGE,
+            ),
+            ModelRow(
+                label = "Cover selection model",
+                current = { repository.aiSettings.get().decisionModel },
+                save = { settings, id, _ -> settings.copy(decisionModel = id) },
+                kind = AiModelRowKind.DECISIONS,
             ),
         )
 
@@ -81,7 +87,7 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                         container = this,
                         label = row.label,
                         currentModel = row.current,
-                        image = row.image,
+                        kind = row.kind,
                     ) { picked ->
                         val settings = repository.aiSettings.get()
                         repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
@@ -101,11 +107,13 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
     }
 }
 
+internal enum class AiModelRowKind { TEXT, IMAGE, DECISIONS }
+
 private fun ScreenHost.addAiModelRow(
     container: LinearLayout,
     label: String,
     currentModel: () -> String,
-    image: Boolean = false,
+    kind: AiModelRowKind = AiModelRowKind.TEXT,
     onPicked: suspend (AiModelSelection) -> Unit,
 ): () -> Unit {
     var pick: ((AiModelSelection) -> Unit)? = null
@@ -117,10 +125,11 @@ private fun ScreenHost.addAiModelRow(
             value = currentModel(),
             trailingBadge = true,
         ) {
-            if (image) {
-                showAiImageModelPicker(currentModel()) { picked -> pick?.invoke(AiModelSelection(picked)) }
-            } else {
-                showAiModelPicker(currentModel()) { picked -> pick?.invoke(picked) }
+            when (kind) {
+                AiModelRowKind.IMAGE -> showAiImageModelPicker(currentModel()) { picked -> pick?.invoke(AiModelSelection(picked)) }
+                AiModelRowKind.DECISIONS ->
+                    showAiModelPicker(currentModel(), { picked -> pick?.invoke(picked) }, catalog = AiModelCatalog.DECISIONS)
+                AiModelRowKind.TEXT -> showAiModelPicker(currentModel(), { picked -> pick?.invoke(picked) })
             }
         }
     selectorView.layoutParams =
@@ -138,7 +147,7 @@ private fun ScreenHost.addAiModelRow(
         valueView.text = modelId
         val model = modelCatalogCache?.firstOrNull { it.id == modelId }
         detailView.visibility =
-            if (!image && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
+            if (kind == AiModelRowKind.TEXT && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
         detailView.text =
             "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.aiSettings.get(), modelId, model))
     }
