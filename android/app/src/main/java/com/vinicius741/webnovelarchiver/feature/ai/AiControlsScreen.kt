@@ -55,12 +55,6 @@ internal fun ScreenHost.showAiControls(storyId: String) {
         aiControlsScreenState.coverPrompts[story.id]?.let { prompt -> addAiCoverPromptDraftCard(this, story, prompt) }
         aiControlsScreenState.coverDrafts[story.id]?.let { draft -> addAiCoverDraftPreviewCard(this, story, draft) }
 
-        section("Chapter Polish")
-        addAiChapterPolishCard(this, story)
-        aiChapterRewriteOperationFor(story.id)?.let { rewriteJob ->
-            binding.addProgress(StoryOperationState(story.id, StoryOperationKind.AI_CHAPTER_REWRITE, rewriteJob.message))
-        }
-
         section("Description")
         addAiDescriptionCard(this, story, generating)
         generating?.let { binding.addProgress(it) }

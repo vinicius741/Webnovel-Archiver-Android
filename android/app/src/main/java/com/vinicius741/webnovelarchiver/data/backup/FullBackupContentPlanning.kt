@@ -88,19 +88,13 @@ object FullBackupContentPlanning {
             }
         }
 
-    /** Manifest-ready missing list: missing chapters plus filtered applied-rewrite files. */
-    fun missingContentReport(
-        chapterPlan: List<ChapterContent>,
-        missingAppliedByStory: Map<String, Int>,
-    ): List<MissingContent> =
+    /** Manifest-ready list of chapters the library reports as available but whose content is missing. */
+    fun missingContentReport(chapterPlan: List<ChapterContent>): List<MissingContent> =
         chapterPlan.mapNotNull { entry ->
             if (entry is ChapterContent.Missing) {
                 MissingContent(kind = "chapter", storyId = entry.storyId, chapterId = entry.chapterId, title = entry.title)
             } else {
                 null
             }
-        } +
-            missingAppliedByStory.flatMap { (storyId, count) ->
-                (0 until count).map { MissingContent(kind = "applied_rewrite", storyId = storyId, chapterId = null, title = null) }
-            }
+        }
 }

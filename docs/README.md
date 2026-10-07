@@ -16,10 +16,6 @@ OpenRouter generation and Jev evidence selection through the same API key for th
 | `ai-description-generation.md` | AI-generated novel descriptions: user flow, settings/key handling, cost controls, `ai/` package map, and how to extend the layer to more generators. |
 | `ai-cover-generation.md` | AI-generated cover art: cached Jev passage selection through OpenRouter, two-stage generation (text model writes the image prompt, image model paints it), cover storage/revert, EPUB embedding, and full-backup shipping of generated covers. |
 | `ai-cost-tracking.md` | Exact OpenRouter receipt capture, device-local per-request history and aggregates, live current-key counters, preview cost labels, and privacy/backup behavior. |
-| `ai-chapter-rewrite-plan.html` | Research-backed product and implementation plan for reversible, verified AI chapter polishing that preserves source chapters, story canon, formatting, Reader/TTS parity, cost visibility, and provider privacy controls. |
-| `ai-chapter-rewrite-spike.md` | Phase 1 go/no-go spike results: prompt v1 vs v1.1 (merge semantics), three-model comparison incl. frontier, verifier holdout, cadence-report evidence, cost/privacy findings, and the blind-ballot verdict (harness removed after the feature shipped). |
-| `ai-chapter-rewrite-handoff.md` | Implementation handoff for building the full Chapter polish feature in-app (plan phases 2–5): spike-proven decisions to port, scope, prompt-strength guidance from the ballot, and QA requirements. |
-| `ai-chapter-rewrite-feature.md` | The shipped Chapter polish feature: user flow (Reader + AI Controls + comparison), storage layout, code map, enforced spike rules (merge contract, verifier pairing, routing tiers), and emulator QA notes. |
 
 ### `architecture/`
 

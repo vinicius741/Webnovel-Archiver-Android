@@ -3,8 +3,6 @@ package com.vinicius741.webnovelarchiver.app
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
-import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteEngine
-import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
@@ -112,11 +110,6 @@ class AppContainer(
 
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
-    val aiChapterRewriteEngine: AiChapterRewriteEngine = AiChapterRewriteEngine(repository, openRouter)
-
-    /** Process scope, same contract as covers: the draft persists before listeners are notified. */
-    val aiChapterRewriteJobCoordinator: AiChapterRewriteJobCoordinator =
-        AiChapterRewriteJobCoordinator(applicationScope, repository, aiChapterRewriteEngine)
     private val repositoryStartup =
         RepositoryStartup {
             // One storage monitor guards the whole migration/recovery/hydration transaction; concurrent file APIs wait on it.

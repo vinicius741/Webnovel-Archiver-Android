@@ -80,23 +80,6 @@ class AppRepositoryTest {
         }
 
     @Test
-    fun manifestOnlyRepublishBumpsVersionsWithoutRereadingStoryDocuments() =
-        runTest {
-            val store = FakeRepositoryStoryStore(story())
-            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
-            repository.upsertStory(store.story("story")!!)
-            val cachedTitle = repository.story("story")!!.title
-            val before = repository.downloadState.value
-
-            store.stories["story"] = store.story("story")!!.copy(title = "Externally Changed")
-            repository.republishLibrarySnapshot()
-
-            // R26: a rewrite toggle must not re-read the story document; the cached snapshot wins.
-            assertEquals(cachedTitle, repository.story("story")!!.title)
-            assertTrue(repository.downloadState.value.libraryVersion > before.libraryVersion)
-        }
-
-    @Test
     fun publishingExternallyPersistedStoryRefreshesSingleStoryCache() =
         runTest {
             val store = FakeRepositoryStoryStore(story())

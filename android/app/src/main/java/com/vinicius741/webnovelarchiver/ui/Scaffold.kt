@@ -47,7 +47,6 @@ internal fun ScreenHost.screen(
     fab: (() -> Unit)? = null,
     scrollable: Boolean = false,
     chrome: ScreenChrome = ScreenChrome.STANDARD,
-    onSubtitleClick: (() -> Unit)? = null,
     block: LinearLayout.() -> Unit,
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
@@ -81,7 +80,7 @@ internal fun ScreenHost.screen(
             // content stays clear of it whether the body scrolls or not.
             setPadding(0, 0, 0, systemBarBottom())
         }
-    if (chrome == ScreenChrome.STANDARD) column.addView(appBar(title, subtitle, effectiveBack, actions, onSubtitleClick))
+    if (chrome == ScreenChrome.STANDARD) column.addView(appBar(title, subtitle, effectiveBack, actions))
     val content =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -154,7 +153,6 @@ private fun ScreenHost.appBar(
     subtitle: String?,
     onBack: (() -> Unit)?,
     actions: List<AppBarAction>,
-    onSubtitleClick: (() -> Unit)? = null,
 ): View {
     val t = ThemeManager.current
     return LinearLayout(app).apply {
@@ -192,14 +190,6 @@ private fun ScreenHost.appBar(
                 makeText(app, it, Type.BODY_SMALL, t.colors.onSurfaceVariant).apply {
                     includeFontPadding = false
                     setPadding(0, dp(2), 0, 0)
-                    // The reader's "n / total · Polished" badge: tapping the subtitle flips the
-                    // chapter's content version without leaving the reader.
-                    onSubtitleClick?.let { click ->
-                        isClickable = true
-                        isFocusable = true
-                        background = selectableRipple(t.colors.onSurfaceVariant)
-                        setOnClickListener { click() }
-                    }
                 },
             )
         }

@@ -46,27 +46,21 @@ import kotlinx.coroutines.launch
 @Volatile
 internal var modelCatalogCache: List<OpenRouterModel>? = null
 
-/**
- * Opens the searchable model picker, fetching OpenRouter's catalog on first use. [recommended]
- * adds a "Known good" filter and row marks; [excluded] hides one id entirely (e.g. the verifier
- * picker hiding the model already chosen as the rewriter).
- */
+/** Opens the searchable model picker, fetching OpenRouter's catalog on first use. */
 internal fun ScreenHost.showAiModelPicker(
     currentModel: String,
     onPicked: (AiModelSelection) -> Unit,
-    recommended: ((OpenRouterModel) -> Boolean)? = null,
-    excluded: String? = null,
 ) {
     val cached = modelCatalogCache
     if (cached != null) {
-        showAiModelDialog(cached, currentModel, onPicked, recommended, excluded)
+        showAiModelDialog(cached, currentModel, onPicked)
         return
     }
     toast("Loading OpenRouter models...")
     scope.launch {
         val models = loadAiModelCatalog()
         if (models == null) toast("Could not load models. You can enter a model id manually.")
-        app.runOnUiThread { showAiModelDialog(models.orEmpty(), currentModel, onPicked, recommended, excluded) }
+        app.runOnUiThread { showAiModelDialog(models.orEmpty(), currentModel, onPicked) }
     }
 }
 
@@ -75,8 +69,6 @@ private fun ScreenHost.showAiModelDialog(
     models: List<OpenRouterModel>,
     selectedId: String,
     onPicked: (AiModelSelection) -> Unit,
-    recommended: ((OpenRouterModel) -> Boolean)?,
-    excluded: String?,
 ) {
     val colors = ThemeManager.colors
     val shapes = ThemeManager.shapes
@@ -97,7 +89,6 @@ private fun ScreenHost.showAiModelDialog(
     dialogView.addView(search)
 
     var freeOnly = false
-    var knownGoodOnly = false
     val filterRow = LinearLayout(app).apply { orientation = LinearLayout.HORIZONTAL }
     val resultCount = makeText(app, "", Type.LABEL_MEDIUM, colors.onSurfaceVariant)
     // Chips and the result count share one row, so the count costs no extra line.
@@ -139,8 +130,6 @@ private fun ScreenHost.showAiModelDialog(
         val filtered =
             AiModelPresentation
                 .filter(models, search.text.toString(), freeOnly)
-                .filter { it.id != excluded }
-                .filter { knownGoodOnly != true || recommended?.invoke(it) == true }
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "model" else "models"}"
         results.removeAllViews()
         // Manual entry stays pinned as the first row so it is reachable even when the catalog
@@ -148,12 +137,8 @@ private fun ScreenHost.showAiModelDialog(
         results.addView(
             manualEntryRow(app) {
                 showManualModelDialog(draft.modelId) { id ->
-                    if (id == excluded) {
-                        toast("Choose a different model for the rewriter and verifier")
-                    } else {
-                        draft.selectModel(id)
-                        renderResults()
-                    }
+                    draft.selectModel(id)
+                    renderResults()
                 }
             },
         )
@@ -170,7 +155,6 @@ private fun ScreenHost.showAiModelDialog(
                     id = id,
                     model = model,
                     selected = id == draft.modelId,
-                    recommended = recommended,
                     reasoning =
                         if (id == draft.modelId) {
                             AiReasoningPlanning.allowedEfforts(model).takeIf { it.isNotEmpty() }?.let { allowed ->
@@ -226,20 +210,8 @@ private fun ScreenHost.showAiModelDialog(
                 },
             )
         }
-        chip("All", !freeOnly && !knownGoodOnly) {
-            freeOnly = false
-            knownGoodOnly = false
-        }
-        chip("Free", freeOnly) {
-            freeOnly = true
-            knownGoodOnly = false
-        }
-        if (recommended != null) {
-            chip("Known good", knownGoodOnly) {
-                knownGoodOnly = true
-                freeOnly = false
-            }
-        }
+        chip("All", !freeOnly) { freeOnly = false }
+        chip("Free", freeOnly) { freeOnly = true }
     }
 
     search.doAfterTextChanged { renderResults() }

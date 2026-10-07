@@ -29,7 +29,7 @@ class FullBackupContentPlanningTest {
 
         val entry = plan.single() as FullBackupContentPlanning.ChapterContent.FromFile
         assertEquals(file, entry.file)
-        assertTrue(FullBackupContentPlanning.missingContentReport(plan, emptyMap()).isEmpty())
+        assertTrue(FullBackupContentPlanning.missingContentReport(plan).isEmpty())
     }
 
     @Test
@@ -43,7 +43,7 @@ class FullBackupContentPlanningTest {
 
         val entry = plan.single() as FullBackupContentPlanning.ChapterContent.Inline
         assertEquals("<p>legacy inline</p>", entry.content)
-        assertTrue(FullBackupContentPlanning.missingContentReport(plan, emptyMap()).isEmpty())
+        assertTrue(FullBackupContentPlanning.missingContentReport(plan).isEmpty())
     }
 
     @Test
@@ -55,13 +55,9 @@ class FullBackupContentPlanningTest {
                 chapterPath = { storyId, chapterId, index -> "novels/$storyId/$index-$chapterId.html" },
             )
 
-        val missing =
-            FullBackupContentPlanning.missingContentReport(
-                chapterPlan = plan,
-                missingAppliedByStory = mapOf("story-1" to 2),
-            )
+        val missing = FullBackupContentPlanning.missingContentReport(plan)
 
-        assertEquals(listOf("chapter", "chapter", "applied_rewrite", "applied_rewrite"), missing.map { it.kind })
+        assertEquals(listOf("chapter", "chapter"), missing.map { it.kind })
         assertEquals(setOf("ch-1", "gone-too"), missing.filter { it.kind == "chapter" }.mapNotNull { it.chapterId }.toSet())
     }
 

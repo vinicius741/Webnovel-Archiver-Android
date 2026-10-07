@@ -17,51 +17,35 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * Keeps the process alive while any AI job (cover generation or chapter rewrite) runs on the
- * application scope, so minimizing or leaving the app mid-generation no longer lets the system
- * kill the in-flight (billable) call. The service owns no job state: it renders whichever jobs are
- * active — the chapter-rewrite job (with its queue count) outranks the cover job because its batch
- * is longer — and stops itself when both coordinators go idle. Terminal outcomes arrive through
- * each coordinator's [AiJobCoordinator.events] and are posted as tappable result notifications,
- * because the user may have left the app entirely by the time the result is ready.
+ * Keeps the process alive while an AI cover job runs on the application scope, so minimizing or
+ * leaving the app mid-generation no longer lets the system kill the in-flight (billable) call. The
+ * service owns no job state: it renders the active job and stops itself when the coordinator goes
+ * idle. Terminal outcomes arrive through [AiJobCoordinator.events] and are posted as tappable result
+ * notifications, because the user may have left the app entirely by the time the result is ready.
  */
 class AiJobForegroundService : Service() {
     private var foregroundStarted = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val coverCoordinator get() = appContainer.aiCoverJobCoordinator
-    private val rewriteCoordinator get() = appContainer.aiChapterRewriteJobCoordinator
 
     override fun onCreate() {
         super.onCreate()
         AppNotificationChannels.ensureCreated(this)
         serviceScope.launch {
-            combine(
-                coverCoordinator.jobs,
-                rewriteCoordinator.jobs,
-                rewriteCoordinator.queue,
-            ) { coverJobs, rewriteJobs, queue -> Triple(coverJobs, rewriteJobs, queue) }
-                .collect { (coverJobs, rewriteJobs, queue) ->
-                    val rewrite = rewriteJobs.values.firstOrNull()
-                    val cover = coverJobs.values.firstOrNull()
-                    when {
-                        rewrite != null -> updateOngoingNotification(AiJobNotificationKind.CHAPTER_REWRITE, rewrite.message, queue.size)
-                        cover != null -> updateOngoingNotification(AiJobNotificationKind.COVER, cover.message, queuedCount = 0)
-                        queue.isEmpty() -> if (foregroundStarted) stopAfterFinish()
-                        // Rewrite queue holds chapters but no job registered yet: a handoff is in
-                        // flight — hold the service until the next job registers.
-                    }
+            coverCoordinator.jobs.collect { coverJobs ->
+                val cover = coverJobs.values.firstOrNull()
+                when {
+                    cover != null -> updateOngoingNotification(cover.message)
+                    foregroundStarted -> stopAfterFinish()
                 }
+            }
         }
         serviceScope.launch {
             coverCoordinator.events.collect { event -> showCoverOutcomeNotification(event) }
-        }
-        serviceScope.launch {
-            rewriteCoordinator.events.collect { event -> showRewriteOutcomeNotification(event) }
         }
     }
 
@@ -77,29 +61,14 @@ class AiJobForegroundService : Service() {
     ): Int {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
-                val rewrite =
-                    rewriteCoordinator.jobs.value.values
-                        .firstOrNull()
                 val cover =
                     coverCoordinator.jobs.value.values
                         .firstOrNull()
-                val queuedCount = rewriteCoordinator.queue.value.size
-                val idle = rewrite == null && cover == null && queuedCount == 0
-                val kind =
-                    if (rewrite != null || cover == null && queuedCount > 0) {
-                        AiJobNotificationKind.CHAPTER_REWRITE
-                    } else {
-                        AiJobNotificationKind.COVER
-                    }
-                val message =
-                    rewrite?.message ?: cover?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
+                val message = cover?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
                 // startForegroundService demands startForeground even on an immediate stop.
-                startForeground(
-                    ONGOING_NOTIFICATION_ID,
-                    aiJobOngoingNotification(kind, message, if (kind == AiJobNotificationKind.CHAPTER_REWRITE) queuedCount else 0),
-                )
+                startForeground(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message))
                 foregroundStarted = true
-                if (idle) stopAfterFinish()
+                if (cover == null) stopAfterFinish()
             }
         }
         return START_NOT_STICKY
@@ -109,8 +78,8 @@ class AiJobForegroundService : Service() {
 
     /**
      * Android 15+ caps data-sync foreground services. AI jobs run for minutes, never hours, so
-     * this is defensive only: cancel the batch drain, relinquish foreground state, and let the
-     * coordinators' application scope finish the in-flight call without the service.
+     * this is defensive only: relinquish foreground state and let the coordinator's application
+     * scope finish the in-flight call without the service.
      */
     @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     override fun onTimeout(
@@ -118,15 +87,10 @@ class AiJobForegroundService : Service() {
         fgsType: Int,
     ) {
         Timber.w("AI job foreground service timed out (startId=%s, type=%s)", startId, fgsType)
-        rewriteCoordinator.cancelAll(reason = "foreground service timeout")
         stopAfterFinish()
     }
 
-    private fun updateOngoingNotification(
-        kind: AiJobNotificationKind,
-        message: String,
-        queuedCount: Int,
-    ) {
+    private fun updateOngoingNotification(message: String) {
         if (!foregroundStarted) return
         // Inlined like DownloadForegroundService so lint sees the permission guard.
         if (
@@ -134,7 +98,7 @@ class AiJobForegroundService : Service() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
             runCatching {
-                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(kind, message, queuedCount))
+                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message))
             }
         }
     }
@@ -166,25 +130,9 @@ class AiJobForegroundService : Service() {
         postOutcome(COVER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, requestCode = 1)
     }
 
-    private fun showRewriteOutcomeNotification(event: AiChapterRewriteJobEvent) {
-        val storyTitle = runCatching { appContainer.repository.story(event.storyId)?.title }.getOrNull()
-        val (title, body) =
-            when (event) {
-                is AiChapterRewriteJobEvent.Succeeded ->
-                    when (event.status) {
-                        "ready" -> "Polished chapter ready" to "Compare it with the source before applying."
-                        "blocked" -> "Polished draft flagged" to "The verifier found blockers — review before applying."
-                        else -> "Polished draft unverified" to "The verifier could not be read; review or regenerate."
-                    }
-                is AiChapterRewriteJobEvent.Failed -> "Chapter polish failed" to event.message
-            }
-        postOutcome(REWRITE_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, requestCode = 3)
-    }
-
     companion object {
         private const val ONGOING_NOTIFICATION_ID = 1003
         private const val COVER_OUTCOME_NOTIFICATION_ID = 1004
-        private const val REWRITE_OUTCOME_NOTIFICATION_ID = 1006
         const val ACTION_START = "com.vinicius741.webnovelarchiver.ai.JOB_START"
         private const val EXTRA_INITIAL_MESSAGE = "initial_message"
 

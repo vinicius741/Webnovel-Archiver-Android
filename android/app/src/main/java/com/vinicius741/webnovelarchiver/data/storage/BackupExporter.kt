@@ -57,7 +57,6 @@ internal class BackupExporter(
         BackupExportPlanning.validateFullBackup(library.size)?.let { error(it) }
         val metricFiles = collectMetricFiles(library)
         val coverFiles = collectCoverFiles(library)
-        val rewritePayloads = collectRewritePayloads(library)
         // R10: expected-but-absent content is counted and reported, and the manifest records it —
         // a successful export never silently omits content the library reports as available.
         val chapterPlan =
@@ -66,20 +65,7 @@ internal class BackupExporter(
                 resolveFile = { chapter -> storage.resolveChapterPath(chapter.filePath)?.let(::File)?.takeIf(File::isFile) },
                 chapterPath = { storyId, chapterId, index -> FullBackupPaths.chapterPath(storyId, chapterId, index) },
             )
-        val missingContent =
-            FullBackupContentPlanning.missingContentReport(
-                chapterPlan = chapterPlan,
-                // Stories whose applied files ALL vanished produce no payload, so the store is
-                // asked directly — otherwise they would escape the report.
-                missingAppliedByStory =
-                    library
-                        .mapNotNull { story ->
-                            val missing =
-                                rewritePayloads.firstOrNull { it.storyId == story.id }?.missingAppliedCount
-                                    ?: storage.chapterRewrites.missingAppliedCountForStory(story.id)
-                            if (missing > 0) story.id to missing else null
-                        }.toMap(),
-            )
+        val missingContent = FullBackupContentPlanning.missingContentReport(chapterPlan)
         val chapterFiles =
             chapterPlan.mapNotNull { entry ->
                 when (entry) {
@@ -106,10 +92,8 @@ internal class BackupExporter(
                     is FullBackupContentPlanning.ChapterContent.Missing -> null
                 }
             }
-        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, rewritePayloads, missingContent)
-        val totalFiles =
-            1 + chapterFiles.size + metricFiles.size + coverFiles.size +
-                rewritePayloads.sumOf { 1 + it.appliedFiles.size }
+        val manifest = fullManifest(library, chapterFiles, metricFiles, coverFiles, missingContent)
+        val totalFiles = 1 + chapterFiles.size + metricFiles.size + coverFiles.size
         var filesWritten = 0
 
         fun markFileWritten() {
@@ -157,20 +141,6 @@ internal class BackupExporter(
                         zip.closeEntry()
                         markFileWritten()
                     }
-                    rewritePayloads.forEach { payload ->
-                        // The manifest entry is rewritten content (drafts stripped), so it is
-                        // written from bytes rather than streamed from the on-disk file.
-                        zip.putNextEntry(ZipEntry(payload.manifestPath))
-                        zip.write(payload.manifestJson.toByteArray(Charsets.UTF_8))
-                        zip.closeEntry()
-                        markFileWritten()
-                        payload.appliedFiles.forEach { (path, source) ->
-                            zip.putNextEntry(ZipEntry(path))
-                            source.inputStream().use { it.copyTo(zip) }
-                            zip.closeEntry()
-                            markFileWritten()
-                        }
-                    }
                 }
             }
         }
@@ -190,7 +160,6 @@ internal class BackupExporter(
         chapterFiles: List<FullBackupChapterFile>,
         metricFiles: List<FullBackupMetricFile>,
         coverFiles: List<FullBackupCoverFile>,
-        rewritePayloads: List<StoryRewriteBackup>,
         missingContent: List<FullBackupContentPlanning.MissingContent>,
     ): Map<String, Any?> =
         mapOf(
@@ -216,15 +185,6 @@ internal class BackupExporter(
             // stories fall back to the source cover URL. The path is the story's own relative
             // aiCoverPath so the zip layout matches the on-disk covers/ tree exactly.
             "coverFiles" to coverFiles.map { mapOf("storyId" to it.storyId, "path" to it.path) },
-            // Applied chapter rewrites under `chapter_rewrites/…`, mirroring the on-disk tree; the
-            // per-story manifest.json is rewritten here with in-flight drafts stripped. Optional on
-            // restore like the indexes above: older backups restore with no polished variants.
-            "rewriteFiles" to
-                rewritePayloads.flatMap { payload ->
-                    (listOf(payload.manifestPath) + payload.appliedFiles.map { it.first }).map { path ->
-                        mapOf("storyId" to payload.storyId, "path" to path)
-                    }
-                },
             // R10: content the library reports as available but that could not be found at export
             // time. Older backups omit the key; restore ignores unknown keys.
             "missingContent" to missingContent.map(::missingEntry),
@@ -286,10 +246,6 @@ internal class BackupExporter(
             val source = storage.resolveAbsolutePath(path) ?: return@mapNotNull null
             FullBackupCoverFile(storyId = story.id, path = path, source = source)
         }
-
-    /** Collects each story's applied chapter rewrites (manifest with drafts stripped + applied files). */
-    private fun collectRewritePayloads(library: List<Story>): List<StoryRewriteBackup> =
-        library.mapNotNull { story -> storage.chapterRewrites.backupPayloadForStory(story.id) }
 }
 
 private data class FullBackupChapterFile(

@@ -11,7 +11,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
-import com.vinicius741.webnovelarchiver.feature.reader.ChapterContentResolver
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,7 +40,7 @@ internal sealed interface NextChapterOutcome {
 internal interface TtsPlaybackSource {
     fun story(id: String): Story?
 
-    /** Variant-aware chapter read (Source vs Polished) so narration never diverges from Reader. */
+    /** The downloaded chapter HTML, read the same way the Reader reads it. */
     suspend fun chapterHtml(
         storyId: String,
         chapter: Chapter,
@@ -231,14 +230,12 @@ private sealed interface NextChapterLookup {
 private class RepositoryTtsPlaybackSource(
     private val repository: AppRepository,
 ) : TtsPlaybackSource {
-    private val contentResolver = ChapterContentResolver(repository)
-
     override fun story(id: String): Story? = repository.story(id)
 
     override suspend fun chapterHtml(
         storyId: String,
         chapter: Chapter,
-    ): String? = contentResolver.resolve(storyId, chapter).html
+    ): String? = withContext(Dispatchers.IO) { repository.readChapter(chapter) }
 
     override fun settings(): TtsSettings = repository.ttsSettings.get()
 

@@ -83,7 +83,7 @@ internal fun storyOperationIndeterminate(operation: StoryOperationState): Boolea
     when (operation.kind) {
         StoryOperationKind.SYNC -> true
         StoryOperationKind.CLEANUP, StoryOperationKind.EPUB -> operation.progress == null
-        StoryOperationKind.AI_DESCRIPTION, StoryOperationKind.AI_COVER, StoryOperationKind.AI_CHAPTER_REWRITE -> true
+        StoryOperationKind.AI_DESCRIPTION, StoryOperationKind.AI_COVER -> true
     }
 
 /** Swaps the operation-progress slot in place; a full Details rebuild flickers once per chapter. */

@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.app
 
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
-import com.vinicius741.webnovelarchiver.feature.ai.showChapterRewritePreview
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.details.showChapterSelection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
@@ -41,7 +40,6 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         is AppRoute.Trends -> showTrends(route.storyId, route.focus)
         is AppRoute.AiControls -> showAiControls(route.storyId)
         is AppRoute.Reader -> showReader(route.storyId, route.chapterId)
-        is AppRoute.ChapterRewritePreview -> showChapterRewritePreview(route.storyId, route.chapterId)
         AppRoute.Queue -> showQueue()
         AppRoute.Player -> showPlayer()
         AppRoute.Updates -> showUpdates()

@@ -10,11 +10,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.data.repository.clearTtsStoryPosition
-import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
-import com.vinicius741.webnovelarchiver.data.repository.setChapterRewriteActive
-import com.vinicius741.webnovelarchiver.domain.model.ChapterContentVersion
-import com.vinicius741.webnovelarchiver.feature.ai.confirmChapterPolish
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
@@ -28,7 +23,6 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
-import com.vinicius741.webnovelarchiver.ui.ReaderChapterPolishControls
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
@@ -50,27 +44,6 @@ internal var activeReaderTtsStateJob: Job? = null
 internal fun ScreenHost.detachReaderTtsListener() {
     activeReaderTtsStateJob?.cancel()
     activeReaderTtsStateJob = null
-}
-
-// Chunk indices refer to different text after a variant switch: restart a live session from the
-// top; stop a paused/persisted one so it cannot resume mid-paragraph in the new variant.
-internal fun ScreenHost.restartTtsForChapterVariant(
-    storyId: String,
-    chapterId: String,
-) {
-    val snapshot = ttsEngine.playbackState.value.snapshot
-    val liveMatches = snapshot?.storyId == storyId && snapshot?.chapterId == chapterId
-    val persisted = repository.getTtsSession()
-    val persistedMatches = persisted?.storyId == storyId && persisted?.chapterId == chapterId
-    when {
-        // Variant switch remaps chunk indices: live playback restarts at the top, a persisted one is
-        // stopped AND its story position forgotten so it cannot resume mid-paragraph in the new variant.
-        liveMatches && snapshot?.isPaused == false -> TtsForegroundService.startFromChunk(app, storyId, chapterId, 0)
-        liveMatches || persistedMatches -> {
-            TtsForegroundService.stopForgettingPosition(app, storyId)
-            scope.launch { repository.clearTtsStoryPosition(storyId) }
-        }
-    }
 }
 
 internal fun ScreenHost.showReader(
@@ -209,25 +182,6 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
 
     fun rebuild() = showReader(story.id, chapter.id)
 
-    // Flips the manifest's active variant; the source chapter file is never modified.
-    fun switchContentVersion() {
-        val currentlyPolished = document.contentVersion == ChapterContentVersion.POLISHED
-        scope.launch {
-            repository.setChapterRewriteActive(story.id, chapter.id, !currentlyPolished)
-            restartTtsForChapterVariant(story.id, chapter.id)
-            toast(if (currentlyPolished) "Switched to source version" else "Switched to polished version")
-            rebuild()
-        }
-    }
-
-    val versionSuffix =
-        when {
-            document.contentVersion == ChapterContentVersion.POLISHED && document.contentStale -> " · Polished (out of date)"
-            document.contentVersion == ChapterContentVersion.POLISHED -> " · Polished"
-            document.hasAppliedRewrite -> " · Polished available"
-            else -> ""
-        }
-
     val bookmarkActive = story.lastReadChapterId == chapter.id
     val actions =
         listOf(
@@ -257,20 +211,6 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     onOpenVoiceSettings = {
                         showTtsSettings(onBack = { showReader(story.id, chapter.id) })
                     },
-                    polishControls =
-                        ReaderChapterPolishControls(
-                            versionSwitchLabel =
-                                if (document.contentVersion ==
-                                    ChapterContentVersion.POLISHED
-                                ) {
-                                    "Switch to source version"
-                                } else {
-                                    "Switch to polished version"
-                                },
-                            onSwitchVersion = { switchContentVersion() },
-                            polishLabel = "Polish this chapter…",
-                            onPolish = { confirmChapterPolish(story, chapter) },
-                        ).takeIf { document.hasAppliedRewrite },
                 )
             },
         )
@@ -325,8 +265,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     screen(
         route = AppRoute.Reader(story.id, chapter.id),
         title = sanitizeTitle(chapter.title),
-        subtitle = "${currentIndex + 1} / ${story.chapters.size}$versionSuffix",
-        onSubtitleClick = if (document.hasAppliedRewrite) ({ switchContentVersion() }) else null,
+        subtitle = "${currentIndex + 1} / ${story.chapters.size}",
         onBack = {
             // Detach before the next screen's disposeWebViews() tears down this WebView; playback continues.
             detachReaderTtsListener()

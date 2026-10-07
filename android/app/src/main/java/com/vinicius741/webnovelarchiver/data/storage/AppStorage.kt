@@ -69,10 +69,14 @@ class AppStorage(
     internal val chapterRoot = File(root, "novels").apply { mkdirs() }
     internal val epubRoot = File(root, "epubs").apply { mkdirs() }
     internal val covers = CoverStore(root, ::safeName)
-    internal val chapterRewrites = AiChapterRewriteStore(root, ::safeName)
     internal val aiUsage = AiUsageFileStore(root, gson, appVersion)
     internal val backupRoot = File(root, "backups").apply { mkdirs() }
     internal val restoreRoot = File(this.context.cacheDir, "webnovel_restore").apply { mkdirs() }
+
+    init {
+        // Retired Chapter polish feature: its polished variants and drafts are unreachable now.
+        File(root, RETIRED_CHAPTER_REWRITES_DIR).takeIf(File::exists)?.deleteRecursively()
+    }
 
     /**
      * The ONLY rollback copy of the user's previous library. Durable app files, never cacheDir:
@@ -289,8 +293,6 @@ class AppStorage(
         covers.deleteApplied(id)
         // Pending AI cover drafts (with their preview images) are per-story as well.
         covers.delete(id, keepHistory = false)
-        // Applied chapter rewrites and pending polish drafts are per-story as well.
-        chapterRewrites.delete(id)
         // Drop the per-story trend history too so its file does not outlive the story.
         metricFile(id).delete()
         saveQueue(getQueue().filterNot { it.storyId == id })
@@ -311,8 +313,6 @@ class AppStorage(
         preRestoreSnapshotDir.deleteRecursively()
         // Health fences are process-local; wipe them so recreated same-named documents can write again.
         _storageHealth.value = StorageHealthSnapshot()
-        // The rewrite tree was deleted wholesale; drop its cached manifests too.
-        chapterRewrites.invalidateAll()
         reloadJsonDocuments()
     }
 
@@ -678,8 +678,7 @@ class AppStorage(
 
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 
-    /** A full restore replaces the on-disk rewrite tree wholesale, so cached manifests are dropped. */
-    fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri).also { chapterRewrites.invalidateAll() }
+    fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri)
 
     private fun saveStoryOnly(story: Story) {
         story.totalChapters = story.chapters.size
@@ -822,6 +821,9 @@ class AppStorage(
     }
 
     companion object {
+        /** Former `AiChapterRewriteStore` tree; also skipped when restoring older full backups. */
+        internal const val RETIRED_CHAPTER_REWRITES_DIR = "chapter_rewrites"
+
         fun appVersionOf(context: Context): String =
             runCatching {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName

@@ -135,13 +135,8 @@ internal class FullBackupRestorer(
         // aiCoverPath; copy the tree verbatim like metrics/. initializeStorageDirectories()
         // recreates covers/ when the backup has none.
         File(raw, "covers").takeIf(File::exists)?.copyRecursively(File(staged, "covers").apply { mkdirs() }, overwrite = true)
-        // Applied chapter rewrites extract under raw/chapter_rewrites/<story>/<stem>/…; copy the
-        // tree verbatim like metrics/. The per-story manifest.json inside it (drafts stripped at
-        // export) carries all rewrite state — no Story field references it, so nothing to reconcile.
-        File(raw, AiChapterRewriteStore.DIRECTORY_NAME).takeIf(File::exists)?.copyRecursively(
-            File(staged, AiChapterRewriteStore.DIRECTORY_NAME).apply { mkdirs() },
-            overwrite = true,
-        )
+        // Older backups may carry raw/chapter_rewrites/ from the retired Chapter polish feature.
+        // Those entries are still validated so such backups restore, but they are not staged.
         File(staged, "epubs").mkdirs()
         // Reconcile aiCoverPath against the manifest's cover index (not the filesystem — the
         // path comes from untrusted backup JSON; see retainRestoredCoverPaths).

@@ -197,18 +197,6 @@ class StorySyncMergePlanningTest {
     }
 
     @Test
-    fun foldKeepsExplicitStrengthResetMadeDuringSyncWindow() {
-        val staleSynced =
-            syncedStory(chapters = listOf(chapter("10")))
-                .copy(chapterRewriteStrength = "balanced")
-        val currentOnDisk = syncedStory(chapters = listOf(chapter("10")))
-
-        val folded = StorySyncMergePlanning.foldConcurrentChanges(staleSynced, currentOnDisk, RoyalRoadProvider)
-
-        assertNull(folded.chapterRewriteStrength)
-    }
-
-    @Test
     fun foldKeepsTabMoveMadeDuringSyncWindow() {
         val staleSynced = syncedStory(chapters = listOf(chapter("10"))).copy(tabId = "reading")
         val currentOnDisk = syncedStory(chapters = listOf(chapter("10"))).copy(tabId = "wishlist")

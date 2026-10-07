@@ -23,9 +23,8 @@ data class RestoredCoverFileIndex(
     val path: String,
 )
 
-/** An applied chapter-rewrite file listed in a full-backup manifest, restored verbatim into
- *  `chapter_rewrites/` — the per-story `manifest.json` inside that tree carries all rewrite state,
- *  so (like metrics) there is no `apply…` step mutating any `Story` field. */
+/** A `chapter_rewrites/` file listed by backups from the retired Chapter polish feature. It is
+ *  validated against the ZIP so those backups still restore, then discarded. */
 data class RestoredRewriteFileIndex(
     val storyId: String,
     val path: String,

@@ -178,12 +178,6 @@ data class Story(
     var aiContextChapterIndices: MutableList<Int>? = null,
     /** Cover-only chapter selection. Null selects evidence across all downloaded chapters, regardless of reading progress. */
     var aiCoverContextChapterIndices: MutableList<Int>? = null,
-    /**
-     * Per-novel Chapter polish edit strength ("light" | "balanced"; null = light, the product
-     * default after the blind ballot favored least-intervention rewrites). Local-only like the
-     * other AI fields: sync must carry it forward, never reset it.
-     */
-    var chapterRewriteStrength: String? = null,
 )
 
 /**
@@ -300,10 +294,6 @@ data class AiSettings(
     val coverOneStep: Boolean = true,
     /** Chapters automatic cover selection must validate with Jev; scanned in batches of this size. */
     val coverEvidenceChapters: Int = DEFAULT_COVER_EVIDENCE_CHAPTERS,
-    /** Chapter polish (rewrite) model; global like the other AI models, chosen for rewrite quality. */
-    val chapterRewriteModel: String = DEFAULT_CHAPTER_REWRITE_MODEL,
-    /** Independent preservation verifier; must differ from the rewriter (spike rule). */
-    val chapterVerifierModel: String = DEFAULT_CHAPTER_VERIFIER_MODEL,
     /** Reasoning effort by OpenRouter text-model id; "default" leaves the choice to the provider. */
     val reasoningEfforts: Map<String, String> = emptyMap(),
 ) {
@@ -314,22 +304,10 @@ data class AiSettings(
         /** Default image generator for AI covers. */
         const val DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
 
-        /**
-         * Default chapter-rewrite model. gpt-5.6-terra was spike-verified clean on the problem
-         * chapter with the lowest triplet drift of the verified set, and costs ~$0.16/chapter.
-         */
-        const val DEFAULT_CHAPTER_REWRITE_MODEL = "openai/gpt-5.6-terra"
-
-        /** Default verifier; grok-4.6 returned short clean verdicts on correctly aligned pairs in the spike. */
-        const val DEFAULT_CHAPTER_VERIFIER_MODEL = "x-ai/grok-4.6"
-
         /** Chapters Jev validates per automatic cover scan (also the batch size). */
         const val DEFAULT_COVER_EVIDENCE_CHAPTERS = 10
         const val MIN_COVER_EVIDENCE_CHAPTERS = 3
         const val MAX_COVER_EVIDENCE_CHAPTERS = 25
-
-        /** Alternate verifier used when the user picks verifier == rewriter; also spike-verified. */
-        const val ALTERNATE_CHAPTER_VERIFIER_MODEL = "openai/gpt-5.6-sol"
     }
 }
 

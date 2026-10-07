@@ -1,25 +1,22 @@
 package com.vinicius741.webnovelarchiver.app
 
-import com.vinicius741.webnovelarchiver.ai.AiChapterRewriteJobEvent
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobEvent
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobKind
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
-import com.vinicius741.webnovelarchiver.feature.ai.showChapterRewritePreview
 import com.vinicius741.webnovelarchiver.feature.ai.updateAiControlsProgress
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
-import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * The activity-side bridge for background AI jobs (cover generation and chapter rewrites), which
+ * The activity-side bridge for background AI cover jobs, which
  * run on the process-wide application scope and so outlive this activity — this bridge is what
- * makes a running job VISIBLE again: it mirrors each coordinator's state into the shared
+ * makes a running job VISIBLE again: it mirrors the coordinator's state into the shared
  * [StoryOperationState] slot (Details progress bar, AI Controls button gating) and reacts to
  * terminal events by surfacing the persisted draft, toasting, and re-rendering.
  *
@@ -35,7 +32,6 @@ import kotlinx.coroutines.launch
  */
 internal fun MainActivity.attachAiJobBridges() {
     attachCoverJobBridge()
-    attachChapterRewriteJobBridge()
 }
 
 private fun MainActivity.attachCoverJobBridge() {
@@ -68,72 +64,6 @@ private fun MainActivity.attachCoverJobBridge() {
     }
     scope.launch {
         coordinator.events.collect { event -> presentAiCoverJobEvent(event) }
-    }
-}
-
-private fun MainActivity.attachChapterRewriteJobBridge() {
-    val coordinator = appContainer.aiChapterRewriteJobCoordinator
-    scope.launch {
-        var renderedMessage: String? = null
-        coordinator.jobs.collect { jobs ->
-            val job = jobs.values.firstOrNull()
-            if (job != null) {
-                val current = storyOperation
-                val ownsSlot =
-                    current == null || (current.storyId == job.storyId && current.kind == StoryOperationKind.AI_CHAPTER_REWRITE)
-                if (ownsSlot) {
-                    val next = StoryOperationState(job.storyId, StoryOperationKind.AI_CHAPTER_REWRITE, job.message)
-                    storyOperation = next
-                    if (renderedMessage != job.message) {
-                        detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
-                        updateAiControlsProgress(next)
-                    }
-                    renderedMessage = job.message
-                }
-            } else {
-                renderedMessage = null
-                clearOperationSlot(StoryOperationKind.AI_CHAPTER_REWRITE)
-            }
-        }
-    }
-    scope.launch {
-        // Queue changes (batch polish enqueues, cancels, drain) refresh the visible AI Controls
-        // screen so its queued count and cancel action stay current. The previous set joins the
-        // check so the drain-to-empty transition also triggers exactly one final refresh.
-        var lastQueuedStories: Set<String> = emptySet()
-        coordinator.queue.collect { queue ->
-            val stories = queue.map { it.storyId }.toSet()
-            (stories + lastQueuedStories).firstOrNull { frameIsAiControls(it) }?.let { showAiControls(it) }
-            lastQueuedStories = stories
-        }
-    }
-    scope.launch {
-        coordinator.events.collect { event ->
-            when (event) {
-                is AiChapterRewriteJobEvent.Succeeded -> {
-                    val detail =
-                        when (event.status) {
-                            "ready" -> "Polished draft ready — compare before applying."
-                            "blocked" -> "Polished draft flagged by the verifier — review it."
-                            else -> "Polished draft could not be verified — review or regenerate."
-                        }
-                    toast(detail)
-                    if (frameIsAiControls(event.storyId) ||
-                        frame.tag == AppRoute.Reader(event.storyId, event.chapterId).stableKey
-                    ) {
-                        showChapterRewritePreview(event.storyId, event.chapterId)
-                    } else {
-                        // A Details screen showing the mirrored progress slot must rebuild too,
-                        // or the finished job leaves a stale "Polishing…" spinner behind.
-                        rerenderDetailsIfVisible(event.storyId)
-                    }
-                }
-                is AiChapterRewriteJobEvent.Failed -> {
-                    toast("Chapter polish failed: ${event.message}")
-                    if (frameIsAiControls(event.storyId)) showAiControls(event.storyId) else rerenderDetailsIfVisible(event.storyId)
-                }
-            }
-        }
     }
 }
 

@@ -9,7 +9,7 @@ import java.util.Locale
 
 /**
  * Catalog-driven presentation and selection rules for OpenRouter models: pricing labels, search
- * filtering, "known good" rewrite marks, and reasoning-effort selection. The OpenRouterClient
+ * filtering, and reasoning-effort selection. The OpenRouterClient
  * extensions tolerate a missing catalog so generation with a manually entered model still works.
  * Kept free of Android types so it unit-tests like the other planning objects.
  */
@@ -40,26 +40,6 @@ object AiModelPresentation {
             ) &&
                 (!freeOnly || model.isFree)
         }
-    }
-
-    /**
-     * Rewrite models validated in the drift spike, matched by id substring so publisher prefixes
-     * (openai/, deepseek/, …) do not have to be pinned exactly. Surfaced as a "Known good" filter
-     * in the rewrite-model picker instead of prose on the screen.
-     */
-    private val KNOWN_GOOD_REWRITE_MODEL_FRAGMENTS =
-        listOf(
-            "gpt-5.6-terra",
-            "gpt-5.6-sol",
-            "grok-4.6",
-            "glm-5.3",
-            "deepseek-v4-pro-0813",
-            "kimi-k2-0905",
-        )
-
-    fun isKnownGoodRewriteModel(modelId: String): Boolean {
-        val id = modelId.lowercase(Locale.US)
-        return KNOWN_GOOD_REWRITE_MODEL_FRAGMENTS.any(id::contains)
     }
 
     private fun formatPricePerMillion(pricePerToken: Double): String {

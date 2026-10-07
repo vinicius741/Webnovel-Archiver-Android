@@ -24,7 +24,6 @@ enum class StoryOperationKind {
     SYNC,
     AI_DESCRIPTION,
     AI_COVER,
-    AI_CHAPTER_REWRITE,
 }
 
 data class StoryOperationState(

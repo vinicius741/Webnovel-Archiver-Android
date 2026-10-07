@@ -11,10 +11,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.ai.AiModelPresentation
 import com.vinicius741.webnovelarchiver.ai.AiModelSelection
 import com.vinicius741.webnovelarchiver.ai.AiReasoningPlanning
-import com.vinicius741.webnovelarchiver.ai.OpenRouterModel
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.settings.AiReasoningEffort
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -31,21 +29,16 @@ import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
-import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /*
- * Model-selection controls for the AI Controls screen. All four global model choices live in one
+ * Model-selection controls for the AI Controls screen. Both global model choices live in one
  * "Models" card at the top of the screen — they apply to every novel, so presenting them inline
  * with per-feature actions made them look per-novel. Confirmed text-model and reasoning choices
  * are saved together into AiSettings and mirrored inside the model field. Manual ids remain reachable.
  */
 
-/**
- * The single Models card: description, cover image, rewrite, and verifier selectors. The verifier
- * must differ from the rewrite model — each picker hides the other row's current model and the
- * save path rejects a manual-entry collision, so no explanatory prose is needed.
- */
+/** The single Models card: description and cover image selectors. */
 internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
     val modelRefreshers = mutableListOf<() -> Unit>()
     aiControlsScreenState.binding?.refreshModels = { modelRefreshers.forEach { it() } }
@@ -56,9 +49,6 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
         val current: () -> String,
         val save: (AiSettings, String, String?) -> AiSettings,
         val image: Boolean = false,
-        val recommended: ((OpenRouterModel) -> Boolean)? = null,
-        val excluded: () -> String? = { null },
-        val collisionMessage: String? = null,
     )
 
     val rows =
@@ -80,33 +70,6 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                 save = { settings, id, _ -> settings.copy(imageModel = id) },
                 image = true,
             ),
-            ModelRow(
-                label = "Rewrite model",
-                current = { repository.aiSettings.get().chapterRewriteModel },
-                save = { settings, id, effort ->
-                    settings.copy(
-                        chapterRewriteModel = id,
-                        reasoningEfforts =
-                            settings.reasoningEfforts + (id to requireNotNull(effort)),
-                    )
-                },
-                recommended = { AiModelPresentation.isKnownGoodRewriteModel(it.id) },
-                excluded = { repository.aiSettings.get().chapterVerifierModel },
-                collisionMessage = "The rewrite model must differ from the verifier",
-            ),
-            ModelRow(
-                label = "Verifier model",
-                current = { repository.aiSettings.get().chapterVerifierModel },
-                save = { settings, id, effort ->
-                    settings.copy(
-                        chapterVerifierModel = id,
-                        reasoningEfforts =
-                            settings.reasoningEfforts + (id to requireNotNull(effort)),
-                    )
-                },
-                excluded = { repository.aiSettings.get().chapterRewriteModel },
-                collisionMessage = "The verifier must differ from the rewrite model",
-            ),
         )
 
     val cardView =
@@ -119,13 +82,7 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                         label = row.label,
                         currentModel = row.current,
                         image = row.image,
-                        recommended = row.recommended,
-                        excluded = row.excluded,
                     ) { picked ->
-                        if (row.collisionMessage != null && picked.modelId == row.excluded()) {
-                            toast(row.collisionMessage)
-                            return@addAiModelRow
-                        }
                         val settings = repository.aiSettings.get()
                         repository.aiSettings.save(row.save(settings, picked.modelId, picked.reasoningEffort))
                         refreshAiModelFields()
@@ -149,8 +106,6 @@ private fun ScreenHost.addAiModelRow(
     label: String,
     currentModel: () -> String,
     image: Boolean = false,
-    recommended: ((OpenRouterModel) -> Boolean)? = null,
-    excluded: () -> String? = { null },
     onPicked: suspend (AiModelSelection) -> Unit,
 ): () -> Unit {
     var pick: ((AiModelSelection) -> Unit)? = null
@@ -165,7 +120,7 @@ private fun ScreenHost.addAiModelRow(
             if (image) {
                 showAiImageModelPicker(currentModel()) { picked -> pick?.invoke(AiModelSelection(picked)) }
             } else {
-                showAiModelPicker(currentModel(), { picked -> pick?.invoke(picked) }, recommended, excluded())
+                showAiModelPicker(currentModel()) { picked -> pick?.invoke(picked) }
             }
         }
     selectorView.layoutParams =
@@ -182,7 +137,8 @@ private fun ScreenHost.addAiModelRow(
         val modelId = currentModel()
         valueView.text = modelId
         val model = modelCatalogCache?.firstOrNull { it.id == modelId }
-        detailView.visibility = if (!image && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
+        detailView.visibility =
+            if (!image && AiReasoningPlanning.allowedEfforts(model).isNotEmpty()) View.VISIBLE else View.GONE
         detailView.text =
             "Reasoning: " + AiReasoningEffort.shortLabel(AiReasoningPlanning.effortFor(repository.aiSettings.get(), modelId, model))
     }

@@ -131,8 +131,6 @@ class StorySyncEngine(
                 // dropped at read time by AiDescriptionPlanning.resolveContextChapters.
                 aiContextChapterIndices = existing?.aiContextChapterIndices,
                 aiCoverContextChapterIndices = existing?.aiCoverContextChapterIndices,
-                // The per-novel Chapter polish strength is local-only state; carry it forward.
-                chapterRewriteStrength = existing?.chapterRewriteStrength,
                 sourceUrl = metadata.canonicalUrl ?: normalizedUrl,
                 sourceId = provider.id,
                 status =

@@ -23,7 +23,7 @@ import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
 /**
- * One catalog row: display name, id + price (+"known good"). The drafted pick is highlighted with
+ * One catalog row: display name, id + price. The drafted pick is highlighted with
  * a trailing check and, when it supports reasoning, expands in place with its [reasoning] control.
  * [model] is null for a manual id that the catalog doesn't know.
  */
@@ -32,7 +32,6 @@ internal fun modelResultRow(
     id: String,
     model: OpenRouterModel?,
     selected: Boolean,
-    recommended: ((OpenRouterModel) -> Boolean)?,
     reasoning: View?,
     onPick: () -> Unit,
 ): LinearLayout {
@@ -49,11 +48,10 @@ internal fun modelResultRow(
                 },
             )
             if (model != null) {
-                val knownGood = if (recommended?.invoke(model) == true) " · known good" else ""
                 addView(
                     makeText(
                         context,
-                        "${model.id} · ${AiModelPresentation.priceLabel(model)}$knownGood",
+                        "${model.id} · ${AiModelPresentation.priceLabel(model)}",
                         Type.BODY_SMALL,
                         colors.onSurfaceVariant,
                     ).apply {

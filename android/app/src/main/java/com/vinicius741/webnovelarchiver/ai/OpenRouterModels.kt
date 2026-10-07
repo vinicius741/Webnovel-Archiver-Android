@@ -84,3 +84,9 @@ class OpenRouterEmptyCompletionException(
     message: String,
     override val receipt: OpenRouterResponseReceipt = OpenRouterResponseReceipt(),
 ) : OpenRouterException(message, receipt)
+
+/** A completion cut off by `max_tokens` (`finish_reason: length`); truncated text is never used. */
+class OpenRouterTruncatedException(
+    message: String,
+    receipt: OpenRouterResponseReceipt,
+) : OpenRouterException(message, receipt)

@@ -11,7 +11,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
-import com.vinicius741.webnovelarchiver.ai.AiJobNotificationKind
 import com.vinicius741.webnovelarchiver.ai.aiJobNotification
 import com.vinicius741.webnovelarchiver.ai.aiJobOngoingNotification
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
@@ -27,22 +26,12 @@ class AiJobNotificationDeviceTest {
     @get:Rule val permission = GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
 
     @Test
-    fun rewriteNotificationRetainsItsTitleWhenTheQueueDrains() {
+    fun coverNotificationUsesTheCoverTitleAndMessage() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         AppNotificationChannels.ensureCreated(context)
-        for (queuedCount in listOf(0, 3, 0)) {
-            val notification = context.aiJobOngoingNotification(AiJobNotificationKind.CHAPTER_REWRITE, "Rewriting chapter...", queuedCount)
-            assertEquals(
-                context.getString(R.string.ai_chapter_rewrite_notif_active),
-                notification.extras.getCharSequence(Notification.EXTRA_TITLE),
-            )
-            assertEquals(
-                if (queuedCount > 0) "Rewriting chapter... · $queuedCount queued" else "Rewriting chapter...",
-                notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT),
-            )
-        }
-        val cover = context.aiJobOngoingNotification(AiJobNotificationKind.COVER, "Painting cover...", 0)
+        val cover = context.aiJobOngoingNotification("Painting cover...")
         assertEquals(context.getString(R.string.ai_cover_notif_active), cover.extras.getCharSequence(Notification.EXTRA_TITLE))
+        assertEquals("Painting cover...", cover.extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
     }
 
     @Test
@@ -76,7 +65,6 @@ class AiJobNotificationDeviceTest {
         ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
             scenario.onActivity {
                 assertTrue(AiJobForegroundService.start(it, "Generating AI cover..."))
-                assertTrue(AiJobForegroundService.start(it, "Polishing chapter..."))
             }
             val manager = context.getSystemService(NotificationManager::class.java)
             androidx.test.platform.app.InstrumentationRegistry

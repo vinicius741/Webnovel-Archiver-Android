@@ -199,9 +199,9 @@ object FullBackupManifestValidation {
         return null
     }
 
-    /** rewriteFiles is optional, mirroring metric/cover files: backups written before Chapter
-     *  polish shipped omit it, and a restore then has no polished variants. Many entries per story
-     *  are legitimate — one applied.html per polished chapter plus the per-story manifest. */
+    /** rewriteFiles appears only in backups written while the retired Chapter polish feature
+     *  existed. It stays validated (many entries per story are legitimate — one applied.html per
+     *  polished chapter plus the per-story manifest) so those backups restore; the files are dropped. */
     private fun validateRewriteFiles(
         rewriteFiles: Any?,
         ids: Set<String>,

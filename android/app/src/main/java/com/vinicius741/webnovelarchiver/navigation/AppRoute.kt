@@ -55,12 +55,6 @@ sealed class AppRoute(
         val chapterId: String,
     ) : AppRoute("reader")
 
-    /** Chapter polish comparison screen: Source vs Polished preview, findings, Apply/Discard. */
-    data class ChapterRewritePreview(
-        val storyId: String,
-        val chapterId: String,
-    ) : AppRoute("rewrite_preview")
-
     data object Queue : AppRoute("queue")
 
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
@@ -94,7 +88,6 @@ sealed class AppRoute(
             when (this) {
                 is Details -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
-                is ChapterRewritePreview -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
                 is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
@@ -112,7 +105,6 @@ object AppRouteCodec {
             when (route) {
                 is AppRoute.Details -> listOf(route.storyId)
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
-                is AppRoute.ChapterRewritePreview -> listOf(route.storyId, route.chapterId)
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
                 is AppRoute.AiControls -> listOf(route.storyId)
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
@@ -160,7 +152,6 @@ object AppRouteCodec {
             "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)
             "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
-            "rewrite_preview" -> if (arguments.size == 2) AppRoute.ChapterRewritePreview(arguments[0], arguments[1]) else null
             else -> null
         }
 
