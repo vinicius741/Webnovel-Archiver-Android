@@ -3,8 +3,10 @@ package com.vinicius741.webnovelarchiver.data.repository
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -178,6 +180,86 @@ class AppRepositoryTest {
                 }.exceptionOrNull()
 
             assertTrue(error is IllegalStateException)
+        }
+
+    @Test
+    fun freshPatreonStatsReachEveryLiveStorySharingTheCreator() =
+        runTest {
+            val oldStats = PatreonRawStats(capturedAt = 1L, paidMembers = 10)
+            val sibling = story(id = "sibling").copy(patreonUrl = "https://www.patreon.com/c/Creator/posts", patreonStats = oldStats)
+            val archived =
+                story(
+                    id = "archived",
+                ).copy(patreonUrl = "https://patreon.com/creator", isArchived = true, patreonStats = oldStats)
+            val unrelated = story(id = "unrelated").copy(patreonUrl = "https://patreon.com/someone", patreonStats = oldStats)
+            val store = FakeRepositoryStoryStore(story(), sibling, archived, unrelated)
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            store.stories.values.forEach { repository.upsertStory(it) }
+            val fresh = PatreonRawStats(capturedAt = 2L, paidMembers = 42)
+            val synced = story().copy(patreonUrl = "https://www.patreon.com/creator", patreonStats = fresh)
+
+            repository.commitSyncedStory(synced, metricSnapshot = StoryMetricSnapshot(capturedAt = 2L, patreonRaw = fresh))
+
+            assertEquals(fresh, repository.story("sibling")?.patreonStats)
+            assertEquals(fresh, store.story("sibling")?.patreonStats)
+            assertEquals(oldStats, repository.story("archived")?.patreonStats)
+            assertEquals(oldStats, repository.story("unrelated")?.patreonStats)
+        }
+
+    @Test
+    fun patreonFanOutNeverRegressesAFresherSibling() =
+        runTest {
+            val newer = PatreonRawStats(capturedAt = 5L, paidMembers = 50)
+            val sibling = story(id = "sibling").copy(patreonUrl = "https://patreon.com/creator", patreonStats = newer)
+            val store = FakeRepositoryStoryStore(story(), sibling)
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            store.stories.values.forEach { repository.upsertStory(it) }
+            // This sync's fetch finished before the sibling's but commits after it.
+            val older = PatreonRawStats(capturedAt = 3L, paidMembers = 30)
+            val synced = story().copy(patreonUrl = "https://patreon.com/creator", patreonStats = older)
+
+            repository.commitSyncedStory(synced, metricSnapshot = StoryMetricSnapshot(capturedAt = 3L, patreonRaw = older))
+
+            assertEquals(newer, repository.story("sibling")?.patreonStats)
+            assertEquals(newer, store.story("sibling")?.patreonStats)
+            assertEquals(older, repository.story("story")?.patreonStats)
+        }
+
+    @Test
+    fun unwritableSiblingDoesNotFailTheCommittedSync() =
+        runTest {
+            val oldStats = PatreonRawStats(capturedAt = 1L, paidMembers = 10)
+            val broken = story(id = "broken").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
+            val healthy = story(id = "healthy").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
+            val store = FakeRepositoryStoryStore(story(), broken, healthy)
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            store.stories.values.forEach { repository.upsertStory(it) }
+            store.unwritableIds += "broken"
+            val fresh = PatreonRawStats(capturedAt = 2L, paidMembers = 42)
+            val synced = story().copy(title = "Synced", patreonUrl = "https://patreon.com/creator", patreonStats = fresh)
+
+            val committed =
+                repository.commitSyncedStory(synced, metricSnapshot = StoryMetricSnapshot(capturedAt = 2L, patreonRaw = fresh))
+
+            assertEquals("Synced", committed.title)
+            assertEquals("Synced", repository.story("story")?.title)
+            assertEquals(oldStats, repository.story("broken")?.patreonStats)
+            assertEquals(fresh, repository.story("healthy")?.patreonStats)
+        }
+
+    @Test
+    fun syncWithoutPatreonRefreshLeavesSiblingsAlone() =
+        runTest {
+            val oldStats = PatreonRawStats(capturedAt = 1L, paidMembers = 10)
+            val sibling = story(id = "sibling").copy(patreonUrl = "https://patreon.com/creator", patreonStats = oldStats)
+            val store = FakeRepositoryStoryStore(story(), sibling)
+            val repository = AppRepository(store, StandardTestDispatcher(testScheduler))
+            store.stories.values.forEach { repository.upsertStory(it) }
+            val carried = story().copy(patreonUrl = "https://patreon.com/creator", patreonStats = PatreonRawStats(capturedAt = 0L))
+
+            repository.commitSyncedStory(carried, metricSnapshot = StoryMetricSnapshot(capturedAt = 2L))
+
+            assertEquals(oldStats, repository.story("sibling")?.patreonStats)
         }
 
     @Test
@@ -371,7 +453,10 @@ class AppRepositoryTest {
 
         override fun story(id: String): Story? = stories[id]
 
+        val unwritableIds = mutableSetOf<String>()
+
         override fun addOrUpdateStory(story: Story) {
+            check(story.id !in unwritableIds) { "Refusing to overwrite unhealthy ${story.id}" }
             stories[story.id] = story
         }
 

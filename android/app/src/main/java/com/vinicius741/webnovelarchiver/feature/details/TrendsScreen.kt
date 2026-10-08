@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricPoint
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
@@ -73,21 +74,30 @@ internal fun ScreenHost.showTrends(
     val loadingRoot = frame.getChildAt(0)
     scope.launch {
         val history = repository.getMetricHistory(storyId)
+        // Patreon figures belong to the creator, so novels sharing one chart a single merged series.
+        val siblings = PatreonCreatorPlanning.siblings(story, repository.library())
+        val patreonHistory =
+            if (siblings.isEmpty()) {
+                history
+            } else {
+                PatreonCreatorPlanning.mergedPatreonHistory(story.id, listOf(history) + siblings.map { repository.getMetricHistory(it.id) })
+            }
         // Render only if the loading tree is still on screen (the user may have navigated away).
-        if (loadingRoot.parent === frame) renderTrends(story, history, focus)
+        if (loadingRoot.parent === frame) renderTrends(story, history, patreonHistory, focus)
     }
 }
 
 private fun ScreenHost.renderTrends(
     story: Story,
     history: StoryMetricHistory,
+    patreonHistory: StoryMetricHistory,
     focus: String?,
 ) {
     screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, onBack = {
         showDetails(story.id)
     }, scrollable = true) {
         addTrendsHeader(this, story, history)
-        if (history.snapshots.isEmpty()) {
+        if (history.snapshots.isEmpty() && patreonHistory.snapshots.isEmpty()) {
             addView(
                 makeEmptyState(
                     app,
@@ -103,8 +113,8 @@ private fun ScreenHost.renderTrends(
         }
 
         val scorePoints = MetricSnapshotPlanning.scoreSeries(history)
-        val memberPoints = MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MEMBERS)
-        val usdPoints = MetricSnapshotPlanning.patreonSeries(history, MetricSnapshotPlanning.PatreonField.MONTHLY_USD)
+        val memberPoints = MetricSnapshotPlanning.patreonSeries(patreonHistory, MetricSnapshotPlanning.PatreonField.MEMBERS)
+        val usdPoints = MetricSnapshotPlanning.patreonSeries(patreonHistory, MetricSnapshotPlanning.PatreonField.MONTHLY_USD)
 
         // Cards are tagged for focus scrolling; under two points an explanatory card replaces a degenerate chart.
         if (scorePoints.isNotEmpty()) {

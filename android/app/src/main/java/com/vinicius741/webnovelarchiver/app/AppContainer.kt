@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -127,7 +128,8 @@ class AppContainer(
                         sourceIdForUrl = { url -> SourceRegistry.getProvider(url)?.id },
                         sourceIdForSettingKey = SourceRegistry::sourceIdForPersistedKey,
                     )
-                val changedIds = load.changedStoryIds + changedBySourceId
+                val changedByPatreonCreator = PatreonCreatorPlanning.reconcileLibrary(load.stories)
+                val changedIds = load.changedStoryIds + changedBySourceId + changedByPatreonCreator
                 if (changedIds.isNotEmpty()) {
                     storage.persistStartupStories(load.stories.filter { it.id in changedIds })
                 }

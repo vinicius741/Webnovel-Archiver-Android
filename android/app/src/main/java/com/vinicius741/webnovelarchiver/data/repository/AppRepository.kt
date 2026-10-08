@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -16,6 +17,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -520,6 +522,9 @@ class AppRepository private constructor(
             }
             storyStore.addOrUpdateStory(committed)
             libraryById[committed.id] = StoryMutations.snapshot(committed)
+            committed.patreonStats?.takeIf { metricSnapshot?.patreonRaw != null }?.let { fresh ->
+                sharePatreonStatsLocked(committed, fresh)
+            }
             metricSnapshot?.let { snapshot ->
                 // Metrics are diagnostic; a fenced metrics write must not drop the committed story.
                 runCatching { requiredStorage.appendMetricSnapshot(committed.id, snapshot) }
@@ -528,6 +533,27 @@ class AppRepository private constructor(
             publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
             StoryMutations.snapshot(committed)
         }
+
+    /**
+     * Patreon stats belong to the creator: a fresh refresh updates every story sharing it, unless
+     * that sibling already holds a newer capture (overlapping syncs can commit out of fetch order).
+     * Like the metric write, a sibling write is secondary and must not fail the committed sync.
+     */
+    private fun sharePatreonStatsLocked(
+        committed: Story,
+        fresh: PatreonRawStats,
+    ) {
+        PatreonCreatorPlanning.siblings(committed, libraryById.values).forEach { sibling ->
+            runCatching {
+                val updated = storyStore.story(sibling.id) ?: return@runCatching
+                val current = updated.patreonStats
+                if (current != null && current.capturedAt > fresh.capturedAt) return@runCatching
+                updated.patreonStats = fresh
+                storyStore.addOrUpdateStory(updated)
+                libraryById[updated.id] = StoryMutations.snapshot(updated)
+            }.onFailure { error -> Timber.w(error, "Failed to share Patreon stats with %s", sibling.id) }
+        }
+    }
 
     suspend fun upsertStory(story: Story) {
         storageTransaction {
