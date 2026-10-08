@@ -143,7 +143,20 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     // Render the card for any Patreon URL, even without public stats: a link-only card surfaces the
     // creator's Patreon instead of showing nothing, which reads as having none.
     if (!story.patreonUrl.isNullOrBlank()) {
-        infoPanel.addView(buildPatreonStatsCard(story.patreonStats, story.patreonUrl) { showTrends(story.id, FOCUS_PATREON_USD) })
+        infoPanel.addView(
+            buildPatreonStatsCard(
+                stats = story.patreonStats,
+                patreonUrl = story.patreonUrl,
+                earlyAccessSummary =
+                    PatreonEarlyAccessPlanning.summary(
+                        story.patreonEarlyAccess,
+                        story.chapters.count { it.isPatreonCopy },
+                    ),
+                onShowTrends = { showTrends(story.id, FOCUS_PATREON_USD) },
+                onEarlyAccess = { showPatreonEarlyAccessPicker(story) },
+                earlyAccessEnabled = !isBusy,
+            ),
+        )
     }
 
     val descriptionViews = addDetailsDescription(infoPanel, story, operation)

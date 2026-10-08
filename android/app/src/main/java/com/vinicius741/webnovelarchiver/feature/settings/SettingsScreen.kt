@@ -218,6 +218,9 @@ internal fun ScreenHost.showDataBackup() {
         ) {
             exportAndShare({ BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue()) })
         }
+        settingRow(R.drawable.wna_star, "Patreon Account", patreonAccountSummary()) {
+            showPatreonAccountDialog { if (navigator.current == AppRoute.DataBackup) showDataBackup() }
+        }
         settingRow(
             R.drawable.wna_cleaning,
             "Reset Source Web Session",

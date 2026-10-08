@@ -43,6 +43,8 @@ object ArchiveSnapshotPlanning {
             epubPaths = null,
             epubStale = null,
             pendingNewChapterIds = null,
+            // Archives never sync, so they keep the stored Patreon copies but not the live link.
+            patreonEarlyAccess = null,
             lastUpdated = archivedAt,
         )
     }

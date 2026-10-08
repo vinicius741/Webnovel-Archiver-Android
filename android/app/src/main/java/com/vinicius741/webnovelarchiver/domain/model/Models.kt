@@ -100,7 +100,16 @@ data class Chapter(
     /** Epoch millis when this chapter finished downloading; null for never-downloaded or legacy rows. */
     var downloadedAt: Long? = null,
     var publishedAt: Long? = null,
-)
+    /**
+     * Patreon post id when this row is an early-access copy from the creator's Patreon rather than a
+     * source chapter. Patreon copies always sit after every source chapter and are stored at sync.
+     */
+    var patreonPostId: String? = null,
+    /** Source chapter id that publishes this Patreon copy; the copy is dropped once that chapter downloads. */
+    var patreonReplacedBy: String? = null,
+) {
+    val isPatreonCopy: Boolean get() = patreonPostId != null
+}
 
 data class EpubConfig(
     val maxChaptersPerEpub: Int = 150,
@@ -164,6 +173,8 @@ data class Story(
     var archiveReason: String? = null,
     var patreonUrl: String? = null,
     var patreonStats: PatreonRawStats? = null,
+    /** Patreon collection whose paid posts are synced as early-access chapters; null = not linked. */
+    var patreonEarlyAccess: PatreonEarlyAccessLink? = null,
     var publicationStatus: PublicationStatus = PublicationStatus.unknown,
     var lastChapterSyncAt: Long? = null,
     var sourceSyncState: SourceSyncState = SourceSyncState(),
@@ -193,6 +204,21 @@ data class PatreonRawStats(
     /** Real pledge sum when the creator shows earnings; null when hidden or unconvertible. */
     val exactMonthlyUsdCents: Long? = null,
     val tiers: List<PatreonRawTier>? = null,
+)
+
+/**
+ * Links a story to one collection on its creator's Patreon. The ids are permanent; the remaining
+ * fields describe the most recent early-access check and are display-only.
+ */
+data class PatreonEarlyAccessLink(
+    val campaignId: String = "",
+    val collectionId: String = "",
+    val collectionTitle: String = "",
+    val lastCheckedAt: Long? = null,
+    /** Early-access posts the current Patreon session cannot read (signed out or tier too low). */
+    val lockedCount: Int = 0,
+    /** User-facing reason the last check could not complete; null after a clean check. */
+    val lastError: String? = null,
 )
 
 data class PatreonRawTier(

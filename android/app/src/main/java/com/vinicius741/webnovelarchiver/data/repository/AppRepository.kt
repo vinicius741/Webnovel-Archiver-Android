@@ -17,6 +17,7 @@ import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
+import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
 import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -29,6 +30,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
+import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -454,11 +456,14 @@ class AppRepository private constructor(
                 storyStore.story(job.storyId) ?: return@storageTransaction ChapterCommit.SKIPPED
             if (story.chapters.none { it.id == job.chapter.id }) return@storageTransaction ChapterCommit.CHAPTER_MISSING
             val path = writeChapter()
-            val marked =
+            val downloaded =
                 StoryMutations.markChapterDownloaded(story, job.chapter.id, path, completedAt)
                     ?: return@storageTransaction ChapterCommit.CHAPTER_MISSING
+            // A downloaded public chapter retires the Patreon early-access copy it publishes.
+            val (marked, retiredCopies) = PatreonCopyPlanning.reconcileStory(downloaded)
             storyStore.addOrUpdateStory(marked)
             libraryById[marked.id] = StoryMutations.snapshot(marked)
+            retiredCopies.forEach { copy -> runCatching { requiredStorage.deleteChapterFile(marked.id, copy.filePath) } }
             val updated =
                 queue.map { current ->
                     if (current.id != job.id) {
@@ -618,6 +623,22 @@ class AppRepository private constructor(
     internal fun readQueueFromDiskForWorker(): List<DownloadJob> = storyStore.queue()
 
     private fun snapshotJob(job: DownloadJob): DownloadJob = job.copy(chapter = job.chapter.copy())
+}
+
+/** Links (or unlinks, with null) a story's Patreon early-access collection; see [PatreonCopyPlanning.relink]. */
+internal suspend fun AppRepository.setPatreonEarlyAccess(
+    storyId: String,
+    link: PatreonEarlyAccessLink?,
+): Story? {
+    var removed: List<Chapter> = emptyList()
+    val updated =
+        updateStory(storyId) { latest ->
+            latest?.let { story -> PatreonCopyPlanning.relink(story, link).also { removed = it.second }.first }
+        }
+    if (updated != null && removed.isNotEmpty()) {
+        withContext(Dispatchers.IO) { removed.forEach { copy -> runCatching { storage.deleteChapterFile(storyId, copy.filePath) } } }
+    }
+    return updated
 }
 
 /**

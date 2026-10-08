@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.sync
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
+import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.RoyalRoadProvider
 import com.vinicius741.webnovelarchiver.source.SourceProvider
@@ -21,6 +22,61 @@ class StorySyncMergePlanningTest {
         val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk = null, RoyalRoadProvider)
 
         assertSame(synced, folded)
+    }
+
+    @Test
+    fun foldKeepsUserPatreonLinkChangesButTakesFreshStatusForTheSameCollection() {
+        val link = PatreonEarlyAccessLink(campaignId = "c", collectionId = "1", collectionTitle = "Novel")
+        val checked = link.copy(lastCheckedAt = 99L)
+        val synced = syncedStory(chapters = listOf(chapter("10", downloaded = false))).copy(patreonEarlyAccess = checked)
+
+        val sameCollection = syncedStory(chapters = synced.chapters).copy(patreonEarlyAccess = link)
+        assertEquals(checked, StorySyncMergePlanning.foldConcurrentChanges(synced, sameCollection, RoyalRoadProvider).patreonEarlyAccess)
+
+        val unlinked = syncedStory(chapters = synced.chapters).copy(patreonEarlyAccess = null)
+        assertNull(StorySyncMergePlanning.foldConcurrentChanges(synced, unlinked, RoyalRoadProvider).patreonEarlyAccess)
+
+        val switched = link.copy(collectionId = "2")
+        val relinked = syncedStory(chapters = synced.chapters).copy(patreonEarlyAccess = switched)
+        assertEquals(switched, StorySyncMergePlanning.foldConcurrentChanges(synced, relinked, RoyalRoadProvider).patreonEarlyAccess)
+    }
+
+    @Test
+    fun foldDropsPatreonCopiesUnlinkedOrSwitchedDuringSyncWindow() {
+        val link = PatreonEarlyAccessLink(campaignId = "c", collectionId = "1", collectionTitle = "Novel")
+        val public = chapter("10", downloaded = true, filePath = "10.html")
+        val oldCopy = patreonCopy("1", filePath = "patreon_1.html")
+        val freshCopy = patreonCopy("2", filePath = "patreon_2.html")
+        val synced = syncedStory(chapters = listOf(public, oldCopy, freshCopy)).copy(patreonEarlyAccess = link)
+        val fresh = setOf(freshCopy.id)
+
+        // Unlinking deleted the old copy's file; the stale snapshot must not resurrect either copy.
+        val unlinked = syncedStory(chapters = listOf(public)).copy(patreonEarlyAccess = null)
+        val afterUnlink = StorySyncMergePlanning.foldConcurrentChanges(synced, unlinked, RoyalRoadProvider, fresh)
+        assertEquals(listOf("10"), afterUnlink.chapters.map { it.id })
+        assertEquals(1, afterUnlink.downloadedChapters)
+        assertEquals(DownloadStatus.completed, afterUnlink.status)
+
+        // A switch to another collection keeps nothing from the synced one.
+        val switched = unlinked.copy(patreonEarlyAccess = link.copy(collectionId = "2"))
+        assertEquals(
+            listOf("10"),
+            StorySyncMergePlanning.foldConcurrentChanges(synced, switched, RoyalRoadProvider, fresh).chapters.map { it.id },
+        )
+
+        // Unlinking then relinking the same collection: only this sync's own copy has a file.
+        val relinkedSame = unlinked.copy(patreonEarlyAccess = link)
+        assertEquals(
+            listOf("10", freshCopy.id),
+            StorySyncMergePlanning.foldConcurrentChanges(synced, relinkedSame, RoyalRoadProvider, fresh).chapters.map { it.id },
+        )
+
+        // Untouched link: copies still on disk and freshly stored ones both survive.
+        val untouched = syncedStory(chapters = listOf(public, oldCopy)).copy(patreonEarlyAccess = link)
+        assertEquals(
+            listOf("10", oldCopy.id, freshCopy.id),
+            StorySyncMergePlanning.foldConcurrentChanges(synced, untouched, RoyalRoadProvider, fresh).chapters.map { it.id },
+        )
     }
 
     @Test
@@ -438,6 +494,19 @@ class StorySyncMergePlanningTest {
             downloaded = downloaded,
             filePath = filePath,
             content = content,
+        )
+
+    private fun patreonCopy(
+        postId: String,
+        filePath: String,
+    ): Chapter =
+        Chapter(
+            id = "patreon_$postId",
+            title = "Chapter 1$postId",
+            url = "https://www.patreon.com/posts/$postId",
+            downloaded = true,
+            filePath = filePath,
+            patreonPostId = postId,
         )
 
     private fun noIdProvider(): SourceProvider =

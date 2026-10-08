@@ -30,6 +30,19 @@ class DownloadQueuePlanningTest {
     }
 
     @Test
+    fun queueChaptersNeverQueuesPatreonCopies() {
+        val story =
+            story(
+                Chapter(id = "c1", title = "One", url = "https://example.com/1"),
+                Chapter(id = "patreon_9", title = "Two", url = "https://www.patreon.com/posts/9", patreonPostId = "9"),
+            )
+
+        val plan = DownloadQueuePlanning.queueChapters(emptyList(), story, listOf(0, 1))
+
+        assertEquals(listOf("story-1_0"), plan.jobs.map { it.id })
+    }
+
+    @Test
     fun queueChaptersReplacesTerminalDuplicateWithPendingJob() {
         val story = story(Chapter(id = "c1", title = "Fresh Title", url = "https://example.com/fresh"))
         val existing =

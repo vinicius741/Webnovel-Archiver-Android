@@ -583,6 +583,18 @@ class AppStorage(
         return true
     }
 
+    /** Deletes one chapter file, refusing any path outside this story's chapter directory. */
+    @Synchronized
+    fun deleteChapterFile(
+        storyId: String,
+        stored: String?,
+    ): Boolean {
+        val file = resolveChapterPath(stored)?.let(::File)?.takeIf(File::isFile) ?: return false
+        val parent = runCatching { file.canonicalFile.parentFile?.canonicalPath }.getOrNull() ?: return false
+        val storyDir = runCatching { File(chapterRoot, safeName(storyId)).canonicalPath }.getOrNull() ?: return false
+        return parent == storyDir && file.delete()
+    }
+
     @Synchronized
     fun saveEpub(
         storyId: String,

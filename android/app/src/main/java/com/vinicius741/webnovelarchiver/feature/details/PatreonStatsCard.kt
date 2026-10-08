@@ -45,7 +45,10 @@ import kotlin.math.roundToLong
 internal fun ScreenHost.buildPatreonStatsCard(
     stats: PatreonRawStats?,
     patreonUrl: String?,
+    earlyAccessSummary: String,
     onShowTrends: () -> Unit,
+    onEarlyAccess: () -> Unit,
+    earlyAccessEnabled: Boolean = true,
 ): LinearLayout {
     val colors = ThemeManager.colors
     val clickable = !patreonUrl.isNullOrBlank()
@@ -152,6 +155,29 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 )
             }
         }
+        addView(makeDivider(app))
+        // ---- Early access: which Patreon collection supplies chapters ahead of the public release ----
+        addView(
+            LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dp(Space.SM), 0, dp(Space.XS))
+                // Relinking drops stored copies, so it waits until the running story operation (e.g. a sync) ends.
+                isEnabled = earlyAccessEnabled
+                isClickable = earlyAccessEnabled
+                isFocusable = earlyAccessEnabled
+                alpha = if (earlyAccessEnabled) 1f else 0.4f
+                background = selectableRipple(colors.onSurface)
+                contentDescription =
+                    if (earlyAccessEnabled) {
+                        "Early-access chapters: $earlyAccessSummary. Tap to choose a collection."
+                    } else {
+                        "Early-access chapters: $earlyAccessSummary."
+                    }
+                if (earlyAccessEnabled) setOnClickListener { onEarlyAccess() }
+                addView(makeText(app, "Early-access chapters", Type.LABEL_LARGE, colors.onSurface))
+                addView(makeText(app, earlyAccessSummary, Type.BODY_SMALL, colors.onSurfaceVariant))
+            },
+        )
         isClickable = false
         isFocusable = false
         contentDescription = null

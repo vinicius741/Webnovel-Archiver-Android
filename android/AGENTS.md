@@ -46,6 +46,14 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
   `patreonUrl` resolves to the same `PatreonCreatorPlanning.creatorKey` share stats (a fresh
   refresh is copied to siblings in `commitSyncedStory`, startup reconciles to the freshest), and
   Trends charts their merged Patreon history. Per-story metric files are not rewritten.
+- Patreon early-access chapters (`docs/sources/patreon-early-access.md`) supplement a source story;
+  Patreon is not a `SourceProvider`. Copies carry `Chapter.patreonPostId`, always sit after every
+  source chapter, are split off before the source merge (so they never read as removed source
+  chapters), are stored by sync from the post list (`sync/PatreonChapterSync`), and are never
+  queued for download. `domain/story/PatreonCopyPlanning` owns title matching and retiring a copy
+  once its public chapter has downloaded (sync and download commits both reconcile). The user's
+  Patreon `session_id` lives only in `CookieManager` (`source/PatreonSession`): never persist,
+  back up, log, or display it, and never enter it on the user's behalf during QA.
 - Archived snapshots remain read-only for sync and download.
 
 ## UI spacing and copy

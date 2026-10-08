@@ -281,7 +281,7 @@ class ChapterListAdapter(
             "Chapter ${ChapterRowPlanning.indexLabel(index)}, ${ChapterRowPlanning.displayTitle(chapter.title)}"
         holder.subtitleSlot.removeAllViews()
         holder.subtitleSlot.addView(
-            subtitleText(index, liveStatus, chapter.downloaded, chapter.downloadedAt, waitingForDelay, context),
+            subtitleText(index, liveStatus, chapter, waitingForDelay, context),
         )
         // One-tap bookmark: outline by default, filled when this is the novel's bookmark.
         val isBookmarked = story.lastReadChapterId == chapter.id
@@ -330,12 +330,19 @@ class ChapterListAdapter(
     private fun subtitleText(
         index: Int,
         liveStatus: DownloadJobStatus?,
-        downloaded: Boolean,
-        downloadedAt: Long?,
+        chapter: Chapter,
         waitingForDelay: Boolean,
         context: Context,
     ): TextView {
-        val label = ChapterRowPlanning.metadataLabel(index, liveStatus, downloaded, downloadedAt, waitingForDelay)
+        val label =
+            ChapterRowPlanning.metadataLabel(
+                index,
+                liveStatus,
+                chapter.downloaded,
+                chapter.downloadedAt,
+                waitingForDelay,
+                patreonCopy = chapter.isPatreonCopy,
+            )
         val color =
             when (liveStatus) {
                 DownloadJobStatus.Downloading -> if (waitingForDelay) ThemeManager.colors.secondary else ThemeManager.colors.primary

@@ -26,7 +26,8 @@ object DownloadQueuePlanning {
 
         indexes.filter { it in story.chapters.indices }.forEach { index ->
             val chapter = story.chapters[index]
-            if (chapter.downloaded) return@forEach
+            // Patreon copies are stored by sync from the post list; no source can download them.
+            if (chapter.downloaded || chapter.isPatreonCopy) return@forEach
 
             val id = "${story.id}_$index"
             val existingIndex = jobs.indexOfFirst { it.id == id }

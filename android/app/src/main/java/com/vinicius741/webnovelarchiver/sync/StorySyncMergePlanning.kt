@@ -28,22 +28,33 @@ object StorySyncMergePlanning {
      * @param onDisk the story currently persisted, re-read immediately before the write (may carry
      *   newer per-chapter download state or a newer reading position).
      * @param provider used to derive stable chapter ids for matching [Chapter] across the two lists.
+     * @param freshPatreonChapterIds Patreon copies this sync stored itself; every other synced copy
+     *   must still be on disk to survive the fold.
      * @return the [synced] story with concurrent on-disk progress folded in, ready to persist.
      */
     fun foldConcurrentChanges(
         synced: Story,
         onDisk: Story?,
         provider: SourceProvider,
+        freshPatreonChapterIds: Set<String> = emptySet(),
     ): Story {
         if (onDisk == null) return synced
         if (synced.id != onDisk.id) return synced
 
         val matcher = ChapterMatcher(provider)
         val onDiskByStable = matcher.index(onDisk.chapters).byStableId
+        // Unlinking or relinking Patreon during the window dropped the stored copies and deleted
+        // their files, so a copy from the pre-window snapshot that left the on-disk list must not
+        // come back, and nothing from the synced collection survives a switch to another one.
+        val samePatreonCollection = synced.patreonEarlyAccess?.collectionId == onDisk.patreonEarlyAccess?.collectionId
+        val onDiskIds = onDisk.chapters.mapTo(HashSet()) { it.id }
 
         val mergedChapters =
             synced.chapters
-                .map { chapter ->
+                .filter { chapter ->
+                    !chapter.isPatreonCopy ||
+                        (samePatreonCollection && (chapter.id in onDiskIds || chapter.id in freshPatreonChapterIds))
+                }.map { chapter ->
                     val stable = matcher.stableId(chapter)
                     val current = if (stable.isNotBlank()) onDiskByStable[stable] else null
                     if (current != null && current.downloaded && current.filePath != null) {
@@ -107,6 +118,10 @@ object StorySyncMergePlanning {
             showAiCover = onDisk.showAiCover,
             aiContextChapterIndices = onDisk.aiContextChapterIndices,
             aiCoverContextChapterIndices = onDisk.aiCoverContextChapterIndices,
+            // The link is user-owned; the sync only refreshes the check status of the same collection.
+            patreonEarlyAccess =
+                synced.patreonEarlyAccess?.takeIf { it.collectionId == onDisk.patreonEarlyAccess?.collectionId }
+                    ?: onDisk.patreonEarlyAccess,
             // A chapter downloaded during the window leaves the pending set; drop it here so the
             // committed story's pending list matches its own merged chapter state.
             pendingNewChapterIds =

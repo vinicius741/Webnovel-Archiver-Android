@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.domain.archive
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -57,6 +58,26 @@ class ArchiveSnapshotPlanningTest {
         assertNull(archive.epubPaths)
         assertNull(archive.epubStale)
         assertNull(archive.pendingNewChapterIds)
+    }
+
+    @Test
+    fun buildArchiveSnapshotDropsTheLivePatreonLinkButKeepsStoredCopies() {
+        val source =
+            Story(
+                id = "story-1",
+                patreonEarlyAccess = PatreonEarlyAccessLink(campaignId = "c", collectionId = "1", collectionTitle = "Novel"),
+                chapters = mutableListOf(Chapter(id = "patreon_9", downloaded = true, filePath = "/active/p9.html", patreonPostId = "9")),
+            )
+
+        val archive =
+            ArchiveSnapshotPlanning.buildArchiveSnapshot(
+                source,
+                archivedAt = 42L,
+                randomSuffix = "abc123",
+            ) { _, _, _ -> "/archive/p9.html" }
+
+        assertNull(archive.patreonEarlyAccess)
+        assertEquals("9", archive.chapters.single().patreonPostId)
     }
 
     @Test
