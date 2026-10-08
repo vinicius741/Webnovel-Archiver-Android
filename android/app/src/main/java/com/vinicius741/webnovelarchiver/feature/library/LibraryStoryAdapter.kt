@@ -59,6 +59,16 @@ internal class LibraryStoryAdapter(
         updateVisible()
     }
 
+    /** Rebinds one story's card after its selection changed, or every card for [storyId] == null (Select All). */
+    fun refreshCards(storyId: String?) {
+        if (storyId == null) {
+            notifyDataSetChanged()
+            return
+        }
+        val index = visible.indexOfFirst { it.id == storyId }
+        if (index >= 0) notifyItemChanged(index)
+    }
+
     fun replaceStories(latest: List<Story>) {
         stories = latest
         updateVisible()

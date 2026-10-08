@@ -4,7 +4,6 @@ import android.content.Context
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -84,81 +83,6 @@ fun makeSettingRow(
     description: CharSequence? = null,
     onClick: () -> Unit,
 ): SettingActionRow = SettingActionRow(context, iconRes, title, description, onClick)
-
-/*
-
- * ------------------------------------------------------------------
- * Selectable card row — a card surface with an embedded checkbox. Used by the
- * selection screens (Select Novels / Select Chapters) so multi-select reuses the
- * library's card design instead of dropping to bare CheckBoxes.
- * ------------------------------------------------------------------
- */
-
-fun makeSelectableCardRow(
-    context: Context,
-    title: CharSequence,
-    subtitle: CharSequence? = null,
-    selected: Boolean,
-    onToggle: (Boolean) -> Unit,
-): LinearLayout {
-    val t = ThemeManager.current
-    val radiusPx = context.dp(t.shapes.cardRadius).toFloat()
-    val cb =
-        CheckBox(context).apply {
-            isChecked = selected
-            setOnCheckedChangeListener { _, checked -> onToggle(checked) }
-            applyCheckBoxTint()
-        }
-    val textCol =
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(
-                TextView(context).apply {
-                    text = title
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.TITLE_SMALL.size())
-                    typeface = android.graphics.Typeface.create(typeface, android.graphics.Typeface.BOLD)
-                    setTextColor(t.colors.onSurface)
-                    maxLines = 2
-                    ellipsize = TextUtils.TruncateAt.END
-                    includeFontPadding = false
-                },
-            )
-            subtitle?.let {
-                addView(
-                    TextView(context).apply {
-                        text = it
-                        setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
-                        setTextColor(t.colors.onSurfaceVariant)
-                        setPadding(0, context.dp(2), 0, 0)
-                        maxLines = 1
-                        ellipsize = TextUtils.TruncateAt.END
-                        includeFontPadding = false
-                    },
-                )
-            }
-        }
-    return LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
-        background = roundedBg(t.colors.elevation1, radiusPx)
-        layoutParams =
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = context.dp(Space.MD)
-            }
-        addView(cb)
-        addView(
-            textCol,
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                marginStart = context.dp(Space.MD)
-            },
-        )
-        // Tapping the row (not just the checkbox) toggles selection.
-        isClickable = true
-        isFocusable = true
-        setOnClickListener { cb.isChecked = !cb.isChecked }
-    }
-}
 
 // ------------------------------------------------------------------
 // Empty state

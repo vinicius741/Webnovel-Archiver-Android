@@ -9,7 +9,6 @@ import com.vinicius741.webnovelarchiver.feature.details.showTrends
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.player.showPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
@@ -33,7 +32,6 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
     when (route) {
         AppRoute.Library -> showLibrary()
         AppRoute.AddStory -> showAddStory()
-        is AppRoute.LibrarySelection -> showLibrarySelection(route.selectedStoryIds)
         is AppRoute.Details -> showDetails(route.storyId)
         is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
         is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)

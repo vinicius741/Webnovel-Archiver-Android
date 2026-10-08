@@ -9,14 +9,10 @@ import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
-import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
-import com.vinicius741.webnovelarchiver.feature.settings.showSettings
-import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
@@ -37,20 +33,18 @@ internal fun ScreenHost.showLibrary() {
     rerender = { showLibrary() }
     val layoutResult = currentScreenLayout()
     var stories: List<Story> = repository.library()
+    val selectedCount = pruneLibrarySelection(stories)
+    var toggleSelectAll: () -> Unit = {}
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
     val tabs = repository.tabs.get().sortedBy { it.order }
     screen(
         route = AppRoute.Library,
-        title = "Library",
-        subtitle = if (stories.isEmpty()) null else "${stories.size} novel${if (stories.size == 1) "" else "s"}",
-        actions =
-            listOf(
-                AppBarAction(R.drawable.wna_refresh, "Updates") { showUpdates() },
-                AppBarAction(R.drawable.wna_download, "Downloads") { showQueue() },
-                AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
-            ),
-        fab = { showAddStory() },
+        title = LibrarySelectionPlanning.screenTitle(selectedCount),
+        subtitle = LibrarySelectionPlanning.screenSubtitle(stories.size, selectedCount),
+        actions = libraryAppBarActions(selectedCount > 0) { toggleSelectAll() },
+        fab = if (selectedCount > 0) null else ({ showAddStory() }),
+        closeAction = if (selectedCount > 0) ({ exitLibrarySelection() }) else null,
     ) {
         val hasUnassigned = stories.any { it.tabId == null }
         val initialSelectedTabId: String? =
@@ -162,6 +156,9 @@ internal fun ScreenHost.showLibrary() {
             debounceLibraryFilterApply(scope, searchApplyGeneration, { searchApplyGeneration }, applyFilters)
         }
 
+        // Select All targets whatever the current tab shows after search/tag filters.
+        toggleSelectAll = { toggleSelectAllLibrary(filterState.applyTo(stories).map(Story::id)) }
+
         if (pageTabs.size >= 2) {
             // Each page owns a scrolling grid; bar and pager stay two-way synced.
             val adapter = LibraryPagesAdapter(host, stories, pageTabs, layoutResult)
@@ -177,6 +174,7 @@ internal fun ScreenHost.showLibrary() {
             applyFilters = {
                 adapter.updateFilter(filterState.query, filterState.selectedTags, filterState.sortOption, filterState.sortAscending)
             }
+            libraryScreenState.refreshStoryCards = adapter::refreshCards
             refreshLibraryContent = { latest ->
                 val changed = latest.filter { renderedProgress[it.id] != (it.downloadedChapters to it.totalChapters) }
                 renderedProgress = latest.associate { it.id to (it.downloadedChapters to it.totalChapters) }
@@ -216,6 +214,7 @@ internal fun ScreenHost.showLibrary() {
             val list = RecyclerView(context)
             val adapter = LibraryStoryAdapter(host, layoutResult.numColumns, filterState.selectedTabId, stories)
             adapter.attachTo(list)
+            libraryScreenState.refreshStoryCards = adapter::refreshCards
             applyFilters = {
                 adapter.updateFilter(
                     filterState.query,
@@ -249,6 +248,7 @@ internal fun ScreenHost.showLibrary() {
             applyFilters()
             list.restoreScrollOnce(libraryScreenState.tabScrollPositions[scrollKey] ?: 0)
         }
+        if (selectedCount > 0) addView(makeLibrarySelectionBar())
     }
     refreshLibraryContent?.let { refresh ->
         val renderedRoot = frame.getChildAt(0)

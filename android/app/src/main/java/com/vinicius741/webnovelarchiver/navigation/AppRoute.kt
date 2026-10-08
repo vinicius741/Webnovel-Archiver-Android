@@ -14,10 +14,6 @@ sealed class AppRoute(
 
     data object AddStory : AppRoute("add_story")
 
-    data class LibrarySelection(
-        val selectedStoryIds: Set<String> = emptySet(),
-    ) : AppRoute("library_selection")
-
     data class Details(
         val storyId: String,
     ) : AppRoute("details")
@@ -108,7 +104,6 @@ object AppRouteCodec {
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
                 is AppRoute.AiControls -> listOf(route.storyId)
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
-                is AppRoute.LibrarySelection -> route.selectedStoryIds.sorted()
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
                 else -> emptyList()
             }
@@ -145,7 +140,6 @@ object AppRouteCodec {
         arguments: List<String>,
     ): AppRoute? =
         when (name) {
-            "library_selection" -> AppRoute.LibrarySelection(arguments.toSet())
             "details" -> arguments.singleOrNull()?.let(AppRoute::Details)
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)

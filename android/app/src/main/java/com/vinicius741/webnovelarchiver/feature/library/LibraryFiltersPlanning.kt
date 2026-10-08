@@ -42,7 +42,7 @@ object LibraryFiltersPlanning {
         }
 }
 
-/** Shared mutable UI snapshot for Library and Organize Novels filtering. */
+/** Shared mutable UI snapshot for Library filtering. */
 data class LibraryFilterState(
     val query: String = "",
     val selectedTabId: String? = LibraryTabSelection.ALL_TAB_ID,

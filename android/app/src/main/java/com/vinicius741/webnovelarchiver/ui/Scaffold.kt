@@ -47,6 +47,7 @@ internal fun ScreenHost.screen(
     fab: (() -> Unit)? = null,
     scrollable: Boolean = false,
     chrome: ScreenChrome = ScreenChrome.STANDARD,
+    closeAction: (() -> Unit)? = null,
     block: LinearLayout.() -> Unit,
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
@@ -70,7 +71,9 @@ internal fun ScreenHost.screen(
     frame.removeAllViews()
     // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
     // hardware/gesture back navigation so the OS default (exit) applies.
-    val effectiveBack = if (onBack != null && navigator.canGoBack) ({ navigateBack() }) else onBack
+    // [closeAction] is a modal exit (e.g. Library multi-select): it wins over navigation for both the
+    // app-bar button (shown as a close icon) and system back.
+    val effectiveBack = closeAction ?: if (onBack != null && navigator.canGoBack) ({ navigateBack() }) else onBack
     backHandler = effectiveBack
     val column =
         LinearLayout(app).apply {
@@ -80,7 +83,25 @@ internal fun ScreenHost.screen(
             // content stays clear of it whether the body scrolls or not.
             setPadding(0, 0, 0, systemBarBottom())
         }
-    if (chrome == ScreenChrome.STANDARD) column.addView(appBar(title, subtitle, effectiveBack, actions))
+    if (chrome ==
+        ScreenChrome.STANDARD
+    ) {
+        column.addView(
+            appBar(
+                title,
+                subtitle,
+                effectiveBack,
+                actions,
+                if (closeAction !=
+                    null
+                ) {
+                    R.drawable.wna_close
+                } else {
+                    R.drawable.wna_arrow_back
+                },
+            ),
+        )
+    }
     val content =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -128,6 +149,17 @@ internal fun ScreenHost.screen(
     }
 }
 
+/** Tags the app-bar title so a screen can retitle itself in place (see [setAppBarTitle]). */
+private const val APP_BAR_TITLE_TAG = "wna_app_bar_title"
+
+/** Retitles the current screen's app bar without rebuilding it. */
+internal fun ScreenHost.setAppBarTitle(title: String) {
+    frame.findViewWithTag<android.widget.TextView>(APP_BAR_TITLE_TAG)?.text = title
+}
+
+/** Tags a bottom action bar (e.g. Library selection) so the TTS mini-player can lift it clear. */
+internal const val BOTTOM_BAR_VIEW_TAG = "wna_screen_bottom_bar"
+
 /** Tags the screen FAB so the TTS mini-player can lift it out of the bar's way. */
 internal const val FAB_VIEW_TAG = "wna_screen_fab"
 
@@ -153,6 +185,7 @@ private fun ScreenHost.appBar(
     subtitle: String?,
     onBack: (() -> Unit)?,
     actions: List<AppBarAction>,
+    backIcon: Int,
 ): View {
     val t = ThemeManager.current
     return LinearLayout(app).apply {
@@ -163,7 +196,7 @@ private fun ScreenHost.appBar(
         setPadding(dp(Spacing.SM), systemBarTop() + dp(Spacing.SM), dp(Spacing.SM), dp(Spacing.SM))
         if (onBack != null) {
             addView(
-                app.iconButton(R.drawable.wna_arrow_back, "Back") { onBack() }.apply {
+                app.iconButton(backIcon, if (backIcon == R.drawable.wna_close) "Close" else "Back") { onBack() }.apply {
                     (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Spacing.XS)
                 },
             )
@@ -180,6 +213,7 @@ private fun ScreenHost.appBar(
         // stays available on the story screen body.
         titleCol.addView(
             makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply {
+                tag = APP_BAR_TITLE_TAG
                 includeFontPadding = false
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END

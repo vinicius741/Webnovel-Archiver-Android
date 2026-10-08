@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
+import com.vinicius741.webnovelarchiver.ui.BOTTOM_BAR_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.FAB_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -223,7 +224,10 @@ internal fun ScreenHost.attachTtsMiniPlayer(root: ViewGroup): Job {
     }
 }
 
-/** Keeps the current screen's FAB clear of the bar by lifting its bottom margin while visible. */
+/**
+ * Keeps the current screen's FAB and bottom action bar clear of the bar by lifting their bottom
+ * margins while it is visible.
+ */
 private fun liftScreenFabAboveBar(
     root: ViewGroup,
     frame: FrameLayout,
@@ -231,14 +235,23 @@ private fun liftScreenFabAboveBar(
     barVisible: Boolean,
 ) {
     root.post {
-        val fab = frame.findViewWithTag<View>(FAB_VIEW_TAG) ?: return@post
-        val lp = fab.layoutParams as? FrameLayout.LayoutParams ?: return@post
-        val lift = if (barVisible) bar.height + fab.context.dp(Spacing.SM) else 0
-        val target = fab.context.dp(Spacing.LG) + systemBarBottomPx(fab) + lift
-        if (lp.bottomMargin != target) {
-            lp.bottomMargin = target
-            fab.layoutParams = lp
+        val lift = if (barVisible) bar.height + frame.context.dp(Spacing.SM) else 0
+        frame.findViewWithTag<View>(FAB_VIEW_TAG)?.let { fab ->
+            setBottomMargin(fab, fab.context.dp(Spacing.LG) + systemBarBottomPx(fab) + lift)
         }
+        // The screen column already reserves the system bar, so only the lift applies.
+        frame.findViewWithTag<View>(BOTTOM_BAR_VIEW_TAG)?.let { setBottomMargin(it, lift) }
+    }
+}
+
+private fun setBottomMargin(
+    view: View,
+    margin: Int,
+) {
+    val lp = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+    if (lp.bottomMargin != margin) {
+        lp.bottomMargin = margin
+        view.layoutParams = lp
     }
 }
 

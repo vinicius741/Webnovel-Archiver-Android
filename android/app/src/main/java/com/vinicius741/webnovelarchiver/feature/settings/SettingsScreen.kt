@@ -15,7 +15,6 @@ import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.library.showLibrarySelection
 import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
 import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -111,9 +110,6 @@ internal fun ScreenHost.showSettings() {
             showNotifications()
         }
         settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
-        settingRow(R.drawable.wna_check, "Organize Novels", "Select, move, or delete novels in your library") {
-            showLibrarySelection()
-        }
         // Storage issues surface as a title marker instead of occupying their own row.
         val storageHealth = repository.getStorageHealth()
         val dataBackupTitle = if (storageHealth.requiresUserAttention) "Data & Backup •" else "Data & Backup"

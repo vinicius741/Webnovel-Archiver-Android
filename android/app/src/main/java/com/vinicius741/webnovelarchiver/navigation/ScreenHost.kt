@@ -132,6 +132,12 @@ class LibraryScreenState {
     var query: String = ""
     var selectedTags: Set<String> = emptySet()
     var filtersExpanded: Boolean = false
+
+    /** Library multi-select. Non-empty means selection mode is active; it is not saved across process death. */
+    var selectedStoryIds: Set<String> = emptySet()
+
+    /** Rebinds every rendered card of one story (it shows on its tab's page and on All), or all for null. Set per render. */
+    var refreshStoryCards: (String?) -> Unit = {}
     val tabScrollPositions: MutableMap<String, Int> = mutableMapOf()
 }
 

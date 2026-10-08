@@ -112,6 +112,10 @@ internal class LibraryPagesAdapter(
         bound.forEach { it.storyAdapter?.updateFilter(text, tags, sortOption, sortAscending) }
     }
 
+    fun refreshCards(storyId: String?) {
+        bound.forEach { it.storyAdapter?.refreshCards(storyId) }
+    }
+
     /** Updates the backing snapshot for pages bound later; already-bound progress views are patched
      *  directly by the screen so RecyclerView never rebinds during a vertical gesture. */
     fun replaceStories(latest: List<Story>) {
