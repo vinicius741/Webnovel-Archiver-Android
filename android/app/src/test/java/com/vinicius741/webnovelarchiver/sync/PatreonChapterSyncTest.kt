@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.sync
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
+import com.vinicius741.webnovelarchiver.domain.model.PatreonSignInIssue
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonPost
@@ -116,6 +117,7 @@ class PatreonChapterSyncTest {
             assertEquals(1_000L, result.link.lastCheckedAt)
             assertNull(result.link.lastError)
             assertEquals(0, result.link.lockedCount)
+            assertNull(result.link.signInIssue)
         }
 
     @Test
@@ -142,6 +144,7 @@ class PatreonChapterSyncTest {
             assertTrue(result.chapters.isEmpty())
             assertEquals(1, result.link.lockedCount)
             assertEquals("Sign in to Patreon to read 1 early-access chapter.", result.link.lastError)
+            assertEquals(PatreonSignInIssue.SIGNED_OUT, result.link.signInIssue)
         }
 
     @Test
@@ -159,7 +162,25 @@ class PatreonChapterSyncTest {
             val result = sync.sync("s", link, publicChapters, existing) {}
 
             assertEquals(existing, result.chapters)
-            assertEquals("Patreon sign-in expired. Paste a new session in Settings.", result.link.lastError)
+            assertEquals("Patreon didn't accept your saved sign-in.", result.link.lastError)
+            assertEquals(PatreonSignInIssue.REJECTED, result.link.signInIssue)
+        }
+
+    @Test
+    fun `a signed-out 401 asks the user to sign in`() =
+        runBlocking {
+            val sync =
+                PatreonChapterSync(
+                    api = PatreonApi { url -> throw HttpNetworkException(url, 401) },
+                    sessionPresent = { false },
+                    cleanup = { it },
+                    saveChapter = { _, _, _, _ -> error("not reached") },
+                )
+
+            val result = sync.sync("s", link, publicChapters, emptyList()) {}
+
+            assertEquals("Sign in to Patreon to check early-access chapters.", result.link.lastError)
+            assertEquals(PatreonSignInIssue.SIGNED_OUT, result.link.signInIssue)
         }
 
     private fun post(

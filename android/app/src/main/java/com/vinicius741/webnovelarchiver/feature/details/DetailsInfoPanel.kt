@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.source.PatreonSession
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -147,13 +148,16 @@ internal fun ScreenHost.buildDetailsInfoPanel(
             buildPatreonStatsCard(
                 stats = story.patreonStats,
                 patreonUrl = story.patreonUrl,
-                earlyAccessSummary =
-                    PatreonEarlyAccessPlanning.summary(
+                earlyAccess =
+                    PatreonEarlyAccessPlanning.display(
                         story.patreonEarlyAccess,
                         story.chapters.count { it.isPatreonCopy },
+                        PatreonSession.isPresent(),
+                        PatreonSession.storedAt,
                     ),
                 onShowTrends = { showTrends(story.id, FOCUS_PATREON_USD) },
                 onEarlyAccess = { showPatreonEarlyAccessPicker(story) },
+                onEarlyAccessPrompt = { action -> handleEarlyAccessPrompt(story, action) },
                 earlyAccessEnabled = !isBusy,
             ),
         )

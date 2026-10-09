@@ -11,19 +11,47 @@ not in `SourceRegistry`.
 ## Signing in (Google accounts included)
 
 Google refuses sign-in inside embedded WebViews, and a Custom Tab's cookies belong to the browser,
-so the app cannot run Patreon's login itself. Instead the user signs in with a real browser and
-hands the app that browser's `session_id` cookie:
+so the app cannot run Patreon's login itself. Instead the user signs in with Firefox and hands the
+app that browser's `session_id` cookie. **Settings → Data & Backup → Patreon Account**
+(`AppRoute.PatreonAccount`, `feature/settings/PatreonAccountScreen.kt`) is a step-by-step guide:
 
-1. In Firefox for Android, install the Cookie-Editor add-on and sign in on patreon.com (Google
-   sign-in works). Desktop Chrome DevTools → Application → Cookies works as well.
-2. Copy the `session_id` value.
-3. In the app: **Settings → Data & Backup → Patreon Account**, paste it, and **Save**. The dialog
-   verifies the session against `/api/current_user` and lists the creators the account pays.
+1. **Install Firefox** — ticked automatically when Firefox (release, Beta, or Nightly) is
+   installed; otherwise the button opens its Play Store listing.
+2. **Add Cookie-Editor** — opens the add-on's addons.mozilla.org page directly in Firefox
+   (`feature/browser/FirefoxLauncher`).
+3. **Sign in to Patreon** — opens patreon.com/login in Firefox; any method, Google included.
+4. **Copy your sign-in** — Firefox ⋮ menu › Extensions › Cookie-Editor › **Export** (or copy the
+   `session_id` value).
+5. **Paste it here** — one **Paste from clipboard** button. `PatreonSession.parsePaste` finds
+   `session_id` in Cookie-Editor's JSON, Netscape, or header-string export, a `session_id=` pair,
+   or the bare value, and explains what went wrong otherwise (empty clipboard, cookies without a
+   session, unrecognized text). **Enter it manually** covers a value copied on a computer.
+
+A pasted session is verified against `/api/current_user` before the screen reports success. If
+Patreon refuses it, a previously saved session is restored rather than overwritten; once accepted,
+the clipboard is cleared so the cookie does not linger there. Signed in, the screen shows the
+account name and the creators it supports, with **Sign out**, and collapses the steps behind
+**Sign in with a different account**. Opened from a novel, Back returns to that novel and a fresh
+sign-in offers to check it immediately.
 
 `source/PatreonSession.kt` stores the cookie only in the shared `android.webkit.CookieManager`, so
 `AndroidCookieJar` sends it on Patreon requests. It never enters story JSON, backups, diagnostics,
-or logs, and the field is masked. **Sign out** clears it. When Patreon rejects the cookie (401/403),
-the link status asks the user to paste a new one; the public sync still finishes.
+or logs, and it is never displayed.
+
+### Guidance on the novel page
+
+The link records why a check could not read posts (`PatreonEarlyAccessLink.signInIssue`:
+`SIGNED_OUT`, or `REJECTED` for a 401/403 while a session was saved).
+`PatreonEarlyAccessPlanning.display` turns that, the locked count, and the current session into the
+Early-access row's summary and one next-step button:
+
+- no session saved → **Set up Patreon sign-in** (opens the guide for this novel);
+- the saved session was refused → **Sign in again**;
+- a session was saved after the failed check → **Check for early-access chapters** (a sync);
+- signed in but posts are still locked → **View tiers on Patreon**.
+
+Linking a collection while signed out also offers the guide right away. The public sync always
+finishes regardless of the Patreon result.
 
 ## Linking a novel
 
@@ -79,7 +107,7 @@ public chapter.
 ## Compatibility
 
 - New fields are optional with defaults: `Chapter.patreonPostId`, `Chapter.patreonReplacedBy`,
-  `Story.patreonEarlyAccess`. Older data loads unchanged.
+  `Story.patreonEarlyAccess`, `PatreonEarlyAccessLink.signInIssue`. Older data loads unchanged.
 - Archive snapshots keep stored copies but drop the live link (archives never sync).
 - Full backups include copy files like any downloaded chapter; the session cookie is never backed up.
 - `StorySyncMergePlanning.foldConcurrentChanges` treats the link as user-owned: a link change during

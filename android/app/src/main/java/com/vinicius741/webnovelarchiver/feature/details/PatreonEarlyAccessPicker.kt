@@ -1,10 +1,14 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import android.app.AlertDialog
+import android.content.Intent
+import android.net.Uri
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setPatreonEarlyAccess
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.feature.settings.showPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -12,6 +16,7 @@ import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonCollection
 import com.vinicius741.webnovelarchiver.source.PatreonSession
 import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
+import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.toast
@@ -96,9 +101,36 @@ private fun ScreenHost.applyLink(
 ) {
     scope.launch {
         val updated = repository.setPatreonEarlyAccess(story.id, link) ?: return@launch
-        if (!PatreonSession.isPresent()) {
-            toast("Add your Patreon session in Settings › Data & Backup to read locked chapters")
-        }
         syncStory(updated)
+        if (!PatreonSession.isPresent()) offerPatreonSignIn(story.id)
+    }
+}
+
+/** Linking works signed out, but locked posts need the user's own Patreon session. */
+private fun ScreenHost.offerPatreonSignIn(storyId: String) {
+    AlertDialog
+        .Builder(app)
+        .setTitle("Sign in to Patreon")
+        .setMessage(
+            "Early-access chapters are only readable by the creator's patrons. " +
+                "Sign in with the Patreon account that supports this creator to fetch them.",
+        ).setPositiveButton("Set up sign-in") { _, _ -> showPatreonAccount(storyId) }
+        .setNegativeButton("Later", null)
+        .show()
+        .applyAppTheme()
+}
+
+/** Runs the Patreon card's next-step button for this story. */
+internal fun ScreenHost.handleEarlyAccessPrompt(
+    story: Story,
+    action: PatreonEarlyAccessPlanning.Action,
+) {
+    when (action) {
+        PatreonEarlyAccessPlanning.Action.SET_UP_SIGN_IN,
+        PatreonEarlyAccessPlanning.Action.SIGN_IN_AGAIN,
+        -> showPatreonAccount(story.id)
+        PatreonEarlyAccessPlanning.Action.CHECK_NOW -> syncStory(story)
+        PatreonEarlyAccessPlanning.Action.OPEN_PATREON ->
+            story.patreonUrl?.let { url -> app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     }
 }

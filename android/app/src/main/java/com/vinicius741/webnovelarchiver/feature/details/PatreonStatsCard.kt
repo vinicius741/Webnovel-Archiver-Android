@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonEarningsPlanning
 import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -18,6 +19,7 @@ import com.vinicius741.webnovelarchiver.ui.circularRipple
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeDivider
+import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
@@ -45,9 +47,10 @@ import kotlin.math.roundToLong
 internal fun ScreenHost.buildPatreonStatsCard(
     stats: PatreonRawStats?,
     patreonUrl: String?,
-    earlyAccessSummary: String,
+    earlyAccess: PatreonEarlyAccessPlanning.Display,
     onShowTrends: () -> Unit,
     onEarlyAccess: () -> Unit,
+    onEarlyAccessPrompt: (PatreonEarlyAccessPlanning.Action) -> Unit,
     earlyAccessEnabled: Boolean = true,
 ): LinearLayout {
     val colors = ThemeManager.colors
@@ -156,6 +159,24 @@ internal fun ScreenHost.buildPatreonStatsCard(
             }
         }
         addView(makeDivider(app))
+        addEarlyAccessSection(this, earlyAccess, earlyAccessEnabled, onEarlyAccess, onEarlyAccessPrompt)
+        isClickable = false
+        isFocusable = false
+        contentDescription = null
+    }
+}
+
+/** Which Patreon collection supplies chapters ahead of the public release, plus its one next step. */
+private fun ScreenHost.addEarlyAccessSection(
+    card: LinearLayout,
+    earlyAccess: PatreonEarlyAccessPlanning.Display,
+    earlyAccessEnabled: Boolean,
+    onEarlyAccess: () -> Unit,
+    onEarlyAccessPrompt: (PatreonEarlyAccessPlanning.Action) -> Unit,
+) {
+    with(card) {
+        val colors = ThemeManager.colors
+        val earlyAccessSummary = earlyAccess.summary
         // ---- Early access: which Patreon collection supplies chapters ahead of the public release ----
         addView(
             LinearLayout(app).apply {
@@ -178,9 +199,29 @@ internal fun ScreenHost.buildPatreonStatsCard(
                 addView(makeText(app, earlyAccessSummary, Type.BODY_SMALL, colors.onSurfaceVariant))
             },
         )
-        isClickable = false
-        isFocusable = false
-        contentDescription = null
+        // ---- The one next step (sign in, check again, or see tiers), kept outside the row's tap target ----
+        earlyAccess.prompt?.let { prompt ->
+            prompt.hint?.let { hint ->
+                addView(
+                    makeText(app, hint, Type.BODY_SMALL, colors.onSurfaceVariant),
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = dp(Space.XS)
+                    },
+                )
+            }
+            // A check is a sync, so it waits for the running story operation like relinking does.
+            val enabled = earlyAccessEnabled || prompt.action != PatreonEarlyAccessPlanning.Action.CHECK_NOW
+            addView(
+                makeFullWidthButton(
+                    app,
+                    prompt.buttonLabel,
+                    if (prompt.action == PatreonEarlyAccessPlanning.Action.OPEN_PATREON) Btn.OUTLINED else Btn.TONAL,
+                    enabled = enabled,
+                ) { onEarlyAccessPrompt(prompt.action) }.apply {
+                    (layoutParams as LinearLayout.LayoutParams).topMargin = dp(Space.SM)
+                },
+            )
+        }
     }
 }
 

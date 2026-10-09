@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.sync
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
+import com.vinicius741.webnovelarchiver.domain.model.PatreonSignInIssue
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonPost
@@ -63,19 +64,30 @@ class PatreonChapterSync(
                         lastCheckedAt = checkedAt,
                         lockedCount = plan.lockedCount + unreadable,
                         lastError = statusMessage(selection.anchorFound, plan.lockedCount + unreadable),
+                        signInIssue =
+                            PatreonSignInIssue.SIGNED_OUT.takeIf {
+                                selection.anchorFound && plan.lockedCount + unreadable > 0 && !sessionPresent()
+                            },
                     ),
                 storedChapterIds = created.map { it.first.id },
             )
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            val message =
-                if (error is HttpNetworkException && error.statusCode in setOf(401, 403)) {
-                    "Patreon sign-in expired. Paste a new session in Settings."
-                } else {
-                    "Patreon check failed: ${error.message ?: error.javaClass.simpleName}"
+            val authRefused = error is HttpNetworkException && error.statusCode in setOf(401, 403)
+            val issue =
+                when {
+                    !authRefused -> null
+                    sessionPresent() -> PatreonSignInIssue.REJECTED
+                    else -> PatreonSignInIssue.SIGNED_OUT
                 }
-            Result(existingPatreon, link.copy(lastCheckedAt = checkedAt, lastError = message), emptyList())
+            val message =
+                when (issue) {
+                    null -> "Patreon check failed: ${error.message ?: error.javaClass.simpleName}"
+                    PatreonSignInIssue.REJECTED -> "Patreon didn't accept your saved sign-in."
+                    PatreonSignInIssue.SIGNED_OUT -> "Sign in to Patreon to check early-access chapters."
+                }
+            Result(existingPatreon, link.copy(lastCheckedAt = checkedAt, lastError = message, signInIssue = issue), emptyList())
         }
     }
 
@@ -122,7 +134,7 @@ class PatreonChapterSync(
         when {
             !anchorFound -> "No Patreon post matched a public chapter, so none were added."
             locked > 0 && !sessionPresent() -> "Sign in to Patreon to read $locked early-access ${plural(locked)}."
-            locked > 0 -> "$locked early-access ${plural(locked)} locked for this Patreon account."
+            locked > 0 -> "$locked early-access ${plural(locked)} need a tier this Patreon account doesn't have."
             else -> null
         }
 

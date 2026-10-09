@@ -219,7 +219,17 @@ data class PatreonEarlyAccessLink(
     val lockedCount: Int = 0,
     /** User-facing reason the last check could not complete; null after a clean check. */
     val lastError: String? = null,
+    /** Why the last check could not read posts for sign-in reasons; null when sign-in was not the problem. */
+    val signInIssue: PatreonSignInIssue? = null,
 )
+
+enum class PatreonSignInIssue {
+    /** No session was saved, so locked posts stayed locked. */
+    SIGNED_OUT,
+
+    /** A saved session was refused (401/403), usually because it expired. */
+    REJECTED,
+}
 
 data class PatreonRawTier(
     /** Price per month in USD cents, converted at capture time. */
