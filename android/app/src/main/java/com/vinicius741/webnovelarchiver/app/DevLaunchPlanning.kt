@@ -32,6 +32,7 @@ object DevLaunchPlanning {
         FOLLOW_UPDATES("followupdates"),
         AI_SETTINGS("aisettings"),
         CLEANUP("cleanup"),
+        PATREON("patreon"),
         ;
 
         companion object {
@@ -55,6 +56,7 @@ object DevLaunchPlanning {
             DevStartScreen.SETTINGS -> AppRoute.Settings
             DevStartScreen.AI_SETTINGS -> AppRoute.AiSettings
             DevStartScreen.CLEANUP -> AppRoute.CleanupRules
+            DevStartScreen.PATREON -> AppRoute.PatreonAccount()
             DevStartScreen.NOTIFICATIONS -> AppRoute.Notifications
             DevStartScreen.UPDATES -> AppRoute.Updates
             DevStartScreen.ADD_STORY -> AppRoute.AddStory

@@ -76,6 +76,14 @@ sealed class AppRoute(
 
     data object DataBackup : AppRoute("data_backup")
 
+    /**
+     * Patreon sign-in guide and account status. [storyId] is the novel whose Patreon card opened
+     * it, so Back returns there and a fresh sign-in can check that novel; `null` from Settings.
+     */
+    data class PatreonAccount(
+        val storyId: String? = null,
+    ) : AppRoute("patreon_account")
+
     /** An operation progress surface is intentionally not restored after process death. */
     data object Working : AppRoute("working")
 
@@ -88,6 +96,7 @@ sealed class AppRoute(
                 is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Trends -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${focus ?: ""}"
+                is PatreonAccount -> "$name:${storyId?.let(AppRouteCodec::encodeArgument).orEmpty()}"
                 else -> name
             }
 }
@@ -105,6 +114,7 @@ object AppRouteCodec {
                 is AppRoute.AiControls -> listOf(route.storyId)
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
+                is AppRoute.PatreonAccount -> listOfNotNull(route.storyId)
                 else -> emptyList()
             }
         return (listOf(route.name) + arguments.map(::hexEncode)).joinToString(":")
@@ -145,6 +155,7 @@ object AppRouteCodec {
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
             "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)
             "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
+            "patreon_account" -> if (arguments.size <= 1) AppRoute.PatreonAccount(arguments.firstOrNull()) else null
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null
             else -> null
         }

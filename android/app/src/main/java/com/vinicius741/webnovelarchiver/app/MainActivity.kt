@@ -302,6 +302,8 @@ class MainActivity :
         super.onResume()
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
         if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
+        // Returning from Firefox: refresh which setup steps are done.
+        if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
     }
 
     override fun onUserInteraction() {

@@ -129,6 +129,12 @@ internal fun ScreenHost.clipboardText(): String? {
     return clip.getItemAt(0).coerceToText(app)?.toString()
 }
 
+/** Empties the clipboard, e.g. after consuming a pasted secret so it doesn't linger there. */
+internal fun ScreenHost.clearClipboard() {
+    val clipboard = app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) clipboard.clearPrimaryClip()
+}
+
 internal fun ScreenHost.loadImage(
     source: Any?,
     image: ImageView,

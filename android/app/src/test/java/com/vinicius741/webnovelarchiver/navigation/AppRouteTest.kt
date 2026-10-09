@@ -39,6 +39,16 @@ class AppRouteTest {
     }
 
     @Test
+    fun `patreon account route round trips with and without a story`() {
+        val fromSettings = AppRoute.PatreonAccount()
+        assertEquals(fromSettings, AppRouteCodec.decode(AppRouteCodec.encode(fromSettings)))
+
+        val fromStory = AppRoute.PatreonAccount("story:/1")
+        assertEquals(fromStory, AppRouteCodec.decode(AppRouteCodec.encode(fromStory)))
+        assertNotEquals(fromSettings.stableKey, fromStory.stableKey)
+    }
+
+    @Test
     fun `codec rejects corrupt or unknown routes`() {
         assertNull(AppRouteCodec.decode("reader:zz:00"))
         assertNull(AppRouteCodec.decode("reader:00"))

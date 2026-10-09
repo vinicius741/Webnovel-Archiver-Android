@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.feature.settings.showAiSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
+import com.vinicius741.webnovelarchiver.feature.settings.showPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.feature.settings.showTabs
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
@@ -50,6 +51,7 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         AppRoute.Tabs -> showTabs()
         AppRoute.CleanupRules -> showCleanupRules()
         AppRoute.DataBackup -> showDataBackup()
+        is AppRoute.PatreonAccount -> showPatreonAccount(route.storyId)
         AppRoute.Working -> showLibrary()
     }
 }

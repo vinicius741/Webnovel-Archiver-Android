@@ -62,6 +62,10 @@ class DevLaunchPlanningTest {
             AppRoute.CleanupRules,
             DevLaunchPlanning.resolve("cleanup", null, null, provider),
         )
+        assertEquals(
+            AppRoute.PatreonAccount(),
+            DevLaunchPlanning.resolve("patreon", null, null, provider),
+        )
     }
 
     @Test

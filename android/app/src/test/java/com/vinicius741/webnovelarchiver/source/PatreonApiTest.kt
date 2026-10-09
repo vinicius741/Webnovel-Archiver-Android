@@ -73,14 +73,44 @@ class PatreonApiTest {
     }
 
     @Test
-    fun `session cookie values are normalized and read from cookie headers`() {
-        assertEquals("abc123", PatreonSession.normalizePastedValue("  session_id=abc123; Path=/ "))
-        assertEquals("abc123", PatreonSession.normalizePastedValue("\"abc123\""))
-        assertNull(PatreonSession.normalizePastedValue("   "))
-        assertNull(PatreonSession.normalizePastedValue("two words"))
+    fun `session cookie values are read from cookie headers`() {
         assertEquals("v", PatreonSession.cookieValue("a=1; session_id=v; b=2"))
         assertNull(PatreonSession.cookieValue("a=1; session_id="))
         assertNull(PatreonSession.cookieValue(null))
+    }
+
+    @Test
+    fun `pasted session ids are found in bare values, pairs, and header strings`() {
+        assertEquals(PatreonSession.Paste.Found("abc123"), PatreonSession.parsePaste("  session_id=abc123; Path=/ "))
+        assertEquals(PatreonSession.Paste.Found("abc123"), PatreonSession.parsePaste("\"abc123\""))
+        assertEquals(PatreonSession.Paste.Found("ab-c_1=="), PatreonSession.parsePaste("ab-c_1=="))
+        assertEquals(PatreonSession.Paste.Found("v"), PatreonSession.parsePaste("patreon_device_id=d; session_id=v; analytics=x"))
+        assertEquals(PatreonSession.Paste.Empty, PatreonSession.parsePaste("   "))
+        assertEquals(PatreonSession.Paste.Empty, PatreonSession.parsePaste(null))
+        assertEquals(PatreonSession.Paste.Unrecognized, PatreonSession.parsePaste("two words"))
+        assertEquals(PatreonSession.Paste.CookiesWithoutSession, PatreonSession.parsePaste("patreon_device_id=d; analytics=x"))
+    }
+
+    @Test
+    fun `pasted session ids are found in Cookie-Editor exports`() {
+        val json =
+            """
+            [{"domain":".patreon.com","name":"patreon_device_id","value":"d"},
+             {"domain":".patreon.com","httpOnly":true,"name":"session_id","path":"/","value":"secret-1"}]
+            """.trimIndent()
+        assertEquals(PatreonSession.Paste.Found("secret-1"), PatreonSession.parsePaste(json))
+        assertEquals(
+            PatreonSession.Paste.CookiesWithoutSession,
+            PatreonSession.parsePaste("""[{"name":"patreon_device_id","value":"d"}]"""),
+        )
+
+        val netscape =
+            listOf(
+                "# Netscape HTTP Cookie File",
+                ".patreon.com\tTRUE\t/\tTRUE\t1790000000\tpatreon_device_id\td",
+                ".patreon.com\tTRUE\t/\tTRUE\t1790000000\tsession_id\tsecret-2",
+            ).joinToString("\n")
+        assertEquals(PatreonSession.Paste.Found("secret-2"), PatreonSession.parsePaste(netscape))
     }
 
     @Test
