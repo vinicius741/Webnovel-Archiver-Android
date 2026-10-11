@@ -198,6 +198,7 @@ private fun recentRequestRow(
         when (record.feature) {
             "description" -> "Description"
             "cover_selection" -> "Automatic cover selection"
+            "description_selection" -> "Automatic description selection"
             "cover_prompt" -> "Cover prompt"
             "cover_image" -> "Cover image"
             else -> record.feature.takeIf(String::isNotBlank) ?: "AI request"

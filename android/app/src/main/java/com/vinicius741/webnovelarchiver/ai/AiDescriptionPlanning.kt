@@ -2,8 +2,9 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 
-/** Pure planning for AI-generated descriptions: chapter selection, prompt build, reply post-processing. */
+/** Pure planning for AI-generated descriptions: manual chapter selection, prompt build, reply post-processing. */
 object AiDescriptionPlanning {
+    /** Chapters automatic selection keeps; the decision model picks them (see [DescriptionEvidencePlanning]). */
     const val CONTEXT_CHAPTER_COUNT = 5
 
     /** Per-chapter plain-text cap (~3k tokens) — fits a typical full chapter. */
@@ -41,31 +42,29 @@ object AiDescriptionPlanning {
         return hasAiDescription && (story.showAiDescription || !hasSourceDescription)
     }
 
-    fun selectContextChapters(story: Story): List<Int> =
-        story.chapters
-            .withIndex()
-            .filter { it.value.downloaded }
-            .take(CONTEXT_CHAPTER_COUNT)
-            .map { it.index }
+    /** No manual description selection: the decision model picks the context chapters. */
+    fun isAutomatic(story: Story): Boolean = story.aiContextChapterIndices.isNullOrEmpty()
 
     /**
-     * null/empty [explicit] means the default: the first [CONTEXT_CHAPTER_COUNT] downloaded
-     * chapters. Explicit entries are kept only where still downloaded (sync may have replaced the
-     * list), de-duplicated and sorted for deterministic prompts.
+     * Manual selection entries kept only where still downloaded (sync may have replaced the list),
+     * de-duplicated and sorted for deterministic prompts. null/empty [explicit] resolves to nothing:
+     * automatic mode picks its chapters with the decision model instead.
      */
     fun resolveContextChapters(
         story: Story,
-        explicit: List<Int>? = null,
+        explicit: List<Int>?,
     ): List<Int> {
-        if (explicit == null || explicit.isEmpty()) return selectContextChapters(story)
-        val downloaded = story.chapters.indices.filter { story.chapters[it].downloaded }
-        return explicit.filter { it in downloaded }.distinct().sorted()
+        if (explicit.isNullOrEmpty()) return emptyList()
+        return explicit.distinct().sorted().filter { it in story.chapters.indices && story.chapters[it].downloaded }
     }
 
     /** Row label; the resolved size may be smaller than saved if chapters stopped being downloaded. */
-    fun contextChaptersLabel(story: Story): String =
-        if (story.aiContextChapterIndices == null) {
-            "First $CONTEXT_CHAPTER_COUNT downloaded (default)"
+    fun contextChaptersLabel(
+        story: Story,
+        automaticSelection: List<Int>? = null,
+    ): String =
+        if (isAutomatic(story)) {
+            automaticSelection?.takeIf { it.isNotEmpty() }?.let { "Automatic: ${it.size} chapters" } ?: "Automatic"
         } else {
             val resolved = resolveContextChapters(story, story.aiContextChapterIndices)
             if (resolved.isEmpty()) {

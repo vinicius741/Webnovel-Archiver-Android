@@ -14,6 +14,7 @@ import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
+import com.vinicius741.webnovelarchiver.data.storage.EvidenceSelectionKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -41,7 +42,7 @@ internal fun ScreenHost.addAiContextChaptersRow(
     forCover: Boolean = false,
 ) {
     var valueView: TextView? = null
-    val automaticSelection = app.appContainer.coverEvidence.selection(story.id)
+    val automaticSelection = automaticSelection(story, forCover)
     val (selectorView, textVal) =
         container.context.makeSelectorField(
             iconRes = com.vinicius741.webnovelarchiver.R.drawable.wna_menu_book,
@@ -50,7 +51,7 @@ internal fun ScreenHost.addAiContextChaptersRow(
                 if (forCover) {
                     AiCoverContextPlanning.contextChaptersLabel(story, automaticSelection)
                 } else {
-                    AiDescriptionPlanning.contextChaptersLabel(story)
+                    AiDescriptionPlanning.contextChaptersLabel(story, automaticSelection)
                 },
         ) {
             showAiContextChapterDialog(story, forCover) { saved ->
@@ -58,7 +59,7 @@ internal fun ScreenHost.addAiContextChaptersRow(
                     if (forCover) {
                         AiCoverContextPlanning.contextChaptersLabel(saved, automaticSelection)
                     } else {
-                        AiDescriptionPlanning.contextChaptersLabel(saved)
+                        AiDescriptionPlanning.contextChaptersLabel(saved, automaticSelection)
                     }
                 // Re-render so the captured story (and this dialog's next open) sees the
                 // saved selection instead of the pre-save snapshot.
@@ -71,7 +72,17 @@ internal fun ScreenHost.addAiContextChaptersRow(
     container.addView(selectorView)
 }
 
-/** Multi-select dialog over the story's downloaded chapters, with a Reset-to-default action. */
+/** Chapters the decision model kept on the story's last automatic scan for this generator, if any. */
+private fun ScreenHost.automaticSelection(
+    story: Story,
+    forCover: Boolean,
+): List<Int>? =
+    app.appContainer.chapterEvidence.selection(
+        story.id,
+        if (forCover) EvidenceSelectionKind.COVER else EvidenceSelectionKind.DESCRIPTION,
+    )
+
+/** Multi-select dialog over the story's downloaded chapters, with a Reset-to-automatic action. */
 private fun ScreenHost.showAiContextChapterDialog(
     story: Story,
     forCover: Boolean,
@@ -81,7 +92,6 @@ private fun ScreenHost.showAiContextChapterDialog(
     val shapes = ThemeManager.shapes
     val downloaded = story.chapters.withIndex().filter { it.value.downloaded }
     val config = contextPickerConfig(story, forCover)
-    val defaults = config.defaults
     val checked = config.checked
 
     val dialogView =
@@ -216,15 +226,15 @@ private fun ScreenHost.showAiContextChapterDialog(
                 )
                 addView(
                     makeButton(app, "Save", Btn.FILLED) {
-                        // An empty selection is not a saveable state: resolveContextChapters
-                        // would silently fall back to the default chapters, doing the opposite
-                        // of the user's "send none" intent.
+                        // An empty selection is not a saveable state: it would silently mean
+                        // automatic selection, the opposite of the user's "send none" intent.
                         if (checked.isEmpty()) {
-                            toast("Select at least one chapter, or use Reset to default")
+                            toast("Select at least one chapter, or use Reset to automatic selection")
                             return@makeButton
                         }
-                        // An explicit cover selection always bypasses the decision-model scan, including all chapters.
-                        applySelection(if (forCover) checked.sorted() else checked.takeIf { it != defaults }?.sorted())
+                        // An explicit selection always bypasses the decision-model scan, even when it
+                        // matches the last automatic pick.
+                        applySelection(checked.sorted())
                     },
                 )
             }
@@ -239,7 +249,6 @@ private fun ScreenHost.showAiContextChapterDialog(
 private const val MAX_RENDERED_CHAPTERS = 80
 
 private data class ContextPickerConfig(
-    val defaults: Set<Int>,
     val checked: MutableSet<Int>,
     val hint: String,
     val resetLabel: String,
@@ -250,33 +259,25 @@ private fun ScreenHost.contextPickerConfig(
     story: Story,
     forCover: Boolean,
 ): ContextPickerConfig {
-    val defaults = if (forCover) AiCoverContextPlanning.selectContextChapters(story) else AiDescriptionPlanning.selectContextChapters(story)
-    val saved = if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices
-    val automatic = app.appContainer.coverEvidence.selection(story.id) ?: emptyList()
-    // Automatic cover mode has no persisted manual selection — the picker shows the chapters
-    // the decision model kept on the last scan, or nothing before the first scan ever runs.
-    val initialChecked =
-        when {
-            saved != null -> saved
-            forCover -> automatic
-            else -> defaults
-        }
+    val saved = (if (forCover) story.aiCoverContextChapterIndices else story.aiContextChapterIndices)?.takeIf { it.isNotEmpty() }
+    val automatic = automaticSelection(story, forCover).orEmpty()
+    // Automatic mode has no persisted manual selection — the picker shows the chapters the
+    // decision model kept on the last scan, or nothing before the first scan ever runs.
     return ContextPickerConfig(
-        defaults = defaults.toSet(),
-        checked = initialChecked.toMutableSet(),
+        checked = (saved ?: automatic).toMutableSet(),
         hint =
-            if (forCover) {
-                if (saved == null && automatic.isNotEmpty()) {
+            when {
+                saved == null && automatic.isNotEmpty() ->
                     "The last automatic scan picked these chapters. " +
                         "Adjust them and Save to send a manual selection instead."
-                } else {
+                forCover ->
                     "Automatic mode scores chapters with the decision model until enough useful ones are found. " +
                         "Check chapters to send a manual selection instead, without the scan."
-                }
-            } else {
-                "Only downloaded chapters can be sent."
+                else ->
+                    "Automatic mode scores the opening chapters with the decision model and keeps those that " +
+                        "establish the premise without spoilers. Check chapters to send a manual selection instead."
             },
-        resetLabel = if (forCover) "Reset to automatic selection" else "Reset to default (first downloaded)",
+        resetLabel = "Reset to automatic selection",
         save = { indices ->
             if (forCover) repository.setAiCoverContextChapters(story.id, indices) else repository.setAiContextChapters(story.id, indices)
         },

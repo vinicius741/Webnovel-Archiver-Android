@@ -71,7 +71,7 @@ internal fun ScreenHost.addAiModelsCard(container: LinearLayout) {
                 kind = AiModelRowKind.IMAGE,
             ),
             ModelRow(
-                label = "Cover selection model",
+                label = "Chapter selection model",
                 current = { repository.aiSettings.get().decisionModel },
                 save = { settings, id, _ -> settings.copy(decisionModel = id) },
                 kind = AiModelRowKind.DECISIONS,

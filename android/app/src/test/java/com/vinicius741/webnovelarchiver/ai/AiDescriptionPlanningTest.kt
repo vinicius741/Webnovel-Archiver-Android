@@ -3,40 +3,22 @@ package com.vinicius741.webnovelarchiver.ai
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiDescriptionPlanningTest {
     @Test
-    fun `selects first five downloaded chapters in reading order`() {
+    fun `no manual selection means automatic mode and resolves to no fixed chapters`() {
         val story = storyWithDownloads(downloaded = listOf(false) + List(7) { true })
 
-        val indices = AiDescriptionPlanning.selectContextChapters(story)
-
-        // Index 0 is not downloaded, so context starts at index 1 and stops at five chapters.
-        assertEquals(listOf(1, 2, 3, 4, 5), indices)
-    }
-
-    @Test
-    fun `selectContextChapters returns empty when nothing is downloaded`() {
-        val story = storyWithDownloads(downloaded = List(3) { false })
-
-        assertEquals(emptyList<Int>(), AiDescriptionPlanning.selectContextChapters(story))
-    }
-
-    @Test
-    fun `resolveContextChapters without explicit selection matches the default`() {
-        val story = storyWithDownloads(downloaded = listOf(false) + List(7) { true })
-
-        assertEquals(
-            AiDescriptionPlanning.selectContextChapters(story),
-            AiDescriptionPlanning.resolveContextChapters(story),
-        )
-        // Null and empty explicit selections both mean "no user choice" — the default applies.
-        assertEquals(
-            AiDescriptionPlanning.selectContextChapters(story),
-            AiDescriptionPlanning.resolveContextChapters(story, emptyList()),
-        )
+        assertTrue(AiDescriptionPlanning.isAutomatic(story))
+        assertTrue(AiDescriptionPlanning.isAutomatic(story.copy(aiContextChapterIndices = mutableListOf())))
+        assertFalse(AiDescriptionPlanning.isAutomatic(story.copy(aiContextChapterIndices = mutableListOf(2))))
+        // Automatic mode picks chapters with the decision model; nothing is resolved up front.
+        assertEquals(emptyList<Int>(), AiDescriptionPlanning.resolveContextChapters(story, null))
+        assertEquals(emptyList<Int>(), AiDescriptionPlanning.resolveContextChapters(story, emptyList()))
     }
 
     @Test
@@ -70,14 +52,15 @@ class AiDescriptionPlanningTest {
     }
 
     @Test
-    fun `contextChaptersLabel distinguishes default explicit and stale selections`() {
+    fun `contextChaptersLabel distinguishes automatic explicit and stale selections`() {
         val story = storyWithDownloads(downloaded = List(6) { true })
 
-        assertEquals(
-            "First ${AiDescriptionPlanning.CONTEXT_CHAPTER_COUNT} downloaded (default)",
-            AiDescriptionPlanning.contextChaptersLabel(story),
-        )
-        assertEquals("2 selected", AiDescriptionPlanning.contextChaptersLabel(story.copy(aiContextChapterIndices = mutableListOf(1, 4))))
+        assertEquals("Automatic", AiDescriptionPlanning.contextChaptersLabel(story))
+        assertEquals("Automatic", AiDescriptionPlanning.contextChaptersLabel(story, emptyList()))
+        assertEquals("Automatic: 3 chapters", AiDescriptionPlanning.contextChaptersLabel(story, listOf(0, 2, 4)))
+        val manual = story.copy(aiContextChapterIndices = mutableListOf(1, 4))
+        // A manual selection wins over the last automatic scan.
+        assertEquals("2 selected", AiDescriptionPlanning.contextChaptersLabel(manual, listOf(0, 2, 4)))
         assertEquals(
             "None — selection is stale",
             AiDescriptionPlanning.contextChaptersLabel(story.copy(aiContextChapterIndices = mutableListOf(99))),

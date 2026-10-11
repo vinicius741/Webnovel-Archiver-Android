@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.cleanup.HtmlCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -20,22 +20,22 @@ import java.util.UUID
 import kotlin.coroutines.coroutineContext
 
 /**
- * Validates downloaded chapters with the chosen decision model in batches of the target size, in a
- * book-spanning order, and stops as soon as enough useful chapters are found, so cost scales with
- * what the novel needs, not its length.
+ * Validates downloaded chapters with the chosen decision model in batches of the target size, in the
+ * [EvidenceRubric]'s scan order, and stops as soon as enough useful chapters are found, so cost
+ * scales with what the novel needs, not its length.
  */
-internal class CoverEvidenceSelector(
+internal class ChapterEvidenceSelector(
     private val readChapter: suspend (Chapter) -> String?,
     private val saveUsage: suspend (AiUsageRecord) -> Unit,
-    private val client: CoverDecisionClient,
-    private val cache: CoverEvidenceStore,
+    private val client: DecisionClient,
+    private val cache: ChapterEvidenceStore,
 ) {
-    constructor(repository: AppRepository, client: CoverDecisionClient, cache: CoverEvidenceStore) :
+    constructor(repository: AppRepository, client: DecisionClient, cache: ChapterEvidenceStore) :
         this(repository::readChapter, { repository.recordAiUsage(it) }, client, cache)
 
     /** One judged chapter; [cached] marks a content-addressed reuse that did not bill. */
     private data class Outcome(
-        val scored: CoverEvidencePlanning.ScoredChapter?,
+        val scored: ChapterEvidencePlanning.ScoredChapter?,
         val cached: Boolean,
         val readable: Boolean,
     )
@@ -45,16 +45,17 @@ internal class CoverEvidenceSelector(
         apiKey: String,
         model: String,
         targetChapters: Int,
+        rubric: EvidenceRubric,
         progress: (String) -> Unit,
     ): List<AiDescriptionPlanning.ChapterText> =
         withContext(Dispatchers.IO) {
             val operationId = UUID.randomUUID().toString()
             val downloaded =
                 story.chapters.withIndex().filter { it.value.downloaded }.let { chapters ->
-                    CoverEvidencePlanning.scanOrder(chapters.size).map(chapters::get)
+                    rubric.scanOrder(chapters.size).map(chapters::get)
                 }
             val target = targetChapters.coerceIn(1, maxOf(1, downloaded.size))
-            val useful = mutableListOf<CoverEvidencePlanning.ScoredChapter>()
+            val useful = mutableListOf<ChapterEvidencePlanning.ScoredChapter>()
             var scanned = 0
             var reused = 0
             var readable = false
@@ -63,15 +64,15 @@ internal class CoverEvidenceSelector(
                 val outcomes =
                     coroutineScope {
                         batch.chunked(CONCURRENT_CALLS).flatMap { group ->
-                            group.map { entry -> async { judge(story, entry, apiKey, model, operationId) } }.awaitAll()
+                            group.map { entry -> async { judge(story, entry, apiKey, model, rubric, operationId) } }.awaitAll()
                         }
                     }
                 scanned += batch.size
                 reused += outcomes.count { it.cached }
                 readable = readable || outcomes.any { it.readable }
-                useful += outcomes.mapNotNull { it.scored }.filter { CoverEvidencePlanning.isUseful(it.judgments) }
+                useful += outcomes.mapNotNull { it.scored }.filter { it.assessment.useful }
                 progress(
-                    "Selecting cover evidence: ${minOf(useful.size, target)}/$target chapters found " +
+                    "Selecting ${rubric.progressSubject}: ${minOf(useful.size, target)}/$target chapters found " +
                         "($scanned scanned${if (reused > 0) ", $reused cached" else ""})",
                 )
                 if (useful.size >= target) break
@@ -79,11 +80,9 @@ internal class CoverEvidenceSelector(
             check(readable) {
                 "Downloaded chapter files are missing; re-download the novel's chapters"
             }
-            check(useful.isNotEmpty()) {
-                "No useful cover evidence found. Select context chapters manually in Generation options."
-            }
+            check(useful.isNotEmpty()) { rubric.noEvidenceMessage }
             cache.trim()
-            CoverEvidencePlanning
+            ChapterEvidencePlanning
                 .choose(useful, target)
                 .mapNotNull { scored ->
                     val chapter = story.chapters[scored.sample.chapter - 1]
@@ -101,27 +100,28 @@ internal class CoverEvidenceSelector(
         entry: IndexedValue<Chapter>,
         apiKey: String,
         model: String,
+        rubric: EvidenceRubric,
         operationId: String,
     ): Outcome {
         val html = readChapter(entry.value) ?: entry.value.content ?: return Outcome(null, cached = false, readable = false)
         val sample =
-            CoverEvidencePlanning.sample(entry.index + 1, entry.value.title, HtmlCleanup.htmlToFormattedText(html))
+            ChapterEvidencePlanning.sample(entry.index + 1, entry.value.title, HtmlCleanup.htmlToFormattedText(html))
                 ?: return Outcome(null, cached = false, readable = true)
-        val body = CoverDecisionClient.request(CoverEvidencePlanning.state(story, sample), model)
-        val key = CoverEvidencePlanning.cacheKey(body)
-        val saved = cache.read(key)?.let { runCatching { CoverDecisionClient.parse(it) }.getOrNull() }
-        val judgments =
+        val body = rubric.request(story, sample, model)
+        val key = ChapterEvidencePlanning.cacheKey(body)
+        val saved = cache.read(key)?.let { runCatching { rubric.assess(it) }.getOrNull() }
+        val assessment =
             saved
                 ?: client
                     .evaluate(
                         apiKey,
                         body,
-                    ) { json, code -> recordUsage(story.id, operationId, model, json, code) }
+                    ) { json, code -> recordUsage(story.id, operationId, model, rubric, json, code) }
                     .let { response ->
-                        cache.write(key, response)
-                        CoverDecisionClient.parse(response)
+                        // Only well-formed judgments are cached; an invalid one fails this scan and is asked again next time.
+                        rubric.assess(response).also { cache.write(key, response) }
                     }
-        return Outcome(CoverEvidencePlanning.ScoredChapter(sample, judgments), cached = saved != null, readable = true)
+        return Outcome(ChapterEvidencePlanning.ScoredChapter(sample, assessment), cached = saved != null, readable = true)
     }
 
     @Suppress("TooGenericExceptionCaught") // Usage must not turn a completed scan into another billed request.
@@ -129,6 +129,7 @@ internal class CoverEvidenceSelector(
         storyId: String,
         operationId: String,
         requestedModel: String,
+        rubric: EvidenceRubric,
         json: JsonObject,
         code: Int,
     ) {
@@ -146,13 +147,13 @@ internal class CoverEvidenceSelector(
                     id = UUID.randomUUID().toString(),
                     operationId = operationId,
                     storyId = storyId,
-                    feature = "cover_selection",
+                    feature = rubric.usageFeature,
                     model = scalar(json, "model") ?: requestedModel,
                     generationId = scalar(json, "id"),
                     promptTokens = tokens("input_tokens"),
                     completionTokens = tokens("output_tokens"),
                     costUsd = AiUsagePlanning.normalizeCost(scalar(usage, "cost")),
-                    outcome = if (code in 200..299 && runCatching { CoverDecisionClient.parse(json) }.isSuccess) "completed" else "failed",
+                    outcome = if (code in 200..299 && runCatching { rubric.assess(json) }.isSuccess) "completed" else "failed",
                 ),
             )
         } catch (error: CancellationException) {

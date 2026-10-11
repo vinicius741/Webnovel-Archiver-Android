@@ -1,6 +1,6 @@
 package com.vinicius741.webnovelarchiver.ai
 
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -16,7 +16,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
-class CoverEvidenceSelectorTest {
+class ChapterEvidenceSelectorTest {
     private companion object {
         const val MODEL = "typesafe/jev-1.13"
     }
@@ -27,6 +27,12 @@ class CoverEvidenceSelectorTest {
       "imagery":{"type":"score","score":2},"temporary":{"type":"noul","noul":0}},
       "usage":{"input_tokens":400,"output_tokens":20}}"""
     private val weakResponse = response.replace(Regex("\"score\":\\d"), "\"score\":0")
+    private val premiseResponse = """{"answers":{
+      "protagonist":{"type":"score","score":3},"conflict":{"type":"score","score":2},
+      "setting":{"type":"score","score":1},"spoiler":{"type":"noul","noul":0.1}},
+      "usage":{"input_tokens":400,"output_tokens":20}}"""
+    private val weakPremiseResponse = premiseResponse.replace(Regex("\"score\":\\d"), "\"score\":0")
+    private val spoilerResponse = premiseResponse.replace("\"noul\":0.1", "\"noul\":0.9")
 
     /** Concurrent batches make response arrival order racy; answers are keyed to the judged chapter. */
     private fun chapterDispatcher(answer: (Int) -> MockResponse) =
@@ -58,11 +64,11 @@ class CoverEvidenceSelectorTest {
         folder: File,
         recorded: IntArray = IntArray(1),
         readChapter: suspend (Chapter) -> String? = { it.content },
-    ) = CoverEvidenceSelector(
+    ) = ChapterEvidenceSelector(
         readChapter = readChapter,
         saveUsage = { recorded[0]++ },
-        client = CoverDecisionClient(OpenRouterClient(server.url("/").toString())),
-        cache = CoverEvidenceStore(folder),
+        client = DecisionClient(OpenRouterClient(server.url("/").toString())),
+        cache = ChapterEvidenceStore(folder),
     )
 
     @Test fun `missing downloaded files direct the user to redownload without calling Jev`() =
@@ -72,7 +78,11 @@ class CoverEvidenceSelectorTest {
                 val story = Story(chapters = mutableListOf(Chapter(id = "missing", downloaded = true)))
                 val failure =
                     runCatching {
-                        selector(server, temporary.newFolder(), readChapter = { null }).select(story, "test", MODEL, 10) {}
+                        selector(
+                            server,
+                            temporary.newFolder(),
+                            readChapter = { null },
+                        ).select(story, "test", MODEL, 10, CoverEvidencePlanning) {}
                     }.exceptionOrNull()
                 assertEquals("Downloaded chapter files are missing; re-download the novel's chapters", failure?.message)
                 assertEquals(0, server.requestCount)
@@ -91,7 +101,12 @@ class CoverEvidenceSelectorTest {
                                 Chapter(id = "fallback", downloaded = true, content = "<p>A copper automaton tends an orchard.</p>"),
                             ),
                     )
-                val selected = selector(server, temporary.newFolder(), readChapter = { null }).select(story, "test", MODEL, 10) {}
+                val selected =
+                    selector(
+                        server,
+                        temporary.newFolder(),
+                        readChapter = { null },
+                    ).select(story, "test", MODEL, 10, CoverEvidencePlanning) {}
                 assertEquals(listOf(2), selected.map { it.number })
                 assertEquals(1, server.requestCount)
             }
@@ -103,7 +118,7 @@ class CoverEvidenceSelectorTest {
                 server.dispatcher = chapterDispatcher { MockResponse().setBody(weakResponse) }
                 val story = Story(chapters = mutableListOf(Chapter(id = "readable", downloaded = true)))
                 val notesOnly = selector(server, temporary.newFolder(), readChapter = { "<p>Author note</p>" })
-                val failure = runCatching { notesOnly.select(story, "test", MODEL, 10) {} }.exceptionOrNull()
+                val failure = runCatching { notesOnly.select(story, "test", MODEL, 10, CoverEvidencePlanning) {} }.exceptionOrNull()
                 assertEquals("No useful cover evidence found. Select context chapters manually in Generation options.", failure?.message)
                 assertEquals(1, server.requestCount)
             }
@@ -113,7 +128,7 @@ class CoverEvidenceSelectorTest {
         runBlocking {
             MockWebServer().use { server ->
                 server.dispatcher = chapterDispatcher { MockResponse().setBody(response) }
-                val selected = selector(server, temporary.newFolder()).select(story(30), "test", MODEL, 10) {}
+                val selected = selector(server, temporary.newFolder()).select(story(30), "test", MODEL, 10, CoverEvidencePlanning) {}
                 assertEquals(listOf(1, 3, 5, 7, 9, 13, 16, 20, 24, 28), selected.map { it.number })
                 assertEquals(10, server.requestCount)
             }
@@ -127,7 +142,7 @@ class CoverEvidenceSelectorTest {
                     chapterDispatcher { chapter ->
                         MockResponse().setBody(if (chapter % 2 == 0) response else weakResponse)
                     }
-                val selected = selector(server, temporary.newFolder()).select(story(21), "test", MODEL, 10) {}
+                val selected = selector(server, temporary.newFolder()).select(story(21), "test", MODEL, 10, CoverEvidencePlanning) {}
                 assertEquals((2..20 step 2).toList(), selected.map { it.number })
                 // Two spread batches find nine; the last unscanned chapter completes the target.
                 assertEquals(21, server.requestCount)
@@ -144,13 +159,13 @@ class CoverEvidenceSelectorTest {
                         .replace("\"output_tokens\":20", "\"output_tokens\":20,\"cost\":0.000016800123456789")
                 server.enqueue(MockResponse().setBody(receipt))
                 val selector =
-                    CoverEvidenceSelector(
+                    ChapterEvidenceSelector(
                         readChapter = { it.content },
                         saveUsage = { records += it },
-                        client = CoverDecisionClient(OpenRouterClient(server.url("/").toString())),
-                        cache = CoverEvidenceStore(temporary.newFolder()),
+                        client = DecisionClient(OpenRouterClient(server.url("/").toString())),
+                        cache = ChapterEvidenceStore(temporary.newFolder()),
                     )
-                selector.select(story(1), "openrouter-key", MODEL, 1) {}
+                selector.select(story(1), "openrouter-key", MODEL, 1, CoverEvidencePlanning) {}
                 val record = records.single()
                 assertEquals("cover_selection", record.feature)
                 assertEquals("gen-dec-test", record.generationId)
@@ -159,7 +174,7 @@ class CoverEvidenceSelectorTest {
                 assertEquals(400L, record.promptTokens)
                 assertEquals(20L, record.completionTokens)
                 assertEquals("completed", record.outcome)
-                selector.select(story(1), "replacement-openrouter-key", MODEL, 1) {}
+                selector.select(story(1), "replacement-openrouter-key", MODEL, 1, CoverEvidencePlanning) {}
                 assertEquals(1, records.size)
                 assertEquals(1, server.requestCount)
             }
@@ -171,12 +186,12 @@ class CoverEvidenceSelectorTest {
                 val records = mutableListOf<AiUsageRecord>()
                 for (cost in listOf("", ",\"cost\":-1", ",\"cost\":\"invalid\"")) {
                     server.enqueue(MockResponse().setBody(response.replace("\"output_tokens\":20", "\"output_tokens\":20$cost")))
-                    CoverEvidenceSelector(
+                    ChapterEvidenceSelector(
                         readChapter = { it.content },
                         saveUsage = { records += it },
-                        client = CoverDecisionClient(OpenRouterClient(server.url("/").toString())),
-                        cache = CoverEvidenceStore(temporary.newFolder()),
-                    ).select(story(1), "test", MODEL, 1) {}
+                        client = DecisionClient(OpenRouterClient(server.url("/").toString())),
+                        cache = ChapterEvidenceStore(temporary.newFolder()),
+                    ).select(story(1), "test", MODEL, 1, CoverEvidencePlanning) {}
                 }
                 assertTrue(records.all { it.costUsd == null })
                 assertTrue(records.all { it.outcome == "completed" })
@@ -202,18 +217,63 @@ class CoverEvidenceSelectorTest {
                 val recorded = IntArray(1)
                 assertTrue(
                     runCatching {
-                        selector(server, folder, recorded = recorded).select(story, "test", MODEL, 1) {}
+                        selector(server, folder, recorded = recorded).select(story, "test", MODEL, 1, CoverEvidencePlanning) {}
                     }.isFailure,
                 )
                 assertEquals(2, server.requestCount)
                 assertEquals(2, recorded[0])
-                val resumed = selector(server, folder, recorded = recorded).select(story, "test", MODEL, 1) {}
+                val resumed = selector(server, folder, recorded = recorded).select(story, "test", MODEL, 1, CoverEvidencePlanning) {}
                 // Chapter 1 was reused from the cache; only the previously failed chapter billed.
                 assertEquals(3, server.requestCount)
                 assertEquals(listOf(3), resumed.map { it.number })
                 assertEquals(3, recorded[0])
-                assertEquals(resumed, selector(server, folder).select(story, "test", MODEL, 1) {})
+                assertEquals(resumed, selector(server, folder).select(story, "test", MODEL, 1, CoverEvidencePlanning) {})
                 assertEquals(3, server.requestCount)
+            }
+        }
+
+    @Test fun `description scan reads the opening in order and records its own usage feature`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                server.dispatcher = chapterDispatcher { MockResponse().setBody(premiseResponse) }
+                val records = mutableListOf<AiUsageRecord>()
+                val selected =
+                    ChapterEvidenceSelector(
+                        readChapter = { it.content },
+                        saveUsage = { records += it },
+                        client = DecisionClient(OpenRouterClient(server.url("/").toString())),
+                        cache = ChapterEvidenceStore(temporary.newFolder()),
+                    ).select(story(30), "test", MODEL, 5, DescriptionEvidencePlanning) {}
+                assertEquals(listOf(1, 2, 3, 4, 5), selected.map { it.number })
+                assertEquals(5, server.requestCount)
+                assertTrue(records.all { it.feature == "description_selection" })
+            }
+        }
+
+    @Test fun `description scan skips chapters without premise and continues in reading order`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                // Chapters 1 and 2 are author notes; the next batch completes the target.
+                server.dispatcher =
+                    chapterDispatcher { chapter ->
+                        MockResponse().setBody(if (chapter <= 2) weakPremiseResponse else premiseResponse)
+                    }
+                val selected = selector(server, temporary.newFolder()).select(story(30), "test", MODEL, 5, DescriptionEvidencePlanning) {}
+                assertEquals(listOf(3, 4, 5, 6, 7), selected.map { it.number })
+                assertEquals(10, server.requestCount)
+            }
+        }
+
+    @Test fun `description scan never keeps spoilers and stops at the opening window`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                server.dispatcher = chapterDispatcher { MockResponse().setBody(spoilerResponse) }
+                val failure =
+                    runCatching {
+                        selector(server, temporary.newFolder()).select(story(40), "test", MODEL, 5, DescriptionEvidencePlanning) {}
+                    }.exceptionOrNull()
+                assertEquals(DescriptionEvidencePlanning.noEvidenceMessage, failure?.message)
+                assertEquals(DescriptionEvidencePlanning.MAX_SCANNED_CHAPTERS, server.requestCount)
             }
         }
 }

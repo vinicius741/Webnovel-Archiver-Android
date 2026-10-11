@@ -15,7 +15,7 @@ import org.junit.Test
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class CoverDecisionClientTest {
+class DecisionClientTest {
     private val response = """{"id":"gen-dec-test","model":"typesafe/jev-1.13-20260917","answers":{
         "appearance":{"type":"score","score":3},
         "premise":{"type":"score","score":1.5},
@@ -27,9 +27,9 @@ class CoverDecisionClientTest {
         runBlocking {
             MockWebServer().use { server ->
                 server.enqueue(MockResponse().setBody(response))
-                val client = CoverDecisionClient(OpenRouterClient(server.url("/").toString()))
-                val body = CoverDecisionClient.request(JsonObject().apply { addProperty("passage", "A copper automaton") }, "liquid/d1")
-                val answer = CoverDecisionClient.parse(client.evaluate("test-key", body))
+                val client = DecisionClient(OpenRouterClient(server.url("/").toString()))
+                val body = CoverEvidencePlanning.request(JsonObject().apply { addProperty("passage", "A copper automaton") }, "liquid/d1")
+                val answer = CoverEvidencePlanning.parse(client.evaluate("test-key", body))
                 val request = server.takeRequest()
                 assertEquals("Bearer test-key", request.getHeader("Authorization"))
                 assertEquals("/api/alpha/decisions", request.path)
@@ -52,7 +52,7 @@ class CoverDecisionClientTest {
                 server.enqueue(MockResponse().setResponseCode(401).setBody("sensitive provider detail"))
                 val failure =
                     runCatching {
-                        CoverDecisionClient(
+                        DecisionClient(
                             OpenRouterClient(server.url("/").toString()),
                         ).evaluate("secret", JsonObject())
                     }.exceptionOrNull()
@@ -69,7 +69,7 @@ class CoverDecisionClientTest {
                 server.enqueue(MockResponse().setResponseCode(429))
                 server.enqueue(MockResponse().setBody(response))
                 val statuses = mutableListOf<Int>()
-                CoverDecisionClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) { _, code ->
+                DecisionClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) { _, code ->
                     statuses +=
                         code
                 }
@@ -85,7 +85,7 @@ class CoverDecisionClientTest {
                     val statuses = mutableListOf<Int>()
                     val failure =
                         runCatching {
-                            CoverDecisionClient(OpenRouterClient(server.url("/").toString()))
+                            DecisionClient(OpenRouterClient(server.url("/").toString()))
                                 .evaluate("test", JsonObject()) { _, status -> statuses += status }
                         }.exceptionOrNull()
                     assertTrue(failure is IOException)
@@ -103,7 +103,7 @@ class CoverDecisionClientTest {
                 val statuses = mutableListOf<Int>()
                 val failure =
                     runCatching {
-                        CoverDecisionClient(OpenRouterClient(server.url("/").toString()))
+                        DecisionClient(OpenRouterClient(server.url("/").toString()))
                             .evaluate("test", JsonObject()) { _, code -> statuses += code }
                     }.exceptionOrNull()
                 assertTrue(failure is IOException)
@@ -116,14 +116,14 @@ class CoverDecisionClientTest {
         val json = JsonParser.parseString(response).asJsonObject
         val missing = json.deepCopy().apply { getAsJsonObject("answers").remove("premise") }
         val wrongRange = json.deepCopy().apply { getAsJsonObject("answers").getAsJsonObject("appearance").addProperty("score", 3.5) }
-        for (bad in listOf(JsonObject(), missing, wrongRange)) assertTrue(runCatching { CoverDecisionClient.parse(bad) }.isFailure)
+        for (bad in listOf(JsonObject(), missing, wrongRange)) assertTrue(runCatching { CoverEvidencePlanning.parse(bad) }.isFailure)
     }
 
     @Test fun `cancellation stops waiting for the network`() =
         runBlocking {
             MockWebServer().use { server ->
                 server.enqueue(MockResponse().setBody(response).setBodyDelay(3, TimeUnit.SECONDS))
-                val job = launch { CoverDecisionClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) }
+                val job = launch { DecisionClient(OpenRouterClient(server.url("/").toString())).evaluate("test", JsonObject()) }
                 kotlinx.coroutines.delay(100)
                 withTimeout(1000) { job.cancelAndJoin() }
                 assertTrue(job.isCancelled)
@@ -133,8 +133,8 @@ class CoverDecisionClientTest {
     @Test fun `answers without a type discriminator parse but a mismatched type is rejected`() {
         val json = JsonParser.parseString(response).asJsonObject
         val untyped = json.deepCopy().apply { getAsJsonObject("answers").entrySet().forEach { it.value.asJsonObject.remove("type") } }
-        assertEquals(1.0, CoverDecisionClient.parse(untyped).appearance, 0.0)
+        assertEquals(1.0, CoverEvidencePlanning.parse(untyped).appearance, 0.0)
         val mismatched = json.deepCopy().apply { getAsJsonObject("answers").getAsJsonObject("temporary").addProperty("type", "score") }
-        assertTrue(runCatching { CoverDecisionClient.parse(mismatched) }.isFailure)
+        assertTrue(runCatching { CoverEvidencePlanning.parse(mismatched) }.isFailure)
     }
 }

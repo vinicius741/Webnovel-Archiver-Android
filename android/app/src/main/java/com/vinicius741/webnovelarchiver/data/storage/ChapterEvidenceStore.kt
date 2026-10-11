@@ -5,24 +5,34 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
 
-/**
- * Disposable, device-local cover-evidence state: content-addressed decision-model score responses plus the
- * last automatic chapter selection per story (a display hint for the cover context picker, not a
- * manual override). Contains no API keys or chapter text; excluded from backups. Loss just means
- * the picker shows the pre-scan empty state until the next generation.
- */
-class CoverEvidenceStore(
-    cacheRoot: File,
+/** Which generator an automatic chapter selection was made for; each keeps its own last selection. */
+enum class EvidenceSelectionKind(
+    internal val fileName: String,
 ) {
+    COVER("cover_evidence_selections.json"),
+    DESCRIPTION("description_evidence_selections.json"),
+}
+
+/**
+ * Disposable, device-local chapter-evidence state: content-addressed decision-model score responses
+ * (cover and description requests hash differently, so they share one directory) plus the last
+ * automatic chapter selection per story and [EvidenceSelectionKind] (a display hint for the context
+ * picker, not a manual override). Contains no API keys or chapter text; excluded from backups. Loss
+ * just means the picker shows the pre-scan state until the next generation.
+ */
+class ChapterEvidenceStore(
+    private val cacheRoot: File,
+) {
+    // The directory keeps its original name so cover scores cached before descriptions joined stay valid.
     private val directory = File(cacheRoot, "cover_evidence")
-    private val selectionsFile = File(cacheRoot, "cover_evidence_selections.json")
     private val selectionLock = Any()
 
     // Construction runs on AppContainer's IO setup; render-time reads never touch disk or wait
     // for score-cache maintenance. Published maps and their lists are never mutated in place.
 
     @Volatile
-    private var selections: Map<String, List<Int>> = loadSelections()
+    private var selections: Map<EvidenceSelectionKind, Map<String, List<Int>>> =
+        EvidenceSelectionKind.entries.associateWith { loadSelections(selectionsFile(it)) }
 
     @Synchronized
     fun read(key: String): JsonObject? =
@@ -49,17 +59,24 @@ class CoverEvidenceStore(
             ?.forEach { it.delete() }
     }
 
-    fun selection(storyId: String): List<Int>? = selections[storyId]?.toList()
+    fun selection(
+        storyId: String,
+        kind: EvidenceSelectionKind = EvidenceSelectionKind.COVER,
+    ): List<Int>? = selections[kind]?.get(storyId)?.toList()
 
     fun record(
         storyId: String,
         chapterIndices: List<Int>,
+        kind: EvidenceSelectionKind = EvidenceSelectionKind.COVER,
     ) {
         synchronized(selectionLock) {
-            selections = selections + (storyId to chapterIndices.toList())
-            runCatching { AtomicFileWrites.writeText(selectionsFile, serialize(selections)) }
+            val updated = selections[kind].orEmpty() + (storyId to chapterIndices.toList())
+            selections = selections + (kind to updated)
+            runCatching { AtomicFileWrites.writeText(selectionsFile(kind), serialize(updated)) }
         }
     }
+
+    private fun selectionsFile(kind: EvidenceSelectionKind) = File(cacheRoot, kind.fileName)
 
     private fun serialize(selections: Map<String, List<Int>>): String {
         val root = JsonObject()
@@ -71,7 +88,7 @@ class CoverEvidenceStore(
         return root.toString()
     }
 
-    private fun loadSelections(): MutableMap<String, List<Int>> =
+    private fun loadSelections(selectionsFile: File): Map<String, List<Int>> =
         runCatching {
             if (!selectionsFile.exists()) return mutableMapOf()
             val root = JsonParser.parseString(selectionsFile.readText()).takeIf { it.isJsonObject }?.asJsonObject

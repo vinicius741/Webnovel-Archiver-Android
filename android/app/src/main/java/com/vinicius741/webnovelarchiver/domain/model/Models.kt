@@ -181,8 +181,8 @@ data class Story(
     /** Public, source-authored metadata retained separately from generic tags and local state. */
     var sourceMetadata: SourceMetadata = SourceMetadata(),
     /**
-     * Explicit indices (into [chapters]) of the chapters sent to AI generation. Null = default
-     * behaviour (first downloaded chapters, per AiDescriptionPlanning.CONTEXT_CHAPTER_COUNT).
+     * Explicit indices (into [chapters]) of the chapters sent to AI description generation. Null =
+     * automatic: the decision model picks premise-establishing chapters (DescriptionEvidencePlanning).
      * Stale indices (not-downloaded or removed chapters) are ignored at read time, so sync churn
      * never breaks generation. Not saveable empty: the picker requires one chapter; empty = null.
      */
@@ -328,7 +328,7 @@ data class AiSettings(
     val imageModel: String = DEFAULT_IMAGE_MODEL,
     /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
     val coverOneStep: Boolean = true,
-    /** OpenRouter decision model (Decisions API) that scores chapters for automatic cover selection. */
+    /** OpenRouter decision model (Decisions API) that scores chapters for automatic cover and description selection. */
     val decisionModel: String = DEFAULT_DECISION_MODEL,
     /** Chapters automatic cover selection must validate; scanned in batches of this size. */
     val coverEvidenceChapters: Int = DEFAULT_COVER_EVIDENCE_CHAPTERS,

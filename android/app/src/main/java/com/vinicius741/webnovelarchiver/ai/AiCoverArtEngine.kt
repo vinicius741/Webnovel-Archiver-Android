@@ -2,7 +2,7 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -26,8 +26,8 @@ data class AiCoverDraft(
 class AiCoverArtEngine internal constructor(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
-    private val evidenceSelector: CoverEvidenceSelector,
-    private val evidenceStore: CoverEvidenceStore,
+    private val evidenceSelector: ChapterEvidenceSelector,
+    private val evidenceStore: ChapterEvidenceStore,
 ) {
     /** Catalog cache for the process lifetime; null until first success, so failures fall back to the minimal request shape. */
     @Volatile
@@ -78,6 +78,7 @@ class AiCoverArtEngine internal constructor(
                         context.apiKey,
                         context.settings.decisionModel,
                         context.settings.coverEvidenceChapters,
+                        CoverEvidencePlanning,
                         onProgress,
                     )
 

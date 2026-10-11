@@ -6,13 +6,13 @@ import android.net.Network
 import com.vinicius741.webnovelarchiver.ai.AiCoverArtEngine
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
-import com.vinicius741.webnovelarchiver.ai.CoverDecisionClient
-import com.vinicius741.webnovelarchiver.ai.CoverEvidenceSelector
+import com.vinicius741.webnovelarchiver.ai.ChapterEvidenceSelector
+import com.vinicius741.webnovelarchiver.ai.DecisionClient
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
-import com.vinicius741.webnovelarchiver.data.storage.CoverEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
@@ -99,15 +99,12 @@ class AppContainer(
     val syncEngine: StorySyncEngine = StorySyncEngine(repository, network)
     val epubEngine: EpubEngine = EpubEngine(repository, network)
     val openRouter: OpenRouterClient = OpenRouterClient()
-    val aiDescriptionEngine: AiDescriptionEngine = AiDescriptionEngine(repository, openRouter)
-    val coverEvidence = CoverEvidenceStore(appContext.cacheDir)
+    val chapterEvidence = ChapterEvidenceStore(appContext.cacheDir)
+    private val chapterEvidenceSelector = ChapterEvidenceSelector(repository, DecisionClient(openRouter), chapterEvidence)
+    val aiDescriptionEngine: AiDescriptionEngine =
+        AiDescriptionEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence)
     val aiCoverArtEngine: AiCoverArtEngine =
-        AiCoverArtEngine(
-            repository,
-            openRouter,
-            CoverEvidenceSelector(repository, CoverDecisionClient(openRouter), coverEvidence),
-            coverEvidence,
-        )
+        AiCoverArtEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence)
 
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)

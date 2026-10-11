@@ -2,20 +2,26 @@ package com.vinicius741.webnovelarchiver.ai
 
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.recordAiUsage
+import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.EvidenceSelectionKind
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.util.UUID
 
 /**
- * Generates AI story description drafts from the earliest downloaded chapters. The draft is returned to
- * the caller (the AI Controls screen) for preview and is only persisted when the user applies it.
- * Progress is reported as short user-facing messages forwarded to the screen's progress block.
+ * Generates AI story description drafts from downloaded chapters — the user's manual selection, or
+ * the premise-establishing chapters the decision model picks. The draft is returned to the caller
+ * (the AI Controls screen) for preview and is only persisted when the user applies it. Progress is
+ * reported as short user-facing messages forwarded to the screen's progress block.
  */
 @Suppress("TooGenericExceptionCaught") // Usage must record network/runtime failures and never mask successful generation on write errors.
-class AiDescriptionEngine(
+class AiDescriptionEngine internal constructor(
     private val repository: AppRepository,
     private val client: OpenRouterClient,
+    private val evidenceSelector: ChapterEvidenceSelector,
+    private val evidenceStore: ChapterEvidenceStore,
 ) {
     /**
      * Reads the story's context chapters and asks the configured model for a synopsis. The returned
@@ -35,19 +41,7 @@ class AiDescriptionEngine(
             repository.story(storyId)
                 ?: throw IllegalArgumentException("Story not found")
         if (story.isArchived == true) error("Archived snapshots are read-only")
-        val contextIndices = AiDescriptionPlanning.resolveContextChapters(story, story.aiContextChapterIndices)
-        if (contextIndices.isEmpty()) {
-            error(
-                if (story.aiContextChapterIndices != null) {
-                    "The selected chapters are no longer downloaded — pick chapters again in AI Controls"
-                } else {
-                    "Download at least one chapter before generating an AI description"
-                },
-            )
-        }
-
-        onProgress("Reading chapters...")
-        val chapters = AiContextChapters.read(repository, story, contextIndices)
+        val chapters = contextChapters(story, settings.decisionModel, apiKey, onProgress)
         if (chapters.isEmpty()) {
             error("Downloaded chapter files are missing; re-download the novel's chapters")
         }
@@ -126,6 +120,38 @@ class AiDescriptionEngine(
         Timber.i("AI description drafted for %s with %s", storyId, settings.descriptionModel)
         return description
     }
+
+    /** The user's manual selection, or the premise-establishing chapters the decision model picks. */
+    private suspend fun contextChapters(
+        story: Story,
+        decisionModel: String,
+        apiKey: String,
+        onProgress: (String) -> Unit,
+    ): List<AiDescriptionPlanning.ChapterText> =
+        if (AiDescriptionPlanning.isAutomatic(story)) {
+            if (story.chapters.none { it.downloaded }) error("Download at least one chapter before generating an AI description")
+            onProgress("Reading chapters...")
+            val selected =
+                evidenceSelector.select(
+                    story,
+                    apiKey,
+                    decisionModel,
+                    AiDescriptionPlanning.CONTEXT_CHAPTER_COUNT,
+                    DescriptionEvidencePlanning,
+                    onProgress,
+                )
+            // Display hint for the picker; losing it never fails a finished selection.
+            runCatching { evidenceStore.record(story.id, selected.map { it.number - 1 }, EvidenceSelectionKind.DESCRIPTION) }
+                .onFailure { Timber.w(it, "Could not persist automatic description chapter selection") }
+            selected
+        } else {
+            val contextIndices = AiDescriptionPlanning.resolveContextChapters(story, story.aiContextChapterIndices)
+            if (contextIndices.isEmpty()) {
+                error("The selected chapters are no longer downloaded — pick chapters again in AI Controls")
+            }
+            onProgress("Reading chapters...")
+            AiContextChapters.read(repository, story, contextIndices)
+        }
 
     private suspend fun recordUsage(
         storyId: String,

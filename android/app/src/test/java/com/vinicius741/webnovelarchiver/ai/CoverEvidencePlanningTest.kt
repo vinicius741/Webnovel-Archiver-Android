@@ -19,24 +19,25 @@ class CoverEvidencePlanningTest {
         val order = CoverEvidencePlanning.scanOrder(30)
         assertEquals((0 until 30).toList(), order.sorted())
         assertEquals(listOf(0, 15, 8, 23, 4, 12, 19, 27, 2, 6), order.take(10))
+        assertEquals(ChapterEvidencePlanning.spreadOrder(30), order)
     }
 
     @Test fun `sampling takes the opening and a mid chapter window and skips blank text`() {
         val text = (1..600).joinToString("\n\n") { "Paragraph $it contains an important description." }
-        val sample = CoverEvidencePlanning.sample(17, "Later", text)!!
+        val sample = ChapterEvidencePlanning.sample(17, "Later", text)!!
         assertTrue(sample.opening.contains("Paragraph 1"))
         assertTrue(sample.middle.isNotEmpty())
         assertTrue(sample.opening.length <= 2_200 && sample.middle.length <= 2_200)
-        val short = CoverEvidencePlanning.sample(3, "Short", "A copper automaton tends an orchard.")
+        val short = ChapterEvidencePlanning.sample(3, "Short", "A copper automaton tends an orchard.")
         assertEquals("A copper automaton tends an orchard.", short!!.opening)
         assertEquals("", short.middle)
-        assertNull(CoverEvidencePlanning.sample(4, "Blank", " \n "))
+        assertNull(ChapterEvidencePlanning.sample(4, "Blank", " \n "))
     }
 
     @Test fun `sampling handles chapters shorter than two full excerpts`() {
         for (length in listOf(2_200, 2_201, 2_746, 4_399, 4_400)) {
             val text = (0 until length).joinToString("") { (it % 10).toString() }
-            val sample = CoverEvidencePlanning.sample(1, "Boundary", text)!!
+            val sample = ChapterEvidencePlanning.sample(1, "Boundary", text)!!
             assertEquals(text.take(2_200), sample.opening)
             assertEquals(if (length <= 2_200) "" else text.substring(2_200), sample.middle)
             assertTrue(sample.middle.length <= 2_200)
@@ -45,27 +46,33 @@ class CoverEvidencePlanningTest {
 
     @Test fun `state carries both excerpts for long chapters and omits middle when absent`() {
         val story = Story(title = "Orchard", description = "A machine learns farming")
-        val long = CoverEvidencePlanning.state(story, CoverEvidencePlanning.ChapterSample(2, "Two", "Opening text.", "Middle text."))
+        val long = CoverEvidencePlanning.state(story, ChapterEvidencePlanning.ChapterSample(2, "Two", "Opening text.", "Middle text."))
         assertEquals("Opening text.", long.get("opening").asString)
         assertEquals("Middle text.", long.get("middle").asString)
-        val short = CoverEvidencePlanning.state(story, CoverEvidencePlanning.ChapterSample(2, "Two", "Opening text.", ""))
+        val short = CoverEvidencePlanning.state(story, ChapterEvidencePlanning.ChapterSample(2, "Two", "Opening text.", ""))
         assertFalse(short.has("middle"))
     }
 
     @Test fun `cache identity changes with evidence metadata model and questions but not credentials`() {
-        val sample = CoverEvidencePlanning.ChapterSample(1, "Opening", "A copper automaton tends an orchard.", "The orchard hums at dusk.")
+        val sample =
+            ChapterEvidencePlanning.ChapterSample(
+                1,
+                "Opening",
+                "A copper automaton tends an orchard.",
+                "The orchard hums at dusk.",
+            )
         val story = Story(title = "Orchard", description = "A machine learns farming")
-        val body = CoverDecisionClient.request(CoverEvidencePlanning.state(story, sample), MODEL)
-        val original = CoverEvidencePlanning.cacheKey(body)
-        assertEquals(original, CoverEvidencePlanning.cacheKey(body.deepCopy()))
+        val body = CoverEvidencePlanning.request(CoverEvidencePlanning.state(story, sample), MODEL)
+        val original = ChapterEvidencePlanning.cacheKey(body)
+        assertEquals(original, ChapterEvidencePlanning.cacheKey(body.deepCopy()))
         val changed =
             listOf(
-                CoverDecisionClient.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample), MODEL),
-                CoverDecisionClient.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text")), MODEL),
+                CoverEvidencePlanning.request(CoverEvidencePlanning.state(story.copy(description = "Changed premise"), sample), MODEL),
+                CoverEvidencePlanning.request(CoverEvidencePlanning.state(story, sample.copy(opening = "New text")), MODEL),
                 body.deepCopy().apply { addProperty("model", "new-model") },
                 body.deepCopy().apply { getAsJsonObject("questions").remove("appearance") },
             )
-        assertTrue(changed.all { CoverEvidencePlanning.cacheKey(it) != original })
+        assertTrue(changed.all { ChapterEvidencePlanning.cacheKey(it) != original })
         assertFalse(body.toString().contains("apiKey"))
     }
 
@@ -87,15 +94,18 @@ class CoverEvidencePlanningTest {
             chapter: Int,
             evidence: Double,
             temporary: Double = 0.0,
-        ) = CoverEvidencePlanning.ScoredChapter(
-            CoverEvidencePlanning.ChapterSample(chapter, "Chapter $chapter", "Text $chapter", ""),
-            CoverEvidencePlanning.Judgments(evidence, evidence, evidence, temporary),
+        ) = ChapterEvidencePlanning.ScoredChapter(
+            ChapterEvidencePlanning.ChapterSample(chapter, "Chapter $chapter", "Text $chapter", ""),
+            ChapterEvidencePlanning.Assessment(
+                useful = true,
+                utility = CoverEvidencePlanning.utility(CoverEvidencePlanning.Judgments(evidence, evidence, evidence, temporary)),
+            ),
         )
         val useful = (1..25).map { chapter -> scored(chapter, if (chapter % 2 == 0) 1.0 else 0.5) }
-        val chosen = CoverEvidencePlanning.choose(useful, target = 10)
+        val chosen = ChapterEvidencePlanning.choose(useful, target = 10)
         assertEquals(10, chosen.size)
         assertEquals(chosen.map { it.sample.chapter }, chosen.map { it.sample.chapter }.sorted())
         assertEquals((2..20 step 2).toList(), chosen.map { it.sample.chapter })
-        assertTrue(CoverEvidencePlanning.choose(emptyList(), target = 10).isEmpty())
+        assertTrue(ChapterEvidencePlanning.choose(emptyList(), target = 10).isEmpty())
     }
 }

@@ -25,9 +25,10 @@ the layer is built to grow tag and cover-image generation later.
   instead of scattering more buttons across Details. Its description card shows the applied AI
   synopsis (or an explanatory line), the "Show AI description in Details" preference, and the
   generate action.
-- **Generate → preview → apply**: `Generate Description with AI` sends the earliest **5 downloaded
-  chapters** (plain text, each capped at ~12k chars, ~60k chars total) plus title/author/tags to the
-  selected model, which writes a 120 to 180 word synopsis. The source payload is delimited JSON,
+- **Generate → preview → apply**: `Generate Description with AI` sends **5 downloaded chapters
+  picked by the decision model** (see *Automatic chapter selection* below), or the user's manual
+  selection, as plain text (each capped at ~12k chars, ~60k chars total) plus title/author/tags to
+  the selected model, which writes a 120 to 180 word synopsis. The source payload is delimited JSON,
   and the system prompt treats every source field as untrusted story data rather than instructions.
   The result is a **draft**: the
   screen shows a preview card with the draft text and `Apply` / `Discard` actions — nothing is
@@ -43,7 +44,9 @@ the layer is built to grow tag and cover-image generation later.
 
 ## Cost controls
 
-- Context: earliest 5 downloaded chapters, 12k chars/chapter cap, 60k chars total.
+- Context: 5 automatically selected chapters (or the manual selection), 12k chars/chapter cap, 60k chars total.
+- Automatic selection: one cheap decision-model request per judged chapter, at most 30 per generation;
+  cached judgments make regenerating free until the chapters, metadata or decision model change.
 - Output: `max_tokens = 2000`, with the saved reasoning level and reasoning text excluded from the reply.
   Existing settings keep Low where supported; Model default and unsupported saved levels omit
   `reasoning.effort`. Catalog options follow the [OpenRouter reasoning reference](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
@@ -57,13 +60,40 @@ the layer is built to grow tag and cover-image generation later.
 - HTTP failures map to friendly messages: 401 invalid key, 402 insufficient credits, 404 unknown
   model, 429 rate limit. Cancelling the coroutine also cancels the active OkHttp call.
 
+## Automatic chapter selection
+
+Without a manual selection (`Story.aiContextChapterIndices` null), the description uses the same
+decision-model scan as automatic cover context (`ai-cover-generation.md`), with a synopsis rubric
+(`DescriptionEvidencePlanning`) and the **Chapter selection model** from AI Controls → Models
+(default Jev). Each judged chapter costs one Decisions API request carrying its opening and a
+mid-chapter excerpt; the model scores, on four levels, how well the excerpts establish the
+protagonist and their starting situation, the driving problem or goal and its stakes, and the
+setting/premise hook, plus a yes/no probability that the excerpts reveal a late-story twist
+(unmasked identity, betrayal, major death, resolved conflict). Only the **source** description is
+background — never an earlier AI draft. A chapter is useful when protagonist or conflict reaches the
+"specific fact" level (2 of 3) and a spoiler is not likely.
+
+Unlike covers, the scan reads the opening in reading order — a back-cover synopsis describes the
+setup — in batches of five, and stops as soon as five useful chapters are found; the strongest five
+are sent, in reading order. Prologues, author notes and side-character interludes that do not
+establish the premise are skipped. The scan never looks past the first 30 downloaded chapters; if
+none qualify, generation stops and asks the user to pick chapters manually. Receipts appear as
+`Automatic description selection` in the usage ledger.
+
+The last automatic pick is kept on-device (`ChapterEvidenceStore`, `EvidenceSelectionKind.DESCRIPTION`,
+separate from the cover pick) so the row shows "Automatic: N chapters" and the picker opens with
+those chapters checked. Saving in the picker always stores a manual selection that bypasses the
+scan; Reset to automatic selection returns to the scan. Stories that already had a manual
+selection keep it.
+
 ## Code map (package `ai/`)
 
 | File | Role |
 |------|------|
 | `OpenRouterClient.kt` | Plain OkHttp client for `openrouter.ai` (deliberately NOT the app's `NetworkClient`, whose Cloudflare WebView interceptor is for novel sites). `chatCompletion` + `fetchModels`; `baseUrl` injectable for MockWebServer tests. |
-| `AiDescriptionPlanning.kt` | Pure logic: chapter selection, char caps, prompt assembly, response cleanup, and `activeDescription(story)` (the displayed-synopsis rule shared with the Details UI and description TTS). |
-| `AiDescriptionEngine.kt` | Orchestration: reads chapters via the repository, extracts text (`HtmlCleanup`), calls the client, and returns the draft — persisting is the caller's job (`AppRepository.setAiDescription` on Apply). |
+| `DescriptionEvidencePlanning.kt` | Synopsis `EvidenceRubric`: premise questions, spoiler flag, usefulness, reading-order scan window. |
+| `AiDescriptionPlanning.kt` | Pure logic: manual chapter selection, automatic-mode label, char caps, prompt assembly, response cleanup, and `activeDescription(story)` (the displayed-synopsis rule shared with the Details UI and description TTS). |
+| `AiDescriptionEngine.kt` | Orchestration: runs the automatic chapter scan (`ChapterEvidenceSelector`) or reads the manual selection via the repository, extracts text (`HtmlCleanup`), calls the client, and returns the draft — persisting is the caller's job (`AppRepository.setAiDescription` on Apply). |
 | `AiModelPresentation.kt` | Pure picker helpers: pricing labels, search/free-only filtering. |
 | `AiReasoningPlanning.kt` | Pure catalog filtering and per-model reasoning effort resolution shared by UI and engines. |
 
@@ -80,8 +110,8 @@ The API key lives only in `ai_settings.json` on the device. It is **not** part o
 requires re-entering the key. Restoring a backup on the same device preserves its existing local AI
 settings across the storage-root swap.
 
-AI Settings discloses that generation sends story metadata and up to five downloaded excerpts to
-OpenRouter and the selected provider. Provider retention follows the user's OpenRouter privacy
+AI Settings discloses that generation sends story metadata and chapter excerpts to OpenRouter and
+the selected provider. Provider retention follows the user's OpenRouter privacy
 settings.
 
 ## Extending to other generators
