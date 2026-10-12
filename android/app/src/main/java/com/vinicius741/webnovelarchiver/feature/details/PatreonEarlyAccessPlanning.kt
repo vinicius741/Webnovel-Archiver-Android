@@ -6,6 +6,9 @@ import com.vinicius741.webnovelarchiver.source.PatreonCollection
 
 /** Display rules for the Details screen's Patreon early-access row and collection picker. */
 object PatreonEarlyAccessPlanning {
+    /** The link title, and picker option, for every post on a creator's Patreon. */
+    const val ALL_POSTS_TITLE = "All Patreon posts"
+
     private val words = Regex("""[^\p{L}\p{N}]+""")
     private val ignoredWords = setOf("the", "a", "an", "of", "and", "as", "to", "in", "on", "book", "books")
 

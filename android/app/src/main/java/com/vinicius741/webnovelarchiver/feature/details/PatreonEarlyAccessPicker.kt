@@ -24,8 +24,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Lets the user pick which collection on the creator's Patreon holds this novel's chapters. The
- * collections list is public, so linking works signed out; reading locked posts needs a session.
+ * Lets the user pick which collection on the creator's Patreon holds this novel's chapters, or
+ * every post when the creator doesn't use collections. The collections list is public, so linking
+ * works signed out; reading locked posts needs a session.
  */
 internal fun ScreenHost.showPatreonEarlyAccessPicker(story: Story) {
     if (!StoryActionGuards.canModifyStory(story)) return toast(StoryActionGuards.archivedActionMessage("Linking Patreon"))
@@ -60,25 +61,37 @@ private fun ScreenHost.showCollectionOptions(
 ) {
     val current = story.patreonEarlyAccess
     val items = mutableListOf<OptionsDialogItem>()
+
+    fun option(
+        label: String,
+        link: PatreonEarlyAccessLink,
+    ) {
+        val selected = current != null && current.collectionId == link.collectionId
+        items +=
+            OptionsDialogItem.Option(label + if (selected) " ✓" else "") {
+                if (current != null && !selected && story.chapters.any { it.isPatreonCopy }) {
+                    confirm("Switch collections? Patreon chapters stored from the current one are removed.", confirmLabel = "Switch") {
+                        applyLink(story, link)
+                    }
+                } else {
+                    applyLink(story, link)
+                }
+            }
+    }
+    val allPosts = PatreonEarlyAccessLink(campaignId = campaignId, collectionTitle = PatreonEarlyAccessPlanning.ALL_POSTS_TITLE)
     if (collections.isEmpty()) {
-        items += OptionsDialogItem.Section("This creator has no public collections")
+        items += OptionsDialogItem.Section("This creator doesn't use collections")
+        option(PatreonEarlyAccessPlanning.ALL_POSTS_TITLE, allPosts)
     } else {
         items += OptionsDialogItem.Section("Collection with this novel's chapters")
         collections.forEach { collection ->
-            val label = PatreonEarlyAccessPlanning.optionLabel(collection) + if (collection.id == current?.collectionId) " ✓" else ""
-            items +=
-                OptionsDialogItem.Option(label) {
-                    val link =
-                        PatreonEarlyAccessLink(campaignId = campaignId, collectionId = collection.id, collectionTitle = collection.title)
-                    if (current != null && current.collectionId != collection.id && story.chapters.any { it.isPatreonCopy }) {
-                        confirm("Switch collections? Patreon chapters stored from the current one are removed.", confirmLabel = "Switch") {
-                            applyLink(story, link)
-                        }
-                    } else {
-                        applyLink(story, link)
-                    }
-                }
+            option(
+                PatreonEarlyAccessPlanning.optionLabel(collection),
+                PatreonEarlyAccessLink(campaignId = campaignId, collectionId = collection.id, collectionTitle = collection.title),
+            )
         }
+        items += OptionsDialogItem.Divider
+        option("${PatreonEarlyAccessPlanning.ALL_POSTS_TITLE} (not in a collection)", allPosts)
     }
     if (current != null) {
         items += OptionsDialogItem.Divider

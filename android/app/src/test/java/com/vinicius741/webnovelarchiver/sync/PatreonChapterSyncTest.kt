@@ -52,6 +52,87 @@ class PatreonChapterSyncTest {
     }
 
     @Test
+    fun `all posts selection skips announcements in a creator's whole post feed`() {
+        val numbered =
+            listOf(
+                Chapter(id = "204", title = "204 - Education", downloaded = true),
+                Chapter(id = "205", title = "205 - Perspective", downloaded = true),
+            )
+        val posts =
+            listOf(
+                post("41", "Whoops, sick again. More chapters next week"),
+                post("38", "207 - Fans"),
+                post("37", "More chapters 8-24"),
+                post("36", "206 - Expectations"),
+                post("35", "205 - Perspective"),
+                post("34", "204 - Education"),
+            )
+
+        val selection = PatreonChapterPlanning.selectEarlyAccess(posts, PatreonCopyPlanning.publicKeys(numbered), allPosts = true)
+
+        assertTrue(selection.anchorFound)
+        assertEquals(listOf("36", "38"), selection.ahead.map { it.id })
+    }
+
+    @Test
+    fun `all posts selection ignores the creator's other novels`() {
+        val novelA =
+            listOf(
+                Chapter(id = "1", title = "Chapter 49: Dusk", downloaded = true),
+                Chapter(id = "2", title = "Chapter 50: Dawn", downloaded = true),
+            )
+        val posts =
+            listOf(
+                post("47", "Novel A - Chapter 52: Noon"),
+                post("46", "Novel B - Chapter 51: Elsewhere"),
+                post("45", "Novel A - Chapter 51: Morning"),
+                post("44", "Novel B - Chapter 50: Elsewhere"),
+                post("43", "Novel A - Chapter 300: Wrong Number"),
+                post("42", "Novel A - Chapter 50: Dawn"),
+            )
+        val keys = PatreonCopyPlanning.publicKeys(novelA)
+
+        val selection = PatreonChapterPlanning.selectEarlyAccess(posts, keys, allPosts = true)
+
+        assertTrue(selection.anchorFound)
+        assertEquals(listOf("45", "47"), selection.ahead.map { it.id })
+        // A collection holds one novel, so its lenient anchor would take Novel B's chapter 50 here.
+        assertEquals(listOf("45", "46", "47"), PatreonChapterPlanning.selectEarlyAccess(posts, keys).ahead.map { it.id })
+    }
+
+    @Test
+    fun `all posts sync reads the whole campaign`() =
+        runBlocking {
+            val requested = mutableListOf<String>()
+            val sync =
+                PatreonChapterSync(
+                    api =
+                        PatreonApi { url ->
+                            requested += url
+                            page(listOf(post("36", "206 - Expectations"), post("35", "205 - Perspective")))
+                        },
+                    sessionPresent = { true },
+                    cleanup = { it },
+                    saveChapter = { _, _, chapter, _ -> "novels/s/${chapter.title}.html" },
+                )
+            val allPosts = PatreonEarlyAccessLink(campaignId = "14340596", collectionTitle = "All Patreon posts")
+
+            val result =
+                sync.sync(
+                    "s",
+                    allPosts,
+                    listOf(Chapter(id = "205", title = "205 - Perspective", downloaded = true)),
+                    emptyList(),
+                ) {}
+
+            assertTrue(allPosts.coversAllPosts)
+            assertFalse(requested.single().contains("collection_id"))
+            assertTrue(requested.single().contains("filter%5Bcampaign_id%5D=14340596"))
+            assertEquals(listOf("206 - Expectations"), result.chapters.map { it.title })
+            assertNull(result.link.lastError)
+        }
+
+    @Test
     fun `plan stores readable new posts, keeps stored copies, and counts locked ones`() {
         val stored = copy("15", "Book 4 Chapter 15: Ascent")
         val missingFile = copy("16", "Book 4 Chapter 16: Burden").copy(downloaded = false, filePath = null)

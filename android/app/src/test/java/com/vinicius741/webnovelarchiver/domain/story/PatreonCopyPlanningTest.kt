@@ -69,6 +69,41 @@ class PatreonCopyPlanningTest {
     }
 
     @Test
+    fun `a title that is just a number and a subtitle is a chapter`() {
+        assertEquals(ChapterKey(null, "205", "perspective"), PatreonCopyPlanning.chapterKey("205 - Perspective"))
+        assertEquals(ChapterKey(null, "12", "home"), PatreonCopyPlanning.chapterKey("12. Home"))
+        assertEquals(ChapterKey(null, "10.5", "interlude"), PatreonCopyPlanning.chapterKey("10.5 – Interlude"))
+        assertTrue(
+            PatreonCopyPlanning.matches(
+                PatreonCopyPlanning.chapterKey("205 - Perspective"),
+                PatreonCopyPlanning.chapterKey("Chapter 205: Perspective"),
+            ),
+        )
+        assertTrue(PatreonCopyPlanning.isChapterPost("214 - Void Interfacing"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("1 week break!"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("More chapters 8-24"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("Whoops, sick again. More chapters next week"))
+        assertFalse(PatreonCopyPlanning.isChapterPost("3:00 PM Q&A stream"))
+    }
+
+    @Test
+    fun `title prefix is the text before the chapter token`() {
+        assertEquals("novel a", PatreonCopyPlanning.titlePrefix("Novel A - Book 2 Chapter 5: Start"))
+        assertEquals("novel b", PatreonCopyPlanning.titlePrefix("Novel B: Chapter 5"))
+        assertEquals("", PatreonCopyPlanning.titlePrefix("205 - Perspective"))
+        assertEquals("", PatreonCopyPlanning.titlePrefix("Chapter 5"))
+    }
+
+    @Test
+    fun `strict public match needs agreeing subtitles`() {
+        val keys = PatreonCopyPlanning.publicKeys(listOf(public("1", "Chapter 50: Dawn", downloaded = true)))
+        assertEquals("1", PatreonCopyPlanning.publicMatch("Other Novel - Chapter 50: Dusk", keys)?.id)
+        assertNull(PatreonCopyPlanning.publicMatch("Other Novel - Chapter 50: Dusk", keys, strict = true))
+        assertEquals("1", PatreonCopyPlanning.publicMatch("50 - Dawn", keys, strict = true)?.id)
+        assertEquals("1", PatreonCopyPlanning.publicMatch("Chapter 50", keys, strict = true)?.id)
+    }
+
+    @Test
     fun `reconcile drops a copy once its public chapter downloads and moves the bookmark`() {
         val chapters =
             listOf(

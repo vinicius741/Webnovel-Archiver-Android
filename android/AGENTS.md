@@ -50,7 +50,8 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
   refresh is copied to siblings in `commitSyncedStory`, startup reconciles to the freshest), and
   Trends charts their merged Patreon history. Per-story metric files are not rewritten.
 - Patreon early-access chapters (`docs/sources/patreon-early-access.md`) supplement a source story;
-  Patreon is not a `SourceProvider`. Copies carry `Chapter.patreonPostId`, always sit after every
+  Patreon is not a `SourceProvider`. A link targets one collection or, with a blank `collectionId`,
+  every post on the campaign (creators without collections), which selects posts more strictly. Copies carry `Chapter.patreonPostId`, always sit after every
   source chapter, are split off before the source merge (so they never read as removed source
   chapters), are stored by sync from the post list (`sync/PatreonChapterSync`), and are never
   queued for download. `domain/story/PatreonCopyPlanning` owns title matching and retiring a copy

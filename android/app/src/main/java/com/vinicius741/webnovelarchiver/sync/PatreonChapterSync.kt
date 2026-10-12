@@ -12,10 +12,11 @@ import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import kotlinx.coroutines.CancellationException
 
 /**
- * The Patreon step of a story sync: reads the linked collection newest-first until it reaches a
- * post the public source already has, then stores every readable early-access post as a
- * downloaded chapter. The post list carries full bodies, so no per-chapter request is needed.
- * Failures never fail the public sync; existing Patreon copies are kept and the link records why.
+ * The Patreon step of a story sync: reads the linked collection (or every post on the creator's
+ * Patreon) newest-first until it reaches a post the public source already has, then stores every
+ * readable early-access post as a downloaded chapter. The post list carries full bodies, so no
+ * per-chapter request is needed. Failures never fail the public sync; existing Patreon copies are
+ * kept and the link records why.
  */
 class PatreonChapterSync(
     private val api: PatreonApi,
@@ -44,7 +45,7 @@ class PatreonChapterSync(
             status("Checking Patreon early access...")
             val publicKeys = PatreonCopyPlanning.publicKeys(publicChapters)
             val posts = fetchUntilPublic(link, publicKeys)
-            val selection = PatreonChapterPlanning.selectEarlyAccess(posts, publicKeys)
+            val selection = PatreonChapterPlanning.selectEarlyAccess(posts, publicKeys, link.coversAllPosts)
             val plan = PatreonChapterPlanning.planChapters(existingPatreon, selection)
             val created = plan.toStore.mapNotNull(::toChapter)
             val ordered = PatreonChapterPlanning.orderPatreonChapters(plan.keep + created.map { it.first })
@@ -103,10 +104,7 @@ class PatreonChapterSync(
             posts += page.posts
             pages += 1
             cursor = page.nextCursor
-            val reachedPublic =
-                page.posts.any { post ->
-                    PatreonCopyPlanning.isChapterPost(post.title) && PatreonCopyPlanning.publicMatch(post.title, publicKeys) != null
-                }
+            val reachedPublic = PatreonChapterPlanning.selectEarlyAccess(posts, publicKeys, link.coversAllPosts).anchorFound
         } while (!reachedPublic && cursor != null && pages < MAX_PAGES)
         return posts
     }

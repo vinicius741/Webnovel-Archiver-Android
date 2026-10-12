@@ -1,7 +1,8 @@
 # Patreon Early-Access Chapters
 
 Many authors publish chapters on Patreon weeks before the public release. A story from any source
-can be linked to one collection on its creator's Patreon; each sync then stores the paid chapters
+can be linked to one collection on its creator's Patreon, or to all of the creator's posts when
+they don't use collections; each sync then stores the paid chapters
 the user's own Patreon account can read, after the public chapters, and retires each copy once the
 public chapter that publishes it has downloaded.
 
@@ -61,6 +62,12 @@ ranks the collection sharing the most title words with the novel first. Picking 
 `PatreonEarlyAccessLink` (campaign id, collection id/title) on the story and starts a sync.
 Switching to another collection or unlinking removes the stored copies of the old one.
 
+**All Patreon posts** is always offered (alone when the creator has no collections, e.g.
+ArcaneCadence's *New Life as a Max Level Archmage*). It saves a blank `collectionId`
+(`PatreonEarlyAccessLink.coversAllPosts`), and the sync reads the campaign's whole feed without the
+`filter[collection_id]` parameter. Because that feed can hold announcements and the creator's other
+novels, selection is stricter there (see below).
+
 ## What a sync does
 
 `sync/StorySyncEngine` keeps Patreon copies out of the source merge entirely: chapters with a
@@ -68,12 +75,16 @@ Switching to another collection or unlinking removes the stored copies of the ol
 removed source chapters (which would create an archive snapshot). After the source merge,
 `sync/PatreonChapterSync`:
 
-1. Reads the linked collection newest-first (`/api/posts`, 20 per page, `filter[collection_id]`)
+1. Reads the linked collection (or, for an all-posts link, the whole campaign) newest-first (`/api/posts`, 20 per page, `filter[collection_id]`)
    until a page contains a post matching a public chapter, capped at 10 pages. The post list
    already carries each post's full body (`content_json_string`), so no per-chapter request exists.
 2. Splits the posts at the newest one already public (`PatreonChapterPlanning.selectEarlyAccess`);
    posts without a chapter-like title (announcements) are ignored. When no post matches any public
-   chapter, nothing is added and the link explains why.
+   chapter, nothing is added and the link explains why. On an all-posts link the anchor must also
+   agree on the subtitle when both titles have one, and a post ahead is kept only when it shares
+   the anchor's title prefix (`PatreonCopyPlanning.titlePrefix`, e.g. `Novel A` in
+   `Novel A - Chapter 51`) and, within the same book, its number follows the anchor's by at most
+   the posts in between plus 5. A new book or an unnumbered chapter needs only the prefix.
 3. Converts readable bodies (`PatreonRichText`, a ProseMirror document: paragraphs, headings,
    breaks, lists, bold/italic/underline/strike; images and embeds are dropped), applies the user's
    download cleanup rules, and writes each copy as a downloaded chapter whose file name is
@@ -93,6 +104,9 @@ queued for download (`DownloadQueuePlanning` skips them).
 - `Book 3 Chapter 10.5: Suffrage` → book 3, chapter 10.5
 - `Chapter 62: An Understanding (End of Book 1)` → no book (a book only counts before the chapter
   token), chapter 62
+- `205 - Perspective` / `12. Home` → chapter 205 / 12: a title that starts with a number counts as
+  a chapter when a separator and a space follow it, so `1 week break!`, `3:00 PM stream`, and
+  `More chapters 8-24` stay announcements
 
 Two keys match when book and chapter agree; when only one side names the book (sources often
 restart numbering per book), the subtitle must agree too. Unnumbered titles (Prologue, Epilogue)
@@ -117,5 +131,7 @@ public chapter.
 
 - Patreon's web API is undocumented and may change. Requests go through the shared `NetworkClient`.
 - Only text posts are supported; chapters shipped as PDF/DOCX attachments are not read.
+- An all-posts link can still take another novel's post when its title has the same prefix and a
+  number that continues this novel's, or an announcement titled like a chapter (`210 - Q&A`).
 - Newly stored copies do not appear in the Updates list, which tracks undownloaded chapters.
 - TTS resume positions on a removed copy are not remapped.

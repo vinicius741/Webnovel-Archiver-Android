@@ -30,6 +30,10 @@ object PatreonCopyPlanning {
     private const val MIN_SUBTITLE_MATCH_LENGTH = 4
 
     private val chapterToken = Regex("""\b(?:chapter|ch)\.?\s*(\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+
+    // A title that is just a number and a separated subtitle ("205 - Perspective", "12. Home").
+    // The separator must be followed by a space, so "3:00 stream" and "1 week break!" stay announcements.
+    private val leadingNumber = Regex("""^\s*#?(\d+(?:\.\d+)?)(?=\s*[-:|.)]\s|\s*$)""")
     private val bookToken = Regex("""\b(?:book|volume|vol\.?|b(?=\d))\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val unnumberedChapterWords =
         Regex("""\b(?:prologue|epilogue|interlude|side ?story|bonus chapter|extra chapter)\b""", RegexOption.IGNORE_CASE)
@@ -42,8 +46,8 @@ object PatreonCopyPlanning {
     fun postUrl(postId: String): String = "https://www.patreon.com/posts/$postId"
 
     fun chapterKey(title: String): ChapterKey {
-        val text = title.replace('–', '-').replace('—', '-')
-        val chapter = chapterToken.find(text)
+        val text = dashes(title)
+        val chapter = chapterToken.find(text) ?: leadingNumber.find(text)
         if (chapter == null) return ChapterKey(book = null, number = null, subtitle = normalize(text))
         // A book number only counts before the chapter token: "Chapter 62 (End of Book 1)" is book-less.
         val book =
@@ -85,15 +89,43 @@ object PatreonCopyPlanning {
     }
 
     /** Whether a collection post reads as a chapter rather than an announcement. */
-    fun isChapterPost(title: String): Boolean = chapterToken.containsMatchIn(title) || unnumberedChapterWords.containsMatchIn(title)
+    fun isChapterPost(title: String): Boolean =
+        chapterToken.containsMatchIn(title) ||
+            leadingNumber.containsMatchIn(dashes(title)) ||
+            unnumberedChapterWords.containsMatchIn(title)
 
-    /** The newest public chapter that [title] is a copy of, if any. */
+    /**
+     * The normalized text before a title's book/chapter token: "Novel A - Chapter 5" -> "novel a",
+     * "205 - Perspective" -> "". Creators who post several novels without collections tell them
+     * apart this way.
+     */
+    fun titlePrefix(title: String): String {
+        val text = dashes(title)
+        if (leadingNumber.containsMatchIn(text)) return ""
+        val start =
+            listOfNotNull(
+                bookToken.find(text)?.range?.first,
+                chapterToken.find(text)?.range?.first,
+                unnumberedChapterWords.find(text)?.range?.first,
+            ).minOrNull() ?: return normalize(text)
+        return normalize(text.substring(0, start))
+    }
+
+    /**
+     * The newest public chapter that [title] is a copy of, if any. [strict] also requires the
+     * subtitles to agree when both titles have one, so another novel's "Chapter 50" never matches.
+     */
     fun publicMatch(
         title: String,
         publicKeys: List<Pair<Chapter, ChapterKey>>,
+        strict: Boolean = false,
     ): Chapter? {
         val key = chapterKey(title)
-        return publicKeys.lastOrNull { (_, publicKey) -> matches(key, publicKey) }?.first
+        return publicKeys
+            .lastOrNull { (_, publicKey) ->
+                matches(key, publicKey) &&
+                    (!strict || key.subtitle.isEmpty() || publicKey.subtitle.isEmpty() || key.subtitle == publicKey.subtitle)
+            }?.first
     }
 
     fun publicKeys(publicChapters: List<Chapter>): List<Pair<Chapter, ChapterKey>> =
@@ -200,6 +232,8 @@ object PatreonCopyPlanning {
                     ?.ifEmpty { null },
         ) to removed
     }
+
+    private fun dashes(text: String): String = text.replace('–', '-').replace('—', '-')
 
     private fun normalize(text: String): String = text.lowercase().replace(nonAlphanumeric, " ").trim()
 

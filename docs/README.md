@@ -81,4 +81,4 @@ Provider architecture and the workflow for extending supported novel sites.
 | `adding-a-source.md` | Stable source descriptors, URL matching, parsing/fetching hooks, registration, fixtures, compatibility rules, and validation checklist for a new provider. |
 | `ao3.md` | AO3 imports, chapter identity, metadata, access limits, and provider validation. |
 | `sufficient-velocity.md` | Sufficient Velocity imports, main threadmarks and RSS sync, shared XenForo reader downloads, separate source IDs, and access limits. |
-| `patreon-early-access.md` | Patreon early-access chapters: the guided Firefox sign-in (Google included) with one-tap `session_id` paste, sign-in prompts on the novel page, per-novel collection links, the post-sync Patreon step, title matching, and retiring copies once the public chapter downloads. |
+| `patreon-early-access.md` | Patreon early-access chapters: the guided Firefox sign-in (Google included) with one-tap `session_id` paste, sign-in prompts on the novel page, per-novel collection or all-posts links, the post-sync Patreon step, title matching, and retiring copies once the public chapter downloads. |

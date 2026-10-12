@@ -207,11 +207,13 @@ data class PatreonRawStats(
 )
 
 /**
- * Links a story to one collection on its creator's Patreon. The ids are permanent; the remaining
- * fields describe the most recent early-access check and are display-only.
+ * Links a story to one collection on its creator's Patreon, or to every post when the creator
+ * doesn't use collections. The ids are permanent; the remaining fields describe the most recent
+ * early-access check and are display-only.
  */
 data class PatreonEarlyAccessLink(
     val campaignId: String = "",
+    /** Blank links every post on the campaign ([coversAllPosts]). */
     val collectionId: String = "",
     val collectionTitle: String = "",
     val lastCheckedAt: Long? = null,
@@ -221,7 +223,10 @@ data class PatreonEarlyAccessLink(
     val lastError: String? = null,
     /** Why the last check could not read posts for sign-in reasons; null when sign-in was not the problem. */
     val signInIssue: PatreonSignInIssue? = null,
-)
+) {
+    /** Linked to the whole campaign, so posts of the creator's other novels and announcements must be filtered out. */
+    val coversAllPosts: Boolean get() = collectionId.isBlank()
+}
 
 enum class PatreonSignInIssue {
     /** No session was saved, so locked posts stayed locked. */

@@ -68,7 +68,10 @@ class PatreonApi internal constructor(
             ),
         )
 
-    /** One newest-first page of a collection's published posts, including readable bodies. */
+    /**
+     * One newest-first page of a collection's published posts, including readable bodies. A blank
+     * [collectionId] reads every post on the campaign.
+     */
     suspend fun collectionPosts(
         campaignId: String,
         collectionId: String,
@@ -77,7 +80,7 @@ class PatreonApi internal constructor(
         val params =
             buildList {
                 add("filter[campaign_id]" to campaignId)
-                add("filter[collection_id]" to collectionId)
+                if (collectionId.isNotBlank()) add("filter[collection_id]" to collectionId)
                 add("filter[contains_exclusive_posts]" to "true")
                 add("filter[is_draft]" to "false")
                 add("sort" to "-published_at")

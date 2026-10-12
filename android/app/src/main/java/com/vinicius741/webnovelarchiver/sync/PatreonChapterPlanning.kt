@@ -4,10 +4,15 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning.ChapterKey
 import com.vinicius741.webnovelarchiver.source.PatreonPost
+import java.math.BigDecimal
 
 /**
  * Chooses which posts of a linked Patreon collection are early access: those newer than the
  * newest post the public source already has. Matching rules live in [PatreonCopyPlanning].
+ *
+ * A link to every post on the campaign (creators without collections) may also see the creator's
+ * other novels, so its anchor must agree on the subtitle too, and a post ahead must share the
+ * anchor's title prefix and continue its numbering.
  */
 object PatreonChapterPlanning {
     data class EarlyAccessSelection(
@@ -30,12 +35,37 @@ object PatreonChapterPlanning {
     fun selectEarlyAccess(
         newestFirst: List<PatreonPost>,
         publicKeys: List<Pair<Chapter, ChapterKey>>,
+        allPosts: Boolean = false,
     ): EarlyAccessSelection {
         val chapterPosts = newestFirst.filter { PatreonCopyPlanning.isChapterPost(it.title) }
-        val anchor = chapterPosts.indexOfFirst { PatreonCopyPlanning.publicMatch(it.title, publicKeys) != null }
+        val anchor = chapterPosts.indexOfFirst { PatreonCopyPlanning.publicMatch(it.title, publicKeys, strict = allPosts) != null }
         if (anchor < 0) return EarlyAccessSelection(emptyList(), anchorFound = false)
-        return EarlyAccessSelection(chapterPosts.take(anchor).asReversed(), anchorFound = true)
+        val ahead = chapterPosts.take(anchor)
+        val kept = if (allPosts) ahead.filter { continuesAnchor(it.title, chapterPosts[anchor].title, ahead.size) } else ahead
+        return EarlyAccessSelection(kept.asReversed(), anchorFound = true)
     }
+
+    /**
+     * Whether a post on an all-posts link reads as this novel's next chapter: same title prefix as
+     * the anchor and, within the same book, numbered after it by at most the posts in between plus
+     * a small gap. Unnumbered chapters (Interlude) and a new book only need the prefix.
+     */
+    private fun continuesAnchor(
+        title: String,
+        anchorTitle: String,
+        postsAhead: Int,
+    ): Boolean {
+        if (PatreonCopyPlanning.titlePrefix(title) != PatreonCopyPlanning.titlePrefix(anchorTitle)) return false
+        val key = PatreonCopyPlanning.chapterKey(title)
+        val anchor = PatreonCopyPlanning.chapterKey(anchorTitle)
+        val number = key.number?.toBigDecimalOrNull() ?: return true
+        val anchorNumber = anchor.number?.toBigDecimalOrNull() ?: return true
+        if (key.book != anchor.book) return key.book == null || anchor.book == null || key.book > anchor.book
+        return number > anchorNumber && number <= anchorNumber + BigDecimal(postsAhead + MAX_NUMBERING_GAP)
+    }
+
+    /** Chapters an author may skip or renumber between two posts before a number reads as another novel's. */
+    private const val MAX_NUMBERING_GAP = 5
 
     fun planChapters(
         existingPatreon: List<Chapter>,
