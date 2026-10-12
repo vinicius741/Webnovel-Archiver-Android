@@ -35,7 +35,10 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - Navigation is route-based (`AppRoute` / `AppNavigator`). Process recreation restores by route identity (persisted ids), not by mutable titles.
 - Keep file-based JSON storage compatible with existing data. Treat migrations, backup formats, chapter paths, and archive IDs as compatibility-sensitive.
 - New novel sites implement `SourceProvider`, declare stable identity/capabilities/network/UI policy
-  in `SourceDescriptor`, and must be registered in `SourceRegistry`. Do not add source-name or host
+  in `SourceDescriptor`, and must be registered in `SourceRegistry`. SpaceBattles and Sufficient
+  Velocity share `XenForoProvider` for main threadmarks, RSS, and reader pages; keep their stable
+  ID prefixes and descriptors separate. SpaceBattles alone owns Story Library enrichment.
+  Do not add source-name or host
   switches outside the provider descriptor; follow `docs/sources/adding-a-source.md`. Source
   metadata parsing also discovers Patreon links; `StorySyncEngine` refreshes Patreon statistics by
   default without creator-specific mappings. Only measured data is persisted (`PatreonRawStats`,

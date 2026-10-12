@@ -114,6 +114,7 @@ object SourceRegistry {
             RoyalRoadProvider,
             ScribbleHubProvider,
             SpaceBattlesProvider,
+            SufficientVelocityProvider,
             FanFictionProvider,
             Ao3Provider,
         )
