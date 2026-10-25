@@ -128,8 +128,8 @@ dependencies {
     // ViewPager2 — swipe-between-tabs pager in the Library (closes the legacy RN PagerView parity gap).
     implementation 'androidx.viewpager2:viewpager2:1.1.0'
     // MPAndroidChart — line charts on the per-novel Trends screen (score/Patreon over time). Only
-    // published on JitPack (see settings.gradle). v3.1.0 is the final release.
-    implementation 'com.github.PhilJay:MPAndroidChart:v3.1.0'
+    // published on JitPack (see settings.gradle); MPChartLib is the Android Views module.
+    implementation 'com.github.PhilJay.MPAndroidChart:MPChartLib:v4.0.1'
     // Jetpack WindowManager — used by FoldTracker to detect a foldable's hinge/inner display so the
     // responsive layout (size classes, multi-column library, two-pane details) adapts on fold/unfold.
     implementation 'androidx.window:window:1.5.1'
@@ -138,16 +138,16 @@ dependencies {
     // every catch block and download/TTS state transition is diagnosable from logcat without forcing
     // exceptions into user-facing toasts.
     implementation 'com.jakewharton.timber:timber:5.0.1'
-    implementation 'com.squareup.okhttp3:okhttp:5.5.0'
+    implementation 'com.squareup.okhttp3:okhttp:5.5.1'
     implementation 'org.jsoup:jsoup:1.23.2'
-    implementation 'com.google.code.gson:gson:2.14.0'
+    implementation 'com.google.code.gson:gson:2.15.0'
     // Coil 3 — image loading with memory/disk cache, downsampling, cancellation (Speed S4).
     // Coil 3 split network support into its own artifact, so coil-network-okhttp is required to load
     // remote cover URLs.
     implementation 'io.coil-kt.coil3:coil:3.6.3'
     implementation 'io.coil-kt.coil3:coil-network-okhttp:3.6.3'
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'com.squareup.okhttp3:mockwebserver:5.5.0'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:5.5.1'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
     // Real org.json for JVM unit tests: the android.jar org.json classes are stubs that throw
     // "not mocked", which would leave WebView poll-payload decoding untestable on the JVM.

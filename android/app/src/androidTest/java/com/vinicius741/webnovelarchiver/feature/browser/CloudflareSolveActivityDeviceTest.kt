@@ -36,18 +36,26 @@ class CloudflareSolveActivityDeviceTest {
             scenario.onActivity { activity ->
                 val toolbar = checkNotNull(activity.window.decorView.findToolbar())
                 assertTrue(toolbar.menu.performIdentifierAction(1, 0))
-
-                val dialog = activity.continueWithoutCookieDialog()
-                assertTrue(dialog.isShowing)
-                assertEquals(
-                    "Continue anyway",
-                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).text.toString(),
-                )
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
             }
+            val deadline = System.currentTimeMillis() + 5_000
+            var confirmed = false
+            while (!confirmed && System.currentTimeMillis() < deadline) {
+                scenario.onActivity { activity ->
+                    val dialog = activity.continueWithoutVerificationDialog() ?: return@onActivity
+                    if (!dialog.isShowing) return@onActivity
+                    assertEquals(
+                        "Continue anyway",
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).text.toString(),
+                    )
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                    confirmed = true
+                }
+                if (!confirmed) Thread.sleep(50)
+            }
+            assertTrue("Unverified-page confirmation did not appear", confirmed)
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
-            assertTrue("Confirmed no-cookie flow did not release the pending retry", retried)
+            assertTrue("Confirmed unverified-page flow did not release the pending retry", retried)
         }
     }
 
@@ -86,10 +94,10 @@ class CloudflareSolveActivityDeviceTest {
     }
 }
 
-private fun CloudflareSolveActivity.continueWithoutCookieDialog(): AlertDialog {
-    val field = CloudflareSolveActivity::class.java.getDeclaredField("continueWithoutCookieDialog")
+private fun CloudflareSolveActivity.continueWithoutVerificationDialog(): AlertDialog? {
+    val field = CloudflareSolveActivity::class.java.getDeclaredField("continueWithoutVerificationDialog")
     field.isAccessible = true
-    return checkNotNull(field.get(this) as? AlertDialog)
+    return field.get(this) as? AlertDialog
 }
 
 private fun View.findToolbar(): Toolbar? {

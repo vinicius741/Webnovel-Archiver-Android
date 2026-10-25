@@ -62,7 +62,7 @@ class AppLaunchSmokeTest {
                 "notifications" to "Notifications",
                 "updates" to "Updates",
                 "addstory" to "Add Story",
-                "followupdates" to "Follow Updates",
+                "followupdates" to "Following Review",
             )
 
         routes.forEach { (route, title) ->

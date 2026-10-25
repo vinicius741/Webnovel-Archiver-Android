@@ -130,7 +130,10 @@ series (`"score"`, `"patreon_members"`, `"patreon_usd"`, or `"metric_<SourceMetr
   FanFiction.net), whose detail page has no score row.
 - **Overflow menu → "Trends"** — opens the generic view.
 
-The screen renders one MPAndroidChart `LineChart` per available series, each in a card with a
+The screen uses MPAndroidChart 4's `MPChartLib` Android Views module from JitPack. Axis labels
+implement `IAxisValueFormatter`, and chart options use the library's Kotlin properties.
+Trends owns its redraw callback so fold/unfold keeps the same novel and focused series.
+The screen renders one `LineChart` per available series, each in a card with a
 summary line ("Current 4.84 (+0.12 since last sync) · range 4.2–4.9"). Beyond score and the two
 Patreon series, `TrendMetricCards.addSourceMetricChartCards` appends one card per metric in the
 story's source `descriptor.featuredMetrics` that has recorded points — so SpaceBattles charts

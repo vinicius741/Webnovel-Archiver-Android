@@ -66,6 +66,7 @@ Emulator-based functional QA reports for the native Android app.
 
 | File | Description |
 |------|-------------|
+| `dependency-update-2026-10-25.md` | Stable dependency audit, MPAndroidChart 4 migration, and local/emulator validation results. |
 | `native-app-emulator-qa-2026-08-27.html` | Full-screen dogfood & UX pass with self-contained screenshot/video evidence: 4 P2 findings (cold-start spinner with transient 24–84s degradation, opaque full-backup feedback + .tmp leak, AI Controls complexity overload, free-text Voice & Speech fields) and 8 P3 polish items; clean crash sweep; all prior regressions still fixed. |
 | `qa-2026-08-27-fix-plan.md` | Analysis of the 2026-08-27 QA findings with prioritized fix proposals per finding (code sites included), the shipped F2 full-backup fixes, and an execution order for F1/F3/F4 and the P3 batch. |
 | `native-app-emulator-qa-2026-07-21.html` | Debug-APK emulator QA pass covering Library, Queue, Settings, Updates, Add Story, Details, Reader, TTS, EPUB, and regression verification (0 issues found, fully stable). |

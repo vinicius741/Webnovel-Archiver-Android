@@ -2,11 +2,12 @@ package com.vinicius741.webnovelarchiver.feature.details
 
 import android.content.Context
 import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.components.AxisBase
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
-import com.github.mikephil.charting.formatter.ValueFormatter
+import com.github.mikephil.charting.formatter.IAxisValueFormatter
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricPoint
 import com.vinicius741.webnovelarchiver.domain.metrics.TrendAxisPlanning
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -33,11 +34,11 @@ internal fun buildTrendChart(
                 // No per-point value labels; the summary line above the chart carries the current value.
                 color = colors.primary
                 lineWidth = 2.5f
-                setDrawCircles(true)
-                setCircleColor(colors.primary)
+                isDrawCirclesEnabled = true
+                circleColors = listOf(colors.primary)
                 circleRadius = 3f
-                setDrawValues(false)
-                setDrawFilled(true)
+                isDrawValuesEnabled = false
+                isDrawFilledEnabled = true
                 fillColor = colors.primary
                 fillAlpha = 40
                 mode = LineDataSet.Mode.LINEAR
@@ -48,15 +49,15 @@ internal fun buildTrendChart(
     chart.description.isEnabled = false
     chart.legend.isEnabled = false
     // Transparent so the chart sits on the card background.
-    chart.setDrawGridBackground(false)
+    chart.isDrawGridBackgroundEnabled = false
     chart.setBackgroundColor(0)
-    chart.setNoDataText("Not enough data to chart yet.")
-    chart.setNoDataTextColor(colors.onSurfaceVariant)
+    chart.noDataText = "Not enough data to chart yet."
+    chart.noDataTextColor = colors.onSurfaceVariant
     // Horizontal pan only; zoom gestures must not swallow the screen's vertical scroll.
-    chart.setTouchEnabled(true)
+    chart.isTouchEnabled = true
     chart.isDragEnabled = true
-    chart.setScaleEnabled(false)
-    chart.setPinchZoom(false)
+    chart.isScaleEnabled = false
+    chart.isPinchZoomEnabled = false
     chart.isDoubleTapToZoomEnabled = false
     // No manual view-port offsets: only self-computed offsets reserve room for wide labels ("1,250").
 
@@ -66,22 +67,24 @@ internal fun buildTrendChart(
     xAxis.textColor = colors.onSurfaceVariant
     xAxis.gridColor = colors.outlineVariant
     xAxis.gridLineWidth = 1f
-    xAxis.setDrawAxisLine(false)
-    xAxis.setLabelCount(4, true)
+    xAxis.isDrawAxisLineEnabled = false
+    xAxis.labelCount = 4
+    xAxis.isForceLabelsEnabled = true
     xAxis.textSize = 10f
     // One point per calendar day; day granularity keeps a short history's labels from repeating.
     xAxis.granularity = MILLIS_PER_DAY_FLOAT
-    xAxis.setAvoidFirstLastClipping(true)
+    xAxis.isAvoidFirstLastClippingEnabled = true
 
     val yAxis = chart.axisLeft
     yAxis.valueFormatter = YAxisFormatter(kind)
     yAxis.textColor = colors.onSurfaceVariant
     yAxis.gridColor = colors.outlineVariant
     yAxis.gridLineWidth = 1f
-    yAxis.setDrawAxisLine(false)
+    yAxis.isDrawAxisLineEnabled = false
     yAxis.textSize = 10f
     // A fitted narrow range duplicates labels at the default count; let the chart pick clean intervals.
-    yAxis.setLabelCount(Y_AXIS_LABEL_COUNT, false)
+    yAxis.labelCount = Y_AXIS_LABEL_COUNT
+    yAxis.isForceLabelsEnabled = false
     if (kind == TrendMetricKind.PATREON_MEMBERS || kind == TrendMetricKind.COUNT) {
         // Whole counts: fractional grid lines would format to duplicate integers.
         yAxis.granularity = 1f
@@ -120,10 +123,13 @@ private const val Y_AXIS_LABEL_COUNT = 5
 /** Formats epoch-millis X values as `MMM d, yy` in the system timezone. */
 private class DateAxisFormatter(
     private val zone: ZoneId = ZoneId.systemDefault(),
-) : ValueFormatter() {
+) : IAxisValueFormatter {
     private val formatter = DateTimeFormatter.ofPattern("MMM d, yy", Locale.US)
 
-    override fun getFormattedValue(value: Float): String {
+    override fun getFormattedValue(
+        value: Float,
+        axis: AxisBase,
+    ): String {
         val instant = Instant.ofEpochMilli(value.toLong())
         return formatter.format(instant.atZone(zone))
     }
@@ -132,10 +138,13 @@ private class DateAxisFormatter(
 /** Formats Y values according to the metric kind: score (2dp), members (int), USD (compact $). */
 private class YAxisFormatter(
     private val kind: TrendMetricKind,
-) : ValueFormatter() {
+) : IAxisValueFormatter {
     private val intFormat = NumberFormat.getIntegerInstance(Locale.US)
 
-    override fun getFormattedValue(value: Float): String =
+    override fun getFormattedValue(
+        value: Float,
+        axis: AxisBase,
+    ): String =
         when (kind) {
             // Two decimals; one decimal collapsed adjacent grid lines to the same label.
             TrendMetricKind.SCORE -> String.format(Locale.US, "%.2f", value)

@@ -29,15 +29,15 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Kotlin 2.4.20 |
+| Language | Kotlin 2.4.21 |
 | UI | Programmatic Android Views (no XML layouts) |
-| Build | Gradle 9.8 + AGP 9.4.1 |
-| HTTP Client | OkHttp 5.5 + shared source coordinator + sticky Chromium transport for challenged hosts |
+| Build | Gradle 9.8.2 + AGP 9.4.1 |
+| HTTP Client | OkHttp 5.5.1 + shared source coordinator + sticky Chromium transport for challenged hosts |
 | HTML Parsing | Jsoup 1.23 |
-| JSON | Gson 2.14 |
+| JSON | Gson 2.15 |
 | Async | Kotlin Coroutines 1.11 |
 | Images | Coil 3.6 |
-| Charts | MPAndroidChart 3.1 (trend graphs; JitPack) |
+| Charts | MPAndroidChart 4.0.1 (trend graphs; JitPack MPChartLib) |
 | Logging | Timber 5 (debug-gated in release) |
 | Storage | File-based JSON via `AppStorage` / `AppRepository` (no Room/SQLite) |
 | TTS | Android TextToSpeech API + MediaSession |
@@ -105,7 +105,7 @@ WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
 
 Open the `android/` directory in Android Studio. The project uses:
 - `compileSdk` 37, `minSdk` 26, `targetSdk` 36
-- Kotlin 2.4.20, AGP 9.4.1, Gradle wrapper 9.8
+- Kotlin 2.4.21, AGP 9.4.1, Gradle wrapper 9.8.2
 
 For a side-by-side development build:
 
