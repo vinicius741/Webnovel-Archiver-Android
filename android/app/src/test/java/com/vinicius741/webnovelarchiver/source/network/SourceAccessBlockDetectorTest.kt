@@ -146,6 +146,40 @@ class SourceAccessBlockDetectorTest {
     }
 
     @Test
+    fun anubisProofOfWorkInterstitialIsAChallenge() {
+        // Regression: Royal Road began serving an Anubis interstitial (HTTP 200 via Cloudflare) in
+        // place of the fiction page. It carried no Cloudflare challenge markers, so sync parsed it
+        // as the story page and failed with "Source returned no chapters".
+        val html =
+            "<!doctype html><html lang=\"en\"><head><title>Making sure you&#39;re not a bot!</title>" +
+                "<script id=\"anubis_version\" type=\"application/json\">\"v1.28.2\"</script>" +
+                "<script id=\"anubis_challenge\" type=\"application/json\">" +
+                "{\"rules\":{\"algorithm\":\"argon2id\",\"difficulty\":4},\"challenge\":{\"id\":\"x\"}}</script>" +
+                "</head><body><main><h1 id=\"title\">Making sure you&#39;re not a bot!</h1>" +
+                "<script id=\"anubis-main\" defer type=\"module\" " +
+                "src=\"/.within.website/x/cmd/anubis/static/js/main.mjs?cacheBuster=v1.28.2\"></script>" +
+                "</main></body></html>"
+        assertTrue(SourceAccessBlockDetector.isChallengeHtml(html))
+        assertTrue(SourceAccessBlockDetector.isChallengeResponse(headersOf("server", "cloudflare"), html))
+        // The bootstrap script alone (challenge payload already consumed) still identifies it.
+        assertTrue(
+            SourceAccessBlockDetector.isChallengeHtml(
+                "<script id=\"anubis-main\" type=\"module\" src=\"/.within.website/x/cmd/anubis/static/js/main.mjs\"></script>",
+            ),
+        )
+    }
+
+    @Test
+    fun anubisMentionedInProseIsNotAChallenge() {
+        assertFalse(
+            SourceAccessBlockDetector.isChallengeHtml(
+                "<p>The jackal-headed Anubis weighed her heart. Making sure you're not a bot!</p>" +
+                    "<pre>&lt;script id=\"anubis_challenge\"&gt;&lt;/script&gt;</pre>",
+            ),
+        )
+    }
+
+    @Test
     fun challengeRedirectTokenInsideContentUrlIsNotABlock() {
         // Regression: an author pasted a link to their fiction on another Cloudflare-proxied site,
         // and that link carried a __cf_chl_rt_tk query token. The bare cf_chl substring matched it
