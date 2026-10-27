@@ -197,7 +197,7 @@ class DownloadForegroundService : Service() {
         val notification =
             NotificationCompat
                 .Builder(this, AppNotificationCategory.DOWNLOADS.channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_notification)
                 .setContentTitle(getString(R.string.download_notif_blocked_title))
                 .setContentText(getString(R.string.download_notif_blocked_body))
                 .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.download_notif_blocked_body)))
@@ -258,7 +258,7 @@ class DownloadForegroundService : Service() {
 
         return NotificationCompat
             .Builder(this, AppNotificationCategory.DOWNLOADS.channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: the system renders only the alpha channel, so this must stay a single-color silhouette on transparency. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="264"
+    android:viewportHeight="264">
+    <!-- Crops the launcher mark's 432-unit canvas down to the artwork with a small margin. -->
+    <group
+        android:translateX="-84"
+        android:translateY="-90">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M96,252 L122,252 L136,284 L296,284 L310,252 L336,252 L336,322 Q336,340 318,340 L114,340 Q96,340 96,322 Z" />
+        <!-- Even-odd fill cuts the bookmark out of the open book so it stays readable at status-bar size. -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M122,104 Q178,100 216,132 Q254,100 310,104 L310,254 Q256,246 216,270 Q176,246 122,254 Z M204,128 L228,128 L228,230 L216,218 L204,230 Z" />
+    </group>
+</vector>

@@ -53,7 +53,7 @@ internal class TtsNotificationManager(
         val builder =
             NotificationCompat
                 .Builder(context, AppNotificationCategory.TEXT_TO_SPEECH.channelId)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_stat_notification)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setContentIntent(openIntent)

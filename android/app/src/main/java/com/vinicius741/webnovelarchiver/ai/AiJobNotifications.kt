@@ -28,7 +28,7 @@ internal fun Context.aiJobNotification(
         )
     return NotificationCompat
         .Builder(this, AppNotificationCategory.AI_GENERATION.channelId)
-        .setSmallIcon(R.mipmap.ic_launcher)
+        .setSmallIcon(R.drawable.ic_stat_notification)
         .setContentTitle(title)
         .setContentText(text)
         .setStyle(NotificationCompat.BigTextStyle().bigText(text))
