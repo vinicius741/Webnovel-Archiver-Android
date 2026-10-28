@@ -37,6 +37,25 @@ class CloudflareFormPostPlanningTest {
     }
 
     @Test
+    fun jsonGetFetchSendsNoBody() {
+        val request =
+            CloudflareWebViewRequest(
+                url = "https://www.patreon.com/api/posts?sort=-published_at",
+                method = "GET",
+                userAgent = "test",
+                headers = mapOf("Accept" to NetworkRequests.JSON_ACCEPT),
+                postData = null,
+                usesBrowserFetch = true,
+            )
+
+        val script = CloudflareFormPostPlanning.fetchScript(request)
+
+        assertTrue(script.contains("{method:\"GET\",credentials:'include'"))
+        assertFalse(script.contains(",body:\""))
+        assertTrue(script.contains("\"Accept\":\"application/json"))
+    }
+
+    @Test
     fun decodesBrowserFetchResultWithoutHtmlWrapping() {
         val browserResult =
             JSONObject()

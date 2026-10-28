@@ -260,6 +260,13 @@ internal object CloudflareRenderedPageValidator {
                         final.provider.getStoryId(final.normalizedUrl)
             }
         }
+        // Hosts outside the source registry (Patreon) route client-side and rewrite their paths
+        // (/Creator/about becomes /c/Creator/about), so a path match would never settle; any page
+        // on the same host counts. The stale-document marker still rejects the previous request's page.
+        val requestedHost = normalizedHost(request.url)
+        if (requestedHost != null && SourceRegistry.providerForHost(requestedHost) == null) {
+            return requestedHost == normalizedHost(finalUrl)
+        }
         return normalizedPath(request.url) == normalizedPath(finalUrl)
     }
 

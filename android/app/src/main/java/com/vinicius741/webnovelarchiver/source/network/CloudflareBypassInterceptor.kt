@@ -20,13 +20,17 @@ internal data class CloudflareRenderedPage(
     val finalUrl: String,
 )
 
-/** A request shape supported by WebView's top-level GET and form-POST APIs. */
+/**
+ * A request shape the WebView can replay: a top-level page GET, or a same-origin browser `fetch`
+ * whose raw response text is returned unwrapped (form POSTs and JSON API GETs).
+ */
 internal data class CloudflareWebViewRequest(
     val url: String,
     val method: String,
     val userAgent: String,
     val headers: Map<String, String>,
     val postData: ByteArray?,
+    val usesBrowserFetch: Boolean = method == "POST",
 ) {
     companion object {
         fun from(
@@ -53,8 +57,12 @@ internal data class CloudflareWebViewRequest(
                 userAgent = request.header("User-Agent").orEmpty(),
                 headers = headers,
                 postData = postData,
+                usesBrowserFetch = request.method == "POST" || isJsonRequest(request),
             )
         }
+
+        /** A rendered document would wrap JSON in markup, so API reads go through browser `fetch`. */
+        fun isJsonRequest(request: Request): Boolean = request.header("Accept").orEmpty().contains("application/json")
 
         private const val MAX_POST_BYTES = 1_000_000L
     }
@@ -221,9 +229,12 @@ class CloudflareBypassInterceptor internal constructor(
 
     private fun isBrowserPageRequest(request: Request): Boolean =
         request.method in setOf("GET", "POST") &&
-            request.header("Accept").orEmpty().let { accept ->
-                accept.isBlank() || accept.contains("text/html") || accept.contains("application/xhtml+xml")
-            }
+            (
+                CloudflareWebViewRequest.isJsonRequest(request) ||
+                    request.header("Accept").orEmpty().let { accept ->
+                        accept.isBlank() || accept.contains("text/html") || accept.contains("application/xhtml+xml")
+                    }
+            )
 
     private fun hostKey(request: Request): String =
         request.url.host

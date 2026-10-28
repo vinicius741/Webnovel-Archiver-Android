@@ -85,11 +85,12 @@ class NetworkClient(
         maximumAttemptsOverride: Int? = null,
         allowPreparedPage: Boolean = true,
         requestGate: NetworkRequestGate? = null,
+        accept: String = NetworkRequests.DEFAULT_ACCEPT,
     ): String {
         if (allowPreparedPage) {
             preparedPages.remove(url)?.takeIf { it.expiresAt > nowMillis() }?.let { return it.html }
         }
-        val request = NetworkRequests.pageRequest(url)
+        val request = NetworkRequests.pageRequest(url, accept)
         val policy = policyResolver.policyFor(request.url)
         return executeWithRetries(url, request, policy, callTimeoutMillis, maximumAttemptsOverride, requestGate) { response ->
             val body = response.bodyStringCapped(url, MAX_TEXT_RESPONSE_BYTES)
@@ -416,14 +417,18 @@ object NetworkRequests {
 
     const val DEFAULT_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
     const val FORM_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    const val JSON_ACCEPT = "application/json, text/plain, */*"
     const val FORM_CONTENT_TYPE = "application/x-www-form-urlencoded; charset=UTF-8"
 
-    fun pageRequest(url: String): Request =
+    fun pageRequest(
+        url: String,
+        accept: String = DEFAULT_ACCEPT,
+    ): Request =
         Request
             .Builder()
             .url(url)
             .header("User-Agent", SourceUserAgent.forUrl(url))
-            .header("Accept", DEFAULT_ACCEPT)
+            .header("Accept", accept)
             .header("Accept-Language", "en-US,en;q=0.9")
             .build()
 

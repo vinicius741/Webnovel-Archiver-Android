@@ -94,6 +94,54 @@ class CloudflareBypassInterceptorTest {
     }
 
     @Test
+    fun jsonGetIsForwardedToBrowserFetchAndReturnsTheRawBody() {
+        server.enqueue(cloudflareChallenge())
+        var renderedRequest: CloudflareWebViewRequest? = null
+        val client =
+            clientWithRenderer { request ->
+                renderedRequest = request
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("""{"data":[]}""", request.url))
+            }
+        val request =
+            Request
+                .Builder()
+                .url(server.url("/api/posts?sort=-published_at"))
+                .header("Accept", NetworkRequests.JSON_ACCEPT)
+                .build()
+
+        client.newCall(request).execute().use { response ->
+            assertEquals("""{"data":[]}""", response.body?.string())
+        }
+
+        assertEquals("GET", renderedRequest?.method)
+        assertTrue(renderedRequest?.usesBrowserFetch == true)
+        assertNull(renderedRequest?.postData)
+    }
+
+    @Test
+    fun htmlGetKeepsTopLevelNavigation() {
+        server.enqueue(cloudflareChallenge())
+        var renderedRequest: CloudflareWebViewRequest? = null
+        val client =
+            clientWithRenderer { request ->
+                renderedRequest = request
+                CloudflareRenderOutcome.Rendered(CloudflareRenderedPage("<p>page</p>", request.url))
+            }
+
+        client
+            .newCall(
+                Request
+                    .Builder()
+                    .url(server.url("/page"))
+                    .header("Accept", NetworkRequests.DEFAULT_ACCEPT)
+                    .build(),
+            ).execute()
+            .close()
+
+        assertFalse(renderedRequest?.usesBrowserFetch ?: true)
+    }
+
+    @Test
     fun failedBrowserRenderPreservesOriginalChallenge() {
         server.enqueue(cloudflareChallenge())
         val client = clientWithRenderer { CloudflareRenderOutcome.NeedsManualVerification(CloudflareRenderFailure.ChallengeActive) }

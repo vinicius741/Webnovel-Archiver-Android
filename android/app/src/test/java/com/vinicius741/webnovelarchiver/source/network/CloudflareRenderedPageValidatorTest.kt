@@ -26,6 +26,20 @@ class CloudflareRenderedPageValidatorTest {
     }
 
     @Test
+    fun acceptsPatreonClientRoutedPageOnTheSameHost() {
+        val request = request("https://www.patreon.com/ArcaneCadence/about")
+
+        assertTrue(
+            CloudflareRenderedPageValidator.isExpectedPage(
+                request,
+                "https://www.patreon.com/c/ArcaneCadence/about",
+                "<html><body><div>About ArcaneCadence</div></body></html>",
+            ),
+        )
+        assertFalse(CloudflareRenderedPageValidator.matchesRequestedResource(request, "https://accounts.google.com/signin"))
+    }
+
+    @Test
     fun rejectsPreviousChapterFromPersistentSession() {
         assertFalse(
             CloudflareRenderedPageValidator.isExpectedPage(

@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 
-/** Builds and decodes a same-origin browser fetch for form posts with custom request headers. */
+/** Builds and decodes a same-origin browser fetch for form posts and JSON GETs with custom request headers. */
 internal object CloudflareFormPostPlanning {
     fun bootstrapUrl(url: String): String? =
         runCatching {
@@ -47,10 +47,14 @@ internal object CloudflareFormPostPlanning {
             append("(function(){var seq=(window.__wnaFormPostSeq=(window.__wnaFormPostSeq||0)+1);")
             append("window.__wnaFormPostResult=null;fetch(")
             append(JSONObject.quote(request.url))
-            append(",{method:'POST',credentials:'include',headers:")
+            append(",{method:")
+            append(JSONObject.quote(request.method))
+            append(",credentials:'include',headers:")
             append(headers)
-            append(",body:")
-            append(JSONObject.quote(body))
+            if (request.postData != null) {
+                append(",body:")
+                append(JSONObject.quote(body))
+            }
             append("}).then(async function(response){window.__wnaFormPostResult={seq:seq,")
             append("status:response.status,url:response.url,")
             append("mitigated:response.headers.get('cf-mitigated')==='challenge',")

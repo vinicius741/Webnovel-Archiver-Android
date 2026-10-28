@@ -156,8 +156,8 @@ object CloudflareWebViewSolver {
                 }
             }
 
-            web.webViewClient = renderClient(session, request.method == "POST", ::finishWith)
-            if (request.method == "POST") {
+            web.webViewClient = renderClient(session, request.usesBrowserFetch, ::finishWith)
+            if (request.usesBrowserFetch) {
                 CloudflareWebViewFormPost(
                     web = web,
                     request = request,
@@ -209,7 +209,7 @@ object CloudflareWebViewSolver {
 
     private fun renderClient(
         session: BrowserSession,
-        isFormPost: Boolean,
+        isBrowserFetch: Boolean,
         finishWith: (CloudflareRenderFailure) -> Unit,
     ): WebViewClient =
         object : WebViewClient() {
@@ -242,7 +242,7 @@ object CloudflareWebViewSolver {
             ) {
                 if (
                     failingRequest?.isForMainFrame == true &&
-                    !isFormPost &&
+                    !isBrowserFetch &&
                     errorResponse?.statusCode !in setOf(403, 429, 503)
                 ) {
                     finishWith(

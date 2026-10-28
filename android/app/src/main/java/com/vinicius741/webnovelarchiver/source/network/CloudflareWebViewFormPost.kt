@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.SystemClock
 import android.webkit.WebView
 
-/** Runs a form POST through the same Chromium session as challenge verification. */
+/** Runs a form POST or JSON GET as a same-origin `fetch` in the Chromium session that passed verification. */
 internal class CloudflareWebViewFormPost(
     private val web: WebView,
     private val request: CloudflareWebViewRequest,
