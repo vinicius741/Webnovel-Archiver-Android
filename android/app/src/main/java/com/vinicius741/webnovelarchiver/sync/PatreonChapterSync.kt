@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonPost
 import com.vinicius741.webnovelarchiver.source.PatreonRichText
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import kotlinx.coroutines.CancellationException
 
@@ -78,6 +79,7 @@ class PatreonChapterSync(
             val authRefused = error is HttpNetworkException && error.statusCode in setOf(401, 403)
             val issue =
                 when {
+                    error is SourceAccessBlockedException -> PatreonSignInIssue.ACCESS_BLOCKED
                     !authRefused -> null
                     sessionPresent() -> PatreonSignInIssue.REJECTED
                     else -> PatreonSignInIssue.SIGNED_OUT
@@ -87,6 +89,7 @@ class PatreonChapterSync(
                     null -> "Patreon check failed: ${error.message ?: error.javaClass.simpleName}"
                     PatreonSignInIssue.REJECTED -> "Patreon didn't accept your saved sign-in."
                     PatreonSignInIssue.SIGNED_OUT -> "Sign in to Patreon to check early-access chapters."
+                    PatreonSignInIssue.ACCESS_BLOCKED -> "Cloudflare is blocking the Patreon check."
                 }
             Result(existingPatreon, link.copy(lastCheckedAt = checkedAt, lastError = message, signInIssue = issue), emptyList())
         }

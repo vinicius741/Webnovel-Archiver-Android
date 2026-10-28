@@ -209,8 +209,12 @@ private fun ScreenHost.addEarlyAccessSection(
                     },
                 )
             }
-            // A check is a sync, so it waits for the running story operation like relinking does.
-            val enabled = earlyAccessEnabled || prompt.action != PatreonEarlyAccessPlanning.Action.CHECK_NOW
+            // A check (or a verification that ends in one) is a sync, so it waits for the running
+            // story operation like relinking does.
+            val startsSync =
+                prompt.action == PatreonEarlyAccessPlanning.Action.CHECK_NOW ||
+                    prompt.action == PatreonEarlyAccessPlanning.Action.VERIFY_ACCESS
+            val enabled = earlyAccessEnabled || !startsSync
             addView(
                 makeFullWidthButton(
                     app,

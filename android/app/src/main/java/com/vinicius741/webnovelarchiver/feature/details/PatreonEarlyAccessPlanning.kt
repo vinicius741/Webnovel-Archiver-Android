@@ -36,6 +36,9 @@ object PatreonEarlyAccessPlanning {
 
         /** Signed in, but the account's tier cannot read some posts. */
         OPEN_PATREON,
+
+        /** Cloudflare blocked patreon.com: pass its check in the in-app browser, then check again. */
+        VERIFY_ACCESS,
     }
 
     data class Prompt(
@@ -65,6 +68,12 @@ object PatreonEarlyAccessPlanning {
         val title = link.collectionTitle
         val signedInSinceCheck = sessionStoredAt > (link.lastCheckedAt ?: 0L)
         return when {
+            // Checked first: until Cloudflare lets the app through, no sign-in step can help.
+            link.signInIssue == PatreonSignInIssue.ACCESS_BLOCKED ->
+                Display(
+                    "$title · Cloudflare is blocking the Patreon check",
+                    Prompt(Action.VERIFY_ACCESS, "Verify Patreon access", "Pass Patreon's security check once; the check then runs again."),
+                )
             !sessionPresent ->
                 Display(
                     if (link.lockedCount > 0) {

@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonPost
 import com.vinicius741.webnovelarchiver.source.network.HttpNetworkException
+import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -245,6 +246,25 @@ class PatreonChapterSyncTest {
             assertEquals(existing, result.chapters)
             assertEquals("Patreon didn't accept your saved sign-in.", result.link.lastError)
             assertEquals(PatreonSignInIssue.REJECTED, result.link.signInIssue)
+        }
+
+    @Test
+    fun `a Cloudflare block keeps existing copies and asks for verification`() =
+        runBlocking {
+            val existing = listOf(copy("15", "Book 4 Chapter 15: Ascent"))
+            val sync =
+                PatreonChapterSync(
+                    api = PatreonApi { url -> throw SourceAccessBlockedException(url) },
+                    sessionPresent = { true },
+                    cleanup = { it },
+                    saveChapter = { _, _, _, _ -> error("not reached") },
+                )
+
+            val result = sync.sync("s", link, publicChapters, existing) {}
+
+            assertEquals(existing, result.chapters)
+            assertEquals("Cloudflare is blocking the Patreon check.", result.link.lastError)
+            assertEquals(PatreonSignInIssue.ACCESS_BLOCKED, result.link.signInIssue)
         }
 
     @Test

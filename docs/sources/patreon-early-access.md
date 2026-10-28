@@ -42,14 +42,25 @@ or logs, and it is never displayed.
 ### Guidance on the novel page
 
 The link records why a check could not read posts (`PatreonEarlyAccessLink.signInIssue`:
-`SIGNED_OUT`, or `REJECTED` for a 401/403 while a session was saved).
+`SIGNED_OUT`, `REJECTED` for a 401/403 while a session was saved, or `ACCESS_BLOCKED` when Cloudflare
+held patreon.com behind a check the hidden WebView could not pass).
 `PatreonEarlyAccessPlanning.display` turns that, the locked count, and the current session into the
 Early-access row's summary and one next-step button:
 
+- Cloudflare blocked the check → **Verify Patreon access** (opens `CloudflareSolveActivity` on
+  patreon.com; passing it clears the host's persisted manual-verification circuit, which nothing
+  else clears for Patreon, and re-runs the sync). This comes before any sign-in step;
 - no session saved → **Set up Patreon sign-in** (opens the guide for this novel);
 - the saved session was refused → **Sign in again**;
 - a session was saved after the failed check → **Check for early-access chapters** (a sync);
 - signed in but posts are still locked → **View tiers on Patreon**.
+
+Patreon API calls ask for JSON (`PatreonApi.acceptFor`), so when Cloudflare challenges one the
+interceptor replays it as a same-origin browser `fetch` and returns the raw JSON. A top-level
+WebView render would hand the parser a document wrapping the JSON in markup. Patreon's web app also
+rewrites page paths client-side (`/Creator/about` settles on `/c/Creator/about`), so for hosts outside
+the source registry `CloudflareRenderedPageValidator.matchesRequestedResource` accepts any settled page
+on the same host; a strict path match timed the render out and opened the circuit.
 
 Linking a collection while signed out also offers the guide right away. The public sync always
 finishes regardless of the Patreon result.

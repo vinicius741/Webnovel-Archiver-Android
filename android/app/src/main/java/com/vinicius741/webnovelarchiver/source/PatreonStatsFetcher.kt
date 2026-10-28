@@ -40,7 +40,7 @@ class PatreonStatsFetcher internal constructor(
         network: NetworkClient,
         now: () -> Long = System::currentTimeMillis,
     ) : this(
-        fetchPage = { url -> network.fetch(url, PATREON_CALL_TIMEOUT_MILLIS) },
+        fetchPage = { url -> network.fetch(url, PATREON_CALL_TIMEOUT_MILLIS, accept = PatreonApi.acceptFor(url)) },
         now = now,
     )
 

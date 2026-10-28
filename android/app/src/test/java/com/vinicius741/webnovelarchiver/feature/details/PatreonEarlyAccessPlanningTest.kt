@@ -67,6 +67,17 @@ class PatreonEarlyAccessPlanningTest {
     }
 
     @Test
+    fun `a Cloudflare block asks to verify access before any sign-in step`() {
+        val blocked = link.copy(lastCheckedAt = 10, signInIssue = PatreonSignInIssue.ACCESS_BLOCKED)
+
+        listOf(true, false).forEach { sessionPresent ->
+            val display = PatreonEarlyAccessPlanning.display(blocked, 0, sessionPresent, sessionStoredAt = 0)
+            assertEquals(PatreonEarlyAccessPlanning.Action.VERIFY_ACCESS, display.prompt?.action)
+            assertEquals("The Lich King Reincarnates · Cloudflare is blocking the Patreon check", display.summary)
+        }
+    }
+
+    @Test
     fun `locked chapters for a signed-in account point to the creator's tiers`() {
         val locked = link.copy(lastCheckedAt = 10, lockedCount = 2, lastError = "2 early-access chapters need a tier")
 

@@ -4,6 +4,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
+import com.vinicius741.webnovelarchiver.source.network.NetworkRequests
 import java.net.URLEncoder
 import java.time.OffsetDateTime
 
@@ -47,7 +48,9 @@ class PatreonApi internal constructor(
     private val fetchPage: suspend (String) -> String,
 ) {
     constructor(network: NetworkClient) : this(
-        fetchPage = { url -> network.fetch(url, PATREON_CALL_TIMEOUT_MILLIS, maximumAttemptsOverride = 2) },
+        fetchPage = { url ->
+            network.fetch(url, PATREON_CALL_TIMEOUT_MILLIS, maximumAttemptsOverride = 2, accept = acceptFor(url))
+        },
     )
 
     suspend fun currentUser(): PatreonAccount = parseCurrentUser(fetchPage(apiUrl("current_user", "include" to "pledges.campaign")))
@@ -93,13 +96,22 @@ class PatreonApi internal constructor(
 
     companion object {
         private const val PATREON_CALL_TIMEOUT_MILLIS = 30_000L
+        private const val API_ROOT = "https://www.patreon.com/api/"
+
+        /**
+         * The API is JSON: asking for it keeps a Cloudflare retry on same-origin browser fetch,
+         * which returns the raw body instead of a rendered document wrapping it in markup.
+         */
+        internal fun acceptFor(url: String): String =
+            if (url.startsWith(API_ROOT)) NetworkRequests.JSON_ACCEPT else NetworkRequests.DEFAULT_ACCEPT
+
         const val POSTS_PAGE_SIZE = 20
 
         internal fun apiUrl(
             path: String,
             vararg params: Pair<String, String>,
         ): String =
-            "https://www.patreon.com/api/$path?" +
+            "$API_ROOT$path?" +
                 (params.toList() + ("json-api-version" to "1.0")).joinToString("&") { (key, value) ->
                     "${encode(key)}=${encode(value)}"
                 }

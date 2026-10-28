@@ -234,6 +234,9 @@ enum class PatreonSignInIssue {
 
     /** A saved session was refused (401/403), usually because it expired. */
     REJECTED,
+
+    /** Cloudflare held patreon.com for a check only an interactive browser verification can pass. */
+    ACCESS_BLOCKED,
 }
 
 data class PatreonRawTier(

@@ -8,6 +8,8 @@ import com.vinicius741.webnovelarchiver.data.repository.setPatreonEarlyAccess
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
+import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
+import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import com.vinicius741.webnovelarchiver.feature.settings.showPatreonAccount
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -15,6 +17,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.PatreonApi
 import com.vinicius741.webnovelarchiver.source.PatreonCollection
 import com.vinicius741.webnovelarchiver.source.PatreonSession
+import com.vinicius741.webnovelarchiver.source.PatreonStatsFetcher
 import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.confirm
@@ -145,5 +148,16 @@ internal fun ScreenHost.handleEarlyAccessPrompt(
         PatreonEarlyAccessPlanning.Action.CHECK_NOW -> syncStory(story)
         PatreonEarlyAccessPlanning.Action.OPEN_PATREON ->
             story.patreonUrl?.let { url -> app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        // Passing the check clears patreon.com's access block; MainActivity then fires the armed sync.
+        // The solver needs a page that stays put: signed in, the Patreon root redirects to /home.
+        PatreonEarlyAccessPlanning.Action.VERIFY_ACCESS -> {
+            val verifyUrl =
+                story.patreonUrl?.let { url -> runCatching { PatreonStatsFetcher.aboutUrl(url) }.getOrNull() }
+                    ?: PATREON_HOME_URL
+            SourceAccessRetryCoordinator.arm { syncStory(story) }
+            CloudflareSolveActivity.launch(app, verifyUrl)
+        }
     }
 }
+
+private const val PATREON_HOME_URL = "https://www.patreon.com/"
