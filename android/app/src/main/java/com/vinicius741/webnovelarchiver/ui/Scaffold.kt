@@ -18,6 +18,8 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.BackIntercept
+import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 
@@ -42,12 +44,12 @@ internal fun ScreenHost.screen(
     route: AppRoute,
     title: String,
     subtitle: String? = null,
-    onBack: (() -> Unit)? = null,
     actions: List<AppBarAction> = emptyList(),
     fab: (() -> Unit)? = null,
     scrollable: Boolean = false,
     chrome: ScreenChrome = ScreenChrome.STANDARD,
     closeAction: (() -> Unit)? = null,
+    backIntercept: BackIntercept? = null,
     block: LinearLayout.() -> Unit,
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
@@ -60,21 +62,27 @@ internal fun ScreenHost.screen(
     if (route !is AppRoute.Reader) detachReaderTtsListener()
     navigator.navigate(route)
     val screenKey = navigator.current.stableKey
-    val previousScreenKey = frame.tag as? String
-    if (previousScreenKey != null) {
-        findScrollView(frame)?.let { routeScrollPositions[previousScreenKey] = it.scrollY }
-    }
-    val savedScrollY = if (scrollable) routeScrollPositions[screenKey] ?: 0 else 0
+    captureScreenViewState()
+    routeMemory.trackedList = null
+    routeMemory.retainOnly(navigator.stableKeys)
+    val savedScrollY = if (scrollable) routeMemory.scrollPositions[screenKey] ?: 0 else 0
     // Destroy any WebViews in the outgoing tree before removing it. WebViews are heavy and hold
     // activity references; without explicit destroy() they leak across navigation.
     WebViewSafety.disposeAll(frame)
     frame.removeAllViews()
-    // Make the system back button mirror this screen's app-bar back arrow. `null` (root) disables
-    // hardware/gesture back navigation so the OS default (exit) applies.
-    // [closeAction] is a modal exit (e.g. Library multi-select): it wins over navigation for both the
-    // app-bar button (shown as a close icon) and system back.
-    val effectiveBack = closeAction ?: if (onBack != null && navigator.canGoBack) ({ navigateBack() }) else onBack
-    backHandler = effectiveBack
+    // Back always returns to the previous history entry (or this route's parent); only the Library
+    // root has none. The transient Working screen holds Back until its operation finishes, since the
+    // operation would otherwise yank the user back to it. [closeAction] is a modal exit (Library
+    // multi-select) that wins for both the app-bar button (shown as a close icon) and system back.
+    val navigateUp: (() -> Unit)? =
+        when {
+            route == AppRoute.Working -> ({ toast("Still working…") })
+            navigator.canGoBack -> ({ navigateBack() })
+            else -> null
+        }
+    screenBack = ScreenBack(close = closeAction, intercept = backIntercept, navigateUp = navigateUp)
+    // The app-bar arrow navigates directly; only system Back clears in-screen state first.
+    val appBarBack = closeAction ?: navigateUp?.takeIf { route != AppRoute.Working }
     val column =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
@@ -90,7 +98,7 @@ internal fun ScreenHost.screen(
             appBar(
                 title,
                 subtitle,
-                effectiveBack,
+                appBarBack,
                 actions,
                 if (closeAction !=
                     null

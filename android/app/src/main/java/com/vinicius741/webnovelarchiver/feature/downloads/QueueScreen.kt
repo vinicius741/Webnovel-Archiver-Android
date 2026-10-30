@@ -45,6 +45,7 @@ import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.rememberListPosition
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.statusColor
@@ -73,7 +74,7 @@ internal fun ScreenHost.showQueue() {
     val appBarActions =
         listOf(AppBarAction(R.drawable.wna_settings, "Download Settings") { showDownloadSettings() }) +
             globalAppBarActions(initialGlobalActions)
-    screen(route = AppRoute.Queue, title = "Downloads", onBack = { showLibrary() }, actions = appBarActions) {
+    screen(route = AppRoute.Queue, title = "Downloads", actions = appBarActions) {
         // Width-capped centered column so tablets/Fold don't stretch edge-to-edge; no effect on phones.
         val centered =
             LinearLayout(context).apply {
@@ -117,6 +118,7 @@ internal fun ScreenHost.showQueue() {
         centered.addView(emptySlot, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         centered.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         updateQueueContent(summarySlot, emptySlot, list, adapter, queue, pacingSnapshots, nowMillis)
+        rememberListPosition(list)
         addView(centeredShell, verticalFill())
     }
     observeQueueUpdates(summarySlot, emptySlot, list, adapter, initialGlobalActions)

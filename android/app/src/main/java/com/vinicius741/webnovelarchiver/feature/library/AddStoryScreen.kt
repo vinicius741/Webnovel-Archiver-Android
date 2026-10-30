@@ -48,7 +48,6 @@ internal fun ScreenHost.showAddStory() {
         route = AppRoute.AddStory,
         title = "Add Story",
         subtitle = "Paste a story URL to import",
-        onBack = { showLibrary() },
         scrollable = true,
     ) {
         rerender = { showAddStory() }
@@ -140,6 +139,8 @@ internal fun ScreenHost.showAddStory() {
                     onDone = { story ->
                         addStoryStatus = null
                         addStoryUrlText = null
+                        // The finished form gives way to the story it added: Back from it goes to the Library.
+                        if (navigator.current == AppRoute.AddStory) navigator.replace(AppRoute.Details(story.id))
                         showDetails(story.id)
                     },
                     onError = { error ->

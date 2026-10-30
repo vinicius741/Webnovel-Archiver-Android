@@ -42,7 +42,7 @@ internal fun ScreenHost.showNotifications() {
             else -> "Android is allowing this app to show notifications."
         }
 
-    screen(route = AppRoute.Notifications, title = "Notifications", onBack = { showSettings() }, scrollable = true) {
+    screen(route = AppRoute.Notifications, title = "Notifications", scrollable = true) {
         section("App Permission")
         addView(
             card {

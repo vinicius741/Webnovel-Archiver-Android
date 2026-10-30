@@ -152,7 +152,6 @@ internal fun ScreenHost.showPlayer() {
     screen(
         route = AppRoute.Player,
         title = "Now Playing",
-        onBack = { navigateBack() },
     ) {
         liveViews = buildPlayerBody(this, initial)
     }

@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 internal fun ScreenHost.showTabs() {
-    screen(route = AppRoute.Tabs, title = "Manage Tabs", onBack = { showSettings() }, scrollable = true) {
+    screen(route = AppRoute.Tabs, title = "Manage Tabs", scrollable = true) {
         val tabs = TabPlanning.normalizeOrders(repository.tabs.get())
         text(
             "Tabs group novels on the Library screen. Create one (e.g. \"Reading\", \"Finished\") and assign novels to it.",

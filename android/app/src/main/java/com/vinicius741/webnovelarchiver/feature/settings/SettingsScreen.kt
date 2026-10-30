@@ -60,7 +60,7 @@ internal fun ScreenHost.showSettings() {
     // Re-render so layout/width toggles re-center the capped content live.
     rerender = { showSettings() }
     val layout = currentScreenLayout()
-    screen(route = AppRoute.Settings, title = "Settings", onBack = { showLibrary() }, scrollable = true) {
+    screen(route = AppRoute.Settings, title = "Settings", scrollable = true) {
         section("Appearance")
         text("Theme", Type.TITLE_SMALL)
         spacer(Space.XS)
@@ -134,7 +134,7 @@ internal fun ScreenHost.showSettings() {
 /** Heavy, rarely-used rows: backup/restore, source-session maintenance, storage notices, reset. */
 internal fun ScreenHost.showDataBackup() {
     backupExportState.reconcile()
-    screen(route = AppRoute.DataBackup, title = "Data & Backup", onBack = { showSettings() }, scrollable = true) {
+    screen(route = AppRoute.DataBackup, title = "Data & Backup", scrollable = true) {
         section("Backup")
         // Host-owned state prevents concurrent exports and survives re-renders; the nullable
         // holder lets the click lambda update its row.
@@ -246,7 +246,7 @@ internal fun ScreenHost.showDataBackup() {
 internal fun ScreenHost.showDownloadSettings() {
     val settings = repository.settings.get()
     val sourceSettings = repository.sourceDownloadSettings.get()
-    screen(route = AppRoute.DownloadSettings, title = "Download Settings", onBack = { showSettings() }, scrollable = true) {
+    screen(route = AppRoute.DownloadSettings, title = "Download Settings", scrollable = true) {
         // Parallelism is across sources; each source runs one sequential lane with its delay between starts.
         section("Defaults")
         text(

@@ -27,6 +27,7 @@ import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
+import com.vinicius741.webnovelarchiver.ui.rememberListPosition
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.verticalFill
@@ -52,7 +53,6 @@ internal fun ScreenHost.showUpdateFollowSelection() {
         route = AppRoute.UpdateFollowSelection,
         title = "Following Review",
         subtitle = UpdateTrackerPlanning.reviewHeaderLabel(followedCount, stories.size),
-        onBack = { showUpdates() },
     ) {
         if (stories.isEmpty()) {
             addView(
@@ -173,6 +173,7 @@ internal fun ScreenHost.showUpdateFollowSelection() {
             }
         addView(emptyHost, verticalFill())
         addView(list, verticalFill().apply { topMargin = context.dp(Space.SM) })
+        rememberListPosition(list)
 
         applyFilters = {
             val visible = visibleEntries()

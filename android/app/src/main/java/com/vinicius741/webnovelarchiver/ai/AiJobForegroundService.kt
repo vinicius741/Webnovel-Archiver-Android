@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,9 +38,9 @@ class AiJobForegroundService : Service() {
         AppNotificationChannels.ensureCreated(this)
         serviceScope.launch {
             coverCoordinator.jobs.collect { coverJobs ->
-                val cover = coverJobs.values.firstOrNull()
+                val cover = coverJobs.entries.firstOrNull()
                 when {
-                    cover != null -> updateOngoingNotification(cover.message)
+                    cover != null -> updateOngoingNotification(cover.value.message, cover.key)
                     foregroundStarted -> stopAfterFinish()
                 }
             }
@@ -62,11 +63,11 @@ class AiJobForegroundService : Service() {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> {
                 val cover =
-                    coverCoordinator.jobs.value.values
+                    coverCoordinator.jobs.value.entries
                         .firstOrNull()
-                val message = cover?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
+                val message = cover?.value?.message ?: intent?.getStringExtra(EXTRA_INITIAL_MESSAGE) ?: "Working on AI task..."
                 // startForegroundService demands startForeground even on an immediate stop.
-                startForeground(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message))
+                startForeground(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message, cover?.key))
                 foregroundStarted = true
                 if (cover == null) stopAfterFinish()
             }
@@ -90,7 +91,10 @@ class AiJobForegroundService : Service() {
         stopAfterFinish()
     }
 
-    private fun updateOngoingNotification(message: String) {
+    private fun updateOngoingNotification(
+        message: String,
+        storyId: String,
+    ) {
         if (!foregroundStarted) return
         // Inlined like DownloadForegroundService so lint sees the permission guard.
         if (
@@ -98,7 +102,7 @@ class AiJobForegroundService : Service() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         ) {
             runCatching {
-                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message))
+                NotificationManagerCompat.from(this).notify(ONGOING_NOTIFICATION_ID, aiJobOngoingNotification(message, storyId))
             }
         }
     }
@@ -127,7 +131,7 @@ class AiJobForegroundService : Service() {
                     }
                 is AiCoverJobEvent.Failed -> event.message
             }
-        postOutcome(COVER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, requestCode = 1)
+        postOutcome(COVER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, AppRoute.AiControls(event.storyId))
     }
 
     companion object {
@@ -165,7 +169,7 @@ private fun Service.postOutcome(
     id: Int,
     title: String,
     text: String,
-    requestCode: Int,
+    route: AppRoute,
 ) {
     // Inlined like DownloadForegroundService so lint sees the permission guard.
     if (
@@ -174,7 +178,7 @@ private fun Service.postOutcome(
     ) {
         return
     }
-    val notification = aiJobNotification(title, text, requestCode = requestCode, ongoing = false)
+    val notification = aiJobNotification(title, text, requestCode = 21, ongoing = false, route = route)
     runCatching {
         NotificationManagerCompat.from(this).notify(id, notification)
     }.onFailure { Timber.w(it, "Could not post AI job outcome notification") }

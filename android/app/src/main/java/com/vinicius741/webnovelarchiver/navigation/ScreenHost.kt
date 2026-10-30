@@ -180,8 +180,8 @@ interface ScreenHost {
     var detailsOperationSlot: ViewGroup?
     val navigator: AppNavigator
 
-    /** Scroll offsets keyed by [AppRoute.stableKey], never by mutable app-bar copy. */
-    val routeScrollPositions: MutableMap<String, Int>
+    /** Per-history-entry scroll, list, and search memory, keyed by [AppRoute.stableKey] (see [RouteViewMemory]). */
+    val routeMemory: RouteViewMemory
 
     /** Renders an already-selected route, used by back navigation and saved-state restoration. */
     fun renderRoute(route: AppRoute)
@@ -233,12 +233,18 @@ interface ScreenHost {
     val storyExpandOverride: MutableMap<String, Boolean>
 
     /**
-     * The current screen's in-app back navigation, set by [com.vinicius741.webnovelarchiver.ui.screen].
-     * The system back button (wired in [com.vinicius741.webnovelarchiver.app.MainActivity]) invokes this so
-     * the hardware/gesture back press mirrors the app-bar back arrow instead of closing the app. `null`
-     * on the root (Library) screen, where back exits the app as usual.
+     * What system Back does on the current screen, set by [com.vinicius741.webnovelarchiver.ui.screen]
+     * (see [ScreenBack]). `null` before the first screen renders.
      */
-    var backHandler: (() -> Unit)?
+    var screenBack: ScreenBack?
+
+    /**
+     * Re-syncs the system Back callback with [screenBack]. Screens call it when an in-screen state that
+     * Back clears (a [BackIntercept]) starts or stops applying, so the Library root only claims Back
+     * while it has something to clear and otherwise leaves it to Android's predictive back-to-home.
+     */
+    fun refreshBackCallback()
+
     val frame: FrameLayout
 
     /**

@@ -99,6 +99,25 @@ sealed class AppRoute(
                 is PatreonAccount -> "$name:${storyId?.let(AppRouteCodec::encodeArgument).orEmpty()}"
                 else -> name
             }
+
+    /**
+     * The screen Back lands on when nothing in the history precedes this one (the app opened
+     * straight into it). `null` only for the [Library] root.
+     */
+    val parent: AppRoute?
+        get() =
+            when (this) {
+                Library -> null
+                is Reader -> Details(storyId)
+                is ChapterSelection -> Details(storyId)
+                is LegacyEpubs -> Details(storyId)
+                is AiControls -> Details(storyId)
+                is Trends -> Details(storyId)
+                is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
+                UpdateFollowSelection -> Updates
+                Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup -> Settings
+                else -> Library
+            }
 }
 
 /** Pure, version-tolerant route encoding used by Android saved state and unit tests. */

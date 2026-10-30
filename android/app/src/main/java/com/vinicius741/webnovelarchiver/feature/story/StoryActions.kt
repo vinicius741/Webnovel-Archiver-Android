@@ -74,7 +74,7 @@ internal fun ScreenHost.syncStory(
     mode: StorySyncMode = StorySyncMode.Default,
     onStatus: (String) -> Unit = { msg ->
         // Default: full-screen "Working" loader, used by the Browser import flow (no form to block).
-        app.runOnUiThread { screen(route = AppRoute.Working, title = "Working", onBack = null) { centerLoading(msg) } }
+        app.runOnUiThread { screen(route = AppRoute.Working, title = "Working") { centerLoading(msg) } }
     },
     onDone: (Story) -> Unit = { story -> showDetails(story.id) },
     onError: (Throwable) -> Unit = { error ->

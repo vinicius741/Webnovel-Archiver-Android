@@ -10,6 +10,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -38,6 +39,7 @@ internal fun ScreenHost.showLibrary() {
     var renderedProgress = stories.associate { it.id to (it.downloadedChapters to it.totalChapters) }
     var refreshLibraryContent: ((List<Story>) -> Unit)? = null
     val tabs = repository.tabs.get().sortedBy { it.order }
+    var clearLibraryFilters: (() -> Unit)? = null
     screen(
         route = AppRoute.Library,
         title = LibrarySelectionPlanning.screenTitle(selectedCount),
@@ -45,6 +47,7 @@ internal fun ScreenHost.showLibrary() {
         actions = libraryAppBarActions(selectedCount > 0) { toggleSelectAll() },
         fab = if (selectedCount > 0) null else ({ showAddStory() }),
         closeAction = if (selectedCount > 0) ({ exitLibrarySelection() }) else null,
+        backIntercept = libraryBackIntercept { clearLibraryFilters },
     ) {
         val hasUnassigned = stories.any { it.tabId == null }
         val initialSelectedTabId: String? =
@@ -114,23 +117,28 @@ internal fun ScreenHost.showLibrary() {
                     refreshFilters(filterState.selectedTabId, filterState.selectedTags)
                     applyFilters()
                 },
-                onClearFilters = {
-                    filterState = filterState.clearFilters()
-                    libraryScreenState.query = filterState.query
-                    libraryScreenState.selectedTags = filterState.selectedTags
-                    clearingFilters = true
-                    search.text.clear()
-                    clearingFilters = false
-                    // Cancel any pending search debounce and show the unfiltered results now.
-                    searchApplyGeneration += 1
-                    refreshFilters(filterState.selectedTabId, filterState.selectedTags)
-                    applyFilters()
-                },
+                onClearFilters = { clearLibraryFilters?.invoke() },
                 expandedInitially = libraryScreenState.filtersExpanded,
                 onExpandedChanged = { libraryScreenState.filtersExpanded = it },
             )
         // Chips follow the active tab: All = union, a specific tab = only its labels.
-        refreshFilters = filters.rebuildChips
+        // Every query/tag change passes through here, so the Back callback tracks it too.
+        refreshFilters = { tabId, tags ->
+            filters.rebuildChips(tabId, tags)
+            refreshBackCallback()
+        }
+        clearLibraryFilters = {
+            filterState = filterState.clearFilters()
+            libraryScreenState.query = filterState.query
+            libraryScreenState.selectedTags = filterState.selectedTags
+            clearingFilters = true
+            search.text.clear()
+            clearingFilters = false
+            // Cancel any pending search debounce and show the unfiltered results now.
+            searchApplyGeneration += 1
+            refreshFilters(filterState.selectedTabId, filterState.selectedTags)
+            applyFilters()
+        }
 
         val tabBar =
             makeLibraryTabBar(context, tabs, stories, filterState.selectedTabId) { newTabId ->
@@ -265,6 +273,21 @@ internal fun ScreenHost.showLibrary() {
             }
     }
 }
+
+/**
+ * Back clears an active search or tag filter before it leaves the app. [filterBarClear] is the
+ * built filter bar's clear action; the empty library has none, only remembered state to drop.
+ */
+private fun ScreenHost.libraryBackIntercept(filterBarClear: () -> (() -> Unit)?) =
+    BackIntercept(
+        isActive = { libraryScreenState.query.isNotEmpty() || libraryScreenState.selectedTags.isNotEmpty() },
+        clear = {
+            filterBarClear()?.invoke() ?: run {
+                libraryScreenState.query = ""
+                libraryScreenState.selectedTags = emptySet()
+            }
+        },
+    )
 
 /** R22: pause between keystrokes before rebuilding every library page's grid. */
 private const val SEARCH_APPLY_DEBOUNCE_MS = 200L

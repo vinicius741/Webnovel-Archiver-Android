@@ -18,6 +18,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.reader.readerTtsTransport
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
+import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
@@ -29,6 +30,7 @@ import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeFullWidthButton
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
+import com.vinicius741.webnovelarchiver.ui.rememberListPosition
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
@@ -41,12 +43,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
     // Seed from the cached library; the download observer below patches this in place afterward.
     val story = repository.story(storyId) ?: return showLibrary()
     val screenKey = AppRoute.Details(story.id).stableKey
-    val previousListState =
-        if (frame.tag == screenKey) {
-            findDetailsChapterList(frame)?.layoutManager?.onSaveInstanceState()
-        } else {
-            null
-        }
     activeStory = story
     // Re-render on fold/unfold/rotation so the layout switches live.
     rerender = { showDetails(storyId) }
@@ -77,14 +73,17 @@ internal fun ScreenHost.showDetails(storyId: String) {
     var chaptersBinding: androidx.recyclerview.widget.RecyclerView? = null
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
+    // Remembered with the history entry, so returning from the reader keeps the search.
+    var chapterQuery = routeMemory.queries[screenKey].orEmpty()
+    var clearChapterSearch: () -> Unit = {}
     screen(
         route = AppRoute.Details(story.id),
         title = story.title,
         subtitle = "by ${story.author}",
-        onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_more_vert, "More options") { showDetailsOverflow(story) }),
         // The RecyclerView must be the scroll surface; a ScrollView wrapper defeats row recycling.
         scrollable = false,
+        backIntercept = BackIntercept(isActive = { chapterQuery.isNotEmpty() }, clear = { clearChapterSearch() }),
     ) {
         val panel = buildDetailsInfoPanel(story, operation, downloadSummary, initialPacingStatus)
         val infoPanel = panel.view
@@ -101,6 +100,8 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 setPadding(0, dp(Space.SM), 0, 0)
             }
         val search = makeSearchField(context, "Search chapters")
+        if (chapterQuery.isNotEmpty()) search.setText(chapterQuery)
+        clearChapterSearch = { search.text.clear() }
         chapterControls.addView(search)
         val chipsContainer =
             com.vinicius741.webnovelarchiver.ui.WrapLayout(context).apply {
@@ -128,7 +129,6 @@ internal fun ScreenHost.showDetails(storyId: String) {
             }
 
         var chapterFilter = repository.chapterFilterSettings.get().filterMode
-        var chapterQuery = ""
 
         var pick: (String) -> Unit = {}
         pick = { mode ->
@@ -149,6 +149,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         }
         search.doAfterTextChanged {
             chapterQuery = it?.toString().orEmpty()
+            routeMemory.queries[screenKey] = chapterQuery
             renderChapterList(
                 story,
                 chaptersContainer,
@@ -230,9 +231,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
             onSnapshot = { ttsSnapshot = it },
         )
 
-        previousListState?.let { state ->
-            chaptersContainer.post { chaptersContainer.layoutManager?.onRestoreInstanceState(state) }
-        }
+        rememberListPosition(chaptersContainer)
     }
     val root = frame.getChildAt(0)
     val bindings =

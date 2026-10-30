@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.text.TextUtils
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -66,16 +65,6 @@ internal fun ScreenHost.refreshDetailsDownload(
             allJobs = queue,
         )
     bindings.patchDownloadStatus(this, story, summary, chapterStatuses, waitingChapterIds, pacingStatus, isBusy)
-}
-
-internal fun findDetailsChapterList(root: View): androidx.recyclerview.widget.RecyclerView? {
-    if (root is androidx.recyclerview.widget.RecyclerView) return root
-    if (root is ViewGroup) {
-        for (index in 0 until root.childCount) {
-            findDetailsChapterList(root.getChildAt(index))?.let { return it }
-        }
-    }
-    return null
 }
 
 /** Sync and AI round-trips have no fraction; cleanup/EPUB go determinate once progress is set. */

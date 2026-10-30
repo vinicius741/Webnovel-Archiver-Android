@@ -30,7 +30,6 @@ import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersis
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
-import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
@@ -38,6 +37,8 @@ import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportState
 import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
+import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
+import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
@@ -50,6 +51,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.captureScreenViewState
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -81,7 +83,7 @@ class MainActivity :
     override var storyOperation: StoryOperationState? = null
     override var detailsOperationSlot: ViewGroup? = null
     override val navigator = AppNavigator()
-    override val routeScrollPositions: MutableMap<String, Int> = mutableMapOf()
+    override val routeMemory: RouteViewMemory = RouteViewMemory()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
     override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
     override val backupExportState: BackupExportState = BackupExportState()
@@ -108,13 +110,28 @@ class MainActivity :
     private var restoredNavigation = false
 
     /**
-     * Always registered, enabled only while a screen provides in-app back navigation (see
-     * [backHandler]'s setter); disabled on root so the OS predictive-back default applies.
+     * True once [onNewIntent] replaced the launch intent before the UI was ready. A notification tap
+     * into a process-killed task recreates the activity with its saved stack and the original
+     * launch intent, then hands the tap over as a pending new intent, so it lands here, not as
+     * the launch intent.
+     */
+    private var intentArrivedBeforeUiReady = false
+
+    /**
+     * Always registered, enabled only while the screen handles Back (see [refreshBackCallback]);
+     * disabled otherwise so the OS predictive back-to-home applies.
      */
     private val backCallback =
         object : OnBackPressedCallback(false) {
             override fun handleOnBackPressed() {
-                backHandler?.invoke()
+                if (screenBack?.handle() == true) {
+                    refreshBackCallback()
+                    return
+                }
+                // The screen's state changed since the callback was enabled: let Android leave the app.
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                refreshBackCallback()
             }
         }
 
@@ -123,11 +140,15 @@ class MainActivity :
             if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         }
 
-    override var backHandler: (() -> Unit)? = null
+    override var screenBack: ScreenBack? = null
         set(value) {
             field = value
-            backCallback.isEnabled = value != null
+            refreshBackCallback()
         }
+
+    override fun refreshBackCallback() {
+        backCallback.isEnabled = screenBack?.handlesBack == true
+    }
 
     override val importBackupLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -274,28 +295,45 @@ class MainActivity :
         val browserImportUrl = browserImportUrl(intent)
         val resumeTarget = startupState.resumeTarget
         val devTarget = startupState.devTarget
-        if (devTarget != null) {
-            renderRoute(devTarget)
-        } else if (browserImportUrl != null) {
-            showLibrary()
-            importFromBrowser(browserImportUrl)
-        } else if (restoredNavigation) {
-            renderRoute(navigator.current)
-        } else if (resumeTarget != null) {
-            showReader(resumeTarget.storyId, resumeTarget.chapterId)
-        } else {
-            showLibrary()
+        // A restored stack already holds whatever the launch intent's notification tap opened; only
+        // a tap delivered since then is new.
+        val notificationRoute = intent.openRoute()?.takeUnless { restoredNavigation && !intentArrivedBeforeUiReady }
+        when {
+            devTarget != null -> openDeepRoute(devTarget)
+            browserImportUrl != null -> {
+                showLibrary()
+                importFromBrowser(browserImportUrl)
+            }
+            // Same as a live tap: on top of the restored screen, so Back returns there.
+            notificationRoute != null && restoredNavigation -> renderRoute(notificationRoute)
+            notificationRoute != null -> openDeepRoute(notificationRoute)
+            restoredNavigation -> renderRoute(navigator.current)
+            resumeTarget != null -> openDeepRoute(AppRoute.Reader(resumeTarget.storyId, resumeTarget.chapterId))
+            else -> showLibrary()
         }
+    }
+
+    /** Opens a cold-start target on top of its parents, so Back walks up to the Library instead of out. */
+    private fun openDeepRoute(route: AppRoute) {
+        navigator.resetTo(route)
+        renderRoute(route)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (!uiReady) return
+        if (!uiReady) {
+            // routeInitialIntent picks this intent up once startup finishes.
+            intentArrivedBeforeUiReady = true
+            return
+        }
         browserImportUrl(intent)?.let { url ->
             showLibrary()
             importFromBrowser(url)
+            return
         }
+        // A notification tap opens its screen on top of the current one, so Back returns there.
+        intent.openRoute()?.let(::renderRoute)
     }
 
     override fun onResume() {
@@ -326,15 +364,9 @@ class MainActivity :
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        (frame.tag as? String)?.let { key ->
-            com.vinicius741.webnovelarchiver.ui
-                .findScrollView(frame)
-                ?.let { routeScrollPositions[key] = it.scrollY }
-        }
+        captureScreenViewState()
         outState.putStringArrayList(STATE_ROUTE_STACK, ArrayList(navigator.encodedStack()))
-        val scrollEntries = routeScrollPositions.entries.sortedBy { it.key }
-        outState.putStringArrayList(STATE_SCROLL_KEYS, ArrayList(scrollEntries.map { it.key }))
-        outState.putIntArray(STATE_SCROLL_VALUES, scrollEntries.map { it.value }.toIntArray())
+        routeMemory.save(outState)
         LibraryScreenStatePersistence.save(libraryScreenState, outState)
         cleanupScreenState.save(outState)
         super.onSaveInstanceState(outState)
@@ -353,9 +385,7 @@ class MainActivity :
             navigator.reset()
             return false
         }
-        val keys: List<String> = state.getStringArrayList(STATE_SCROLL_KEYS) ?: emptyList()
-        val values = state.getIntArray(STATE_SCROLL_VALUES) ?: intArrayOf()
-        keys.forEachIndexed { index, key -> values.getOrNull(index)?.let { routeScrollPositions[key] = it } }
+        routeMemory.restore(state)
         return true
     }
 
@@ -401,8 +431,6 @@ class MainActivity :
 
     private companion object {
         const val STATE_ROUTE_STACK = "navigation.route_stack"
-        const val STATE_SCROLL_KEYS = "navigation.scroll_keys"
-        const val STATE_SCROLL_VALUES = "navigation.scroll_values"
     }
 }
 

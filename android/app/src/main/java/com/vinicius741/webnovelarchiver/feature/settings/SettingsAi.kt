@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
  */
 internal fun ScreenHost.showAiSettings() {
     val settings = repository.aiSettings.get()
-    screen(route = AppRoute.AiSettings, title = "AI Settings", onBack = { showSettings() }, scrollable = true) {
+    screen(route = AppRoute.AiSettings, title = "AI Settings", scrollable = true) {
         section("OpenRouter")
         text(
             "Get a key at openrouter.ai/keys. Requests use paid credits and share novel details " +

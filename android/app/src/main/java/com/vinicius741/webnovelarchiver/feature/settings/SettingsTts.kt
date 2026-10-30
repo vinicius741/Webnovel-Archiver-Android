@@ -29,14 +29,10 @@ import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-/**
- * Voice & Speech settings. [onBack] defaults to the main Settings screen; pass a reader return when
- * opened from Reader Settings so Back does not strand the user on Settings.
- */
-internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
-    val backAction = onBack ?: { showSettings() }
+/** Voice & Speech settings, reached from Settings and from the reader's settings menu. */
+internal fun ScreenHost.showTtsSettings() {
     val ttsSettings = repository.ttsSettings.get()
-    screen(route = AppRoute.TtsSettings, title = "Voice & Speech", onBack = backAction, scrollable = true) {
+    screen(route = AppRoute.TtsSettings, title = "Voice & Speech", scrollable = true) {
         repository.getTtsSession()?.let { session ->
             addView(
                 card {
@@ -53,7 +49,7 @@ internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
                         button("Clear Session", Btn.TEXT, R.drawable.wna_delete) {
                             scope.launch {
                                 repository.clearTtsSession()
-                                showTtsSettings(onBack)
+                                showTtsSettings()
                             }
                         }
                     }
@@ -68,7 +64,7 @@ internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
                 makeText(context, "Voice", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant),
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
             )
-            val voiceBtn = makeButton(context, voiceLabel, Btn.TEXT, R.drawable.wna_speaker) { showTtsVoicePicker(onBack) }
+            val voiceBtn = makeButton(context, voiceLabel, Btn.TEXT, R.drawable.wna_speaker) { showTtsVoicePicker() }
             addView(
                 voiceBtn,
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -90,7 +86,7 @@ internal fun ScreenHost.showTtsSettings(onBack: (() -> Unit)? = null) {
     }
 }
 
-internal fun ScreenHost.showTtsVoicePicker(onBack: (() -> Unit)? = null) {
+internal fun ScreenHost.showTtsVoicePicker() {
     val currentVoice = repository.ttsSettings.get().voiceIdentifier
 
     fun showLoadedVoices(voices: List<VoiceInfo>) {
@@ -98,7 +94,7 @@ internal fun ScreenHost.showTtsVoicePicker(onBack: (() -> Unit)? = null) {
             toast("No local TTS voices available yet")
             return
         }
-        showTtsVoiceDialog(voices, currentVoice) { voice -> saveTtsVoice(voice, onBack) }
+        showTtsVoiceDialog(voices, currentVoice) { voice -> saveTtsVoice(voice) }
     }
 
     val voices = ttsEngine.availableVoices()
@@ -115,13 +111,10 @@ internal fun ScreenHost.showTtsVoicePicker(onBack: (() -> Unit)? = null) {
     showLoadedVoices(voices)
 }
 
-private fun ScreenHost.saveTtsVoice(
-    voice: VoiceInfo?,
-    onBack: (() -> Unit)?,
-) {
+private fun ScreenHost.saveTtsVoice(voice: VoiceInfo?) {
     scope.launch {
         val current = repository.ttsSettings.get()
         repository.ttsSettings.save(current.copy(voiceIdentifier = voice?.identifier))
-        showTtsSettings(onBack)
+        showTtsSettings()
     }
 }

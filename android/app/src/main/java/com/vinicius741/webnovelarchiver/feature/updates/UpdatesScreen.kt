@@ -12,6 +12,7 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
+import com.vinicius741.webnovelarchiver.ui.rememberListPosition
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 
@@ -34,7 +35,6 @@ internal fun ScreenHost.showUpdates() {
         route = AppRoute.Updates,
         title = "Updates",
         subtitle = "${followed.size} following · $chapterCount new",
-        onBack = { showLibrary() },
         actions = listOf(AppBarAction(R.drawable.wna_list, "Review following") { showUpdateFollowSelection() }),
     ) {
         if (stories.isEmpty()) {
@@ -100,6 +100,7 @@ internal fun ScreenHost.showUpdates() {
                         overScrollMode = View.OVER_SCROLL_NEVER
                     }
                 addView(list, verticalFill())
+                rememberListPosition(list)
             }
         }
     }

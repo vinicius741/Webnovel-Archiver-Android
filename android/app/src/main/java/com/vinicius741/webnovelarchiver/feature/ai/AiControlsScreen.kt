@@ -41,9 +41,7 @@ internal fun ScreenHost.showAiControls(storyId: String) {
     // Cover jobs run on the process-wide coordinator so one that outlived a recreated activity still gates the UI.
     val generatingCover = aiCoverOperationFor(story.id)
     hydrateAiCoverDraftFromStorage(story.id)
-    screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, onBack = {
-        showDetails(story.id)
-    }, scrollable = true) {
+    screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, scrollable = true) {
         val binding = AiControlsBinding(story.id, this, storyOperation?.takeIf { it.storyId == story.id }?.kind)
         aiControlsScreenState.binding = binding
         section("Models")

@@ -25,7 +25,6 @@ internal fun ScreenHost.showCleanupRules() {
     screen(
         route = AppRoute.CleanupRules,
         title = "Text Cleanup",
-        onBack = { showSettings() },
         actions =
             listOf(
                 AppBarAction(R.drawable.wna_share, "Export cleanup rules") {

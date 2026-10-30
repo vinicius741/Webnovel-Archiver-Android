@@ -58,7 +58,6 @@ internal fun ScreenHost.showReader(
         route = AppRoute.Reader(storyId, chapterId),
         title = "Reader",
         subtitle = "Preparing chapter…",
-        onBack = { showDetails(storyId) },
     ) {
         addView(
             ProgressBar(context),
@@ -114,7 +113,6 @@ private fun ScreenHost.renderReaderUnavailable(
         route = AppRoute.Reader(storyId, "unavailable"),
         title = "Reader",
         subtitle = title,
-        onBack = { showDetails(storyId) },
     ) {
         addView(
             com.vinicius741.webnovelarchiver.ui.makeEmptyState(
@@ -209,7 +207,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                         toast("Chapter copied")
                     },
                     onOpenVoiceSettings = {
-                        showTtsSettings(onBack = { showReader(story.id, chapter.id) })
+                        showTtsSettings()
                     },
                 )
             },
@@ -266,11 +264,6 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         route = AppRoute.Reader(story.id, chapter.id),
         title = sanitizeTitle(chapter.title),
         subtitle = "${currentIndex + 1} / ${story.chapters.size}",
-        onBack = {
-            // Detach before the next screen's disposeWebViews() tears down this WebView; playback continues.
-            detachReaderTtsListener()
-            showDetails(story.id)
-        },
         actions = actions,
     ) {
         renderReader()

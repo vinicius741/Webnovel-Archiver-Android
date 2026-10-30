@@ -59,9 +59,7 @@ internal fun ScreenHost.showTrends(
 ) {
     val story = repository.story(storyId) ?: return showDetails(storyId)
     rerender = { showTrends(storyId, focus) }
-    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, onBack = {
-        showDetails(story.id)
-    }, scrollable = true) {
+    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, scrollable = true) {
         addView(
             makeEmptyState(
                 app,
@@ -94,9 +92,7 @@ private fun ScreenHost.renderTrends(
     patreonHistory: StoryMetricHistory,
     focus: String?,
 ) {
-    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, onBack = {
-        showDetails(story.id)
-    }, scrollable = true) {
+    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, scrollable = true) {
         addTrendsHeader(this, story, history)
         if (history.snapshots.isEmpty() && patreonHistory.snapshots.isEmpty()) {
             addView(

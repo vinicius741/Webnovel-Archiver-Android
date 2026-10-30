@@ -48,7 +48,6 @@ internal fun ScreenHost.showChapterSelection(
         route = AppRoute.ChapterSelection(story.id, initialSelectedIds),
         title = "Select Chapters",
         subtitle = story.title,
-        onBack = { showDetails(story.id) },
     ) {
         if (items.isEmpty()) {
             addView(

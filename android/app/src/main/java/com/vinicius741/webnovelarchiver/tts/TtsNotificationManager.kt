@@ -8,7 +8,8 @@ import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.MainActivity
+import com.vinicius741.webnovelarchiver.app.openAppPendingIntent
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 
 /**
@@ -24,13 +25,7 @@ internal class TtsNotificationManager(
         lastErrorText: String?,
         mediaSessionToken: MediaSessionCompat.Token?,
     ): Notification {
-        val openIntent =
-            PendingIntent.getActivity(
-                context,
-                11,
-                Intent(context, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+        val openIntent = context.openAppPendingIntent(11, AppRoute.Player)
 
         fun serviceAction(
             requestCode: Int,

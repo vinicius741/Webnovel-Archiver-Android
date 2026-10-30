@@ -42,7 +42,7 @@ import java.util.Locale
  */
 internal fun ScreenHost.showLegacyEpubs(storyId: String) {
     val story = repository.story(storyId) ?: return showLibrary()
-    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
+    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title) {
         addView(
             makeEmptyState(
                 context,
@@ -73,7 +73,7 @@ private fun ScreenHost.renderLegacyEpubs(
     // Leftovers newest-first (inverse of listEpubs) so recently abandoned files surface first; current keeps reading order.
     val leftover = onDisk.filter { it.absolutePath !in referenced }.asReversed()
 
-    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title, onBack = { showDetails(story.id) }) {
+    screen(route = AppRoute.LegacyEpubs(story.id), title = "EPUB Files", subtitle = story.title) {
         if (onDisk.isEmpty()) {
             addView(
                 makeEmptyState(

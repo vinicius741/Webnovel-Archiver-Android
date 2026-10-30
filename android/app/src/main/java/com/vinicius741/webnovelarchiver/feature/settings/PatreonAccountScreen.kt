@@ -90,9 +90,8 @@ internal fun ScreenHost.showPatreonAccount(storyId: String? = null) {
     if (sessionPresent && state.status == null) refreshAccountStatus(storyId)
     val signedIn = status is AccountStatus.SignedIn
     val firefox = FirefoxLauncher.installedPackage(app)
-    val onBack = { if (storyId != null) showDetails(storyId) else showDataBackup() }
 
-    screen(route = AppRoute.PatreonAccount(storyId), title = "Patreon Account", onBack = onBack, scrollable = true) {
+    screen(route = AppRoute.PatreonAccount(storyId), title = "Patreon Account", scrollable = true) {
         addView(buildStatusCard(this, status, storyId))
         if (signedIn && !state.stepsExpanded) {
             fullButton("Sign in with a different account", Btn.TEXT, bottomMarginDp = Space.SM) {

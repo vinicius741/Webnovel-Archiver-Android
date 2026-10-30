@@ -14,9 +14,10 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.MainActivity
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.app.openAppPendingIntent
 import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import kotlinx.coroutines.CancellationException
@@ -217,13 +218,7 @@ class DownloadForegroundService : Service() {
     }
 
     private fun buildNotification(progress: DownloadProgress): Notification {
-        val openIntent =
-            PendingIntent.getActivity(
-                this,
-                1,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+        val openIntent = openAppPendingIntent(1, AppRoute.Queue)
         val pauseIntent =
             PendingIntent.getService(
                 this,
