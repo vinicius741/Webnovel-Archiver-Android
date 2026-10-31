@@ -40,14 +40,11 @@ under `android/`.
 
 ### `cloudflare/`
 
-Strategy and implementation planning for making Scribble Hub sync and downloads work
-when Cloudflare presents a browser challenge.
+Implementation record for keeping source sync and downloads reliable when a source
+serves a browser challenge instead of content.
 
 | File | Description |
 |------|-------------|
-| `scribblehub-cloudflare-options.html` | Compliance-focused investigation: shared WebView/OkHttp cookie jar, in-app Source Access screen, and source throttling. |
-| `glm-Cloudflare-bypass.html` | GLM research — codebase audit, Cloudflare 2026 mechanics, Mihon deep-dive, bypass-method survey, and five candidate plans. |
-| `scribblehub-cloudflare-master-strategy.html` | Master architectural plan synthesizing the research into the recommended Mihon-pattern implementation roadmap. |
 | `source-reliability-implementation.md` | Current implemented architecture: source-wide pacing/circuit state, sticky Chromium transport, typed render-outcome escalation, circuit pausing (no queue drain), persisted reliability state, bulk preflight, retry semantics, the shareable bypass event log, and reset behavior. |
 
 ### `tts/`

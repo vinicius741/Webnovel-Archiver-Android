@@ -2,7 +2,7 @@
 
 ---
 name: build-and-install-apk
-description: Builds the native Android debug and release APKs for the Webnovel-Archiver-Android project and optionally installs a built APK onto the user's physical phone (Samsung Galaxy Z Fold, USB serial RQCY8040ZHH) or the webnovel_api36 emulator. Use whenever the user asks to build, compile, assemble, package, or make the APK (debug or release), sign the release build, install/push/replace/deploy/flash the app onto a device, update the app on their phone, or rebuild and reinstall. Trigger on phrases like "build the APK", "build release APK", "install on my phone", "rebuild and replace the app", "deploy to device", "update the app on my phone". Do NOT trigger for legacy React Native (app/src/modules) work unless the user explicitly asks.
+description: Builds the native Android debug and release APKs for the Webnovel-Archiver-Android project and optionally installs a built APK onto the user's physical phone (serial resolved per session from adb devices) or the webnovel_api36 emulator. Use whenever the user asks to build, compile, assemble, package, or make the APK (debug or release), sign the release build, install/push/replace/deploy/flash the app onto a device, update the app on their phone, or rebuild and reinstall. Trigger on phrases like "build the APK", "build release APK", "install on my phone", "rebuild and replace the app", "deploy to device", "update the app on my phone". Do NOT trigger for legacy React Native (app/src/modules) work unless the user explicitly asks.
 ---
 
 ## What this skill does
@@ -76,17 +76,17 @@ If the file is older than your latest `assembleRelease` run or owned by another 
 
 Per `AGENTS.md` (Device Safety): **never operate the owner's physical phone unless the user explicitly requests phone use in the current message.** Previous permission does not carry forward. Default target is the `webnovel_api36` **emulator**.
 
-When the user *does* ask for the phone (this session: "replace the one that's currently on my phone"), the physical device is a Samsung Galaxy Z Fold, serial `RQCY8040ZHH`, connected via USB. Resolve and verify it explicitly — never run unqualified device-targeting adb commands:
+When the user *does* ask for the phone (e.g. "replace the one that's currently on my phone"), it's connected via USB. Resolve its serial via discovery and verify it explicitly — never run unqualified device-targeting adb commands:
 
 ```bash
 # Discover only — this is the ONLY unqualified adb call allowed
 adb devices -l
 ```
 
-Look for a line like `RQCY8040ZHH    device usb:...`. Then pass the serial to every device-targeting command:
+Look for the row whose serial does NOT start with `emulator-` and whose state is `device` (a line like `<serial>    device usb:...`). Note it as `PHONE_SERIAL`. If no phone or more than one is listed, stop and ask the user instead of guessing. Then pass the serial to every device-targeting command:
 
 ```bash
-adb -s RQCY8040ZHH <command>
+adb -s "$PHONE_SERIAL" <command>
 ```
 
 ### "unauthorized" phone — restart the adb server
@@ -114,7 +114,7 @@ Application IDs:
 Replace in place, keeping the user's data:
 
 ```bash
-adb -s RQCY8040ZHH install -r android/app/build/outputs/apk/release/app-release.apk
+adb -s "$PHONE_SERIAL" install -r android/app/build/outputs/apk/release/app-release.apk
 ```
 
 `-r` = reinstall, keep data. Watch for two failure modes:
@@ -124,7 +124,7 @@ adb -s RQCY8040ZHH install -r android/app/build/outputs/apk/release/app-release.
 ### Verify the install
 
 ```bash
-adb -s RQCY8040ZHH shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|versionCode|lastUpdateTime'
+adb -s "$PHONE_SERIAL" shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|versionCode|lastUpdateTime'
 ```
 
 Confirm `lastUpdateTime` is the current session's time and `versionName` matches the build (currently `1.0.1-native`, versionCode `2`).
@@ -138,9 +138,9 @@ cd android
 ./gradlew assembleDebug assembleRelease -x copyDebugApkToProjectRoot -x copyReleaseApkToProjectRoot
 
 # Phone install (ONLY when user explicitly authorized phone use this message)
-adb devices -l                      # confirm RQCY8040ZHH shows "device", not "unauthorized"
-adb -s RQCY8040ZHH install -r app/build/outputs/apk/release/app-release.apk
-adb -s RQCY8040ZHH shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|lastUpdateTime'
+adb devices -l                      # confirm the phone serial shows "device", not "unauthorized"
+adb -s "$PHONE_SERIAL" install -r app/build/outputs/apk/release/app-release.apk
+adb -s "$PHONE_SERIAL" shell dumpsys package com.vinicius741.webnovelarchiver.nativeapp | grep -E 'versionName|lastUpdateTime'
 ```
 
 For emulator instead of phone: target serial starts with `emulator-` (resolve from `adb devices -l`), same install commands. No per-message authorization needed for the emulator. Debug package ID ends in `.debug`; install the **debug** APK for emulator QA.
