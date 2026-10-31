@@ -345,13 +345,13 @@ data class AiSettings(
 ) {
     companion object {
         /** Cheap default so a fresh install works without forcing a model choice first. */
-        const val DEFAULT_DESCRIPTION_MODEL = "deepseek/deepseek-v4-flash-0731"
+        const val DEFAULT_DESCRIPTION_MODEL = "deepseek/deepseek-v4.1-flash-1017"
 
         /** Default image generator for AI covers. */
         const val DEFAULT_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
 
         /** Versioned TypeSafe Jev snapshot; a pinned id keeps cached chapter scores valid. */
-        const val DEFAULT_DECISION_MODEL = "typesafe/jev-1.13"
+        const val DEFAULT_DECISION_MODEL = "typesafe/jev-1.14"
 
         /** Chapters validated per automatic cover scan (also the batch size). */
         const val DEFAULT_COVER_EVIDENCE_CHAPTERS = 10

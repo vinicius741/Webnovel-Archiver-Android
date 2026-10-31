@@ -57,8 +57,8 @@ internal enum class AiModelCatalog(
     val title: String,
     val manualHint: String,
 ) {
-    TEXT("AI Model", "Model id (e.g. deepseek/deepseek-v4-flash-0731)"),
-    DECISIONS("Decision Model", "Decision model id (e.g. typesafe/jev-1.13)"),
+    TEXT("AI Model", "Model id (e.g. deepseek/deepseek-v4.1-flash-1017)"),
+    DECISIONS("Decision Model", "Decision model id (e.g. typesafe/jev-1.14)"),
 }
 
 private suspend fun ScreenHost.loadCatalog(catalog: AiModelCatalog): List<OpenRouterModel>? =

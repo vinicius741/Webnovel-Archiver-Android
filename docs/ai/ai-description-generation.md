@@ -10,7 +10,7 @@ the layer is built to grow tag and cover-image generation later.
   **AI Controls → Models** selects the model used for description generation. The model picker fetches OpenRouter's live catalog
   (`GET /api/v1/models`, public endpoint) into a searchable dialog with All/Free filters and
   per-million-token pricing labels; a manual-id entry row covers new/offline models. Defaults to
-  `deepseek/deepseek-v4-flash-0731` (cheap) so a fresh install works immediately.
+  `deepseek/deepseek-v4.1-flash-1017` (cheap) so a fresh install works immediately.
   The model picker confirms the choice from a selection bar above the buttons: the drafted model
   plus, for adjustable models, its reasoning level as a segmented control. Tap Use model to save
   both together; Cancel discards both edits.
