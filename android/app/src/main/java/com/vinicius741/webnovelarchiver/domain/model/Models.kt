@@ -308,6 +308,10 @@ data class DisplayPreferences(
      *  restarts; defaults to false so persisted JSON written before this field exists keeps the
      *  compact row look. */
     var showCoversOnUpdates: Boolean = false,
+    /** Library layout: "list" (cover thumbnail beside full details) or "covers" (large cover grid
+     *  with title and progress only). Defaults to "list" so persisted JSON written before this field
+     *  exists keeps the original look. */
+    var libraryViewMode: String = "list",
 )
 
 data class RegexCleanupRule(

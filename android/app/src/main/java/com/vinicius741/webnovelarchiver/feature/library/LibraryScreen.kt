@@ -16,12 +16,12 @@ import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.layout.libraryMaxContentWidth
+import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
+import com.vinicius741.webnovelarchiver.ui.screenMetrics
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -32,7 +32,7 @@ internal fun ScreenHost.showLibrary() {
     val host = this
     // Re-render on window/setting changes so the column count reflows live.
     rerender = { showLibrary() }
-    val layoutResult = currentScreenLayout()
+    val grid = currentLibraryGrid()
     var stories: List<Story> = repository.library()
     val selectedCount = pruneLibrarySelection(stories)
     var toggleSelectAll: () -> Unit = {}
@@ -44,7 +44,7 @@ internal fun ScreenHost.showLibrary() {
         route = AppRoute.Library,
         title = LibrarySelectionPlanning.screenTitle(selectedCount),
         subtitle = LibrarySelectionPlanning.screenSubtitle(stories.size, selectedCount),
-        actions = libraryAppBarActions(selectedCount > 0) { toggleSelectAll() },
+        actions = libraryAppBarActions(selectedCount > 0, grid.viewMode) { toggleSelectAll() },
         fab = if (selectedCount > 0) null else ({ showAddStory() }),
         closeAction = if (selectedCount > 0) ({ exitLibrarySelection() }) else null,
         backIntercept = libraryBackIntercept { clearLibraryFilters },
@@ -169,7 +169,7 @@ internal fun ScreenHost.showLibrary() {
 
         if (pageTabs.size >= 2) {
             // Each page owns a scrolling grid; bar and pager stay two-way synced.
-            val adapter = LibraryPagesAdapter(host, stories, pageTabs, layoutResult)
+            val adapter = LibraryPagesAdapter(host, stories, pageTabs, grid)
             val pager =
                 ViewPager2(context).apply {
                     this.adapter = adapter
@@ -220,7 +220,7 @@ internal fun ScreenHost.showLibrary() {
             applyFilters()
         } else {
             val list = RecyclerView(context)
-            val adapter = LibraryStoryAdapter(host, layoutResult.numColumns, filterState.selectedTabId, stories)
+            val adapter = LibraryStoryAdapter(host, grid, filterState.selectedTabId, stories)
             adapter.attachTo(list)
             libraryScreenState.refreshStoryCards = adapter::refreshCards
             applyFilters = {
@@ -240,7 +240,7 @@ internal fun ScreenHost.showLibrary() {
             }
             val gridShell =
                 MaxWidthFrameLayout(context).apply {
-                    maxContentWidthDp = libraryMaxContentWidth(layoutResult.numColumns)
+                    maxContentWidthDp = grid.maxContentWidthDp
                     addView(
                         list,
                         FrameLayout.LayoutParams(
@@ -316,6 +316,25 @@ private fun ScreenHost.persistLibrarySort(
                 latest.copy(librarySortOption = option, librarySortAscending = ascending)
             }
         }
+    }
+}
+
+/** The saved layout's columns and width cap for the live window. */
+private fun ScreenHost.currentLibraryGrid(): LibraryGridSpec {
+    val metrics = screenMetrics()
+    val viewMode = LibraryViewMode.fromStored(repository.getDisplayPreferences().libraryViewMode)
+    return LibraryViewModePlanning.gridSpec(viewMode, resolveScreenLayout(metrics).numColumns, metrics.widthDp)
+}
+
+/**
+ * Saves the new layout, then re-renders. Scroll offsets are pixel distances in the old layout's
+ * geometry, so every tab starts at the top of the new one.
+ */
+internal fun ScreenHost.switchLibraryViewMode(next: LibraryViewMode) {
+    runUiOperation("save library view") {
+        repository.updateDisplayPreferences { latest -> latest.copy(libraryViewMode = next.stored) }
+        libraryScreenState.tabScrollPositions.clear()
+        showLibrary()
     }
 }
 

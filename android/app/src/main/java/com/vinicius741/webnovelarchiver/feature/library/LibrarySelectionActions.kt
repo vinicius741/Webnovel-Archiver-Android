@@ -54,15 +54,22 @@ internal fun ScreenHost.toggleLibrarySelection(storyId: String): Boolean {
     return storyId in next
 }
 
-/** App-bar actions: normal navigation shortcuts, or just Select all while selecting. */
+/** App-bar actions: layout toggle and navigation shortcuts, or just Select all while selecting. */
 internal fun ScreenHost.libraryAppBarActions(
     selecting: Boolean,
+    viewMode: LibraryViewMode,
     onSelectAll: () -> Unit,
 ): List<AppBarAction> =
     if (selecting) {
         listOf(AppBarAction(R.drawable.wna_check, "Select all") { onSelectAll() })
     } else {
         listOf(
+            // The icon shows the layout a tap switches to.
+            if (viewMode == LibraryViewMode.LIST) {
+                AppBarAction(R.drawable.wna_grid_view, "Cover view") { switchLibraryViewMode(viewMode.toggled) }
+            } else {
+                AppBarAction(R.drawable.wna_list, "List view") { switchLibraryViewMode(viewMode.toggled) }
+            },
             AppBarAction(R.drawable.wna_refresh, "Updates") { showUpdates() },
             AppBarAction(R.drawable.wna_download, "Downloads") { showQueue() },
             AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },

@@ -21,6 +21,7 @@ object PreferenceNormalization {
     private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark")
     private val foldLayoutModes = setOf("auto", "cover", "inner")
     private val screenLayoutModes = setOf("auto", "cover", "inner")
+    private val libraryViewModes = setOf("list", "covers")
     private val librarySortOptions =
         setOf(
             "default",
@@ -95,6 +96,7 @@ object PreferenceNormalization {
                     .takeIf { it.isNotBlank() && it in librarySortOptions }
                     ?.let { if (it == "updated") "lastUpdated" else it }
                     ?: DisplayPreferences().librarySortOption,
+            libraryViewMode = preferences.libraryViewMode.takeIf { it in libraryViewModes } ?: DisplayPreferences().libraryViewMode,
         )
 
     fun ttsSettings(settings: TtsSettings): TtsSettings =

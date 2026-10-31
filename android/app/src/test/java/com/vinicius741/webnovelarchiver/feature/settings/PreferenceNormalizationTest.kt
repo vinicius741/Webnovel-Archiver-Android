@@ -132,6 +132,12 @@ class PreferenceNormalizationTest {
     }
 
     @Test
+    fun unknownLibraryViewModeFallsBackToList() {
+        assertEquals("list", PreferenceNormalization.displayPreferences(DisplayPreferences(libraryViewMode = "shelf")).libraryViewMode)
+        assertEquals("covers", PreferenceNormalization.displayPreferences(DisplayPreferences(libraryViewMode = "covers")).libraryViewMode)
+    }
+
+    @Test
     fun updateFollowSettingsClampThresholdIntoPickerRange() {
         assertEquals(5, PreferenceNormalization.updateFollowSettings(UpdateFollowSettings()).thresholdChapters)
         assertEquals(1, PreferenceNormalization.updateFollowSettings(UpdateFollowSettings(thresholdChapters = 0)).thresholdChapters)

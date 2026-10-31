@@ -49,6 +49,22 @@ internal fun ScreenHost.bindLibraryStoryCard(
     // null = normal browsing; non-null = multi-select mode with this card's checked state.
     val selected = if (libraryScreenState.selectedStoryIds.isEmpty()) null else story.id in libraryScreenState.selectedStoryIds
     val content = buildStoryCard(story, if (alignToTop) Gravity.TOP else Gravity.CENTER_VERTICAL, selected)
+    wireLibraryStoryContent(card, content, story, selected)
+    // Extra row height belongs to the content, keeping the progress summary at the card's bottom.
+    card.addView(
+        content,
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+    )
+    if (story.totalChapters > 0) card.addView(makeLibraryProgressSummary(story, topMarginDp = Space.MD))
+}
+
+/** Selection styling plus tap (open/toggle) and long-press (select/toggle) for one story's content. */
+internal fun ScreenHost.wireLibraryStoryContent(
+    card: LinearLayout,
+    content: LinearLayout,
+    story: Story,
+    selected: Boolean?,
+) {
     content.background = selectableRipple(ThemeManager.colors.onSurface)
     content.isClickable = true
     applySelectionStyle(card, content, selected)
@@ -67,33 +83,30 @@ internal fun ScreenHost.bindLibraryStoryCard(
             true
         }
     }
-    // Extra row height belongs to the content, keeping the progress summary at the card's bottom.
-    card.addView(
-        content,
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-    )
-    if (story.totalChapters > 0) {
-        card.addView(
-            makeChapterCoverageSummary(
-                card.context,
-                StoryBookmarkPlanning.downloadedFlags(story),
-                StoryBookmarkPlanning.bookmarkFraction(story),
-                story.downloadedChapters,
-                story.totalChapters,
-            ).apply {
-                tag = LibraryProgressTag(story.id)
-                layoutParams =
-                    LinearLayout
-                        .LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                        ).apply {
-                            topMargin = dp(Space.MD)
-                        }
-            },
-        )
-    }
 }
+
+/** Chapter coverage row tagged so [patchLibraryProgress] can update it during downloads. */
+internal fun ScreenHost.makeLibraryProgressSummary(
+    story: Story,
+    topMarginDp: Int,
+): android.view.View =
+    makeChapterCoverageSummary(
+        app,
+        StoryBookmarkPlanning.downloadedFlags(story),
+        StoryBookmarkPlanning.bookmarkFraction(story),
+        story.downloadedChapters,
+        story.totalChapters,
+    ).apply {
+        tag = LibraryProgressTag(story.id)
+        layoutParams =
+            LinearLayout
+                .LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    topMargin = dp(topMarginDp)
+                }
+    }
 
 /** Patches only the count text and coverage bar for a story, preserving every scroll/gesture view. */
 internal fun patchLibraryProgress(
@@ -239,26 +252,31 @@ private fun ScreenHost.storyCover(
 /** Wraps the cover so the check badge overlays its corner; the cover stays fully visible. */
 private fun ScreenHost.coverWithSelectionBadge(cover: android.view.View): android.view.View {
     val coverParams = cover.layoutParams as? LinearLayout.LayoutParams
-    val badgeSize = dp(26)
-    val inset = dp(Space.SM)
     cover.layoutParams = FrameLayout.LayoutParams(coverParams?.width ?: 0, coverParams?.height ?: 0)
     return FrameLayout(app).apply {
         addView(cover)
-        addView(
-            ImageView(app).apply {
-                tag = SELECTION_BADGE_TAG
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
-            },
-            FrameLayout.LayoutParams(badgeSize, badgeSize, Gravity.TOP or Gravity.START).apply {
-                setMargins(inset, inset, 0, 0)
-            },
-        )
+        addSelectionBadge(this)
         layoutParams =
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginEnd = coverParams?.marginEnd ?: 0
             }
     }
+}
+
+/** Overlays the unstyled check badge on [frame]'s top-start corner; [applySelectionStyle] paints it. */
+internal fun ScreenHost.addSelectionBadge(frame: FrameLayout) {
+    val badgeSize = dp(26)
+    val inset = dp(Space.SM)
+    frame.addView(
+        ImageView(app).apply {
+            tag = SELECTION_BADGE_TAG
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
+        },
+        FrameLayout.LayoutParams(badgeSize, badgeSize, Gravity.TOP or Gravity.START).apply {
+            setMargins(inset, inset, 0, 0)
+        },
+    )
 }
 
 /** Restyles one card's highlight outline and cover badge for [selected]; null clears both. */

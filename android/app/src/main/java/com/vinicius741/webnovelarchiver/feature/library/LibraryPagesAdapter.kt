@@ -8,8 +8,6 @@ import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
-import com.vinicius741.webnovelarchiver.ui.layout.ScreenLayoutResult
-import com.vinicius741.webnovelarchiver.ui.layout.libraryMaxContentWidth
 
 /**
  * Backs the Library's swipe-between-tabs [ViewPager2] (Gap #6 parity with the legacy RN `PagerView`).
@@ -24,7 +22,7 @@ internal class LibraryPagesAdapter(
     private val host: ScreenHost,
     private var stories: List<Story>,
     private val pageTabs: List<String?>,
-    private val layout: ScreenLayoutResult,
+    private val grid: LibraryGridSpec,
 ) : RecyclerView.Adapter<LibraryPagesAdapter.PageViewHolder>() {
     private data class FilterSnapshot(
         val text: String,
@@ -55,7 +53,7 @@ internal class LibraryPagesAdapter(
         // inside a scroller so a long list scrolls vertically within its page.
         val shell =
             MaxWidthFrameLayout(context).apply {
-                maxContentWidthDp = libraryMaxContentWidth(layout.numColumns)
+                maxContentWidthDp = grid.maxContentWidthDp
                 addView(
                     list,
                     FrameLayout.LayoutParams(
@@ -78,7 +76,7 @@ internal class LibraryPagesAdapter(
         val tabId = pageTabs[position]
         val snap = filterSnapshot
         holder.storyAdapter =
-            LibraryStoryAdapter(host, layout.numColumns, tabId, stories).also { adapter ->
+            LibraryStoryAdapter(host, grid, tabId, stories).also { adapter ->
                 adapter.updateFilter(snap.text, snap.tags, snap.sortOption, snap.sortAscending)
                 adapter.attachTo(holder.list)
             }

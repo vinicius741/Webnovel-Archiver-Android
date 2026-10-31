@@ -17,7 +17,7 @@ import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 /** Builds only the cards visible in a page; the same adapter serves single and paged libraries. */
 internal class LibraryStoryAdapter(
     private val host: ScreenHost,
-    private val columns: Int,
+    private val grid: LibraryGridSpec,
     private val tabId: String?,
     stories: List<Story>,
 ) : RecyclerView.Adapter<LibraryStoryAdapter.Holder>() {
@@ -33,7 +33,7 @@ internal class LibraryStoryAdapter(
     }
 
     fun attachTo(list: RecyclerView) {
-        val manager = GridLayoutManager(list.context, columns.coerceAtLeast(1))
+        val manager = GridLayoutManager(list.context, grid.columns.coerceAtLeast(1))
         manager.spanSizeLookup =
             object : GridLayoutManager.SpanSizeLookup() {
                 override fun getSpanSize(position: Int): Int = if (visible.isEmpty()) manager.spanCount else 1
@@ -101,7 +101,12 @@ internal class LibraryStoryAdapter(
                 marginEnd = gap
                 bottomMargin = parent.context.dp(Space.MD + Space.XS)
             }
-        val card = if (viewType == STORY) makeCard(parent.context) else null
+        val card =
+            when {
+                viewType != STORY -> null
+                grid.viewMode == LibraryViewMode.COVERS -> makeLibraryCoverTile(parent.context)
+                else -> makeCard(parent.context)
+            }
         card?.let {
             root.addView(
                 it,
@@ -118,7 +123,11 @@ internal class LibraryStoryAdapter(
     ) {
         val card = holder.card
         if (card != null) {
-            host.bindLibraryStoryCard(card, visible[position], alignToTop = columns > 1)
+            if (grid.viewMode == LibraryViewMode.COVERS) {
+                host.bindLibraryCoverTile(card, visible[position])
+            } else {
+                host.bindLibraryStoryCard(card, visible[position], alignToTop = grid.columns > 1)
+            }
             return
         }
         holder.root.removeAllViews()
