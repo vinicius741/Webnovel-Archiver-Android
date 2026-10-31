@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.util.UUID
+import kotlin.math.roundToInt
 
 /** Generated but unapplied; the caller applies it via [AppRepository.setAiCover]. [prompt] is kept for the UI. */
 data class AiCoverDraft(
@@ -70,10 +71,10 @@ class AiCoverArtEngine internal constructor(
         }
 
         onProgress("Reading chapters...")
-        val chapters =
+        val selection =
             if (context.story.aiCoverContextChapterIndices.isNullOrEmpty()) {
                 val selected =
-                    evidenceSelector.select(
+                    evidenceSelector.selectWithPassages(
                         context.story,
                         context.apiKey,
                         context.settings.decisionModel,
@@ -83,12 +84,19 @@ class AiCoverArtEngine internal constructor(
                     )
 
                 // Display hint for the picker; losing it never fails a finished cover run.
-                runCatching { evidenceStore.record(context.story.id, selected.map { it.number - 1 }) }
+                runCatching { evidenceStore.record(context.story.id, selected.chapters.map { it.number - 1 }) }
                     .onFailure { Timber.w(it, "Could not persist automatic chapter selection") }
+                Timber.d(
+                    "Cover evidence for %s: chapters %s; appearance passages %s",
+                    context.story.id,
+                    selected.chapters.map { it.number },
+                    selected.passages.map { "${it.chapter}.${it.index}@${(it.probability * 100).roundToInt()}%" },
+                )
                 selected
             } else {
-                AiContextChapters.read(repository, context.story, contextIndices)
+                ChapterEvidencePlanning.Selection(AiContextChapters.read(repository, context.story, contextIndices), emptyList())
             }
+        val chapters = selection.chapters
         if (chapters.isEmpty()) {
             error("Downloaded chapter files are missing; re-download the novel's chapters")
         }
@@ -97,7 +105,7 @@ class AiCoverArtEngine internal constructor(
         val rawPrompt =
             writeImagePrompt(
                 context,
-                chapters,
+                selection,
                 onProgress,
                 operationId,
             )
@@ -201,14 +209,14 @@ class AiCoverArtEngine internal constructor(
      */
     private suspend fun writeImagePrompt(
         context: CoverContext,
-        chapters: List<AiDescriptionPlanning.ChapterText>,
+        selection: ChapterEvidencePlanning.Selection,
         onProgress: (String) -> Unit,
         operationId: String,
     ): String {
         val apiKey = context.apiKey
         val model = context.settings.descriptionModel
         val storyId = context.story.id
-        val messages = AiCoverPlanning.buildPromptMessages(context.story, chapters)
+        val messages = AiCoverPlanning.buildPromptMessages(context.story, selection.chapters, selection.passages)
         val reasoningEffort = client.reasoningEffortFor(context.settings, model)
         return try {
             trackedPromptCompletion(apiKey, model, messages, AiCoverPlanning.MAX_OUTPUT_TOKENS, storyId, operationId, reasoningEffort)

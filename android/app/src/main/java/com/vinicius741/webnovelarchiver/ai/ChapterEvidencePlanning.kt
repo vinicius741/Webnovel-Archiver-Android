@@ -21,6 +21,16 @@ internal interface EvidenceRubric {
     /** Positions (into the downloaded-chapter list) to judge, in order; may stop short of [count]. */
     fun scanOrder(count: Int): List<Int>
 
+    /** Chapters judged before the scan may stop, even once the target is met; capped by the scan order. */
+    val minScannedChapters: Int get() = 0
+
+    /** What the decision model sees of one chapter; null when there is nothing to judge. */
+    fun sample(
+        chapter: Int,
+        title: String,
+        text: String,
+    ): ChapterEvidencePlanning.ChapterSample? = ChapterEvidencePlanning.sample(chapter, title, text)
+
     fun request(
         story: Story,
         sample: ChapterEvidencePlanning.ChapterSample,
@@ -28,7 +38,10 @@ internal interface EvidenceRubric {
     ): JsonObject
 
     /** Throws [java.io.IOException] when the response lacks a valid answer for any question. */
-    fun assess(response: JsonObject): ChapterEvidencePlanning.Assessment
+    fun assess(
+        sample: ChapterEvidencePlanning.ChapterSample,
+        response: JsonObject,
+    ): ChapterEvidencePlanning.Assessment
 }
 
 /** Rubric-independent chapter sampling, cache identity and final choice for decision-model selection. */
@@ -38,17 +51,36 @@ internal object ChapterEvidencePlanning {
     /** Normalized level 2 of 0..3: at least one specific detail. */
     const val SPECIFIC_EVIDENCE = 2.0 / 3.0
 
-    /** Two excerpts per chapter — the opening and a mid-chapter window — keep one request per chapter. */
+    /**
+     * Two excerpts per chapter — the opening and a mid-chapter window — keep one request per chapter.
+     * Passage-level rubrics send the whole chapter as [passages] instead and leave the excerpts empty.
+     */
     data class ChapterSample(
         val chapter: Int,
         val title: String,
         val opening: String,
         val middle: String,
+        val passages: List<String> = emptyList(),
+    )
+
+    /** One verbatim passage the decision model flagged; [index] orders passages within a chapter. */
+    data class EvidencePassage(
+        val chapter: Int,
+        val index: Int,
+        val text: String,
+        val probability: Double,
     )
 
     data class Assessment(
         val useful: Boolean,
         val utility: Double,
+        val passages: List<EvidencePassage> = emptyList(),
+    )
+
+    /** Chosen chapter texts plus every flagged passage from all judged chapters, chosen or not. */
+    data class Selection(
+        val chapters: List<AiDescriptionPlanning.ChapterText>,
+        val passages: List<EvidencePassage>,
     )
 
     data class ScoredChapter(
@@ -74,6 +106,47 @@ internal object ChapterEvidencePlanning {
             intervals += middle + 1..range.last
         }
         return order
+    }
+
+    /**
+     * The first [opening] chapters in reading order — where characters are usually introduced and
+     * described — then [spreadOrder] over the rest of the book.
+     */
+    fun openingThenSpread(
+        count: Int,
+        opening: Int,
+    ): List<Int> {
+        val head = minOf(maxOf(opening, 0), maxOf(count, 0))
+        return (0 until head).toList() + spreadOrder(count - head).map { it + head }
+    }
+
+    /**
+     * Greedily packs a chapter's lines into passages of at most [maxChars] (a longer single line is
+     * hard-split), so a passage is a few paragraphs a decision model can judge on its own.
+     */
+    fun passages(
+        text: String,
+        maxChars: Int,
+    ): List<String> {
+        val result = mutableListOf<String>()
+        val current = StringBuilder()
+
+        fun flush() {
+            if (current.isNotBlank()) result += current.toString().trim()
+            current.clear()
+        }
+        text
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .flatMap { it.chunked(maxChars) }
+            .forEach { line ->
+                if (current.isNotEmpty() && current.length + 1 + line.length > maxChars) flush()
+                if (current.isNotEmpty()) current.append('\n')
+                current.append(line)
+            }
+        flush()
+        return result
     }
 
     fun sample(

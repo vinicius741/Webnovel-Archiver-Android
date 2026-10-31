@@ -28,7 +28,12 @@ class DecisionClientTest {
             MockWebServer().use { server ->
                 server.enqueue(MockResponse().setBody(response))
                 val client = DecisionClient(OpenRouterClient(server.url("/").toString()))
-                val body = CoverEvidencePlanning.request(JsonObject().apply { addProperty("passage", "A copper automaton") }, "liquid/d1")
+                val body =
+                    CoverEvidencePlanning.request(
+                        JsonObject().apply { addProperty("passage", "A copper automaton") },
+                        0,
+                        "liquid/d1",
+                    )
                 val answer = CoverEvidencePlanning.parse(client.evaluate("test-key", body))
                 val request = server.takeRequest()
                 assertEquals("Bearer test-key", request.getHeader("Authorization"))

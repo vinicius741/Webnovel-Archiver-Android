@@ -72,8 +72,8 @@ class DescriptionEvidencePlanningTest {
         assertEquals(1.0, parsed.protagonist, 0.0)
         assertEquals(0.5, parsed.conflict, 0.0)
         assertEquals(0.2, parsed.spoiler, 0.0)
-        assertTrue(DescriptionEvidencePlanning.assess(json).useful)
+        assertTrue(DescriptionEvidencePlanning.assess(sample, json).useful)
         val missing = json.deepCopy().apply { getAsJsonObject("answers").remove("spoiler") }
-        assertTrue(runCatching { DescriptionEvidencePlanning.assess(missing) }.isFailure)
+        assertTrue(runCatching { DescriptionEvidencePlanning.assess(sample, missing) }.isFailure)
     }
 }

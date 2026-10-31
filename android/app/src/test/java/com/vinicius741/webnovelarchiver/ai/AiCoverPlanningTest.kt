@@ -26,7 +26,7 @@ class AiCoverPlanningTest {
     @Test
     fun `design direction reaches the prompt writer and varies across draws`() {
         val design = AiCoverPlanning.CoverDesign(AiCoverPlanning.TITLE_LAYOUTS[3], AiCoverPlanning.COMPOSITIONS[1])
-        val messages = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList(), design)
+        val messages = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList(), design = design)
         assertTrue(messages[1].content.contains("Title layout: ${design.titleLayout}"))
         assertTrue(messages[1].content.contains("Composition: ${design.composition}"))
         assertTrue(messages[0].content.contains("separate caption strip, solid band"))
@@ -71,8 +71,56 @@ class AiCoverPlanningTest {
         val chapters = (1..30).map { AiDescriptionPlanning.ChapterText(it, "Chapter $it", "x".repeat(12000)) }
         val balanced = AiCoverContextPlanning.balanceContext(chapters)
         assertEquals((1..30).toList(), balanced.map { it.number })
-        assertTrue(balanced.sumOf { it.text.length } <= 60000)
-        assertTrue(balanced.all { it.text.isNotEmpty() && it.text.length <= 2000 })
+        assertTrue(balanced.sumOf { it.text.length } <= AiCoverContextPlanning.MAX_TOTAL_CONTEXT_CHARS)
+        assertTrue(balanced.all { it.text.isNotEmpty() && it.text.length <= 4000 })
+    }
+
+    @Test
+    fun `default automatic context keeps ten capped chapters whole`() {
+        val chapters =
+            (1..10).map {
+                AiDescriptionPlanning.ChapterText(
+                    it,
+                    "Chapter $it",
+                    "x".repeat(AiDescriptionPlanning.MAX_CHARS_PER_CHAPTER),
+                )
+            }
+        assertEquals(chapters, AiCoverContextPlanning.balanceContext(chapters))
+    }
+
+    @Test
+    fun `appearance evidence keeps the strongest passages within budget in reading order without repeats`() {
+        fun passage(
+            chapter: Int,
+            index: Int,
+            probability: Double,
+            text: String = "Passage $chapter.$index ".padEnd(5_000, 'x'),
+        ) = ChapterEvidencePlanning.EvidencePassage(chapter, index, text, probability)
+        val weakEarly = passage(1, 0, 0.55)
+        val strongLate = passage(40, 2, 0.98)
+        val strongEarly = passage(2, 1, 0.9)
+        val repeat = strongEarly.copy(chapter = 3, probability = 0.95)
+        val short = passage(5, 0, 0.6, text = "Short passage.")
+        val chosen = AiCoverContextPlanning.appearanceEvidence(listOf(weakEarly, strongLate, strongEarly, repeat, short))
+        // The repeat keeps its first copy; within 12k the two strongest 5k passages fit, the weaker one does not, the short one does.
+        assertEquals(listOf(2 to 1, 5 to 0, 40 to 2), chosen.map { it.chapter to it.index })
+        assertTrue(chosen.sumOf { it.text.length } <= AiCoverContextPlanning.MAX_APPEARANCE_EVIDENCE_CHARS)
+        assertTrue(AiCoverContextPlanning.appearanceEvidence(emptyList()).isEmpty())
+    }
+
+    @Test
+    fun `buildPromptMessages sends appearance passages verbatim only when present`() {
+        val passage = ChapterEvidencePlanning.EvidencePassage(4, 2, "Her copper hair fell past a scarred jaw.", 0.91)
+        val withEvidence = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList(), listOf(passage))[1].content
+        assertTrue(
+            withEvidence.contains(
+                "\"appearance_passages\":[{\"downloaded_position\":4,\"text\":\"Her copper hair fell past a scarred jaw.\"}]",
+            ),
+        )
+        assertFalse(AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList())[1].content.contains("appearance_passages"))
+        val system = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList())[0].content
+        assertTrue(system.contains("One clear statement is enough\n        evidence for a lasting trait"))
+        assertTrue(system.contains("includes every supported lasting physical trait"))
     }
 
     @Test
@@ -113,7 +161,7 @@ class AiCoverPlanningTest {
         assert(system.contains("diptychs"))
         assert(system.contains("triptychs"))
         assert(system.contains("exactly one prompt"))
-        assertTrue(system.contains("100 to 160 words"))
+        assertTrue(system.contains("350 to 700 words"))
         assertTrue(system.contains("Include a readable title on the cover by default"))
         assertTrue(system.contains("exact chosen lettering in double quotes near the START"))
         assertTrue(system.contains("Long titles and typography difficulty are reasons to shorten"))
@@ -151,13 +199,14 @@ class AiCoverPlanningTest {
     }
 
     @Test
-    fun `cleanGeneratedPrompt flattens quotes and whitespace and caps length`() {
+    fun `cleanGeneratedPrompt strips wrapping quotes, keeps paragraphs and caps length`() {
         assertEquals(
-            "A lone tower under storm light.",
-            AiCoverPlanning.cleanGeneratedPrompt("  \"A lone\n\ntower   under storm light.\"  "),
+            "A lone tower\n\nunder storm light.",
+            AiCoverPlanning.cleanGeneratedPrompt("  \"A lone\ntower  \n \n\n  under   storm light.\"  "),
         )
         assertNull(AiCoverPlanning.cleanGeneratedPrompt("   \"   "))
-        val capped = AiCoverPlanning.cleanGeneratedPrompt("x".repeat(5_000))
+        assertNull(AiCoverPlanning.cleanGeneratedPrompt("\n\n \n"))
+        val capped = AiCoverPlanning.cleanGeneratedPrompt("x".repeat(10_000))
         assertEquals(AiCoverPlanning.MAX_PROMPT_CHARS, capped?.length)
     }
 

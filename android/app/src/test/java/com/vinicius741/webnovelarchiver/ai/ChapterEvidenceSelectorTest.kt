@@ -24,9 +24,11 @@ class ChapterEvidenceSelectorTest {
     @get:Rule val temporary = TemporaryFolder()
     private val response = """{"answers":{
       "appearance":{"type":"score","score":3},"premise":{"type":"score","score":1},
-      "imagery":{"type":"score","score":2},"temporary":{"type":"noul","noul":0}},
+      "imagery":{"type":"score","score":2},"temporary":{"type":"noul","noul":0},
+      "appearance_p0":{"type":"noul","noul":0.9}},
       "usage":{"input_tokens":400,"output_tokens":20}}"""
-    private val weakResponse = response.replace(Regex("\"score\":\\d"), "\"score\":0")
+    private val weakResponse =
+        response.replace(Regex("\"score\":\\d"), "\"score\":0").replace("\"noul\":0.9", "\"noul\":0.1")
     private val premiseResponse = """{"answers":{
       "protagonist":{"type":"score","score":3},"conflict":{"type":"score","score":2},
       "setting":{"type":"score","score":1},"spoiler":{"type":"noul","noul":0.1}},
@@ -124,13 +126,40 @@ class ChapterEvidenceSelectorTest {
             }
         }
 
-    @Test fun `scan stops after the first batch that fills the target and that batch spans the book`() =
+    @Test fun `cover scan judges its minimum chapter count before stopping and keeps the earliest strong chapters`() =
         runBlocking {
             MockWebServer().use { server ->
                 server.dispatcher = chapterDispatcher { MockResponse().setBody(response) }
-                val selected = selector(server, temporary.newFolder()).select(story(30), "test", MODEL, 10, CoverEvidencePlanning) {}
-                assertEquals(listOf(1, 3, 5, 7, 9, 13, 16, 20, 24, 28), selected.map { it.number })
-                assertEquals(10, server.requestCount)
+                val selector = selector(server, temporary.newFolder())
+                val selected = selector.select(story(40), "test", MODEL, 10, CoverEvidencePlanning) {}
+                // Equal scores keep scan order, so the ten opening chapters win; the spread still runs to the minimum.
+                assertEquals((1..10).toList(), selected.map { it.number })
+                assertEquals(CoverEvidencePlanning.MIN_SCANNED_CHAPTERS, server.requestCount)
+            }
+        }
+
+    @Test fun `flagged appearance passages come from every judged chapter in reading order`() =
+        runBlocking {
+            MockWebServer().use { server ->
+                // Only odd chapters describe the protagonist; chapter 3 is otherwise weak and is never chosen.
+                server.dispatcher =
+                    chapterDispatcher { chapter ->
+                        MockResponse().setBody(
+                            when {
+                                chapter == 3 -> weakResponse.replace("\"noul\":0.1", "\"noul\":0.8")
+                                chapter % 2 == 1 -> response
+                                else -> response.replace("\"noul\":0.9", "\"noul\":0.2")
+                            },
+                        )
+                    }
+                val selection =
+                    selector(
+                        server,
+                        temporary.newFolder(),
+                    ).selectWithPassages(story(6), "test", MODEL, 2, CoverEvidencePlanning) {}
+                assertEquals(listOf(1, 2), selection.chapters.map { it.number })
+                assertEquals(listOf(1, 3, 5), selection.passages.map { it.chapter })
+                assertEquals("Chapter 3: a copper automaton tends the orchard.", selection.passages[1].text)
             }
         }
 
@@ -144,7 +173,7 @@ class ChapterEvidenceSelectorTest {
                     }
                 val selected = selector(server, temporary.newFolder()).select(story(21), "test", MODEL, 10, CoverEvidencePlanning) {}
                 assertEquals((2..20 step 2).toList(), selected.map { it.number })
-                // Two spread batches find nine; the last unscanned chapter completes the target.
+                // A book shorter than the cover scan minimum is judged in full.
                 assertEquals(21, server.requestCount)
             }
         }
@@ -201,14 +230,14 @@ class ChapterEvidenceSelectorTest {
     @Test fun `cached chapters resume a failed scan without billing again`() =
         runBlocking {
             MockWebServer().use { server ->
-                // Target 1 judges one chapter per batch in scan order 1, 3, 2: chapter 1 is weak,
-                // chapter 3 fails with 401 on the first scan and succeeds on the retry.
-                val chapterRequests = mutableMapOf<Int, Int>()
+                // Target 1 judges one chapter per batch in reading order 1, 2, 3: chapter 1 is weak,
+                // chapter 2 fails with 401 on the first scan and succeeds on the retry.
+                var chapterTwoRequests = 0
                 server.dispatcher =
                     chapterDispatcher { chapter ->
                         when {
                             chapter == 1 -> MockResponse().setBody(weakResponse)
-                            chapterRequests.merge(chapter, 1, Int::plus) == 1 -> MockResponse().setResponseCode(401)
+                            chapter == 2 && ++chapterTwoRequests == 1 -> MockResponse().setResponseCode(401)
                             else -> MockResponse().setBody(response)
                         }
                     }
@@ -223,12 +252,12 @@ class ChapterEvidenceSelectorTest {
                 assertEquals(2, server.requestCount)
                 assertEquals(2, recorded[0])
                 val resumed = selector(server, folder, recorded = recorded).select(story, "test", MODEL, 1, CoverEvidencePlanning) {}
-                // Chapter 1 was reused from the cache; only the previously failed chapter billed.
-                assertEquals(3, server.requestCount)
-                assertEquals(listOf(3), resumed.map { it.number })
-                assertEquals(3, recorded[0])
+                // Chapter 1 was reused from the cache; the failed chapter and the unscanned third billed.
+                assertEquals(4, server.requestCount)
+                assertEquals(listOf(2), resumed.map { it.number })
+                assertEquals(4, recorded[0])
                 assertEquals(resumed, selector(server, folder).select(story, "test", MODEL, 1, CoverEvidencePlanning) {})
-                assertEquals(3, server.requestCount)
+                assertEquals(4, server.requestCount)
             }
         }
 

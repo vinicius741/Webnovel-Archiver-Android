@@ -41,8 +41,10 @@ internal object DescriptionEvidencePlanning : EvidenceRubric {
         model: String,
     ): JsonObject = request(state(story, sample), model)
 
-    override fun assess(response: JsonObject): ChapterEvidencePlanning.Assessment =
-        parse(response).let { ChapterEvidencePlanning.Assessment(isUseful(it), utility(it)) }
+    override fun assess(
+        sample: ChapterEvidencePlanning.ChapterSample,
+        response: JsonObject,
+    ): ChapterEvidencePlanning.Assessment = parse(response).let { ChapterEvidencePlanning.Assessment(isUseful(it), utility(it)) }
 
     /** A synopsis chapter must establish who the story follows or what drives them, and must not spoil a twist. */
     fun isUseful(judgments: Judgments): Boolean =

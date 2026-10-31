@@ -30,6 +30,7 @@ internal object AiPromptSourceData {
         story: Story,
         chapters: List<AiDescriptionPlanning.ChapterText>,
         description: String? = null,
+        appearancePassages: List<ChapterEvidencePlanning.EvidencePassage> = emptyList(),
     ): String {
         val source =
             JsonObject().apply {
@@ -58,6 +59,21 @@ internal object AiPromptSourceData {
                         }
                     },
                 )
+                if (appearancePassages.isNotEmpty()) {
+                    add(
+                        "appearance_passages",
+                        JsonArray().apply {
+                            appearancePassages.forEach { passage ->
+                                add(
+                                    JsonObject().apply {
+                                        addProperty("downloaded_position", passage.chapter)
+                                        addProperty("text", passage.text.safeSourceValue())
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
             }
         return "SOURCE_DATA_START\n$source\nSOURCE_DATA_END"
     }

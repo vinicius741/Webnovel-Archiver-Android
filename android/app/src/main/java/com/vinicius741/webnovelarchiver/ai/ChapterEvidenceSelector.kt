@@ -21,8 +21,8 @@ import kotlin.coroutines.coroutineContext
 
 /**
  * Validates downloaded chapters with the chosen decision model in batches of the target size, in the
- * [EvidenceRubric]'s scan order, and stops as soon as enough useful chapters are found, so cost
- * scales with what the novel needs, not its length.
+ * [EvidenceRubric]'s scan order, and stops once enough useful chapters are found and the rubric's
+ * minimum scan is covered, so cost scales with what the novel needs, not its length.
  */
 internal class ChapterEvidenceSelector(
     private val readChapter: suspend (Chapter) -> String?,
@@ -47,7 +47,17 @@ internal class ChapterEvidenceSelector(
         targetChapters: Int,
         rubric: EvidenceRubric,
         progress: (String) -> Unit,
-    ): List<AiDescriptionPlanning.ChapterText> =
+    ): List<AiDescriptionPlanning.ChapterText> = selectWithPassages(story, apiKey, model, targetChapters, rubric, progress).chapters
+
+    /** [select] plus every passage the rubric flagged across all judged chapters, in reading order. */
+    suspend fun selectWithPassages(
+        story: Story,
+        apiKey: String,
+        model: String,
+        targetChapters: Int,
+        rubric: EvidenceRubric,
+        progress: (String) -> Unit,
+    ): ChapterEvidencePlanning.Selection =
         withContext(Dispatchers.IO) {
             val operationId = UUID.randomUUID().toString()
             val downloaded =
@@ -56,6 +66,7 @@ internal class ChapterEvidenceSelector(
                 }
             val target = targetChapters.coerceIn(1, maxOf(1, downloaded.size))
             val useful = mutableListOf<ChapterEvidencePlanning.ScoredChapter>()
+            val passages = mutableListOf<ChapterEvidencePlanning.EvidencePassage>()
             var scanned = 0
             var reused = 0
             var readable = false
@@ -71,28 +82,37 @@ internal class ChapterEvidenceSelector(
                 reused += outcomes.count { it.cached }
                 readable = readable || outcomes.any { it.readable }
                 useful += outcomes.mapNotNull { it.scored }.filter { it.assessment.useful }
+                passages +=
+                    outcomes.flatMap {
+                        it.scored
+                            ?.assessment
+                            ?.passages
+                            .orEmpty()
+                    }
                 progress(
                     "Selecting ${rubric.progressSubject}: ${minOf(useful.size, target)}/$target chapters found " +
                         "($scanned scanned${if (reused > 0) ", $reused cached" else ""})",
                 )
-                if (useful.size >= target) break
+                if (useful.size >= target && scanned >= rubric.minScannedChapters) break
             }
             check(readable) {
                 "Downloaded chapter files are missing; re-download the novel's chapters"
             }
             check(useful.isNotEmpty()) { rubric.noEvidenceMessage }
             cache.trim()
-            ChapterEvidencePlanning
-                .choose(useful, target)
-                .mapNotNull { scored ->
-                    val chapter = story.chapters[scored.sample.chapter - 1]
-                    val html = readChapter(chapter) ?: chapter.content ?: return@mapNotNull null
-                    AiDescriptionPlanning.ChapterText(
-                        number = scored.sample.chapter,
-                        title = scored.sample.title,
-                        text = AiDescriptionPlanning.capChapterText(HtmlCleanup.htmlToFormattedText(html)),
-                    )
-                }
+            val chapters =
+                ChapterEvidencePlanning
+                    .choose(useful, target)
+                    .mapNotNull { scored ->
+                        val chapter = story.chapters[scored.sample.chapter - 1]
+                        val html = readChapter(chapter) ?: chapter.content ?: return@mapNotNull null
+                        AiDescriptionPlanning.ChapterText(
+                            number = scored.sample.chapter,
+                            title = scored.sample.title,
+                            text = AiDescriptionPlanning.capChapterText(HtmlCleanup.htmlToFormattedText(html)),
+                        )
+                    }
+            ChapterEvidencePlanning.Selection(chapters, passages.sortedWith(compareBy({ it.chapter }, { it.index })))
         }
 
     private suspend fun judge(
@@ -105,21 +125,23 @@ internal class ChapterEvidenceSelector(
     ): Outcome {
         val html = readChapter(entry.value) ?: entry.value.content ?: return Outcome(null, cached = false, readable = false)
         val sample =
-            ChapterEvidencePlanning.sample(entry.index + 1, entry.value.title, HtmlCleanup.htmlToFormattedText(html))
+            rubric.sample(entry.index + 1, entry.value.title, HtmlCleanup.htmlToFormattedText(html))
                 ?: return Outcome(null, cached = false, readable = true)
         val body = rubric.request(story, sample, model)
         val key = ChapterEvidencePlanning.cacheKey(body)
-        val saved = cache.read(key)?.let { runCatching { rubric.assess(it) }.getOrNull() }
+        val saved = cache.read(key)?.let { runCatching { rubric.assess(sample, it) }.getOrNull() }
         val assessment =
             saved
                 ?: client
                     .evaluate(
                         apiKey,
                         body,
-                    ) { json, code -> recordUsage(story.id, operationId, model, rubric, json, code) }
-                    .let { response ->
+                    ) { json, code ->
+                        val valid = code in 200..299 && runCatching { rubric.assess(sample, json) }.isSuccess
+                        recordUsage(story.id, operationId, model, rubric, json, valid)
+                    }.let { response ->
                         // Only well-formed judgments are cached; an invalid one fails this scan and is asked again next time.
-                        rubric.assess(response).also { cache.write(key, response) }
+                        rubric.assess(sample, response).also { cache.write(key, response) }
                     }
         return Outcome(ChapterEvidencePlanning.ScoredChapter(sample, assessment), cached = saved != null, readable = true)
     }
@@ -131,7 +153,7 @@ internal class ChapterEvidenceSelector(
         requestedModel: String,
         rubric: EvidenceRubric,
         json: JsonObject,
-        code: Int,
+        valid: Boolean,
     ) {
         try {
             val usage = json.get("usage")?.takeIf { it.isJsonObject }?.asJsonObject
@@ -153,7 +175,7 @@ internal class ChapterEvidenceSelector(
                     promptTokens = tokens("input_tokens"),
                     completionTokens = tokens("output_tokens"),
                     costUsd = AiUsagePlanning.normalizeCost(scalar(usage, "cost")),
-                    outcome = if (code in 200..299 && runCatching { rubric.assess(json) }.isSuccess) "completed" else "failed",
+                    outcome = if (valid) "completed" else "failed",
                 ),
             )
         } catch (error: CancellationException) {
