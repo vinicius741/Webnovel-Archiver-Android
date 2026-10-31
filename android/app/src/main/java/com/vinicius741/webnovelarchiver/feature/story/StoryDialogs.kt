@@ -3,11 +3,8 @@ package com.vinicius741.webnovelarchiver.feature.story
 import android.app.AlertDialog
 import android.app.Dialog
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.text.InputType
-import android.text.TextUtils
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
@@ -16,7 +13,6 @@ import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -37,7 +33,6 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.scroll
-import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
 import com.vinicius741.webnovelarchiver.ui.styledDialogField
 import com.vinicius741.webnovelarchiver.ui.text
@@ -258,6 +253,8 @@ internal fun ScreenHost.showCoverZoomDialog(
         }
     loadImage(source, image)
 
+    // Just a small floating close button, so the cover keeps the whole screen. The translucent
+    // circle keeps the icon legible over bright artwork.
     val closeButton =
         ImageView(app).apply {
             contentDescription = "Close"
@@ -267,35 +264,11 @@ internal fun ScreenHost.showCoverZoomDialog(
             isFocusable = true
             background =
                 ripple(
-                    roundedBg(Color.TRANSPARENT, dp(24).toFloat()),
+                    roundedBg(Color.argb(128, 0, 0, 0), dp(24).toFloat()),
                     dp(24).toFloat(),
                     0x33FFFFFF,
                 )
             setOnClickListener { dialog.dismiss() }
-        }
-    val titleView =
-        TextView(app).apply {
-            text = title
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.TITLE_MEDIUM.size())
-            typeface = Typeface.create(typeface, Typeface.BOLD)
-            includeFontPadding = false
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }
-    val topBar =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(12), dp(8), dp(12))
-            setBackgroundColor(Color.argb(196, 0, 0, 0))
-            addView(titleView, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(
-                closeButton,
-                LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-                    marginStart = dp(12)
-                },
-            )
         }
     val root =
         FrameLayout(app).apply {
@@ -308,12 +281,10 @@ internal fun ScreenHost.showCoverZoomDialog(
                 ),
             )
             addView(
-                topBar,
-                FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP,
-                ),
+                closeButton,
+                FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP or Gravity.END).apply {
+                    setMargins(dp(8), dp(8), dp(8), dp(8))
+                },
             )
         }
 
