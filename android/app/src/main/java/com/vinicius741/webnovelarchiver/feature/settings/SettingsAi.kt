@@ -5,6 +5,7 @@ import android.text.method.PasswordTransformationMethod
 import android.widget.EditText
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
+import com.vinicius741.webnovelarchiver.feature.ai.addAiModelsCard
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -22,9 +23,9 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 /**
- * OpenRouter-backed AI feature settings: the shared API key plus usage. The per-feature model
- * choices and context-chapter selection live on the AI Controls screen, where generation happens.
- * The API key is device-local and never included in backups.
+ * OpenRouter-backed AI feature settings: the shared API key, the global model choices (they apply
+ * to every novel), and usage. Per-novel context-chapter selection lives on the AI Controls screen,
+ * where generation happens. The API key is device-local and never included in backups.
  */
 internal fun ScreenHost.showAiSettings() {
     val settings = repository.aiSettings.get()
@@ -53,6 +54,10 @@ internal fun ScreenHost.showAiSettings() {
                     }
             },
         )
+        section("Models")
+        text("Used for every novel. Changes save right away.", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+        spacer(Space.MD)
+        addAiModelsCard(this)
         section("Automatic cover selection")
         text(
             "Scans chapters for cover ideas using OpenRouter credits. " +

@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.data.storage
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -189,5 +190,32 @@ class CoverStoreTest {
         assertTrue(json.contains("\"prompt\""))
         assertTrue(json.contains("\"mediaType\""))
         assertTrue(json.contains("\"imageFile\""))
+    }
+
+    @Test
+    fun unseenResultsListBackgroundResultsUntilMarkedSeen() {
+        store.saveImage("royalroad:1/2", AiCoverDraft("painted", byteArrayOf(1), "image/png"), unseen = true)
+        store.savePrompt("story-2", "prompt only", unseen = true)
+        store.savePrompt("story-3", "typed by the user")
+
+        assertEquals(
+            mapOf("royalroad:1/2" to AiCoverResultKind.IMAGE, "story-2" to AiCoverResultKind.PROMPT),
+            store.unseenResults(),
+        )
+
+        assertTrue(store.markSeen("royalroad:1/2"))
+        assertEquals(mapOf("story-2" to AiCoverResultKind.PROMPT), store.unseenResults())
+        // Seen keeps the draft itself.
+        assertTrue(store.load("royalroad:1/2") is AiCoverDraftRecord.Image)
+        assertFalse(store.markSeen("royalroad:1/2"))
+    }
+
+    @Test
+    fun legacyMetaWithoutUnseenFieldReadsAsSeen() {
+        val drafts = File(root, "ai_cover_drafts").apply { mkdirs() }
+        drafts.resolve("story-1.json").writeText("""{"prompt":"old","mediaType":null}""")
+
+        assertTrue(store.unseenResults().isEmpty())
+        assertTrue(store.load("story-1") is AiCoverDraftRecord.PromptOnly)
     }
 }

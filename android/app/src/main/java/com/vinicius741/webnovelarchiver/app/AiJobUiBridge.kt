@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.app
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobEvent
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobKind
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
+import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
 import com.vinicius741.webnovelarchiver.feature.ai.frameIsAiControls
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
@@ -99,25 +100,22 @@ private fun MainActivity.presentAiCoverJobEvent(event: AiCoverJobEvent) {
                     }
                 }
             }
-            val message =
-                if (event.record is AiCoverDraftRecord.PromptOnly) {
-                    "Image prompt ready — edit it under More options → AI Controls"
-                } else {
-                    "AI cover ready — preview it under More options → AI Controls"
-                }
-            if (frameIsAiControls(event.storyId)) {
-                showAiControls(event.storyId)
-            } else {
-                toast(message)
-                rerenderDetailsIfVisible(event.storyId)
-            }
+            // Off this page the app-wide job chip announces the result (it follows the repository's
+            // unseen set), so no toast has to describe where to find it.
+            if (frameIsAiControls(event.storyId)) showAiControls(event.storyId) else rerenderDetailsIfVisible(event.storyId)
         }
         is AiCoverJobEvent.Failed -> {
             event.persistedPrompt?.let { prompt ->
                 aiControlsScreenState.replaceCoverPreviewWithPrompt(event.storyId, prompt)
             }
-            toast(event.message)
-            if (frameIsAiControls(event.storyId)) showAiControls(event.storyId) else rerenderDetailsIfVisible(event.storyId)
+            if (frameIsAiControls(event.storyId)) {
+                toast(event.message)
+                showAiControls(event.storyId)
+            } else {
+                aiControlsScreenState.recordFailure(event.storyId, AiControlsTab.COVER, event.message)
+                aiControlsScreenState.refreshJobChip()
+                rerenderDetailsIfVisible(event.storyId)
+            }
         }
     }
 }

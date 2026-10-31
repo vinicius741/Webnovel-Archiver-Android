@@ -7,7 +7,7 @@ the layer is built to grow tag and cover-image generation later.
 ## User flow
 
 - **Settings → AI Settings**: the user enters their own OpenRouter API key (masked input).
-  **AI Controls → Models** selects the model used for description generation. The model picker fetches OpenRouter's live catalog
+  **AI Settings → Models** selects the model used for description generation. The model picker fetches OpenRouter's live catalog
   (`GET /api/v1/models`, public endpoint) into a searchable dialog with All/Free filters and
   per-million-token pricing labels; a manual-id entry row covers new/offline models. Defaults to
   `deepseek/deepseek-v4.1-flash-1017` (cheap) so a fresh install works immediately.
@@ -18,13 +18,16 @@ the layer is built to grow tag and cover-image generation later.
   mandatory reasoning hides Off. Manual ids and unavailable catalogs allow explicit choices.
   Levels are saved by model id in `AiSettings.reasoningEfforts`, so switching back restores the
   choice. The description model's level also applies when it writes cover prompts. Image models
-  have no reasoning control. The chosen level appears inside the model's field on AI Controls.
+  have no reasoning control. The chosen level appears inside the model's field in AI Settings.
   Higher levels can take longer and use more output tokens.
 - **Details → More options → AI Controls**: all per-novel AI features live on the AI Controls screen
   (route `ai_controls`), not on the Details body, so new generators (tags, cover art) join a hub
-  instead of scattering more buttons across Details. Its description card shows the applied AI
-  synopsis (or an explanatory line), the "Show AI description in Details" preference, and the
-  generate action.
+  instead of scattering more buttons across Details. Its **Description tab** (beside the Cover
+  tab) shows the applied AI synopsis (or an explanatory line), the "Show AI description in Details"
+  preference, the generate action with its live progress, any pending draft, and one line naming
+  the text model (tapping it opens AI Settings). A draft that finishes while the tab is not on
+  screen marks the tab "Description •" and shows the app-wide job chip ("Description ready",
+  tap to open the tab); see `ai-cover-generation.md` for the chip.
 - **Generate → preview → apply**: `Generate Description with AI` sends **5 downloaded chapters
   picked by the decision model** (see *Automatic chapter selection* below), or the user's manual
   selection, as plain text (each capped at ~12k chars, ~60k chars total) plus title/author/tags to
@@ -56,7 +59,8 @@ the layer is built to grow tag and cover-image generation later.
   other in-flight story operation blocks generation
   (and vice versa) through the shared `storyOperation` guard. While a draft is generating, Details
   shows a slim progress block (so backing out of AI Controls mid-generation still explains why its
-  buttons are disabled) and the AI Controls screen shows the live progress message.
+  buttons are disabled), the job chip shows it on every other screen, and the Description tab shows
+  the live progress message.
 - HTTP failures map to friendly messages: 401 invalid key, 402 insufficient credits, 404 unknown
   model, 429 rate limit. Cancelling the coroutine also cancels the active OkHttp call.
 
@@ -64,7 +68,7 @@ the layer is built to grow tag and cover-image generation later.
 
 Without a manual selection (`Story.aiContextChapterIndices` null), the description uses the same
 decision-model scan as automatic cover context (`ai-cover-generation.md`), with a synopsis rubric
-(`DescriptionEvidencePlanning`) and the **Chapter selection model** from AI Controls → Models
+(`DescriptionEvidencePlanning`) and the **Chapter selection model** from AI Settings → Models
 (default Jev). Each judged chapter costs one Decisions API request carrying its opening and a
 mid-chapter excerpt; the model scores, on four levels, how well the excerpts establish the
 protagonist and their starting situation, the driving problem or goal and its stakes, and the

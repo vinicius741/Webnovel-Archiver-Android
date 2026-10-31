@@ -4,6 +4,7 @@ import android.net.Uri
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
+import com.vinicius741.webnovelarchiver.data.storage.AiCoverResultKind
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
@@ -36,6 +37,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
@@ -153,6 +155,11 @@ class AppRepository private constructor(
 
     internal val aiUsage = AiUsageStore()
 
+    internal val aiCoverUnseenState = MutableStateFlow<Map<String, AiCoverResultKind>>(emptyMap())
+
+    /** Stories with a finished background cover result the user has not looked at yet. Device-local, never backed up. */
+    val aiCoverUnseen: StateFlow<Map<String, AiCoverResultKind>> = aiCoverUnseenState.asStateFlow()
+
     @Volatile
     internal var ttsSession: TtsSession? = null
 
@@ -175,6 +182,7 @@ class AppRepository private constructor(
             storage.reloadJsonDocuments()
             aiUsage.reload(storage.aiUsage::load)
             ttsSession = storage.getTtsSession()?.copy()
+            aiCoverUnseenState.value = storage.covers.unseenResults()
             _downloadState.value = _downloadState.value.copy(library = library, queue = queue)
         }
     }
@@ -696,6 +704,7 @@ internal suspend fun AppRepository.saveAiCoverPromptDraft(
     prompt: String,
 ) {
     withContext(Dispatchers.IO) { storage.covers.savePrompt(storyId, prompt) }
+    aiCoverUnseenState.update { it - storyId }
 }
 
 /** Persists a painted preview (with the prompt that produced it) as the story's pending draft. */
@@ -714,18 +723,33 @@ internal suspend fun AppRepository.saveAiCoverImageDraft(
 internal suspend fun AppRepository.persistAiCoverDraftIfStoryExists(
     storyId: String,
     record: AiCoverDraftRecord,
-): Boolean =
-    storageTransaction {
-        if (storage.getStory(storyId) == null) {
-            false
-        } else {
-            when (record) {
-                is AiCoverDraftRecord.PromptOnly -> storage.covers.savePrompt(storyId, record.prompt)
-                is AiCoverDraftRecord.Image -> storage.covers.saveImage(storyId, record.draft)
+    unseen: Boolean = false,
+): Boolean {
+    val saved =
+        storageTransaction {
+            if (storage.getStory(storyId) == null) {
+                false
+            } else {
+                when (record) {
+                    is AiCoverDraftRecord.PromptOnly -> storage.covers.savePrompt(storyId, record.prompt, unseen)
+                    is AiCoverDraftRecord.Image -> storage.covers.saveImage(storyId, record.draft, unseen)
+                }
+                true
             }
-            true
         }
+    if (saved) {
+        val kind = if (record is AiCoverDraftRecord.Image) AiCoverResultKind.IMAGE else AiCoverResultKind.PROMPT
+        aiCoverUnseenState.update { if (unseen) it + (storyId to kind) else it - storyId }
     }
+    return saved
+}
+
+/** Records that the user looked at the story's latest background cover result. */
+internal suspend fun AppRepository.markAiCoverResultSeen(storyId: String) {
+    if (storyId !in aiCoverUnseenState.value) return
+    withContext(Dispatchers.IO) { storage.covers.markSeen(storyId) }
+    aiCoverUnseenState.update { it - storyId }
+}
 
 /** The story's persisted pending draft, or null when there is none. */
 internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDraftRecord? =
@@ -734,6 +758,7 @@ internal suspend fun AppRepository.loadAiCoverDraft(storyId: String): AiCoverDra
 /** Deletes the story's pending draft; called on Apply, Discard, and AI-cover deletion. */
 internal suspend fun AppRepository.deleteAiCoverDraft(storyId: String) {
     withContext(Dispatchers.IO) { storage.covers.delete(storyId) }
+    aiCoverUnseenState.update { it - storyId }
 }
 
 /** Stores cover context independently from the description selection. */

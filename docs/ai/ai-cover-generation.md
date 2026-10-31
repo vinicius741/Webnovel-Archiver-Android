@@ -6,17 +6,29 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
 
 ## User flow
 
-- **Settings → AI Settings**: beside the description model, a **Cover image model** row picks the
+- **Settings → AI Settings → Models**: beside the description model, a **Cover image model** row picks the
   image generator. Its picker rides the dedicated image-model catalog (`GET /api/v1/images/models`,
   public, no pricing) — same searchable dialog shape as the text-model picker, minus price labels
   and the Free filter, with a pinned manual-id row. Defaults to `x-ai/grok-imagine-image-2.0`
   (from ~$0.04/image; supports 2:3 portrait).
-- **Details → More options → AI Controls → Cover Art** shows the current cover and a horizontal
-  Saved covers gallery. Tap any version to compare it with the current cover, zoom in, choose
-  `Use this cover`, or `Edit prompt / try again`. Applying a version keeps the previous cover.
-- **Generation modes**: `Generate prompt + image in one step` runs both billable stages.
-  Turn it off to generate a prompt first, edit it, and then choose `Generate Image`.
-  `Write your own prompt` skips the text-model call. `Save edits` persists the working prompt.
+- **Details → More options → AI Controls → Cover tab** (redesigned 2026-10-31; the Description
+  tab sits beside it and the screen remembers the last tab per novel). Top to bottom:
+  1. **New cover ready** — only while a generated cover waits for a decision: the cover in use
+     beside the new one, its cost, `Use new cover`, and `Keep current`. Either choice keeps the
+     image in history and leaves its prompt in the prompt box. A draft identical to the cover
+     already in use (left by older app versions) is settled silently instead of shown.
+  2. **Covers** — one horizontal strip: the source cover first, then every saved AI version newest
+     first. The cover in use has an outline, a check, and "· In use"; the waiting result has a
+     `New` badge. Tapping a cover makes it the displayed one (free and reversible); long-pressing
+     opens its details: a comparison with the cover in use, its prompt, `Use this cover`, and
+     `Put prompt in the box`.
+  3. **Make a new cover** — chapter selection, the prompt box, `Write prompt with AI`, `Clear`, and
+     the main button, then one line naming the image and prompt models, linking to AI Settings.
+- **The prompt box decides the flow** (no mode setting): an empty box makes the main button
+  `Generate cover`, which writes a prompt with the text model and paints it in one job; a filled
+  box makes it `Generate from prompt`, which bills only the image call. `Write prompt with AI`
+  runs only the text stage and puts the result in the box for editing. Typed text survives
+  re-renders and is persisted when a run starts. `AiSettings.coverOneStep` is no longer read.
 - **Iteration**: each generated image retains the prompt that produced it. Editing a saved
   version's prompt creates a new working prompt; generating from it bills only the image call.
   Earlier images remain available even if generation fails or the app restarts. This is text-to-image
@@ -45,12 +57,10 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
      minimal model+prompt request. When supported, the request explicitly asks for PNG or another
      raster format. SVG-only models are hidden from the picker and blocked before the paid image
      call; an explicit vector response is never stored as a bitmap.
-- **Preview → apply**: the candidate is saved locally before it appears. `Use this cover` writes
-  the display copy to `covers/<safeName(id)>.<ext>` and selects it. `Close preview` keeps the
-  candidate in Saved covers. Viewing a historical version leaves any pending experiment intact.
-  Comparison and prompt editing use custom themed dialogs, including their headings and actions.
-  The current version shows one image and a disabled Current cover action. Archived novels can
-  close a pending preview while cover application remains disabled.
+- **Preview → apply**: the candidate is saved locally before it appears. `Use new cover` (or tapping
+  a version in the strip) writes the display copy to `covers/<safeName(id)>.<ext>` and selects it.
+  Choosing any cover also settles a waiting "New cover ready". Archived novels show the strip
+  read-only.
   The prompt-writing system prompt treats all novel fields as untrusted data, requires supported
   visual facts, and asks for the cleaned novel title rendered as large lettering inside the artwork
   (never a separate caption band under or around it), excluding other text, logos, watermarks,
@@ -70,17 +80,22 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   that marks completeness) the moment it arrives, so even a process death after the API replied
   cannot lose a billed image. The one-step flow persists its prompt immediately after the first
   billable stage, before starting the image request. Reopening AI Controls rehydrates the persisted
-  draft (prompt-only or full preview) into its card. Applying or closing clears only the working
+  draft (prompt-only or full preview) into the prompt box and decision card. Applying or closing clears only the working
   draft; version history retains its image and prompt. Starting the image stage persists the edited prompt with it, so a mid-paint death recovers
   the prompt for a retry.
-- **Displayed cover**: when both covers exist on a mutable story, Source and Generated radio
-  choices select which cover the app displays. Applying a new cover selects Generated. Choosing
-  Source preserves every generated version and leaves `coverUrl` unchanged. With only one cover,
-  the app uses that cover without offering an unavailable choice. Archives remain read-only.
-- **Generation options**: chapter selection, the saved one-step preference, and Write your own
-  prompt live in a collapsed section. Its expansion state belongs to the story for the activity's
-  lifetime. The main action stays visible and describes the saved mode, including prompt-only
-  generation. Generated prompts, previews, errors, costs, and saved covers remain outside it.
+- **Displayed cover**: the strip is the only selector. Tapping Source preserves every generated
+  version and leaves `coverUrl` unchanged; tapping an AI version applies it and selects Generated.
+- **Getting back to a slow generation**: a finished background result is saved with `unseen: true`
+  in its draft meta (`AiCoverDraftMeta.unseen` + raw `storyId`; older documents read as seen).
+  `AppRepository.aiCoverUnseen` caches those story ids for the UI. While a job runs and until its
+  result is opened, the app-wide **job chip** (`feature/ai/AiJobChip.kt`, a pill floating above
+  every screen, stacked over the TTS mini-player and clear of screen FABs) shows the progress
+  message, then "New cover ready" / "Cover prompt ready" or the failure, with the novel's title;
+  tapping it opens that novel's AI Controls on the right tab. Library covers (list and grid) get a
+  sparkle badge and Details shows `Review new AI cover`. Opening the Cover tab clears the marker.
+  Failures and chip dismissals are in-memory only; the chip hides on the novel's own AI Controls
+  page. `AiJobChipPlanning` decides what the chip shows (running > newest failure > unseen cover >
+  unseen description). The notification tap still deep-links to AI Controls.
 
 ## Where the AI cover applies
 
@@ -104,7 +119,7 @@ time and size so applying another version refreshes the visible cover even when 
   outside the repository transaction lock. Gallery and cover-action storage failures show a retry
   message instead of escaping into the activity. Legacy pending previews are preserved before starting another experiment. Deleting the story
   removes both its draft and version history.
-- Cost controls: automatic selection validates chapters with the chosen decision model in batches and stops at the configured chapter count (default 10, Settings → AI Settings). Cover context shares a 120k-character budget equally across its chapters, capped at 12k each, so the default ten automatic chapters arrive whole; appearance passages add up to 12k more, strongest first. The text call uses `max_tokens 4000` (doubled once on a truncated reply) and the description model's saved reasoning level from AI Controls, including on retries; the image call requests one 1K image. Generating over an applied cover
+- Cost controls: automatic selection validates chapters with the chosen decision model in batches and stops at the configured chapter count (default 10, Settings → AI Settings). Cover context shares a 120k-character budget equally across its chapters, capped at 12k each, so the default ten automatic chapters arrive whole; appearance passages add up to 12k more, strongest first. The text call uses `max_tokens 4000` (doubled once on a truncated reply) and the description model's saved reasoning level from AI Settings, including on retries; the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
   generating from an edited prompt; the shared `storyOperation` guard
   (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited
@@ -140,12 +155,13 @@ Full backups retain the applied cover as described below.
 | `ai/AiCoverJobs.kt` | Background job runner (`AiCoverJobCoordinator`) on the shared `AiJobCoordinator` lifecycle: one cover job at a time, running state (`jobs` StateFlow) for progress surfaces, terminal `events` (result persisted before the success event fires). |
 | `ai/AiContextChapters.kt` | Shared capped chapter reading used by both the description and cover engines. |
 | `ai/AiJobForegroundService.kt` | Shared `dataSync` foreground service for all AI jobs: mirrors the active job's progress in a notification and posts ready/failed outcome notifications; stops itself when every coordinator is idle. |
-| `app/AiJobUiBridge.kt` | Activity-side bridge for both AI job kinds: mirrors coordinator state into the shared `storyOperation` slot (Details progress, AI Controls gating) and surfaces terminal events as toasts/draft cards. |
+| `app/AiJobUiBridge.kt` | Activity-side bridge for both AI job kinds: mirrors coordinator state into the shared `storyOperation` slot (Details progress, AI Controls gating), surfaces results as draft state, and records off-page failures for the job chip. |
+| `feature/ai/AiJobChip.kt` / `AiJobChipPlanning.kt` | App-wide job chip (running / ready / failed, tap to open the novel's tab) and its pure selection rule. |
 | `data/storage/AiCoverDraftStore.kt` | Pending-draft persistence under `ai_cover_drafts/` (prompt JSON + image bytes, image-first completeness marker); excluded from backups by design. |
-| `feature/ai/AiCoverControls.kt` | Cover Art section UI: state card (thumbnail, show-AI toggle, mode checkbox), draft preview, compare, select, and close-preview actions. |
+| `feature/ai/AiCoverControls.kt` | Cover tab: "New cover ready" decision card, the "Make a new cover" card with the prompt box, and draft settlement. |
 | `data/storage/AiCoverVersionStore.kt` | Immutable local image and prompt history, deduplicated by image hash. |
-| `feature/ai/AiCoverVersionsUi.kt` | Saved-cover gallery, comparison dialog, and prompt reuse editor. |
-| `feature/ai/AiCoverGeneration.kt` | Generation flows: mode dispatch, job launches through the coordinator + service, the staged prompt card, draft rehydration from disk. |
+| `feature/ai/AiCoverVersionsUi.kt` | Cover strip (source + versions, tap to use), long-press details dialog, and prompt reuse. |
+| `feature/ai/AiCoverGeneration.kt` | Generation flows: prompt-box dispatch, job launches through the coordinator + service, draft rehydration from disk. |
 | `feature/settings/SettingsAiImageModel.kt` | Image-model picker dialog + catalog cache for the AI Settings row. |
 
 Supporting pieces: `Story.aiCoverPath` + `Story.showAiCover`; `AiSettings.imageModel` +
@@ -166,7 +182,7 @@ backup/restore handling like `covers/`.
 
 ## Automatic decision-model evidence selection
 
-Automatic mode uses the OpenRouter key saved in Settings → AI Settings. It validates chapters with a decision model through `POST https://openrouter.ai/api/alpha/decisions`. The model is the **Chapter selection model** in AI Controls → Models (shared with automatic description selection, see `ai-description-generation.md`) (`AiSettings.decisionModel`, default the versioned `typesafe/jev-1.14`); its picker lists OpenRouter's decision catalog (`GET /api/v1/models?output_modalities=decisions` — Jev, Cloudflare Clef, Liquid d1, Perplexity Decider, …) with pricing and no reasoning control, plus manual id entry. The [OpenRouter Decisions API reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) documents the typed request and receipt fields. The scan judges chapters in batches of the configured target count, which defaults to 10, in `ChapterEvidencePlanning.openingThenSpread` order: the first ten chapters in reading order (characters are usually described when introduced, often after a prologue or setup chapters), then interval midpoints breadth-first across the rest of the book. It stops once that many useful chapters are found **and** at least `CoverEvidencePlanning.MIN_SCANNED_CHAPTERS` (30) chapters, or the whole book if shorter, have been judged — decision requests cost a fraction of a cent, so the floor buys appearance coverage cheaply. It then sends the chosen chapters' full texts to the prompt writer, capped at 12k characters each. Each chapter costs one request whose state carries the novel background (`novel.title`, `novel.description`, `novel.tags`) and the chapter from its start as `passages` of up to 1,500 characters (whole lines packed together). Passages stop when the passage budget is spent so the whole body stays under 30,000 bytes: OpenRouter switches Jev to its slower, less accurate long-context mode above about 32,000 bytes, so the tail of a very long chapter (roughly past 15–18k characters) is not judged. Missing chapter files are skipped; no useful evidence produces an actionable error instead of silently reverting to sampling.
+Automatic mode uses the OpenRouter key saved in Settings → AI Settings. It validates chapters with a decision model through `POST https://openrouter.ai/api/alpha/decisions`. The model is the **Chapter selection model** in AI Settings → Models (shared with automatic description selection, see `ai-description-generation.md`) (`AiSettings.decisionModel`, default the versioned `typesafe/jev-1.14`); its picker lists OpenRouter's decision catalog (`GET /api/v1/models?output_modalities=decisions` — Jev, Cloudflare Clef, Liquid d1, Perplexity Decider, …) with pricing and no reasoning control, plus manual id entry. The [OpenRouter Decisions API reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-request) documents the typed request and receipt fields. The scan judges chapters in batches of the configured target count, which defaults to 10, in `ChapterEvidencePlanning.openingThenSpread` order: the first ten chapters in reading order (characters are usually described when introduced, often after a prologue or setup chapters), then interval midpoints breadth-first across the rest of the book. It stops once that many useful chapters are found **and** at least `CoverEvidencePlanning.MIN_SCANNED_CHAPTERS` (30) chapters, or the whole book if shorter, have been judged — decision requests cost a fraction of a cent, so the floor buys appearance coverage cheaply. It then sends the chosen chapters' full texts to the prompt writer, capped at 12k characters each. Each chapter costs one request whose state carries the novel background (`novel.title`, `novel.description`, `novel.tags`) and the chapter from its start as `passages` of up to 1,500 characters (whole lines packed together). Passages stop when the passage budget is spent so the whole body stays under 30,000 bytes: OpenRouter switches Jev to its slower, less accurate long-context mode above about 32,000 bytes, so the tail of a very long chapter (roughly past 15–18k characters) is not judged. Missing chapter files are skipped; no useful evidence produces an actionable error instead of silently reverting to sampling.
 
 Each request scores appearance, role/situation, and distinctive imagery separately on four situation-anchored levels (nothing / generic mention / at least one specific drawable detail / drawable without guessing), plus a yes/no probability for an explicitly temporary scene (dream, vision, flashback, disguise, illusion, transformation). Title, description and tags are background for identifying the main character, not evidence. Answers missing the optional `type` discriminator are accepted; a mismatched type or out-of-range value is rejected. Each request also asks one Noul per passage — "Does `passages[i]` describe how the novel's main character looks…?" — a direct, path-addressed question as TypeSafe recommends for Jev (literal reading, weak at indirection). Passages at or above 0.5 are collected from every judged chapter, chosen or not, and the strongest reach the prompt writer verbatim as `appearance_passages` (12k-character budget, back in reading order, exact repeats sent once). Jev cannot write text, so this is selection, not extraction: it points at where the book describes the character and the prompt writer reads those words. Questions run together over the same state. These are relevance judgments, not verified facts or proof of recurrence. A chapter is useful when its best visual dimension reaches the "specific drawable detail" level (2 of 3) and a temporary scene is not likely; the strongest useful chapters within the target are kept, in reading order. The prompt writer chooses a coherent story phase and must not infer recurrence from neighboring chapters repeating a scene.
 

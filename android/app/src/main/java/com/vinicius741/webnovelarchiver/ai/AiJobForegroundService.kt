@@ -124,11 +124,7 @@ class AiJobForegroundService : Service() {
         val body =
             when (event) {
                 is AiCoverJobEvent.Succeeded ->
-                    if (event.record is AiCoverDraftRecord.Image) {
-                        "Preview it under More options → AI Controls."
-                    } else {
-                        "Edit it under More options → AI Controls."
-                    }
+                    if (event.record is AiCoverDraftRecord.Image) "Tap to compare and choose it." else "Tap to review the prompt."
                 is AiCoverJobEvent.Failed -> event.message
             }
         postOutcome(COVER_OUTCOME_NOTIFICATION_ID, title, storyTitle?.let { "$it — $body" } ?: body, AppRoute.AiControls(event.storyId))

@@ -1,76 +1,65 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
-import android.text.InputType
-import android.view.ViewGroup
-import android.widget.EditText
-import android.widget.LinearLayout
-import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiCoverJobCoordinator
 import com.vinicius741.webnovelarchiver.ai.AiJobForegroundService
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.deleteAiCoverDraft
-import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.data.repository.loadAiCoverDraft
-import com.vinicius741.webnovelarchiver.data.repository.saveAiCoverPromptDraft
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
-import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.Space
-import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.applyInputStyle
-import com.vinicius741.webnovelarchiver.ui.button
-import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.makeBadge
-import com.vinicius741.webnovelarchiver.ui.row
-import com.vinicius741.webnovelarchiver.ui.spacer
-import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
-// Billable cover-art generation: one-shot runs both OpenRouter stages in a single run; staged
-// stops after the prompt and paints only on request (a repaint re-bills just the image call).
-// Jobs run on the process-wide AiCoverJobCoordinator, not the activity scope, so navigating away
-// never cancels an in-flight call; both modes share the AI_COVER operation slot and can never run
-// concurrently for a story.
+// Billable cover-art generation, driven by the Cover tab's prompt box: an empty box runs both
+// OpenRouter stages in one job (AI prompt + image); a filled box paints just that prompt; "Write
+// prompt with AI" runs only the prompt stage and puts the result in the box. Jobs run on the
+// process-wide AiCoverJobCoordinator, not the activity scope, so navigating away never cancels an
+// in-flight call; all share the AI_COVER operation slot and never run concurrently for a story.
 
-/**
- * Starts generation in the configured mode; asks before overwriting an applied cover or pending
- * drafts — every call bills the user's OpenRouter key.
- */
-internal fun ScreenHost.generateAiCoverDraft(story: Story) {
+/** Generate cover: an empty [prompt] lets AI write one first (two calls); otherwise paints [prompt]. */
+internal fun ScreenHost.generateAiCover(
+    story: Story,
+    prompt: String,
+) {
     val settings = repository.aiSettings.get()
-    val hasApplied = story.aiCoverPath != null
-    val hasPendingDraft = aiControlsScreenState.coverDrafts[story.id] != null
-    val hasPendingPrompt = aiControlsScreenState.coverPrompts[story.id] != null
-    val hasPendingWork = hasPendingDraft || hasPendingPrompt
-    if (settings.coverOneStep) {
-        if (!hasApplied && !hasPendingWork) {
-            startAiCoverDraft(story)
-            return
-        }
+    if (prompt.isNotBlank()) {
         val message =
-            "Generate a new AI cover with ${settings.imageModel}? This makes two OpenRouter calls " +
-                "(image prompt + image) and uses your API credits. " +
-                "Automatic selection also uses OpenRouter credits for uncached chapters." +
-                (if (hasPendingWork) " Earlier covers remain in Saved covers." else "")
-        confirm(message, confirmLabel = "Generate") { startAiCoverDraft(story) }
+            "Generate the image with ${settings.imageModel}? This calls OpenRouter and uses your API credits. " +
+                "Earlier covers remain in Saved covers."
+        confirm(message, confirmLabel = "Generate") { startAiCoverImageDraft(story, prompt) }
         return
     }
-    if (!hasApplied && !hasPendingWork) {
-        startAiCoverPromptDraft(story)
+    // First-ever run skips the confirmation, as before; repeat runs say what they cost.
+    if (story.aiCoverPath == null && aiControlsScreenState.coverDrafts[story.id] == null) {
+        startAiCoverDraft(story)
         return
     }
     val message =
-        "Write a new image prompt with ${settings.descriptionModel}? This calls OpenRouter and uses your API credits. " +
+        "Generate a new AI cover with ${settings.imageModel}? This makes two OpenRouter calls " +
+            "(image prompt + image) and uses your API credits. " +
+            "Automatic selection also uses OpenRouter credits for uncached chapters. Earlier covers remain in Saved covers."
+    confirm(message, confirmLabel = "Generate") { startAiCoverDraft(story) }
+}
+
+/** Write prompt with AI: fills the prompt box without painting; confirms before replacing typed text. */
+internal fun ScreenHost.writeAiCoverPrompt(
+    story: Story,
+    currentPrompt: String,
+) {
+    if (currentPrompt.isBlank() && story.aiCoverPath == null) {
+        startAiCoverPromptDraft(story)
+        return
+    }
+    val model = repository.aiSettings.get().descriptionModel
+    val message =
+        "Write a new image prompt with $model? This calls OpenRouter and uses your API credits. " +
             "Automatic selection also uses OpenRouter credits for uncached chapters." +
-            (if (hasPendingWork) " Earlier covers remain in Saved covers." else "")
-    confirm(message, confirmLabel = "Generate") { startAiCoverPromptDraft(story) }
+            (if (currentPrompt.isNotBlank()) " It replaces the prompt in the box." else "")
+    confirm(message, confirmLabel = "Write prompt") { startAiCoverPromptDraft(story) }
 }
 
 /** One-shot flow: both billable stages in a single background run. */
@@ -95,6 +84,7 @@ private fun ScreenHost.startAiCoverJob(
         return
     }
     onAccepted()
+    aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.COVER)
     // Optimistic set for the first re-render; the activity bridge syncs the slot on every emission.
     storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
     detailsOperationSlot = null
@@ -102,94 +92,9 @@ private fun ScreenHost.startAiCoverJob(
     AiJobForegroundService.start(app, "Generating AI cover...")
 }
 
-/** The editable prompt draft (stage 1 result / stage 2 input). */
-internal fun ScreenHost.addAiCoverPromptDraftCard(
-    container: LinearLayout,
-    story: Story,
-    prompt: String,
-) {
-    val colors = ThemeManager.colors
-    val isBusy = storyOperation?.storyId == story.id
-    val cardView =
-        container.card {
-            addView(
-                makeBadge(context, "Image prompt · draft", colors.tertiaryContainer, colors.onTertiaryContainer),
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(Space.SM)
-                },
-            )
-            val field =
-                EditText(context).apply {
-                    applyInputStyle(
-                        "Image prompt",
-                        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES,
-                        singleLine = false,
-                    )
-                    setText(prompt)
-                    setSelection(prompt.length)
-                    minLines = 4
-                }
-            addView(field)
-            text(
-                "Generate another option from this prompt. Only the image call uses API credits; earlier covers stay saved.",
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            ).apply { setPadding(0, dp(Space.XS), 0, dp(Space.SM)) }
-            latestAiOperationCostLine(repository.getAiUsageLedger(), story.id, AI_FEATURE_COVER_PROMPT)?.let { cost ->
-                text(cost, Type.LABEL_MEDIUM, colors.tertiary).apply {
-                    setPadding(0, 0, 0, dp(Space.SM))
-                }
-            }
-            row {
-                button("Generate Image", Btn.FILLED, R.drawable.wna_auto_awesome, enabled = !isBusy) {
-                    generateAiCoverImageDraft(story, field.text.toString())
-                }
-                button("Save edits", Btn.TEXT, enabled = !isBusy) {
-                    val edited = field.text.toString().trim()
-                    if (edited.isBlank()) {
-                        field.error = "Enter an image description"
-                    } else {
-                        scope.launch {
-                            coverUiAttempt {
-                                repository.saveAiCoverPromptDraft(story.id, edited)
-                                aiControlsScreenState.coverPrompts[story.id] = edited
-                                aiControlsScreenState.coverDrafts.remove(story.id)
-                                toast("Prompt saved")
-                                if (frameIsAiControls(story.id)) showAiControls(story.id)
-                            }
-                        }
-                    }
-                }
-            }
-            row {
-                button("Close prompt", Btn.TEXT, enabled = !isBusy) { discardAiCoverPromptDraft(story) }
-            }
-        }
-    container.addView(cardView)
-}
-
 /** Stage 1: writes the image prompt only; a fresh prompt invalidates any painted preview. */
 internal fun ScreenHost.startAiCoverPromptDraft(story: Story) {
     startAiCoverJob(story, "Writing image prompt...") { coordinator -> coordinator.startPromptDraft(story.id) }
-}
-
-/**
- * Stage 2 — the billable image call; confirms when replacing a pending preview. [prompt] is the
- * field's current text so edits survive re-renders.
- */
-internal fun ScreenHost.generateAiCoverImageDraft(
-    story: Story,
-    prompt: String,
-) {
-    if (prompt.isBlank()) {
-        toast("Enter an image description")
-        return
-    }
-    val model = repository.aiSettings.get().imageModel
-    val message =
-        "Generate the image with $model? This calls OpenRouter and uses your API credits. " +
-            "Earlier covers remain in Saved covers."
-    confirm(message, confirmLabel = "Generate") { startAiCoverImageDraft(story, prompt) }
 }
 
 internal fun ScreenHost.startAiCoverImageDraft(
@@ -207,12 +112,12 @@ internal fun ScreenHost.startAiCoverImageDraft(
     ) { coordinator -> coordinator.startImageDraft(story.id, prompt) }
 }
 
-internal fun ScreenHost.discardAiCoverPromptDraft(story: Story) {
+/** Empties the prompt box. A waiting new cover keeps its own record until the user decides on it. */
+internal fun ScreenHost.clearAiCoverPrompt(story: Story) {
+    aiControlsScreenState.coverPrompts[story.id] = ""
     scope.launch {
         coverUiAttempt {
-            repository.deleteAiCoverDraft(story.id)
-            aiControlsScreenState.coverPrompts.remove(story.id)
-            aiControlsScreenState.coverDrafts.remove(story.id)
+            if (aiControlsScreenState.coverDrafts[story.id] == null) repository.deleteAiCoverDraft(story.id)
             if (frameIsAiControls(story.id)) showAiControls(story.id)
         }
     }

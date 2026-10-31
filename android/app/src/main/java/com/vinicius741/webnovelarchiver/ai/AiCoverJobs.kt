@@ -118,7 +118,8 @@ class AiCoverJobCoordinator(
         kind: AiCoverJobKind,
         record: AiCoverDraftRecord,
     ): AiCoverJobEvent? =
-        if (!repository.persistAiCoverDraftIfStoryExists(storyId, record)) {
+        // Unseen until the user opens the result: the app-wide job chip and Library badge point back to it.
+        if (!repository.persistAiCoverDraftIfStoryExists(storyId, record, unseen = true)) {
             null
         } else {
             AiCoverJobEvent.Succeeded(storyId, kind, record)

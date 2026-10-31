@@ -20,6 +20,9 @@ sealed interface AiCoverDraftRecord {
     ) : AiCoverDraftRecord
 }
 
+/** What an unseen background result holds: an image prompt only, or a painted cover. */
+enum class AiCoverResultKind { PROMPT, IMAGE }
+
 /**
  * Owns all AI cover images for the library root: the applied cover (`covers/`, one current file
  * per story), the pending preview drafts (`ai_cover_drafts/`), and the local experiment history
@@ -81,15 +84,17 @@ internal class CoverStore(
         findApplied(storyId)?.delete()
     }
 
+    /** [unseen] marks a background result the user has not looked at yet (see [unseenStoryIds]). */
     @Synchronized
     fun savePrompt(
         storyId: String,
         prompt: String,
+        unseen: Boolean = false,
     ) {
         (load(storyId) as? AiCoverDraftRecord.Image)?.let { versions.save(storyId, it.draft) }
         // A fresh prompt starts a new experiment; the previous image remains in history.
         val previous = referencedImage(storyId)
-        writeMeta(storyId, AiCoverDraftMeta(prompt = prompt, mediaType = null, imageFile = null))
+        writeMeta(storyId, AiCoverDraftMeta(prompt = prompt, mediaType = null, imageFile = null, unseen = unseen, storyId = storyId))
         previous?.delete()
     }
 
@@ -97,6 +102,7 @@ internal class CoverStore(
     fun saveImage(
         storyId: String,
         draft: AiCoverDraft,
+        unseen: Boolean = false,
     ) {
         (load(storyId) as? AiCoverDraftRecord.Image)?.let { versions.save(storyId, it.draft) }
         versions.save(storyId, draft)
@@ -105,10 +111,44 @@ internal class CoverStore(
         val imageFile = generationImageName(storyId, draft.mediaType)
         val previous = referencedImage(storyId)
         AtomicFileWrites.writeBytes(File(draftsDir, imageFile), draft.bytes)
-        writeMeta(storyId, AiCoverDraftMeta(prompt = draft.prompt, mediaType = draft.mediaType, imageFile = imageFile))
+        writeMeta(
+            storyId,
+            AiCoverDraftMeta(
+                prompt = draft.prompt,
+                mediaType = draft.mediaType,
+                imageFile = imageFile,
+                unseen = unseen,
+                storyId = storyId,
+            ),
+        )
         // At most one image per story; drop the replaced generation only after the meta commit.
         previous?.takeIf { it.name != imageFile }?.delete()
     }
+
+    /** Clears the unseen flag; false when there was nothing unseen to clear. */
+    @Synchronized
+    fun markSeen(storyId: String): Boolean {
+        val meta = readMeta(storyId)?.takeIf { it.unseen } ?: return false
+        writeMeta(storyId, meta.copy(unseen = false))
+        return true
+    }
+
+    /** Stories whose pending draft holds a background result nobody has looked at yet. */
+    @Synchronized
+    fun unseenResults(): Map<String, AiCoverResultKind> =
+        draftsDir
+            .listFiles()
+            .orEmpty()
+            .filter { it.isFile && it.extension == "json" }
+            .mapNotNull { file ->
+                val meta =
+                    runCatching { gson.fromJson(file.readText(), AiCoverDraftMeta::class.java) }
+                        .getOrNull()
+                        ?.takeIf { it.unseen && it.prompt.isNotBlank() }
+                        ?: return@mapNotNull null
+                val storyId = meta.storyId ?: return@mapNotNull null
+                storyId to if (meta.imageFile.isNullOrBlank()) AiCoverResultKind.PROMPT else AiCoverResultKind.IMAGE
+            }.toMap()
 
     /** The story's persisted draft, or null when there is none. Unreadable files degrade to a prompt-only record. */
     @Synchronized

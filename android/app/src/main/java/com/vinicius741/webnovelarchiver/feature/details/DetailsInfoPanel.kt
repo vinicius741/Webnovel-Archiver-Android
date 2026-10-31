@@ -12,6 +12,8 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
+import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
+import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
 import com.vinicius741.webnovelarchiver.feature.story.openEpubForStory
@@ -50,6 +52,17 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     var downloadActionSlot: LinearLayout? = null
     var operationSlot: LinearLayout? = null
 
+    if (operation?.kind == StoryOperationKind.AI_COVER) {
+        operationSlot = makeStoryOperationSlot(app, operation)
+        infoPanel.addView(operationSlot!!)
+    } else if (story.id in repository.aiCoverUnseen.value || aiControlsScreenState.coverDrafts[story.id] != null) {
+        // A finished background cover waits for a decision; lead straight to it.
+        infoPanel.addView(
+            makeFullWidthButton(app, "Review new AI cover", Btn.TONAL, R.drawable.wna_auto_awesome, dp(Space.SM + 2)) {
+                showAiControls(story.id, AiControlsTab.COVER)
+            },
+        )
+    }
     if (story.isArchived == true) {
         infoPanel.addView(
             makeText(app, "Archived snapshot: sync and downloads disabled", Type.LABEL_MEDIUM, ThemeManager.colors.tertiary).apply {

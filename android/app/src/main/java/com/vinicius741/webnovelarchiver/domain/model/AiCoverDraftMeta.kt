@@ -12,4 +12,8 @@ data class AiCoverDraftMeta(
     @SerializedName("mediaType") val mediaType: String? = null,
     /** Generation image filename; null on legacy documents = discover `<story>.<ext>`. */
     @SerializedName("imageFile") val imageFile: String? = null,
+    /** True while a background result has not been looked at; absent on older documents = seen. */
+    @SerializedName("unseen") val unseen: Boolean = false,
+    /** Raw story id, so unseen results can be listed without reversing the lossy file name. */
+    @SerializedName("storyId") val storyId: String? = null,
 )

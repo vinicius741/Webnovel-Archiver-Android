@@ -149,6 +149,7 @@ internal fun ScreenHost.attachTtsMiniPlayer(root: ViewGroup): Job {
             onClose = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
         )
     bar.applySnapshot(ttsEngine.playbackState.value.snapshot)
+    bar.view.tag = TTS_MINI_PLAYER_TAG
     root.addView(
         bar.view,
         FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
@@ -223,6 +224,9 @@ internal fun ScreenHost.attachTtsMiniPlayer(root: ViewGroup): Job {
         }
     }
 }
+
+/** Lets other floating chrome (the AI job chip) stack above the bar. */
+internal const val TTS_MINI_PLAYER_TAG = "wna_tts_mini_player"
 
 /**
  * Keeps the current screen's FAB and bottom action bar clear of the bar by lifting their bottom

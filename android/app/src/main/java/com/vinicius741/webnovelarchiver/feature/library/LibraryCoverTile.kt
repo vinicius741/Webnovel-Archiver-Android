@@ -43,6 +43,7 @@ internal fun ScreenHost.bindLibraryCoverTile(
         },
     )
     if (story.isArchived == true) frame.addView(archivedBadge())
+    if (hasUnseenAiResult(story)) frame.addView(aiResultBadge())
     if (selected != null) addSelectionBadge(frame)
 
     val content =
@@ -85,6 +86,26 @@ private fun ScreenHost.archivedBadge(): ImageView {
         layoutParams =
             FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
                 setMargins(0, inset, inset, 0)
+            }
+    }
+}
+
+/** A finished background AI cover nobody has looked at yet (persisted; cleared on opening AI Controls). */
+internal fun ScreenHost.hasUnseenAiResult(story: Story): Boolean = story.id in repository.aiCoverUnseen.value
+
+/** Bottom-end sparkle marking a cover with an unseen AI result. */
+internal fun ScreenHost.aiResultBadge(): ImageView {
+    val size = dp(26)
+    val inset = dp(Space.SM)
+    return ImageView(app).apply {
+        contentDescription = "New AI cover ready"
+        setImageDrawable(app.tintedIcon(R.drawable.wna_auto_awesome, ThemeManager.colors.onTertiaryContainer))
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(dp(Space.XS + 1), dp(Space.XS + 1), dp(Space.XS + 1), dp(Space.XS + 1))
+        background = roundedBg(ThemeManager.colors.tertiaryContainer, size / 2f)
+        layoutParams =
+            FrameLayout.LayoutParams(size, size, Gravity.BOTTOM or Gravity.END).apply {
+                setMargins(0, 0, inset, inset)
             }
     }
 }

@@ -338,7 +338,7 @@ data class AiSettings(
     val apiKey: String? = null,
     val descriptionModel: String = DEFAULT_DESCRIPTION_MODEL,
     val imageModel: String = DEFAULT_IMAGE_MODEL,
-    /** Cover generation mode: one-shot (prompt + image) or staged with an editable prompt in between. */
+    /** No longer read: the Cover tab's prompt box decides one-shot vs staged. Kept so settings files round-trip. */
     val coverOneStep: Boolean = true,
     /** OpenRouter decision model (Decisions API) that scores chapters for automatic cover and description selection. */
     val decisionModel: String = DEFAULT_DECISION_MODEL,

@@ -246,16 +246,22 @@ private fun ScreenHost.storyCover(
     selected: Boolean?,
 ): android.view.View {
     val cover = coverImage(story, widthDp = 80, heightDp = 120, tapToOpen = false)
-    return if (selected == null) cover else coverWithSelectionBadge(cover)
+    val unseenAi = hasUnseenAiResult(story)
+    return if (selected == null && !unseenAi) cover else coverWithBadges(cover, selected != null, unseenAi)
 }
 
-/** Wraps the cover so the check badge overlays its corner; the cover stays fully visible. */
-private fun ScreenHost.coverWithSelectionBadge(cover: android.view.View): android.view.View {
+/** Wraps the cover so the check / AI-result badges overlay its corners; the cover stays fully visible. */
+private fun ScreenHost.coverWithBadges(
+    cover: android.view.View,
+    selectable: Boolean,
+    unseenAi: Boolean,
+): android.view.View {
     val coverParams = cover.layoutParams as? LinearLayout.LayoutParams
     cover.layoutParams = FrameLayout.LayoutParams(coverParams?.width ?: 0, coverParams?.height ?: 0)
     return FrameLayout(app).apply {
         addView(cover)
-        addSelectionBadge(this)
+        if (unseenAi) addView(aiResultBadge())
+        if (selectable) addSelectionBadge(this)
         layoutParams =
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginEnd = coverParams?.marginEnd ?: 0
