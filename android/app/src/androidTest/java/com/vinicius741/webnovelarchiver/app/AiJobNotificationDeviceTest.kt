@@ -29,7 +29,7 @@ class AiJobNotificationDeviceTest {
     fun coverNotificationUsesTheCoverTitleAndMessage() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         AppNotificationChannels.ensureCreated(context)
-        val cover = context.aiJobOngoingNotification("Painting cover...")
+        val cover = context.aiJobOngoingNotification("Painting cover...", storyId = null)
         assertEquals(context.getString(R.string.ai_cover_notif_active), cover.extras.getCharSequence(Notification.EXTRA_TITLE))
         assertEquals("Painting cover...", cover.extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
     }
