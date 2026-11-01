@@ -1,85 +1,90 @@
 package com.vinicius741.webnovelarchiver.feature.downloads
 
-import android.text.TextUtils
+import android.app.AlertDialog
 import android.view.View
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
-import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.download.DownloadCounts
 import com.vinicius741.webnovelarchiver.download.DownloadManagerPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
-import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
-import com.vinicius741.webnovelarchiver.download.DownloadVerificationPlanning
+import com.vinicius741.webnovelarchiver.download.DownloadQueueSectionPlanning
 import com.vinicius741.webnovelarchiver.download.GlobalQueueAction
 import com.vinicius741.webnovelarchiver.download.QueueAction
-import com.vinicius741.webnovelarchiver.feature.browser.showSourceAccessBlockedDialog
-import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.download.QueueAppBarPlan
+import com.vinicius741.webnovelarchiver.download.QueueScreenPlan
+import com.vinicius741.webnovelarchiver.download.QueueSection
+import com.vinicius741.webnovelarchiver.download.SourceCheckCard
+import com.vinicius741.webnovelarchiver.download.SourceCheckOutcome
+import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
+import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
-import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.applyAppTheme
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
-import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.flow
-import com.vinicius741.webnovelarchiver.ui.formatRelativeTime
-import com.vinicius741.webnovelarchiver.ui.iconButton
-import com.vinicius741.webnovelarchiver.ui.jobStatusDot
 import com.vinicius741.webnovelarchiver.ui.layout.queueMaxWidth
-import com.vinicius741.webnovelarchiver.ui.makeButton
-import com.vinicius741.webnovelarchiver.ui.makeCountChip
-import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
-import com.vinicius741.webnovelarchiver.ui.makeProgressSummary
-import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.rememberListPosition
-import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
-import com.vinicius741.webnovelarchiver.ui.statusColor
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.tickerFlow
 import com.vinicius741.webnovelarchiver.ui.toast
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
+/** Per-render state shared by the list callbacks and the observer. */
+private class QueueScreenSession {
+    /** Queue version when a drag was dropped; renders wait for the saved order instead of snapping back. */
+    var reorderVersion: Long? = null
+    var reorderAtMillis: Long = 0L
+}
+
+private const val REORDER_HOLD_MILLIS = 3_000L
+
+internal fun providerIdForJob(job: DownloadJob): String? = SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id
+
+internal fun ScreenHost.queuePlan(queue: List<DownloadJob>): QueueScreenPlan =
+    DownloadQueueSectionPlanning.plan(queue, ::providerIdForJob, app.appContainer.network::isSourceBlocked)
+
 internal fun ScreenHost.showQueue() {
-    val host = this
     val queue =
         repository.downloadState.value.queue
             .ifEmpty { repository.queue() }
-    val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value
-    val nowMillis = System.currentTimeMillis()
+    val initialPlan = queuePlan(queue)
+    val initialAppBar = DownloadManagerPlanning.appBar(initialPlan.counts, initialPlan.failedChapters)
     // Re-render on fold/unfold/rotation so the width cap re-centers for the new window.
     rerender = { showQueue() }
     val layout = currentScreenLayout()
-    lateinit var adapter: QueueGroupAdapter
-    lateinit var summarySlot: LinearLayout
+    val session = QueueScreenSession()
+    lateinit var adapter: QueueListAdapter
     lateinit var emptySlot: FrameLayout
     lateinit var list: RecyclerView
-    val initialGlobalActions = DownloadManagerPlanning.globalActions(DownloadCounts.from(queue))
-    // Gear is a fixed first action; the recomputed global set drives the rest of the bar.
-    val appBarActions =
-        listOf(AppBarAction(R.drawable.wna_settings, "Download Settings") { showDownloadSettings() }) +
-            globalAppBarActions(initialGlobalActions)
-    screen(route = AppRoute.Queue, title = "Downloads", actions = appBarActions) {
+    val renderNow: () -> Unit = {
+        renderQueue(
+            emptySlot,
+            list,
+            adapter,
+            repository.downloadState.value.queue,
+            app.appContainer.downloadPacer.snapshots.value,
+            SourceCheckOutcomes.state.value,
+            System.currentTimeMillis(),
+        )
+    }
+    screen(route = AppRoute.Queue, title = "Downloads", actions = queueAppBarActions(initialAppBar)) {
         // Width-capped centered column so tablets/Fold don't stretch edge-to-edge; no effect on phones.
-        val centered =
-            LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-            }
+        val centered = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val centeredShell =
             MaxWidthFrameLayout(context).apply {
                 maxContentWidthDp = queueMaxWidth(layout.widthClass)
@@ -92,16 +97,8 @@ internal fun ScreenHost.showQueue() {
                     ),
                 )
             }
-        summarySlot = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         emptySlot = FrameLayout(context)
-        adapter =
-            QueueGroupAdapter(host) {
-                adapter.submitQueue(
-                    repository.downloadState.value.queue,
-                    app.appContainer.downloadPacer.snapshots.value,
-                    expansionChanged = true,
-                )
-            }
+        adapter = QueueListAdapter(app, queueListActions(session, renderNow))
         list =
             RecyclerView(context).apply {
                 layoutManager = LinearLayoutManager(context)
@@ -109,205 +106,177 @@ internal fun ScreenHost.showQueue() {
                 itemAnimator = null
                 overScrollMode = View.OVER_SCROLL_NEVER
             }
-        centered.addView(
-            summarySlot,
-            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = context.dp(Space.MD)
-            },
-        )
+        adapter.touchHelper.attachToRecyclerView(list)
         centered.addView(emptySlot, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         centered.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        updateQueueContent(summarySlot, emptySlot, list, adapter, queue, pacingSnapshots, nowMillis)
+        renderQueue(
+            emptySlot,
+            list,
+            adapter,
+            queue,
+            app.appContainer.downloadPacer.snapshots.value,
+            SourceCheckOutcomes.state.value,
+            System.currentTimeMillis(),
+        )
         rememberListPosition(list)
         addView(centeredShell, verticalFill())
     }
-    observeQueueUpdates(summarySlot, emptySlot, list, adapter, initialGlobalActions)
+    observeQueueUpdates(emptySlot, list, adapter, session, initialAppBar)
 }
 
 private fun ScreenHost.observeQueueUpdates(
-    summarySlot: LinearLayout,
     emptySlot: FrameLayout,
     list: RecyclerView,
-    adapter: QueueGroupAdapter,
-    initialGlobalActions: List<GlobalQueueAction>,
+    adapter: QueueListAdapter,
+    session: QueueScreenSession,
+    initialAppBar: QueueAppBarPlan,
 ) {
     if (frame.childCount == 0) return
     val root = frame.getChildAt(0)
     // Capture before launching so an event before collector registration is not dropped.
     var observedQueueVersion = repository.downloadState.value.queueVersion
-    var observedGlobalActions = initialGlobalActions
-    var hadTimedStatus =
-        app.appContainer.downloadPacer.snapshots.value.values.any {
-            it.nextRequestAtMillis > System.currentTimeMillis()
-        } ||
-            repository.downloadState.value.queue.any {
-                (it.nextRetryAt ?: 0L) > System.currentTimeMillis()
-            }
+    var observedOutcomes = SourceCheckOutcomes.state.value
+    var observedBlocked = blockedProviders(repository.downloadState.value.queue)
+    var hadTimedStatus = true
     screenObserver =
         scope.launch {
             combine(
                 repository.downloadState,
                 app.appContainer.downloadPacer.snapshots,
+                SourceCheckOutcomes.state,
                 tickerFlow(),
-            ) { repositorySnapshot, pacing, now -> Triple(repositorySnapshot, pacing, now) }
-                .collect { (snapshot, pacing, now) ->
-                    val queueChanged = snapshot.queueVersion != observedQueueVersion
-                    observedQueueVersion = snapshot.queueVersion
-                    val hasTimedStatus =
-                        pacing.values.any { it.nextRequestAtMillis > now } ||
-                            snapshot.queue.any { (it.nextRetryAt ?: 0L) > now }
+            ) { snapshot, pacing, outcomes, now -> QueueTick(snapshot.queue, snapshot.queueVersion, pacing, outcomes, now) }
+                .collect { tick ->
+                    if (root.parent !== frame) return@collect
+                    val queueChanged = tick.queueVersion != observedQueueVersion
+                    observedQueueVersion = tick.queueVersion
+                    val outcomesChanged = tick.outcomes != observedOutcomes
+                    observedOutcomes = tick.outcomes
+                    // A site's circuit can open or close without a queue write (sync, cooldown expiry).
+                    val blocked = blockedProviders(tick.queue)
+                    val blockedChanged = blocked != observedBlocked
+                    observedBlocked = blocked
+                    val hasTimedStatus = hasTimedStatus(tick)
                     val countdownChanged = hasTimedStatus || hadTimedStatus
                     hadTimedStatus = hasTimedStatus
-                    if (!queueChanged && !countdownChanged) return@collect
-                    if (root.parent === frame) {
-                        val nextGlobalActions = DownloadManagerPlanning.globalActions(DownloadCounts.from(snapshot.queue))
-                        if (queueChanged && nextGlobalActions != observedGlobalActions) {
+                    if (!queueChanged && !outcomesChanged && !blockedChanged && !countdownChanged) return@collect
+                    val holding = session.reorderVersion
+                    if (holding != null) {
+                        if (tick.queueVersion == holding && tick.now - session.reorderAtMillis < REORDER_HOLD_MILLIS) return@collect
+                        session.reorderVersion = null
+                    }
+                    if (queueChanged) {
+                        val plan = queuePlan(tick.queue)
+                        val appBar = DownloadManagerPlanning.appBar(plan.counts, plan.failedChapters)
+                        if (appBar.toggle != initialAppBar.toggle || appBar.overflow.isEmpty() != initialAppBar.overflow.isEmpty()) {
                             // Rebuild synchronously. A deferred frame.post let the resume publish
                             // burst interleave with the observer handoff and could strand the
                             // screen on a cancelled collector that never re-registered.
                             showQueue()
                             return@collect
                         }
-                        updateQueueContent(summarySlot, emptySlot, list, adapter, snapshot.queue, pacing, now)
                     }
+                    renderQueue(emptySlot, list, adapter, tick.queue, tick.pacing, tick.outcomes, tick.now)
                 }
         }
 }
 
-private fun ScreenHost.updateQueueContent(
-    summarySlot: LinearLayout,
+private data class QueueTick(
+    val queue: List<DownloadJob>,
+    val queueVersion: Long,
+    val pacing: Map<String, DownloadPacingSnapshot>,
+    val outcomes: Map<String, SourceCheckOutcome>,
+    val now: Long,
+)
+
+private fun hasTimedStatus(tick: QueueTick): Boolean =
+    tick.pacing.values.any { it.nextRequestAtMillis > tick.now } ||
+        tick.queue.any { (it.nextRetryAt ?: 0L) > tick.now } ||
+        tick.outcomes.values.any { it.verified && tick.now - it.atMillis < DownloadQueueSectionPlanning.VERIFIED_CARD_MILLIS + 1_000L }
+
+private fun ScreenHost.blockedProviders(queue: List<DownloadJob>): Set<String> =
+    DownloadQueueSectionPlanning
+        .blockedSites(queue, ::providerIdForJob, app.appContainer.network::isSourceBlocked)
+        .mapTo(HashSet()) { it.providerId }
+
+@Suppress("LongParameterList")
+private fun ScreenHost.renderQueue(
     emptySlot: FrameLayout,
     list: RecyclerView,
-    adapter: QueueGroupAdapter,
+    adapter: QueueListAdapter,
     queue: List<DownloadJob>,
     pacing: Map<String, DownloadPacingSnapshot>,
+    outcomes: Map<String, SourceCheckOutcome>,
     nowMillis: Long,
 ) {
-    val counts = DownloadCounts.from(queue)
-    summarySlot.removeAllViews()
-    emptySlot.removeAllViews()
     if (queue.isEmpty()) {
-        summarySlot.visibility = View.GONE
         list.visibility = View.GONE
         emptySlot.visibility = View.VISIBLE
-        emptySlot.addView(
-            makeEmptyState(
-                app,
-                message = "Chapters you download will appear here while they download.",
-                title = "Nothing downloading",
-                iconRes = R.drawable.wna_download,
-            ),
-        )
-    } else {
-        summarySlot.visibility = View.VISIBLE
-        list.visibility = View.VISIBLE
-        emptySlot.visibility = View.GONE
-        summarySlot.row {
-            addView(makeProgressSummary(context, counts.completed, counts.total).root)
-        }
-        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacing.values, queue, nowMillis)
-        val downloadingNow = counts.downloading - waitingByJobId.size
-        summarySlot.flow {
-            addView(makeCountChip(context, "downloading", downloadingNow, ThemeManager.colors.primary))
-            addView(makeCountChip(context, "waiting for delay", waitingByJobId.size, ThemeManager.colors.secondary))
-            addView(makeCountChip(context, "queued", counts.pending, ThemeManager.colors.onSurfaceVariant))
-            addView(makeCountChip(context, "paused", counts.paused, ThemeManager.colors.secondary))
-            addView(makeCountChip(context, "failed", counts.failed, ThemeManager.colors.error))
-            addView(makeCountChip(context, "cancelled", counts.cancelled, ThemeManager.colors.error))
-        }
-        appendBlockedVerificationBanner(summarySlot, queue)
-    }
-    adapter.submitQueue(queue, pacing, nowMillis)
-}
-
-/** The all-pending blocked state has no failed jobs for the retry-keyed solve flow; offer an explicit verify action. */
-private fun ScreenHost.appendBlockedVerificationBanner(
-    summarySlot: LinearLayout,
-    queue: List<DownloadJob>,
-) {
-    val evidence =
-        DownloadVerificationPlanning.blockedPendingEvidence(
-            jobs = queue,
-            isSourceBlocked = app.appContainer.network::isSourceBlocked,
-        ) { job -> SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id }
-    if (evidence.pendingCount == 0 || evidence.sampleUrl == null) return
-    summarySlot.addView(
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(Space.MD), 0, 0)
-            addView(
-                makeText(app, "Source verification required", Type.TITLE_SMALL, ThemeManager.colors.error),
-            )
-            addView(
-                makeText(
+        if (emptySlot.childCount == 0) {
+            emptySlot.addView(
+                makeEmptyState(
                     app,
-                    "Cloudflare is blocking automated access to this source; ${evidence.pendingCount} " +
-                        "queued downloads are waiting for one verification.",
-                    Type.BODY_MEDIUM,
-                    ThemeManager.colors.onSurfaceVariant,
-                ).apply { setPadding(0, dp(Space.XS), 0, 0) },
+                    message = "Chapters you download will appear here while they download.",
+                    title = "Nothing downloading",
+                    iconRes = R.drawable.wna_download,
+                ),
             )
-            val verifyButton =
-                makeButton(app, "Verify access", Btn.TONAL) {
-                    showSourceAccessBlockedDialog(evidence.sampleUrl) {
-                        startDownloadForegroundService()
-                    }
-                }
-            verifyButton.layoutParams =
-                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(Space.SM)
-                }
-            addView(verifyButton)
-        },
-    )
+        }
+        adapter.submit(emptyList())
+        return
+    }
+    list.visibility = View.VISIBLE
+    emptySlot.visibility = View.GONE
+    val plan = queuePlan(queue)
+    val cards = DownloadQueueSectionPlanning.checkCards(plan.blockedSites, outcomes, nowMillis)
+    adapter.submit(buildQueueItems(plan, cards, queue, pacing.values, nowMillis, storyExpandOverride))
 }
 
-private fun ScreenHost.globalAppBarActions(actions: List<GlobalQueueAction>): List<AppBarAction> =
-    actions.map { action ->
-        when (action) {
-            GlobalQueueAction.RESUME_ALL ->
-                AppBarAction(R.drawable.wna_play, "Resume All") {
-                    launchQueueControl("resumeAll") { downloadEngine.resumeAll() }
-                    startDownloadForegroundService()
-                }
-            GlobalQueueAction.PAUSE_ALL ->
-                AppBarAction(R.drawable.wna_pause, "Pause All") {
-                    launchQueueControl("pauseAll") { downloadEngine.pauseAll() }
-                }
-            GlobalQueueAction.RETRY_ALL ->
-                AppBarAction(R.drawable.wna_refresh, "Retry Failed", ThemeManager.colors.primary) {
-                    val blocked =
-                        repository
-                            .downloadState
-                            .value
-                            .queue
-                            .firstOrNull { it.errorCategory == "source_blocked" }
-                            ?: repository.queue().firstOrNull { it.errorCategory == "source_blocked" }
-                    if (blocked != null) {
-                        showSourceAccessBlockedDialog(blocked.chapter.url) {
-                            launchQueueControl("retryFailed") { downloadEngine.retryFailed() }
-                            startDownloadForegroundService()
-                        }
-                        return@AppBarAction
-                    }
-                    launchQueueControl("retryFailed") { downloadEngine.retryFailed() }
-                    startDownloadForegroundService()
-                }
-            GlobalQueueAction.CANCEL_ALL ->
-                AppBarAction(R.drawable.wna_stop, "Cancel All", ThemeManager.colors.error) {
-                    confirm("Cancel all active and pending downloads?", confirmLabel = "Cancel All") {
-                        launchQueueControl("cancelAll") { downloadEngine.cancelAll() }
-                    }
-                }
-            GlobalQueueAction.CLEAR_FINISHED ->
-                AppBarAction(R.drawable.wna_check, "Clear Finished") {
-                    confirm(
-                        "Remove all finished downloads (completed, failed, and cancelled) from the list?",
-                        confirmLabel = "Clear Finished",
-                    ) {
-                        launchQueueControl("clearFinished") { downloadEngine.clearFinished() }
-                    }
-                }
+private fun ScreenHost.queueListActions(
+    session: QueueScreenSession,
+    renderNow: () -> Unit,
+): QueueListActions =
+    object : QueueListActions {
+        override fun onCheck(
+            card: SourceCheckCard,
+            trouble: Boolean,
+        ) {
+            if (trouble) {
+                showSourceCheckTrouble(card)
+            } else {
+                card.sampleUrl?.let { startSourceCheck(card.providerId, it) }
+            }
+        }
+
+        override fun onRetryFailed() = retryFailedChapters()
+
+        override fun onToggleFinished() {
+            storyExpandOverride[FINISHED_SECTION_KEY] = storyExpandOverride[FINISHED_SECTION_KEY] != true
+            renderNow()
+        }
+
+        override fun onClearFinished() = confirmClearFinished()
+
+        override fun onToggleStory(storyId: String) {
+            storyExpandOverride[storyId] = storyExpandOverride[storyId] != true
+            renderNow()
+        }
+
+        override fun onStoryPrimary(item: QueueStoryItem) = runStoryAction(item.storyId, item.primaryAction)
+
+        override fun onStoryMenu(item: QueueStoryItem) = showStoryMenu(item, renderNow)
+
+        override fun onChapterRetry(item: QueueChapterItem) {
+            launchQueueControl("retryJob") { downloadEngine.retryJob(item.jobId) }
+            startDownloadForegroundService()
+        }
+
+        override fun onChapterMenu(item: QueueChapterItem) = showChapterMenu(item)
+
+        override fun onReorder(upNextOrder: List<String>) {
+            session.reorderVersion = repository.downloadState.value.queueVersion
+            session.reorderAtMillis = System.currentTimeMillis()
+            launchQueueControl("reorderStories") { downloadEngine.reorderStories(upNextOrder) }
         }
     }
 
@@ -331,238 +300,3 @@ internal fun ScreenHost.launchQueueControl(
         }
     }
 }
-
-/**
- * Recycled card shell for one story's group: heavy views are built once; [bind] repopulates only
- * the dynamic contents instead of rebuilding the subtree on every bind.
- */
-internal class QueueGroupCard(
-    val view: LinearLayout,
-    private val host: ScreenHost,
-    private val header: LinearLayout,
-    private val chevron: View,
-    private val title: TextView,
-    private val subtitle: TextView,
-    private val progressSlot: LinearLayout,
-    private val actionSlot: LinearLayout,
-    private val body: LinearLayout,
-) {
-    /** Per-job status labels from the latest bind, so countdown ticks patch text in place. */
-    private val statusLabels = LinkedHashMap<String, TextView>()
-
-    /** The group this card was last bound to; ticks recompute its header countdown. */
-    private var boundGroup: QueueStoryGroupUi? = null
-
-    fun bind(
-        group: QueueStoryGroupUi,
-        allJobs: List<DownloadJob>,
-        pacingSnapshots: Collection<DownloadPacingSnapshot>,
-        nowMillis: Long,
-        onToggle: () -> Unit,
-    ) {
-        boundGroup = group
-        val jobs = group.jobs.map { it.job }
-        val storyId = group.storyId
-        val storyTitle = jobs.firstOrNull()?.storyTitle ?: "Unknown Story"
-        val counts = DownloadCounts.from(jobs)
-        val expanded = group.expanded
-
-        title.text = storyTitle
-        val providerName = SourceRegistry.getProvider(jobs.first().sourceId, jobs.first().chapter.url)?.name
-        val pacingStatus =
-            DownloadPacingUiPlanning.storyStatus(
-                storyId = storyId,
-                providerName = providerName,
-                storyJobs = jobs,
-                snapshots = pacingSnapshots,
-                nowMillis = nowMillis,
-                allJobs = allJobs,
-            )
-        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, jobs, nowMillis)
-        subtitle.text =
-            buildString {
-                append(DownloadManagerPlanning.storySubtitle(counts, waitingByJobId.size))
-                DownloadPacingUiPlanning.groupHeadline(pacingStatus)?.let {
-                    append('\n')
-                    append(it)
-                }
-            }
-        chevron.rotation = if (expanded) 0f else -90f
-
-        progressSlot.removeAllViews()
-        progressSlot.addView(makeProgressSummary(host.app, counts.completed, counts.total).root)
-        actionSlot.removeAllViews()
-        actionSlot.addView(host.storyActionGroup(storyId, jobs, counts))
-
-        header.setOnClickListener {
-            host.storyExpandOverride[storyId] = !expanded
-            onToggle()
-        }
-
-        body.removeAllViews()
-        statusLabels.clear()
-        if (expanded) {
-            body.addView(makeDivider(host.app))
-            jobs.sortedBy { it.chapterIndex }.forEachIndexed { index, job ->
-                if (index > 0) body.addView(makeDivider(host.app))
-                body.addView(host.addQueueJobRow(job, waitingByJobId[job.id]) { label -> statusLabels[job.id] = label })
-            }
-        }
-    }
-
-    /** Recomputes only the countdown texts (header subtitle + status lines); no rebind, no diff. */
-    fun patchCountdownLabels(
-        queue: List<DownloadJob>,
-        pacingSnapshots: Collection<DownloadPacingSnapshot>,
-        nowMillis: Long,
-    ) {
-        val group = boundGroup ?: return
-        val jobs = group.jobs.map { it.job }
-        val waitingByJobId = DownloadPacingUiPlanning.waitingJobs(pacingSnapshots, queue, nowMillis)
-        val providerName = SourceRegistry.getProvider(jobs.first().sourceId, jobs.first().chapter.url)?.name
-        val pacingStatus =
-            DownloadPacingUiPlanning.storyStatus(
-                storyId = group.storyId,
-                providerName = providerName,
-                storyJobs = jobs,
-                snapshots = pacingSnapshots,
-                nowMillis = nowMillis,
-                allJobs = queue,
-            )
-        val nextSubtitle =
-            buildString {
-                append(DownloadManagerPlanning.storySubtitle(DownloadCounts.from(jobs), waitingByJobId.size))
-                DownloadPacingUiPlanning.groupHeadline(pacingStatus)?.let {
-                    append('\n')
-                    append(it)
-                }
-            }
-        if (subtitle.text.toString() != nextSubtitle) subtitle.text = nextSubtitle
-        statusLabels.forEach { (jobId, label) ->
-            queue.firstOrNull { it.id == jobId }?.let { job ->
-                label.text = queueJobStatusLabel(job, waitingByJobId[jobId])
-            }
-        }
-    }
-}
-
-/** Inline header action icons; clickable children consume the touch so they don't toggle expand. */
-private fun ScreenHost.storyActionGroup(
-    storyId: String,
-    jobs: List<DownloadJob>,
-    counts: DownloadCounts,
-): View =
-    LinearLayout(app).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = android.view.Gravity.CENTER_VERTICAL
-        DownloadManagerPlanning.storyHeaderActions(counts).forEach { action -> addView(storyActionButton(action, storyId, jobs)) }
-    }
-
-private fun ScreenHost.storyActionButton(
-    action: QueueAction,
-    storyId: String,
-    jobs: List<DownloadJob>,
-): View =
-    when (action) {
-        QueueAction.PAUSE ->
-            iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause story", 44) {
-                launchQueueControl("pauseStory") { downloadEngine.pauseStory(storyId) }
-            }
-        QueueAction.RESUME ->
-            iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume story", 44) {
-                launchQueueControl("resumeStory") { downloadEngine.resumeStory(storyId) }
-                startDownloadForegroundService()
-            }
-        QueueAction.CANCEL ->
-            iconAction(R.drawable.wna_stop, ThemeManager.colors.error, "Cancel story", 44) {
-                launchQueueControl("cancelStory") { downloadEngine.cancelStory(storyId) }
-            }
-        QueueAction.RETRY ->
-            iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry story", 44) {
-                if (jobs.any { it.errorCategory == "source_blocked" }) {
-                    jobs
-                        .firstOrNull { it.errorCategory == "source_blocked" }
-                        ?.let {
-                            showSourceAccessBlockedDialog(it.chapter.url) {
-                                launchQueueControl("retryFailedForStory") { downloadEngine.retryFailedForStory(storyId) }
-                                startDownloadForegroundService()
-                            }
-                        }
-                    return@iconAction
-                }
-                launchQueueControl("retryFailedForStory") { downloadEngine.retryFailedForStory(storyId) }
-                startDownloadForegroundService()
-            }
-        QueueAction.REMOVE ->
-            iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove story", 44) {
-                launchQueueControl("removeStory") { downloadEngine.removeStory(storyId) }
-            }
-    }
-
-internal fun ScreenHost.addChapterActions(
-    container: LinearLayout,
-    job: DownloadJob,
-) {
-    DownloadManagerPlanning.chapterActions(job.status).forEach { action ->
-        container.addView(chapterActionButton(action, job))
-    }
-}
-
-private fun ScreenHost.chapterActionButton(
-    action: QueueAction,
-    job: DownloadJob,
-): View =
-    when (action) {
-        QueueAction.PAUSE ->
-            iconAction(R.drawable.wna_pause, ThemeManager.colors.onSurfaceVariant, "Pause", 36) {
-                launchQueueControl("pauseJob") { downloadEngine.pauseJob(job.id) }
-            }
-        QueueAction.RESUME ->
-            iconAction(R.drawable.wna_play, ThemeManager.colors.primary, "Resume", 36) {
-                launchQueueControl("resumeJob") { downloadEngine.resumeJob(job.id) }
-                startDownloadForegroundService()
-            }
-        QueueAction.RETRY ->
-            iconAction(R.drawable.wna_refresh, ThemeManager.colors.primary, "Retry", 36) {
-                if (job.errorCategory == "source_blocked") {
-                    showSourceAccessBlockedDialog(job.chapter.url) {
-                        launchQueueControl("retryJob") { downloadEngine.retryJob(job.id) }
-                        startDownloadForegroundService()
-                    }
-                    return@iconAction
-                }
-                launchQueueControl("retryJob") { downloadEngine.retryJob(job.id) }
-                startDownloadForegroundService()
-            }
-        QueueAction.CANCEL ->
-            iconAction(R.drawable.wna_close, ThemeManager.colors.error, "Cancel", 36) {
-                launchQueueControl("cancelJob") { downloadEngine.cancelJob(job.id) }
-            }
-        QueueAction.REMOVE ->
-            iconAction(R.drawable.wna_close, ThemeManager.colors.onSurfaceVariant, "Remove", 36) {
-                launchQueueControl("removeJob") { downloadEngine.removeJob(job.id) }
-            }
-    }
-
-internal fun ScreenHost.iconAction(
-    icon: Int,
-    tint: Int,
-    desc: String,
-    sizeDp: Int,
-    onClick: () -> Unit,
-): View =
-    app
-        .iconButton(
-            icon,
-            desc,
-            tint,
-            style =
-                when (sizeDp) {
-                    44 -> com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Standard
-                    40 -> com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Small
-                    else -> com.vinicius741.webnovelarchiver.ui.IconButtonStyle.Compact
-                },
-            onClick = onClick,
-        ).apply {
-            (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Space.XS)
-        }

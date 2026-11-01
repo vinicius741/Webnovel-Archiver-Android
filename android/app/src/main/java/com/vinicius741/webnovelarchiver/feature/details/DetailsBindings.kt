@@ -13,6 +13,8 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
+import com.vinicius741.webnovelarchiver.feature.downloads.startSourceCheck
+import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.updateChapterCoverageSummary
 
@@ -74,7 +76,15 @@ internal fun DetailsBindings.patchDownloadStatus(
     bannerSlot?.let { slot ->
         slot.removeAllViews()
         if (shouldShowDetailsBanner(summary)) {
-            slot.addView(makeDownloadProgressBanner(host.app, summary, pacingStatus) { host.showQueue() })
+            slot.addView(
+                makeDownloadProgressBanner(
+                    host.app,
+                    summary,
+                    pacingStatus,
+                    sourceCheck = host.storySourceCheck(story.id),
+                    onVerify = { host.startSourceCheck(it.providerId, it.sampleUrl) },
+                ) { host.showQueue() },
+            )
         }
     }
 }

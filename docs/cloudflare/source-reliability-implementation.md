@@ -100,6 +100,19 @@ Story sync retains its bounded in-call retry behavior because it has no durable 
 
 ## User controls and diagnostics
 
+The Downloads screen turns a blocked site into one "Needs attention" card per site ("Royal Road
+needs a quick check", with the novels and chapters it holds). A site counts as blocked when any
+chapter failed as `source_blocked` or pending chapters sit behind its open manual circuit
+(`DownloadQueueSectionPlanning.blockedSites`). Verify now opens `CloudflareSolveActivity` directly.
+When the solver passes, `resumeDownloadsAfterSourceCheck` returns that site's blocked chapters to
+pending without spending a retry, clears the recheck delay on its deferred chapters, and starts
+the download service. This runs whatever opened the solver: the card, the novel page's banner, the
+notification, or a sync retry. The card then shows "Verified · resuming N chapters" briefly. If the
+user comes back without passing, it shows "Still blocked" with Try again. Fallbacks (open in
+browser, reset the site's web session, pause that site's downloads) sit behind "Having trouble?".
+These states live in memory only (`SourceCheckOutcomes`). The blocked-site notification names the
+site.
+
 Settings shows the active WebView version and aggregate, process-local source counters: request,
 challenge, rate-limit, and browser-render counts. It also reports whether Chromium transport,
 cooldown, or manual verification is active.

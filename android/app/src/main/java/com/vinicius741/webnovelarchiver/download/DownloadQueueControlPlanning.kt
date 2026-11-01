@@ -42,6 +42,17 @@ object DownloadQueueControlPlanning {
             }
         }
 
+    fun pauseWhere(
+        jobs: List<DownloadJob>,
+        predicate: (DownloadJob) -> Boolean,
+    ): MutableList<DownloadJob> =
+        jobs.copyJobs().onEach { job ->
+            if (job.status in activeStatuses && predicate(job)) {
+                job.status = DownloadJobStatus.Paused.wire
+                job.nextRetryAt = null
+            }
+        }
+
     fun resumeAll(jobs: List<DownloadJob>): MutableList<DownloadJob> =
         jobs.copyJobs().onEach { job ->
             if (job.status == DownloadJobStatus.Paused.wire) {

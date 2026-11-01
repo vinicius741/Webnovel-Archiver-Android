@@ -44,11 +44,17 @@ data class DownloadCounts(
 
 fun Iterable<DownloadJob>.downloadCounts(): DownloadCounts = DownloadCounts.from(this)
 
-/** Per-chapter and per-story actions surfaced as inline icons in the download manager. */
+/** Per-chapter and per-story actions offered by the download manager. */
 enum class QueueAction { PAUSE, RESUME, RETRY, CANCEL, REMOVE }
 
-/** Global (whole-queue) actions surfaced as app-bar icons in the download manager. */
+/** Global (whole-queue) actions surfaced in the download manager's app bar. */
 enum class GlobalQueueAction { RESUME_ALL, PAUSE_ALL, RETRY_ALL, CANCEL_ALL, CLEAR_FINISHED }
+
+/** A fixed toggle slot (null when the queue has no runnable work) plus the overflow menu. */
+data class QueueAppBarPlan(
+    val toggle: GlobalQueueAction?,
+    val overflow: List<GlobalQueueAction>,
+)
 
 object DownloadManagerPlanning {
     /** Returns the inline actions for a chapter job. Unknown/legacy statuses yield no actions. */
@@ -65,55 +71,37 @@ object DownloadManagerPlanning {
             if (DownloadJobStatus.wires.contains(status)) actions else emptyList()
         }
 
-    /** Story-header action group. While a story has active or paused work it shows the in-progress
-     *  group (pause-or-resume/cancel/retry-as-relevant); a story with only terminal failures shows a
-     *  single retry; an all-completed story shows nothing. */
-    fun storyHeaderActions(counts: DownloadCounts): List<QueueAction> {
-        if (counts.hasActive || counts.hasPaused) {
-            return buildList {
-                if (counts.hasActive) {
-                    add(QueueAction.PAUSE)
-                } else if (counts.hasPaused) {
-                    add(QueueAction.RESUME)
-                }
-                add(QueueAction.CANCEL)
-                if (counts.hasFailed) add(QueueAction.RETRY)
-            }
-        }
-        if (counts.hasFailed || counts.hasCancelled) return listOf(QueueAction.RETRY)
-        return emptyList()
-    }
-
-    fun globalActions(counts: DownloadCounts): List<GlobalQueueAction> =
-        buildList {
-            if (counts.hasActive) {
-                add(GlobalQueueAction.PAUSE_ALL)
-            } else if (counts.hasPaused) {
-                add(GlobalQueueAction.RESUME_ALL)
-            }
-            if (counts.hasFailed) add(GlobalQueueAction.RETRY_ALL)
-            if (counts.hasActive || counts.hasPaused) add(GlobalQueueAction.CANCEL_ALL)
-            if (!counts.hasActive && !counts.hasPaused && counts.completed + counts.failed + counts.cancelled > 0) {
-                add(GlobalQueueAction.CLEAR_FINISHED)
-            }
-        }
-
-    /** Single-line status summary for a story, e.g. "12/20 chapters • 2 downloading • 1 waiting for delay • 2 queued • 1 failed".
-     *  Mirrors the legacy RN getSubtitleText: always leads with "X/Y chapters" then appends each
-     *  non-zero status segment joined by " • ". */
-    fun storySubtitle(
+    /** The novel card's one inline action; the rest live in its menu. */
+    fun storyPrimaryAction(
+        section: QueueSection,
         counts: DownloadCounts,
-        waitingForDelay: Int = 0,
-    ): String {
-        val segments = mutableListOf<String>()
-        val waiting = waitingForDelay.coerceIn(0, counts.downloading)
-        (counts.downloading - waiting).takeIf { it > 0 }?.let { segments += "$it downloading" }
-        waiting.takeIf { it > 0 }?.let { segments += "$it waiting for delay" }
-        counts.pending.takeIf { it > 0 }?.let { segments += "$it queued" }
-        counts.paused.takeIf { it > 0 }?.let { segments += "$it paused" }
-        counts.failed.takeIf { it > 0 }?.let { segments += "$it failed" }
-        counts.cancelled.takeIf { it > 0 }?.let { segments += "$it cancelled" }
-        val statusLine = segments.joinToString(" • ")
-        return "${counts.completed}/${counts.total} chapters" + if (statusLine.isNotEmpty()) " • $statusLine" else ""
-    }
+    ): QueueAction =
+        when (section) {
+            QueueSection.DOWNLOADING, QueueSection.UP_NEXT -> QueueAction.PAUSE
+            QueueSection.PAUSED -> QueueAction.RESUME
+            QueueSection.FINISHED -> if (counts.hasFailed || counts.hasCancelled) QueueAction.RETRY else QueueAction.REMOVE
+        }
+
+    /**
+     * App bar: a Pause all / Resume all toggle and an overflow menu. [retryableFailed] excludes
+     * chapters held by a site check, which resume on their own once the check passes.
+     */
+    fun appBar(
+        counts: DownloadCounts,
+        retryableFailed: Int,
+    ): QueueAppBarPlan =
+        QueueAppBarPlan(
+            toggle =
+                when {
+                    counts.hasActive -> GlobalQueueAction.PAUSE_ALL
+                    counts.hasPaused -> GlobalQueueAction.RESUME_ALL
+                    else -> null
+                },
+            overflow =
+                buildList {
+                    if (retryableFailed > 0) add(GlobalQueueAction.RETRY_ALL)
+                    if (counts.hasActive || counts.hasPaused) add(GlobalQueueAction.CANCEL_ALL)
+                    if (counts.completed + counts.failed + counts.cancelled > 0) add(GlobalQueueAction.CLEAR_FINISHED)
+                },
+        )
 }

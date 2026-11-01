@@ -15,6 +15,7 @@ import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingSnapshot
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
+import com.vinicius741.webnovelarchiver.feature.downloads.StorySourceCheck
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
@@ -133,14 +134,23 @@ internal fun makeStoryOperationProgress(
         )
     }
 
-/** Live download progress banner: progress bar, status headline, and a "Go to Downloads" link. */
+/**
+ * Live download progress banner: progress bar, status headline, and a "Go to Downloads" link. When
+ * a site check holds this novel's chapters it leads with that and offers the check directly.
+ */
+@Suppress("LongParameterList")
 internal fun makeDownloadProgressBanner(
     context: Context,
     summary: DownloadDetailsPlanning.StoryDownloadSummary,
     pacingStatus: DownloadPacingUiStatus? = null,
+    sourceCheck: StorySourceCheck? = null,
+    onVerify: (StorySourceCheck) -> Unit = {},
     onViewDownloads: () -> Unit,
 ): LinearLayout {
-    val headline = pacingStatus?.let(DownloadPacingUiPlanning::storyHeadline) ?: DownloadDetailsPlanning.headline(summary)
+    val headline =
+        sourceCheck?.let { "Paused · ${it.siteName} needs a quick check" }
+            ?: pacingStatus?.let(DownloadPacingUiPlanning::storyHeadline)
+            ?: DownloadDetailsPlanning.headline(summary)
     return LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
@@ -167,7 +177,12 @@ internal fun makeDownloadProgressBanner(
             )
         }
         addView(
-            makeText(context, headline, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+            makeText(
+                context,
+                headline,
+                Type.BODY_SMALL,
+                if (sourceCheck != null) ThemeManager.colors.error else ThemeManager.colors.onSurfaceVariant,
+            ).apply {
                 gravity = Gravity.CENTER
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
@@ -187,11 +202,21 @@ internal fun makeDownloadProgressBanner(
                 )
             }
         addView(
-            makeButton(context, "Go to Downloads", Btn.TEXT, R.drawable.wna_list) { onViewDownloads() }.apply {
-                layoutParams =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                sourceCheck?.let { check ->
+                    addView(makeButton(context, "Verify now", Btn.TONAL) { onVerify(check) })
+                }
+                addView(
+                    makeButton(context, "Go to Downloads", Btn.TEXT, R.drawable.wna_list) { onViewDownloads() },
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = context.dp(2)
-                    }
+                        if (sourceCheck != null) marginStart = context.dp(Space.SM)
+                    },
+                )
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = context.dp(if (sourceCheck != null) Space.SM else 2)
             },
         )
     }

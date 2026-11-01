@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -187,6 +188,8 @@ class DownloadForegroundService : Service() {
         ) {
             return
         }
+        val siteName = SourceRegistry.getProvider(blockedUrl)?.name ?: getString(R.string.download_notif_blocked_unknown_site)
+        val body = getString(R.string.download_notif_blocked_body, siteName)
         val solveIntent =
             PendingIntent.getActivity(
                 this,
@@ -199,9 +202,9 @@ class DownloadForegroundService : Service() {
             NotificationCompat
                 .Builder(this, AppNotificationCategory.DOWNLOADS.channelId)
                 .setSmallIcon(R.drawable.ic_stat_notification)
-                .setContentTitle(getString(R.string.download_notif_blocked_title))
-                .setContentText(getString(R.string.download_notif_blocked_body))
-                .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.download_notif_blocked_body)))
+                .setContentTitle(getString(R.string.download_notif_blocked_title, siteName))
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
                 .setContentIntent(solveIntent)
                 .setAutoCancel(true)
                 // The pending-only block state re-posts this on every progress emission (the

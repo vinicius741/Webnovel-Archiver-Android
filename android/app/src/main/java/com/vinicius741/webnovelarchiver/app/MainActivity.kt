@@ -24,6 +24,7 @@ import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.ai.attachAiJobChip
 import com.vinicius741.webnovelarchiver.feature.browser.ACTION_IMPORT_CURRENT_URL
 import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
+import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
@@ -343,6 +344,7 @@ class MainActivity :
     override fun onResume() {
         super.onResume()
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
+        SourceCheckOutcomes.returnedToApp(System.currentTimeMillis())
         if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         // Returning from Firefox: refresh which setup steps are done.
         if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()

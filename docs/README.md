@@ -45,7 +45,7 @@ serves a browser challenge instead of content.
 
 | File | Description |
 |------|-------------|
-| `source-reliability-implementation.md` | Current implemented architecture: source-wide pacing/circuit state, sticky Chromium transport, typed render-outcome escalation, circuit pausing (no queue drain), persisted reliability state, bulk preflight, retry semantics, the shareable bypass event log, and reset behavior. |
+| `source-reliability-implementation.md` | Current implemented architecture: source-wide pacing/circuit state, sticky Chromium transport, typed render-outcome escalation, circuit pausing (no queue drain), persisted reliability state, bulk preflight, retry semantics, the Downloads screen's per-site verification card with automatic resume, the shareable bypass event log, and reset behavior. |
 
 ### `tts/`
 

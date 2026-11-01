@@ -143,6 +143,20 @@ class DownloadEngine(
 
     suspend fun retryFailedForStory(storyId: String) = mutateQueueAndStart { DownloadQueueControlPlanning.retryFailed(it, storyId) }
 
+    /** Persists a new up-next order; the loop reads list order on its next pass, so no wake is needed. */
+    suspend fun reorderStories(orderedStoryIds: List<String>) =
+        mutateQueue { DownloadQueueOrderPlanning.reorderStories(it, orderedStoryIds) }
+
+    suspend fun downloadStoryNext(storyId: String) = mutateQueueAndStart { DownloadQueueOrderPlanning.moveStoryToFront(it, storyId) }
+
+    suspend fun moveStoryToEnd(storyId: String) = mutateQueue { DownloadQueueOrderPlanning.moveStoryToEnd(it, storyId) }
+
+    /** Pauses one site's active chapters, e.g. while its Cloudflare check keeps failing. */
+    suspend fun pauseSource(providerId: String) =
+        mutateQueue { jobs ->
+            DownloadQueueControlPlanning.pauseWhere(jobs) { SourceRegistry.getProvider(it.sourceId, it.chapter.url)?.id == providerId }
+        }
+
     /** Queue read-modify-write as one repository transaction (single save + single publish). */
     private suspend fun mutateQueue(transform: (List<DownloadJob>) -> List<DownloadJob>) {
         repository.updateQueue(transform)

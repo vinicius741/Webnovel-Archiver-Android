@@ -233,6 +233,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         // Chromium navigation instead of a renderer whose challenge request already timed out.
         CloudflareWebViewSolver.destroySessions()
         appContainer.network.clearSourceAccess(url, keepBrowserTransport = true)
+        resumeDownloadsAfterSourceCheck(this, url)
         SourceAccessRetryCoordinator.markReadyToRetry()
         statusText?.text = "Retrying source access — returning to the app…"
         setResult(Activity.RESULT_OK)

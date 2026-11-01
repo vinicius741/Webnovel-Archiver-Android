@@ -15,6 +15,8 @@ import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsTab
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
+import com.vinicius741.webnovelarchiver.feature.downloads.startSourceCheck
+import com.vinicius741.webnovelarchiver.feature.downloads.storySourceCheck
 import com.vinicius741.webnovelarchiver.feature.story.generateConfiguredEpub
 import com.vinicius741.webnovelarchiver.feature.story.openEpubForStory
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
@@ -111,7 +113,15 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         bannerSlot =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(makeDownloadProgressBanner(app, downloadSummary, pacingStatus) { showQueue() })
+                addView(
+                    makeDownloadProgressBanner(
+                        app,
+                        downloadSummary,
+                        pacingStatus,
+                        sourceCheck = storySourceCheck(story.id),
+                        onVerify = { startSourceCheck(it.providerId, it.sampleUrl) },
+                    ) { showQueue() },
+                )
             }
         infoPanel.addView(bannerSlot!!)
     }
