@@ -42,7 +42,7 @@ internal fun ScreenHost.updateAiControlsProgress(
 ) {
     val binding = aiControlsScreenState.binding ?: return
     if (binding.storyId != operation.storyId || !frameIsAiControls(operation.storyId) || !binding.root.isAttachedToWindow) return
-    val busyKind = storyOperation?.takeIf { it.storyId == operation.storyId }?.kind
+    val busyKind = aiOperation?.takeIf { it.storyId == operation.storyId }?.kind
     val operationTab = if (operation.kind == StoryOperationKind.AI_DESCRIPTION) AiControlsTab.DESCRIPTION else AiControlsTab.COVER
     // The other tab has no progress label to patch; its message ticks must not rebuild this one.
     if (!structuralChange && binding.busyKind == busyKind && operationTab != aiControlsTab(operation.storyId)) return

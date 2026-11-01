@@ -37,6 +37,7 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 internal fun ScreenHost.buildDetailsInfoPanel(
     story: Story,
     operation: StoryOperationState?,
+    aiOperation: StoryOperationState?,
     downloadSummary: DownloadDetailsPlanning.StoryDownloadSummary,
     pacingStatus: DownloadPacingUiStatus? = null,
 ): DetailsInfoPanel {
@@ -51,10 +52,11 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     var bannerSlot: LinearLayout? = null
     var downloadActionSlot: LinearLayout? = null
     var operationSlot: LinearLayout? = null
+    var aiOperationSlot: LinearLayout? = null
 
-    if (operation?.kind == StoryOperationKind.AI_COVER) {
-        operationSlot = makeStoryOperationSlot(app, operation)
-        infoPanel.addView(operationSlot!!)
+    if (aiOperation?.kind == StoryOperationKind.AI_COVER) {
+        aiOperationSlot = makeStoryOperationSlot(app, aiOperation)
+        infoPanel.addView(aiOperationSlot!!)
     } else if (story.id in repository.aiCoverUnseen.value || aiControlsScreenState.coverDrafts[story.id] != null) {
         // A finished background cover waits for a decision; lead straight to it.
         infoPanel.addView(
@@ -176,9 +178,9 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         )
     }
 
-    val descriptionViews = addDetailsDescription(infoPanel, story, operation)
-    if (operation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-        operationSlot = descriptionViews.aiOperationSlot
+    val descriptionViews = addDetailsDescription(infoPanel, story, aiOperation)
+    if (aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
+        aiOperationSlot = descriptionViews.aiOperationSlot
     }
     addDetailsTags(infoPanel, story)
 
@@ -189,6 +191,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         downloadActionSlot,
         generateEpubButton,
         operationSlot,
+        aiOperationSlot,
         descriptionViews.listenButton,
     )
 }
@@ -215,16 +218,17 @@ internal data class DetailsInfoPanel(
     val downloadActionSlot: LinearLayout?,
     /** Generate action enabled when the first downloaded chapter arrives. */
     val generateEpubButton: Button,
-    /** In-flight operation progress slot, patched in place per tick; null when no operation runs. */
+    /** In-flight sync / cleanup / EPUB progress slot, patched in place per tick; null when none runs. */
     val operationSlot: LinearLayout?,
+    /** In-flight AI cover / description progress slot; null when no AI job runs for this story. */
+    val aiOperationSlot: LinearLayout?,
     /** Description "Listen" button, patched in place by the description-TTS observer. */
     val descriptionTtsButton: Button?,
 )
 
 /**
  * Renders the active synopsis, source or AI, with copy, expand, and Listen. The slim AI progress
- * block stays here so backing out of AI Controls mid-generation still shows why the Details
- * buttons are disabled.
+ * block stays here so backing out of AI Controls mid-generation still shows the job running.
  */
 private fun ScreenHost.addDetailsDescription(
     infoPanel: LinearLayout,

@@ -55,12 +55,12 @@ the layer is built to grow tag and cover-image generation later.
   `reasoning.effort`. Catalog options follow the [OpenRouter reasoning reference](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
   Replies stopped by the output limit, over 2,400 characters, or over 260 words are rejected rather
   than shown as complete.
-- Regenerating (over an applied description or a pending preview) requires a confirm dialog; every
-  other in-flight story operation blocks generation
-  (and vice versa) through the shared `storyOperation` guard. While a draft is generating, Details
-  shows a slim progress block (so backing out of AI Controls mid-generation still explains why its
-  buttons are disabled), the job chip shows it on every other screen, and the Description tab shows
-  the live progress message.
+- Regenerating (over an applied description or a pending preview) requires a confirm dialog. Only
+  another AI job (cover or description) blocks generation, through the `aiOperation` slot; sync,
+  cleanup, downloads, and EPUB generation use the separate `storyOperation` slot, so neither side
+  blocks the other. While a draft is generating, Details shows a slim progress block (so backing
+  out of AI Controls mid-generation still shows the job running), the job chip shows it on every
+  other screen, and the Description tab shows the live progress message.
 - HTTP failures map to friendly messages: 401 invalid key, 402 insufficient credits, 404 unknown
   model, 429 rate limit. Cancelling the coroutine also cancels the active OkHttp call.
 

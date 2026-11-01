@@ -48,6 +48,8 @@ internal fun ScreenHost.showDetails(storyId: String) {
     rerender = { showDetails(storyId) }
     val layout = currentScreenLayout()
     val operation = storyOperation?.takeIf { it.storyId == story.id }
+    // AI jobs only show progress here; they never gate the content actions.
+    val aiOperation = this.aiOperation?.takeIf { it.storyId == story.id }
     val isBusy = operation != null
     // The cached queue drives the initial render; later events patch rows in place.
     val queue = repository.queue()
@@ -73,6 +75,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
     var chaptersBinding: androidx.recyclerview.widget.RecyclerView? = null
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
+    detailsAiOperationSlot = null
     // Remembered with the history entry, so returning from the reader keeps the search.
     var chapterQuery = routeMemory.queries[screenKey].orEmpty()
     var clearChapterSearch: () -> Unit = {}
@@ -85,7 +88,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         scrollable = false,
         backIntercept = BackIntercept(isActive = { chapterQuery.isNotEmpty() }, clear = { clearChapterSearch() }),
     ) {
-        val panel = buildDetailsInfoPanel(story, operation, downloadSummary, initialPacingStatus)
+        val panel = buildDetailsInfoPanel(story, operation, aiOperation, downloadSummary, initialPacingStatus)
         val infoPanel = panel.view
         headerProgressSummary = panel.headerProgressSummary
         bannerSlot = panel.bannerSlot
@@ -93,6 +96,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         generateEpubButton = panel.generateEpubButton
         // Direct ref, not a tree walk: in compact layout the slot can detach inside the RecyclerView header.
         detailsOperationSlot = panel.operationSlot
+        detailsAiOperationSlot = panel.aiOperationSlot
 
         val chapterControls =
             LinearLayout(context).apply {

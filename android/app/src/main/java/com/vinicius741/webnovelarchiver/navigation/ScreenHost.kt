@@ -167,7 +167,18 @@ interface ScreenHost {
     val epubEngine: EpubEngine
     val ttsEngine: TtsEngine
     var activeStory: Story?
+
+    /**
+     * The in-flight content operation (sync / cleanup / EPUB) — the only slot that gates the
+     * Details content actions, since those operations read or rewrite the same story files.
+     */
     var storyOperation: StoryOperationState?
+
+    /**
+     * The in-flight AI job (cover / description). Kept apart from [storyOperation]: AI jobs only
+     * produce drafts, so they never block sync, cleanup, downloads, or EPUB generation.
+     */
+    var aiOperation: StoryOperationState?
 
     /**
      * Direct reference to the Details in-flight operation progress slot (sync / cleanup / EPUB).
@@ -178,6 +189,9 @@ interface ScreenHost {
      * render.
      */
     var detailsOperationSlot: ViewGroup?
+
+    /** Details progress slot for [aiOperation], patched in place like [detailsOperationSlot]. */
+    var detailsAiOperationSlot: ViewGroup?
     val navigator: AppNavigator
 
     /** Per-history-entry scroll, list, and search memory, keyed by [AppRoute.stableKey] (see [RouteViewMemory]). */

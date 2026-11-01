@@ -52,13 +52,13 @@ internal fun ScreenHost.showAiControls(
     val story = repository.story(storyId) ?: return showDetails(storyId)
     tab?.let { aiControlsScreenState.tabs[story.id] = it }
     val shownTab = aiControlsTab(story.id)
-    val generating = storyOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
+    val generating = aiOperation?.takeIf { it.storyId == story.id && it.kind == StoryOperationKind.AI_DESCRIPTION }
     // Cover jobs run on the process-wide coordinator so one that outlived a recreated activity still gates the UI.
     val generatingCover = aiCoverOperationFor(story.id)
     hydrateAiCoverDraftFromStorage(story.id)
     markAiResultsSeen(story.id, shownTab)
     screen(route = AppRoute.AiControls(story.id), title = "AI Controls", subtitle = story.title, scrollable = true) {
-        val binding = AiControlsBinding(story.id, this, storyOperation?.takeIf { it.storyId == story.id }?.kind)
+        val binding = AiControlsBinding(story.id, this, aiOperation?.takeIf { it.storyId == story.id }?.kind)
         aiControlsScreenState.binding = binding
         addAiTabBar(this, story.id, shownTab)
         when (shownTab) {
@@ -139,7 +139,7 @@ private fun ScreenHost.addAiDescriptionCard(
     val hasOriginal = !story.description.isNullOrBlank()
     // Without downloaded chapters there is no text to feed the model; archived snapshots are read-only.
     val canGenerate = story.isArchived != true && story.chapters.any { it.downloaded }
-    val isBusy = storyOperation?.storyId == story.id
+    val isBusy = aiOperation?.storyId == story.id
     val cardView =
         container.card {
             addAiContextChaptersRow(this, story)
@@ -280,12 +280,13 @@ internal fun ScreenHost.generateAiDescriptionDraft(story: Story) {
 // Re-throw CancellationException; funnel other failures into toast + state cleanup.
 @Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
 private fun ScreenHost.startAiDescriptionDraft(story: Story) {
-    if (storyOperation != null) {
-        toast("Please wait for the current operation to finish")
+    // Only another AI job blocks this one; sync, cleanup, and EPUB runs are independent.
+    if (aiOperation != null) {
+        toast("Please wait for the current AI generation to finish")
         return
     }
-    storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_DESCRIPTION, "Generating description...")
-    detailsOperationSlot = null
+    aiOperation = StoryOperationState(story.id, StoryOperationKind.AI_DESCRIPTION, "Generating description...")
+    detailsAiOperationSlot = null
     aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.DESCRIPTION)
     showAiControls(story.id)
     scope.launch {
@@ -295,9 +296,9 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
                     app.runOnUiThread { patchAiDraftProgress(story.id, message) }
                 }
             aiControlsScreenState.drafts[story.id] = draft
-            if (storyOperation?.storyId == story.id && storyOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-                storyOperation = null
-                detailsOperationSlot = null
+            if (aiOperation?.storyId == story.id && aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
+                aiOperation = null
+                detailsAiOperationSlot = null
             }
             // Off its tab, the app-wide job chip points back to the waiting preview.
             if (!frameIsAiControls(story.id) || aiControlsTab(story.id) != AiControlsTab.DESCRIPTION) {
@@ -308,9 +309,9 @@ private fun ScreenHost.startAiDescriptionDraft(story: Story) {
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             Timber.w(error, "AI description generation failed for %s", story.id)
-            if (storyOperation?.storyId == story.id && storyOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
-                storyOperation = null
-                detailsOperationSlot = null
+            if (aiOperation?.storyId == story.id && aiOperation?.kind == StoryOperationKind.AI_DESCRIPTION) {
+                aiOperation = null
+                detailsAiOperationSlot = null
             }
             val message = error.message ?: "AI description failed"
             if (frameIsAiControls(story.id)) {
@@ -330,10 +331,10 @@ internal fun ScreenHost.patchAiDraftProgress(
     storyId: String,
     message: String,
 ) {
-    val operation = storyOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_DESCRIPTION } ?: return
+    val operation = aiOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_DESCRIPTION } ?: return
     val next = operation.copy(message = message)
-    storyOperation = next
-    detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
+    aiOperation = next
+    detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
     updateAiControlsProgress(next)
     aiControlsScreenState.refreshJobChip()
 }

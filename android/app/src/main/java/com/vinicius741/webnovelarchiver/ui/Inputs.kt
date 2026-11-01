@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -7,6 +8,8 @@ import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.text.InputType
 import android.util.TypedValue
+import android.view.MotionEvent
+import android.view.View
 import android.widget.CheckBox
 import android.widget.EditText
 import com.vinicius741.webnovelarchiver.R
@@ -66,6 +69,27 @@ fun makeField(
         applyInputStyle(hint, inputType)
         setText(value)
     }
+
+/**
+ * Lets a multi-line field capped by `maxLines` scroll its own text inside a scrolling screen:
+ * while the field has overflow, a drag on it moves the text instead of the page, and (Android 10+)
+ * a visible scrollbar shows there is more.
+ */
+@SuppressLint("ClickableViewAccessibility")
+internal fun EditText.scrollTextInsideParent() {
+    // A View built in code has no scrollbar drawable until one is set; reading the default thumb NPEs.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        verticalScrollbarThumbDrawable = roundedBg(ThemeManager.colors.outline, context.dp(2).toFloat())
+        isVerticalScrollBarEnabled = true
+        isScrollbarFadingEnabled = false
+        scrollBarStyle = View.SCROLLBARS_INSIDE_INSET
+    }
+    setOnTouchListener { view, event ->
+        val overflows = view.canScrollVertically(1) || view.canScrollVertically(-1)
+        if (overflows && event.actionMasked == MotionEvent.ACTION_DOWN) view.parent?.requestDisallowInterceptTouchEvent(true)
+        false
+    }
+}
 
 /**
  * Tints a CheckBox so the box matches the active theme instead of falling back to the

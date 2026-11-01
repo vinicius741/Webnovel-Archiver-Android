@@ -121,8 +121,9 @@ time and size so applying another version refreshes the visible cover even when 
   removes both its draft and version history.
 - Cost controls: automatic selection validates chapters with the chosen decision model in batches and stops at the configured chapter count (default 10, Settings → AI Settings). Cover context shares a 120k-character budget equally across its chapters, capped at 12k each, so the default ten automatic chapters arrive whole; appearance passages add up to 12k more, strongest first. The text call uses `max_tokens 4000` (doubled once on a truncated reply) and the description model's saved reasoning level from AI Settings, including on retries; the image call requests one 1K image. Generating over an applied cover
   or pending drafts asks for confirmation (one call in staged mode, two in one-step), and so does
-  generating from an edited prompt; the shared `storyOperation` guard
-  (`AI_COVER` kind) blocks concurrent story operations and drives the progress UI. A hand-edited
+  generating from an edited prompt; the `aiOperation` slot
+  (`AI_COVER` kind) blocks only concurrent AI jobs and drives the progress UI; sync, cleanup,
+  downloads, and EPUB generation stay available because they use the separate `storyOperation` slot. A hand-edited
   prompt is re-cleaned (trimmed, whitespace collapsed within paragraphs, blank-line paragraph breaks
   kept, capped at 8,000 chars) exactly like a model reply. Grok Imagine documents no prompt-length limit
   and bills per image regardless of length; the cap only bounds a runaway reply.
@@ -155,7 +156,7 @@ Full backups retain the applied cover as described below.
 | `ai/AiCoverJobs.kt` | Background job runner (`AiCoverJobCoordinator`) on the shared `AiJobCoordinator` lifecycle: one cover job at a time, running state (`jobs` StateFlow) for progress surfaces, terminal `events` (result persisted before the success event fires). |
 | `ai/AiContextChapters.kt` | Shared capped chapter reading used by both the description and cover engines. |
 | `ai/AiJobForegroundService.kt` | Shared `dataSync` foreground service for all AI jobs: mirrors the active job's progress in a notification and posts ready/failed outcome notifications; stops itself when every coordinator is idle. |
-| `app/AiJobUiBridge.kt` | Activity-side bridge for both AI job kinds: mirrors coordinator state into the shared `storyOperation` slot (Details progress, AI Controls gating), surfaces results as draft state, and records off-page failures for the job chip. |
+| `app/AiJobUiBridge.kt` | Activity-side bridge for both AI job kinds: mirrors coordinator state into the `aiOperation` slot (Details progress, AI Controls gating), surfaces results as draft state, and records off-page failures for the job chip. |
 | `feature/ai/AiJobChip.kt` / `AiJobChipPlanning.kt` | App-wide job chip (running / ready / failed, tap to open the novel's tab) and its pure selection rule. |
 | `data/storage/AiCoverDraftStore.kt` | Pending-draft persistence under `ai_cover_drafts/` (prompt JSON + image bytes, image-first completeness marker); excluded from backups by design. |
 | `feature/ai/AiCoverControls.kt` | Cover tab: "New cover ready" decision card, the "Make a new cover" card with the prompt box, and draft settlement. |

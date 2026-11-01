@@ -128,7 +128,7 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
         val coverJob =
             app.appContainer.aiCoverJobCoordinator.jobs.value.values
                 .firstOrNull()
-        val descriptionJob = storyOperation?.takeIf { it.kind == StoryOperationKind.AI_DESCRIPTION }
+        val descriptionJob = aiOperation?.takeIf { it.kind == StoryOperationKind.AI_DESCRIPTION }
         val viewing = (navigator.current as? AppRoute.AiControls)?.storyId
         val next =
             AiJobChipPlanning.plan(

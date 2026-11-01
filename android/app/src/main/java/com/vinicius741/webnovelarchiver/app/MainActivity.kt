@@ -82,7 +82,9 @@ class MainActivity :
     override lateinit var frame: FrameLayout
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
+    override var aiOperation: StoryOperationState? = null
     override var detailsOperationSlot: ViewGroup? = null
+    override var detailsAiOperationSlot: ViewGroup? = null
     override val navigator = AppNavigator()
     override val routeMemory: RouteViewMemory = RouteViewMemory()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()

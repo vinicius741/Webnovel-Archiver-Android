@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 /*
  * The activity-side bridge for background AI cover jobs, which
  * run on the process-wide application scope and so outlive this activity — this bridge is what
- * makes a running job VISIBLE again: it mirrors the coordinator's state into the shared
+ * makes a running job VISIBLE again: it mirrors the coordinator's state into the AI
  * [StoryOperationState] slot (Details progress bar, AI Controls button gating) and reacts to
  * terminal events by surfacing the persisted draft, toasting, and re-rendering.
  *
@@ -46,14 +46,14 @@ private fun MainActivity.attachCoverJobBridge() {
                     job.persistedPrompt?.let { prompt ->
                         aiControlsScreenState.replaceCoverPreviewWithPrompt(job.storyId, prompt)
                     } ?: false
-                val current = storyOperation
+                val current = aiOperation
                 val ownsSlot =
                     current == null || (current.storyId == job.storyId && current.kind == StoryOperationKind.AI_COVER)
                 if (ownsSlot) {
                     val next = StoryOperationState(job.storyId, StoryOperationKind.AI_COVER, job.message)
-                    storyOperation = next
+                    aiOperation = next
                     if (promptChanged || renderedMessages[job.storyId] != job.message) {
-                        detailsOperationSlot?.let { renderStoryOperationProgress(it, next) }
+                        detailsAiOperationSlot?.let { renderStoryOperationProgress(it, next) }
                         updateAiControlsProgress(next, structuralChange = promptChanged)
                     }
                 }
@@ -70,9 +70,9 @@ private fun MainActivity.attachCoverJobBridge() {
 
 /** Clears this kind's progress slot and refreshes the visible surface so nothing stays stale. */
 private fun MainActivity.clearOperationSlot(kind: StoryOperationKind) {
-    val cleared = storyOperation?.takeIf { it.kind == kind } ?: return
-    storyOperation = null
-    detailsOperationSlot = null
+    val cleared = aiOperation?.takeIf { it.kind == kind } ?: return
+    aiOperation = null
+    detailsAiOperationSlot = null
     // The event collector may re-render before or after this clearing; refresh the visible
     // surface so a finished job never leaves a stale progress slot behind.
     if (frameIsAiControls(cleared.storyId)) showAiControls(cleared.storyId) else rerenderDetailsIfVisible(cleared.storyId)

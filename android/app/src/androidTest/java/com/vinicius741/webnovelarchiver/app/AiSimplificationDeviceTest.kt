@@ -119,7 +119,7 @@ class AiSimplificationDeviceTest {
     fun progressPatchesTheAttachedTreeAndIgnoresLateMessages() =
         withFixture { scenario ->
             scenario.onActivity { activity ->
-                activity.storyOperation = StoryOperationState(ID, StoryOperationKind.AI_DESCRIPTION, "Starting")
+                activity.aiOperation = StoryOperationState(ID, StoryOperationKind.AI_DESCRIPTION, "Starting")
                 activity.showAiControls(ID)
                 val binding = activity.aiControlsScreenState.binding!!
                 val root = activity.frame.getChildAt(0)
@@ -130,13 +130,13 @@ class AiSimplificationDeviceTest {
                 assertNotNull(activity.textView("Message 99"))
                 assertNotNull(activity.textView("Write your own prompt"))
                 assertFalse(activity.textView("Generating...")!!.isEnabled)
-                activity.storyOperation = StoryOperationState(ID, StoryOperationKind.AI_COVER, "Cover starting")
-                activity.updateAiControlsProgress(activity.storyOperation!!)
+                activity.aiOperation = StoryOperationState(ID, StoryOperationKind.AI_COVER, "Cover starting")
+                activity.updateAiControlsProgress(activity.aiOperation!!)
                 assertNotSame(root, activity.frame.getChildAt(0))
                 val coverRoot = activity.frame.getChildAt(0)
                 repeat(100) {
-                    activity.storyOperation = activity.storyOperation!!.copy(message = "Cover $it")
-                    activity.updateAiControlsProgress(activity.storyOperation!!)
+                    activity.aiOperation = activity.aiOperation!!.copy(message = "Cover $it")
+                    activity.updateAiControlsProgress(activity.aiOperation!!)
                 }
                 assertSame(coverRoot, activity.frame.getChildAt(0))
                 assertNotNull(activity.textView("Cover 99"))
@@ -145,7 +145,7 @@ class AiSimplificationDeviceTest {
                 val detailsRoot = activity.frame.getChildAt(0)
                 activity.updateAiControlsProgress(StoryOperationState(ID, StoryOperationKind.AI_COVER, "Late"))
                 assertSame(detailsRoot, activity.frame.getChildAt(0))
-                activity.storyOperation = null
+                activity.aiOperation = null
                 activity.showAiControls(ID)
                 assertNull(activity.textView("Generating..."))
             }

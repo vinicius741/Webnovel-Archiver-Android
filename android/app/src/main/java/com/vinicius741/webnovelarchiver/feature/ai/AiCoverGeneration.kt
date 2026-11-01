@@ -74,8 +74,9 @@ private fun ScreenHost.startAiCoverJob(
     onAccepted: () -> Unit = {},
     start: (AiCoverJobCoordinator) -> Boolean,
 ) {
-    if (storyOperation != null) {
-        toast("Please wait for the current operation to finish")
+    // Only another AI job blocks this one; sync, cleanup, and EPUB runs are independent.
+    if (aiOperation != null) {
+        toast("Please wait for the current AI generation to finish")
         return
     }
     val coordinator = app.appContainer.aiCoverJobCoordinator
@@ -86,8 +87,8 @@ private fun ScreenHost.startAiCoverJob(
     onAccepted()
     aiControlsScreenState.clearChipHistory(story.id, AiControlsTab.COVER)
     // Optimistic set for the first re-render; the activity bridge syncs the slot on every emission.
-    storyOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
-    detailsOperationSlot = null
+    aiOperation = StoryOperationState(story.id, StoryOperationKind.AI_COVER, initialMessage)
+    detailsAiOperationSlot = null
     showAiControls(story.id)
     AiJobForegroundService.start(app, "Generating AI cover...")
 }
@@ -151,11 +152,11 @@ internal fun ScreenHost.hydrateAiCoverDraftFromStorage(storyId: String) {
 }
 
 /**
- * The AI-cover operation for a story: the shared slot, or a background job the bridge has not
+ * The AI-cover operation for a story: the AI slot, or a background job the bridge has not
  * reflected yet (e.g. after activity recreation).
  */
 internal fun ScreenHost.aiCoverOperationFor(storyId: String): StoryOperationState? {
-    storyOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_COVER }?.let { return it }
+    aiOperation?.takeIf { it.storyId == storyId && it.kind == StoryOperationKind.AI_COVER }?.let { return it }
     return app.appContainer.aiCoverJobCoordinator.jobFor(storyId)?.let {
         StoryOperationState(it.storyId, StoryOperationKind.AI_COVER, it.message)
     }

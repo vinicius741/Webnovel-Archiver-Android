@@ -30,6 +30,7 @@ import com.vinicius741.webnovelarchiver.ui.fullButton
 import com.vinicius741.webnovelarchiver.ui.makeBadge
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.row
+import com.vinicius741.webnovelarchiver.ui.scrollTextInsideParent
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.text
@@ -186,7 +187,7 @@ private fun ScreenHost.addAiCoverMakerCard(
         )
         return
     }
-    val isBusy = storyOperation?.storyId == story.id || generating != null
+    val isBusy = aiOperation?.storyId == story.id || generating != null
     val prompt = aiControlsScreenState.coverPrompts[story.id] ?: aiControlsScreenState.coverDrafts[story.id]?.prompt.orEmpty()
     val cardView =
         container.card {
@@ -202,6 +203,7 @@ private fun ScreenHost.addAiCoverMakerCard(
                     setText(prompt)
                     minLines = 3
                     maxLines = 10
+                    scrollTextInsideParent()
                     isEnabled = !isBusy
                     contentDescription = "Image prompt"
                 }
