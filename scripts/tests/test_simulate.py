@@ -62,6 +62,12 @@ class SimulationRunnerTest(unittest.TestCase):
             report = simulate.wait_report("emulator-5554", "test", "held", 2, minimum_boot=2)
             self.assertEqual(current, report)
 
+    def test_ready_wait_ignores_an_initial_report_without_a_phase(self):
+        starting = {"sessionId": "test"}
+        ready = {"sessionId": "test", "phase": "ready"}
+        with patch.object(simulate, "fetch_report", side_effect=[starting, ready]), patch.object(simulate.time, "sleep"):
+            self.assertEqual(ready, simulate.wait_report("emulator-5554", "test", "ready", 2))
+
 
 if __name__ == "__main__":
     unittest.main()

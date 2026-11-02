@@ -35,6 +35,7 @@ internal class SimulationJournal(
         report.addProperty("timing", config.timing)
         report.addProperty("speed", config.speed)
         report.addProperty("epochMillis", config.epochMillis)
+        if (!report.has("phase")) report.addProperty("phase", "starting")
         if (!report.has("startedActualMillis")) report.addProperty("startedActualMillis", System.currentTimeMillis())
         if (!report.has("startedLogicalMillis")) report.addProperty("startedLogicalMillis", time.nowMillis())
         if (report.get("phase")?.asString in setOf("running", "held", "waiting_verification")) {

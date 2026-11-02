@@ -150,7 +150,8 @@ def wait_report(serial, session, until, timeout, auto_verify=False, minimum_boot
             if auto_verify and phase == "waiting_verification" and not attempted_verification:
                 verify(serial, session)
                 attempted_verification = True
-            if phase in {"completed", "failed"} or (until == "ready" and phase != "starting") or phase == until:
+            ready_phases = {"ready", "running", "held", "waiting_verification", "completed", "failed", "interrupted"}
+            if phase in {"completed", "failed"} or (until == "ready" and phase in ready_phases) or phase == until:
                 return report
         except (adb.DeviceError, json.JSONDecodeError):
             error = private_shell(serial, f"cat {BASE}/startup_error.json", check=False)
