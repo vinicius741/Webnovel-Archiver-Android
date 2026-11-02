@@ -41,9 +41,11 @@ internal class DownloadProcessLoop(
                 lateinit var queue: MutableList<DownloadJob>
                 lateinit var pending: List<DownloadJob>
                 var redeferredBlockedJobs = false
+                // Selection and wake planning must share a timestamp: a deadline can pass while
+                // publishing progress, and dropping it then would exit with runnable jobs pending.
+                val now = nowMillis()
                 synchronized(storage) {
                     queue = storage.getQueue()
-                    val now = nowMillis()
                     val activeCounts = activeWorkers.values.groupingBy(ActiveWorker::sourceId).eachCount()
                     // Sources under manual verification keep their jobs pending; without this the
                     // loop would start each one, hit the open circuit, and fail it without any
@@ -111,7 +113,7 @@ internal class DownloadProcessLoop(
                 val sleepUntil =
                     DownloadScheduler.nextWakeUpAt(
                         jobs = queue,
-                        now = nowMillis(),
+                        now = now,
                         nextAllowedAt = emptyMap(),
                         providerNameForJob = ::sourceIdForJob,
                     )

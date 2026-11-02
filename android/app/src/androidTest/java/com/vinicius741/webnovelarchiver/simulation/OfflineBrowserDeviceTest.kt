@@ -25,6 +25,55 @@ import kotlin.concurrent.thread
 /** Runs only in the instrumentation sandbox. No public host or provider credentials are used. */
 @RunWith(AndroidJUnit4::class)
 class OfflineBrowserDeviceTest {
+    @Test fun downloadRetryCrossingItsDeadlineDuringProgressCannotStrandTheQueue() =
+        kotlinx.coroutines.runBlocking {
+            val base = ApplicationProvider.getApplicationContext<Context>()
+            val scoped = SimulationContext(base, "scheduler-race-${System.nanoTime()}")
+            val storage = AppStorage(scoped)
+            var now = 1_000L
+            var completed = 0
+            val chapter =
+                SimulationFixtures
+                    .stories(6)
+                    .first()
+                    .chapters
+                    .first()
+            val job =
+                com.vinicius741.webnovelarchiver.domain.model.DownloadJob(
+                    id = "retry-test",
+                    storyId = SimulationFixtures.STORY_ID,
+                    sourceId = "royal_road",
+                    chapter = chapter,
+                    nextRetryAt = 1_005L,
+                )
+            storage.saveQueue(listOf(job))
+            val wake = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+            try {
+                val loop =
+                    com.vinicius741.webnovelarchiver.download.DownloadProcessLoop(
+                        storage = storage,
+                        wakeSignals = wake,
+                        cleanupUnsupportedSourceJobs = {},
+                        processJob = { active ->
+                            completed += 1
+                            storage.mutateQueueInPlace { jobs ->
+                                jobs.onEach { if (it.id == active.id) it.status = "completed" }
+                            }
+                        },
+                        publishQueueChanged = {},
+                        // Reproduces a deadline expiring after eligibility selection and before wake planning.
+                        emitProgress = { _, _ -> now = 1_010L },
+                        nowMillis = { now },
+                    )
+                kotlinx.coroutines.withTimeout(3_000L) { loop.run() }
+                assertEquals(1, completed)
+                assertEquals("completed", storage.getQueue().single().status)
+            } finally {
+                wake.close()
+                scoped.filesDir.parentFile?.deleteRecursively()
+            }
+        }
+
     @Test fun chromiumPostsFormsAndReturnsRawJsonFromALoopbackOrigin() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         LoopbackFixtureServer().use { server ->
