@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "storyUrls": [
+    "https://www.royalroad.com/fiction/12345/the-lorem-chronicle",
+    "https://www.scribblehub.com/series/98765/the-scribbled-saga",
+    "https://forums.sufficientvelocity.com/threads/fixture-story.12345/",
+    "https://forums.spacebattles.com/threads/fixture-story.1183048/",
+    "https://archiveofourown.org/works/123",
+    "https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine"
+  ],
+  "routes": [
+    {
+      "url": "https://www.royalroad.com/fiction/12345/the-lorem-chronicle",
+      "asset": "simulation/replay/royalroad/story.html"
+    },
+    {
+      "url": "https://www.royalroad.com/fiction/12345/chapter/100001/first-chapter",
+      "asset": "simulation/replay/royalroad/chapter.html"
+    },
+    {
+      "url": "https://www.royalroad.com/fiction/12345/chapter/100002/second-chapter",
+      "asset": "simulation/replay/royalroad/chapter.html"
+    },
+    {
+      "url": "https://www.scribblehub.com/series/98765/the-scribbled-saga",
+      "asset": "simulation/replay/scribblehub/story.html"
+    },
+    {
+      "url": "https://www.scribblehub.com/series/98765/the-scribbled-saga/stats/",
+      "asset": "simulation/replay/scribblehub/stats.html"
+    },
+    {
+      "url": "https://www.scribblehub.com/read/98765-first-piece/chapter/200001",
+      "asset": "simulation/replay/scribblehub/chapter.html"
+    },
+    {
+      "url": "https://www.scribblehub.com/read/98765-second-piece/chapter/200002",
+      "asset": "simulation/replay/scribblehub/chapter.html"
+    },
+    {
+      "url": "https://www.scribblehub.com/wp-admin/admin-ajax.php",
+      "asset": "simulation/replay/scribblehub/toc.html",
+      "method": "POST",
+      "form": {
+        "action": "wi_getreleases_pagination",
+        "pagenum": "1",
+        "mypostid": "98765"
+      }
+    },
+    {
+      "url": "https://www.scribblehub.com/wp-admin/admin-ajax.php",
+      "asset": "simulation/replay/empty.txt",
+      "method": "POST",
+      "form": {
+        "action": "wi_getreleases_pagination",
+        "pagenum": "2",
+        "mypostid": "98765"
+      }
+    },
+    {
+      "url": "https://forums.sufficientvelocity.com/threads/fixture-story.12345/",
+      "asset": "simulation/replay/sufficient_velocity/story.html"
+    },
+    {
+      "url": "https://forums.sufficientvelocity.com/threads/fixture-story.12345/threadmarks?threadmark_category=1&per_page=200",
+      "asset": "simulation/replay/sufficient_velocity/threadmarks.html"
+    },
+    {
+      "url": "https://forums.sufficientvelocity.com/threads/fixture-story.12345/threadmarks.rss?threadmark_category=1",
+      "asset": "simulation/replay/sufficient_velocity/threadmarks.rss"
+    },
+    {
+      "url": "https://forums.sufficientvelocity.com/threads/fixture-story.12345/reader/page-1?threadmark_category=1",
+      "asset": "simulation/replay/sufficient_velocity/reader.html"
+    },
+    {
+      "url": "https://forums.spacebattles.com/threads/fixture-story.1183048/",
+      "asset": "simulation/replay/spacebattles/story.html"
+    },
+    {
+      "url": "https://forums.spacebattles.com/threads/fixture-story.1183048/threadmarks?threadmark_category=1&per_page=200",
+      "asset": "simulation/replay/spacebattles/threadmarks.html"
+    },
+    {
+      "url": "https://forums.spacebattles.com/threads/fixture-story.1183048/threadmarks.rss?threadmark_category=1",
+      "asset": "simulation/replay/spacebattles/threadmarks.rss"
+    },
+    {
+      "url": "https://forums.spacebattles.com/threads/fixture-story.1183048/reader/page-1?threadmark_category=1",
+      "asset": "simulation/replay/spacebattles/reader.html"
+    },
+    {
+      "url": "https://forums.spacebattles.com/library/stories/?starter=ExampleAuthor",
+      "asset": "simulation/replay/empty.html"
+    },
+    {
+      "url": "https://archiveofourown.org/works/123/navigate?view_adult=true",
+      "asset": "simulation/replay/ao3/navigate.html"
+    },
+    {
+      "url": "https://archiveofourown.org/works/123/chapters/900?view_adult=true",
+      "asset": "simulation/replay/ao3/combined.html"
+    },
+    {
+      "url": "https://archiveofourown.org/works/123/chapters/950?view_adult=true",
+      "asset": "simulation/replay/ao3/combined.html"
+    },
+    {
+      "url": "https://www.fanfiction.net/s/7347955/1/Dreaming-of-Sunshine",
+      "asset": "simulation/replay/fanfiction/combined.html"
+    },
+    {
+      "url": "https://www.fanfiction.net/s/7347955/2/Dreaming-of-Sunshine",
+      "asset": "simulation/replay/fanfiction/combined.html"
+    },
+    {
+      "url": "https://www.fanfiction.net/s/7347955/3/Dreaming-of-Sunshine",
+      "asset": "simulation/replay/fanfiction/combined.html"
+    },
+    {
+      "url": "https://www.royalroad.com/covers/12345.jpg",
+      "asset": "simulation/replay/cover.png",
+      "contentType": "image/png"
+    },
+    {
+      "url": "https://www.scribblehub.com/covers/98765.jpg",
+      "asset": "simulation/replay/cover.png",
+      "contentType": "image/png"
+    },
+    {
+      "url": "https://forums.spacebattles.com/attachments/fixture-cover.1/",
+      "asset": "simulation/replay/cover.png",
+      "contentType": "image/png"
+    },
+    {
+      "url": "https://www.fanfiction.net/image/1740448/75/",
+      "asset": "simulation/replay/cover.png",
+      "contentType": "image/png"
+    },
+    {
+      "url": "https://www.patreon.com/api/current_user?include=pledges.campaign&json-api-version=1.0",
+      "asset": "simulation/replay/patreon-user.json",
+      "contentType": "application/json"
+    }
+  ]
+}

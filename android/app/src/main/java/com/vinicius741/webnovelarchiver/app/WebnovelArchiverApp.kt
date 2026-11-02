@@ -36,6 +36,23 @@ class WebnovelArchiverApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        DevEnvironment.requested = DevEnvironmentFactory.requested(this)
+        if (DevEnvironment.requested) {
+            // Choose the profile before Coil, reader WebViews, UA resolution, or CookieManager.
+            if (android.os.Build.VERSION.SDK_INT >= 28) android.webkit.WebView.setDataDirectorySuffix("offline_simulation")
+            coil3.SingletonImageLoader.setSafe { imageContext ->
+                coil3.ImageLoader
+                    .Builder(imageContext)
+                    .diskCache(null)
+                    .components {
+                        add(
+                            coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = {
+                                checkNotNull(DevEnvironment.active) { "Simulation is not ready" }.aiClient()
+                            }),
+                        )
+                    }.build()
+            }
+        }
         if (Timber.treeCount == 0) {
             if (BuildConfig.DEBUG) {
                 Timber.plant(Timber.DebugTree())
@@ -51,16 +68,20 @@ class WebnovelArchiverApp : Application() {
         // WebSettings.getDefaultUserAgent lazy-loads the WebView provider; calling it synchronously
         // caused a startup ANR. resolveAsync posts the read; the fallback UA is safe since no
         // OkHttp request fires before the user navigates somewhere.
-        SourceUserAgent.resolveAsync(this)
+        if (!DevEnvironment.requested) SourceUserAgent.resolveAsync(this)
         // Restore recovery and storage construction can touch thousands of files after an
         // interrupted restore. Keep them off the launch thread before the first activity paints.
         containerSetup =
             startupScope.async {
-                AppContainer(this@WebnovelArchiverApp).apply { init() }.also { readyContainer = it }
+                val simulation = DevEnvironmentFactory.create(this@WebnovelArchiverApp)
+                DevEnvironment.active = simulation
+                AppContainer(simulation?.storageContext ?: this@WebnovelArchiverApp, simulation)
+                    .apply { init() }
+                    .also { readyContainer = it }
             }
         // CookieManager.getInstance() also lazy-loads the WebView provider; defer seeding to the
         // background. OkHttp's cookie jar reads CookieManager lazily per request, so seeds land in time.
-        startupScope.launch { enableAndSeedCookies() }
+        if (!DevEnvironment.requested) startupScope.launch { enableAndSeedCookies() }
     }
 
     private fun enableDebugStrictMode() {

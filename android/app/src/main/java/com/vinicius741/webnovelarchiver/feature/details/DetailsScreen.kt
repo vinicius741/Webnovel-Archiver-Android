@@ -57,14 +57,14 @@ internal fun ScreenHost.showDetails(storyId: String) {
     val downloadSummary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
     val initialPacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
-    val waitingChapterIds = waitingChapterIds(jobsForStory, initialPacingSnapshots, System.currentTimeMillis())
+    val waitingChapterIds = waitingChapterIds(jobsForStory, initialPacingSnapshots, app.appContainer.time.nowMillis())
     val initialPacingStatus =
         detailsPacingStatus(
             storyId = story.id,
             storySourceUrl = story.sourceUrl,
             jobsForStory = jobsForStory,
             snapshots = initialPacingSnapshots,
-            nowMillis = System.currentTimeMillis(),
+            nowMillis = app.appContainer.time.nowMillis(),
             allJobs = queue,
         )
     // Stable refs for the refresh closure: the views can detach when scrolled off-screen.
@@ -390,7 +390,7 @@ internal fun ScreenHost.observeDetailsDownload(
             launch {
                 combine(
                     app.appContainer.downloadPacer.snapshots,
-                    tickerFlow(),
+                    tickerFlow(nowMillis = app.appContainer.time::nowMillis),
                 ) { pacing, now -> pacing.values to now }
                     .collect { (pacing, now) ->
                         if (root.parent !== frame) return@collect

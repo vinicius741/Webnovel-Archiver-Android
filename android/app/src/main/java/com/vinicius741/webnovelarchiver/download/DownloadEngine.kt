@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.app.AppContainer
+import com.vinicius741.webnovelarchiver.app.AppTime
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
@@ -38,6 +39,7 @@ class DownloadEngine(
     private val network: NetworkClient,
     private val downloadPacer: DownloadRequestPacer,
     private val ownsProcessLoop: Boolean = true,
+    private val time: AppTime = AppTime.Real,
 ) {
     private val storage: AppStorage = repository.storage
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -45,7 +47,7 @@ class DownloadEngine(
     private val acceptsWorkerResults = AtomicBoolean(true)
     private val requestGateFactory = DownloadRequestGateFactory(repository, downloadPacer)
     private val sourceReliability =
-        DownloadSourceReliability(storage, network, acceptsWorkerResults::get) { providerId, url ->
+        DownloadSourceReliability(storage, network, acceptsWorkerResults::get, nowMillis = time::nowMillis) { providerId, url ->
             onSourceBlocked?.invoke(providerId, url)
         }
     private val processLoop =
@@ -57,6 +59,8 @@ class DownloadEngine(
             publishQueueChanged = { repository.publishDownloadState(queueChanged = true) },
             emitProgress = ::emitProgress,
             isSourceBlocked = network::isSourceBlocked,
+            nowMillis = time::nowMillis,
+            realDelayMillis = time::realDelayMillis,
         )
     private var worker: Job? = null
     var onProgress: ((DownloadProgress) -> Unit)? = null
@@ -90,7 +94,7 @@ class DownloadEngine(
                 lock = storage,
                 story = story,
                 indexes = indexes,
-                now = System.currentTimeMillis(),
+                now = time.nowMillis(),
                 readQueue = storage::getQueue,
                 readStory = storage::getStory,
                 persist = storage::saveEnqueue,
@@ -291,7 +295,7 @@ class DownloadEngine(
                 repository.completeDownloadedChapter(
                     job,
                     { storage.saveChapter(job.storyId, job.chapterIndex, job.chapter, clean) },
-                    System.currentTimeMillis(),
+                    time.nowMillis(),
                     startedGeneration,
                 )
             ) {

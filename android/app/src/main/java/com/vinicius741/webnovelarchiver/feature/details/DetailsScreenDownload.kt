@@ -54,7 +54,7 @@ internal fun ScreenHost.refreshDetailsDownload(
     val summary = DownloadDetailsPlanning.summarizeStoryDownload(jobsForStory)
     val chapterStatuses = DownloadDetailsPlanning.chapterJobStatuses(jobsForStory)
     val pacingSnapshots = app.appContainer.downloadPacer.snapshots.value.values
-    val waitingChapterIds = waitingChapterIds(jobsForStory, pacingSnapshots, System.currentTimeMillis())
+    val waitingChapterIds = waitingChapterIds(jobsForStory, pacingSnapshots, app.appContainer.time.nowMillis())
 
     val pacingStatus =
         detailsPacingStatus(
@@ -62,7 +62,7 @@ internal fun ScreenHost.refreshDetailsDownload(
             storySourceUrl = story.sourceUrl,
             jobsForStory = jobsForStory,
             snapshots = pacingSnapshots,
-            nowMillis = System.currentTimeMillis(),
+            nowMillis = app.appContainer.time.nowMillis(),
             allJobs = queue,
         )
     bindings.patchDownloadStatus(this, story, summary, chapterStatuses, waitingChapterIds, pacingStatus, isBusy)

@@ -12,6 +12,7 @@ import java.io.IOException
  */
 internal class DecisionClient(
     private val openRouter: OpenRouterClient,
+    private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
     suspend fun evaluate(
         apiKey: String,
@@ -22,7 +23,7 @@ internal class DecisionClient(
             val (json, code) = openRouter.submitDecisions(apiKey, body)
             onReceipt(json, code)
             if (code in listOf(429, 503, 529) && attempt < 2) {
-                delay(1_000L shl attempt)
+                sleep(1_000L shl attempt)
             } else {
                 checkResponse(code, body.get("model")?.asString)
                 return json

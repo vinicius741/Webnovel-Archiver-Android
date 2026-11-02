@@ -1,0 +1,475 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "ai-cover",
+      "action": "cover",
+      "screen": "aicontrols",
+      "description": "Automatic evidence, prompt and cover image"
+    },
+    {
+      "id": "ai-cover-slow",
+      "action": "cover",
+      "screen": "aicontrols",
+      "timing": "visible",
+      "description": "Visible delays in every AI stage"
+    },
+    {
+      "id": "ai-description",
+      "action": "description",
+      "screen": "aicontrols",
+      "description": "Generate and apply a description with automatic evidence"
+    },
+    {
+      "id": "ai-description-manual",
+      "action": "description",
+      "screen": "aicontrols",
+      "manual": true,
+      "description": "Manual chapter selection skips Decisions"
+    },
+    {
+      "id": "ai-cover-manual",
+      "action": "cover",
+      "screen": "aicontrols",
+      "manual": true,
+      "description": "Manual cover evidence"
+    },
+    {
+      "id": "ai-missing-key",
+      "action": "description",
+      "screen": "aicontrols",
+      "missingKey": true,
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-archived",
+      "action": "description",
+      "screen": "aicontrols",
+      "archived": true,
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-description-401",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "description": "401"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-description-402",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "description": "402"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-description-429",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "description": "429"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-description-timeout",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "description": "timeout"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-description-empty",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "description": "empty"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-description-truncated",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "description": "truncated"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-prompt-401",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "prompt": "401"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-prompt-402",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "prompt": "402"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-prompt-429",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "prompt": "429"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-prompt-timeout",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "prompt": "timeout"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-prompt-empty",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "prompt": "empty"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-prompt-truncated",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "prompt": "truncated"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-image-401",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "image": "401"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-image-402",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "image": "402"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-image-429",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "image": "429"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-image-timeout",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "image": "timeout"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-image-invalid",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "image": "invalid"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-decisions-401",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "decisions": "401"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-decisions-402",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "decisions": "402"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-decisions-429",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "decisions": "429"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-decisions-timeout",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "decisions": "timeout"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-decisions-invalid",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "decisions": "invalid"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "ai-decisions-retry",
+      "action": "description",
+      "screen": "aicontrols",
+      "faults": {
+        "decisions": "retry"
+      }
+    },
+    {
+      "id": "ai-cost-unavailable",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "receipt": "missing"
+      }
+    },
+    {
+      "id": "ai-settings",
+      "action": "none",
+      "screen": "aisettings"
+    },
+    {
+      "id": "ai-cache-reuse",
+      "action": "description",
+      "screen": "aicontrols",
+      "repeat": 2
+    },
+    {
+      "id": "ai-cover-versions",
+      "action": "cover",
+      "screen": "aicontrols",
+      "repeat": 2
+    },
+    {
+      "id": "downloads",
+      "action": "downloads",
+      "screen": "queue"
+    },
+    {
+      "id": "downloads-slow",
+      "action": "downloads",
+      "screen": "queue",
+      "timing": "visible"
+    },
+    {
+      "id": "downloads-large",
+      "action": "downloads",
+      "screen": "queue",
+      "chapterCount": 25
+    },
+    {
+      "id": "downloads-429",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "source": "429"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "downloads-404",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "source": "404"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "downloads-invalid",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "source": "invalid"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "downloads-offline",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "source": "offline"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "downloads-timeout",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "source": "timeout"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "downloads-exhausted",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "source": "exhausted"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "cloudflare-automatic",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "automatic"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "cloudflare-manual",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "manual"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "cloudflare-still-blocked",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "still-blocked"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "cloudflare-renderer-death",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "renderer-death"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "cloudflare-wrong-page",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "wrong-page"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "cloudflare-origin-404",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "origin-404"
+      },
+      "expectedFailure": true
+    },
+    {
+      "id": "cloudflare-transport",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "transport"
+      },
+      "expectedFailure": false
+    },
+    {
+      "id": "downloads-verification",
+      "action": "downloads",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "manual"
+      }
+    },
+    {
+      "id": "composite",
+      "action": "composite",
+      "screen": "queue",
+      "timing": "visible",
+      "faults": {
+        "cloudflare": "manual"
+      }
+    },
+    {
+      "id": "source-import",
+      "action": "import",
+      "screen": "details"
+    },
+    {
+      "id": "offline-denial",
+      "action": "probe",
+      "screen": "settings",
+      "expectedDenials": 1
+    },
+    {
+      "id": "sources-all",
+      "action": "sources",
+      "screen": "queue",
+      "description": "Import and download all six provider fixtures"
+    },
+    {
+      "id": "patreon-public",
+      "action": "patreon",
+      "screen": "settings",
+      "description": "Scripted public Patreon JSON without cookies"
+    },
+    {
+      "id": "cloudflare-protocols",
+      "action": "protocols",
+      "screen": "queue",
+      "faults": {
+        "cloudflare": "automatic"
+      },
+      "description": "Cloudflare browser form POST and raw JSON GET"
+    },
+    {
+      "id": "ai-image-unsupported",
+      "action": "cover",
+      "screen": "aicontrols",
+      "faults": {
+        "image": "unsupported"
+      },
+      "expectedFailure": true
+    }
+  ]
+}

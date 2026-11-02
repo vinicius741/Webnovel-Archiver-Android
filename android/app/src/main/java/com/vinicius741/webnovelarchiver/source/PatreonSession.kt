@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source
 import android.webkit.CookieManager
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.app.DevEnvironment
 
 /**
  * The user's patreon.com `session_id`, copied from a browser where they signed in (Google sign-in
@@ -42,7 +43,14 @@ object PatreonSession {
     fun isPresent(): Boolean = currentValue() != null
 
     /** The stored value, used only to restore it when a replacement is rejected. Never display it. */
-    internal fun currentValue(): String? = runCatching { cookieValue(CookieManager.getInstance().getCookie(ORIGIN)) }.getOrNull()
+    internal fun currentValue(): String? =
+        if (DevEnvironment.requested) {
+            null
+        } else {
+            runCatching {
+                cookieValue(CookieManager.getInstance().getCookie(ORIGIN))
+            }.getOrNull()
+        }
 
     fun store(sessionId: String) {
         restore(sessionId)
@@ -51,12 +59,14 @@ object PatreonSession {
 
     /** Puts back a session that was replaced by one Patreon then refused; not a new sign-in. */
     internal fun restore(sessionId: String) {
+        if (DevEnvironment.requested) return
         val cookies = CookieManager.getInstance()
         cookies.setCookie(ORIGIN, "$COOKIE_NAME=$sessionId; Domain=.patreon.com; Path=/; Secure; HttpOnly; Max-Age=$ONE_YEAR_SECONDS")
         cookies.flush()
     }
 
     fun clear() {
+        if (DevEnvironment.requested) return
         val cookies = CookieManager.getInstance()
         cookies.setCookie(ORIGIN, "$COOKIE_NAME=; Domain=.patreon.com; Path=/; Max-Age=0")
         cookies.setCookie(ORIGIN, "$COOKIE_NAME=; Path=/; Max-Age=0")

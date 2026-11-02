@@ -23,6 +23,7 @@ internal class DownloadProcessLoop(
     private val emitProgress: (DownloadJob?, List<DownloadJob>) -> Unit,
     private val isSourceBlocked: (String) -> Boolean = { false },
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val realDelayMillis: (Long) -> Long = { it },
 ) {
     private data class ActiveWorker(
         val sourceId: String,
@@ -134,12 +135,12 @@ internal class DownloadProcessLoop(
             }
         if (sleepUntil == null) return awaitEvent()
         val waitMillis = (sleepUntil - nowMillis()).coerceAtLeast(MINIMUM_WAIT_MILLIS)
-        return withTimeoutOrNull(waitMillis) { awaitEvent() }
+        return withTimeoutOrNull(realDelayMillis(waitMillis)) { awaitEvent() }
     }
 
     private suspend fun sleepUntilWakeOrTimeout(sleepUntil: Long) {
         val sleepMillis = (sleepUntil - nowMillis()).coerceAtLeast(MINIMUM_WAIT_MILLIS)
-        withTimeoutOrNull(sleepMillis) { wakeSignals.receive() }
+        withTimeoutOrNull(realDelayMillis(sleepMillis)) { wakeSignals.receive() }
     }
 
     private fun sourceIdForJob(job: DownloadJob): String? = SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id

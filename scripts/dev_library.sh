@@ -81,17 +81,28 @@ resolve_serial() {
 # ---------------------------------------------------------------------------
 fetch_library_json() {
   local serial="$1"
+  local stories_dir="$STORIES_DIR"
+  if "$ADB" -s "$serial" shell run-as "$PKG" test -e files/dev_simulation/enabled 2>/dev/null; then
+    local simulation_config session_id
+    simulation_config=$("$ADB" -s "$serial" exec-out run-as "$PKG" cat files/dev_simulation/session.json 2>/dev/null) || die "Simulation config is unreadable; refusing to read the normal library."
+    session_id=$(printf '%s' "$simulation_config" | jq -er '.sessionId | select(test("^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$"))') || die "Simulation session ID is invalid."
+    stories_dir="files/dev_simulation/sessions/$session_id/files/webnovel_archiver/stories"
+  fi
   local listing
   # `ls -1` (one per line); plain `ls` emits space-padded columns that break
   # line-oriented parsing because filenames never contain spaces here.
-  listing=$("$ADB" -s "$serial" exec-out run-as "$PKG" ls -1 "$STORIES_DIR" 2>/dev/null || true)
+  listing=$("$ADB" -s "$serial" exec-out run-as "$PKG" ls -1 "$stories_dir" 2>/dev/null || true)
 
   if [ -z "$listing" ]; then
+    if "$ADB" -s "$serial" shell run-as "$PKG" test -d "$stories_dir" 2>/dev/null; then
+      printf '[]'
+      return
+    fi
     # run-as refused (app not installed / not debuggable) or dir missing.
     if ! "$ADB" -s "$serial" shell pm path "$PKG" >/dev/null 2>&1; then
       die "Debug app $PKG is not installed on $serial. Build+install the debug APK first."
     fi
-    die "Could not read $STORIES_DIR via run-as (is the debug app installed?)."
+    die "Could not read $stories_dir via run-as (is the debug app installed?)."
   fi
 
   local first=true
@@ -100,7 +111,7 @@ fetch_library_json() {
     [ -n "$f" ] || continue
     case "$f" in *.json) ;; *) continue ;; esac
     local doc
-    doc=$("$ADB" -s "$serial" exec-out run-as "$PKG" cat "$STORIES_DIR/$f" 2>/dev/null || true)
+    doc=$("$ADB" -s "$serial" exec-out run-as "$PKG" cat "$stories_dir/$f" 2>/dev/null || true)
     [ -n "$doc" ] || continue
     local payload
     payload=$(printf '%s' "$doc" | jq -c '.payload // empty' 2>/dev/null || true)

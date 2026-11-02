@@ -80,6 +80,14 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    sourceSets {
+        instrumentation {
+            java.srcDir 'src/debug/java'
+            assets.srcDir 'src/debug/assets'
+        }
+        test.resources.srcDir 'src/debug/assets'
+    }
+
     testBuildType 'instrumentation'
 }
 

@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.platform
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView
+import com.vinicius741.webnovelarchiver.app.DevEnvironment
 
 /** Shared WebView configuration and teardown policy for screen and source-renderer clients. */
 object WebViewSafety {
@@ -26,11 +27,12 @@ object WebViewSafety {
         settings.builtInZoomControls = true
         settings.displayZoomControls = false
         lockDownAccess(settings)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
+        if (!DevEnvironment.requested) CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
         runCatching { settings.safeBrowsingEnabled = true }
     }
 
     private fun lockDownAccess(settings: WebSettings) {
+        if (DevEnvironment.requested) settings.blockNetworkLoads = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
         settings.allowFileAccessFromFileURLs = false
