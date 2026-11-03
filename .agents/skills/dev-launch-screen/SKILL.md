@@ -7,6 +7,12 @@ description: Cold-starts the Webnovel-Archiver-Android debug app directly onto a
 
 ## What this skill does
 
+Remote-dependent AI/source/download/Cloudflare checks should first select an offline session
+with `python3 scripts/simulate.py run SCENARIO --manual --screen TOKEN` (see
+`docs/qa/offline-simulation.md`). Cold starts retain that session until `scripts/simulate.py stop`.
+The normal dev extras resolve against the simulation library, with stable primary story ID
+`rr_990001`. Never clear app data or change the normal library's OpenRouter key for QA.
+
 Lets you land the debug app on a target screen on cold start so you can test a feature in place instead of tapping through the UI every iteration. The value is speed and reliability: TTS lives only on the reader, the download manager is several taps deep, and reaching them by hand each rebuild wastes a session and is error-prone.
 
 It also lets you target a **specific novel or chapter**. By default `reader`/`details` open the first story in the library (and the first chapter for `reader`); the companion script `scripts/dev_library.sh` lists and filters the installed novels and resolves "open novel X chapter Y" to the right ids, then launches straight there.

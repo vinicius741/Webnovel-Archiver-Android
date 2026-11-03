@@ -34,6 +34,10 @@ prevents the common agent failure mode: screenshotting too early (spinner /
 - Prefer **local** flows. Do **not** run live Royal Road / Scribble Hub import,
   full followed-novel sync, or mass downloads unless the user asked — those
   mutate the emulator library and depend on third-party sites.
+- Default remote-dependent checks to `scripts/simulate.py`, following
+  `docs/qa/offline-simulation.md`. Simulation uses a disposable library, dummy credentials,
+  scripted AI/source responses, and local Cloudflare verification. Live API/site checks
+  require an explicit user request. Do not replace the normal emulator library or API key.
 
 ## Companion skills (invoke, don't re-invent)
 
@@ -75,7 +79,23 @@ adb -s "$SERIAL" install -r app/build/outputs/apk/debug/app-debug.apk
 
 Confirm install time is this session (`dumpsys package … | grep lastUpdateTime`).
 
-### 3. Cold-start screens (do not tap-navigate to arrive)
+### 3. Select offline data, then cold-start screens
+
+For routine full QA, seed local chapters without starting a job:
+
+```bash
+python3 scripts/simulate.py run ai-cover --manual --screen library
+```
+
+The existing cold-start commands below now address that disposable session. For downloads,
+use `run downloads --manual --screen queue` and enqueue through the UI, or use automated
+`run downloads-verification --until completed --auto-verify`. For AI use `ai-cover-slow`,
+`ai-description`, and the catalog's failure cases. Held requests make background navigation
+and cancellation repeatable. Collect `report SESSION_ID` with the screenshots. Use
+`scripts/simulate.py stop` at the end and leave the normal Library unfolded. Never clear
+app data to exit simulation.
+
+### Cold-start screens (do not tap-navigate to arrive)
 
 Tokens: `library` · `queue` · `settings` · `updates` · `followupdates` · `addstory` · `details` · `reader`
 
@@ -151,7 +171,7 @@ Do these on top of static screenshots. Use dump bounds for taps.
 | Settings | Download Settings; Voice & Speech; Manage Tabs; Text Cleanup; scroll for Backup |
 | Add Story | Empty URL → Fetch Story stays on form (toast may die fast; form stay = pass) |
 | Updates | Choose novels (check archive duplicates) |
-| Queue | Empty state only unless user allowed downloads |
+| Queue | Use disposable simulation data to exercise ordering, pause/resume/cancel, failures, and verification; keep live downloads explicitly separate |
 
 After sticky bottom bars (Select Novels Move/Delete), **scroll the list** before
 concluding an item is missing.

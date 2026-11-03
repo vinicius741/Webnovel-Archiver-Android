@@ -120,6 +120,12 @@ There is also an `instrumentation` build type (`…nativeapp.instrumentation`) u
 
 For emulator redeploy scripts and the debug-only “cold-start into a screen” helper, see `android/AGENTS.md`.
 
+Offline agent QA can exercise AI generation, downloads, and Cloudflare recovery without API
+charges or live sites. Run `python3 scripts/simulate.py list`, then select a scenario such as
+`python3 scripts/simulate.py run ai-cover --until completed`. Sessions use disposable storage,
+dummy credentials, configurable delays, and held requests. See
+[Offline agent testing](docs/qa/offline-simulation.md) for manual checks, reports, and cleanup.
+
 The default `webnovel_api36` emulator approximates the Galaxy Z Fold7's cover and inner displays.
 Use its fold/unfold controls to check both layouts. The reproducible profile and migration helpers
 live under `scripts/emulator/`; they preserve the existing debug library. See `android/AGENTS.md`
@@ -170,6 +176,9 @@ android/
           notification/        # Notification channels + permission helpers
           ui/                  # Programmatic View DSL, shared form spacing, themes, widgets
         AndroidManifest.xml
+      debug/                   # Offline simulation scenarios, fixtures, runner control activity
+      release/                 # Inert development-environment factory
+      testInstrumentation/     # Simulation unit and local HTTP tests for the instrumentation variant
       test/                    # Unit tests mirroring production packages
       androidTest/             # Instrumentation tests
     build.gradle
@@ -177,7 +186,7 @@ android/
   gradle/quality.gradle        # detekt, file-size budget, :app:ci gate
   settings.gradle
 docs/                          # Long-form docs by subject (see docs/README.md)
-scripts/                       # redeploy.sh, watch-redeploy.sh (emulator only)
+scripts/                       # redeploy.sh, watch-redeploy.sh, simulate.py (emulator only)
 .agents/skills/                # Agent skills (build/install, dev launch, emulator QA)
 ```
 

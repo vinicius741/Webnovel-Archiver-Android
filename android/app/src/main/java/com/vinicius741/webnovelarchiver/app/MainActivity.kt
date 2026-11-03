@@ -194,6 +194,20 @@ class MainActivity :
             }
         }
 
+    override fun startActivityForResult(
+        intent: android.content.Intent,
+        requestCode: Int,
+        options: Bundle?,
+    ) {
+        if (DevEnvironment.blocksExternalIntent(intent)) {
+            android.widget.Toast
+                .makeText(this, "External browsing is disabled in simulation", android.widget.Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+        super.startActivityForResult(intent, requestCode, options)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
@@ -213,8 +227,9 @@ class MainActivity :
             val startup =
                 runCatching {
                     // Read the first-frame theme hint off the UI thread while container setup runs.
-                    withContext(Dispatchers.IO) { StartupThemeHint.read(this@MainActivity) }
-                        ?.let(ThemeManager::apply)
+                    withContext(Dispatchers.IO) {
+                        if (DevEnvironment.requested) null else StartupThemeHint.read(this@MainActivity)
+                    }?.let(ThemeManager::apply)
                     showStartupLoading()
                     val container = (application as WebnovelArchiverApp).awaitContainer()
                     repository = container.repository
@@ -227,6 +242,7 @@ class MainActivity :
                             container.network,
                             container.downloadPacer,
                             ownsProcessLoop = false,
+                            time = container.time,
                         )
                     ttsEngine = container.ttsEngine
                     attachTtsMiniPlayer(root)
@@ -234,6 +250,8 @@ class MainActivity :
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
                     initializeUiAfterRepositoryReady()
+                    container.simulation?.attachIndicator(root)
+                    container.simulation?.onUiReady(this@MainActivity, container)
                 }
             startup.onFailure(::showStartupFailure)
         }
@@ -272,7 +290,9 @@ class MainActivity :
                 )
             }
         ThemeManager.apply(startupState.activeThemeId)
-        withContext(Dispatchers.IO) { StartupThemeHint.write(this@MainActivity, startupState.activeThemeId) }
+        if (!DevEnvironment.requested) {
+            withContext(Dispatchers.IO) { StartupThemeHint.write(this@MainActivity, startupState.activeThemeId) }
+        }
         applyWindowTheme()
         if (BuildConfig.DEBUG &&
             (
@@ -344,7 +364,7 @@ class MainActivity :
     override fun onResume() {
         super.onResume()
         SourceAccessRetryCoordinator.consumeReadyRetry()?.invoke()
-        SourceCheckOutcomes.returnedToApp(System.currentTimeMillis())
+        SourceCheckOutcomes.returnedToApp(DevEnvironment.active?.time?.nowMillis() ?: System.currentTimeMillis())
         if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         // Returning from Firefox: refresh which setup steps are done.
         if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()

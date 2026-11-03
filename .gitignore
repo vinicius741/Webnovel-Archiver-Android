@@ -34,6 +34,9 @@ __pycache__/
 # Local performance runs (reports, raw sessions, baselines, perfetto traces)
 /perf-runs/
 
+# Disposable offline QA evidence
+/simulation-runs/
+
 # Test coverage
 coverage/
 

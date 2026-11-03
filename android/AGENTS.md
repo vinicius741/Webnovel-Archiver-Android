@@ -96,7 +96,7 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 
 - Dependencies are lockfile-pinned. Adding or changing a dependency requires refreshing the locks for both compile and runtime configurations (`android/gradlew -p android :app:<config> --update-locks` on the affected configurations); a plain build will fail on out-of-date locks.
 - Kotlinter (`:app:lintKotlin`) rejects a `//` comment placed directly above a declaration with no blank line between them, and treats a file-level `/** */` header as dangling KDoc. Use blank lines around commented declarations and `//` for file headers; `:app:formatKotlin` does not fix these.
-- AI-feature emulator QA costs real OpenRouter money. Use the cheapest fast model (e.g. deepseek chat flash), make at most 1-2 real AI calls per QA session, and exercise error paths (e.g. auth failure) with a bogus API key instead of a valid one. See `docs/ai/`.
+- Default AI, source import, download, and Cloudflare QA to the offline simulator (`python3 scripts/simulate.py list`; guide: `docs/qa/offline-simulation.md`). It runs real engines against scripted responses in a disposable library. Use `--manual` for UI interactions, `--hold` for lifecycle checks, and `--until completed` for terminal assertions. No valid key or internet is needed. Live OpenRouter/site checks are separate and must be explicitly requested; keep paid checks to 1-2 cheap calls.
 
 ## Emulator Workflow
 
@@ -114,6 +114,18 @@ Run `:app:assembleRelease` only when the user explicitly requests a release arti
 - Redeploy is a cold restart. Persisted `AppStorage` state survives; in-memory state does not.
 
 ### Dev launch screen (agent testing)
+
+For remote-dependent flows, first start a session with `scripts/simulate.py`. The debug-only
+enable marker selects the session before `Application` constructs `AppContainer`, including
+service-only startup. Session storage, evidence caches, settings, usage receipts, and recovery
+files are isolated. The same dev-launch extras below then address the simulation library.
+Unknown requests fail closed, including Coil images; reader WebViews block network loads,
+and source verification uses local UI. `scripts/simulate.py stop` explicitly returns to the
+normal library without clearing it. Never remove just the configuration or use `pm clear`.
+The scenario implementation/assets live in `src/debug/`, shared with `instrumentation` by
+source sets. Release has an inert factory and no scenario catalog/control activity. Add new
+external transports to the simulation guard when introducing them. Scheduling time belongs
+to `AppContainer.time`; persisted billing timestamps remain real wall time.
 
 The debug variant cold-starts directly into a chosen screen via an `am start --es dev_start_screen <token>` intent extra, so you can test a feature in place (e.g. TTS in the reader, the download manager) without navigating there by hand. The feature is gated on `BuildConfig.DEBUG` and is a complete no-op in the release variant — it never affects phone releases.
 

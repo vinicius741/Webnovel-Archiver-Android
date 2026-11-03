@@ -42,7 +42,7 @@ class DownloadForegroundService : Service() {
         // the activity's engine is a control/enqueue handle only, so only this instance ever runs the
         // loop and honors the configured parallel-source cap.
         val container = appContainer
-        engine = DownloadEngine(container.repository, container.network, container.downloadPacer)
+        engine = DownloadEngine(container.repository, container.network, container.downloadPacer, time = container.time)
         engine.onProgress = ::updateNotification
         engine.onSourceBlocked = { _, url -> showSourceBlockedNotification(url) }
         AppNotificationChannels.ensureCreated(this)

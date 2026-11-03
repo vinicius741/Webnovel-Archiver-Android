@@ -7,10 +7,13 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 
 /** Emits the current wall-clock time immediately, then at [periodMillis] until its collector ends. */
-fun tickerFlow(periodMillis: Long = 1_000L): Flow<Long> =
+fun tickerFlow(
+    periodMillis: Long = 1_000L,
+    nowMillis: () -> Long = System::currentTimeMillis,
+): Flow<Long> =
     flow {
         while (currentCoroutineContext().isActive) {
-            emit(System.currentTimeMillis())
+            emit(nowMillis())
             delay(periodMillis)
         }
     }

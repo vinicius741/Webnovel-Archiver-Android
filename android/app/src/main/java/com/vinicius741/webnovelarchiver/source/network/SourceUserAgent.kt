@@ -37,6 +37,7 @@ object SourceUserAgent {
     /** First consumer freezes the value; background callers briefly await resolution, main-thread callers never block. */
     val resolved: String
         get() {
+            if (com.vinicius741.webnovelarchiver.app.DevEnvironment.requested) return FALLBACK
             val canAwait = runCatching { Looper.myLooper() != Looper.getMainLooper() }.getOrDefault(false)
             if (canAwait) {
                 runCatching { resolvedLatch.await(2, TimeUnit.SECONDS) }

@@ -79,7 +79,7 @@ internal fun ScreenHost.showQueue() {
             repository.downloadState.value.queue,
             app.appContainer.downloadPacer.snapshots.value,
             SourceCheckOutcomes.state.value,
-            System.currentTimeMillis(),
+            app.appContainer.time.nowMillis(),
         )
     }
     screen(route = AppRoute.Queue, title = "Downloads", actions = queueAppBarActions(initialAppBar)) {
@@ -116,7 +116,7 @@ internal fun ScreenHost.showQueue() {
             queue,
             app.appContainer.downloadPacer.snapshots.value,
             SourceCheckOutcomes.state.value,
-            System.currentTimeMillis(),
+            app.appContainer.time.nowMillis(),
         )
         rememberListPosition(list)
         addView(centeredShell, verticalFill())
@@ -144,7 +144,7 @@ private fun ScreenHost.observeQueueUpdates(
                 repository.downloadState,
                 app.appContainer.downloadPacer.snapshots,
                 SourceCheckOutcomes.state,
-                tickerFlow(),
+                tickerFlow(nowMillis = app.appContainer.time::nowMillis),
             ) { snapshot, pacing, outcomes, now -> QueueTick(snapshot.queue, snapshot.queueVersion, pacing, outcomes, now) }
                 .collect { tick ->
                     if (root.parent !== frame) return@collect
@@ -275,7 +275,7 @@ private fun ScreenHost.queueListActions(
 
         override fun onReorder(upNextOrder: List<String>) {
             session.reorderVersion = repository.downloadState.value.queueVersion
-            session.reorderAtMillis = System.currentTimeMillis()
+            session.reorderAtMillis = app.appContainer.time.nowMillis()
             launchQueueControl("reorderStories") { downloadEngine.reorderStories(upNextOrder) }
         }
     }

@@ -56,7 +56,7 @@ internal fun resumeDownloadsAfterSourceCheck(
     url: String,
 ) {
     val providerId = SourceRegistry.getProvider(url)?.id ?: return
-    SourceCheckOutcomes.verified(providerId, resumedChapters = 0, nowMillis = System.currentTimeMillis())
+    SourceCheckOutcomes.verified(providerId, resumedChapters = 0, nowMillis = context.appContainer.time.nowMillis())
     val appContext = context.applicationContext
     val container = appContext.appContainer
     container.applicationScope.launch {
@@ -70,7 +70,7 @@ internal fun resumeDownloadsAfterSourceCheck(
                 resumed = resume.resumedChapters
                 resume.jobs
             }
-            SourceCheckOutcomes.verified(providerId, resumed, System.currentTimeMillis())
+            SourceCheckOutcomes.verified(providerId, resumed, container.time.nowMillis())
             // The service stops once nothing is unfinished, which is the case when every chapter
             // failed as blocked. The solver is still in the foreground here, so starting is allowed.
             if (resumed > 0) withContext(Dispatchers.Main) { DownloadForegroundService.start(appContext) }

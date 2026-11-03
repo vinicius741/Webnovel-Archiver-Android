@@ -23,6 +23,7 @@ internal class DownloadProcessLoop(
     private val emitProgress: (DownloadJob?, List<DownloadJob>) -> Unit,
     private val isSourceBlocked: (String) -> Boolean = { false },
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    private val realDelayMillis: (Long) -> Long = { it },
 ) {
     private data class ActiveWorker(
         val sourceId: String,
@@ -40,9 +41,11 @@ internal class DownloadProcessLoop(
                 lateinit var queue: MutableList<DownloadJob>
                 lateinit var pending: List<DownloadJob>
                 var redeferredBlockedJobs = false
+                // Selection and wake planning must share a timestamp: a deadline can pass while
+                // publishing progress, and dropping it then would exit with runnable jobs pending.
+                val now = nowMillis()
                 synchronized(storage) {
                     queue = storage.getQueue()
-                    val now = nowMillis()
                     val activeCounts = activeWorkers.values.groupingBy(ActiveWorker::sourceId).eachCount()
                     // Sources under manual verification keep their jobs pending; without this the
                     // loop would start each one, hit the open circuit, and fail it without any
@@ -110,7 +113,7 @@ internal class DownloadProcessLoop(
                 val sleepUntil =
                     DownloadScheduler.nextWakeUpAt(
                         jobs = queue,
-                        now = nowMillis(),
+                        now = now,
                         nextAllowedAt = emptyMap(),
                         providerNameForJob = ::sourceIdForJob,
                     )
@@ -134,12 +137,12 @@ internal class DownloadProcessLoop(
             }
         if (sleepUntil == null) return awaitEvent()
         val waitMillis = (sleepUntil - nowMillis()).coerceAtLeast(MINIMUM_WAIT_MILLIS)
-        return withTimeoutOrNull(waitMillis) { awaitEvent() }
+        return withTimeoutOrNull(realDelayMillis(waitMillis)) { awaitEvent() }
     }
 
     private suspend fun sleepUntilWakeOrTimeout(sleepUntil: Long) {
         val sleepMillis = (sleepUntil - nowMillis()).coerceAtLeast(MINIMUM_WAIT_MILLIS)
-        withTimeoutOrNull(sleepMillis) { wakeSignals.receive() }
+        withTimeoutOrNull(realDelayMillis(sleepMillis)) { wakeSignals.receive() }
     }
 
     private fun sourceIdForJob(job: DownloadJob): String? = SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id

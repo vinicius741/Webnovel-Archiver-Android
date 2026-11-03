@@ -23,6 +23,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.DevEnvironment
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
@@ -67,6 +68,15 @@ class CloudflareSolveActivity : AppCompatActivity() {
         url = intent.getStringExtra(EXTRA_URL).orEmpty()
         if (url.isBlank()) {
             finish()
+            return
+        }
+        if (DevEnvironment.requested) {
+            val environment = DevEnvironment.active
+            if (environment == null) {
+                finish()
+                return
+            }
+            environment.showVerification(this) { onSolved() }
             return
         }
         verificationUrl =
@@ -227,7 +237,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
             Uri.parse(url).host,
             "state" to if (verified) "verified" else "confirmed_unverified",
         )
-        CloudflareCookies.flush()
+        if (!DevEnvironment.requested) CloudflareCookies.flush()
         // The failed background attempt may have left a hidden WebView on the challenge page.
         // Discard it before the retry so the confirmed browser session is followed by a fresh
         // Chromium navigation instead of a renderer whose challenge request already timed out.
@@ -238,7 +248,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         statusText?.text = "Retrying source access — returning to the app…"
         setResult(Activity.RESULT_OK)
         // Brief delay so the user sees confirmation before the activity closes.
-        webView?.postDelayed({ if (!isFinishing) finish() }, 400)
+        if (DevEnvironment.requested) finish() else webView?.postDelayed({ if (!isFinishing) finish() }, 400)
     }
 
     /**

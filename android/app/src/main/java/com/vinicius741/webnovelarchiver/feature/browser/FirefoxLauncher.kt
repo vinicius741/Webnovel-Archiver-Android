@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import com.vinicius741.webnovelarchiver.app.DevEnvironment
 
 /**
  * Hands a page to Firefox specifically, for flows that need a browser add-on (the Patreon sign-in
@@ -32,6 +33,7 @@ internal object FirefoxLauncher {
         context: Context,
         url: String,
     ): Boolean {
+        if (DevEnvironment.requested) return false
         val pkg = installedPackage(context) ?: return false
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).setPackage(pkg)
         return try {
@@ -43,6 +45,7 @@ internal object FirefoxLauncher {
     }
 
     fun openStoreListing(context: Context) {
+        if (DevEnvironment.requested) return
         try {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$RELEASE_PACKAGE")))
         } catch (_: ActivityNotFoundException) {

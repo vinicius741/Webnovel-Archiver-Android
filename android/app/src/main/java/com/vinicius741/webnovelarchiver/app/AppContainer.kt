@@ -37,12 +37,14 @@ import java.io.File
  * [ttsEngine] is shared by the reader UI and [com.vinicius741.webnovelarchiver.tts.TtsForegroundService]
  * so both observe one playback session instead of racing TextToSpeech handles.
  */
-class AppContainer(
+class AppContainer internal constructor(
     context: Context,
+    internal val simulation: DevEnvironment? = null,
 ) {
     /** Process-lifetime work that must finish even if the initiating Activity is recreated. */
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
+    val time: AppTime = simulation?.time ?: AppTime.Real
 
     // Orphaned .tmp.N backup temps mean a process death mid-write; nothing else can be writing at process start.
     // R07: recover an interrupted full restore BEFORE AppStorage creates or hydrates the live root.
@@ -58,10 +60,17 @@ class AppContainer(
     // Conflated: bursts coalesce, and the drain coroutine always persists the latest state.
     private val reliabilityPersistSignals = Channel<Unit>(Channel.CONFLATED)
 
-    private val sourceReliability = SourceReliabilityCoordinator(onStateChanged = ::persistSourceReliability)
+    private val sourceReliability =
+        SourceReliabilityCoordinator(
+            nowMillis = time::nowMillis,
+            sleep = time::sleep,
+            onStateChanged = ::persistSourceReliability,
+        )
     val network: NetworkClient =
         NetworkClient(
-            client = NetworkClient.buildDefault(appContext, sourceReliability),
+            client = simulation?.sourceClient(sourceReliability) ?: NetworkClient.buildDefault(appContext, sourceReliability),
+            nowMillis = time::nowMillis,
+            sleep = time::sleep,
             reliabilityCoordinator = sourceReliability,
         )
 
@@ -95,12 +104,12 @@ class AppContainer(
             }
         }
     val repository: AppRepository = AppRepository(storage)
-    internal val downloadPacer = DownloadRequestPacer()
+    internal val downloadPacer = DownloadRequestPacer(nowMillis = time::nowMillis, sleep = time::sleep)
     val syncEngine: StorySyncEngine = StorySyncEngine(repository, network)
     val epubEngine: EpubEngine = EpubEngine(repository, network)
-    val openRouter: OpenRouterClient = OpenRouterClient()
+    val openRouter: OpenRouterClient = OpenRouterClient(client = simulation?.aiClient() ?: OpenRouterClient.defaultClient())
     val chapterEvidence = ChapterEvidenceStore(appContext.cacheDir)
-    private val chapterEvidenceSelector = ChapterEvidenceSelector(repository, DecisionClient(openRouter), chapterEvidence)
+    private val chapterEvidenceSelector = ChapterEvidenceSelector(repository, DecisionClient(openRouter, time::sleep), chapterEvidence)
     val aiDescriptionEngine: AiDescriptionEngine =
         AiDescriptionEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence)
     val aiCoverArtEngine: AiCoverArtEngine =
@@ -155,6 +164,7 @@ class AppContainer(
                     )
                 }
             }
+            simulation?.prepareRepository(repository)
         }
     val ttsEngine: TtsEngine =
         TtsEngine(
