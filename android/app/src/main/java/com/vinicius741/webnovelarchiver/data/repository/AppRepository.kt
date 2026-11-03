@@ -649,6 +649,22 @@ internal suspend fun AppRepository.setPatreonEarlyAccess(
     return updated
 }
 
+/** Sets the Patreon link the user entered, or returns to the source's with null; see [PatreonCopyPlanning.withManualPatreonUrl]. */
+internal suspend fun AppRepository.setManualPatreonUrl(
+    storyId: String,
+    url: String?,
+): Story? {
+    var removed: List<Chapter> = emptyList()
+    val updated =
+        updateStory(storyId) { latest ->
+            latest?.let { story -> PatreonCopyPlanning.withManualPatreonUrl(story, url).also { removed = it.second }.first }
+        }
+    if (updated != null && removed.isNotEmpty()) {
+        withContext(Dispatchers.IO) { removed.forEach { copy -> runCatching { storage.deleteChapterFile(storyId, copy.filePath) } } }
+    }
+    return updated
+}
+
 /**
  * Writes a generated cover image to storage and points the story at it. The source
  * [Story.coverUrl] is never touched, so [clearAiCover] can restore it at any time.

@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.domain.story
 
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
@@ -231,6 +232,21 @@ object PatreonCopyPlanning {
                     ?.toMutableList()
                     ?.ifEmpty { null },
         ) to removed
+    }
+
+    /**
+     * Sets the link the user entered (null returns to the one the source page names). Moving to a
+     * different creator drops that creator's stats and early-access link, along with its stored
+     * copies; they are returned so the caller can delete their files.
+     */
+    fun withManualPatreonUrl(
+        story: Story,
+        url: String?,
+    ): Pair<Story, List<Chapter>> {
+        val edited = story.copy(manualPatreonUrl = url)
+        if (PatreonCreatorPlanning.sameCreator(story.effectivePatreonUrl, edited.effectivePatreonUrl)) return edited to emptyList()
+        val (unlinked, removed) = if (story.patreonEarlyAccess != null) relink(edited, null) else edited to emptyList()
+        return unlinked.copy(patreonStats = null) to removed
     }
 
     private fun dashes(text: String): String = text.replace('–', '-').replace('—', '-')

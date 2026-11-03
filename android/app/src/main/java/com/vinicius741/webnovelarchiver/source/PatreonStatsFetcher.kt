@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.PatreonRawTier
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
@@ -129,6 +130,8 @@ class PatreonStatsFetcher internal constructor(
 
     companion object {
         internal fun aboutUrl(url: String): String {
+            // Patreon redirects this to the creator's page, which carries the same campaign data.
+            PatreonCreatorPlanning.userId(url)?.let { return "https://www.patreon.com/user/about?u=$it" }
             val path = runCatching { URI(url).path }.getOrNull().orEmpty()
             val segments = path.split('/').filter { it.isNotBlank() }
             val creator =

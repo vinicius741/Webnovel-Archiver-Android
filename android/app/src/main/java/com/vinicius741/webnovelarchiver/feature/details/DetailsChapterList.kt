@@ -44,6 +44,12 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
                 if (isBusy) busyMessage() else syncStory(story, StorySyncMode.Full)
             }
     }
+    if (StoryActionGuards.canModifyStory(story)) {
+        items +=
+            OptionsDialogItem.Option(if (story.effectivePatreonUrl.isNullOrBlank()) "Add Patreon Link" else "Edit Patreon Link") {
+                if (isBusy) busyMessage() else showPatreonLinkDialog(story)
+            }
+    }
     items += OptionsDialogItem.Section("EPUB")
     items +=
         OptionsDialogItem.Option("EPUB Settings") {

@@ -36,7 +36,8 @@ import kotlin.math.roundToLong
  * so it reads as supplementary context (not a call to action). The card has two tap targets: the
  * trailing open-in-external glyph in the header opens the creator's Patreon page when [patreonUrl]
  * is set, and the stats body (when raw stats produce figures) opens the per-novel Trends screen via
- * [onShowTrends] so the user can see members/earnings change over time.
+ * [onShowTrends] so the user can see members/earnings change over time. [onEditLink], when set,
+ * adds a pencil glyph that lets the user replace the link.
  *
  * The card is rendered whenever the story has a [patreonUrl]. [stats] holds only measured data;
  * the displayed dollar figure (exact or estimated, single value or floor–estimate range) is
@@ -52,6 +53,7 @@ internal fun ScreenHost.buildPatreonStatsCard(
     onEarlyAccess: () -> Unit,
     onEarlyAccessPrompt: (PatreonEarlyAccessPlanning.Action) -> Unit,
     earlyAccessEnabled: Boolean = true,
+    onEditLink: (() -> Unit)? = null,
 ): LinearLayout {
     val colors = ThemeManager.colors
     val clickable = !patreonUrl.isNullOrBlank()
@@ -89,6 +91,21 @@ internal fun ScreenHost.buildPatreonStatsCard(
                         marginStart = dp(Space.SM + 2)
                     },
                 )
+                if (onEditLink != null) {
+                    addView(
+                        ImageView(app).apply {
+                            contentDescription = "Edit Patreon link"
+                            setImageDrawable(app.tintedIcon(R.drawable.wna_edit, colors.onSurfaceVariant))
+                            scaleType = ImageView.ScaleType.CENTER_INSIDE
+                            setPadding(dp(Space.SM), dp(Space.SM), dp(Space.SM), dp(Space.SM))
+                            background = circularRipple(colors.onSurface)
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener { onEditLink() }
+                        },
+                        LinearLayout.LayoutParams(dp(40), dp(40)),
+                    )
+                }
                 if (clickable) {
                     addView(
                         ImageView(app).apply {

@@ -101,7 +101,8 @@ class StorySyncEngine(
         val syncedAt = System.currentTimeMillis()
         val sourcePublicationStatus =
             StorySyncPlanning.sourceDeclaredStatus(metadata.publicationStatus, existing?.publicationStatus)
-        val patreonUrl = metadata.patreonUrl
+        // The link the user entered wins over whatever the source page names now.
+        val patreonUrl = existing?.manualPatreonUrl ?: metadata.patreonUrl
         val refreshedPatreonStats =
             if (refreshPatreonStats) {
                 patreonUrl?.let { creatorUrl ->
@@ -187,8 +188,9 @@ class StorySyncEngine(
                 tabId = tabId ?: existing?.tabId,
                 lastUpdated = syncedAt,
                 lastChapterSyncAt = syncedAt,
-                patreonUrl = patreonUrl,
-                patreonStats = refreshedPatreonStats ?: existing?.patreonStats?.takeIf { existing.patreonUrl == patreonUrl },
+                patreonUrl = metadata.patreonUrl,
+                manualPatreonUrl = existing?.manualPatreonUrl,
+                patreonStats = refreshedPatreonStats ?: existing?.patreonStats?.takeIf { existing.effectivePatreonUrl == patreonUrl },
                 patreonEarlyAccess = patreonResult?.link ?: existing?.patreonEarlyAccess,
                 publicationStatus =
                     StorySyncPlanning.publicationStatusAfterSync(

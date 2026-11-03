@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.RoyalRoadProvider
 import com.vinicius741.webnovelarchiver.source.SourceProvider
@@ -39,6 +40,34 @@ class StorySyncMergePlanningTest {
         val switched = link.copy(collectionId = "2")
         val relinked = syncedStory(chapters = synced.chapters).copy(patreonEarlyAccess = switched)
         assertEquals(switched, StorySyncMergePlanning.foldConcurrentChanges(synced, relinked, RoyalRoadProvider).patreonEarlyAccess)
+    }
+
+    @Test
+    fun foldKeepsAManualPatreonLinkEnteredDuringTheSyncWindow() {
+        val chapters = listOf(chapter("10", downloaded = false))
+        val fetched = PatreonRawStats(capturedAt = 2L)
+        val synced = syncedStory(chapters = chapters).copy(patreonUrl = "https://www.patreon.com/source", patreonStats = fetched)
+        val edited = syncedStory(chapters = chapters).copy(manualPatreonUrl = "https://www.patreon.com/manual", patreonStats = null)
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, edited, RoyalRoadProvider)
+
+        assertEquals("https://www.patreon.com/manual", folded.effectivePatreonUrl)
+        assertEquals("https://www.patreon.com/source", folded.patreonUrl)
+        assertNull(folded.patreonStats)
+    }
+
+    @Test
+    fun foldKeepsFreshStatsWhenTheManualLinkDidNotChange() {
+        val chapters = listOf(chapter("10", downloaded = false))
+        val fetched = PatreonRawStats(capturedAt = 2L)
+        val manual = "https://www.patreon.com/manual"
+        val synced = syncedStory(chapters = chapters).copy(manualPatreonUrl = manual, patreonStats = fetched)
+        val onDisk = syncedStory(chapters = chapters).copy(manualPatreonUrl = manual, patreonStats = PatreonRawStats(capturedAt = 1L))
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, onDisk, RoyalRoadProvider)
+
+        assertEquals(manual, folded.effectivePatreonUrl)
+        assertEquals(fetched, folded.patreonStats)
     }
 
     @Test

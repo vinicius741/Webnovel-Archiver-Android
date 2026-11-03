@@ -12,6 +12,7 @@ class PatreonStatsFetcherTest {
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://patreon.com/writer/posts"))
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/cw/writer"))
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/c/writer"))
+        assertEquals("https://www.patreon.com/user/about?u=123", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/user?u=123"))
     }
 
     @Test

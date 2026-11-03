@@ -171,7 +171,10 @@ data class Story(
     var archiveOfStoryId: String? = null,
     var archivedAt: Long? = null,
     var archiveReason: String? = null,
+    /** Patreon link found on the source page; every sync overwrites it. Read [effectivePatreonUrl] instead. */
     var patreonUrl: String? = null,
+    /** Patreon link the user entered by hand. Takes priority over [patreonUrl] and survives syncs. */
+    var manualPatreonUrl: String? = null,
     var patreonStats: PatreonRawStats? = null,
     /** Patreon collection whose paid posts are synced as early-access chapters; null = not linked. */
     var patreonEarlyAccess: PatreonEarlyAccessLink? = null,
@@ -189,7 +192,11 @@ data class Story(
     var aiContextChapterIndices: MutableList<Int>? = null,
     /** Cover-only chapter selection. Null selects evidence across all downloaded chapters, regardless of reading progress. */
     var aiCoverContextChapterIndices: MutableList<Int>? = null,
-)
+) {
+    /** The creator's Patreon link to act on: the user's own when set, else the source page's. */
+    val effectivePatreonUrl: String?
+        get() = manualPatreonUrl ?: patreonUrl
+}
 
 /**
  * Measured Patreon data only — no derived figures are persisted. Prices are converted to USD at

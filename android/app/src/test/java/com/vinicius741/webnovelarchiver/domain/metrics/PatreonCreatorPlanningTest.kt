@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
 import com.vinicius741.webnovelarchiver.domain.model.StoryMetricSnapshot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,6 +35,68 @@ class PatreonCreatorPlanningTest {
         assertNull(PatreonCreatorPlanning.creatorKey("https://www.patreon.com/user"))
         assertNull(PatreonCreatorPlanning.creatorKey("https://www.patreon.com/"))
         assertNull(PatreonCreatorPlanning.creatorKey("https://example.com/creator"))
+    }
+
+    @Test
+    fun creatorKeyReadsNumericUserIds() {
+        assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/user?u=123"))
+        assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/user/posts?utm=x&u=123"))
+        assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/profile/creators?u=123"))
+    }
+
+    @Test
+    fun normalizeCreatorLinkAcceptsTheFormsPeoplePaste() {
+        val expected = "https://www.patreon.com/Creator"
+        listOf(
+            "https://www.patreon.com/Creator",
+            "  http://patreon.com/Creator/  ",
+            "patreon.com/Creator",
+            "www.patreon.com/c/Creator/posts",
+            "https://www.patreon.com/cw/Creator?utm_source=share",
+            "https://www.patreon.com/join/Creator",
+            "HTTPS://WWW.PATREON.COM/Creator/about",
+        ).forEach { input -> assertEquals(input, expected, PatreonCreatorPlanning.normalizeCreatorLink(input)) }
+        assertEquals(
+            "https://www.patreon.com/user?u=123",
+            PatreonCreatorPlanning.normalizeCreatorLink("patreon.com/user?u=123&fan_landing=true"),
+        )
+    }
+
+    @Test
+    fun normalizeCreatorLinkRejectsAnythingElse() {
+        listOf(
+            "",
+            "creator",
+            "https://example.com/creator",
+            "https://patreon.com.example.com/creator",
+            "https://notpatreon.com/creator",
+            "ftp://patreon.com/creator",
+            "javascript:alert(1)",
+            "https://www.patreon.com/",
+            "https://www.patreon.com/home",
+            "https://www.patreon.com/user",
+            "https://www.patreon.com/posts/chapter-12-123456",
+            "https://www.patreon.com/collection/2030713",
+            "https://www.patreon.com/creator name",
+        ).forEach { input -> assertNull(input, PatreonCreatorPlanning.normalizeCreatorLink(input)) }
+    }
+
+    @Test
+    fun sameCreatorComparesIdentityNotSpelling() {
+        assertTrue(PatreonCreatorPlanning.sameCreator("https://www.patreon.com/Creator", "https://patreon.com/c/creator/posts"))
+        assertTrue(PatreonCreatorPlanning.sameCreator(null, null))
+        assertFalse(PatreonCreatorPlanning.sameCreator("https://www.patreon.com/one", "https://www.patreon.com/two"))
+        assertFalse(PatreonCreatorPlanning.sameCreator(null, "https://www.patreon.com/two"))
+        assertFalse(PatreonCreatorPlanning.sameCreator("https://www.patreon.com/home", "https://www.patreon.com/login"))
+    }
+
+    @Test
+    fun manualLinkDecidesWhichCreatorAStorySharesStatsWith() {
+        val story = Story(id = "a", patreonUrl = "https://www.patreon.com/wrong", manualPatreonUrl = "https://www.patreon.com/right")
+        val sameCreator = Story(id = "b", patreonUrl = "https://www.patreon.com/right")
+        val sourceLinkOnly = Story(id = "c", patreonUrl = "https://www.patreon.com/wrong")
+
+        assertEquals(listOf("b"), PatreonCreatorPlanning.siblings(story, listOf(story, sameCreator, sourceLinkOnly)).map { it.id })
     }
 
     @Test

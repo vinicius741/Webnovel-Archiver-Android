@@ -168,11 +168,11 @@ internal fun ScreenHost.buildDetailsInfoPanel(
 
     // Render the card for any Patreon URL, even without public stats: a link-only card surfaces the
     // creator's Patreon instead of showing nothing, which reads as having none.
-    if (!story.patreonUrl.isNullOrBlank()) {
+    if (!story.effectivePatreonUrl.isNullOrBlank()) {
         infoPanel.addView(
             buildPatreonStatsCard(
                 stats = story.patreonStats,
-                patreonUrl = story.patreonUrl,
+                patreonUrl = story.effectivePatreonUrl,
                 earlyAccess =
                     PatreonEarlyAccessPlanning.display(
                         story.patreonEarlyAccess,
@@ -184,6 +184,7 @@ internal fun ScreenHost.buildDetailsInfoPanel(
                 onEarlyAccess = { showPatreonEarlyAccessPicker(story) },
                 onEarlyAccessPrompt = { action -> handleEarlyAccessPrompt(story, action) },
                 earlyAccessEnabled = !isBusy,
+                onEditLink = { showPatreonLinkDialog(story) }.takeIf { !isBusy && StoryActionGuards.canModifyStory(story) },
             ),
         )
     }

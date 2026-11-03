@@ -89,6 +89,8 @@ object StorySyncMergePlanning {
                 matcher = matcher,
             )
         val mergedChapterById = mergedChapters.associateBy { it.id }
+        // Stats fetched for a link the user replaced during the window describe the wrong creator.
+        val patreonLinkKept = synced.effectivePatreonUrl == (onDisk.manualPatreonUrl ?: synced.patreonUrl)
 
         return synced.copy(
             chapters = mergedChapters,
@@ -118,6 +120,8 @@ object StorySyncMergePlanning {
             showAiCover = onDisk.showAiCover,
             aiContextChapterIndices = onDisk.aiContextChapterIndices,
             aiCoverContextChapterIndices = onDisk.aiCoverContextChapterIndices,
+            manualPatreonUrl = onDisk.manualPatreonUrl,
+            patreonStats = if (patreonLinkKept) synced.patreonStats else onDisk.patreonStats,
             // The link is user-owned; the sync only refreshes the check status of the same collection.
             patreonEarlyAccess =
                 synced.patreonEarlyAccess?.takeIf { it.collectionId == onDisk.patreonEarlyAccess?.collectionId }

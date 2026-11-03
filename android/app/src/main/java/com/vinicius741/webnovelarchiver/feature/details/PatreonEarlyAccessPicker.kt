@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  */
 internal fun ScreenHost.showPatreonEarlyAccessPicker(story: Story) {
     if (!StoryActionGuards.canModifyStory(story)) return toast(StoryActionGuards.archivedActionMessage("Linking Patreon"))
-    val creatorUrl = story.patreonUrl ?: return toast("This novel has no Patreon link")
+    val creatorUrl = story.effectivePatreonUrl ?: return toast("This novel has no Patreon link")
     toast("Loading Patreon collections...")
     scope.launch {
         val api = PatreonApi(app.appContainer.network)
@@ -147,12 +147,12 @@ internal fun ScreenHost.handleEarlyAccessPrompt(
         -> showPatreonAccount(story.id)
         PatreonEarlyAccessPlanning.Action.CHECK_NOW -> syncStory(story)
         PatreonEarlyAccessPlanning.Action.OPEN_PATREON ->
-            story.patreonUrl?.let { url -> app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            story.effectivePatreonUrl?.let { url -> app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         // Passing the check clears patreon.com's access block; MainActivity then fires the armed sync.
         // The solver needs a page that stays put: signed in, the Patreon root redirects to /home.
         PatreonEarlyAccessPlanning.Action.VERIFY_ACCESS -> {
             val verifyUrl =
-                story.patreonUrl?.let { url -> runCatching { PatreonStatsFetcher.aboutUrl(url) }.getOrNull() }
+                story.effectivePatreonUrl?.let { url -> runCatching { PatreonStatsFetcher.aboutUrl(url) }.getOrNull() }
                     ?: PATREON_HOME_URL
             SourceAccessRetryCoordinator.arm { syncStory(story) }
             CloudflareSolveActivity.launch(app, verifyUrl)

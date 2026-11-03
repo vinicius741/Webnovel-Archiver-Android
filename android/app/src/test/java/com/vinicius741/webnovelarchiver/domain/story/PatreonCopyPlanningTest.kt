@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.domain.story
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.PatreonEarlyAccessLink
+import com.vinicius741.webnovelarchiver.domain.model.PatreonRawStats
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning.ChapterKey
 import org.junit.Assert.assertEquals
@@ -182,6 +183,59 @@ class PatreonCopyPlanningTest {
         assertEquals("1", unlinked.lastReadChapterId)
         assertEquals(DownloadStatus.completed, unlinked.status)
     }
+
+    @Test
+    fun `a manual link to the same creator keeps stats and early access`() {
+        val story = linkedStory(patreonUrl = "https://www.patreon.com/creator")
+
+        val (updated, removed) = PatreonCopyPlanning.withManualPatreonUrl(story, "https://www.patreon.com/Creator")
+
+        assertEquals("https://www.patreon.com/Creator", updated.effectivePatreonUrl)
+        assertEquals("https://www.patreon.com/creator", updated.patreonUrl)
+        assertEquals(story.patreonStats, updated.patreonStats)
+        assertEquals(story.patreonEarlyAccess, updated.patreonEarlyAccess)
+        assertTrue(removed.isEmpty())
+    }
+
+    @Test
+    fun `a manual link to another creator drops the old creator's stats, link, and copies`() {
+        val story = linkedStory(patreonUrl = "https://www.patreon.com/wrong")
+
+        val (updated, removed) = PatreonCopyPlanning.withManualPatreonUrl(story, "https://www.patreon.com/right")
+
+        assertEquals("https://www.patreon.com/right", updated.effectivePatreonUrl)
+        assertNull(updated.patreonStats)
+        assertNull(updated.patreonEarlyAccess)
+        assertEquals(listOf("patreon_p2"), removed.map { it.id })
+        assertEquals(listOf("1"), updated.chapters.map { it.id })
+    }
+
+    @Test
+    fun `removing a manual link falls back to the source link`() {
+        val story =
+            Story(
+                id = "s",
+                patreonUrl = "https://www.patreon.com/source",
+                manualPatreonUrl = "https://www.patreon.com/manual",
+                patreonStats = PatreonRawStats(capturedAt = 1L),
+            )
+
+        val (updated, removed) = PatreonCopyPlanning.withManualPatreonUrl(story, null)
+
+        assertNull(updated.manualPatreonUrl)
+        assertEquals("https://www.patreon.com/source", updated.effectivePatreonUrl)
+        assertNull(updated.patreonStats)
+        assertTrue(removed.isEmpty())
+    }
+
+    private fun linkedStory(patreonUrl: String) =
+        Story(
+            id = "s",
+            patreonUrl = patreonUrl,
+            patreonStats = PatreonRawStats(capturedAt = 1L),
+            patreonEarlyAccess = PatreonEarlyAccessLink(campaignId = "c", collectionId = "1", collectionTitle = "Novel"),
+            chapters = mutableListOf(public("1", "Chapter 1", downloaded = true), copy("p2", "Chapter 2").copy(patreonReplacedBy = null)),
+        )
 
     private fun public(
         id: String,

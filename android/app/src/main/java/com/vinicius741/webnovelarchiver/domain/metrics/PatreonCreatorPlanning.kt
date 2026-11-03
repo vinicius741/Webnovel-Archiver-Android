@@ -19,35 +19,93 @@ object PatreonCreatorPlanning {
     // Path prefixes placed before the creator slug (patreon.com/c/<slug>, /cw/<slug>, /join/<slug>).
     private val SLUG_PREFIXES = setOf("c", "cw", "join")
 
-    // Paths that do not name a creator by slug; without the stripped ?u= id they cannot be matched.
-    private val NON_CREATOR_PATHS = setOf("user", "posts", "home", "login", "checkout", "membership", "messages", "search")
+    // Paths that name a creator only through a ?u= user id (creators without a custom page name).
+    private val USER_ID_PATHS = setOf("user", "profile")
 
-    /** Stable identity of the creator behind a Patreon URL, or null when the URL names no creator slug. */
+    // Paths that do not name a creator by slug.
+    private val NON_CREATOR_PATHS =
+        USER_ID_PATHS +
+            setOf(
+                "posts",
+                "home",
+                "login",
+                "signup",
+                "checkout",
+                "membership",
+                "messages",
+                "search",
+                "collection",
+                "explore",
+                "settings",
+                "notifications",
+                "api",
+            )
+
+    private val USER_ID_QUERY = Regex("(?:^|&)u=(\\d+)(?:&|$)")
+    private val SLUG = Regex("[\\p{L}\\p{N}_.-]+")
+
+    /** Stable identity of the creator behind a Patreon URL, or null when the URL names no creator. */
     fun creatorKey(patreonUrl: String?): String? {
+        userId(patreonUrl)?.let { return "u:$it" }
+        return creatorSlug(patreonUrl)?.lowercase()
+    }
+
+    /** The numeric id of a `patreon.com/user?u=<id>` link, or null for any other link. */
+    fun userId(patreonUrl: String?): String? {
+        val uri = patreonUri(patreonUrl) ?: return null
+        if (pathSegments(uri).firstOrNull()?.lowercase() !in USER_ID_PATHS) return null
+        return USER_ID_QUERY.find(uri.query.orEmpty())?.groupValues?.get(1)
+    }
+
+    /**
+     * The canonical link for what the user typed or pasted, or null when it isn't a link to a
+     * creator's page (another site, a single post, the Patreon home page). The scheme is optional,
+     * and sub-pages and tracking parameters are dropped.
+     */
+    fun normalizeCreatorLink(input: String): String? {
+        val text = input.trim()
+        val url = if ("://" in text) text else "https://$text"
+        if (patreonUri(url)?.scheme?.lowercase() !in setOf("http", "https")) return null
+        userId(url)?.let { return "https://www.patreon.com/user?u=$it" }
+        return creatorSlug(url)?.takeIf(SLUG::matches)?.let { "https://www.patreon.com/$it" }
+    }
+
+    /** Whether both links lead to one creator, so stats and early-access links stay valid across them. */
+    fun sameCreator(
+        first: String?,
+        second: String?,
+    ): Boolean = first == second || creatorKey(first)?.let { it == creatorKey(second) } == true
+
+    private fun patreonUri(patreonUrl: String?): URI? {
         if (patreonUrl.isNullOrBlank()) return null
         val uri = runCatching { URI(patreonUrl.trim()) }.getOrNull() ?: return null
-        if (uri.host?.lowercase()?.removePrefix("www.") != "patreon.com") return null
-        val segments =
-            uri.path
-                .orEmpty()
-                .split('/')
-                .filter { it.isNotBlank() }
-        val first = segments.firstOrNull()?.lowercase() ?: return null
-        val slug = if (first in SLUG_PREFIXES) segments.getOrNull(1)?.lowercase() else first
-        return slug?.takeUnless { it in NON_CREATOR_PATHS }
+        return uri.takeIf { it.host?.lowercase()?.removePrefix("www.") == "patreon.com" }
+    }
+
+    private fun pathSegments(uri: URI): List<String> =
+        uri.path
+            .orEmpty()
+            .split('/')
+            .filter { it.isNotBlank() }
+
+    private fun creatorSlug(patreonUrl: String?): String? {
+        val segments = patreonUri(patreonUrl)?.let(::pathSegments) ?: return null
+        val first = segments.firstOrNull() ?: return null
+        val slug = if (first.lowercase() in SLUG_PREFIXES) segments.getOrNull(1) else first
+        return slug?.takeUnless { it.lowercase() in NON_CREATOR_PATHS }
     }
 
     private fun sharesCreator(
         story: Story,
         key: String,
-    ): Boolean = story.isArchived != true && creatorKey(story.patreonUrl) == key
+    ): Boolean = story.isArchived != true && creatorKey(story.effectivePatreonUrl) == key
 
     /** Other live stories that link the same Patreon creator as [story]. */
     fun siblings(
         story: Story,
         library: Collection<Story>,
     ): List<Story> {
-        val key = creatorKey(story.patreonUrl) ?: return emptyList()
+        val key = creatorKey(story.effectivePatreonUrl) ?: return emptyList()
         return library.filter { it.id != story.id && sharesCreator(it, key) }
     }
 
@@ -60,7 +118,7 @@ object PatreonCreatorPlanning {
         val changed = mutableSetOf<String>()
         library
             .filter { it.isArchived != true }
-            .groupBy { creatorKey(it.patreonUrl) }
+            .groupBy { creatorKey(it.effectivePatreonUrl) }
             .forEach { (key, group) ->
                 if (key == null || group.size < 2) return@forEach
                 val freshest = group.mapNotNull { it.patreonStats }.maxByOrNull { it.capturedAt } ?: return@forEach
