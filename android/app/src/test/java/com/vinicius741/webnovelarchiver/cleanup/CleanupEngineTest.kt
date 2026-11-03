@@ -29,6 +29,54 @@ class CleanupEngineTest {
         assertTrue(result.html.contains("Keep this"))
     }
 
+    private val noticeMarker =
+        InsertedNoticeMarker { html ->
+            val notice = "<span>Notice</span>"
+            when {
+                html.contains(notice) -> InsertedNoticeStrip(html.replace(notice, "<span></span>"), 1)
+                html.contains("<span></span>") -> InsertedNoticeStrip(html, 0)
+                else -> null
+            }
+        }
+
+    @Test
+    fun markedChapterSkipsSentenceListAndKeepsItsExactHtml() {
+        val html = "<p>Listed line.  </p><span></span>\n\n<p>Story.</p>"
+
+        val result = CleanupEngine().applyDownloadWithStats(html, listOf("Listed line."), emptyList(), noticeMarker)
+
+        assertSame(html, result.html)
+        assertEquals(0, result.sentencesRemoved)
+    }
+
+    @Test
+    fun markedNoticeCountsAsSentenceRemoval() {
+        val result = CleanupEngine().applyDownloadWithStats("<span>Notice</span><p>Story.</p>", emptyList(), emptyList(), noticeMarker)
+
+        assertEquals("<span></span><p>Story.</p>", result.html)
+        assertEquals(1, result.sentencesRemoved)
+    }
+
+    @Test
+    fun unmarkedChapterFallsBackToSentenceList() {
+        val result = CleanupEngine().applyDownloadWithStats("<p>Listed line. Story.</p>", listOf("Listed line."), emptyList(), noticeMarker)
+
+        assertEquals(1, result.sentencesRemoved)
+        assertFalse(result.html.contains("Listed line."))
+    }
+
+    @Test
+    fun markedChapterStillRunsRegexRules() {
+        val rules = listOf(RegexCleanupRule(id = "marked-regex", name = "Ads", pattern = "buy now", flags = "i", appliesTo = "both"))
+
+        val result = CleanupEngine().applyDownloadWithStats("<span>Notice</span><p>Buy now. Story.</p>", emptyList(), rules, noticeMarker)
+
+        assertEquals(1, result.sentencesRemoved)
+        assertEquals(1, result.regexMatchesRemoved)
+        assertFalse(result.html.contains("Buy now"))
+        assertTrue(result.html.contains("Story."))
+    }
+
     @Test
     fun countsRegexMatchesAcrossTextNodesAndKeepsSentenceCountsSeparate() {
         val rules = listOf(RegexCleanupRule(id = "regex-count", name = "Remove ads", pattern = "buy now", flags = "i", appliesTo = "both"))

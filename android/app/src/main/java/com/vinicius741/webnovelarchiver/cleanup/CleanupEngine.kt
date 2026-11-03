@@ -90,28 +90,39 @@ class CleanupEngine {
         rules: List<RegexCleanupRule>,
     ): String = applyDownloadWithStats(html, sentences, rules).html
 
-    /** Reports nonempty matches actually deleted by sentence and download-scoped regex rules. */
+    /**
+     * Reports nonempty matches actually deleted by sentence and download-scoped regex rules. A chapter
+     * [noticeMarker] recognizes skips the sentence list, and skips parsing when no regex rule applies;
+     * its removed notices count as sentence matches.
+     */
     @Suppress("TooGenericExceptionCaught")
     fun applyDownloadWithStats(
         html: String,
         sentences: List<String>,
         rules: List<RegexCleanupRule>,
+        noticeMarker: InsertedNoticeMarker? = null,
     ): CleanupResult {
         val compiled = compiled(sentences, rules)
-        val doc = Jsoup.parseBodyFragment(html)
-        var sentencesRemoved = 0
+        val marked = noticeMarker?.strip(html)
+        if (marked != null && compiled.downloadRules.all { RegexCircuitBreaker.isDisabled(it.source) }) {
+            return CleanupResult(marked.html, marked.noticesRemoved)
+        }
+        val doc = Jsoup.parseBodyFragment(marked?.html ?: html)
+        var sentencesRemoved = marked?.noticesRemoved ?: 0
         var regexMatchesRemoved = 0
         doc.select("script,style,noscript,iframe").remove()
         val textNodes = traverseTextNodes(doc.body())
         // Sentence-blocklist patterns are author-controlled (escaped literals), not user regex, so
         // they are not ReDoS candidates and are not circuit-breaker-tracked.
-        textNodes.forEach { node ->
-            var text = node.text()
-            compiled.sentencePatterns.forEach { pattern ->
-                sentencesRemoved += pattern.findAll(text).count()
-                text = pattern.replace(text, "")
+        if (marked == null) {
+            textNodes.forEach { node ->
+                var text = node.text()
+                compiled.sentencePatterns.forEach { pattern ->
+                    sentencesRemoved += pattern.findAll(text).count()
+                    text = pattern.replace(text, "")
+                }
+                node.text(text)
             }
-            node.text(text)
         }
         // Apply each user regex rule across all text nodes, timing it for the circuit breaker.
         // A pathological pattern most often blows up on a single long node, so timing per-rule across

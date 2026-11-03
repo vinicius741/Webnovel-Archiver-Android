@@ -12,6 +12,7 @@ import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.size
@@ -55,6 +56,7 @@ private fun ScreenHost.runCleanup(
         try {
             val sentenceRemoval = repository.sentenceRemovalList.get()
             val regexRules = repository.regexRules.get()
+            val noticeMarker = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.insertedNoticeMarker
             // Persist the stale marker before the first possible chapter modification:
             // cancellation, process death, or a later failure must never leave modified chapter
             // files under an EPUB still marked current, and a later failure must not clear it.
@@ -76,7 +78,7 @@ private fun ScreenHost.runCleanup(
                 }
                 try {
                     val html = repository.readChapter(chapter) ?: error("Downloaded chapter file is missing")
-                    val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules)
+                    val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules, noticeMarker)
                     // Skip writes whose cleaned HTML equals the original.
                     if (result.html != html) {
                         check(repository.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }

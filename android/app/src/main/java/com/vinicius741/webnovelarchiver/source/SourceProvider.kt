@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.source
 
+import com.vinicius741.webnovelarchiver.cleanup.InsertedNoticeMarker
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
@@ -63,6 +64,9 @@ interface SourceProvider {
     ): List<ChapterInfo>? = null
 
     fun parseChapterContent(html: String): String
+
+    /** Non-null when this source marks the notices it injects into chapters. */
+    val insertedNoticeMarker: InsertedNoticeMarker? get() = null
 
     /** Request orchestration; API/auth/JS-backed sources override the HTML pipeline as one unit. */
     suspend fun loadStory(

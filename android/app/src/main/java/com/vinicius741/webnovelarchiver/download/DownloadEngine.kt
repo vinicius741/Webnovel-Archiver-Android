@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.download
 import com.vinicius741.webnovelarchiver.app.AppContainer
 import com.vinicius741.webnovelarchiver.app.AppTime
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
+import com.vinicius741.webnovelarchiver.cleanup.InsertedNoticeMarkerMonitor
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -46,6 +47,7 @@ class DownloadEngine(
     private val running = AtomicBoolean(false)
     private val acceptsWorkerResults = AtomicBoolean(true)
     private val requestGateFactory = DownloadRequestGateFactory(repository, downloadPacer)
+    private val noticeMarkerMonitor = InsertedNoticeMarkerMonitor()
     private val sourceReliability =
         DownloadSourceReliability(storage, network, acceptsWorkerResults::get, nowMillis = time::nowMillis) { providerId, url ->
             onSourceBlocked?.invoke(providerId, url)
@@ -67,6 +69,9 @@ class DownloadEngine(
 
     /** Fired when the manual-verification circuit opens mid-download; the service tells the user the queue is paused. */
     var onSourceBlocked: ((providerId: String, blockedUrl: String) -> Unit)? = null
+
+    /** Fired when a long run of downloads lacks the source's notice marker; only the sentence list is cleaning them. */
+    var onNoticeMarkerMissing: ((providerId: String) -> Unit)? = null
 
     private companion object {
         /** One wake signal for the process-wide loop; activity-side mutations must wake the service's loop. */
@@ -270,16 +275,23 @@ class DownloadEngine(
                 )
             preflight.mutation?.let(::publishQueueMutation)
             if (preflight.mutation != null) return
+            val fetched =
+                provider.fetchChapterContent(
+                    storyUrl = story.sourceUrl,
+                    chapter = job.chapter,
+                    chapterIndex = job.chapterIndex,
+                    network = network,
+                    requestGate = requestGate,
+                )
+            provider.insertedNoticeMarker?.let { marker ->
+                if (noticeMarkerMonitor.record(provider.id, marker.strip(fetched) != null)) {
+                    onNoticeMarkerMissing?.invoke(provider.id)
+                }
+            }
             // Shared cached cleanup compiles the regexes once per settings change, not once per chapter.
             val clean =
                 CleanupEngine.shared.applyDownload(
-                    provider.fetchChapterContent(
-                        storyUrl = story.sourceUrl,
-                        chapter = job.chapter,
-                        chapterIndex = job.chapterIndex,
-                        network = network,
-                        requestGate = requestGate,
-                    ),
+                    fetched,
                     storage.sentencesDoc.get(),
                     storage.regexRulesDoc.get(),
                 )

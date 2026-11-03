@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.source
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.vinicius741.webnovelarchiver.cleanup.InsertedNoticeMarker
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
@@ -151,8 +152,11 @@ object RoyalRoadProvider : SourceProvider {
         // never pollutes the generated book.
         val content = doc.selectFirst(".chapter-inner") ?: throw NetworkParseException("Chapter content not found on page")
         content.select("div.portlet, script, .bold.uppercase.text-center").remove()
-        return content.html()
+        val body = content.html()
+        return insertedNoticeMarker.strip(body)?.html ?: body
     }
+
+    override val insertedNoticeMarker: InsertedNoticeMarker = RoyalRoadNoticeMarker
 
     private fun royalRoadPublicationStatus(labels: List<String>): PublicationStatus =
         labels.firstNotNullOfOrNull(::publicationStatusFromSourceText)

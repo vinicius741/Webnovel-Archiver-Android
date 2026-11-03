@@ -63,6 +63,7 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
   back up, log, or display it, and never enter it on the user's behalf during QA. Sign-in is the
   `AppRoute.PatreonAccount` guide (`feature/settings/PatreonAccountScreen.kt`, Firefox handoff via
   `feature/browser/FirefoxLauncher`); in QA never tap its Sign out or paste into it.
+- Royal Road marks its injected anti-piracy notices with a recognizable `<span>` (`source/RoyalRoadNoticeMarker`, see `docs/sources/royal-road-notices.md`). Providers declare this through `SourceProvider.insertedNoticeMarker`. Stripping empties the marker instead of removing it, because a marker-less chapter falls back to the slow sentence-list pass.
 - Archived snapshots remain read-only for sync and download.
 
 ## UI spacing and copy

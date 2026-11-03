@@ -45,6 +45,7 @@ class DownloadForegroundService : Service() {
         engine = DownloadEngine(container.repository, container.network, container.downloadPacer, time = container.time)
         engine.onProgress = ::updateNotification
         engine.onSourceBlocked = { _, url -> showSourceBlockedNotification(url) }
+        engine.onNoticeMarkerMissing = ::showNoticeMarkerMissingNotification
         AppNotificationChannels.ensureCreated(this)
     }
 
@@ -308,4 +309,31 @@ class DownloadForegroundService : Service() {
             context.startService(Intent(context, DownloadForegroundService::class.java).setAction(ACTION_ABORT_PREPARE))
         }
     }
+}
+
+private const val NOTICE_MARKER_MISSING_NOTIFICATION_ID = 1005
+
+/** The source's markup may have changed; tapping opens the sentence list that now does the cleaning. */
+private fun Context.showNoticeMarkerMissingNotification(providerId: String) {
+    if (
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    ) {
+        return
+    }
+    val siteName = SourceRegistry.getById(providerId)?.name ?: getString(R.string.download_notif_blocked_unknown_site)
+    val body = getString(R.string.download_notif_marker_missing_body, siteName)
+    val notification =
+        NotificationCompat
+            .Builder(this, AppNotificationCategory.DOWNLOADS.channelId)
+            .setSmallIcon(R.drawable.ic_stat_notification)
+            .setContentTitle(getString(R.string.download_notif_marker_missing_title, siteName))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(openAppPendingIntent(6, AppRoute.CleanupRules))
+            .setAutoCancel(true)
+            .build()
+    runCatching {
+        NotificationManagerCompat.from(this).notify(NOTICE_MARKER_MISSING_NOTIFICATION_ID, notification)
+    }.onFailure { Timber.w(it, "Could not post notice-marker notification") }
 }
