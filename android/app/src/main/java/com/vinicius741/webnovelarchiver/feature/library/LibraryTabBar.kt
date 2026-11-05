@@ -1,16 +1,19 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.doOnLayout
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -61,11 +64,19 @@ internal fun ScreenHost.makeLibraryTabBar(
     // indicator stuck on the initially-selected tab).
     data class TabView(
         val id: String?,
+        val container: View,
         val text: TextView,
         val underline: View,
     )
     val tabViews = mutableListOf<TabView>()
     var currentSelection = selectedTabId
+
+    // Keeps the selected tab in view by centering it, as far as the row can scroll.
+    fun revealSelection(animated: Boolean) {
+        val tab = tabViews.firstOrNull { it.id == currentSelection }?.container ?: return
+        val target = tab.left - (scroll.width - tab.width) / 2
+        if (animated) scroll.smoothScrollTo(target, 0) else scroll.scrollTo(target, 0)
+    }
 
     fun applySelection(id: String?) {
         currentSelection = id
@@ -74,8 +85,9 @@ internal fun ScreenHost.makeLibraryTabBar(
             val selected = tab.id == id
             tab.text.setTextColor(if (selected) colors.primary else colors.onSurfaceVariant)
             tab.text.typeface = Typeface.create(tab.text.typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
-            tab.underline.setBackgroundColor(if (selected) colors.primary else colors.outlineVariant)
+            tab.underline.setBackgroundColor(if (selected) colors.primary else Color.TRANSPARENT)
         }
+        if (scroll.isLaidOut) revealSelection(animated = true)
     }
 
     // Invoke both the bar's selection callback (persist + filter) and, when set, the pager hook that
@@ -95,13 +107,14 @@ internal fun ScreenHost.makeLibraryTabBar(
     ) {
         val text =
             makeText(context, label, Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
-                setPadding(dp(Space.XS), dp(Space.XS), dp(Space.XS), dp(Space.XS))
+                // Symmetric, so labels stay centered; the first one lines up with the content below.
+                setPadding(dp(SCREEN_SIDE_PADDING_DP), dp(Space.SM), dp(SCREEN_SIDE_PADDING_DP), dp(Space.SM))
                 minWidth = dp(60)
                 gravity = Gravity.CENTER
             }
         val underline =
             View(context).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(TAB_INDICATOR_HEIGHT_DP))
             }
         val tabContainer =
             LinearLayout(context).apply {
@@ -114,16 +127,8 @@ internal fun ScreenHost.makeLibraryTabBar(
                 background = selectableRipple(ThemeManager.colors.onSurface)
                 setOnClickListener { fireSelect(id) }
             }
-        // Space tabs apart with an end margin (outside the ripple) rather than right padding, so the
-        // label and underline stay centered within each tab's tap target instead of shifting left.
-        val tabLp =
-            LinearLayout
-                .LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { marginEnd = dp(Space.SM + 2) }
-        row.addView(tabContainer, tabLp)
-        tabViews += TabView(id, text, underline)
+        row.addView(tabContainer, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        tabViews += TabView(id, tabContainer, text, underline)
     }
 
     if (unassignedCount > 0) {
@@ -135,7 +140,10 @@ internal fun ScreenHost.makeLibraryTabBar(
     addTab("All", LibraryTabSelection.ALL_TAB_ID)
     applySelection(currentSelection)
     scroll.addView(row)
+    scroll.doOnLayout { revealSelection(animated = false) }
     return LibraryTabBar(scroll, ::applySelection).also { holder ->
         holderRef = holder
     }
 }
+
+private const val TAB_INDICATOR_HEIGHT_DP = 3

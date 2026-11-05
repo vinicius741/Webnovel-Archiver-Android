@@ -20,6 +20,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
+import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.iconButton
@@ -55,6 +56,7 @@ internal fun ScreenHost.showLibrary() {
         fab = if (selectedCount > 0) null else ({ showAddStory() }),
         closeAction = if (selectedCount > 0) ({ exitLibrarySelection() }) else null,
         backIntercept = libraryBackIntercept { clearLibraryFilters },
+        fullWidthBody = true,
     ) {
         addView(host.continueListeningCard())
         val hasUnassigned = stories.any { it.tabId == null }
@@ -295,6 +297,8 @@ private fun ScreenHost.continueListeningCard(): View {
             visibility = View.GONE
             layoutParams =
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = dp(SCREEN_SIDE_PADDING_DP)
+                    marginEnd = dp(SCREEN_SIDE_PADDING_DP)
                     bottomMargin = dp(Space.MD)
                 }
         }

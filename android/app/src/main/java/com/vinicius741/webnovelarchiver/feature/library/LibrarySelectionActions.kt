@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.BOTTOM_BAR_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.button
@@ -93,7 +94,7 @@ internal fun ScreenHost.makeLibrarySelectionBar(): View =
     LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
         tag = BOTTOM_BAR_VIEW_TAG
-        setPadding(0, dp(Space.LG), 0, 0)
+        setPadding(dp(SCREEN_SIDE_PADDING_DP), dp(Space.LG), dp(SCREEN_SIDE_PADDING_DP), 0)
         val selectedIds = { libraryScreenState.selectedStoryIds.toList() }
         button("Move", Btn.TONAL, R.drawable.wna_folder) { showMoveStoriesDialog(selectedIds()) }
         button("Delete", Btn.ERROR, R.drawable.wna_delete) { confirmDeleteStories(selectedIds()) }

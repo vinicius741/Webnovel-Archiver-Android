@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
+import android.content.Context
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -9,6 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeCard
@@ -43,6 +45,10 @@ internal class LibraryStoryAdapter(
         list.setHasFixedSize(false)
         list.overScrollMode = View.OVER_SCROLL_NEVER
         list.itemAnimator = null
+        // Each card keeps half the column gap on its sides; this tops the outer ones up to the screen's padding.
+        val edge = list.context.dp(SCREEN_SIDE_PADDING_DP) - cardSideGap(list.context)
+        list.setPadding(edge, 0, edge, 0)
+        list.clipToPadding = false
     }
 
     fun updateFilter(
@@ -96,7 +102,7 @@ internal class LibraryStoryAdapter(
         val root = FrameLayout(parent.context)
         root.layoutParams =
             RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                val gap = parent.context.dp(Space.LG) / 2
+                val gap = cardSideGap(parent.context)
                 marginStart = gap
                 marginEnd = gap
                 bottomMargin = parent.context.dp(Space.MD + Space.XS)
@@ -161,4 +167,6 @@ internal class LibraryStoryAdapter(
         const val STORY = 0
         const val EMPTY = 1
     }
+
+    private fun cardSideGap(context: Context): Int = context.dp(Space.LG) / 2
 }

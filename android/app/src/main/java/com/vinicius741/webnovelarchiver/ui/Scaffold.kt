@@ -34,6 +34,9 @@ internal data class AppBarAction(
     val onClick: () -> Unit,
 )
 
+/** Gap between a screen's content and the display's sides. The app bar's title lines up with it. */
+internal const val SCREEN_SIDE_PADDING_DP = Spacing.LG
+
 internal enum class ScreenChrome {
     STANDARD,
     IMMERSIVE,
@@ -50,6 +53,8 @@ internal fun ScreenHost.screen(
     chrome: ScreenChrome = ScreenChrome.STANDARD,
     closeAction: (() -> Unit)? = null,
     backIntercept: BackIntercept? = null,
+    // True when the body has content that must reach the display's sides. It then insets its other children itself.
+    fullWidthBody: Boolean = false,
     block: LinearLayout.() -> Unit,
 ) {
     val perfBuildStartedNanos = if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) System.nanoTime() else 0L
@@ -113,7 +118,10 @@ internal fun ScreenHost.screen(
     val content =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
-            if (chrome == ScreenChrome.STANDARD) setPadding(dp(Spacing.XL), dp(Spacing.MD), dp(Spacing.XL), dp(Spacing.XL))
+            if (chrome == ScreenChrome.STANDARD) {
+                val side = if (fullWidthBody) 0 else dp(SCREEN_SIDE_PADDING_DP)
+                setPadding(side, dp(Spacing.MD), side, dp(Spacing.XL))
+            }
             block()
         }
     val body: View =
@@ -159,6 +167,8 @@ internal fun ScreenHost.screen(
 
 /** Tags the app-bar title so a screen can retitle itself in place (see [setAppBarTitle]). */
 private const val APP_BAR_TITLE_TAG = "wna_app_bar_title"
+
+private const val APP_BAR_TITLE_START_DP = Spacing.XS + 2
 
 /** Retitles the current screen's app bar without rebuilding it. */
 internal fun ScreenHost.setAppBarTitle(title: String) {
@@ -209,12 +219,14 @@ private fun ScreenHost.appBar(
                 },
             )
         } else {
-            addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(Spacing.MD), dp(1)) })
+            // With the bar's padding and the title column's, the title starts on the screen's side padding.
+            val titleLead = SCREEN_SIDE_PADDING_DP - Spacing.SM - APP_BAR_TITLE_START_DP
+            addView(Space(context).apply { layoutParams = LinearLayout.LayoutParams(dp(titleLead), dp(1)) })
         }
         val titleCol =
             LinearLayout(app).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dp(Spacing.XS + 2), 0, dp(Spacing.SM), 0)
+                setPadding(dp(APP_BAR_TITLE_START_DP), 0, dp(Spacing.SM), 0)
             }
         // Header-only clamp: source titles can be arbitrarily long (tag-stuffed RoyalRoad names
         // wrap 3+ lines and balloon the bar); cap at 2 lines with an end ellipsis. The full title

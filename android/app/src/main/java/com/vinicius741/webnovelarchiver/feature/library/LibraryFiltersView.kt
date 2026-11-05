@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.library.LibraryQuery
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -65,6 +66,8 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     val filterTopMargin =
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            marginStart = dp(SCREEN_SIDE_PADDING_DP)
+            marginEnd = dp(SCREEN_SIDE_PADDING_DP)
             topMargin = if (hasCustomTabs) 0 else dp(Space.SM)
         }
 
@@ -399,6 +402,6 @@ internal fun ScreenHost.makeLibraryFilters(
     return LibraryFiltersView(wrapper, populateChips, syncActiveFilters)
 }
 
-private const val FILTER_HEADER_HEIGHT_DP = 32
+private const val FILTER_HEADER_HEIGHT_DP = 48
 private const val FILTER_TOGGLE_WIDTH_DP = 40
 private const val COLLAPSED_LIST_PULL_DP = 12

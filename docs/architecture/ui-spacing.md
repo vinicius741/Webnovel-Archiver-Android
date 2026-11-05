@@ -8,8 +8,14 @@ scale. Use its named values for new layouts rather than choosing gaps per screen
 | Label to its control | `Spacing.SM`, 8dp |
 | Related controls or an input and its actions | `Spacing.LG`, 16dp |
 | Independent form groups or sections | `Spacing.XL`, 24dp |
-| Screen side padding | `Spacing.XL`, 24dp, supplied by `screen()` |
+| Screen side padding | `SCREEN_SIDE_PADDING_DP`, 16dp, supplied by `screen()` |
 | Dialog content padding | 24dp horizontally, 16dp vertically |
+
+## Full-width content
+
+A horizontal scroller inside the padded body is cut off short of the display's edge. When
+content must reach the sides, as the Library's tab bar does, pass `fullWidthBody = true` to
+`screen()` and inset the screen's other children by `SCREEN_SIDE_PADDING_DP`.
 
 ## Forms
 
