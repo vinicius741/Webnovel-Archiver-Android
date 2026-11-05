@@ -119,6 +119,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
         shell: bash
         run: |
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
@@ -127,6 +128,10 @@ jobs:
           This is the signed release app. Installing over a copy signed with the same key preserves its data. Do not uninstall the existing app to update.
 
           Android may ask you to allow installation from your browser. The source-code ZIP and tarball are not app installers.
+
+          Already installed? Open Settings → App Updates in the app to update in place.
+
+          <!-- app-update versionCode=$VERSION_CODE -->
           EOF
           gh release create "$RELEASE_TAG" "release-assets/$APK_NAME" release-assets/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \

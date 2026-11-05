@@ -73,6 +73,14 @@ Emulator-based functional QA reports for the native Android app.
 | `native-app-emulator-qa-2026-07-31.html` | Broad debug-APK emulator QA with live followed-story sync, partial-story download, valid Add Story import, TTS, EPUB, backup, and four ranked findings with screenshot evidence. |
 | `native-app-emulator-qa-2026-07-09.html` | Debug-APK emulator QA covering local library, reader, TTS, settings, EPUB, and empty-state flows; records one P2 reader-settings navigation issue. |
 
+### `release/`
+
+How releases reach installed apps.
+
+| File | Description |
+|------|-------------|
+| `in-app-updates.md` | In-app updates from GitHub Releases: Settings → App Updates, throttled startup check and prompt, the release-notes `versionCode` marker, checksum and signature verification, `PackageInstaller` hand-off, and why only the release build installs. |
+
 ### `sources/`
 
 Provider architecture and the workflow for extending supported novel sites.

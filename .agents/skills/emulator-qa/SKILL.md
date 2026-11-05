@@ -45,7 +45,8 @@ prevents the common agent failure mode: screenshotting too early (spinner /
 |------|--------|
 | Build + install debug APK | `build-and-install-apk` (skip copy tasks; install from `android/app/build/outputs/apk/debug/app-debug.apk`) |
 | Land on a specific screen | `dev-launch-screen` (`--es dev_start_screen <token>`) |
-| Emulator missing / cold boot | start AVD with `-dns-server 8.8.8.8,1.1.1.1` |
+| Emulator missing / cold boot | `scripts/emulator/start_emulator.sh` (host GPU, DNS servers, waits for boot) |
+| Emulator will not boot / crashes | `emulator-recovery` |
 
 ## Constants
 

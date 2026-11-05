@@ -9,6 +9,8 @@ import com.vinicius741.webnovelarchiver.ai.AiDescriptionEngine
 import com.vinicius741.webnovelarchiver.ai.ChapterEvidenceSelector
 import com.vinicius741.webnovelarchiver.ai.DecisionClient
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
+import com.vinicius741.webnovelarchiver.appupdate.AppUpdateCoordinator
+import com.vinicius741.webnovelarchiver.appupdate.GitHubReleaseClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
@@ -117,6 +119,25 @@ class AppContainer internal constructor(
     val aiCoverArtEngine: AiCoverArtEngine =
         AiCoverArtEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence)
 
+    /** In-app updates from GitHub Releases; checks are disabled in the offline simulation. */
+    val appUpdates: AppUpdateCoordinator =
+        AppUpdateCoordinator(
+            context = appContext,
+            scope = applicationScope,
+            client =
+                if (simulation == null) {
+                    GitHubReleaseClient(
+                        repository = com.vinicius741.webnovelarchiver.BuildConfig.UPDATE_REPOSITORY,
+                        userAgent = "WebnovelArchiver-Android/${com.vinicius741.webnovelarchiver.BuildConfig.VERSION_NAME}",
+                    )
+                } else {
+                    null
+                },
+            installedVersionName = com.vinicius741.webnovelarchiver.BuildConfig.VERSION_NAME,
+            installSupported = com.vinicius741.webnovelarchiver.BuildConfig.BUILD_TYPE == "release",
+            nowMillis = time::nowMillis,
+        )
+
     /** Process scope so jobs survive navigation/exit; drafts persist before listeners are notified. */
     val aiCoverJobCoordinator: AiCoverJobCoordinator = AiCoverJobCoordinator(applicationScope, repository, aiCoverArtEngine)
     private val repositoryStartup =
@@ -194,6 +215,7 @@ class AppContainer internal constructor(
         runCatching { sourceReliability.restore(reliabilityStore.load()) }
             .onFailure { Timber.e(it, "Failed to restore source reliability state") }
         repositoryStartup.start(applicationScope)
+        applicationScope.launch { appUpdates.restoreCachedRelease() }
     }
 
     suspend fun awaitRepositoryReady() = repositoryStartup.awaitReady()

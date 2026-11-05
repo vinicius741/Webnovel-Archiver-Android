@@ -32,6 +32,7 @@ import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersis
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
+import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
@@ -303,6 +304,7 @@ class MainActivity :
         uiReady = true
         recordUiReadyForPerf()
         routeInitialIntent(intent, startupState)
+        maybePromptForAppUpdate()
     }
 
     private fun routeInitialIntent(
@@ -360,6 +362,9 @@ class MainActivity :
         if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         // Returning from Firefox: refresh which setup steps are done.
         if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
+        // Returning from the "install unknown apps" setting or Android's installer.
+        if (uiReady && navigator.current == AppRoute.AppUpdate) rerender?.invoke()
+        if (uiReady) maybePromptForAppUpdate()
     }
 
     override fun onUserInteraction() {

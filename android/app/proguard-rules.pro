@@ -46,3 +46,4 @@
 -keep public class com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity { public <init>(); }
 -keep public class com.vinicius741.webnovelarchiver.download.DownloadForegroundService { public <init>(); }
 -keep public class com.vinicius741.webnovelarchiver.tts.TtsForegroundService { public <init>(); }
+-keep public class com.vinicius741.webnovelarchiver.appupdate.AppUpdateInstallReceiver { public <init>(); }

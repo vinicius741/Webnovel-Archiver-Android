@@ -39,7 +39,7 @@ if [ -n "${EMULATOR_SERIAL:-}" ]; then
 elif [ "${#emulator_serials[@]}" -eq 1 ]; then
   EMULATOR_SERIAL="${emulator_serials[0]}"
 elif [ "${#emulator_serials[@]}" -eq 0 ]; then
-  echo "✗ No running emulator found. Start webnovel_api36 and re-run." >&2
+  echo "✗ No running emulator found. Start it with scripts/emulator/start_emulator.sh and re-run." >&2
   exit 1
 else
   echo "✗ Multiple emulators are running. Set EMULATOR_SERIAL to the intended emulator-* serial." >&2

@@ -22,6 +22,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
 - **Smart Updates** — New-chapter detection with intelligent merge, stale-EPUB marking, and source-availability tracking that preserves local chapters when a fiction disappears upstream. Downloaded chapters a source removes stay in the novel in reading order, labeled "Removed from source", with a chapter filter and an option to discard them.
 - **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
+- **In-App Updates** — Settings → App Updates checks GitHub Releases (automatically at most twice a day, or on demand), then downloads, verifies, and installs a newer signed release in place. See `docs/release/in-app-updates.md`.
 - **Notifications Settings** — Dedicated screen for Android 13+ notification permission and channel guidance (downloads vs TTS media controls).
 - **Obsidian Theme** — A single warm dark theme with gold accents and custom typography.
 
@@ -121,6 +122,8 @@ Each published APK filename includes the app version, GitHub Actions run ID, and
 
 https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest
 
+After the first install, the release app updates itself: it finds new releases through **Settings → App Updates** (and an automatic startup check) and installs them in place. The workflow adds a hidden `<!-- app-update versionCode=N -->` marker to the release notes for this; do not remove it when editing a release.
+
 ### Development
 
 Open the `android/` directory in Android Studio. The project uses:
@@ -193,6 +196,7 @@ android/
           cleanup/             # Text cleanup for download + TTS
           tts/                 # TTS engine, audio rendering + player, foreground service
           ai/                  # OpenRouter client + decision-model chapter selection, AI engines and background jobs
+          appupdate/           # In-app updates: GitHub release check, verified APK download, installer session
           notification/        # Notification channels + permission helpers
           ui/                  # Programmatic View DSL, shared form spacing, the Obsidian theme, widgets
         AndroidManifest.xml
@@ -206,8 +210,8 @@ android/
   gradle/quality.gradle        # detekt, file-size budget, :app:ci gate
   settings.gradle
 docs/                          # Long-form docs by subject (see docs/README.md)
-scripts/                       # redeploy.sh, watch-redeploy.sh, simulate.py (emulator only)
-.agents/skills/                # Agent skills (build/install, dev launch, emulator QA)
+scripts/                       # redeploy.sh, watch-redeploy.sh, simulate.py, emulator/start_emulator.sh (emulator only)
+.agents/skills/                # Agent skills (build/install, dev launch, emulator QA/recovery)
 ```
 
 ## Contributing

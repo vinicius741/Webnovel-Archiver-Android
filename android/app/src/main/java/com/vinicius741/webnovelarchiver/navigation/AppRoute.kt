@@ -76,6 +76,9 @@ sealed class AppRoute(
 
     data object DataBackup : AppRoute("data_backup")
 
+    /** Installed version, update check, and the in-app download/install of a newer release. */
+    data object AppUpdate : AppRoute("app_update")
+
     /**
      * Patreon sign-in guide and account status. [storyId] is the novel whose Patreon card opened
      * it, so Back returns there and a fresh sign-in can check that novel; `null` from Settings.
@@ -115,7 +118,7 @@ sealed class AppRoute(
                 is Trends -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
                 UpdateFollowSelection -> Updates
-                Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup -> Settings
+                Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
 }
@@ -157,6 +160,7 @@ object AppRouteCodec {
             "tabs" -> AppRoute.Tabs
             "cleanup_rules" -> AppRoute.CleanupRules
             "data_backup" -> AppRoute.DataBackup
+            "app_update" -> AppRoute.AppUpdate
             "working" -> AppRoute.Working
             // Argument-bearing routes resolve in a helper so this `when` stays under detekt's
             // cyclomatic-complexity budget as the route table grows.

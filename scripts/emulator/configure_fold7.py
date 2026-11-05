@@ -41,7 +41,7 @@ def main():
     temporary.write_text("\n".join(lines) + "\n")
     temporary.replace(config)
     print(f"Configured {config}; original configuration saved at {backup}")
-    print("Data images are unchanged. Start webnovel_api36 with a cold boot, never -wipe-data.")
+    print("Data images are unchanged. Start it with scripts/emulator/start_emulator.sh, never -wipe-data.")
 
 
 if __name__ == "__main__":

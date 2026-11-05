@@ -128,12 +128,16 @@ Otherwise a capture can show the inactive screen, and stderr warnings can corrup
 
 ## Starting the Emulator
 
-Prefer tmux so the emulator survives the agent command session:
+Use the repo script. It starts the AVD detached (a systemd user unit), headless, with
+`-gpu host` and the DNS servers, and waits for boot. Re-running it while the emulator is up is
+a no-op:
 
 ```bash
-tmux new-session -d -s webnovel-emulator \
-  "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1"
+scripts/emulator/start_emulator.sh            # add --window to see the emulator window
 ```
+
+Do not boot this AVD with `-gpu auto` or `-gpu swiftshader_indirect`: on the Linux dev host the
+bundled software renderers segfault during boot.
 
 Wait for Android boot completion:
 
@@ -206,12 +210,11 @@ tmux capture-pane -pt webnovel-emulator -S -120
 tmux ls
 ```
 
-If the emulator is wedged, stop the tmux session and restart:
+If the emulator is wedged, stop it and start it again:
 
 ```bash
-tmux kill-session -t webnovel-emulator
-tmux new-session -d -s webnovel-emulator \
-  "$ANDROID_HOME/emulator/emulator @webnovel_api36 -netdelay none -netspeed full -dns-server 8.8.8.8,1.1.1.1"
+adb -s emulator-5554 emu kill
+scripts/emulator/start_emulator.sh
 ```
 
 If install fails because no device is connected, run the boot wait command again before retrying `:app:installDebug`.

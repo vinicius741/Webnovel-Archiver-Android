@@ -68,7 +68,7 @@ resolve_serial() {
 
   case "${#serials[@]}" in
     1) echo "${serials[0]}" ;;
-    0) die "No running emulator found. Start webnovel_api36 and re-run." ;;
+    0) die "No running emulator found. Start it with scripts/emulator/start_emulator.sh and re-run." ;;
     *) die "Multiple emulators are running. Set EMULATOR_SERIAL to the intended emulator-* serial." \
            "Running:" "$(printf ' %s' "${serials[@]}")" ;;
   esac

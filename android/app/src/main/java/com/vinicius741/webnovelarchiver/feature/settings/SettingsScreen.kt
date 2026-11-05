@@ -105,6 +105,9 @@ internal fun ScreenHost.showSettings() {
         settingRow(R.drawable.wna_folder, dataBackupTitle, "Backups, source access, and storage tools") {
             showDataBackup()
         }
+        val appUpdates = app.appContainer.appUpdates
+        val appUpdateTitle = if (appUpdateNeedsAttention(appUpdates)) "App Updates •" else "App Updates"
+        settingRow(R.drawable.wna_refresh, appUpdateTitle, appUpdateSummary(appUpdates)) { showAppUpdate() }
         // Cap and center the content on large screens (expanded 840dp, medium 720dp); no-op on
         // compact widths. Runs inside the content builder, where the view has no layoutParams yet —
         // set fresh FrameLayout.LayoutParams, exactly what the scaffold assigns to ScrollView content.

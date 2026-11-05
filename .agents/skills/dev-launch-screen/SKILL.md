@@ -88,6 +88,7 @@ scripts/dev_library.sh open 5 --chapter 1 --rebuild
 | `settings`     | Settings            | no                  |
 | `notifications`| Notifications       | no                  |
 | `aisettings`   | AI Settings         | no                  |
+| `appupdate`    | App Updates         | no                  |
 | `updates`      | Updates tracker     | no                  |
 | `followupdates`| Follow Updates picker | no                |
 | `addstory`     | Add Story           | no                  |
@@ -110,6 +111,7 @@ A quick lookup so you don't have to reason about where a change surfaces:
 | Settings (TTS voice, chunk size, theme, text-cleanup rules)       | `settings` |
 | AI settings (OpenRouter API key, description model)               | `aisettings` |
 | Notifications settings                                            | `notifications` |
+| App Updates (release check, download/install)                     | `appupdate` |
 | Updates tracker                                                   | `updates`  |
 | Follow Updates novel picker                                       | `followupdates` |
 | Add-story flow                                                    | `addstory` |

@@ -19,6 +19,7 @@ class AppRouteTest {
                 AppRoute.AiControls("story:/ ünicode"),
                 AppRoute.Notifications,
                 AppRoute.CleanupRules,
+                AppRoute.AppUpdate,
             )
 
         routes.forEach { route -> assertEquals(route, AppRouteCodec.decode(AppRouteCodec.encode(route))) }

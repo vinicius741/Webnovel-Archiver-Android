@@ -47,6 +47,10 @@ class DevLaunchPlanningTest {
             DevLaunchPlanning.resolve("updates", null, null, provider),
         )
         assertEquals(
+            AppRoute.AppUpdate,
+            DevLaunchPlanning.resolve("appupdate", null, null, provider),
+        )
+        assertEquals(
             AppRoute.AddStory,
             DevLaunchPlanning.resolve("addstory", null, null, provider),
         )
