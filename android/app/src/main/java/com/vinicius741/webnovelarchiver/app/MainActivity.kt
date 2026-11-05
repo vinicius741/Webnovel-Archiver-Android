@@ -250,6 +250,7 @@ class MainActivity :
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
                     initializeUiAfterRepositoryReady()
+                    ttsEngine.restorePausedSession()
                     container.simulation?.attachIndicator(root)
                     container.simulation?.onUiReady(this@MainActivity, container)
                 }

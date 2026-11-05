@@ -388,4 +388,63 @@ class TextCleanupTest {
         val cleaned = TextCleanup.previewRegexRule("/-{3,}/g", "g", "Keep---this")
         assertEquals("Keepthis", cleaned)
     }
+
+    @Test
+    fun narrationKeepsDialogueTagsWithTheirLine() {
+        val html = "<p>\"Stop!\" the guard shouted. He stepped out.</p><p>\"Is that so?\" she asked.</p>"
+        assertEquals(
+            listOf("\"Stop!\" the guard shouted.", "He stepped out.", "\"Is that so?\" she asked."),
+            TtsTextPreparation.prepareTtsChunks(html, emptyList()),
+        )
+    }
+
+    @Test
+    fun narrationDoesNotSplitAfterTitlesOfAddress() {
+        val html = "<p>A writ from Mr. Halloway. Dr. Venn signed it.</p>"
+        assertEquals(
+            listOf("A writ from Mr. Halloway.", "Dr. Venn signed it."),
+            TtsTextPreparation.prepareTtsChunks(html, emptyList()),
+        )
+    }
+
+    @Test
+    fun narrationMarksParagraphAndSceneBreaks() {
+        val html = "<p>One. Two.</p><p>Three.</p><p>* * *</p><p>Four.</p><hr/><p>Five.</p><ul><li>Item a.</li><li>Item b.</li></ul>"
+        val narration = TtsTextPreparation.prepareTtsNarration(html, emptyList())
+        assertEquals(listOf("One.", "Two.", "Three.", "Four.", "Five.", "Item a.", "Item b."), narration.map { it.text })
+        assertEquals(
+            listOf(
+                TtsChunkBoundary.SENTENCE,
+                TtsChunkBoundary.PARAGRAPH,
+                TtsChunkBoundary.SCENE,
+                TtsChunkBoundary.SCENE,
+                TtsChunkBoundary.PARAGRAPH,
+                TtsChunkBoundary.SENTENCE,
+                TtsChunkBoundary.SENTENCE,
+            ),
+            narration.map { it.boundaryAfter },
+        )
+    }
+
+    @Test
+    fun narrationNeverAsksTheVoiceToReadSymbols() {
+        val html = "<p>Before.</p><p>...</p><p>-----</p><p>After. ?!</p>"
+        assertEquals(listOf("Before.", "After."), TtsTextPreparation.prepareTtsChunks(html, emptyList()).map { it.trimEnd(' ', '?', '!') })
+    }
+
+    @Test
+    fun annotatedHtmlStaysAlignedWithMergedAndSkippedSentences() {
+        val html = "<p>\"Stop!\" he said. Mr. Vane ran.</p><p>* * *</p><h2>Part two</h2><p>Later.</p>"
+        val plain = TtsTextPreparation.prepareTtsChunks(html, emptyList())
+        val annotated = TtsTextPreparation.prepareTtsAnnotatedHtml(html, emptyList())
+        assertEquals(plain, annotated.chunks)
+        plain.indices.forEach { assertTrue("missing group $it", annotated.annotatedHtml.contains("data-tts-group=\"$it\"")) }
+        assertTrue(annotated.annotatedHtml.contains("* * *"))
+    }
+
+    @Test
+    fun legacyNumberingStillSplitsTheOldWay() {
+        val html = "<p>\"Stop!\" he said.</p><p>* * *</p>"
+        assertEquals(listOf("\"Stop!\"", "he said.", "* * *"), TtsTextPreparation.legacyChunkTexts(html, emptyList()))
+    }
 }

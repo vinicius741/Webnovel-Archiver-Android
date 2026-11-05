@@ -9,6 +9,8 @@ internal object TtsSettingsApplier {
     fun apply(
         engine: TextToSpeech,
         settings: TtsSettings,
+        /** The engine's own speed: the setting when it speaks live, 1x when rendering to files. */
+        synthesisRate: Float,
         onError: (TtsPlaybackError) -> Unit,
     ): Boolean {
         when (val result = TtsVoicePlanning.resolveVoice(engine.voices, settings)) {
@@ -38,8 +40,8 @@ internal object TtsSettingsApplier {
         if (engine.setPitch(settings.pitch) == TextToSpeech.ERROR) {
             Timber.w("TTS setPitch rejected value %s", settings.pitch)
         }
-        if (engine.setSpeechRate(settings.rate) == TextToSpeech.ERROR) {
-            Timber.w("TTS setSpeechRate rejected value %s", settings.rate)
+        if (engine.setSpeechRate(synthesisRate) == TextToSpeech.ERROR) {
+            Timber.w("TTS setSpeechRate rejected value %s", synthesisRate)
         }
         return true
     }

@@ -103,6 +103,10 @@ object PreferenceNormalization {
         settings.copy(
             pitch = settings.pitch.coerceIn(TTS_MIN, TTS_MAX),
             rate = settings.rate.coerceIn(TTS_MIN, TTS_MAX),
+            phrasePauseMs = settings.phrasePauseMs.coerceIn(0L, TtsSettings.MAX_PHRASE_PAUSE_MS),
+            sentencePauseMs = settings.sentencePauseMs.coerceIn(0L, TtsSettings.MAX_SENTENCE_PAUSE_MS),
+            paragraphPauseMs = settings.paragraphPauseMs.coerceIn(0L, TtsSettings.MAX_PARAGRAPH_PAUSE_MS),
+            scenePauseMs = settings.scenePauseMs.coerceIn(0L, TtsSettings.MAX_SCENE_PAUSE_MS),
         )
 
     fun aiSettings(settings: AiSettings): AiSettings =

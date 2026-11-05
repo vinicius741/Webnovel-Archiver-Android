@@ -2,6 +2,8 @@ package com.vinicius741.webnovelarchiver.feature.player
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.os.SystemClock
+import android.text.format.DateUtils
 import android.view.Gravity
 import android.view.View
 import android.widget.ImageView
@@ -13,6 +15,7 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
+import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -25,8 +28,11 @@ import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+
+private const val TIME_TICK_MS = 1_000L
 
 /** Speed presets cycled by the player's speed chip. */
 internal val RATE_PRESETS = floatArrayOf(0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 1.8f, 2.0f)
@@ -51,17 +57,24 @@ internal fun sleepTimerLabel(
         else -> "Timer: Off"
     }
 
-/** Live-patched views inside the player screen (transport icon, progress, speed label, sleep timer). */
+private class PlayerTimeRow(
+    val elapsed: TextView,
+    val remaining: TextView,
+)
+
+/** Live-patched views inside the player screen (transport icon, time, speed label, sleep timer). */
 private class PlayerLiveViews(
     private val context: Context,
     private val playPauseButton: ImageView,
-    private val progressLabel: TextView,
+    private val times: PlayerTimeRow,
     private val seekBar: SeekBar,
     private val rateChip: LinearLayout,
     private val sleepTimerChip: LinearLayout,
+    private val historyChip: LinearLayout,
 ) {
     private var currentRate: Float = 1f
     private var isUserSeeking: Boolean = false
+    private var state: TtsPlaybackSnapshot? = null
 
     init {
         rateChip.setOnClickListener {
@@ -78,6 +91,7 @@ private class PlayerLiveViews(
                 }.setNegativeButton("Cancel", null)
                 .show()
         }
+        historyChip.setOnClickListener { showHistory() }
         seekBar.setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(
@@ -85,15 +99,7 @@ private class PlayerLiveViews(
                     progress: Int,
                     fromUser: Boolean,
                 ) {
-                    if (fromUser) {
-                        val max = sb?.max ?: 0
-                        progressLabel.text =
-                            if (max > 0) {
-                                "Sentence ${progress.coerceIn(1, max)} / $max"
-                            } else {
-                                "Buffering"
-                            }
-                    }
+                    if (fromUser) renderTime(progress * SEEK_STEP_MS)
                 }
 
                 override fun onStartTrackingTouch(sb: SeekBar?) {
@@ -102,41 +108,80 @@ private class PlayerLiveViews(
 
                 override fun onStopTrackingTouch(sb: SeekBar?) {
                     isUserSeeking = false
-                    val targetChunk = ((sb?.progress ?: 1) - 1).coerceAtLeast(0)
-                    TtsForegroundService.seekChunk(context, targetChunk)
+                    TtsForegroundService.seekTo(context, (sb?.progress ?: 0) * SEEK_STEP_MS)
                 }
             },
         )
     }
 
-    fun apply(state: TtsPlaybackSnapshot?) {
-        currentRate = state?.rate ?: 1f
-        val isPaused = state?.isPaused != false
+    fun apply(next: TtsPlaybackSnapshot?) {
+        state = next
+        currentRate = next?.rate ?: 1f
+        val isPaused = next?.isPaused != false
         playPauseButton.setImageDrawable(
             context.tintedIcon(if (isPaused) R.drawable.wna_play else R.drawable.wna_pause, ThemeManager.colors.onPrimary),
         )
         playPauseButton.contentDescription = if (isPaused) "Play" else "Pause"
-        if (!isUserSeeking) {
-            progressLabel.text =
-                if (state != null && state.totalChunks > 0) {
-                    "Sentence ${(state.chunkIndex + 1).coerceIn(1, state.totalChunks)} / ${state.totalChunks}"
-                } else {
-                    "Buffering"
-                }
-            seekBar.max = state?.totalChunks ?: 0
-            seekBar.progress = ((state?.chunkIndex ?: -1) + 1).coerceIn(0, seekBar.max)
-        }
+        tick()
         rateChip.removeAllViews()
         rateChip.addView(makeText(context, rateLabel(currentRate), Type.LABEL_LARGE, ThemeManager.colors.primary))
         sleepTimerChip.removeAllViews()
-        val timerText = sleepTimerLabel(state?.sleepTimerTargetEpochMs, state?.sleepTimerEndOfChapter == true)
+        val timerText = sleepTimerLabel(next?.sleepTimerTargetEpochMs, next?.sleepTimerEndOfChapter == true)
         val timerColor =
-            if (state?.sleepTimerTargetEpochMs != null || state?.sleepTimerEndOfChapter == true) {
+            if (next?.sleepTimerTargetEpochMs != null || next?.sleepTimerEndOfChapter == true) {
                 ThemeManager.colors.primary
             } else {
                 ThemeManager.colors.onSurfaceVariant
             }
         sleepTimerChip.addView(makeText(context, timerText, Type.LABEL_LARGE, timerColor))
+        historyChip.visibility = if (next?.history.isNullOrEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** Advances the time labels between engine updates, which only come per sentence. */
+    fun tick() {
+        if (isUserSeeking) return
+        val current = state
+        if (current == null || current.durationMs <= 0L) {
+            times.elapsed.text = "Buffering"
+            times.remaining.text = ""
+            seekBar.max = 0
+            return
+        }
+        val position = current.positionAt(SystemClock.elapsedRealtime())
+        seekBar.max = (current.durationMs / SEEK_STEP_MS).toInt()
+        seekBar.progress = (position / SEEK_STEP_MS).toInt()
+        renderTime(position)
+    }
+
+    private fun renderTime(positionMs: Long) {
+        val current = state ?: return
+        val estimate = if (current.timingExact) "" else "~"
+        times.elapsed.text = TtsTimeFormat.clock(positionMs)
+        times.remaining.text =
+            "$estimate-${TtsTimeFormat.clock(TtsTimeFormat.remainingAtRate(positionMs, current.durationMs, current.rate))}"
+    }
+
+    private fun showHistory() {
+        val entries = state?.history.orEmpty()
+        if (entries.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val labels =
+            entries
+                .map { entry ->
+                    val age = DateUtils.getRelativeTimeSpanString(entry.recordedAt, now, DateUtils.MINUTE_IN_MILLIS)
+                    val excerpt = entry.anchorText?.let { " · \"$it…\"" }.orEmpty()
+                    "${entry.chapterTitle} · $age$excerpt"
+                }.toTypedArray()
+        android.app.AlertDialog
+            .Builder(context)
+            .setTitle("Go back to")
+            .setItems(labels) { _, which -> TtsForegroundService.jumpToHistory(context, entries[which]) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private companion object {
+        const val SEEK_STEP_MS = 1_000L
     }
 }
 
@@ -158,6 +203,12 @@ internal fun ScreenHost.showPlayer() {
 
     screenObserver =
         scope.launch {
+            launch {
+                while (true) {
+                    delay(TIME_TICK_MS)
+                    liveViews?.tick()
+                }
+            }
             ttsEngine.playbackState.collect { update ->
                 val state = update.snapshot
                 if (state == null) {
@@ -225,43 +276,22 @@ private fun ScreenHost.buildPlayerBody(
             setPadding(dp(Spacing.MD), dp(Spacing.MD), dp(Spacing.MD), 0)
         }
     content.addView(seekBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-    val progressLabel = makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply { gravity = Gravity.CENTER }
-    content.addView(progressLabel)
-
-    fun transportIcon(
-        desc: String,
-        icon: Int,
-        action: String,
-    ) = app.iconButton(icon, desc, colors.primary) { TtsForegroundService.command(app, action) }
-
-    val playPause =
-        ImageView(app).apply {
-            contentDescription = "Play"
-            val size = dp(68)
-            layoutParams =
-                LinearLayout.LayoutParams(size, size).apply {
-                    marginStart = dp(Spacing.SM)
-                    marginEnd = dp(Spacing.SM)
-                }
-            val corner = (size / 2).toFloat()
-            background = ripple(roundedBg(colors.primary, corner), corner, colors.onPrimary)
-            setPadding(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG))
-            elevate(4f)
-            setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_PLAY_PAUSE) }
-        }
-
-    val transport =
+    val timeRow =
         LinearLayout(app).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(Spacing.MD), 0, 0)
+            setPadding(dp(Spacing.MD), 0, dp(Spacing.MD), 0)
         }
-    transport.addView(transportIcon("Previous chapter", R.drawable.wna_skip_prev, TtsForegroundService.ACTION_PREVIOUS_CHAPTER))
-    transport.addView(transportIcon("Previous sentence", R.drawable.wna_arrow_back, TtsForegroundService.ACTION_PREVIOUS))
-    transport.addView(playPause)
-    transport.addView(transportIcon("Next sentence", R.drawable.wna_arrow_forward, TtsForegroundService.ACTION_NEXT))
-    transport.addView(transportIcon("Next chapter", R.drawable.wna_skip_next, TtsForegroundService.ACTION_NEXT_CHAPTER))
-    content.addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    val elapsedLabel = makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant)
+    val remainingLabel = makeText(app, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply { gravity = Gravity.END }
+    timeRow.addView(elapsedLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    timeRow.addView(remainingLabel, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+    content.addView(timeRow, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+
+    val playPause = buildPlayPauseButton()
+    content.addView(
+        buildPlayerTransport(playPause),
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+    )
 
     val chipsRow =
         LinearLayout(app).apply {
@@ -282,6 +312,7 @@ private fun ScreenHost.buildPlayerBody(
 
     val rateChip = makeChip()
     val sleepTimerChip = makeChip()
+    val historyChip = makeChip().apply { addView(makeText(app, "History", Type.LABEL_LARGE, colors.onSurfaceVariant)) }
     val stopChip =
         makeChip().apply {
             setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) }
@@ -292,6 +323,8 @@ private fun ScreenHost.buildPlayerBody(
     chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
     chipsRow.addView(sleepTimerChip)
     chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
+    chipsRow.addView(historyChip)
+    chipsRow.addView(View(app), LinearLayout.LayoutParams(dp(Spacing.MD), 1))
     chipsRow.addView(stopChip)
 
     content.addView(
@@ -299,5 +332,50 @@ private fun ScreenHost.buildPlayerBody(
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
     )
 
-    return PlayerLiveViews(app, playPause, progressLabel, seekBar, rateChip, sleepTimerChip).apply { apply(state) }
+    return PlayerLiveViews(
+        app,
+        playPause,
+        PlayerTimeRow(elapsedLabel, remainingLabel),
+        seekBar,
+        rateChip,
+        sleepTimerChip,
+        historyChip,
+    ).apply { apply(state) }
+}
+
+private fun ScreenHost.buildPlayPauseButton(): ImageView {
+    val colors = ThemeManager.colors
+    return ImageView(app).apply {
+        contentDescription = "Play"
+        val size = dp(68)
+        layoutParams =
+            LinearLayout.LayoutParams(size, size).apply {
+                marginStart = dp(Spacing.SM)
+                marginEnd = dp(Spacing.SM)
+            }
+        val corner = (size / 2).toFloat()
+        background = ripple(roundedBg(colors.primary, corner), corner, colors.onPrimary)
+        setPadding(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG))
+        elevate(4f)
+        setOnClickListener { TtsForegroundService.command(app, TtsForegroundService.ACTION_PLAY_PAUSE) }
+    }
+}
+
+private fun ScreenHost.buildPlayerTransport(playPause: ImageView): LinearLayout {
+    fun transportIcon(
+        desc: String,
+        icon: Int,
+        action: String,
+    ) = app.iconButton(icon, desc, ThemeManager.colors.primary) { TtsForegroundService.command(app, action) }
+
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
+        setPadding(0, dp(Spacing.MD), 0, 0)
+        addView(transportIcon("Previous chapter", R.drawable.wna_skip_prev, TtsForegroundService.ACTION_PREVIOUS_CHAPTER))
+        addView(transportIcon("Back 15 seconds", R.drawable.wna_replay, TtsForegroundService.ACTION_SKIP_BACK))
+        addView(playPause)
+        addView(transportIcon("Forward 30 seconds", R.drawable.wna_forward_skip, TtsForegroundService.ACTION_SKIP_FORWARD))
+        addView(transportIcon("Next chapter", R.drawable.wna_skip_next, TtsForegroundService.ACTION_NEXT_CHAPTER))
+    }
 }

@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.player
 
 import android.content.Context
+import android.os.SystemClock
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -15,6 +16,7 @@ import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
+import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
 import com.vinicius741.webnovelarchiver.ui.BOTTOM_BAR_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.FAB_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -116,7 +118,11 @@ private class TtsMiniPlayerBar(
         )
         playPauseButton.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
         chapterText.text = snapshot?.title ?: ""
-        storyText.text = snapshot?.storyTitle?.takeIf { it.isNotBlank() } ?: ""
+        val timeLeft =
+            snapshot?.takeIf { it.durationMs > 0L }?.let {
+                TtsTimeFormat.timeLeft(it.positionAt(SystemClock.elapsedRealtime()), it.durationMs, it.rate)
+            }
+        storyText.text = listOfNotNull(timeLeft, snapshot?.storyTitle?.takeIf { it.isNotBlank() }).joinToString(" · ")
         progressTrack.max = snapshot?.totalChunks ?: 0
         progressTrack.progress = ((snapshot?.chunkIndex ?: -1) + 1).coerceIn(0, progressTrack.max)
     }

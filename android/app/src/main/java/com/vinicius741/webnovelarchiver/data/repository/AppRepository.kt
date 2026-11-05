@@ -806,6 +806,11 @@ suspend fun AppRepository.clearTtsSession() {
 suspend fun AppRepository.getTtsStoryPosition(storyId: String): TtsStoryPosition? =
     storageTransaction { storage.getTtsStoryPositions()[storyId] }?.copy()
 
+suspend fun AppRepository.getTtsStoryPositions(): List<TtsStoryPosition> =
+    storageTransaction {
+        storage.getTtsStoryPositions().values.toList()
+    }
+
 suspend fun AppRepository.saveTtsStoryPosition(position: TtsStoryPosition) {
     storageTransaction { storage.saveTtsStoryPosition(position) }
 }

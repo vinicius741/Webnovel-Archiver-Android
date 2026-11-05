@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 
 /**
@@ -22,7 +23,26 @@ data class TtsPlaybackSnapshot(
     val rate: Float = 1f,
     val sleepTimerTargetEpochMs: Long? = null,
     val sleepTimerEndOfChapter: Boolean = false,
-)
+    /** Audio position in the chapter at 1x, as of [capturedAtElapsedMs]. */
+    val positionMs: Long = 0L,
+    /** The chapter's length at 1x; an estimate until [timingExact]. */
+    val durationMs: Long = 0L,
+    val timingExact: Boolean = false,
+    /** [android.os.SystemClock.elapsedRealtime] when [positionMs] was read. */
+    val capturedAtElapsedMs: Long = 0L,
+    /** True when the speech engine plays the audio itself rather than this app. */
+    val isLiveOutput: Boolean = false,
+    /** Zero-based; -1 when the session is not a chapter. */
+    val chapterIndex: Int = -1,
+    val chapterCount: Int = 0,
+    val history: List<TtsHistoryEntry> = emptyList(),
+) {
+    /** The position now, advanced by the time played since it was read. */
+    fun positionAt(elapsedNowMs: Long): Long {
+        if (!isPlaying) return positionMs
+        return (positionMs + ((elapsedNowMs - capturedAtElapsedMs).coerceAtLeast(0L) * rate).toLong()).coerceAtMost(durationMs)
+    }
+}
 
 /**
  * Replaying engine state. The initial value is not authoritative because the repository hydrates
@@ -74,14 +94,14 @@ object TtsPlaybackState {
      */
     fun serviceShouldStop(update: TtsPlaybackUpdate): Boolean = update.snapshot == null && update.isAuthoritative
 
-    /** Human-readable "Chunk X / Y" label used by the notification body + the reader transport. */
+    /** Human-readable "Sentence X / Y" label used by the reader transport. */
     fun chunkProgress(
         chunkIndex: Int,
         totalChunks: Int,
     ): String {
         if (totalChunks <= 0) return "Buffering"
         val shown = (chunkIndex + 1).coerceIn(1, totalChunks)
-        return "Chunk $shown / $totalChunks"
+        return "Sentence $shown / $totalChunks"
     }
 
     /**
@@ -111,6 +131,7 @@ object TtsPlaybackState {
             isPlaying = isPlaying,
             isPaused = !isPlaying,
             rate = session.rate,
+            history = session.history,
         )
     }
 }

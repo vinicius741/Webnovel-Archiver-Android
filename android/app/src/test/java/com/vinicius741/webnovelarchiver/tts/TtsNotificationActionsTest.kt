@@ -6,8 +6,23 @@ import org.junit.Test
 
 class TtsNotificationActionsTest {
     @Test
-    fun actionsShowPauseWhilePlaying() {
+    fun actionsDefaultToShortSkips() {
         val actions = TtsNotificationActions.actions(isPaused = false)
+
+        assertEquals(
+            listOf(
+                TtsNotificationActions.ACTION_SKIP_BACK,
+                TtsNotificationActions.ACTION_PAUSE,
+                TtsNotificationActions.ACTION_SKIP_FORWARD,
+                TtsNotificationActions.ACTION_STOP,
+            ),
+            actions.map { it.action },
+        )
+    }
+
+    @Test
+    fun actionsShowPauseWhilePlaying() {
+        val actions = TtsNotificationActions.actions(isPaused = false, chapterSkipButtons = true)
 
         assertEquals(
             listOf(
@@ -31,7 +46,7 @@ class TtsNotificationActionsTest {
 
     @Test
     fun actionsShowPlayMappedToResumeWhenPaused() {
-        val actions = TtsNotificationActions.actions(isPaused = true)
+        val actions = TtsNotificationActions.actions(isPaused = true, chapterSkipButtons = true)
 
         assertEquals(
             listOf(

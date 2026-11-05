@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.os.SystemClock
 import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.app.NotificationCompat
 import androidx.media.app.NotificationCompat.MediaStyle
@@ -24,6 +26,8 @@ internal class TtsNotificationManager(
         snapshot: TtsPlaybackSnapshot?,
         lastErrorText: String?,
         mediaSessionToken: MediaSessionCompat.Token?,
+        chapterSkipButtons: Boolean,
+        cover: Bitmap?,
     ): Notification {
         val openIntent = context.openAppPendingIntent(11, AppRoute.Player)
 
@@ -42,7 +46,7 @@ internal class TtsNotificationManager(
         val title = snapshot?.title ?: context.getString(R.string.tts_notif_title)
         val body =
             lastErrorText
-                ?: snapshot?.let { chunkProgressText(it) }
+                ?: snapshot?.let { timeLeftText(it) }
                 ?: context.getString(R.string.tts_notif_paused)
 
         val builder =
@@ -58,8 +62,10 @@ internal class TtsNotificationManager(
                 .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
-        TtsNotificationActions.actions(isPaused).forEachIndexed { index, action ->
-            builder.addAction(0, context.getString(action.labelResId), serviceAction(12 + index, action.action))
+        if (cover != null) builder.setLargeIcon(cover)
+
+        TtsNotificationActions.actions(isPaused, chapterSkipButtons).forEachIndexed { index, action ->
+            builder.addAction(action.iconResId, context.getString(action.labelResId), serviceAction(12 + index, action.action))
         }
 
         builder.setStyle(
@@ -70,14 +76,10 @@ internal class TtsNotificationManager(
         return builder.build()
     }
 
-    private fun chunkProgressText(snapshot: TtsPlaybackSnapshot): String =
-        if (snapshot.totalChunks <= 0) {
+    private fun timeLeftText(snapshot: TtsPlaybackSnapshot): String =
+        if (snapshot.durationMs <= 0L) {
             context.getString(R.string.tts_notif_buffering)
         } else {
-            context.getString(
-                R.string.tts_notif_chunk_progress,
-                (snapshot.chunkIndex + 1).coerceIn(1, snapshot.totalChunks),
-                snapshot.totalChunks,
-            )
+            TtsTimeFormat.timeLeft(snapshot.positionAt(SystemClock.elapsedRealtime()), snapshot.durationMs, snapshot.rate)
         }
 }

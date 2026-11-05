@@ -17,18 +17,25 @@ class TtsHeadsetTapPlanningTest {
     }
 
     @Test
-    fun doubleTapSkipsToNextChapter() {
-        assertEquals(TtsHeadsetTapAction.NextChapter, TtsHeadsetTapPlanning.actionForTapCount(2))
+    fun doubleTapSkipsForwardABit() {
+        assertEquals(TtsHeadsetTapAction.SkipForward, TtsHeadsetTapPlanning.actionForTapCount(2))
     }
 
     @Test
-    fun tripleTapReturnsToPreviousChapter() {
-        assertEquals(TtsHeadsetTapAction.PreviousChapter, TtsHeadsetTapPlanning.actionForTapCount(3))
+    fun tripleTapGoesBackABit() {
+        assertEquals(TtsHeadsetTapAction.SkipBack, TtsHeadsetTapPlanning.actionForTapCount(3))
+    }
+
+    @Test
+    fun chapterButtonSettingMakesTapsMoveWholeChapters() {
+        assertEquals(TtsHeadsetTapAction.NextChapter, TtsHeadsetTapPlanning.actionForTapCount(2, chapterSkipButtons = true))
+        assertEquals(TtsHeadsetTapAction.PreviousChapter, TtsHeadsetTapPlanning.actionForTapCount(3, chapterSkipButtons = true))
+        assertEquals(TtsHeadsetTapAction.TogglePlayPause, TtsHeadsetTapPlanning.actionForTapCount(1, chapterSkipButtons = true))
     }
 
     @Test
     fun degenerateCountsFallBackToToggleOrPrevious() {
         assertEquals(TtsHeadsetTapAction.TogglePlayPause, TtsHeadsetTapPlanning.actionForTapCount(0))
-        assertEquals(TtsHeadsetTapAction.PreviousChapter, TtsHeadsetTapPlanning.actionForTapCount(4))
+        assertEquals(TtsHeadsetTapAction.SkipBack, TtsHeadsetTapPlanning.actionForTapCount(4))
     }
 }

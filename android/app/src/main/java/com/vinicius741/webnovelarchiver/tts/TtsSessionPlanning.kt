@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
@@ -27,8 +28,12 @@ object TtsSessionPlanning {
     ): StartPosition {
         if (TtsDescriptionPlanning.isDescriptionSession(requestedChapterId)) return StartPosition(requestedChapterId, 0)
         if (position != null && position.storyId == story.id) {
+            if (position.caughtUp) {
+                return TtsContinueListening.nextPlayableAfter(story, position.chapterId)?.let { StartPosition(it.id, 0) }
+                    ?: StartPosition(requestedChapterId, 0)
+            }
             val chapter = story.chapters.firstOrNull { it.id == position.chapterId }
-            if (chapter != null && (chapter.downloaded || !chapter.content.isNullOrBlank())) {
+            if (chapter != null && TtsContinueListening.isPlayable(chapter)) {
                 return StartPosition(chapter.id, position.currentChunkIndex.coerceAtLeast(0))
             }
         }
@@ -46,6 +51,10 @@ object TtsSessionPlanning {
                 chapterTitle = session.chapterTitle,
                 currentChunkIndex = session.currentChunkIndex.coerceAtLeast(0),
                 updatedAt = session.updatedAt,
+                chunkOffsetMs = session.chunkOffsetMs,
+                anchorText = session.anchorText,
+                chunkingVersion = session.chunkingVersion,
+                history = session.history,
             )
         }
 
@@ -111,5 +120,47 @@ object TtsSessionPlanning {
         val target = current + delta
         if (target !in story.chapters.indices) return null
         return target
+    }
+}
+
+/** What "Continue listening" offers, and what counts as somewhere to continue to. */
+object TtsContinueListening {
+    data class Target(
+        val story: Story,
+        val chapter: Chapter,
+    )
+
+    fun isPlayable(chapter: Chapter): Boolean = chapter.downloaded || !chapter.content.isNullOrBlank()
+
+    /** The chapter after a story's caught-up point, once one has appeared and can be played. */
+    fun nextPlayableAfter(
+        story: Story,
+        chapterId: String,
+    ): Chapter? {
+        val current = story.chapters.indexOfFirst { it.id == chapterId }
+        return story.chapters.getOrNull(current + 1)?.takeIf { current >= 0 && isPlayable(it) }
+    }
+
+    /**
+     * The most recently heard story that still has something to play. A story that is caught up
+     * stays out until a new chapter arrives, and nothing heard at or before [dismissedThrough] is
+     * offered, so a dismissed card does not simply fall back to an older story.
+     */
+    fun target(
+        positions: Collection<TtsStoryPosition>,
+        dismissedThrough: Long = 0L,
+        storyProvider: (String) -> Story?,
+    ): Target? {
+        positions.filter { it.updatedAt > dismissedThrough }.sortedByDescending { it.updatedAt }.forEach { position ->
+            val story = storyProvider(position.storyId) ?: return@forEach
+            val chapter =
+                if (position.caughtUp) {
+                    nextPlayableAfter(story, position.chapterId)
+                } else {
+                    story.chapters.firstOrNull { it.id == position.chapterId }?.takeIf(::isPlayable)
+                } ?: return@forEach
+            return Target(story, chapter)
+        }
+        return null
     }
 }

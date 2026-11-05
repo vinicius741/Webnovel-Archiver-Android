@@ -94,15 +94,15 @@ class TtsPlaybackStateTest {
 
     @Test
     fun chunkProgressReportsOneIndexedPosition() {
-        assertEquals("Chunk 1 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 0, totalChunks = 10))
-        assertEquals("Chunk 5 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 4, totalChunks = 10))
-        assertEquals("Chunk 10 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 9, totalChunks = 10))
+        assertEquals("Sentence 1 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 0, totalChunks = 10))
+        assertEquals("Sentence 5 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 4, totalChunks = 10))
+        assertEquals("Sentence 10 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 9, totalChunks = 10))
     }
 
     @Test
     fun chunkProgressClampsAboveRange() {
         // A chunk index past the end (engine about to advance) should not print "11/10".
-        assertEquals("Chunk 10 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 12, totalChunks = 10))
+        assertEquals("Sentence 10 / 10", TtsPlaybackState.chunkProgress(chunkIndex = 12, totalChunks = 10))
     }
 
     @Test

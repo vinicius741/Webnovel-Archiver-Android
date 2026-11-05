@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.tts
 
-import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,20 +18,8 @@ internal class TtsPlaybackPublisher {
     /** Canonical observable playback state; authoritative `null` means playback explicitly stopped. */
     val playbackState: StateFlow<TtsPlaybackUpdate> = mutablePlaybackState.asStateFlow()
 
-    /** Publishes a snapshot of the session now speaking ("paused" whenever [isPlaying] is false). */
-    fun publish(
-        session: TtsSession?,
-        totalChunks: Int,
-        isPlaying: Boolean,
-        sleepTimerTargetEpochMs: Long? = null,
-        sleepTimerEndOfChapter: Boolean = false,
-    ) {
-        val base = TtsPlaybackState.snapshotForSession(session, totalChunks, isPlaying)
-        val snapshot =
-            base?.copy(
-                sleepTimerTargetEpochMs = sleepTimerTargetEpochMs,
-                sleepTimerEndOfChapter = sleepTimerEndOfChapter,
-            )
+    /** Publishes the session now loaded; a null snapshot here means the session is not resumable. */
+    fun publish(snapshot: TtsPlaybackSnapshot?) {
         mutablePlaybackState.value =
             TtsPlaybackUpdate(
                 snapshot = snapshot,

@@ -2,10 +2,12 @@ package com.vinicius741.webnovelarchiver.tts
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -225,5 +227,87 @@ class TtsSessionPlanningTest {
             ),
         )
         assertEquals(null, TtsSessionPlanning.storyPosition(TtsSession(chapterId = "c1")))
+    }
+
+    private fun chapter(
+        id: String,
+        downloaded: Boolean = true,
+    ) = Chapter(id = id, title = id, downloaded = downloaded)
+
+    @Test
+    fun caughtUpStoryStartsAtTheNewChapterOnceThereIsOne() {
+        val story = Story(id = "s", chapters = mutableListOf(chapter("a"), chapter("b")))
+        val position = TtsStoryPosition(storyId = "s", chapterId = "a", currentChunkIndex = 40, caughtUp = true)
+        assertEquals(TtsSessionPlanning.StartPosition("b", 0), TtsSessionPlanning.resolveStartPosition(story, "a", position))
+    }
+
+    @Test
+    fun caughtUpStoryWithNothingNewStartsTheViewedChapter() {
+        val story = Story(id = "s", chapters = mutableListOf(chapter("a"), chapter("b", downloaded = false)))
+        val position = TtsStoryPosition(storyId = "s", chapterId = "a", currentChunkIndex = 40, caughtUp = true)
+        assertEquals(TtsSessionPlanning.StartPosition("a", 0), TtsSessionPlanning.resolveStartPosition(story, "a", position))
+    }
+
+    @Test
+    fun continueListeningPicksTheNewestStoryWithSomethingToPlay() {
+        val finished = Story(id = "done", chapters = mutableListOf(chapter("a")))
+        val older = Story(id = "older", chapters = mutableListOf(chapter("x"), chapter("y")))
+        val positions =
+            listOf(
+                TtsStoryPosition(storyId = "older", chapterId = "y", updatedAt = 1L),
+                TtsStoryPosition(storyId = "done", chapterId = "a", updatedAt = 3L, caughtUp = true),
+                TtsStoryPosition(storyId = "deleted", chapterId = "a", updatedAt = 4L),
+            )
+        val stories = listOf(finished, older).associateBy { it.id }
+
+        val target = TtsContinueListening.target(positions) { stories[it] }
+
+        assertEquals("older", target?.story?.id)
+        assertEquals("y", target?.chapter?.id)
+    }
+
+    @Test
+    fun continueListeningOffersANewChapterAfterCatchingUp() {
+        val story = Story(id = "s", chapters = mutableListOf(chapter("a"), chapter("b")))
+        val positions = listOf(TtsStoryPosition(storyId = "s", chapterId = "a", caughtUp = true))
+        assertEquals("b", TtsContinueListening.target(positions) { story }?.chapter?.id)
+    }
+
+    @Test
+    fun continueListeningStaysDismissedWithoutFallingBackToAnOlderStory() {
+        val story = Story(id = "s", chapters = mutableListOf(chapter("a")))
+        val positions =
+            listOf(
+                TtsStoryPosition(storyId = "s", chapterId = "a", updatedAt = 1L),
+                TtsStoryPosition(storyId = "s", chapterId = "a", updatedAt = 5L),
+            )
+        assertNull(TtsContinueListening.target(positions, dismissedThrough = 5L) { story })
+    }
+
+    @Test
+    fun continueListeningReturnsOnceSomethingIsHeardAfterDismissal() {
+        val story = Story(id = "s", chapters = mutableListOf(chapter("a")))
+        val positions = listOf(TtsStoryPosition(storyId = "s", chapterId = "a", updatedAt = 6L))
+        assertEquals("s", TtsContinueListening.target(positions, dismissedThrough = 5L) { story }?.story?.id)
+    }
+
+    @Test
+    fun storyPositionCarriesTheAnchorAndHistory() {
+        val history = listOf(TtsHistoryEntry(chapterId = "c", chunkIndex = 2))
+        val position =
+            TtsSessionPlanning.storyPosition(
+                TtsSession(
+                    storyId = "s",
+                    chapterId = "c",
+                    chunkOffsetMs = 50L,
+                    anchorText = "Hello",
+                    chunkingVersion = 2,
+                    history = history,
+                ),
+            )
+        assertEquals(50L, position?.chunkOffsetMs)
+        assertEquals("Hello", position?.anchorText)
+        assertEquals(2, position?.chunkingVersion)
+        assertEquals(history, position?.history)
     }
 }

@@ -88,7 +88,7 @@ internal fun ScreenHost.readerTtsTransport(
             marginEnd = dp(Spacing.XS)
         }
     }
-    bar.addView(transportIcon("Previous chunk", R.drawable.wna_skip_prev, onPrev))
+    bar.addView(transportIcon("Previous sentence", R.drawable.wna_skip_prev, onPrev))
     val isPaused = snapshot?.isPaused != false
     val playPause =
         transportIcon(
@@ -98,7 +98,7 @@ internal fun ScreenHost.readerTtsTransport(
         )
     onPlayPause(playPause)
     bar.addView(playPause)
-    bar.addView(transportIcon("Next chunk", R.drawable.wna_skip_next, onNext))
+    bar.addView(transportIcon("Next sentence", R.drawable.wna_skip_next, onNext))
     bar.addView(
         android.view.View(app).apply {
             layoutParams = LinearLayout.LayoutParams(0, 1, 1f)

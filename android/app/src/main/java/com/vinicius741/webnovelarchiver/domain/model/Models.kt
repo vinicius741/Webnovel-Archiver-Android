@@ -319,6 +319,9 @@ data class DisplayPreferences(
      *  with title and progress only). Defaults to "list" so persisted JSON written before this field
      *  exists keeps the original look. */
     var libraryViewMode: String = "list",
+    /** The newest listening position when the Library's "Continue listening" card was dismissed.
+     *  Positions up to this time are no longer offered; listening again writes a newer one. */
+    var continueListeningDismissedThrough: Long = 0L,
 )
 
 data class RegexCleanupRule(
@@ -334,7 +337,27 @@ data class TtsSettings(
     val pitch: Float = 1.0f,
     val rate: Float = 1.0f,
     val voiceIdentifier: String? = null,
-)
+    /** Replay some context on resume after a long break. */
+    val contextReplay: Boolean = true,
+    val announceChapters: Boolean = true,
+    /** What headphone, notification and lock-screen next/previous do: short skips or whole chapters. */
+    val chapterSkipButtons: Boolean = false,
+    /**
+     * Pauses, in real time: they last this long at any playback speed. The phrase pause is added to
+     * the voice's own gap at commas and similar breaks; the others replace the gap the voice leaves.
+     */
+    val phrasePauseMs: Long = 0L,
+    val sentencePauseMs: Long = 500L,
+    val paragraphPauseMs: Long = 1_000L,
+    val scenePauseMs: Long = 2_000L,
+) {
+    companion object {
+        const val MAX_PHRASE_PAUSE_MS = 1_500L
+        const val MAX_SENTENCE_PAUSE_MS = 3_000L
+        const val MAX_PARAGRAPH_PAUSE_MS = 5_000L
+        const val MAX_SCENE_PAUSE_MS = 8_000L
+    }
+}
 
 /**
  * OpenRouter-backed AI feature settings: generation and decision-model cover selection share one API key;

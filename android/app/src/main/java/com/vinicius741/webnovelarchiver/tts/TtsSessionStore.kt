@@ -88,13 +88,16 @@ internal class TtsSessionStore(
         }
     }
 
-    /** Natural completion: nothing left to resume, so the story position goes too. Description sessions have none. */
+    /**
+     * Natural completion: the active session ends, but the story remembers it was caught up here so
+     * a chapter published later continues from the right place. Description sessions have no position.
+     */
     suspend fun finish(lastSession: TtsSession?) {
         cancelPending()
         withContext(dispatcher) {
             writeMutex.withLock {
                 persistence.clear()
-                lastSession?.let(TtsSessionPlanning::storyPosition)?.let { persistence.clearPosition(it.storyId) }
+                lastSession?.let(TtsSessionPlanning::storyPosition)?.let { persistence.savePosition(it.copy(caughtUp = true)) }
             }
         }
     }

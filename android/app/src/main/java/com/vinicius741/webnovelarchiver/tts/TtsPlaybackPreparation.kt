@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.tts
 
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
+import com.vinicius741.webnovelarchiver.cleanup.TtsNarrationChunk
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
@@ -8,6 +9,7 @@ import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.RegexCleanupRule
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
@@ -21,6 +23,14 @@ internal data class PreparedTtsPlayback(
     val settings: TtsSettings,
     val chunks: List<String>,
     val startIndex: Int,
+    val narration: List<TtsNarrationChunk> = chunks.map { TtsNarrationChunk(it) },
+    /** Audio time already heard within the start sentence. */
+    val startOffsetMs: Long = 0L,
+    /** Said before the first sentence, when starting at the top of a chapter. */
+    val spokenTitle: String? = null,
+    val history: List<TtsHistoryEntry> = emptyList(),
+    /** When a restored session last changed, so a later resume knows how long the break was. */
+    val savedAt: Long? = null,
 )
 
 /**
@@ -65,8 +75,10 @@ internal interface TtsPlaybackSource {
 internal class TtsPlaybackPreparer(
     private val source: TtsPlaybackSource,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    computationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
+    private val builder = TtsPlaybackBuilder(computationDispatcher)
+
     constructor(
         repository: AppRepository,
         ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -87,29 +99,72 @@ internal class TtsPlaybackPreparer(
             resumeFromStoryPosition(storyId, chapterId)?.let { return it }
         }
         val input = load(storyId, chapterId) ?: return null
-        return build(input, requestedIndex ?: 0)
+        // A pinned start is the listener choosing that exact sentence, so no title comes first.
+        return builder.build(input, requestedIndex ?: 0, speakTitle = requestedIndex == null)
+    }
+
+    /** A saved place: resolved against the current text, so renumbering cannot move it elsewhere. */
+    suspend fun prepareAt(
+        storyId: String,
+        chapterId: String,
+        saved: TtsSavedPoint,
+    ): PreparedTtsPlayback? {
+        val input = load(storyId, chapterId) ?: return null
+        return builder.buildAt(input, saved)
     }
 
     private suspend fun resumeFromStoryPosition(
         storyId: String,
         requestedChapterId: String,
     ): PreparedTtsPlayback? {
+        var history = emptyList<TtsHistoryEntry>()
+        var saved: TtsSavedPoint? = null
         val start =
             withContext(ioDispatcher) {
                 val story = source.story(storyId) ?: return@withContext null
-                TtsSessionPlanning.resolveStartPosition(story, requestedChapterId, source.position(storyId))
+                val position = source.position(storyId)
+                history = position?.history.orEmpty()
+                val resolved = TtsSessionPlanning.resolveStartPosition(story, requestedChapterId, position)
+                if (position != null && !position.caughtUp && resolved.chapterId == position.chapterId) {
+                    saved =
+                        TtsSavedPoint(
+                            position.currentChunkIndex,
+                            position.chunkOffsetMs,
+                            position.anchorText,
+                            position.chunkingVersion,
+                        )
+                }
+                resolved
             } ?: return null
         // A stale position (chapter unreadable) returns null and the caller falls back to the requested chapter.
         val input = load(storyId, start.chapterId) ?: return null
-        return build(input, start.chunkIndex)
+        val prepared = saved?.let { builder.buildAt(input, it) } ?: builder.build(input, start.chunkIndex, speakTitle = true)
+        return prepared?.copy(history = history)
     }
 
     suspend fun resume(): PreparedTtsPlayback? {
         val persisted = withContext(ioDispatcher) { source.session() } ?: return null
         if (!TtsSessionPlanning.isResumeEligible(persisted)) return null
         val input = load(persisted.storyId, persisted.chapterId) ?: return null
-        val prepared = build(input, persisted.currentChunkIndex) ?: return null
-        return prepared.copy(startIndex = TtsSessionPlanning.boundedChunkIndex(persisted, prepared.chunks.size))
+        val saved = TtsSavedPoint(persisted.currentChunkIndex, persisted.chunkOffsetMs, persisted.anchorText, persisted.chunkingVersion)
+        return builder.buildAt(input, saved)?.copy(history = persisted.history, savedAt = persisted.updatedAt)
+    }
+
+    /** The session as it was saved, for deciding whether a restart should play or stay silent. */
+    suspend fun persistedSession(): TtsSession? =
+        withContext(ioDispatcher) { source.session() }?.takeIf(TtsSessionPlanning::isResumeEligible)
+
+    /** The next chapter's sentences for rendering ahead; marks nothing as read. */
+    suspend fun upcomingTexts(session: TtsSession): List<String> {
+        if (TtsDescriptionPlanning.isDescriptionSession(session.chapterId)) return emptyList()
+        val next =
+            withContext(ioDispatcher) {
+                val story = source.story(session.storyId) ?: return@withContext null
+                TtsSessionPlanning.nextChapterIndex(story, session.chapterId)?.let { story.chapters[it] }
+            } ?: return emptyList()
+        val input = load(session.storyId, next.id) ?: return emptyList()
+        val prepared = builder.build(input, 0, speakTitle = true) ?: return emptyList()
+        return listOfNotNull(prepared.spokenTitle) + prepared.chunks
     }
 
     suspend fun nextChapter(session: TtsSession): NextChapterOutcome {
@@ -124,7 +179,7 @@ internal class TtsPlaybackPreparer(
             is NextChapterLookup.Found -> {
                 // Unreadable/blank/undownloaded next chapter: it exists, so never treat as end.
                 val input = load(session.storyId, next.chapter.id) ?: return NextChapterOutcome.Unprepared
-                NextChapterOutcome.Prepared(build(input, 0) ?: return NextChapterOutcome.Unprepared)
+                NextChapterOutcome.Prepared(builder.build(input, 0, speakTitle = true) ?: return NextChapterOutcome.Unprepared)
             }
         }
     }
@@ -155,7 +210,7 @@ internal class TtsPlaybackPreparer(
                 story to story.chapters[targetIndex]
             } ?: return null
         val input = load(target.first.id, target.second.id) ?: return null
-        return build(input, 0)
+        return builder.build(input, 0, speakTitle = true)
     }
 
     private suspend fun load(
@@ -188,23 +243,62 @@ internal class TtsPlaybackPreparer(
                 rules = source.regexRules(),
             )
         }
+}
 
-    private suspend fun build(
+/** Turns a chapter's HTML into something playable, on the computation dispatcher. */
+private class TtsPlaybackBuilder(
+    private val computationDispatcher: CoroutineDispatcher,
+) {
+    suspend fun buildAt(
         input: PreparationInput,
-        requestedIndex: Int,
+        saved: TtsSavedPoint,
     ): PreparedTtsPlayback? =
         withContext(computationDispatcher) {
             val html = input.html ?: return@withContext null
-            val chunks = TtsTextPreparation.prepareTtsChunks(html, input.rules)
-            if (chunks.isEmpty()) return@withContext null
-            PreparedTtsPlayback(
-                story = input.story,
-                chapter = input.chapter,
-                settings = input.settings,
-                chunks = chunks,
-                startIndex = requestedIndex.coerceIn(0, chunks.lastIndex),
-            )
+            val narration = TtsTextPreparation.prepareTtsNarration(html, input.rules)
+            if (narration.isEmpty()) return@withContext null
+            val point =
+                TtsPositionPlanning.resolve(narration.map { it.text }, saved) {
+                    TtsTextPreparation.legacyChunkTexts(html, input.rules)
+                }
+            prepared(input, narration, point, speakTitle = saved.chunkIndex == 0 && saved.offsetMs == 0L)
         }
+
+    suspend fun build(
+        input: PreparationInput,
+        requestedIndex: Int,
+        speakTitle: Boolean = false,
+    ): PreparedTtsPlayback? =
+        withContext(computationDispatcher) {
+            val html = input.html ?: return@withContext null
+            val narration = TtsTextPreparation.prepareTtsNarration(html, input.rules)
+            if (narration.isEmpty()) return@withContext null
+            prepared(input, narration, TtsChunkPoint(requestedIndex.coerceIn(0, narration.lastIndex)), speakTitle)
+        }
+
+    private fun prepared(
+        input: PreparationInput,
+        narration: List<TtsNarrationChunk>,
+        point: TtsChunkPoint,
+        speakTitle: Boolean,
+    ): PreparedTtsPlayback {
+        val announce =
+            speakTitle &&
+                point.chunkIndex == 0 &&
+                input.settings.announceChapters &&
+                !TtsDescriptionPlanning.isDescriptionSession(input.chapter.id)
+        return PreparedTtsPlayback(
+            story = input.story,
+            chapter = input.chapter,
+            settings = input.settings,
+            chunks = narration.map { it.text },
+            startIndex = point.chunkIndex,
+            narration = narration,
+            startOffsetMs = point.offsetMs,
+            spokenTitle =
+                if (announce) TtsNarrationPlanning.spokenChapterTitle(input.chapter.title, narration.first().text) else null,
+        )
+    }
 }
 
 private data class PreparationInput(

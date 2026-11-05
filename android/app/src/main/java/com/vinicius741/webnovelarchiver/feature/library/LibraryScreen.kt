@@ -1,12 +1,14 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import android.view.Gravity
+import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -14,10 +16,15 @@ import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
+import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
+import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
+import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.layout.resolveScreenLayout
+import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeSearchField
 import com.vinicius741.webnovelarchiver.ui.screen
@@ -49,6 +56,7 @@ internal fun ScreenHost.showLibrary() {
         closeAction = if (selectedCount > 0) ({ exitLibrarySelection() }) else null,
         backIntercept = libraryBackIntercept { clearLibraryFilters },
     ) {
+        addView(host.continueListeningCard())
         val hasUnassigned = stories.any { it.tabId == null }
         val initialSelectedTabId: String? =
             LibraryTabSelection.resolve(
@@ -275,9 +283,55 @@ internal fun ScreenHost.showLibrary() {
 }
 
 /**
+ * A quiet way back into the last book when nothing is loaded in the player. It stays hidden while the
+ * mini-player is showing, and after an explicit stop it appears the next time the Library opens.
+ * Dismissing it lasts across restarts, until the listener plays something again.
+ */
+private fun ScreenHost.continueListeningCard(): View {
+    val container =
+        LinearLayout(app).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            layoutParams =
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    bottomMargin = dp(Space.MD)
+                }
+        }
+    if (ttsEngine.playbackState.value.snapshot != null) return container
+    scope.launch {
+        val positions = runCatching { repository.getTtsStoryPositions() }.getOrDefault(emptyList())
+        val dismissedThrough = repository.getDisplayPreferences().continueListeningDismissedThrough
+        val target = TtsContinueListening.target(positions, dismissedThrough) { repository.story(it) } ?: return@launch
+        if (ttsEngine.playbackState.value.snapshot != null) return@launch
+        container.addView(
+            makeButton(
+                app,
+                "Continue listening: ${target.story.title} · ${target.chapter.title}",
+                Btn.TONAL,
+                R.drawable.wna_play,
+            ) {
+                container.visibility = View.GONE
+                TtsForegroundService.start(app, target.story.id, target.chapter.id)
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        container.addView(
+            app.iconButton(R.drawable.wna_close, "Dismiss continue listening") {
+                container.visibility = View.GONE
+                persistContinueListeningDismissal(positions.maxOf { it.updatedAt })
+            },
+        )
+        container.visibility = View.VISIBLE
+    }
+    return container
+}
+
+/**
  * Back clears an active search or tag filter before it leaves the app. [filterBarClear] is the
  * built filter bar's clear action; the empty library has none, only remembered state to drop.
  */
+
 private fun ScreenHost.libraryBackIntercept(filterBarClear: () -> (() -> Unit)?) =
     BackIntercept(
         isActive = { libraryScreenState.query.isNotEmpty() || libraryScreenState.selectedTags.isNotEmpty() },
@@ -300,6 +354,13 @@ private fun ScreenHost.persistLibraryTab(id: String?) {
         repository.updateDisplayPreferences { latest ->
             if (latest.libraryTabId == encoded) latest else latest.copy(libraryTabId = encoded)
         }
+    }
+}
+
+/** Same transactional discipline as [persistLibraryTab]. */
+private fun ScreenHost.persistContinueListeningDismissal(dismissedThrough: Long) {
+    runUiOperation("dismiss continue listening") {
+        repository.updateDisplayPreferences { it.copy(continueListeningDismissedThrough = dismissedThrough) }
     }
 }
 

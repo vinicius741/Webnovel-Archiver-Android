@@ -4,6 +4,10 @@ How TTS behaves as a persistent, podcast-like player: playback that survives nav
 app exits, per-story resume memory, and the in-app player surfaces. Shipped 2026-09-02;
 media buttons + in-app close hardened 2026-09-04.
 
+Playback itself changed in November 2026: see [`tts-audiobook-playback.md`](tts-audiobook-playback.md),
+which takes precedence where the two differ (rendered audio, time-based controls, short skips, pause
+rules, caught-up positions). The session model and lifecycle below still apply.
+
 ## Model
 
 Two persisted concepts, deliberately separate:
@@ -13,7 +17,7 @@ Two persisted concepts, deliberately separate:
   the notification, MediaSession, reader transport, and mini-player visibility.
 - **Per-story positions** (`tts_positions.json`, map `storyId → TtsStoryPosition`) — each story's
   last heard chapter + sentence chunk. Mirrored on every debounced session write; written on
-  explicit stop; cleared only by natural completion (nothing left to resume) or a content-variant
+  explicit stop; kept as `caughtUp` by natural completion; cleared only by a content-variant
   switch (chunk indices remap between source and polished text). Description narration
   (sentinel chapter `wna:description`) never touches this store.
 
@@ -27,8 +31,8 @@ inline content); otherwise the viewed chapter plays from the top.
 - Playback lives in the process-wide `TtsEngine` + `TtsForegroundService` (`mediaPlayback` FGS
   type, MediaSession + MediaStyle notification). Leaving the reader, the activity, or the app
   does not stop it; only explicit stop, natural completion, or process death do.
-- After a system kill the service restarts (`START_STICKY`, null intent → resume persisted
-  session), so playback continues on its own.
+- After a system kill the service restarts (`START_STICKY`, null intent). A session that was
+  playing continues on its own; one the listener paused comes back loaded and silent.
 - **Permanent audio-focus loss pauses** (session + paused notification survive) instead of
   stopping and wiping position. Transient loss already paused + auto-resumed.
 - A session ending (explicit stop or natural completion) stops the foreground service and
@@ -44,14 +48,15 @@ inline content); otherwise the viewed chapter plays from the top.
 
 ## Media buttons (headset & Bluetooth)
 
-- **Routing**: TTS audio plays inside the engine's process, so the system attributes playback
+- **Routing** (live-speech fallback only; rendered audio plays in this app's own process): TTS audio
+  plays inside the engine's process, so the system attributes playback
   to the engine's uid — and media-button routing picks the target session by "which uid is
   actually playing audio". `TtsMediaButtonClaim` holds a silent looping in-app `AudioTrack`
   while speaking so our uid becomes the active player and the session receives media buttons
   like any music player; released on pause/stop (the "lastly played" ordering keeps the
   paused session first in line, so resume taps still arrive).
-- **Headset semantics** (`TtsHeadsetTapPlanning`): 1 tap toggle, 2 taps next chapter, 3 taps
-  previous chapter (300 ms burst window). Repeated key-down events from a held button are
+- **Headset semantics** (`TtsHeadsetTapPlanning`): 1 tap toggle, 2 taps forward 30 s, 3 taps
+  back 15 s, or whole chapters with the setting on (300 ms burst window). Repeated key-down events from a held button are
   ignored. Dedicated PLAY/PAUSE/NEXT/PREVIOUS/STOP keycodes act immediately.
 - **AUDIO_BECOMING_NOISY** (headphones/Bluetooth disconnected) pauses via
   `TtsNoisyAudioReceiver`, registered only while playing.
@@ -69,14 +74,14 @@ inline content); otherwise the viewed chapter plays from the top.
 - **Now Playing screen** (`feature/player/PlayerScreen.kt`, `AppRoute.Player`): cover, story +
   chapter titles, "Chapter n / N", interactive `SeekBar` scrubber with touch isolation and live
   seeking, prev/next chapter, prev/next sentence, play/pause, speed chip (0.75–2.0 presets, applied
-  live and persisted), sleep timer chip (countdown or chapter-end pause), Stop chip (ends the
+  live and persisted), History chip, sleep timer chip (countdown or chapter-end pause), Stop chip (ends the
   session and navigates back), closes itself when playback ends. Rebuilds on chapter change;
   patches transport state in place otherwise.
 - **Reader transport** (unchanged location): sentence-level prev/next + play/pause + stop for the
   visible chapter. Its play/pause resumes the persisted session when the engine has no live
   session (cold-start phantom-pause fix).
-- **Notification + media buttons**: Prev/Next are **chapter** skips (podcast episode semantics);
-  sentence skipping stays available in the reader transport and the Now Playing screen.
+- **Notification + media buttons**: short skips by default, or **chapter** skips with the setting on;
+  sentence skipping stays available in the reader transport.
 
 ## Engine additions
 

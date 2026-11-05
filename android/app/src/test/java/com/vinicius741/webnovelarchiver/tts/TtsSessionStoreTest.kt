@@ -86,7 +86,7 @@ class TtsSessionStoreTest {
         }
 
     @Test
-    fun finishClearsSessionAndStoryPosition() =
+    fun finishClearsSessionButRemembersTheStoryIsCaughtUp() =
         runTest {
             val persistence = FakePersistence()
             val store = TtsSessionStore(persistence, StandardTestDispatcher(testScheduler), debounceMs = 250L)
@@ -95,7 +95,8 @@ class TtsSessionStoreTest {
             store.finish(TtsSession(storyId = "s", chapterId = "c", currentChunkIndex = 9))
 
             assertEquals(1, persistence.clearCount)
-            assertNull(persistence.positions["s"])
+            assertEquals(true, persistence.positions["s"]?.caughtUp)
+            assertEquals("c", persistence.positions["s"]?.chapterId)
         }
 
     @Test

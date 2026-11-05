@@ -10,6 +10,9 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
@@ -21,6 +24,7 @@ import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
+import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -195,7 +199,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                 }
             },
             AppBarAction(R.drawable.wna_speaker, "Read aloud") {
-                TtsForegroundService.start(app, story.id, chapter.id)
+                startReadAloud(story, chapter)
             },
             AppBarAction(R.drawable.wna_more_vert, "Reader settings") {
                 // The panel mutates `display` and re-renders for live preview; voice settings returns here on Back.
@@ -323,6 +327,40 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         transport.visibility = if (transportSnapshot != null) android.view.View.VISIBLE else android.view.View.GONE
         transportBar = transport
         addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    }
+}
+
+/**
+ * "Continue" and "listen from here" only differ when the saved place is in another chapter, so only
+ * then does the listener get asked.
+ */
+private fun ScreenHost.startReadAloud(
+    story: Story,
+    chapter: Chapter,
+) {
+    scope.launch {
+        val position = repository.getTtsStoryPosition(story.id)
+        val saved = TtsSessionPlanning.resolveStartPosition(story, chapter.id, position)
+        if (saved.chapterId == chapter.id) {
+            TtsForegroundService.start(app, story.id, chapter.id)
+            return@launch
+        }
+        val savedTitle =
+            story.chapters
+                .firstOrNull { it.id == saved.chapterId }
+                ?.title
+                .orEmpty()
+        android.app.AlertDialog
+            .Builder(app)
+            .setTitle("Read aloud")
+            .setItems(arrayOf("Continue listening: $savedTitle", "Listen from this chapter")) { _, which ->
+                if (which == 0) {
+                    TtsForegroundService.start(app, story.id, chapter.id)
+                } else {
+                    TtsForegroundService.startFromChunk(app, story.id, chapter.id, 0)
+                }
+            }.setNegativeButton("Cancel", null)
+            .show()
     }
 }
 

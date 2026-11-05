@@ -21,6 +21,7 @@ sealed interface TtsSleepTimerMode {
  */
 internal class TtsSleepTimer(
     private val scope: CoroutineScope,
+    private val onFade: (Float) -> Unit = {},
     private val onTimerExpired: () -> Unit,
 ) {
     var mode: TtsSleepTimerMode = TtsSleepTimerMode.Off
@@ -44,7 +45,12 @@ internal class TtsSleepTimer(
         mode = TtsSleepTimerMode.Duration(minutes, targetEpochMs)
         timerJob =
             scope.launch {
-                delay(minutes * 60_000L)
+                delay(minutes * 60_000L - FADE_MS)
+                // Falling asleep to a voice that trails off beats one that cuts out mid-word.
+                for (step in FADE_STEPS downTo 1) {
+                    onFade(step.toFloat() / FADE_STEPS)
+                    delay(FADE_MS / FADE_STEPS)
+                }
                 mode = TtsSleepTimerMode.Off
                 onTimerExpired()
             }
@@ -64,5 +70,10 @@ internal class TtsSleepTimer(
             return true
         }
         return false
+    }
+
+    private companion object {
+        const val FADE_MS = 10_000L
+        const val FADE_STEPS = 20
     }
 }

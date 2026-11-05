@@ -11,7 +11,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Offline Library** — Download chapters for reading without an internet connection.
 - **Patreon Early Access** — Link a novel to a collection on its creator's Patreon (or all their posts, for creators without collections) and each sync stores the paid chapters your own Patreon account can read after the public ones; each copy is replaced once the public chapter downloads. A guided Settings → Data & Backup → Patreon Account screen walks through signing in with Firefox (Google works) and pastes the session in one tap; a novel's Patreon card offers sign-in, a fresh check, or the creator's tiers when early-access chapters stay locked.
 - **Built-in Reader** — WebView-based reader with sentence-level TTS highlighting, image support, last-read position tracking, and a floating TTS transport.
-- **Text-to-Speech** — Podcast-style playback: a foreground service with MediaSession, notification/media-button controls, audio focus, and stall recovery keeps narration running while you navigate the app or leave it entirely. Every story remembers where you stopped, so Read aloud resumes at the exact sentence (even from a different chapter); a floating mini-player and a full Now Playing screen (cover art, chapter/sentence skip, speed presets) control playback anywhere in the app. Story descriptions can also be read aloud from the detail page (Listen button), using the same voice settings.
+- **Text-to-Speech** — Audiobook-style playback: sentences render ahead to audio for exact pause and resume, real time left, scrubbing, 15/30-second skips and natural pauses you can adjust and try on a sample in Voice & Speech, with context replay after long breaks, a listening history and Continue listening. A foreground service with MediaSession, notification/media-button controls, audio focus, and a live-speech fallback keeps narration running while you navigate the app or leave it entirely. Every story remembers where you stopped, so Read aloud resumes at the exact sentence (even from a different chapter); a floating mini-player and a full Now Playing screen (cover art, chapter/sentence skip, speed presets) control playback anywhere in the app. Story descriptions can also be read aloud from the detail page (Listen button), using the same voice settings.
 - **Updates Tracker** — Novels are followed automatically while your bookmark is within an adjustable threshold (default 5 chapters) of their latest chapter, and batch-synced concurrently for new chapters with nested chapter rows under each novel; a Following Review screen shows each novel's distance from the end and why it is or isn't followed.
 - **EPUB Export** — Generate EPUB 2.0 files with volume splitting, configurable chapter ranges, timestamped outputs, and an EPUB Files screen for leftovers.
 - **Background Downloads** — Foreground service with a persistent queue, two parallel source lanes, sequential per-source pacing, isolated bulk preflight and Cloudflare circuit breaking, `Retry-After` cooldowns, and automatic recovery. The Downloads screen shows novels in download order (Downloading now, Up next, Paused, Finished), lets you drag Up next novels to reorder them, and leads with one "needs a quick check" card per Cloudflare-blocked site; passing the check resumes that site's chapters automatically.
@@ -40,7 +40,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 | Charts | MPAndroidChart 4.0.1 (trend graphs; JitPack MPChartLib) |
 | Logging | Timber 5 (debug-gated in release) |
 | Storage | File-based JSON via `AppStorage` / `AppRepository` (no Room/SQLite) |
-| TTS | Android TextToSpeech API + MediaSession |
+| TTS | Android TextToSpeech rendered to cached audio, AudioTrack playback, MediaSession |
 | Services | Foreground Services (dataSync, mediaPlayback) |
 | Browser | AndroidX Browser Custom Tabs |
 | Testing | JUnit 4, MockWebServer, coroutines-test; instrumentation build type for device tests |
@@ -171,7 +171,7 @@ android/
           download/            # Download engine, queue, foreground service
           epub/                # EPUB generation
           cleanup/             # Text cleanup for download + TTS
-          tts/                 # TTS engine + foreground service
+          tts/                 # TTS engine, audio rendering + player, foreground service
           ai/                  # OpenRouter client + decision-model chapter selection, AI engines and background jobs
           notification/        # Notification channels + permission helpers
           ui/                  # Programmatic View DSL, shared form spacing, themes, widgets

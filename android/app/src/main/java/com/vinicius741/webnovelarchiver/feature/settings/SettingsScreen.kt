@@ -101,7 +101,7 @@ internal fun ScreenHost.showSettings() {
         // DisplayPreferences for backup compatibility but nothing reads it.
         divider()
         section("Reading & Audio")
-        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Pitch, rate, and voice") { showTtsSettings() }
+        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Voice, rate, pauses, and a sample to try them") { showTtsSettings() }
         settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
         settingRow(R.drawable.wna_auto_awesome, "AI Settings", "OpenRouter API key and models for AI descriptions") { showAiSettings() }
         divider()

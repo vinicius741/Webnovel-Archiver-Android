@@ -49,10 +49,11 @@ serves a browser challenge instead of content.
 
 ### `tts/`
 
-Audits and evaluations of the Text-to-Speech subsystem.
+How the Text-to-Speech subsystem works, plus audits and evaluations.
 
 | File | Description |
 |------|-------------|
+| `tts-audiobook-playback.md` | Audiobook-style playback: rendered audio pipeline, pacing, anchored positions and history, pause rules, context replay, controls, live-speech fallback, and what is still unverified. |
 | `tts-podcast-player.md` | The podcast-style TTS player: per-story resume memory (`tts_positions.json`), stop-vs-finish semantics, mini-player + Now Playing screens, chapter-skip transport, and lifecycle rules. |
 | `tts-audit.html` | Read-only audit of the current TTS implementation against modern Android best practices, with a prioritized recommendation list. |
 | `tts-media3-migration-evaluation.md` | Short evaluation recommending against a Media3 migration in the same change as the audio-focus/robustness fixes. |

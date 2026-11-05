@@ -16,6 +16,12 @@ the audio-focus and robustness fixes.
   its own user-visible playback migration, ideally with emulator QA across notification controls,
   hardware media buttons, background playback, and process restart.
 
+## Update (November 2026)
+
+The audiobook playback work kept `MediaSessionCompat` and plays rendered audio through its own
+`AudioTrack` stream rather than ExoPlayer, for the reasons in `tts-audiobook-playback.md`. This
+evaluation's advice still stands: migrate as its own change, most likely when Android Auto is wanted.
+
 ## Suggested Scope For A Future Migration
 
 - Replace `MediaSessionCompat` and `androidx.media:media` with the Media3 session stack.

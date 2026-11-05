@@ -2,9 +2,11 @@ package com.vinicius741.webnovelarchiver.tts
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -33,13 +35,21 @@ internal class TtsMediaSessionManager(
 
         fun onSkipChapter(delta: Int)
 
+        fun onSeekBy(deltaMs: Long)
+
+        fun onSeekTo(positionMs: Long)
+
         fun onTogglePlayPause()
+
+        /** Whether next/previous controls mean whole chapters rather than short skips. */
+        fun chapterSkipButtons(): Boolean
     }
 
     private var session: MediaSessionCompat? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingTapRunnable: Runnable? = null
     private var burstTapCount = 0
+    private var lastMetadataKey: List<Any?>? = null
 
     val sessionToken: MediaSessionCompat.Token?
         get() = session?.sessionToken
@@ -76,12 +86,24 @@ internal class TtsMediaSessionManager(
                             callbacks.onStop()
                         }
 
-                        override fun onSkipToNext() {
-                            callbacks.onSkipChapter(1)
-                        }
+                        override fun onSkipToNext() = perform(TtsHeadsetTapPlanning.forwardAction(callbacks.chapterSkipButtons()))
 
-                        override fun onSkipToPrevious() {
-                            callbacks.onSkipChapter(-1)
+                        override fun onSkipToPrevious() = perform(TtsHeadsetTapPlanning.backAction(callbacks.chapterSkipButtons()))
+
+                        override fun onFastForward() = perform(TtsHeadsetTapAction.SkipForward)
+
+                        override fun onRewind() = perform(TtsHeadsetTapAction.SkipBack)
+
+                        override fun onSeekTo(pos: Long) = callbacks.onSeekTo(pos)
+
+                        override fun onCustomAction(
+                            action: String?,
+                            extras: android.os.Bundle?,
+                        ) {
+                            when (action) {
+                                CUSTOM_SKIP_BACK -> perform(TtsHeadsetTapAction.SkipBack)
+                                CUSTOM_SKIP_FORWARD -> perform(TtsHeadsetTapAction.SkipForward)
+                            }
                         }
 
                         override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
@@ -108,11 +130,19 @@ internal class TtsMediaSessionManager(
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_NEXT -> {
-                                    callbacks.onSkipChapter(1)
+                                    perform(TtsHeadsetTapPlanning.forwardAction(callbacks.chapterSkipButtons()))
                                     return true
                                 }
                                 KeyEvent.KEYCODE_MEDIA_PREVIOUS -> {
-                                    callbacks.onSkipChapter(-1)
+                                    perform(TtsHeadsetTapPlanning.backAction(callbacks.chapterSkipButtons()))
+                                    return true
+                                }
+                                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                                    perform(TtsHeadsetTapAction.SkipForward)
+                                    return true
+                                }
+                                KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                                    perform(TtsHeadsetTapAction.SkipBack)
                                     return true
                                 }
                             }
@@ -132,24 +162,46 @@ internal class TtsMediaSessionManager(
                 snapshot.isPlaying -> PlaybackStateCompat.STATE_PLAYING
                 else -> PlaybackStateCompat.STATE_STOPPED
             }
-        val actions = (
+        val chapterButtons = callbacks.chapterSkipButtons()
+        var actions = (
             PlaybackStateCompat.ACTION_PLAY_PAUSE or
                 PlaybackStateCompat.ACTION_PLAY or
                 PlaybackStateCompat.ACTION_PAUSE or
                 PlaybackStateCompat.ACTION_STOP or
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+                PlaybackStateCompat.ACTION_REWIND or
+                PlaybackStateCompat.ACTION_FAST_FORWARD or
+                PlaybackStateCompat.ACTION_SEEK_TO
         )
-        session?.setPlaybackState(
+        if (chapterButtons) {
+            actions = actions or PlaybackStateCompat.ACTION_SKIP_TO_NEXT or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+        }
+        val builder =
             PlaybackStateCompat
                 .Builder()
                 .setActions(actions)
-                .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
-                .build(),
-        )
+                .setState(
+                    state,
+                    snapshot?.positionMs ?: PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
+                    snapshot?.rate ?: 1f,
+                    snapshot?.capturedAtElapsedMs?.takeIf { it > 0L } ?: SystemClock.elapsedRealtime(),
+                )
+        // Without skip actions, system media controls give these two the previous and next slots.
+        if (!chapterButtons) {
+            builder.addCustomAction(CUSTOM_SKIP_BACK, context.getString(R.string.tts_action_skip_back), R.drawable.wna_replay)
+            builder.addCustomAction(CUSTOM_SKIP_FORWARD, context.getString(R.string.tts_action_skip_forward), R.drawable.wna_forward_skip)
+        }
+        session?.setPlaybackState(builder.build())
     }
 
-    fun updateMetadata(snapshot: TtsPlaybackSnapshot?) {
+    fun updateMetadata(
+        snapshot: TtsPlaybackSnapshot?,
+        cover: Bitmap?,
+    ) {
+        // Metadata with artwork is costly to send, and most sentence changes alter none of it.
+        val key =
+            listOf(snapshot?.title, snapshot?.storyTitle, snapshot?.chapterIndex, snapshot?.durationMs?.div(DURATION_GRANULARITY_MS), cover)
+        if (key == lastMetadataKey) return
+        lastMetadataKey = key
         session?.setMetadata(
             MediaMetadataCompat
                 .Builder()
@@ -159,11 +211,18 @@ internal class TtsMediaSessionManager(
                         MediaMetadataCompat.METADATA_KEY_ARTIST,
                         snapshot?.storyTitle?.takeIf { it.isNotBlank() } ?: context.getString(R.string.app_name),
                     )
-                    putString(MediaMetadataCompat.METADATA_KEY_ALBUM, snapshot?.title ?: context.getString(R.string.tts_metadata_reading))
-                    if (snapshot != null && snapshot.totalChunks > 0) {
-                        putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, snapshot.chunkIndex.toLong() + 1L)
-                        putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, snapshot.totalChunks.toLong())
+                    putString(
+                        MediaMetadataCompat.METADATA_KEY_ALBUM,
+                        snapshot?.storyTitle?.takeIf { it.isNotBlank() } ?: context.getString(R.string.tts_metadata_reading),
+                    )
+                    if (snapshot != null && snapshot.durationMs > 0L) {
+                        putLong(MediaMetadataCompat.METADATA_KEY_DURATION, snapshot.durationMs)
                     }
+                    if (snapshot != null && snapshot.chapterIndex >= 0) {
+                        putLong(MediaMetadataCompat.METADATA_KEY_TRACK_NUMBER, snapshot.chapterIndex + 1L)
+                        putLong(MediaMetadataCompat.METADATA_KEY_NUM_TRACKS, snapshot.chapterCount.toLong())
+                    }
+                    if (cover != null) putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, cover)
                 }.build(),
         )
     }
@@ -197,10 +256,16 @@ internal class TtsMediaSessionManager(
     }
 
     private fun dispatchTapBurst() {
-        val action = TtsHeadsetTapPlanning.actionForTapCount(burstTapCount)
+        val action = TtsHeadsetTapPlanning.actionForTapCount(burstTapCount, callbacks.chapterSkipButtons())
         burstTapCount = 0
+        perform(action)
+    }
+
+    private fun perform(action: TtsHeadsetTapAction) {
         when (action) {
             TtsHeadsetTapAction.TogglePlayPause -> callbacks.onTogglePlayPause()
+            TtsHeadsetTapAction.SkipForward -> callbacks.onSeekBy(TtsHeadsetTapPlanning.SKIP_FORWARD_MS)
+            TtsHeadsetTapAction.SkipBack -> callbacks.onSeekBy(-TtsHeadsetTapPlanning.SKIP_BACK_MS)
             TtsHeadsetTapAction.NextChapter -> callbacks.onSkipChapter(1)
             TtsHeadsetTapAction.PreviousChapter -> callbacks.onSkipChapter(-1)
         }
@@ -208,6 +273,9 @@ internal class TtsMediaSessionManager(
 
     private companion object {
         private const val TAG = "WNA-TtsMediaSession"
+        private const val CUSTOM_SKIP_BACK = "wna.tts.SKIP_BACK"
+        private const val CUSTOM_SKIP_FORWARD = "wna.tts.SKIP_FORWARD"
+        private const val DURATION_GRANULARITY_MS = 5_000L
     }
 }
 
