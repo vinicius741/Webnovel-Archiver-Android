@@ -30,9 +30,22 @@ object DownloadQueuePlanning {
             if (chapter.downloaded || chapter.isPatreonCopy) return@forEach
 
             val id = "${story.id}_$index"
-            val existingIndex = jobs.indexOfFirst { it.id == id }
+            val positionIndex = jobs.indexOfFirst { it.id == id }
+            // Job ids carry the chapter's position, which shifts when rows are inserted or
+            // discarded, so a job is found by its chapter first; a finished row at this position
+            // is history and may be reused.
+            val chapterIndex =
+                if (chapter.id.isBlank()) -1 else jobs.indexOfFirst { it.storyId == story.id && it.chapter.id == chapter.id }
+            val existingIndex =
+                when {
+                    chapterIndex >= 0 -> chapterIndex
+                    positionIndex >= 0 && jobs[positionIndex].status in terminalStatuses -> positionIndex
+                    else -> -1
+                }
             if (existingIndex == -1) {
-                jobs.add(pendingJob(story, index, chapter))
+                // An active job of another chapter can still hold this position's id.
+                val freshId = if (positionIndex >= 0) "${id}_${chapter.id}" else id
+                jobs.add(pendingJob(story, index, chapter, id = freshId))
                 changed = true
                 hasRunnableWork = true
                 return@forEach
@@ -40,7 +53,7 @@ object DownloadQueuePlanning {
 
             val existing = jobs[existingIndex]
             if (existing.status in terminalStatuses) {
-                jobs[existingIndex] = pendingJob(story, index, chapter, retryCount = existing.retryCount)
+                jobs[existingIndex] = pendingJob(story, index, chapter, retryCount = existing.retryCount, id = existing.id)
                 changed = true
                 hasRunnableWork = true
             } else if (existing.status in runnableStatuses) {
@@ -68,9 +81,10 @@ object DownloadQueuePlanning {
         index: Int,
         chapter: Chapter,
         retryCount: Int = 0,
+        id: String = "${story.id}_$index",
     ): DownloadJob =
         DownloadJob(
-            id = "${story.id}_$index",
+            id = id,
             storyId = story.id,
             storyTitle = story.title,
             sourceId = story.sourceId,

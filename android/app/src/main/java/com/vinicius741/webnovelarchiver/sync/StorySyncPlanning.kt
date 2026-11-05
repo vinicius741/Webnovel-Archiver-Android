@@ -6,22 +6,34 @@ import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.PublicationStatusPlanning
+import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
 import com.vinicius741.webnovelarchiver.source.SourceProvider
 import com.vinicius741.webnovelarchiver.source.sanitizeTitle
 
 data class ChapterMergeResult(
     val chapters: List<Chapter>,
     val newChapterIds: List<String>,
+    /**
+     * Chapters this sync newly found missing from the source (not already flagged by an earlier
+     * sync). Downloaded ones stay in [chapters], flagged; the rest were dropped.
+     */
     val removedChapters: List<Chapter>,
     val lastReadChapterId: String?,
 )
 
 object StorySyncPlanning {
+    /**
+     * Merges a complete source chapter list into [existing]. A downloaded chapter the source no
+     * longer lists stays in its reading position, flagged with [removedAt] (or its earlier flag);
+     * one that was never downloaded has nothing to keep and is dropped. A flagged chapter the
+     * source lists again becomes an ordinary chapter.
+     */
     fun mergeChapters(
         existing: List<Chapter>,
         incoming: List<ChapterInfo>,
         provider: SourceProvider,
         lastRead: String?,
+        removedAt: Long = System.currentTimeMillis(),
     ): ChapterMergeResult {
         val matcher = ChapterMatcher(provider)
         val index = matcher.index(existing)
@@ -40,6 +52,7 @@ object StorySyncPlanning {
                         title = sanitizeTitle(info.title),
                         url = info.url,
                         publishedAt = info.publishedAt ?: found.publishedAt,
+                        removedFromSourceAt = null,
                     )
                 } else {
                     newIds.add(stable)
@@ -53,10 +66,16 @@ object StorySyncPlanning {
                 }
             }
 
+        val missing = remaining.mapNotNull { existingById[it] }
+        val kept =
+            missing
+                .filter { it.downloaded }
+                .map { it.copy(removedFromSourceAt = it.removedFromSourceAt ?: removedAt) }
+        val merged = RemovedChapterPlanning.placeKept(existing, chapters, kept, matcher::stableId)
         var remappedLast = lastRead?.let { index.aliases[it] ?: it }
-        if (remappedLast != null && chapters.none { it.id == remappedLast }) remappedLast = null
-        val removed = remaining.mapNotNull { existingById[it] }
-        return ChapterMergeResult(chapters, newIds, removed, remappedLast)
+        if (remappedLast != null && merged.none { it.id == remappedLast }) remappedLast = null
+        val newlyRemoved = missing.filterNot { it.isRemovedFromSource }
+        return ChapterMergeResult(merged, newIds, newlyRemoved, remappedLast)
     }
 
     fun mergeLatestChapters(
@@ -105,6 +124,7 @@ object StorySyncPlanning {
                             title = sanitizeTitle(info.title),
                             url = info.url,
                             publishedAt = info.publishedAt ?: found.publishedAt,
+                            removedFromSourceAt = null,
                         ),
                     )
                 }

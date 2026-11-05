@@ -2,7 +2,9 @@ package com.vinicius741.webnovelarchiver.sync
 
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.source.SourceProvider
+import com.vinicius741.webnovelarchiver.source.SourceRegistry
 
 /**
  * Owns the stable identity rules shared by full/latest sync merges and the concurrent-write fold.
@@ -42,4 +44,10 @@ internal class ChapterMatcher(
         info: ChapterInfo,
         index: Index,
     ): Chapter? = index.byStableId[stableId(info)]
+}
+
+/** Stable chapter identity within [story] for callers outside a sync; raw id when the source is unknown. */
+internal fun storyChapterKey(story: Story): (Chapter) -> String {
+    val matcher = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.let(::ChapterMatcher)
+    return { chapter -> matcher?.stableId(chapter) ?: chapter.id.ifBlank { chapter.url } }
 }

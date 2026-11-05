@@ -8,7 +8,7 @@ import com.vinicius741.webnovelarchiver.data.storage.AiCoverResultKind
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
-import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
+import com.vinicius741.webnovelarchiver.data.storage.foldLegacyArchivesOnDisk
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
@@ -32,6 +32,8 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
+import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
+import com.vinicius741.webnovelarchiver.sync.storyChapterKey
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -321,7 +323,12 @@ class AppRepository private constructor(
         storageTransaction {
             invalidateLibraryGeneration()
             try {
-                block().also { refresh() }
+                block().also {
+                    // Older backups can still hold archive snapshots; fold them like startup does.
+                    runCatching { requiredStorage.foldLegacyArchivesOnDisk(::storyChapterKey) }
+                        .onFailure { error -> Timber.w(error, "Could not fold archive snapshots after replacing the library") }
+                    refresh()
+                }
             } finally {
                 // Work started against the old published snapshot during maintenance is stale too.
                 invalidateLibraryGeneration()
@@ -361,6 +368,31 @@ class AppRepository private constructor(
             storyStore.addOrUpdateStory(updated)
             publishStoryLocked(updated)
             StoryMutations.snapshot(updated)
+        }
+
+    /**
+     * Drops removed-from-source chapters (all of them when [chapterIds] is null) and deletes their
+     * files; see [RemovedChapterPlanning.discard]. The source cannot provide them again. The
+     * deletion runs in the same transaction as the write, so a restore can never land in between
+     * and have its freshly restored files deleted. A file another remaining row still points at
+     * is kept.
+     */
+    suspend fun discardRemovedChapters(
+        storyId: String,
+        chapterIds: Set<String>? = null,
+    ): Story? =
+        storageTransaction {
+            val current = storyStore.story(storyId) ?: return@storageTransaction null
+            val result = RemovedChapterPlanning.discard(current, chapterIds)
+            if (result.removed.isEmpty()) return@storageTransaction StoryMutations.snapshot(current)
+            storyStore.addOrUpdateStory(result.story)
+            publishStoryLocked(result.story)
+            val stillReferenced = result.story.chapters.mapNotNullTo(HashSet()) { it.filePath }
+            result.removed
+                .mapNotNull { it.filePath }
+                .filterNot { it in stillReferenced }
+                .forEach { path -> runCatching { requiredStorage.deleteChapterFile(storyId, path) } }
+            StoryMutations.snapshot(result.story)
         }
 
     private suspend fun updateExistingStory(
@@ -493,7 +525,7 @@ class AppRepository private constructor(
         }
 
     /**
-     * Commits a sync atomically with optional archive and metric snapshots.
+     * Commits a sync atomically with an optional metric snapshot.
      *
      * @param startedGeneration [libraryGeneration] captured when the sync began; a mismatch means
      *   the library was cleared or replaced mid-flight, so the commit is rejected.
@@ -503,8 +535,6 @@ class AppRepository private constructor(
      */
     suspend fun commitSyncedStory(
         story: Story,
-        archiveSource: Story? = null,
-        archiveReason: String = ArchiveSnapshotPlanning.SOURCE_CHAPTERS_REMOVED_REASON,
         metricSnapshot: StoryMetricSnapshot? = null,
         startedGeneration: Long = libraryGeneration.get(),
         requireExisting: Boolean = false,
@@ -519,20 +549,6 @@ class AppRepository private constructor(
                 check(current != null) { "Story ${story.id} was deleted while it was syncing; discarding the sync result" }
             }
             val committed = merge(current)
-            val archive =
-                archiveSource?.let { source ->
-                    ArchiveSnapshotPlanning.buildArchiveSnapshot(
-                        source,
-                        System.currentTimeMillis(),
-                        archiveReason,
-                    ) { archiveId, index, chapter ->
-                        requiredStorage.copyChapterToStory(archiveId, index, chapter)
-                    }
-                }
-            archive?.let {
-                storyStore.addOrUpdateStory(it)
-                libraryById[it.id] = StoryMutations.snapshot(it)
-            }
             storyStore.addOrUpdateStory(committed)
             libraryById[committed.id] = StoryMutations.snapshot(committed)
             committed.patreonStats?.takeIf { metricSnapshot?.patreonRaw != null }?.let { fresh ->

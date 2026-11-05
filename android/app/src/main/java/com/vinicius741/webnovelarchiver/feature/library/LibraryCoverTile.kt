@@ -7,7 +7,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import androidx.core.graphics.ColorUtils
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -42,7 +41,6 @@ internal fun ScreenHost.bindLibraryCoverTile(
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         },
     )
-    if (story.isArchived == true) frame.addView(archivedBadge())
     if (hasUnseenAiResult(story)) frame.addView(aiResultBadge())
     if (selected != null) addSelectionBadge(frame)
 
@@ -72,22 +70,6 @@ internal fun ScreenHost.bindLibraryCoverTile(
     // Extra row height goes to the text block, so progress bars line up across a row.
     tile.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     if (story.totalChapters > 0) tile.addView(makeLibraryProgressSummary(story, topMarginDp = Space.SM))
-}
-
-private fun ScreenHost.archivedBadge(): ImageView {
-    val size = dp(28)
-    val inset = dp(Space.SM)
-    return ImageView(app).apply {
-        contentDescription = "Archived"
-        setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(dp(Space.XS + 2), dp(Space.XS + 2), dp(Space.XS + 2), dp(Space.XS + 2))
-        background = roundedBg(ColorUtils.setAlphaComponent(ThemeManager.colors.surface, ARCHIVED_SCRIM_ALPHA), size / 2f)
-        layoutParams =
-            FrameLayout.LayoutParams(size, size, Gravity.TOP or Gravity.END).apply {
-                setMargins(0, inset, inset, 0)
-            }
-    }
 }
 
 /** A finished background AI cover nobody has looked at yet (persisted; cleared on opening AI Controls). */
@@ -128,4 +110,3 @@ private class CoverAspectFrame(
 
 /** Nominal size handed to the cover builder; the frame overrides it with the real tile size. */
 private const val COVER_SOURCE_WIDTH_DP = LibraryViewModePlanning.MIN_COVER_TILE_WIDTH
-private const val ARCHIVED_SCRIM_ALPHA = 0xD9

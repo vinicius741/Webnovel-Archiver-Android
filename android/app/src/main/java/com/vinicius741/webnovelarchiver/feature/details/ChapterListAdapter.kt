@@ -342,6 +342,7 @@ class ChapterListAdapter(
                 chapter.downloadedAt,
                 waitingForDelay,
                 patreonCopy = chapter.isPatreonCopy,
+                removedFromSource = chapter.isRemovedFromSource,
             )
         val color =
             when (liveStatus) {

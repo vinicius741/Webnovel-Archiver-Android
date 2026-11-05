@@ -135,6 +135,8 @@ object PatreonCopyPlanning {
     /**
      * Points every Patreon copy at the public chapter that publishes it, then drops copies whose
      * public chapter has downloaded. A bookmark on a dropped copy moves to its public chapter.
+     * A copy whose id an ordinary row already uses (an early-access text kept as a removed
+     * chapter when a legacy archive was folded) is dropped too, so the list never holds one id twice.
      */
     fun reconcile(
         chapters: List<Chapter>,
@@ -149,7 +151,10 @@ object PatreonCopyPlanning {
         val patreon =
             chapters.filter { it.isPatreonCopy }.mapNotNull { copy ->
                 val replacement = publicMatch(copy.title, keys)
-                if (replacement != null && publicById[replacement.id]?.downloaded == true) {
+                if (copy.id in publicById) {
+                    removed += copy
+                    null
+                } else if (replacement != null && publicById[replacement.id]?.downloaded == true) {
                     removed += copy
                     replacementOfRemoved[copy.id] = replacement.id
                     null

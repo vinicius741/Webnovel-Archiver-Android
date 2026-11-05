@@ -68,8 +68,14 @@ internal fun ScreenHost.buildDetailsInfoPanel(
         )
     }
     if (story.isArchived == true) {
+        // Only a legacy archive whose startup fold failed reaches here; the fold retries each start.
         infoPanel.addView(
-            makeText(app, "Archived snapshot: sync and downloads disabled", Type.LABEL_MEDIUM, ThemeManager.colors.tertiary).apply {
+            makeText(
+                app,
+                "Old archive copy: read-only until it merges into its novel",
+                Type.LABEL_MEDIUM,
+                ThemeManager.colors.tertiary,
+            ).apply {
                 gravity = Gravity.CENTER
                 setPadding(0, dp(Space.SM), 0, dp(Space.XS))
             },
@@ -77,6 +83,9 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     }
     if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
         infoPanel.addView(buildSourceAvailabilityNotice(story))
+    }
+    if (story.chapters.any { it.isRemovedFromSource }) {
+        infoPanel.addView(buildRemovedChaptersNotice(story))
     }
     if (StoryActionGuards.canSync(story)) {
         val syncLabel =

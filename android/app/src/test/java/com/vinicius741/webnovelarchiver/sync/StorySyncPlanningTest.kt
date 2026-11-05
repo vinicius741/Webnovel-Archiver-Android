@@ -65,6 +65,73 @@ class StorySyncPlanningTest {
     }
 
     @Test
+    fun mergeChaptersKeepsDownloadedRemovedChaptersInReadingOrder() {
+        val existing =
+            listOf(
+                Chapter(id = "c1", title = "One", url = "https://example.com/one", downloaded = true, filePath = "c1.html"),
+                Chapter(id = "c2", title = "Two", url = "https://example.com/two", downloaded = true, filePath = "c2.html"),
+                Chapter(id = "c3", title = "Three", url = "https://example.com/three", downloaded = true, filePath = "c3.html"),
+                Chapter(id = "c4", title = "Four", url = "https://example.com/four", downloaded = false),
+            )
+        val incoming =
+            listOf(
+                ChapterInfo(id = "c1", title = "One", url = "https://example.com/one"),
+                ChapterInfo(id = "c5", title = "Five", url = "https://example.com/five"),
+            )
+
+        val merge = StorySyncPlanning.mergeChapters(existing, incoming, noIdProvider(), lastRead = "c3", removedAt = 42L)
+
+        assertEquals(listOf("c1", "c2", "c3", "c5"), merge.chapters.map { it.id })
+        assertEquals(listOf(null, 42L, 42L, null), merge.chapters.map { it.removedFromSourceAt })
+        assertEquals("c2.html", merge.chapters[1].filePath)
+        assertEquals(setOf("c2", "c3", "c4"), merge.removedChapters.map { it.id }.toSet())
+        assertEquals(listOf("c5"), merge.newChapterIds)
+        assertEquals("c3", merge.lastReadChapterId)
+    }
+
+    @Test
+    fun mergeChaptersKeepsTheFirstRemovalTimeAndClearsItWhenTheChapterReturns() {
+        val existing =
+            listOf(
+                Chapter(id = "c1", title = "One", url = "https://example.com/one", downloaded = true, removedFromSourceAt = 7L),
+                Chapter(id = "c2", title = "Two", url = "https://example.com/two", downloaded = true, removedFromSourceAt = 7L),
+                Chapter(id = "c3", title = "Three", url = "https://example.com/three", downloaded = true),
+            )
+        val incoming =
+            listOf(
+                ChapterInfo(id = "c2", title = "Two", url = "https://example.com/two"),
+                ChapterInfo(id = "c3", title = "Three", url = "https://example.com/three"),
+            )
+
+        val merge = StorySyncPlanning.mergeChapters(existing, incoming, noIdProvider(), lastRead = null, removedAt = 99L)
+
+        assertEquals(listOf("c1", "c2", "c3"), merge.chapters.map { it.id })
+        assertEquals(listOf(7L, null, null), merge.chapters.map { it.removedFromSourceAt })
+        // c1 was already flagged by an earlier sync, so this sync reports nothing new.
+        assertEquals(emptyList<Chapter>(), merge.removedChapters)
+    }
+
+    @Test
+    fun mergeLatestChaptersClearsTheRemovedFlagOfAReturningChapter() {
+        val existing =
+            listOf(
+                Chapter(id = "sh_100", title = "One", url = "https://www.scribblehub.com/read/1-s/chapter/100/", downloaded = true),
+                Chapter(
+                    id = "sh_200",
+                    title = "Two",
+                    url = "https://www.scribblehub.com/read/1-s/chapter/200/",
+                    downloaded = true,
+                    removedFromSourceAt = 5L,
+                ),
+            )
+        val latest = listOf(ChapterInfo(id = "sh_200", title = "Two", url = "https://www.scribblehub.com/read/1-s/chapter/200/"))
+
+        val merge = requireNotNull(StorySyncPlanning.mergeLatestChapters(existing, latest, ScribbleHubProvider, lastRead = null))
+
+        assertEquals(listOf(null, null), merge.chapters.map { it.removedFromSourceAt })
+    }
+
+    @Test
     fun mergeLatestChaptersPreservesOlderChaptersAndAddsNewOnes() {
         val existing =
             listOf(

@@ -42,8 +42,10 @@ class WrapLayout(
             val lp = child.layoutParams as MarginLayoutParams
             val cw = child.measuredWidth + lp.leftMargin + lp.rightMargin
             val ch = child.measuredHeight + lp.topMargin + lp.bottomMargin
-            if (lineWidth + cw > maxWidth && lineWidth > 0) {
-                widthUsed = maxOf(widthUsed, lineWidth - hd())
+            // Same rule as onLayout, gap included; without it a child that only fits gap-less is
+            // measured on this row but laid out on a new one, past the measured height.
+            if (lineWidth > 0 && lineWidth + hd() + cw > maxWidth) {
+                widthUsed = maxOf(widthUsed, lineWidth)
                 heightUsed += lineHeight + vd()
                 lineWidth = cw
                 lineHeight = ch

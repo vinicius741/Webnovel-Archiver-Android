@@ -54,6 +54,10 @@ object StorySyncMergePlanning {
                 .filter { chapter ->
                     !chapter.isPatreonCopy ||
                         (samePatreonCollection && (chapter.id in onDiskIds || chapter.id in freshPatreonChapterIds))
+                }.filter { chapter ->
+                    // A removed-from-source chapter the user discarded during the window (its file
+                    // already deleted) must not come back from the pre-window snapshot.
+                    !chapter.isRemovedFromSource || matcher.stableId(chapter) in onDiskByStable
                 }.map { chapter ->
                     val stable = matcher.stableId(chapter)
                     val current = if (stable.isNotBlank()) onDiskByStable[stable] else null
@@ -67,6 +71,10 @@ object StorySyncMergePlanning {
                             content = current.content ?: chapter.content,
                             downloadedAt = current.downloadedAt ?: chapter.downloadedAt,
                         )
+                    } else if (current == null && chapter.downloaded && !chapter.isPatreonCopy) {
+                        // Downloaded before the window but gone from disk now: discarded during the
+                        // window (a returning removed chapter), so its file is deleted. Re-download.
+                        chapter.copy(downloaded = false, filePath = null, content = null, downloadedAt = null)
                     } else {
                         chapter
                     }

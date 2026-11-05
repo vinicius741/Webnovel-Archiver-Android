@@ -1,25 +1,24 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.archive.ArchiveSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.strokeBg
-import com.vinicius741.webnovelarchiver.ui.toast
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Source-health notice that explicitly separates remote availability from preserved local data. */
@@ -36,6 +35,49 @@ internal fun ScreenHost.buildSourceAvailabilityNotice(story: Story): LinearLayou
             "Automated access to $providerName is currently blocked. Your local copy remains available here with $downloadedLabel."
         }
     val accent = if (availability == SourceAvailability.not_found) colors.error else colors.tertiary
+    return detailsNoticeCard("Your local copy is safe", message, accent)
+}
+
+/**
+ * Shown while the novel keeps chapters its source no longer lists. They read like any other
+ * chapter; the notice explains the row label and offers to drop them.
+ */
+internal fun ScreenHost.buildRemovedChaptersNotice(story: Story): LinearLayout {
+    val removed = story.chapters.filter { it.isRemovedFromSource }
+    val providerName = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.name ?: "The source"
+    val count = removed.size
+    val noun = if (count == 1) "chapter" else "chapters"
+    val title = "$count $noun removed from source"
+    val message =
+        "$providerName no longer lists ${if (count == 1) "this chapter" else "these chapters"}. " +
+            "${if (count == 1) "It stays" else "They stay"} in your copy, in reading order."
+    return detailsNoticeCard(title, message, ThemeManager.colors.tertiary).apply {
+        addView(
+            makeButton(app, "Discard", Btn.TEXT) {
+                confirm(
+                    "Discard the $count $noun removed from $providerName? The source can't provide them again.",
+                    confirmLabel = "Discard",
+                ) {
+                    scope.launch {
+                        repository.discardRemovedChapters(story.id)
+                        rerenderDetailsIfVisible(story.id)
+                    }
+                }
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.END
+                topMargin = dp(Space.SM)
+            },
+        )
+    }
+}
+
+private fun ScreenHost.detailsNoticeCard(
+    title: String,
+    message: String,
+    accent: Int,
+): LinearLayout {
+    val colors = ThemeManager.colors
     val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
     return LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
@@ -60,7 +102,7 @@ internal fun ScreenHost.buildSourceAvailabilityNotice(story: Story): LinearLayou
                 addView(
                     LinearLayout(app).apply {
                         orientation = LinearLayout.VERTICAL
-                        addView(makeText(app, "Your local copy is safe", Type.TITLE_MEDIUM, colors.onSurface))
+                        addView(makeText(app, title, Type.TITLE_MEDIUM, colors.onSurface))
                         addView(
                             makeText(app, message, Type.BODY_MEDIUM, colors.onSurfaceVariant).apply {
                                 setPadding(0, dp(Space.XS), 0, 0)
@@ -71,54 +113,5 @@ internal fun ScreenHost.buildSourceAvailabilityNotice(story: Story): LinearLayou
                 )
             },
         )
-        if (availability == SourceAvailability.not_found) {
-            this@buildSourceAvailabilityNotice.addArchiveAction(this, story)
-        }
     }
-}
-
-private fun ScreenHost.addArchiveAction(
-    parent: LinearLayout,
-    story: Story,
-) {
-    parent.addView(
-        makeUnavailableArchiveButton(story),
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = app.dp(Space.SM)
-            marginStart = app.dp(Space.MD)
-        },
-    )
-}
-
-private fun ScreenHost.makeUnavailableArchiveButton(story: Story) =
-    makeButton(app, "Archive Local Copy", Btn.OUTLINED, R.drawable.wna_archive) {
-        scope.launch {
-            val available =
-                try {
-                    ensureUnavailableArchive(story)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (_: Exception) {
-                    false
-                }
-            toast(if (available) "Archived snapshot is available in your library" else "Could not create archived snapshot")
-        }
-    }
-
-private suspend fun ScreenHost.ensureUnavailableArchive(story: Story): Boolean {
-    val eventStarted = story.sourceSyncState.unavailableSince
-    val existing =
-        repository.library().any { candidate ->
-            candidate.archiveOfStoryId == story.id &&
-                candidate.archiveReason == ArchiveSnapshotPlanning.SOURCE_UNAVAILABLE_REASON &&
-                (eventStarted == null || (candidate.archivedAt ?: Long.MIN_VALUE) >= eventStarted)
-        }
-    if (existing) return true
-    val latest = repository.story(story.id) ?: return false
-    repository.commitSyncedStory(
-        story = latest,
-        archiveSource = latest,
-        archiveReason = ArchiveSnapshotPlanning.SOURCE_UNAVAILABLE_REASON,
-    ) { current -> current ?: latest }
-    return true
 }

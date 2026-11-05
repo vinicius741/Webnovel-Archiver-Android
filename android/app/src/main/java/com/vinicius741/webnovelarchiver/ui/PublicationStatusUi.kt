@@ -8,7 +8,6 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 
 internal fun DisplayStatus.displayName(): String? =
     when (this) {
-        DisplayStatus.Archived -> "Archived"
         DisplayStatus.Completed -> "Completed"
         DisplayStatus.Ongoing -> "Ongoing"
         DisplayStatus.Outdated -> "Outdated"
@@ -26,9 +25,7 @@ private fun ScreenHost.publicationStatusBadge(status: DisplayStatus): View? {
     val colors = ThemeManager.colors
     val container =
         when (status) {
-            DisplayStatus.Archived,
-            DisplayStatus.Completed,
-            -> colors.tertiaryContainer
+            DisplayStatus.Completed -> colors.tertiaryContainer
             DisplayStatus.Ongoing -> colors.primaryContainer
             DisplayStatus.Outdated -> colors.errorContainer
             DisplayStatus.Hiatus -> colors.secondaryContainer
@@ -36,9 +33,7 @@ private fun ScreenHost.publicationStatusBadge(status: DisplayStatus): View? {
         }
     val content =
         when (status) {
-            DisplayStatus.Archived,
-            DisplayStatus.Completed,
-            -> colors.onTertiaryContainer
+            DisplayStatus.Completed -> colors.onTertiaryContainer
             DisplayStatus.Ongoing -> colors.onPrimaryContainer
             DisplayStatus.Outdated -> colors.onErrorContainer
             DisplayStatus.Hiatus -> colors.onSecondaryContainer

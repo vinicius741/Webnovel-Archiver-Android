@@ -138,7 +138,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
         pick = { mode ->
             chapterFilter = mode
             scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
-            renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
+            renderFilterChips(chipsContainer, chapterFilter, story, pick)
             renderChapterList(
                 story,
                 chaptersContainer,
@@ -166,7 +166,7 @@ internal fun ScreenHost.showDetails(storyId: String) {
                 listHeader,
             )
         }
-        renderFilterChips(chipsContainer, chapterFilter, fromBookmarkCount(story), pick)
+        renderFilterChips(chipsContainer, chapterFilter, story, pick)
         renderChapterList(
             story,
             chaptersContainer,

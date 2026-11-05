@@ -126,6 +126,23 @@ class PatreonCopyPlanningTest {
     }
 
     @Test
+    fun `reconcile drops a copy whose id a kept removed chapter already uses`() {
+        val kept =
+            copy("9", "Chapter 6 - Early").copy(patreonPostId = null, filePath = "novels/s/kept_patreon_9.html", removedFromSourceAt = 1L)
+        val restored = copy("9", "Chapter 6 - Renamed")
+
+        val result =
+            PatreonCopyPlanning.reconcile(
+                listOf(public("1", "Chapter 1", downloaded = true), kept, restored),
+                lastReadChapterId = kept.id,
+            )
+
+        assertEquals(listOf("1", kept.id), result.chapters.map { it.id })
+        assertEquals(listOf(restored), result.removed)
+        assertEquals(kept.id, result.lastReadChapterId)
+    }
+
+    @Test
     fun `reconcile leaves stories without copies untouched`() {
         val chapters = listOf(public("1", "Chapter 1", downloaded = true))
         val result = PatreonCopyPlanning.reconcile(chapters, "1")

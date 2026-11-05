@@ -147,6 +147,8 @@ internal fun filterDetailsChapters(
     filter: String,
 ): List<Pair<Int, Chapter>> {
     val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
+    // The filter is a global preference; a novel without removed chapters shows them all.
+    val hasRemoved = story.chapters.any { it.isRemovedFromSource }
     return story.chapters
         .mapIndexed { index, chapter -> index to chapter }
         .filter { (_, chapter) -> chapter.title.contains(query, ignoreCase = true) }
@@ -154,6 +156,7 @@ internal fun filterDetailsChapters(
             when (filter) {
                 "hideNonDownloaded" -> chapter.downloaded
                 "hideAboveBookmark" -> bookmarkIndex < 0 || index >= bookmarkIndex
+                REMOVED_FROM_SOURCE_FILTER -> chapter.isRemovedFromSource || !hasRemoved
                 else -> true
             }
         }
@@ -186,7 +189,7 @@ internal fun ScreenHost.toggleChapterBookmark(
 ) {
     scope.launch {
         val updated = repository.toggleBookmark(story.id, chapter.id) ?: return@launch
-        renderFilterChips(chipsContainer, currentFilter, fromBookmarkCount(updated), onPick)
+        renderFilterChips(chipsContainer, currentFilter, updated, onPick)
         renderChapterList(updated, list, query, currentFilter, chipsContainer, onPick)
     }
 }
@@ -195,21 +198,34 @@ internal fun ScreenHost.toggleChapterBookmark(
  * Rebuilds the filter chip group so the active mode re-highlights on every pick. The "From Bookmark"
  * chip shows a "(N)" suffix with the number of chapters from the bookmark onward, and is disabled
  * when there is no valid bookmark ([fromBookmarkCount] == 0), mirroring RN's `disabled={!hasBookmark}`.
+ * The "Removed from source" chip only appears for a novel that keeps such chapters.
  */
 internal fun ScreenHost.renderFilterChips(
     container: ViewGroup,
     current: String,
-    fromBookmarkCount: Int,
+    story: Story,
     onPick: (String) -> Unit,
 ) {
     container.removeAllViews()
-    container.addView(makeChip(app, "All", current == "all") { onPick("all") })
+    val removedCount = story.chapters.count { it.isRemovedFromSource }
+    val bookmarkCount = fromBookmarkCount(story)
+    val showingAll = current == "all" || (current == REMOVED_FROM_SOURCE_FILTER && removedCount == 0)
+    container.addView(makeChip(app, "All", showingAll) { onPick("all") })
     container.addView(makeChip(app, "Downloaded", current == "hideNonDownloaded") { onPick("hideNonDownloaded") })
-    val bookmarkLabel = if (fromBookmarkCount > 0) "From Bookmark ($fromBookmarkCount)" else "From Bookmark"
+    val bookmarkLabel = if (bookmarkCount > 0) "From Bookmark ($bookmarkCount)" else "From Bookmark"
     val bookmarkChip = makeChip(app, bookmarkLabel, current == "hideAboveBookmark") { onPick("hideAboveBookmark") }
-    if (fromBookmarkCount == 0) {
+    if (bookmarkCount == 0) {
         bookmarkChip.isEnabled = false
         bookmarkChip.alpha = 0.4f
     }
     container.addView(bookmarkChip)
+    if (removedCount > 0) {
+        container.addView(
+            makeChip(app, "Removed from source ($removedCount)", current == REMOVED_FROM_SOURCE_FILTER) {
+                onPick(REMOVED_FROM_SOURCE_FILTER)
+            },
+        )
+    }
 }
+
+internal const val REMOVED_FROM_SOURCE_FILTER = "removedFromSource"

@@ -55,21 +55,6 @@ class PublicationStatusPlanningTest {
     }
 
     @Test
-    fun archivedSnapshotDisplaysArchivedWhilePreservingSourcePublicationStatus() {
-        val story =
-            Story(
-                isArchived = true,
-                publicationStatus = PublicationStatus.ongoing,
-            )
-
-        assertEquals(PublicationStatus.ongoing, story.publicationStatus)
-        assertEquals(
-            PublicationStatusPlanning.DisplayStatus.Archived,
-            PublicationStatusPlanning.displayStatus(story),
-        )
-    }
-
-    @Test
     fun afterSyncMarksHiatusWhenLatestPublishedChapterIsOlderThanThirtyDays() {
         val syncedAt = 60L * DAY_MS
         val latestPublishedAt = syncedAt - PublicationStatusPlanning.HIATUS_AFTER_MS - 1L

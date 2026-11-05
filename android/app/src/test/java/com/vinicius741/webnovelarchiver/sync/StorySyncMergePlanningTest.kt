@@ -26,6 +26,43 @@ class StorySyncMergePlanningTest {
     }
 
     @Test
+    fun foldDoesNotResurrectARemovedChapterDiscardedDuringTheSyncWindow() {
+        val kept = chapter("11", downloaded = true, filePath = "11.html").copy(removedFromSourceAt = 5L)
+        val synced = syncedStory(chapters = listOf(chapter("10", downloaded = true, filePath = "10.html"), kept))
+        val discarded = syncedStory(chapters = listOf(chapter("10", downloaded = true, filePath = "10.html")))
+
+        assertEquals(
+            listOf("10"),
+            StorySyncMergePlanning.foldConcurrentChanges(synced, discarded, RoyalRoadProvider).chapters.map { it.id },
+        )
+        assertEquals(
+            listOf("10", "11"),
+            StorySyncMergePlanning.foldConcurrentChanges(synced, synced, RoyalRoadProvider).chapters.map { it.id },
+        )
+    }
+
+    @Test
+    fun foldResetsAReturningChapterThatWasDiscardedDuringTheSyncWindow() {
+        // The sync saw chapter 11 return to the source and unflagged it; meanwhile the user
+        // discarded it, deleting its file.
+        val synced =
+            syncedStory(
+                chapters =
+                    listOf(
+                        chapter("10", downloaded = true, filePath = "10.html"),
+                        chapter("11", downloaded = true, filePath = "11.html"),
+                    ),
+            )
+        val discarded = syncedStory(chapters = listOf(chapter("10", downloaded = true, filePath = "10.html")))
+
+        val folded = StorySyncMergePlanning.foldConcurrentChanges(synced, discarded, RoyalRoadProvider).chapters
+
+        assertEquals(listOf("10", "11"), folded.map { it.id })
+        assertEquals(listOf(true, false), folded.map { it.downloaded })
+        assertNull(folded[1].filePath)
+    }
+
+    @Test
     fun foldKeepsUserPatreonLinkChangesButTakesFreshStatusForTheSameCollection() {
         val link = PatreonEarlyAccessLink(campaignId = "c", collectionId = "1", collectionTitle = "Novel")
         val checked = link.copy(lastCheckedAt = 99L)

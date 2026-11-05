@@ -52,11 +52,13 @@ object ChapterRowPlanning {
         downloadedAt: Long?,
         waitingForDelay: Boolean = false,
         patreonCopy: Boolean = false,
+        removedFromSource: Boolean = false,
     ): String =
         buildString {
             append("Index ")
             append(indexLabel(zeroBasedIndex))
             if (patreonCopy) append("  •  Patreon early access")
+            if (removedFromSource) append("  •  Removed from source")
             subtitle(liveStatus, downloaded, downloadedAt, waitingForDelay)?.let {
                 append("  •  ")
                 append(it)

@@ -107,8 +107,15 @@ data class Chapter(
     var patreonPostId: String? = null,
     /** Source chapter id that publishes this Patreon copy; the copy is dropped once that chapter downloads. */
     var patreonReplacedBy: String? = null,
+    /**
+     * Epoch millis of the sync that first found this downloaded chapter missing from the source.
+     * The chapter stays in reading order with its local copy; null while the source still lists it.
+     */
+    var removedFromSourceAt: Long? = null,
 ) {
     val isPatreonCopy: Boolean get() = patreonPostId != null
+
+    val isRemovedFromSource: Boolean get() = removedFromSourceAt != null
 }
 
 data class EpubConfig(
@@ -167,6 +174,11 @@ data class Story(
     var lastReadChapterId: String? = null,
     var score: String? = null,
     var tabId: String? = null,
+    /**
+     * Legacy whole-story archive snapshot fields. Nothing writes them anymore: startup and backup
+     * restore fold every snapshot back into its live story as removed-from-source chapters
+     * (`LegacyArchiveFoldPlanning`). They stay readable so old libraries and backups still fold.
+     */
     var isArchived: Boolean? = null,
     var archiveOfStoryId: String? = null,
     var archivedAt: Long? = null,

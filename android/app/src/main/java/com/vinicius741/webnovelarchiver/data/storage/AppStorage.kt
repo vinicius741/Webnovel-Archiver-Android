@@ -547,16 +547,22 @@ class AppStorage(
         return relativize(file)
     }
 
+    /**
+     * Copies a chapter file that lives in another story's folder into [storyId]'s folder under a
+     * name derived from the chapter id, which index-based download names never use, and returns
+     * the new relative path. Null when the source file is missing.
+     */
     @Synchronized
-    fun copyChapterToStory(
+    fun adoptChapterFile(
         storyId: String,
-        index: Int,
         chapter: Chapter,
     ): String? {
         val source = resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return null
-        val destination = chapterFile(storyId, index, chapter)
-        // Streamed temp + fsync + rename: a failed archive copy must not truncate the
-        // destination, which a direct copyTo(overwrite = true) could.
+        val dir = File(chapterRoot, safeName(storyId)).apply { mkdirs() }
+        val destination = File(dir, "kept_${safeName(chapter.id).ifBlank { chapter.url.hashCode().toString() }}.html")
+        if (source.canonicalPath == destination.canonicalPath) return relativize(destination)
+        // Streamed temp + fsync + rename: a failed copy must not truncate the destination, which a
+        // direct copyTo(overwrite = true) could.
         AtomicFileWrites.copyAtomically(source, destination)
         return relativize(destination)
     }

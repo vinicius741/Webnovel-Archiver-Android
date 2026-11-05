@@ -18,7 +18,7 @@ object PreferenceNormalization {
     private const val TTS_MIN = 0.5f
     private const val TTS_MAX = 2.0f
 
-    private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark")
+    private val chapterFilterModes = setOf("all", "hideNonDownloaded", "hideAboveBookmark", "removedFromSource")
     private val foldLayoutModes = setOf("auto", "cover", "inner")
     private val screenLayoutModes = setOf("auto", "cover", "inner")
     private val libraryViewModes = setOf("list", "covers")

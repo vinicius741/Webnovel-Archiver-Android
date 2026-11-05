@@ -6,7 +6,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 
 object PublicationStatusPlanning {
     enum class DisplayStatus {
-        Archived,
         Completed,
         Ongoing,
         Outdated,
@@ -48,18 +47,15 @@ object PublicationStatusPlanning {
         return if (now - lastChapterSyncAt > OUTDATED_AFTER_MS) PublicationStatus.outdated else base
     }
 
-    /** Local snapshot lifecycle takes precedence over the source fiction's preserved publication status. */
     fun displayStatus(
         story: Story,
         now: Long = System.currentTimeMillis(),
-    ): DisplayStatus {
-        if (story.isArchived == true) return DisplayStatus.Archived
-        return when (effectiveStatus(story, now)) {
+    ): DisplayStatus =
+        when (effectiveStatus(story, now)) {
             PublicationStatus.completed -> DisplayStatus.Completed
             PublicationStatus.ongoing -> DisplayStatus.Ongoing
             PublicationStatus.outdated -> DisplayStatus.Outdated
             PublicationStatus.hiatus -> DisplayStatus.Hiatus
             PublicationStatus.unknown -> DisplayStatus.Unknown
         }
-    }
 }

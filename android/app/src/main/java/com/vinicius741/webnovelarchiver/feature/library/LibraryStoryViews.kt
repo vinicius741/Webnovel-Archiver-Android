@@ -215,17 +215,6 @@ private fun ScreenHost.buildStoryCard(
         },
         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
     )
-    if (story.isArchived == true) {
-        row.addView(
-            ImageView(app).apply {
-                setImageDrawable(app.tintedIcon(R.drawable.wna_archive, ThemeManager.colors.primary))
-                layoutParams =
-                    LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                        marginStart = dp(Space.SM)
-                    }
-            },
-        )
-    }
     return row
 }
 

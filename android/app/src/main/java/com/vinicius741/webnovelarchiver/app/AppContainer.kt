@@ -13,6 +13,7 @@ import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
+import com.vinicius741.webnovelarchiver.data.storage.foldLegacyArchives
 import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
@@ -22,6 +23,7 @@ import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
+import com.vinicius741.webnovelarchiver.sync.storyChapterKey
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -139,14 +141,16 @@ class AppContainer internal constructor(
                 if (changedIds.isNotEmpty()) {
                     storage.persistStartupStories(load.stories.filter { it.id in changedIds })
                 }
+                // Legacy archive snapshots become removed-from-source chapters of their live story.
+                val stories = storage.foldLegacyArchives(load.stories, ::storyChapterKey)
                 val migrationsFinishedAt = System.currentTimeMillis()
 
                 storage.recoverInterruptedDownloads()
-                repository.refresh(load.stories)
+                repository.refresh(stories)
                 val readyAt = System.currentTimeMillis()
                 Timber.i(
                     "startup pass: stories=%d changed=%d loadMs=%d migrateMs=%d hydrateMs=%d totalMs=%d",
-                    load.stories.size,
+                    stories.size,
                     changedIds.size,
                     loadFinishedAt - startedAt,
                     migrationsFinishedAt - loadFinishedAt,
@@ -155,7 +159,7 @@ class AppContainer internal constructor(
                 )
                 if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) {
                     com.vinicius741.webnovelarchiver.perf.PerfInstrumentation.recordStartupPass(
-                        stories = load.stories.size,
+                        stories = stories.size,
                         changed = changedIds.size,
                         loadMillis = loadFinishedAt - startedAt,
                         migrateMillis = migrationsFinishedAt - loadFinishedAt,

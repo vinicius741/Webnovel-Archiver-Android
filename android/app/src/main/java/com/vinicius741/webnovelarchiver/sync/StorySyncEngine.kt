@@ -54,8 +54,8 @@ class StorySyncEngine(
         val startedGeneration = repository.libraryGeneration()
         val requireExisting = existing != null
         // Patreon early-access copies are not source chapters: the source merge must never see
-        // them (they would read as removed and trigger an archive snapshot). They are re-appended
-        // after the Patreon step below.
+        // them (they would read as removed from the source). They are re-appended after the
+        // Patreon step below.
         val existingPublic = existing?.chapters.orEmpty().filterNot { it.isPatreonCopy }
         val existingPatreon = existing?.chapters.orEmpty().filter { it.isPatreonCopy }
         status("Fetching from ${provider.name}...")
@@ -119,6 +119,7 @@ class StorySyncEngine(
                     incoming,
                     provider,
                     existing?.lastReadChapterId,
+                    removedAt = syncedAt,
                 )
         val patreonResult =
             existing?.patreonEarlyAccess?.let { link ->
@@ -201,13 +202,12 @@ class StorySyncEngine(
                 sourceSyncState = SourceSyncFailurePlanning.afterSuccess(syncedAt),
             )
         // The repository owns the final read/merge/write/publish transaction. This keeps the
-        // concurrent-download/bookmark fence, archive write, metric snapshot, and cached state
+        // concurrent-download/bookmark fence, metric snapshot, and cached state
         // publication on one lock and removes the former second mutation path in the sync engine.
         val persisted =
             try {
                 repository.commitSyncedStory(
                     story = story,
-                    archiveSource = existing?.takeIf { merge.removedChapters.isNotEmpty() },
                     metricSnapshot =
                         MetricSnapshotPlanning.fromStory(
                             story,

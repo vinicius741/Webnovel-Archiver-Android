@@ -9,6 +9,52 @@ import org.junit.Test
 
 class BackupMergePlanningTest {
     @Test
+    fun mergeJsonBackupStoryKeepsLocalRemovedFromSourceChaptersTheBackupLacks() {
+        val existing =
+            Story(
+                id = "story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1", title = "One", downloaded = true, filePath = "c1.html"),
+                        Chapter(id = "c2", title = "Two", downloaded = true, filePath = "c2.html", removedFromSourceAt = 9L),
+                        Chapter(id = "c3", title = "Three", downloaded = true, filePath = "c3.html"),
+                    ),
+            )
+        val incoming =
+            Story(
+                id = "story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1", title = "One"),
+                        Chapter(id = "c3", title = "Three"),
+                    ),
+            )
+
+        val merged = BackupMergePlanning.mergeJsonBackupStory(incoming, existing)
+
+        assertEquals(listOf("c1", "c2", "c3"), merged.chapters.map { it.id })
+        assertEquals("c2.html", merged.chapters[1].filePath)
+        assertEquals(3, merged.downloadedChapters)
+    }
+
+    @Test
+    fun mergeJsonBackupStoryKeepsTheLocalRemovedFlagOverAnOlderBackupRow() {
+        val existing =
+            Story(
+                id = "story",
+                chapters =
+                    mutableListOf(
+                        Chapter(id = "c1", title = "One", downloaded = true, filePath = "c1.html", removedFromSourceAt = 9L),
+                    ),
+            )
+        val incoming = Story(id = "story", chapters = mutableListOf(Chapter(id = "c1", title = "One")))
+
+        val merged = BackupMergePlanning.mergeJsonBackupStory(incoming, existing)
+
+        assertEquals(9L, merged.chapters.single().removedFromSourceAt)
+    }
+
+    @Test
     fun mergeJsonBackupStoryPreservesExistingDownloadedChapterFiles() {
         val existing =
             Story(

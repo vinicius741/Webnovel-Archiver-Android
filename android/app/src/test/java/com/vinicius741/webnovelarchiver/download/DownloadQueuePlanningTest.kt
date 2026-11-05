@@ -96,6 +96,34 @@ class DownloadQueuePlanningTest {
     }
 
     @Test
+    fun queueChaptersQueuesAChapterWhosePositionIdIsHeldByAnotherChaptersActiveJob() {
+        // B was queued at index 1; a row before it was discarded, so C now sits at index 1.
+        val b = Chapter(id = "b", title = "B", url = "https://example.com/b")
+        val c = Chapter(id = "c", title = "C", url = "https://example.com/c")
+        val story = story(b, c)
+        val bJob = job("story-1", 1, b, "pending")
+
+        val plan = DownloadQueuePlanning.queueChapters(listOf(bJob), story, listOf(1))
+
+        assertTrue(plan.changed)
+        assertEquals(listOf("story-1_1", "story-1_1_c"), plan.jobs.map { it.id })
+        assertEquals(listOf("b", "c"), plan.jobs.map { it.chapter.id })
+    }
+
+    @Test
+    fun queueChaptersFindsAChaptersActiveJobAfterItsPositionShifted() {
+        val a = Chapter(id = "a", title = "A", url = "https://example.com/a")
+        val story = story(a)
+        val shiftedJob = job("story-1", 3, a, "pending")
+
+        val plan = DownloadQueuePlanning.queueChapters(listOf(shiftedJob), story, listOf(0))
+
+        assertFalse(plan.changed)
+        assertTrue(plan.hasRunnableWork)
+        assertEquals(listOf(shiftedJob), plan.jobs)
+    }
+
+    @Test
     fun queueChaptersReportsNoWorkForDownloadedOrInvalidSelections() {
         val story = story(Chapter(id = "c1", title = "One", url = "https://example.com/1", downloaded = true))
 

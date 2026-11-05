@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.data.backup
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
 import com.vinicius741.webnovelarchiver.sync.StorySyncPlanning
 
 object BackupMergePlanning {
@@ -11,7 +12,7 @@ object BackupMergePlanning {
         if (existing == null) return scrubPortableIncomingStory(incoming)
 
         val existingChaptersById = existing.chapters.associateBy { it.id }
-        val mergedChapters =
+        val listedChapters =
             incoming.chapters
                 .map { chapter ->
                     val existingChapter = existingChaptersById[chapter.id]
@@ -28,9 +29,16 @@ object BackupMergePlanning {
                             filePath = existingChapter.filePath,
                             downloaded = existingChapter.downloaded,
                             downloadedAt = existingChapter.downloadedAt,
+                            // Local sync state wins: an older backup must not unflag a removed chapter.
+                            removedFromSourceAt = existingChapter.removedFromSourceAt,
                         )
                     }
-                }.toMutableList()
+                }
+        // A local removed-from-source copy is irreplaceable; a backup that predates the removal
+        // (or never had it) must not drop it.
+        val incomingIds = incoming.chapters.mapTo(HashSet()) { it.id }
+        val keptLocal = existing.chapters.filter { it.isRemovedFromSource && it.downloaded && it.id !in incomingIds }
+        val mergedChapters = RemovedChapterPlanning.placeKept(existing.chapters, listedChapters, keptLocal) { it.id }.toMutableList()
 
         val merged =
             incoming.copy(
