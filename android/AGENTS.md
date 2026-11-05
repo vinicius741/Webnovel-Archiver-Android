@@ -97,6 +97,8 @@ Choose validation based on the change:
 
 Run `:app:assembleRelease` only when the user explicitly requests a release artifact. Release signing requires local credentials and is not a routine validation step.
 
+The manual `Publish Android APK` GitHub Actions workflow runs the full gate and builds a signed release on `main`. It reads `versionName` and `versionCode` from `app/build.gradle`; increase both before a new release. It publishes tag `v<versionName>` and refuses to overwrite existing tags. Signing secrets must use the original release key; setup is in the root `README.md`. The workflow does not install onto devices.
+
 - Dependencies are lockfile-pinned. Adding or changing a dependency requires refreshing the locks for both compile and runtime configurations (`android/gradlew -p android :app:<config> --update-locks` on the affected configurations); a plain build will fail on out-of-date locks.
 - Kotlinter (`:app:lintKotlin`) rejects a `//` comment placed directly above a declaration with no blank line between them, and treats a file-level `/** */` header as dangling KDoc. Use blank lines around commented declarations and `//` for file headers; `:app:formatKotlin` does not fix these.
 - Default AI, source import, download, and Cloudflare QA to the offline simulator (`python3 scripts/simulate.py list`; guide: `docs/qa/offline-simulation.md`). It runs real engines against scripted responses in a disposable library. Use `--manual` for UI interactions, `--hold` for lifecycle checks, and `--until completed` for terminal assertions. No valid key or internet is needed. Live OpenRouter/site checks are separate and must be explicitly requested; keep paid checks to 1-2 cheap calls.
