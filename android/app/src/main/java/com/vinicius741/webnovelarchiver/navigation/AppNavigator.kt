@@ -35,6 +35,22 @@ class AppNavigator(
         }
     }
 
+    /**
+     * Opens [route] on top of the current screen even when it is already further down the history:
+     * older entries it [supersedes] are dropped instead of everything above them, so Back still
+     * returns to the current screen. The current screen itself is never dropped.
+     */
+    fun bringToTop(
+        route: AppRoute,
+        supersedes: (AppRoute) -> Boolean = { it.stableKey == route.stableKey },
+    ) {
+        if (route.stableKey != current.stableKey) {
+            val top = current
+            routes.removeAll { it !== top && supersedes(it) }
+        }
+        navigate(route)
+    }
+
     /** Swaps the current screen for [route], e.g. a finished form for the item it created. */
     fun replace(route: AppRoute) {
         routes.removeAt(routes.lastIndex)

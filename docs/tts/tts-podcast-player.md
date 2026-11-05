@@ -75,8 +75,14 @@ inline content); otherwise the viewed chapter plays from the top.
   chapter titles, "Chapter n / N", interactive `SeekBar` scrubber with touch isolation and live
   seeking, prev/next chapter, prev/next sentence, play/pause, speed chip (0.75–2.0 presets, applied
   live and persisted), History chip, sleep timer chip (countdown or chapter-end pause), Stop chip (ends the
-  session and navigates back), closes itself when playback ends. Rebuilds on chapter change;
-  patches transport state in place otherwise.
+  session and navigates back), and a Read along button that opens the playing chapter in the
+  Reader. It uses `AppNavigator.bringToTop`, dropping older readers of that story from the
+  history, so Back from the reader always returns to Now Playing. Closes itself when playback ends. Rebuilds on chapter
+  change; patches transport state in place otherwise.
+- **Reader initial highlight**: highlights sent before the reader's WebView finishes loading are
+  dropped, so the injected script pulls the speaking sentence once on load through
+  `AndroidBridge.activeTtsGroup()` and scrolls it to the centre without animating. Later sentences
+  arrive via `WnaTts.setActive` as before, and the reader follows chapter changes on its own.
 - **Reader transport** (unchanged location): sentence-level prev/next + play/pause + stop for the
   visible chapter. Its play/pause resumes the persisted session when the engine has no live
   session (cold-start phantom-pause fix).

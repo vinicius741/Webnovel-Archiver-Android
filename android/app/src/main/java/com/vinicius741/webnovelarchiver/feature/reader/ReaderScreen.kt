@@ -150,19 +150,8 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             attachReaderPaintTracking(this)
         }
 
-    // Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap.
-    class ReaderTtsBridge {
-        @JavascriptInterface
-        fun onTtsStart(index: Int) {
-            val clamped = index.coerceAtLeast(0)
-            app.runOnUiThread {
-                val latest = repository.story(story.id) ?: story
-                val currentChapter = latest.chapters.firstOrNull { it.id == chapter.id } ?: return@runOnUiThread
-                TtsForegroundService.startFromChunk(app, latest.id, currentChapter.id, clamped)
-            }
-        }
-    }
-    reader.addJavascriptInterface(ReaderTtsBridge(), "AndroidBridge")
+    val ttsBridge = ReaderTtsBridge(this, story, chapter)
+    reader.addJavascriptInterface(ttsBridge, "AndroidBridge")
 
     fun renderReader() {
         val readerColors = document.colors
@@ -175,11 +164,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             null,
         )
         recordReaderPresentedForPerf()
-        // After a re-render, re-apply the live highlight so the speaking chunk stays marked.
-        val liveSession = document.persistedSession
-        if (liveSession != null && liveSession.storyId == story.id && liveSession.chapterId == chapter.id) {
-            applyHighlight(reader, liveSession.currentChunkIndex, annotated.chunks.size)
-        }
+        // The initial highlight is pulled by the page itself through ttsBridge.activeTtsGroup().
     }
 
     fun rebuild() = showReader(story.id, chapter.id)
@@ -220,6 +205,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     // Replay + live snapshots drive the highlight and transport; other chapters' snapshots are ignored.
     var transportSnapshot: TtsPlaybackSnapshot? =
         currentReaderSnapshot(document.persistedSession, story.id, chapter.id, annotated.chunks.size)
+    ttsBridge.activeChunk = transportSnapshot?.chunkIndex ?: -1
     var transportPlayPause: ImageView? = null
     var transportBar: LinearLayout? = null
     activeReaderTtsStateJob?.cancel()
@@ -247,6 +233,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                         chapterId = chapter.id,
                     )
                 transportSnapshot = relevant
+                ttsBridge.activeChunk = relevant?.chunkIndex ?: -1
                 // Toggled (not add/remove) so a session starting after this build reveals the bar live.
                 transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
                 transportPlayPause?.let { button ->
@@ -327,6 +314,33 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         transport.visibility = if (transportSnapshot != null) android.view.View.VISIBLE else android.view.View.GONE
         transportBar = transport
         addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    }
+}
+
+/**
+ * Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap and
+ * reads activeTtsGroup() once the page has loaded, since highlights sent before then are lost.
+ */
+private class ReaderTtsBridge(
+    private val host: ScreenHost,
+    private val story: Story,
+    private val chapter: Chapter,
+) {
+    /** Written on the main thread by the playback collector; read on the WebView's bridge thread. */
+    @Volatile
+    var activeChunk: Int = -1
+
+    @JavascriptInterface
+    fun activeTtsGroup(): Int = activeChunk
+
+    @JavascriptInterface
+    fun onTtsStart(index: Int) {
+        val clamped = index.coerceAtLeast(0)
+        host.app.runOnUiThread {
+            val latest = host.repository.story(story.id) ?: story
+            val currentChapter = latest.chapters.firstOrNull { it.id == chapter.id } ?: return@runOnUiThread
+            TtsForegroundService.startFromChunk(host.app, latest.id, currentChapter.id, clamped)
+        }
     }
 }
 

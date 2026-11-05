@@ -11,11 +11,13 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
+import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -23,6 +25,7 @@ import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.elevate
 import com.vinicius741.webnovelarchiver.ui.iconButton
+import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
@@ -332,6 +335,8 @@ private fun ScreenHost.buildPlayerBody(
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
     )
 
+    if (chapterIndex >= 0 && story != null) addReadAlongButton(content, state)
+
     return PlayerLiveViews(
         app,
         playPause,
@@ -341,6 +346,31 @@ private fun ScreenHost.buildPlayerBody(
         sleepTimerChip,
         historyChip,
     ).apply { apply(state) }
+}
+
+/** Opens the playing chapter in the reader, which highlights and follows the spoken sentence. */
+private fun ScreenHost.addReadAlongButton(
+    content: LinearLayout,
+    state: TtsPlaybackSnapshot,
+) {
+    content.addView(
+        makeButton(app, "Read along", Btn.TONAL, R.drawable.wna_menu_book) {
+            val live = ttsEngine.playbackState.value.snapshot ?: state
+            // Readers of this story below Now Playing are dropped rather than returned to, so Back
+            // from the reader lands here (an older one would also auto-jump to the playing chapter
+            // as soon as it reopened, swallowing a Back press).
+            navigator.bringToTop(AppRoute.Reader(live.storyId, live.chapterId)) {
+                it is AppRoute.Reader && it.storyId == live.storyId
+            }
+            showReader(live.storyId, live.chapterId)
+        },
+        LinearLayout
+            .LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(Spacing.LG)
+            },
+    )
 }
 
 private fun ScreenHost.buildPlayPauseButton(): ImageView {

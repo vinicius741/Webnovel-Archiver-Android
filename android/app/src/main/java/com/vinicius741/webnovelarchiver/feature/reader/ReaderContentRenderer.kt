@@ -97,7 +97,8 @@ object ReaderContentRenderer {
 
     /**
      * Injected script: `WnaTts.setActive(i)` toggles `.tts-active` on the speaking chunk and
-     * scrolls it into view; a double-tap on a tagged paragraph calls `AndroidBridge.onTtsStart(i)`
+     * scrolls it into view; on load it applies `AndroidBridge.activeTtsGroup()` (the sentence
+     * already speaking when the reader opened) without animating; a double-tap on a tagged paragraph calls `AndroidBridge.onTtsStart(i)`
      * (bridge attached only while the reader screen is alive).
      */
     private fun ttsHighlightScript(): String =
@@ -106,7 +107,7 @@ object ReaderContentRenderer {
             (function() {
                 var WnaTts = window.WnaTts = window.WnaTts || {};
                 var activeGroup = null;
-                WnaTts.setActive = function(index) {
+                WnaTts.setActive = function(index, instant) {
                     try {
                         if (activeGroup !== null) {
                             document.querySelectorAll('.tts-active').forEach(function(node) {
@@ -118,10 +119,17 @@ object ReaderContentRenderer {
                         var nodes = document.querySelectorAll('[data-tts-group="' + activeGroup + '"], [data-tts-groups~="' + activeGroup + '"]');
                         nodes.forEach(function(node) { node.classList.add('tts-active'); });
                         if (nodes.length > 0) {
-                            nodes[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            nodes[0].scrollIntoView({ behavior: instant ? 'auto' : 'smooth', block: 'center' });
                         }
                     } catch (e) { /* ignore highlight errors */ }
                 };
+                // Highlights sent while the page was loading were dropped: ask for the live one.
+                try {
+                    if (window.AndroidBridge && typeof window.AndroidBridge.activeTtsGroup === 'function') {
+                        var initial = window.AndroidBridge.activeTtsGroup();
+                        if (initial >= 0) WnaTts.setActive(initial, true);
+                    }
+                } catch (e) { /* ignore highlight errors */ }
                 function findTtsGroup(target) {
                     var node = target;
                     while (node && node !== document.body) {

@@ -8,6 +8,45 @@ import org.junit.Test
 
 class AppNavigatorTest {
     @Test
+    fun `bringing an earlier screen to the top keeps the screens it was below`() {
+        val navigator = AppNavigator()
+        navigator.navigate(AppRoute.Details("story"))
+        navigator.navigate(AppRoute.Reader("story", "one"))
+        navigator.navigate(AppRoute.TtsSettings)
+        navigator.navigate(AppRoute.Player)
+        // Now Playing's Read along reopens the chapter that is already in the history.
+        navigator.bringToTop(AppRoute.Reader("story", "one"))
+
+        assertEquals(AppRoute.Reader("story", "one"), navigator.current)
+        assertEquals(AppRoute.Player, navigator.back())
+        assertEquals(AppRoute.TtsSettings, navigator.back())
+        assertEquals(AppRoute.Details("story"), navigator.back())
+    }
+
+    @Test
+    fun `bringing a screen to the top can also drop entries it supersedes`() {
+        val navigator = AppNavigator()
+        navigator.navigate(AppRoute.Details("story"))
+        navigator.navigate(AppRoute.Reader("story", "one"))
+        navigator.navigate(AppRoute.Player)
+        navigator.bringToTop(AppRoute.Reader("story", "two")) { it is AppRoute.Reader && it.storyId == "story" }
+
+        assertEquals(AppRoute.Reader("story", "two"), navigator.current)
+        assertEquals(AppRoute.Player, navigator.back())
+        assertEquals(AppRoute.Details("story"), navigator.back())
+    }
+
+    @Test
+    fun `bringing a screen to the top is a no-op for the newest entry and a push for new ones`() {
+        val navigator = AppNavigator()
+        navigator.navigate(AppRoute.Player)
+        navigator.bringToTop(AppRoute.Reader("story", "one"))
+        navigator.bringToTop(AppRoute.Reader("story", "one"))
+
+        assertEquals(listOf("library", "player", AppRouteCodec.encode(AppRoute.Reader("story", "one"))), navigator.encodedStack())
+    }
+
+    @Test
     fun `reopening a screen in the history returns to it instead of stacking a copy`() {
         val navigator = AppNavigator()
         navigator.navigate(AppRoute.Details("story"))
