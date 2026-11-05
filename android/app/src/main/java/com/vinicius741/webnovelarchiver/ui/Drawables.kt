@@ -106,8 +106,8 @@ fun View.roundCorners(radiusDp: Float) {
 fun View.elevate(dp: Float) {
     elevation = dp * resources.displayMetrics.density
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-        outlineAmbientShadowColor = ThemeManager.current.shadowColor
-        outlineSpotShadowColor = ThemeManager.current.shadowColor
+        outlineAmbientShadowColor = ThemeManager.shadowColor
+        outlineSpotShadowColor = ThemeManager.shadowColor
     }
 }
 

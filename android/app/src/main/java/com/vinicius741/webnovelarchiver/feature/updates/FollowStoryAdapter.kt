@@ -48,13 +48,12 @@ internal class FollowStoryAdapter(
         viewType: Int,
     ): Holder {
         val context = parent.context
-        val theme = ThemeManager.current
         val coverSlot = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val title =
             TextView(context).apply {
                 setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.TITLE_SMALL.size())
                 typeface = android.graphics.Typeface.create(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(theme.colors.onSurface)
+                setTextColor(ThemeManager.colors.onSurface)
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 includeFontPadding = false
@@ -62,7 +61,7 @@ internal class FollowStoryAdapter(
         val subtitle =
             TextView(context).apply {
                 setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
-                setTextColor(theme.colors.onSurfaceVariant)
+                setTextColor(ThemeManager.colors.onSurfaceVariant)
                 setPadding(0, context.dp(2), 0, 0)
                 maxLines = 2
                 ellipsize = android.text.TextUtils.TruncateAt.END
@@ -83,7 +82,7 @@ internal class FollowStoryAdapter(
                 isFocusable = true
                 isSaveEnabled = false
                 setPadding(context.dp(Space.MD), context.dp(Space.MD), context.dp(Space.LG), context.dp(Space.MD))
-                background = roundedBg(theme.colors.elevation1, context.dp(theme.shapes.cardRadius).toFloat())
+                background = roundedBg(ThemeManager.colors.elevation1, context.dp(ThemeManager.shapes.cardRadius).toFloat())
                 layoutParams =
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                         bottomMargin = context.dp(Space.MD)
@@ -107,7 +106,7 @@ internal class FollowStoryAdapter(
         val item = items[position]
         val entry = item.entry
         val story = entry.story
-        val colors = ThemeManager.current.colors
+        val colors = ThemeManager.colors
         holder.title.text = story.title
         holder.subtitle.text =
             buildString {

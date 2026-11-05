@@ -131,8 +131,7 @@ produces a startup error and leaves external access disabled. Only `stop` remove
 enable marker. Do not manually delete only `session.json` to leave simulation.
 
 Simulation overrides the storage context's files, cache, preferences, backup, and restore
-locations. It skips normal cookie seeding, user-agent WebView initialization, and normal
-theme-hint reads/writes. Coil uses the guarded responder with disk caching disabled.
+locations. It skips normal cookie seeding, and user-agent WebView initialization. Coil uses the guarded responder with disk caching disabled.
 Reader WebViews block network loads, browser handoffs are disabled, and the verification
 screen is native local UI. On Android 28+, WebViews also use a separate simulation profile.
 The supported runner target is the API 36 emulator.

@@ -15,18 +15,13 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.iconButton
 
-internal fun readerDocumentColors(forceDark: Boolean): ReaderDocumentColors {
-    val theme = ThemeManager.current
-    val accent = ThemeManager.colors.primary.toCssHex()
-    return if (forceDark && !theme.isDark) {
-        ReaderDocumentColors(background = "#121212", foreground = "#e6e6e6", ttsHighlight = accent)
-    } else {
-        ReaderDocumentColors(
-            background = theme.colors.background.toCssHex(),
-            foreground = theme.colors.onBackground.toCssHex(),
-            ttsHighlight = accent,
-        )
-    }
+internal fun readerDocumentColors(): ReaderDocumentColors {
+    val colors = ThemeManager.colors
+    return ReaderDocumentColors(
+        background = colors.background.toCssHex(),
+        foreground = colors.onBackground.toCssHex(),
+        ttsHighlight = colors.primary.toCssHex(),
+    )
 }
 
 private fun Int.toCssHex(): String = "#%06X".format(this and 0xFFFFFF)

@@ -43,9 +43,7 @@ private class TtsMiniPlayerBar(
     onOpenPlayer: () -> Unit,
     onClose: () -> Unit,
 ) {
-    // Re-read on every snapshot: the bar is built before the startup theme hint applies, so the
-    // construction-time palette can be stale by the time the bar first becomes visible.
-    private var colors = ThemeManager.colors
+    private val colors = ThemeManager.colors
     private val playPauseButton: ImageView
     private val chevronButton: ImageView
     private val closeButton: ImageView
@@ -111,7 +109,6 @@ private class TtsMiniPlayerBar(
     }
 
     fun applySnapshot(snapshot: TtsPlaybackSnapshot?) {
-        applyColors()
         val isPaused = snapshot?.isPaused != false
         playPauseButton.setImageDrawable(
             view.context.tintedIcon(if (isPaused) R.drawable.wna_play else R.drawable.wna_pause, colors.primary),
@@ -125,19 +122,6 @@ private class TtsMiniPlayerBar(
         storyText.text = listOfNotNull(timeLeft, snapshot?.storyTitle?.takeIf { it.isNotBlank() }).joinToString(" · ")
         progressTrack.max = snapshot?.totalChunks ?: 0
         progressTrack.progress = ((snapshot?.chunkIndex ?: -1) + 1).coerceIn(0, progressTrack.max)
-    }
-
-    private fun applyColors() {
-        colors = ThemeManager.colors
-        val radius = view.context.dp(Spacing.LG).toFloat()
-        view.background = ripple(roundedBg(colors.elevation2, radius), radius, colors.onSurface)
-        chapterText.setTextColor(colors.onSurface)
-        storyText.setTextColor(colors.onSurfaceVariant)
-        chevronButton.setImageDrawable(view.context.tintedIcon(R.drawable.wna_chevron_up, colors.onSurfaceVariant))
-        closeButton.setImageDrawable(view.context.tintedIcon(R.drawable.wna_close, colors.onSurfaceVariant))
-        progressTrack.progressTintList =
-            android.content.res.ColorStateList
-                .valueOf(colors.primary)
     }
 }
 

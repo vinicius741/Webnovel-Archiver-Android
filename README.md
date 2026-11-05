@@ -23,7 +23,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Smart Updates** — New-chapter detection with intelligent merge, stale-EPUB marking, and source-availability tracking that preserves local chapters when a fiction disappears upstream.
 - **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
 - **Notifications Settings** — Dedicated screen for Android 13+ notification permission and channel guidance (downloads vs TTS media controls).
-- **Pluggable Theme System** — Obsidian, Midnight, Forest, and Classic Light themes with custom typography.
+- **Obsidian Theme** — A single warm dark theme with gold accents and custom typography.
 
 ## Tech Stack
 
@@ -194,7 +194,7 @@ android/
           tts/                 # TTS engine, audio rendering + player, foreground service
           ai/                  # OpenRouter client + decision-model chapter selection, AI engines and background jobs
           notification/        # Notification channels + permission helpers
-          ui/                  # Programmatic View DSL, shared form spacing, themes, widgets
+          ui/                  # Programmatic View DSL, shared form spacing, the Obsidian theme, widgets
         AndroidManifest.xml
       debug/                   # Offline simulation scenarios, fixtures, runner control activity
       release/                 # Inert development-environment factory

@@ -180,12 +180,11 @@ class ChapterCoverageSummary(
     private val bar = ChapterCoverageBar(context, downloaded, bookmarkFraction)
 
     init {
-        val t = ThemeManager.current
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         layoutParams =
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        count.setTextColor(t.colors.onSurface)
+        count.setTextColor(ThemeManager.colors.onSurface)
         addView(count)
         addView(
             bar.apply {

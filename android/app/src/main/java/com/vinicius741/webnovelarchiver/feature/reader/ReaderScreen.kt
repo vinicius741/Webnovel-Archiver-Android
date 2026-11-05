@@ -57,7 +57,7 @@ internal fun ScreenHost.showReader(
     detachReaderTtsListener()
     lastRequestedReaderChapterId = chapterId
     rerender = { showReader(storyId, chapterId) }
-    val palette = ReaderDocumentPalette(normal = readerDocumentColors(false), forcedDark = readerDocumentColors(true))
+    val palette = readerDocumentColors().let { ReaderDocumentPalette(normal = it, forcedDark = it) }
     screen(
         route = AppRoute.Reader(storyId, chapterId),
         title = "Reader",

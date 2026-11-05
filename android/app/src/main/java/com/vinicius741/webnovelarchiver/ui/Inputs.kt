@@ -19,9 +19,8 @@ import com.vinicius741.webnovelarchiver.R
 // ------------------------------------------------------------------
 
 private fun inputBackground(context: Context): StateListDrawable {
-    val t = ThemeManager.current
-    val colors = t.colors
-    val radiusPx = context.dp(t.shapes.searchRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = context.dp(ThemeManager.shapes.searchRadius).toFloat()
     return StateListDrawable().apply {
         addState(
             intArrayOf(android.R.attr.state_focused),

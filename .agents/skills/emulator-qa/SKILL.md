@@ -117,7 +117,7 @@ Then **settle** (next section) before any screenshot.
 |--------|----------------------|-----------------------------|-------------------|
 | `library` | ~2s | Title `Library`, novel count or cards | blank body, no title |
 | `queue` | ~1.5s | `Downloads` + empty state or queue rows | — |
-| `settings` | ~1.5s | `Settings` + `Appearance` / theme chips | — |
+| `settings` | ~1.5s | `Settings` + `Appearance` / Large Screen Layout | — |
 | `updates` | ~2s | `Updates` + followed count or empty state | — |
 | `followupdates` | ~2s | `Follow Updates` + search/filters or empty state | — |
 | `addstory` | ~1.5s | `Add Story` + `Fetch Story` | — |

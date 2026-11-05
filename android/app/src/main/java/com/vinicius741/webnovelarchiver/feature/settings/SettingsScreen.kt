@@ -7,9 +7,7 @@ import android.webkit.WebView
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
-import androidx.appcompat.app.AppCompatDelegate
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.app.StartupThemeHint
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -24,7 +22,6 @@ import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.Themes
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.chip
@@ -62,14 +59,6 @@ internal fun ScreenHost.showSettings() {
     val layout = currentScreenLayout()
     screen(route = AppRoute.Settings, title = "Settings", scrollable = true) {
         section("Appearance")
-        text("Theme", Type.TITLE_SMALL)
-        spacer(Space.XS)
-        flow(spacing = Space.MD) {
-            Themes.all.forEach { theme ->
-                chip(theme.name, displayPreferences.activeThemeId == theme.id) { saveThemePreference(theme.id) }
-            }
-        }
-        spacer(Space.MD)
         text("Large Screen Layout", Type.TITLE_SMALL)
         text(
             "How multi-column layouts behave on large/folded screens. Auto detects the display.",
@@ -387,24 +376,4 @@ internal fun ScreenHost.showDownloadSettings() {
             }
         }
     }
-}
-
-internal fun ScreenHost.saveThemePreference(themeId: String) {
-    val current = repository.getDisplayPreferences()
-    scope.launch {
-        repository.saveDisplayPreferences(current.copy(activeThemeId = themeId))
-        applyThemePreference(themeId)
-        app.recreate()
-    }
-}
-
-internal fun ScreenHost.applyThemePreference(themeId: String) {
-    ThemeManager.apply(themeId)
-    StartupThemeHint.write(app, themeId)
-    val nightMode =
-        when (themeId) {
-            "classic-light" -> AppCompatDelegate.MODE_NIGHT_NO
-            else -> AppCompatDelegate.MODE_NIGHT_YES
-        }
-    AppCompatDelegate.setDefaultNightMode(nightMode)
 }

@@ -22,9 +22,8 @@ fun makeCard(
     context: Context,
     elevationLevel: Int = 1,
 ): LinearLayout {
-    val t = ThemeManager.current
-    val colors = t.colors
-    val radiusPx = context.dp(t.shapes.cardRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = context.dp(ThemeManager.shapes.cardRadius).toFloat()
     val surfaceColor =
         when (elevationLevel.coerceIn(0, 5)) {
             0 -> colors.surface
@@ -39,12 +38,8 @@ fun makeCard(
         orientation = LinearLayout.VERTICAL
         setPadding(pad, pad, pad, pad)
         background =
-            when (t.shapes.elevationStyle) {
-                ElevationStyle.BORDER -> strokeBg(surfaceColor, radiusPx, colors.outline, context.dp(1))
-                else ->
-                    roundedBg(surfaceColor, radiusPx).also {
-                        if (elevationLevel > 0) elevate(elevationLevel.toFloat() + 1f)
-                    }
+            roundedBg(surfaceColor, radiusPx).also {
+                if (elevationLevel > 0) elevate(elevationLevel.toFloat() + 1f)
             }
         showDividers = LinearLayout.SHOW_DIVIDER_NONE
         clipToPadding = false
@@ -103,15 +98,13 @@ fun makeEmptyState(
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ): View {
-    val t = ThemeManager.current
-    val colors = t.colors
+    val colors = ThemeManager.colors
     return LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
         setPadding(context.dp(Space.XL), context.dp(Space.XL + Space.LG), context.dp(Space.XL), context.dp(Space.XL + Space.LG))
-        // Soft tinted disc anchoring the icon. primaryContainer/onPrimaryContainer gives every
-        // theme (Obsidian gold, Midnight blue, Forest green, Classic navy) a recognisable accent
-        // without overpowering the surrounding surface.
+        // Soft tinted disc anchoring the icon. primaryContainer/onPrimaryContainer gives a
+        // recognisable gold accent without overpowering the surrounding surface.
         val discSize = context.dp(80)
         val iconSize = context.dp(32)
         addView(

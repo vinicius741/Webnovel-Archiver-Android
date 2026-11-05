@@ -204,12 +204,11 @@ private fun ScreenHost.appBar(
     onBack: (() -> Unit)?,
     actions: List<AppBarAction>,
     backIcon: Int,
-): View {
-    val t = ThemeManager.current
-    return LinearLayout(app).apply {
+): View =
+    LinearLayout(app).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setBackgroundColor(t.colors.elevation2)
+        setBackgroundColor(ThemeManager.colors.elevation2)
         // G2: symmetric edge gap (was dp(4) right-only) so the icon strip isn't flush with the edge.
         setPadding(dp(Spacing.SM), systemBarTop() + dp(Spacing.SM), dp(Spacing.SM), dp(Spacing.SM))
         if (onBack != null) {
@@ -232,7 +231,7 @@ private fun ScreenHost.appBar(
         // wrap 3+ lines and balloon the bar); cap at 2 lines with an end ellipsis. The full title
         // stays available on the story screen body.
         titleCol.addView(
-            makeText(app, title, Type.TITLE_LARGE, t.colors.onSurface).apply {
+            makeText(app, title, Type.TITLE_LARGE, ThemeManager.colors.onSurface).apply {
                 tag = APP_BAR_TITLE_TAG
                 includeFontPadding = false
                 maxLines = 2
@@ -241,7 +240,7 @@ private fun ScreenHost.appBar(
         )
         subtitle?.let {
             titleCol.addView(
-                makeText(app, it, Type.BODY_SMALL, t.colors.onSurfaceVariant).apply {
+                makeText(app, it, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
                     includeFontPadding = false
                     setPadding(0, dp(2), 0, 0)
                 },
@@ -250,27 +249,29 @@ private fun ScreenHost.appBar(
         addView(titleCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         actions.forEach { a ->
             addView(
-                app.iconButton(a.icon, a.label, a.tint ?: t.colors.onSurface) { a.onClick() }.apply {
+                app.iconButton(a.icon, a.label, a.tint ?: ThemeManager.colors.onSurface) { a.onClick() }.apply {
                     (layoutParams as LinearLayout.LayoutParams).marginStart = dp(Spacing.XS)
                 },
             )
         }
     }
-}
 
 private fun makeFab(
     context: Context,
     onClick: () -> Unit,
 ): View {
-    val t = ThemeManager.current
     val size = context.dp(56)
     return ImageView(context).apply {
         contentDescription = "Add"
-        setImageDrawable(context.tintedIcon(R.drawable.wna_add, t.colors.onPrimary))
+        setImageDrawable(context.tintedIcon(R.drawable.wna_add, ThemeManager.colors.onPrimary))
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         setPadding(context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8), context.dp(Spacing.XL - 8))
         background =
-            ripple(roundedBg(t.colors.primary, context.dp(Spacing.LG).toFloat()), context.dp(Spacing.LG).toFloat(), t.colors.onPrimary)
+            ripple(
+                roundedBg(ThemeManager.colors.primary, context.dp(Spacing.LG).toFloat()),
+                context.dp(Spacing.LG).toFloat(),
+                ThemeManager.colors.onPrimary,
+            )
         elevate(6f)
         setOnClickListener { onClick() }
         layoutParams = FrameLayout.LayoutParams(size, size)

@@ -25,9 +25,8 @@ internal fun ScreenHost.showUpdateThresholdDialog(
     current: Int,
     onSave: (Int) -> Unit,
 ) {
-    val theme = ThemeManager.current
-    val colors = theme.colors
-    val radiusPx = app.dp(theme.shapes.dialogRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = app.dp(ThemeManager.shapes.dialogRadius).toFloat()
     val input = styledDialogField(current.toString(), "Chapters behind the end", InputType.TYPE_CLASS_NUMBER)
     var dialogRef: AlertDialog? = null
 
@@ -46,7 +45,7 @@ internal fun ScreenHost.showUpdateThresholdDialog(
             orientation = LinearLayout.VERTICAL
             setPadding(app.dp(24), app.dp(20), app.dp(24), app.dp(12))
             background = roundedBg(colors.surface, radiusPx)
-            roundCorners(theme.shapes.dialogRadius.toFloat())
+            roundCorners(ThemeManager.shapes.dialogRadius.toFloat())
         }
     content.addView(makeText(app, "Follow threshold", Type.TITLE_LARGE, colors.onSurface))
     content.addView(

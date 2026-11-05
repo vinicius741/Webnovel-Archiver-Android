@@ -15,9 +15,8 @@ fun makeThemedSpinner(
     context: Context,
     labels: List<String>,
 ): Spinner {
-    val theme = ThemeManager.current
-    val colors = theme.colors
-    val radiusPx = context.dp(theme.shapes.searchRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = context.dp(ThemeManager.shapes.searchRadius).toFloat()
     val horizontalPadding = context.dp(Spacing.LG)
     val verticalPadding = context.dp(Spacing.MD)
 

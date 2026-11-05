@@ -296,7 +296,7 @@ private fun ScreenHost.applySelectionStyle(
         if (selected == true) {
             strokeBg(
                 ColorUtils.setAlphaComponent(colors.primary, SELECTED_FILL_ALPHA),
-                dp(ThemeManager.current.shapes.cardRadius).toFloat(),
+                dp(ThemeManager.shapes.cardRadius).toFloat(),
                 colors.primary,
                 dp(2),
             )

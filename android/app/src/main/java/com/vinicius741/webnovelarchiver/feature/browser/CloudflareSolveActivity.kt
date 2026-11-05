@@ -91,7 +91,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = colors.background
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !ThemeManager.current.isDark
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val toolbar =

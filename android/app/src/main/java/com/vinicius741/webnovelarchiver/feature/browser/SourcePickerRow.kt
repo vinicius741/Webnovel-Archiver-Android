@@ -42,8 +42,7 @@ private fun sourcePickerRow(
     provider: SourceProvider,
     onOpen: () -> Unit,
 ): LinearLayout {
-    val t = ThemeManager.current
-    val colors = t.colors
+    val colors = ThemeManager.colors
     return LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL

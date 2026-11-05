@@ -21,43 +21,39 @@ fun makeCover(
     context: Context,
     widthDp: Int,
     heightDp: Int,
-): ImageView {
-    val t = ThemeManager.current
-    return ImageView(context).apply {
+): ImageView =
+    ImageView(context).apply {
         contentDescription = "Cover"
         scaleType = ImageView.ScaleType.CENTER_CROP
-        setBackgroundColor(t.colors.surfaceVariant)
+        setBackgroundColor(ThemeManager.colors.surfaceVariant)
         layoutParams =
             LinearLayout.LayoutParams(context.dp(widthDp), context.dp(heightDp)).apply {
                 setMargins(0, 0, context.dp(Space.LG), 0)
             }
-        roundCorners(t.shapes.cardRadius.toFloat() * 0.7f)
+        roundCorners(ThemeManager.shapes.cardRadius.toFloat() * 0.7f)
     }
-}
 
 fun makeCoverPlaceholder(
     context: Context,
     widthDp: Int,
     heightDp: Int,
-): View {
-    val t = ThemeManager.current
-    return LinearLayout(context).apply {
+): View =
+    LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER
-        setBackgroundColor(t.colors.surfaceVariant)
+        setBackgroundColor(ThemeManager.colors.surfaceVariant)
         layoutParams =
             LinearLayout.LayoutParams(context.dp(widthDp), context.dp(heightDp)).apply {
                 setMargins(0, 0, context.dp(Space.LG), 0)
             }
-        roundCorners(t.shapes.cardRadius.toFloat() * 0.7f)
+        roundCorners(ThemeManager.shapes.cardRadius.toFloat() * 0.7f)
         addView(
             ImageView(context).apply {
-                setImageDrawable(context.tintedIcon(R.drawable.wna_book_open, t.colors.onSurfaceVariant))
+                setImageDrawable(context.tintedIcon(R.drawable.wna_book_open, ThemeManager.colors.onSurfaceVariant))
                 layoutParams = LinearLayout.LayoutParams(context.dp(Space.XL + 4), context.dp(Space.XL + 4))
             },
         )
     }
-}
 
 // ------------------------------------------------------------------
 // Progress bar (thin, rounded, themed)
@@ -68,13 +64,12 @@ fun makeProgress(
     progress: Float,
     visible: Boolean = true,
 ): View {
-    val t = ThemeManager.current
     val bar =
         ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             this.progress = (progress.coerceIn(0f, 1f) * 100).toInt()
-            progressTintList = ColorStateList.valueOf(t.colors.primary)
-            progressBackgroundTintList = ColorStateList.valueOf(t.colors.surfaceVariant)
+            progressTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+            progressBackgroundTintList = ColorStateList.valueOf(ThemeManager.colors.surfaceVariant)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, context.dp(4))
             visibility = if (visible) View.VISIBLE else View.GONE
         }
@@ -117,19 +112,18 @@ fun makeStatPill(
     label: String,
     value: String,
 ): View {
-    val t = ThemeManager.current
-    val radius = context.dp(t.shapes.chipRadius).toFloat()
+    val radius = context.dp(ThemeManager.shapes.chipRadius).toFloat()
     return LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(context.dp(Space.MD), context.dp(Space.SM), context.dp(Space.MD), context.dp(Space.SM))
-        background = roundedBg(t.colors.surfaceVariant, radius)
+        background = roundedBg(ThemeManager.colors.surfaceVariant, radius)
         addView(
-            makeText(context, value, Type.TITLE_MEDIUM, t.colors.onSurface).apply {
+            makeText(context, value, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             },
         )
         addView(
-            makeText(context, label, Type.LABEL_SMALL, t.colors.onSurfaceVariant).apply {
+            makeText(context, label, Type.LABEL_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, 2, 0, 0)
             },
@@ -144,8 +138,7 @@ fun makeCountChip(
     value: Int,
     fg: Int,
 ): View {
-    val t = ThemeManager.current
-    val radius = context.dp(t.shapes.chipRadius).toFloat()
+    val radius = context.dp(ThemeManager.shapes.chipRadius).toFloat()
     return TextView(context).apply {
         text = "$value $label"
         setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
@@ -153,7 +146,7 @@ fun makeCountChip(
         setTextColor(fg)
         setPadding(context.dp(Space.SM + 2), context.dp(Space.XS + 1), context.dp(Space.SM + 2), context.dp(Space.XS + 1))
         includeFontPadding = false
-        background = roundedBg(t.colors.surfaceVariant, radius)
+        background = roundedBg(ThemeManager.colors.surfaceVariant, radius)
         visibility = if (value > 0) View.VISIBLE else View.GONE
     }
 }
@@ -178,22 +171,21 @@ fun makeProgressSummary(
     done: Int,
     total: Int,
 ): ProgressStrip {
-    val t = ThemeManager.current
     val ratio = if (total > 0) done.toFloat() / total else 0f
     val label =
         TextView(context).apply {
             text = "$done / $total"
             setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
             typeface = Typeface.create(typeface, Typeface.BOLD)
-            setTextColor(t.colors.onSurface)
+            setTextColor(ThemeManager.colors.onSurface)
             includeFontPadding = false
         }
     val bar =
         ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = (ratio.coerceIn(0f, 1f) * 100).toInt()
-            progressTintList = ColorStateList.valueOf(t.colors.primary)
-            progressBackgroundTintList = ColorStateList.valueOf(t.colors.surfaceVariant)
+            progressTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
+            progressBackgroundTintList = ColorStateList.valueOf(ThemeManager.colors.surfaceVariant)
             layoutParams = LinearLayout.LayoutParams(0, context.dp(4), 1f).apply { marginStart = context.dp(Space.SM + 2) }
         }
     val root =

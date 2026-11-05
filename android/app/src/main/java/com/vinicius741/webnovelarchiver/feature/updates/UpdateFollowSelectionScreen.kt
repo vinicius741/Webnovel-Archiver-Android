@@ -102,7 +102,7 @@ internal fun ScreenHost.showUpdateFollowSelection() {
             CheckBox(context).apply {
                 text = "Show covers"
                 setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.LABEL_MEDIUM.size())
-                setTextColor(ThemeManager.current.colors.onSurfaceVariant)
+                setTextColor(ThemeManager.colors.onSurfaceVariant)
                 isChecked = state.showCovers
                 isSaveEnabled = false
                 applyCheckBoxTint()
@@ -147,7 +147,7 @@ internal fun ScreenHost.showUpdateFollowSelection() {
             TextView(context).apply {
                 setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, Type.TITLE_SMALL.size())
                 typeface = android.graphics.Typeface.create(typeface, android.graphics.Typeface.BOLD)
-                setTextColor(ThemeManager.current.colors.onSurface)
+                setTextColor(ThemeManager.colors.onSurface)
                 includeFontPadding = false
             }
         addView(

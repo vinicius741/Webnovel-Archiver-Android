@@ -30,7 +30,7 @@ import timber.log.Timber
 
 // Startup chrome shown on the root frame while (or after) repository hydration runs. The branded
 // loading state replaces what QA 2026-08-27 F1 called "a bare centered ProgressBar": it paints the
-// user's theme (from StartupThemeHint), names the app, says what it is doing, and lays out skeleton
+// app theme, names the app, says what it is doing, and lays out skeleton
 // story cards in the same grid shape the Library will occupy, so the first paint shows content shape.
 
 // Holds the platform splash screen over the window until the first real content frame: released as

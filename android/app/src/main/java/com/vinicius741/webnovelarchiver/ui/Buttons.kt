@@ -55,12 +55,7 @@ fun Context.iconButton(
 
 private fun resolvedVariant(v: Btn): Btn {
     if (v != Btn.THEME_DEFAULT) return v
-    // Match legacy theme buttonDefaults.mode.
-    return when (ThemeManager.current.id) {
-        "midnight" -> Btn.OUTLINED
-        "forest" -> Btn.ELEVATED
-        else -> Btn.TONAL
-    }
+    return Btn.TONAL
 }
 
 fun makeButton(
@@ -70,9 +65,8 @@ fun makeButton(
     iconRes: Int = 0,
     onClick: () -> Unit,
 ): Button {
-    val t = ThemeManager.current
-    val colors = t.colors
-    val radiusPx = context.dp(t.shapes.buttonRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = context.dp(ThemeManager.shapes.buttonRadius).toFloat()
     val v = resolvedVariant(variant)
     val padH = context.dp(Space.LG)
     val padV = context.dp(Space.SM + 2)
@@ -157,9 +151,8 @@ fun makeChip(
     selected: Boolean,
     onClick: () -> Unit,
 ): LinearLayout {
-    val t = ThemeManager.current
-    val colors = t.colors
-    val radiusPx = context.dp(t.shapes.chipRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = context.dp(ThemeManager.shapes.chipRadius).toFloat()
     val padH = context.dp(Space.MD + 2)
     val padV = context.dp(Space.XS + 1)
     val fg = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant
@@ -224,9 +217,8 @@ fun makeSourceChip(
     selected: Boolean,
     onClick: () -> Unit,
 ): android.widget.LinearLayout {
-    val t = ThemeManager.current
-    val colors = t.colors
-    val radiusPx = context.dp(t.shapes.chipRadius).toFloat()
+    val colors = ThemeManager.colors
+    val radiusPx = context.dp(ThemeManager.shapes.chipRadius).toFloat()
     val padH = context.dp(Space.SM + 2)
     val padV = context.dp(Space.XS + 1)
     val containerColor = if (selected) colors.secondaryContainer else colors.surfaceVariant

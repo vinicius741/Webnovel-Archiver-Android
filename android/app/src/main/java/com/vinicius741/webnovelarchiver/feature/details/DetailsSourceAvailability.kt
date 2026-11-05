@@ -36,7 +36,7 @@ internal fun ScreenHost.buildSourceAvailabilityNotice(story: Story): LinearLayou
             "Automated access to $providerName is currently blocked. Your local copy remains available here with $downloadedLabel."
         }
     val accent = if (availability == SourceAvailability.not_found) colors.error else colors.tertiary
-    val radius = dp(ThemeManager.current.shapes.cardRadius).toFloat()
+    val radius = dp(ThemeManager.shapes.cardRadius).toFloat()
     return LinearLayout(app).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(Space.MD), dp(Space.MD), dp(Space.MD), dp(Space.MD))

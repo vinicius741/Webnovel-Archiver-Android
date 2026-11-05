@@ -126,8 +126,8 @@ class PreferenceNormalizationTest {
             PreferenceNormalization.chapterFilterSettings(ChapterFilterSettings(filterMode = "legacy")),
         )
         assertEquals(
-            DisplayPreferences(activeThemeId = "obsidian", foldLayoutMode = "auto"),
-            PreferenceNormalization.displayPreferences(DisplayPreferences(activeThemeId = "", foldLayoutMode = "legacy")),
+            DisplayPreferences(foldLayoutMode = "auto"),
+            PreferenceNormalization.displayPreferences(DisplayPreferences(foldLayoutMode = "legacy")),
         )
     }
 

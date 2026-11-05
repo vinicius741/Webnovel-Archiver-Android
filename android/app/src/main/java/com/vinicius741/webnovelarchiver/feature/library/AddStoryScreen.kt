@@ -69,7 +69,7 @@ internal fun ScreenHost.showAddStory() {
             LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                val radiusPx = context.dp(ThemeManager.current.shapes.buttonRadius).toFloat()
+                val radiusPx = context.dp(ThemeManager.shapes.buttonRadius).toFloat()
                 background =
                     ripple(
                         roundedBg(ThemeManager.colors.secondaryContainer, radiusPx),

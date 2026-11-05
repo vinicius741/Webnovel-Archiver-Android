@@ -226,10 +226,6 @@ class MainActivity :
         scope.launch {
             val startup =
                 runCatching {
-                    // Read the first-frame theme hint off the UI thread while container setup runs.
-                    withContext(Dispatchers.IO) {
-                        if (DevEnvironment.requested) null else StartupThemeHint.read(this@MainActivity)
-                    }?.let(ThemeManager::apply)
                     showStartupLoading()
                     val container = (application as WebnovelArchiverApp).awaitContainer()
                     repository = container.repository
@@ -285,15 +281,10 @@ class MainActivity :
                         null
                     }
                 InitialStartupState(
-                    activeThemeId = repository.getDisplayPreferences().activeThemeId,
                     resumeTarget = resumeTarget,
                     devTarget = devTarget,
                 )
             }
-        ThemeManager.apply(startupState.activeThemeId)
-        if (!DevEnvironment.requested) {
-            withContext(Dispatchers.IO) { StartupThemeHint.write(this@MainActivity, startupState.activeThemeId) }
-        }
         applyWindowTheme()
         if (BuildConfig.DEBUG &&
             (
@@ -426,11 +417,10 @@ class MainActivity :
     }
 
     private fun applyWindowTheme() {
-        val t = ThemeManager.current
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = t.colors.background
-        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !t.isDark
+        window.navigationBarColor = ThemeManager.colors.background
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = false
     }
 
     override fun notificationPermissionActionLabel(): String = notificationPermissionActionLabelExt()
@@ -451,7 +441,6 @@ class MainActivity :
             ?.takeIf { it.isNotEmpty() }
 
     private data class InitialStartupState(
-        val activeThemeId: String,
         val resumeTarget: TtsSessionPlanning.ReaderResumeTarget?,
         val devTarget: AppRoute?,
     )

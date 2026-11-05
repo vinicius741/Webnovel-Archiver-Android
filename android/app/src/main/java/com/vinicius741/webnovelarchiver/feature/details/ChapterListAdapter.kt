@@ -364,10 +364,9 @@ class ChapterListAdapter(
  * dot for a chapter currently being fetched. Primary-tinted so it reads as "active work".
  */
 internal fun chapterSpinner(context: Context): View {
-    val t = ThemeManager.current
     val size = context.dp(16)
     return ProgressBar(context, null, android.R.attr.progressBarStyleSmall).apply {
-        indeterminateTintList = ColorStateList.valueOf(t.colors.primary)
+        indeterminateTintList = ColorStateList.valueOf(ThemeManager.colors.primary)
         layoutParams = FrameLayout.LayoutParams(size, size)
     }
 }

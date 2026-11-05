@@ -207,7 +207,6 @@ internal class BackupExporter(
             // (session cleared, position kept) still resume where the listener left off.
             "ttsPositions" to storage.getTtsStoryPositions(),
             "foldLayoutMode" to displayPreferences.foldLayoutMode,
-            "themeStorage" to mapOf("wa_theme_active_v1" to displayPreferences.activeThemeId),
         )
     }
 

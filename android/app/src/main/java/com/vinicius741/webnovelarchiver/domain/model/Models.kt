@@ -286,7 +286,6 @@ data class ChapterFilterSettings(
 )
 
 data class DisplayPreferences(
-    var activeThemeId: String = "obsidian",
     /**
      * Legacy field kept for backup/restore compatibility. Previously labeled "EPUB Volume Folding"
      * in Settings with Cover/Inner chips, but no EPUB path consumed it. Not exposed in the UI;
