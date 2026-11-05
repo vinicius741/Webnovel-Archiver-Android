@@ -5,6 +5,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import androidx.appcompat.widget.SwitchCompat
@@ -36,6 +37,7 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scrollTextInsideParent
 import com.vinicius741.webnovelarchiver.ui.showTtsVoiceDialog
 import com.vinicius741.webnovelarchiver.ui.text
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
@@ -217,7 +219,8 @@ private fun LinearLayout.pauseSlider(
 /** Editable text played with the unsaved values above, so pauses can be judged by ear before saving. */
 private fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
     var preview: TtsSamplePreview? = null
-    lateinit var stopButton: View
+    var playing = false
+    lateinit var playButton: Button
     return makeCard(app).apply {
         text("Try it", Type.TITLE_SMALL)
         text(
@@ -238,19 +241,24 @@ private fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                 scrollTextInsideParent()
             }
         flow {
-            button("Play sample", Btn.TONAL, R.drawable.wna_play) {
-                sampleTextDraft = sample.text.toString()
-                val player =
-                    preview ?: TtsSamplePreview(
-                        context = app,
-                        onPlayingChanged = { playing -> stopButton.visibility = if (playing) View.VISIBLE else View.GONE },
-                        onFailed = { failure -> toast(sampleFailureText(failure)) },
-                    ).also { preview = it }
-                player.play(sample.text.toString(), draft())
-            }
-            stopButton =
-                button("Stop", Btn.TEXT, R.drawable.wna_close) { preview?.stop() }
-                    .apply { visibility = View.GONE }
+            playButton =
+                button("Play sample", Btn.TONAL, R.drawable.wna_play) {
+                    if (playing) {
+                        preview?.stop()
+                        return@button
+                    }
+                    sampleTextDraft = sample.text.toString()
+                    val player =
+                        preview ?: TtsSamplePreview(
+                            context = app,
+                            onPlayingChanged = { isPlaying ->
+                                playing = isPlaying
+                                playButton.showSampleState(isPlaying)
+                            },
+                            onFailed = { failure -> toast(sampleFailureText(failure)) },
+                        ).also { preview = it }
+                    player.play(sample.text.toString(), draft())
+                }
             button("Reset text", Btn.TEXT) {
                 sampleTextDraft = null
                 sample.setText(DEFAULT_SAMPLE_TEXT)
@@ -275,6 +283,13 @@ private fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
 }
 
 private const val SAMPLE_MAX_LINES = 8
+
+/** The sample button doubles as its own stop control while the sample is playing. */
+private fun Button.showSampleState(playing: Boolean) {
+    text = if (playing) "Stop playing" else "Play sample"
+    val icon = context.tintedIcon(if (playing) R.drawable.wna_stop else R.drawable.wna_play, currentTextColor)
+    setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null)
+}
 
 private fun sampleFailureText(failure: TtsSampleFailure): String =
     when (failure) {
