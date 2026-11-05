@@ -340,7 +340,7 @@ internal fun ScreenHost.showDownloadSettings() {
                 provider.id to SourceDownloadInputs(toggle!!, sourceDelayMin!!, sourceDelayMax!!)
             }
 
-        fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.SM) {
+        fullButton("Save", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
             val delayRange =
                 SettingsValidation.delayRange(
                     delayMin!!.text.toString(),

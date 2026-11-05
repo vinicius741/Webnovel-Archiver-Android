@@ -73,7 +73,7 @@ internal fun ScreenHost.showAiSettings() {
                 hint = "${AiSettings.MIN_COVER_EVIDENCE_CHAPTERS}–${AiSettings.MAX_COVER_EVIDENCE_CHAPTERS}",
             )
         showAiUsageSection(this) { apiKeyField?.text?.toString() }
-        fullButton("Save", Btn.FILLED, R.drawable.wna_check, topMarginDp = Space.LG, bottomMarginDp = Space.MD) {
+        fullButton("Save", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.MD) {
             scope.launch {
                 repository.aiSettings.save(
                     repository.aiSettings.get().copy(

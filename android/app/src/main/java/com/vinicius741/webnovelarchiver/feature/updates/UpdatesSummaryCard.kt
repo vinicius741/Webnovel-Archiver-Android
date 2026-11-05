@@ -92,7 +92,6 @@ internal fun ViewGroup.addUpdatesSummaryCard(
                 variant = Btn.FILLED,
                 icon = R.drawable.wna_refresh,
                 enabled = canSync && !state.syncing,
-                topMarginDp = Space.LG,
             ) { onSync(::refreshProgress) }
         },
     )

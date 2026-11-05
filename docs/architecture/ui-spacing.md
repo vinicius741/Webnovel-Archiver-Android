@@ -40,6 +40,20 @@ The cleanup preset, custom regex, and quick separator dialogs use this shared
 layout. Existing screens adopt it as their forms are revised. The older `Space`
 alias remains compatible; new code should use `Spacing`.
 
+## Actions
+
+The view DSL's action builders own the gap above themselves. `button` in a vertical
+layout, `fullButton`, and any `row` or `flow` holding a `Button` sit `Spacing.LG` clear of
+the visible content above them. Space that content already leaves counts toward the gap:
+its bottom margin, and the bottom padding of plain text. The first child of a container and
+an action directly after a `spacer` get nothing extra. The decision lives in
+`ui/layout/ActionSpacingPlanning.kt`.
+
+Do not set a top margin on an action to separate it from a field or text above. Pass
+`topMarginDp` to `fullButton` or add a `spacer` only when a screen deliberately needs a
+different gap. Actions added with a raw `addView(makeButton(...))` bypass the builders, so
+prefer the builders unless the layout is a dialog footer or a custom row.
+
 ## Copy and visual checks
 
 Keep the dialog title and short control labels. Avoid repeating the control's

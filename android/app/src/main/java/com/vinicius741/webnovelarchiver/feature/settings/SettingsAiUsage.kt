@@ -145,7 +145,6 @@ internal fun ScreenHost.showAiUsageSection(
                     label = "Refresh",
                     variant = Btn.TEXT,
                     icon = R.drawable.wna_refresh,
-                    topMarginDp = Space.SM,
                     bottomMarginDp = 0,
                 ) {
                     refreshKeyUsage()

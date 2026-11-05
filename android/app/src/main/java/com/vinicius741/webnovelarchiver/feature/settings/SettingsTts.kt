@@ -255,8 +255,6 @@ private fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                 sampleTextDraft = null
                 sample.setText(DEFAULT_SAMPLE_TEXT)
             }
-        }.also { buttons ->
-            (buttons.layoutParams as LinearLayout.LayoutParams).topMargin = dp(Space.MD)
         }
         addOnAttachStateChangeListener(
             object : View.OnAttachStateChangeListener {

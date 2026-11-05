@@ -65,7 +65,7 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     val filterTopMargin =
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(Space.SM)
+            topMargin = if (hasCustomTabs) 0 else dp(Space.SM)
         }
 
     val searchRow =
@@ -310,6 +310,8 @@ internal fun ScreenHost.makeLibraryFilters(
             .apply {
                 isClickable = false
                 isFocusable = false
+                layoutParams = FrameLayout.LayoutParams(dp(FILTER_TOGGLE_WIDTH_DP), dp(FILTER_HEADER_HEIGHT_DP))
+                setPadding(dp(Space.SM), dp(Space.XS), dp(Space.SM), dp(Space.XS))
             }
     // Active-filter indicators, shown/hidden by [syncActiveFilters]; decorative only — the tap
     // target is `toggleWrap`.
@@ -324,7 +326,8 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     val toggleWrap =
         FrameLayout(context).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { gravity = Gravity.END }
+            layoutParams =
+                LinearLayout.LayoutParams(dp(FILTER_TOGGLE_WIDTH_DP), dp(FILTER_HEADER_HEIGHT_DP)).apply { gravity = Gravity.END }
             addView(toggleIcon)
             addView(activeDot)
         }
@@ -344,7 +347,13 @@ internal fun ScreenHost.makeLibraryFilters(
         }
     headerRow.addView(activeLabel)
     headerRow.addView(View(context), LinearLayout.LayoutParams(0, 0, 1f))
-    val clearButton = makeButton(context, "Clear filters", Btn.TEXT, onClick = onClearFilters)
+    val clearButton =
+        makeButton(context, "Clear filters", Btn.TEXT, onClick = onClearFilters).apply {
+            // Stays within the slim header so applying a filter doesn't make the row jump.
+            minHeight = dp(FILTER_HEADER_HEIGHT_DP)
+            minimumHeight = dp(FILTER_HEADER_HEIGHT_DP)
+            setPadding(paddingLeft, dp(Space.XS), paddingRight, dp(Space.XS))
+        }
     headerRow.addView(clearButton)
     if (hasCustomTabs) headerRow.addView(toggleWrap)
     wrapper.addView(headerRow)
@@ -361,9 +370,15 @@ internal fun ScreenHost.makeLibraryFilters(
 
     filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
     toggleIcon.rotation = if (expanded) 180f else 0f
+    // Collapsed, the list sits closer to the slim header; expanded, it keeps its gap below the chips.
+    val syncListGap = {
+        filterTopMargin.bottomMargin = if (hasCustomTabs && !expanded) -dp(COLLAPSED_LIST_PULL_DP) else 0
+        wrapper.requestLayout()
+    }
     val toggleAction = {
         expanded = !expanded
         filtersContainer.visibility = if (expanded) View.VISIBLE else View.GONE
+        syncListGap()
         if (expanded) populateChips(pendingTabId, pendingTags)
         onExpandedChanged(expanded)
         toggleIcon
@@ -380,5 +395,10 @@ internal fun ScreenHost.makeLibraryFilters(
         toggleWrap.setOnClickListener { toggleAction() }
     }
     wrapper.layoutParams = filterTopMargin
+    syncListGap()
     return LibraryFiltersView(wrapper, populateChips, syncActiveFilters)
 }
+
+private const val FILTER_HEADER_HEIGHT_DP = 32
+private const val FILTER_TOGGLE_WIDTH_DP = 40
+private const val COLLAPSED_LIST_PULL_DP = 12

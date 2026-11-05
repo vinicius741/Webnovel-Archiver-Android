@@ -52,7 +52,6 @@ internal fun ScreenHost.showNotifications() {
                 fullButton(
                     label = notificationPermissionActionLabel(),
                     variant = Btn.TONAL,
-                    topMarginDp = Space.MD,
                     bottomMarginDp = 0,
                 ) {
                     performNotificationPermissionAction()

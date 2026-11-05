@@ -123,7 +123,6 @@ internal fun ScreenHost.showAddStory() {
                 if (fetching) "Fetching..." else "Fetch Story",
                 Btn.FILLED,
                 R.drawable.wna_download,
-                topMarginDp = Space.LG,
             ) {
                 val spinnerPos = tabSpinner?.selectedItemPosition ?: 0
                 val tabId = tabs.getOrNull(spinnerPos)?.id

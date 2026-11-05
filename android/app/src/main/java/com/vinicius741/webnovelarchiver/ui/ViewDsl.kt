@@ -1,11 +1,39 @@
 package com.vinicius741.webnovelarchiver.ui
 
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.vinicius741.webnovelarchiver.ui.layout.ActionSpacingPlanning
+import com.vinicius741.webnovelarchiver.ui.layout.PrecedingView
+
+// ---- action spacing ----
+
+/**
+ * The top margin a button or row of buttons needs in this container: [Spacing.LG] clear of whatever
+ * sits above it. The builders below apply it, so a screen never adds its own gap above an action.
+ */
+private fun ViewGroup.actionTopMarginPx(): Int {
+    if (this !is LinearLayout || orientation != LinearLayout.VERTICAL) return 0
+    return ActionSpacingPlanning.topMarginPx(context.dp(Spacing.LG), precedingView())
+}
+
+private fun ViewGroup.precedingView(): PrecedingView {
+    val previous =
+        (childCount - 1 downTo 0)
+            .map { getChildAt(it) }
+            .firstOrNull { it.visibility != View.GONE } ?: return PrecedingView.None
+    if (previous is android.widget.Space) return PrecedingView.Spacer
+    val margin = (previous.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+    // Only plain text's bottom padding reads as empty space; a field or button paints a background across its padding.
+    val isPlainText = previous is TextView && previous !is EditText && previous !is Button
+    return PrecedingView.Content(margin + if (isPlainText) previous.paddingBottom else 0)
+}
+
+private fun ViewGroup.hasButton(): Boolean = (0 until childCount).any { getChildAt(it) is Button }
 
 // ---- container builders (operate on any ViewGroup) ----
 
@@ -32,6 +60,7 @@ internal fun ViewGroup.row(
     addView(
         h,
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            if (h.hasButton()) topMargin = actionTopMarginPx()
             bottomMargin = context.dp(Space.SM)
         },
     )
@@ -48,7 +77,12 @@ internal fun ViewGroup.flow(
             verticalSpacingDp = spacing
             block()
         }
-    addView(f, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+    addView(
+        f,
+        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            if (f.hasButton()) topMargin = actionTopMarginPx()
+        },
+    )
     return f
 }
 
@@ -118,20 +152,27 @@ internal fun ViewGroup.button(
                 if (parent.childCount > 0) marginStart = context.dp(Space.SM)
             },
         )
+    } else if (parent is LinearLayout) {
+        addView(
+            b,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = actionTopMarginPx()
+            },
+        )
     } else {
         addView(b)
     }
     return b
 }
 
-/** Full-width (MATCH_PARENT) button with optional top/bottom margins, for stacked primary actions like
- *  Sync / Download All on the details screen. */
+/** Full-width (MATCH_PARENT) button for stacked primary actions like Sync / Download All on the details
+ *  screen. Keeps the standard gap from the content above unless [topMarginDp] overrides it. */
 internal fun ViewGroup.fullButton(
     label: String,
     variant: Btn = Btn.THEME_DEFAULT,
     icon: Int = 0,
     enabled: Boolean = true,
-    topMarginDp: Int = 0,
+    topMarginDp: Int? = null,
     bottomMarginDp: Int = Space.MD,
     action: () -> Unit,
 ): Button {
@@ -139,7 +180,7 @@ internal fun ViewGroup.fullButton(
     if (!enabled) disableButton(b)
     val lp =
         LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = context.dp(topMarginDp)
+            topMargin = topMarginDp?.let { context.dp(it) } ?: actionTopMarginPx()
             bottomMargin = context.dp(bottomMarginDp)
         }
     addView(b, lp)

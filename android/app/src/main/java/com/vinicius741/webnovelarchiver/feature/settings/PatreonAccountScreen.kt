@@ -196,7 +196,7 @@ private fun ScreenHost.buildStatusCard(
         }
         val story = storyId?.let { repository.story(it) }
         if (status is AccountStatus.SignedIn && story != null && story.patreonEarlyAccess != null) {
-            fullButton("Check “${story.title}” now", Btn.FILLED, topMarginDp = Space.MD, bottomMarginDp = 0) {
+            fullButton("Check “${story.title}” now", Btn.FILLED, bottomMarginDp = 0) {
                 showDetails(story.id)
                 syncStory(story)
             }
@@ -217,10 +217,7 @@ private fun ScreenHost.buildStatusCard(
                     }
                 }
             }.apply {
-                (layoutParams as LinearLayout.LayoutParams).apply {
-                    topMargin = dp(Space.SM)
-                    bottomMargin = 0
-                }
+                (layoutParams as LinearLayout.LayoutParams).bottomMargin = 0
             }
         }
     }
