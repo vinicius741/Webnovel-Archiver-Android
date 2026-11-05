@@ -113,13 +113,13 @@ One-time setup on the Mac that holds the original signing key:
    On macOS, copy the keystore encoding directly to the clipboard with `base64 -i /path/to/original-release.jks | tr -d '\n' | pbcopy`, then paste it into the secret field. Base64 is an encoding, not encryption. Never commit it, the keystore, or passwords to the repository or paste them into chat.
 
 2. Once the workflow is committed and pushed to `main`, open **Actions → Publish Android APK → Run workflow**, select `main`, and run it.
-3. After it succeeds, open [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) on the phone, download **WebnovelArchiver.apk**, and open it. Allow installation from the browser if Android asks. Keep the existing app installed to preserve its library.
+3. After it succeeds, open [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) on the phone, download the **WebnovelArchiver-v<version>-<run-id>-<attempt>.apk** asset, and open it. Allow installation from the browser if Android asks. Keep the existing app installed to preserve its library.
 
 For each subsequent release, increase both `versionCode` and `versionName` in `android/app/build.gradle`, commit and push the intended changes, then run the workflow again. Each version gets a `v<versionName>` tag; existing tags are never overwritten. The first run can publish the current version if it has no tag yet. A failed run that already created a release must be checked before retrying.
 
-After the first successful release, this stable link downloads the latest APK without a GitHub login:
+Each published APK filename includes the app version, GitHub Actions run ID, and run attempt so different runs and retries use different filenames. The workflow summary links directly to that run's APK. The latest release page is available without a GitHub login:
 
-https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest/download/WebnovelArchiver.apk
+https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest
 
 ### Development
 

@@ -11,6 +11,8 @@ Produce fresh `app-debug.apk` and `app-release.apk` for the native Kotlin app un
 
 ## The build
 
+Build only the requested variant. A local rebuild does not require a version bump or a GitHub release. For GitHub publication or a failed publication retry, use the release preflight below before building or dispatching.
+
 From the repo root:
 
 ```bash
@@ -28,6 +30,26 @@ Output APKs (these are the source of truth — always install from here, not fro
 Release is signed automatically — signing config lives in `android/local.properties` under the `WEBNOVEL_RELEASE_*` keys (store file, store password, key alias, key password). Never print, cat, or expose those values; `build.gradle` reads them via `findProperty`/`System.getenv`/`localProperties` and you never need to handle them directly.
 
 Build alone takes ~15–30s incremental, longer from clean.
+
+## GitHub release preflight
+
+The manual workflow is `.github/workflows/android-release.yml`; signing setup is in the root `README.md`. Publishing is separate from a local build or device installation. Do not commit, push, or dispatch a workflow without user authorization for that action.
+
+1. Read `versionName` and `versionCode` from `android/app/build.gradle`. Do not rely on version examples in this skill or an earlier conversation.
+2. Inspect remote state before choosing a version or retrying. From the repo root:
+
+   ```bash
+   gh run list --workflow android-release.yml --limit 10
+   gh release list --limit 10
+   git ls-remote --tags origin
+   ```
+
+   Inspect the relevant failed run with `gh run view <run-id> --log-failed`. Check an in-progress run with `gh run view <run-id>` rather than launching a duplicate. If remote inspection fails because of authentication or connectivity, report the failure rather than treating the release/tag as absent.
+3. For a new published release, choose an unused `versionName` and increase `versionCode` above previous published releases. Each tag is exactly `v<versionName>`. Check the proposed tag explicitly with `git ls-remote --tags origin "refs/tags/$RELEASE_TAG"`, setting `RELEASE_TAG` from the chosen version. Any matching tag blocks publication, even if no release appears in `gh release list`. Do not delete or move an existing tag, overwrite published assets, or generate a replacement signing key to bypass this check.
+4. Before an authorized dispatch, verify remote `main` contains the intended changes and version bump. Use a fresh workflow dispatch on `main` for a new commit. GitHub's re-run action uses the old run's commit, so re-running a failed old version will not pick up a later bump. If the same version already has a release, inspect its assets and the previous run before deciding whether anything remains to do. Do not blindly retry a run that may already have published.
+5. After an authorized dispatch, report the run ID and status. Claim publication succeeded only after the workflow succeeds and the expected release has `WebnovelArchiver.apk` and `SHA256SUMS.txt`. If it is still running, say so; passing preflight is not proof that the APK was published.
+
+Known failure: on November 5, 2026, a second attempt to publish `v1.0.2-native` failed in seconds with `Release tag already exists`, because that version had already been released. The correct response for new changes is a fresh version and a dispatch on the updated `main`, not a retry of the old commit or disabling GitHub failure emails.
 
 ## Trap 1 — the copy tasks fail; skip them
 
