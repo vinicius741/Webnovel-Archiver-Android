@@ -211,7 +211,7 @@ android/
   settings.gradle
 docs/                          # Long-form docs by subject (see docs/README.md)
 scripts/                       # redeploy.sh, watch-redeploy.sh, simulate.py, emulator/start_emulator.sh (emulator only)
-.agents/skills/                # Agent skills (build/install, dev launch, emulator QA/recovery)
+.agents/skills/                # Agent skills (build/install, dev launch, emulator QA/recovery, multi-model review)
 ```
 
 ## Contributing
