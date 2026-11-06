@@ -1,9 +1,11 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -11,6 +13,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -142,6 +145,74 @@ class TtsAudioRendererTest {
             renderer.stop()
 
             assertTrue(recorder.failed.isNotEmpty())
+        }
+
+    @Test
+    fun playbackRequestsPreemptRenderAheadWithoutDuplicatingInFlightWork() =
+        runTest {
+            val cache = TtsAudioCache(folder.newFolder())
+            val recorder = Recorder()
+            val spoken = mutableListOf<String>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            val releaseMissing = CompletableDeferred<Unit>()
+            val renderer =
+                TtsAudioRenderer(
+                    cache,
+                    { text, output ->
+                        spoken += text
+                        if (text == "ahead one") releaseFirst.await()
+                        if (text == "missing") releaseMissing.await()
+                        output.writeBytes(wavWithSpeech(24_000))
+                        true
+                    },
+                    backgroundScope,
+                    recorder,
+                )
+            renderer.setPlan(requests(cache, "ahead one", "ahead two"))
+            runCurrent()
+            val missing = requests(cache, "missing").single()
+            repeat(5) { renderer.request(missing) }
+            releaseFirst.complete(Unit)
+            runCurrent()
+            repeat(5) { renderer.request(missing) }
+            releaseMissing.complete(Unit)
+            runCurrent()
+            renderer.stop()
+
+            assertEquals(listOf("ahead one", "missing", "ahead two"), spoken)
+            assertTrue(recorder.failed.isEmpty())
+        }
+
+    @Test
+    fun thrownSynthesisFailureReachesFallbackInsteadOfKillingTheWorkerSilently() =
+        runTest {
+            val cache = TtsAudioCache(folder.newFolder())
+            val recorder = Recorder()
+            val renderer =
+                TtsAudioRenderer(cache, { _, _ -> throw IOException("cannot write audio") }, backgroundScope, recorder)
+            renderer.setPlan(requests(cache, "one", "two"))
+            runCurrent()
+            renderer.stop()
+
+            assertEquals(listOf("one"), recorder.failed)
+            assertEquals(0, recorder.finished)
+        }
+
+    @Test
+    fun stoppingASuspendedRenderDoesNotReportAFailure() =
+        runTest {
+            val cache = TtsAudioCache(folder.newFolder())
+            val recorder = Recorder()
+            val pending = CompletableDeferred<Boolean>()
+            val renderer = TtsAudioRenderer(cache, { _, _ -> pending.await() }, backgroundScope, recorder)
+            renderer.setPlan(requests(cache, "one"))
+            runCurrent()
+            renderer.stop()
+            runCurrent()
+
+            assertTrue(recorder.failed.isEmpty())
+            assertTrue(recorder.rendered.isEmpty())
+            assertEquals(0, recorder.finished)
         }
 
     @Test

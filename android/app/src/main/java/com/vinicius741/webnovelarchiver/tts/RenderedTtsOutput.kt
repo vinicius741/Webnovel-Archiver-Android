@@ -56,9 +56,14 @@ internal class RenderedTtsOutput(
 
     override fun load(request: TtsOutputLoad) {
         generation++
+        val sent = generation
         voiceKey = request.voiceKey
         aheadRequests = emptyList()
-        val loaded = TtsRenderedChapter(request.timeline, cache, voiceKey)
+        val loaded =
+            TtsRenderedChapter(request.timeline, cache, voiceKey) {
+                val missing = it
+                dispatch { if (sent == generation) renderer.request(missing) }
+            }
         chapter = loaded
         renderer.setPlan(loaded.planFrom(request.item))
         player.start(loaded, request.item, request.offsetMs, request.rate, request.playWhenReady)
@@ -85,8 +90,10 @@ internal class RenderedTtsOutput(
     }
 
     override fun release() {
+        generation++
         renderer.stop()
         player.release()
+        chapter = null
     }
 
     /** A callback left over from a replaced chapter must not act on the new one. */
@@ -101,6 +108,7 @@ private class TtsRenderedChapter(
     private val timeline: TtsTimeline,
     private val cache: TtsAudioCache,
     voiceKey: String,
+    private val requestRender: (TtsRenderRequest) -> Unit,
 ) : TtsPcmFeed {
     private val keys: List<String?> =
         timeline.items.map { item -> (item as? TtsTimelineItem.Speech)?.let { cache.keyFor(voiceKey, it.text) } }
@@ -116,7 +124,15 @@ private class TtsRenderedChapter(
     override fun awaitClip(
         item: Int,
         timeoutMs: Long,
-    ): TtsPcmClip? = keys.getOrNull(item)?.let { cache.awaitClip(it, timeoutMs) }
+    ): TtsPcmClip? {
+        val key = keys.getOrNull(item) ?: return null
+        val clip = cache.awaitClip(key, timeoutMs)
+        if (clip == null) {
+            val speech = timeline.items[item] as TtsTimelineItem.Speech
+            requestRender(TtsRenderRequest(key, speech.text))
+        }
+        return clip
+    }
 
     fun onRendered(
         key: String,

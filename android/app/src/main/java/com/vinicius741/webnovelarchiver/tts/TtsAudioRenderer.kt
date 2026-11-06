@@ -1,8 +1,10 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -48,32 +50,63 @@ internal class TtsAudioRenderer(
     private var worker: Job? = null
     private var consecutiveEmpty = 0
     private var planPending = false
+    private var rendering: TtsRenderRequest? = null
 
     fun setPlan(plan: List<TtsRenderRequest>) {
         synchronized(queue) {
             queue.clear()
             queue.addAll(plan)
             planPending = true
+            wakeWorkerLocked()
         }
+    }
+
+    /** Playback may need a file reclaimed after the render plan already moved on. */
+    fun request(request: TtsRenderRequest) {
+        synchronized(queue) {
+            if (rendering?.key == request.key) return
+            queue.removeAll { it.key == request.key }
+            queue.addFirst(request)
+            wakeWorkerLocked()
+        }
+    }
+
+    private fun wakeWorkerLocked() {
         wake.trySend(Unit)
         if (worker?.isActive != true) worker = scope.launch { runQueue() }
     }
 
     fun stop() {
-        synchronized(queue) { queue.clear() }
-        worker?.cancel()
-        worker = null
+        synchronized(queue) {
+            queue.clear()
+            planPending = false
+            rendering = null
+            worker?.cancel()
+            worker = null
+        }
     }
 
+    // Synthesis and cache failures must reach fallback; cancellation still escapes below.
+
+    @Suppress("TooGenericExceptionCaught")
     private suspend fun runQueue() {
-        while (scope.isActive) {
-            val next = synchronized(queue) { queue.removeFirstOrNull() }
+        while (currentCoroutineContext().isActive) {
+            val next = synchronized(queue) { queue.removeFirstOrNull().also { rendering = it } }
             if (next == null) {
                 val justFinished = synchronized(queue) { planPending.also { planPending = false } }
                 if (justFinished) callbacks.onPlanFinished()
                 wake.receive()
             } else {
-                renderOne(next)
+                try {
+                    renderOne(next)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.w(error, "TTS render worker failed")
+                    reportFailure(next)
+                } finally {
+                    synchronized(queue) { if (rendering === next) rendering = null }
+                }
             }
         }
     }

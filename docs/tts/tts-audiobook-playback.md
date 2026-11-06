@@ -45,6 +45,9 @@ Chapter HTML
 - Cache keys hash voice + pitch + text, so renumbering cannot invalidate them and repeated lines
   render once. Files live in `cacheDir/tts_audio/` (never in backups), capped at 500 MB by least
   recent use. At 24 kHz mono that is about three hours.
+- If a needed file disappears, playback requests it again ahead of queued render-ahead work.
+  Repeated requests share the queued or in-flight render. A synthesis or storage exception reaches
+  the live fallback instead of leaving the player waiting for a worker that has stopped.
 - Each sentence's lead-in and tail are trimmed, because voices leave varying silence (measured:
   333 ms median, 689 ms p90 at 1x), with a 15 ms pad and a 5 ms fade.
 
@@ -165,3 +168,10 @@ no restart. Playing a sample pauses a playing session, which stays paused in the
 **Not yet verified:** the owner's phone and its voice engine, real earbuds and car Bluetooth, long
 screen-off playback, how it sounds, including whether the new default pauses and phrase pauses sound natural (the emulator run was muted), and the fade-out on a timed sleep.
 Render speed was measured at about 50x real time on the emulator; a phone will differ.
+
+Recovery check, 2026-11-06: `RenderedTtsOutputRecoveryDeviceTest` removes a needed sentence's cache
+file after rendering has moved to the next chapter, then pauses and resumes. It reproduced an
+indefinite wait before the fix and completes after the fix. Unit tests cover demand priority,
+duplicate requests, render exceptions and cancellation. A separate emulator run continued for
+over two minutes with the screen off and its wake lock held. The reported stop after about a minute
+with the screen off has not been reproduced directly.
