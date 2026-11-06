@@ -34,8 +34,8 @@ internal fun ScreenHost.applyCleanup(story: Story) {
         return
     }
     confirm(
-        "This will apply sentence removal and regex cleanup rules to ${downloaded.size} downloaded chapters. " +
-            "The EPUB will need to be regenerated afterward.",
+        "This will apply your sentence removal list and regex cleanup rules to ${downloaded.size} downloaded chapters. " +
+            "If any text is removed, you'll need to regenerate the EPUB afterward.",
         confirmLabel = "Apply",
     ) {
         runCleanup(story, downloaded)
@@ -57,14 +57,9 @@ private fun ScreenHost.runCleanup(
             val sentenceRemoval = repository.sentenceRemovalList.get()
             val regexRules = repository.regexRules.get()
             val noticeMarker = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)?.insertedNoticeMarker
-            // Persist the stale marker before the first possible chapter modification:
-            // cancellation, process death, or a later failure must never leave modified chapter
-            // files under an EPUB still marked current, and a later failure must not clear it.
-            check(repository.markCleanupApplied(story.id) != null) {
-                "Story was removed while cleanup was running"
-            }
             var processed = 0
             var errors = 0
+            var changed = 0
             var sentencesRemoved = 0
             var regexMatchesRemoved = 0
             downloaded.forEachIndexed { index, chapter ->
@@ -81,38 +76,39 @@ private fun ScreenHost.runCleanup(
                     val result = CleanupEngine.shared.applyDownloadWithStats(html, sentenceRemoval, regexRules, noticeMarker)
                     // Skip writes whose cleaned HTML equals the original.
                     if (result.html != html) {
+                        // Persist the stale marker before the first chapter modification:
+                        // cancellation, process death, or a later failure must never leave modified
+                        // chapter files under an EPUB still marked current. A run that changes
+                        // nothing leaves the EPUB's freshness untouched.
+                        if (changed == 0) markCleanupAppliedOrAbort(story.id)
                         check(repository.overwriteChapter(chapter, result.html)) { "Downloaded chapter file is missing" }
+                        changed += 1
                     }
                     processed += 1
                     sentencesRemoved += result.sentencesRemoved
                     regexMatchesRemoved += result.regexMatchesRemoved
-                } catch (cancelled: CancellationException) {
-                    // The per-chapter boundary must rethrow cancellation, not count it as an error.
-                    throw cancelled
-                } catch (_: Exception) {
+                } catch (error: Exception) {
+                    // The per-chapter boundary must rethrow cancellation, not count it as an error, and
+                    // a deleted story aborts the whole run rather than failing chapter by chapter.
+                    if (error is CancellationException || error is CleanupStoryRemovedException) throw error
                     errors += 1
                 }
             }
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
                 showDetails(story.id)
-                val removals = sentencesRemoved + regexMatchesRemoved
-                val removalLine =
-                    "$removals removal${if (removals == 1) "" else "s"}. " +
-                        "$sentencesRemoved sentence match${if (sentencesRemoved == 1) "" else "es"} and " +
-                        "$regexMatchesRemoved regex match${if (regexMatchesRemoved == 1) "" else "es"} removed."
-                if (errors > 0) {
-                    alert(
-                        "Processing Complete with Errors",
-                        "Processed $processed chapters; $errors had errors. $removalLine",
+                val summary =
+                    CleanupSummaryPlanning.summarize(
+                        CleanupRunStats(
+                            totalChapters = downloaded.size,
+                            processedChapters = processed,
+                            failedChapters = errors,
+                            changedChapters = changed,
+                            sentencesRemoved = sentencesRemoved,
+                            regexMatchesRemoved = regexMatchesRemoved,
+                        ),
                     )
-                } else {
-                    alert(
-                        "Processing Complete",
-                        "Successfully applied text cleanup to $processed chapters. $removalLine " +
-                            "Please regenerate the EPUB.",
-                    )
-                }
+                alert(summary.title, summary.message)
             }
         } catch (error: Throwable) {
             // E1: structured-concurrency safety — never swallow cancellation.
@@ -125,6 +121,12 @@ private fun ScreenHost.runCleanup(
             }
         }
     }
+}
+
+private class CleanupStoryRemovedException : IllegalStateException("Story was removed while cleanup was running")
+
+private suspend fun ScreenHost.markCleanupAppliedOrAbort(storyId: String) {
+    if (repository.markCleanupApplied(storyId) == null) throw CleanupStoryRemovedException()
 }
 
 internal fun ScreenHost.generateConfiguredEpub(story: Story) {
