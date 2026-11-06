@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.source
 
 import com.vinicius741.webnovelarchiver.cleanup.InsertedNoticeMarker
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterInfo
 import com.vinicius741.webnovelarchiver.domain.model.NovelMetadata
@@ -142,7 +143,7 @@ internal fun findPatreonUrl(doc: Document): String? =
             val url = link.absUrl("href").ifBlank { link.attr("href") }
             url
                 .takeIf { Regex("https?://(?:www\\.)?patreon\\.com/", RegexOption.IGNORE_CASE).containsMatchIn(it) }
-                ?.substringBefore('?')
+                ?.let(PatreonCreatorPlanning::sourceLink)
                 ?.let { candidate -> candidate to patreonLinkPriority(link) }
         }.sortedByDescending { (_, priority) -> priority }
         .firstOrNull()

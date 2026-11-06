@@ -69,6 +69,24 @@ class SourceProviderTest {
         }
 
     @Test
+    fun royalRoadKeepsTheUserIdOfACreatorWithoutAPageName() {
+        // Royal Road's support dropdown links such creators only as patreon.com/user?u=<id>.
+        val html =
+            """
+            <html><body>
+              <h1>Example RR</h1>
+              <div class="dropdown-content">
+                <a rel="nofollow" class="dropdown-option" href="https://patreon.com/user?u=91109567&utm_source=rr">
+                  <i class="fab fa-patreon"></i><span class="tip">Become a</span> Patron
+                </a>
+              </div>
+            </body></html>
+            """.trimIndent()
+
+        assertEquals("https://www.patreon.com/user?u=91109567", RoyalRoadProvider.parseMetadata(html).patreonUrl)
+    }
+
+    @Test
     fun royalRoadUsesArticleAndTwitterAuthorMetadataFallbacks() {
         val articleMetadata =
             RoyalRoadProvider.parseMetadata(

@@ -82,6 +82,21 @@ class PatreonCreatorPlanningTest {
     }
 
     @Test
+    fun sourceLinkKeepsUserIdsAndDropsTrackingParameters() {
+        assertEquals("https://www.patreon.com/user?u=123", PatreonCreatorPlanning.sourceLink("https://patreon.com/user?u=123"))
+        assertEquals(
+            "https://www.patreon.com/user?u=123",
+            PatreonCreatorPlanning.sourceLink("https://www.patreon.com/user?utm=x&u=123#top"),
+        )
+        assertEquals(
+            "https://patreon.com/creator/posts",
+            PatreonCreatorPlanning.sourceLink("https://patreon.com/creator/posts?utm_source=rr"),
+        )
+        assertNull(PatreonCreatorPlanning.sourceLink("https://www.patreon.com/user"))
+        assertNull(PatreonCreatorPlanning.sourceLink("https://www.patreon.com/user?utm_source=rr"))
+    }
+
+    @Test
     fun sameCreatorComparesIdentityNotSpelling() {
         assertTrue(PatreonCreatorPlanning.sameCreator("https://www.patreon.com/Creator", "https://patreon.com/c/creator/posts"))
         assertTrue(PatreonCreatorPlanning.sameCreator(null, null))
