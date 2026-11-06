@@ -143,6 +143,32 @@ object PatreonCreatorPlanning {
     }
 
     /**
+     * Live stories whose Patreon link names no creator (such as a bare `patreon.com/user`, which
+     * source scraping once produced by dropping the `?u=` id). Stats fetched through such a link
+     * describe some other page, so their stats are cleared in place, and the returned ids (of every
+     * such story) tell the caller whose recorded Patreon history to strip. [changed] collects the
+     * stories whose document needs saving.
+     */
+    fun clearCreatorlessStats(
+        library: List<Story>,
+        changed: MutableSet<String>,
+    ): Set<String> =
+        library
+            .filter { it.isArchived != true && it.effectivePatreonUrl != null && creatorKey(it.effectivePatreonUrl) == null }
+            .onEach { story ->
+                if (story.patreonStats != null) {
+                    story.patreonStats = null
+                    changed += story.id
+                }
+            }.mapTo(mutableSetOf()) { it.id }
+
+    /** The history without its Patreon measurements, or null when it recorded none. */
+    fun withoutPatreonMeasurements(history: StoryMetricHistory): StoryMetricHistory? {
+        if (history.snapshots.none { it.patreonRaw != null }) return null
+        return history.copy(snapshots = history.snapshots.map { it.copy(patreonRaw = null) }.toMutableList())
+    }
+
+    /**
      * Combines the Patreon measurements recorded in several stories' histories (all for one
      * creator) into one history holding only Patreon snapshots. Each source's delta-encoded tier
      * ladders are resolved before the union, since a carried ladder only makes sense within its own

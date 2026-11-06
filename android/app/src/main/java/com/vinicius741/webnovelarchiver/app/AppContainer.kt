@@ -157,8 +157,13 @@ class AppContainer internal constructor(
                         sourceIdForUrl = { url -> SourceRegistry.getProvider(url)?.id },
                         sourceIdForSettingKey = SourceRegistry::sourceIdForPersistedKey,
                     )
+                // Stats fetched through a link naming no creator belong to another page; drop them.
+                val changedByCreatorless = mutableSetOf<String>()
+                PatreonCreatorPlanning
+                    .clearCreatorlessStats(load.stories, changedByCreatorless)
+                    .forEach(storage::stripPatreonHistory)
                 val changedByPatreonCreator = PatreonCreatorPlanning.reconcileLibrary(load.stories)
-                val changedIds = load.changedStoryIds + changedBySourceId + changedByPatreonCreator
+                val changedIds = load.changedStoryIds + changedBySourceId + changedByCreatorless + changedByPatreonCreator
                 if (changedIds.isNotEmpty()) {
                     storage.persistStartupStories(load.stories.filter { it.id in changedIds })
                 }

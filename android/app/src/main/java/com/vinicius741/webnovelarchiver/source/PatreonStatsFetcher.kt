@@ -132,6 +132,8 @@ class PatreonStatsFetcher internal constructor(
         internal fun aboutUrl(url: String): String {
             // Patreon redirects this to the creator's page, which carries the same campaign data.
             PatreonCreatorPlanning.userId(url)?.let { return "https://www.patreon.com/user/about?u=$it" }
+            // A bare /user link (or a post) names no creator; its about page would be someone else's.
+            require(PatreonCreatorPlanning.creatorKey(url) != null) { "Patreon link names no creator" }
             val path = runCatching { URI(url).path }.getOrNull().orEmpty()
             val segments = path.split('/').filter { it.isNotBlank() }
             val creator =

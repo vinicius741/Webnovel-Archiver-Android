@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.sync
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceFailureKind
@@ -105,7 +106,7 @@ class StorySyncEngine(
         val patreonUrl = existing?.manualPatreonUrl ?: metadata.patreonUrl
         val refreshedPatreonStats =
             if (refreshPatreonStats) {
-                patreonUrl?.let { creatorUrl ->
+                patreonUrl?.takeIf { PatreonCreatorPlanning.creatorKey(it) != null }?.let { creatorUrl ->
                     status("Refreshing Patreon statistics...")
                     runCatching { PatreonStatsFetcher(network).fetch(creatorUrl) }.getOrNull()
                 }

@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.PatreonRawTier
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class PatreonStatsFetcherTest {
@@ -13,6 +14,17 @@ class PatreonStatsFetcherTest {
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/cw/writer"))
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/c/writer"))
         assertEquals("https://www.patreon.com/user/about?u=123", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/user?u=123"))
+    }
+
+    @Test
+    fun `rejects links that name no creator`() {
+        listOf(
+            "https://patreon.com/user",
+            "https://www.patreon.com/user?utm_source=rr",
+            "https://www.patreon.com/posts/chapter-1-123",
+        ).forEach { url ->
+            assertThrows(url, IllegalArgumentException::class.java) { PatreonStatsFetcher.aboutUrl(url) }
+        }
     }
 
     @Test

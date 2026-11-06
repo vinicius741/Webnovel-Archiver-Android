@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
+import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
@@ -272,6 +273,13 @@ class AppStorage(
         val existing = getMetricHistory(id).snapshots
         val retained = MetricSnapshotPlanning.appendAndRetain(existing, snapshot)
         write(metricFile(id), StoryMetricHistory(storyId = id, snapshots = retained.toMutableList()))
+    }
+
+    /** Removes the Patreon measurements from [id]'s metric history; writes only when it held some. */
+    @Synchronized
+    fun stripPatreonHistory(id: String) {
+        val stripped = PatreonCreatorPlanning.withoutPatreonMeasurements(getMetricHistory(id)) ?: return
+        write(metricFile(id), stripped)
     }
 
     /** Removes the metric history for [id]; a no-op if it never existed. */

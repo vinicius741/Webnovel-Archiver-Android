@@ -151,6 +151,54 @@ class PatreonCreatorPlanningTest {
     }
 
     @Test
+    fun clearCreatorlessStatsDropsStatsFetchedThroughABareUserLink() {
+        val stats = PatreonRawStats(capturedAt = 1L, paidMembers = 2_135)
+        val library =
+            listOf(
+                Story(id = "bare", patreonUrl = "https://patreon.com/user", patreonStats = stats),
+                Story(id = "bareNoStats", patreonUrl = "https://www.patreon.com/user"),
+                Story(id = "fixed", patreonUrl = "https://www.patreon.com/user?u=123", patreonStats = stats),
+                Story(id = "slug", patreonUrl = "https://patreon.com/creator", patreonStats = stats),
+                Story(
+                    id = "manual",
+                    patreonUrl = "https://patreon.com/user",
+                    manualPatreonUrl = "https://patreon.com/creator",
+                    patreonStats = stats,
+                ),
+                Story(id = "archive", patreonUrl = "https://patreon.com/user", patreonStats = stats, isArchived = true),
+                Story(id = "none"),
+            )
+        val changed = mutableSetOf<String>()
+
+        assertEquals(setOf("bare", "bareNoStats"), PatreonCreatorPlanning.clearCreatorlessStats(library, changed))
+        assertEquals(setOf("bare"), changed)
+        assertEquals(listOf(null, null, stats, stats, stats, stats, null), library.map { it.patreonStats })
+    }
+
+    @Test
+    fun withoutPatreonMeasurementsKeepsOtherMetrics() {
+        val history =
+            StoryMetricHistory(
+                storyId = "a",
+                snapshots =
+                    mutableListOf(
+                        StoryMetricSnapshot(
+                            capturedAt = day(1),
+                            score = "4.5",
+                            patreonRaw = PatreonRawStats(capturedAt = day(1), paidMembers = 4),
+                        ),
+                        StoryMetricSnapshot(capturedAt = day(2), score = "4.6"),
+                    ),
+            )
+
+        val stripped = PatreonCreatorPlanning.withoutPatreonMeasurements(history)
+
+        assertEquals(listOf("4.5", "4.6"), stripped?.snapshots?.map { it.score })
+        assertTrue(stripped!!.snapshots.all { it.patreonRaw == null })
+        assertNull(PatreonCreatorPlanning.withoutPatreonMeasurements(stripped))
+    }
+
+    @Test
     fun mergedHistoryResolvesLaddersPerSourceAndKeepsLatestPerDay() {
         val ladderA = listOf(PatreonRawTier(usdCents = 300, members = 4))
         val ladderB = listOf(PatreonRawTier(usdCents = 500, members = 2))
