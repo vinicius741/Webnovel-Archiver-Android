@@ -284,6 +284,55 @@ class TextCleanupTest {
     }
 
     @Test
+    fun prepareTtsAnnotatedHtmlSplitsRoyalRoadParagraphJoinedByDoubleBreaks() {
+        // Royal Road can store a whole chapter as one <p> of spans separated by <br><br>, sometimes
+        // with an emptied notice span that only holds breaks. Each run must stay its own paragraph
+        // instead of being rebuilt into a single wall of sentence spans.
+        val html =
+            """
+            <p class="rr-body"><span>He opens the door. It is dark inside.</span>
+             <br>
+             <br>
+             <span><em>"Nicole. You have free time today."</em></span>
+             <br>
+             <span class="notice"> <br><br> </span>
+             <br>
+             <span>"Oh my gosh! It's a C.A.T!" "A what?" Asks Lael.</span>
+             <br>
+             <span>Second line of the same paragraph.</span></p>
+            """.trimIndent()
+
+        val chunks = TextCleanup.prepareTtsChunks(html, emptyList(), chunkSize = 500)
+        val annotated = TextCleanup.prepareTtsAnnotatedHtml(html, emptyList(), chunkSize = 500)
+        val paragraphs = Jsoup.parseBodyFragment(annotated.annotatedHtml).select("p")
+
+        assertEquals(chunks, annotated.chunks)
+        assertEquals(3, paragraphs.size)
+        assertTrue(paragraphs.all { it.hasClass("rr-body") })
+        assertEquals("He opens the door. It is dark inside.", paragraphs[0].text())
+        assertEquals("\"Nicole. You have free time today.\"", paragraphs[1].text())
+        assertTrue(paragraphs[2].text().startsWith("\"Oh my gosh!"))
+        assertTrue(paragraphs[2].text().endsWith("Second line of the same paragraph."))
+        assertTrue(chunks.contains("He opens the door."))
+        assertFalse(chunks.any { it.contains("inside.") && it.contains("Nicole") })
+    }
+
+    @Test
+    fun wrapBreakSeparatedParagraphsWrapsNestedContainersAndKeepsSingleBreakParagraphs() {
+        val doc =
+            Jsoup.parseBodyFragment(
+                "<div><blockquote>First quoted.<br><br>Second quoted.</blockquote></div>" +
+                    "<p>Line one<br>Line two</p>",
+            )
+
+        LooseHtmlStructure.wrapBreakSeparatedParagraphs(doc.body())
+
+        assertEquals(listOf("First quoted.", "Second quoted."), doc.select("blockquote > p").map { it.text() })
+        assertEquals(1, doc.select("body > p").size)
+        assertEquals(1, doc.select("body > p > br").size)
+    }
+
+    @Test
     fun prepareTtsAnnotatedHtmlSplitsMultiSentenceParagraphIntoPerSentenceSpans() {
         // A paragraph holding more than one sentence is rebuilt as one <span data-tts-group> per
         // sentence so the reader can highlight each sentence independently.
