@@ -25,6 +25,13 @@
 - Use unqualified `adb devices -l` only to discover targets. For every device-targeting ADB operation, resolve a healthy serial whose name starts with `emulator-` and pass it with `adb -s "$EMULATOR_SERIAL" ...`.
 - Never run an unqualified device-targeting `adb` command. If no emulator is available, or multiple emulators are running and no serial was explicitly selected, stop instead of falling back to another device.
 
+### T3 Device panel sessions
+
+- A T3 `device_open` session holds an exclusive lock on the emulator. T3 does not release it when the thread's turn ends or the thread settles; it stays held until that thread calls `device_close`. A forgotten session blocks every later thread with `DEVICE_IN_USE`.
+- Before your final reply in any turn that called `device_open`, call `device_close` (no `shutdown`, so the emulator keeps running) once you no longer need the device. Keep it open only if the user asked to keep watching it. Close it on failure or abort too, not just on success.
+- Never silence `agent-device` output (`>/dev/null 2>&1` and similar), especially for `open`. If `open` returns `DEVICE_IN_USE`, stop driving the device. Other commands in that session still reach the emulator even though `open` failed, so continuing means two threads drive the same device at once.
+- On `DEVICE_IN_USE`, report the holding session from the error. Don't close or reuse another thread's session. The user can free it from the owning thread's Device panel (`…` menu → Power off device; on 2026-11-06 that released the stale session, while closing the panel alone is reported not to). Then restart the emulator with `scripts/emulator/start_emulator.sh`. Upstream: pingdotgg/t3code#17470 and #31303.
+
 ### Build variant per target
 
 The native app ships as distinct application IDs — each is a separate app with its own isolated data sandbox. Always use the variant that matches the target so you don't install the empty sibling over the user's working app:
