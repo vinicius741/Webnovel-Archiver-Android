@@ -19,8 +19,9 @@ object PatreonCreatorPlanning {
     // Path prefixes placed before the creator slug (patreon.com/c/<slug>, /cw/<slug>, /join/<slug>).
     private val SLUG_PREFIXES = setOf("c", "cw", "join")
 
-    // Paths that name a creator only through a ?u= user id (creators without a custom page name).
-    private val USER_ID_PATHS = setOf("user", "profile")
+    // Paths that name a creator only through a ?u= user id: creators without a custom page name, and
+    // Patreon's own "Become a Patron" button (patreon.com/bePatron?u=<id>). Compared lowercased.
+    private val USER_ID_PATHS = setOf("user", "profile", "bepatron")
 
     // Paths that do not name a creator by slug.
     private val NON_CREATOR_PATHS =

@@ -14,6 +14,7 @@ class PatreonStatsFetcherTest {
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/cw/writer"))
         assertEquals("https://www.patreon.com/writer/about", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/c/writer"))
         assertEquals("https://www.patreon.com/user/about?u=123", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/user?u=123"))
+        assertEquals("https://www.patreon.com/user/about?u=123", PatreonStatsFetcher.aboutUrl("https://www.patreon.com/bePatron?u=123"))
     }
 
     @Test
@@ -21,6 +22,7 @@ class PatreonStatsFetcherTest {
         listOf(
             "https://patreon.com/user",
             "https://www.patreon.com/user?utm_source=rr",
+            "https://www.patreon.com/bePatron",
             "https://www.patreon.com/posts/chapter-1-123",
         ).forEach { url ->
             assertThrows(url, IllegalArgumentException::class.java) { PatreonStatsFetcher.aboutUrl(url) }

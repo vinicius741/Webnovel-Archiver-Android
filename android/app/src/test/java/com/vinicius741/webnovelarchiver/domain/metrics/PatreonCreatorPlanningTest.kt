@@ -42,6 +42,21 @@ class PatreonCreatorPlanningTest {
         assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/user?u=123"))
         assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/user/posts?utm=x&u=123"))
         assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/profile/creators?u=123"))
+        assertEquals("u:123", PatreonCreatorPlanning.creatorKey("https://www.patreon.com/bePatron?u=123"))
+    }
+
+    @Test
+    fun becomeAPatronButtonLinksAreNotACreatorSlug() {
+        // Patreon's embeddable button links every creator as patreon.com/bePatron?u=<id>.
+        assertTrue(
+            PatreonCreatorPlanning.sameCreator("https://www.patreon.com/bePatron?u=123", "https://www.patreon.com/user?u=123"),
+        )
+        assertFalse(
+            PatreonCreatorPlanning.sameCreator("https://www.patreon.com/bePatron?u=123", "https://www.patreon.com/bePatron?u=456"),
+        )
+        assertNull(PatreonCreatorPlanning.creatorKey("https://www.patreon.com/bePatron"))
+        assertEquals("https://www.patreon.com/user?u=123", PatreonCreatorPlanning.normalizeCreatorLink("patreon.com/bePatron?u=123"))
+        assertNull(PatreonCreatorPlanning.normalizeCreatorLink("https://www.patreon.com/bePatron"))
     }
 
     @Test
@@ -94,6 +109,11 @@ class PatreonCreatorPlanningTest {
         )
         assertNull(PatreonCreatorPlanning.sourceLink("https://www.patreon.com/user"))
         assertNull(PatreonCreatorPlanning.sourceLink("https://www.patreon.com/user?utm_source=rr"))
+        assertEquals(
+            "https://www.patreon.com/user?u=123",
+            PatreonCreatorPlanning.sourceLink("https://www.patreon.com/bePatron?u=123&redirect_uri=x"),
+        )
+        assertNull(PatreonCreatorPlanning.sourceLink("https://www.patreon.com/bePatron?utm_source=rr"))
     }
 
     @Test
