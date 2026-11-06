@@ -97,6 +97,20 @@ class PatreonCreatorPlanningTest {
     }
 
     @Test
+    fun sourceLinkRejectsPagesThatDoNotIdentifyACreator() {
+        listOf(
+            "https://www.patreon.com/",
+            "https://www.patreon.com/home",
+            "https://www.patreon.com/posts/chapter-12-123456",
+            "https://www.patreon.com/collection/2030713",
+            "https://www.patreon.com/login",
+            "https://www.patreon.com/c/",
+            "https://example.com/?next=https://patreon.com/creator",
+            "ftp://patreon.com/creator",
+        ).forEach { url -> assertNull(url, PatreonCreatorPlanning.sourceLink(url)) }
+    }
+
+    @Test
     fun sameCreatorComparesIdentityNotSpelling() {
         assertTrue(PatreonCreatorPlanning.sameCreator("https://www.patreon.com/Creator", "https://patreon.com/c/creator/posts"))
         assertTrue(PatreonCreatorPlanning.sameCreator(null, null))

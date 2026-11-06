@@ -87,6 +87,26 @@ class SourceProviderTest {
     }
 
     @Test
+    fun royalRoadSkipsNonCreatorPatreonLinksBeforeRankingCandidates() {
+        val html =
+            """
+            <html><body>
+              <h1>Example RR</h1>
+              <div class="author-profile">
+                <a href="https://www.patreon.com/">Patreon</a>
+                <a href="https://www.patreon.com/posts/bonus-chapter-123456">Bonus chapter</a>
+                <a href="https://example.com/?next=https://patreon.com/unrelated">Support</a>
+              </div>
+              <div class="description">
+                <a href="https://patreon.com/actual-creator?utm_source=rr">Support the story</a>
+              </div>
+            </body></html>
+            """.trimIndent()
+
+        assertEquals("https://patreon.com/actual-creator", RoyalRoadProvider.parseMetadata(html).patreonUrl)
+    }
+
+    @Test
     fun royalRoadUsesArticleAndTwitterAuthorMetadataFallbacks() {
         val articleMetadata =
             RoyalRoadProvider.parseMetadata(

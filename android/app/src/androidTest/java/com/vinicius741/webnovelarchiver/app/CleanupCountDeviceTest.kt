@@ -27,16 +27,23 @@ class CleanupCountDeviceTest {
             ActivityScenario.launch<MainActivity>(launchIntent(context)).use {
                 waitForText(fixture.title)
                 applyCleanupFromMenu()
-                val message = waitForText("Successfully applied text cleanup").text.toString()
-                assertTrue(message, message.contains("19 removals. 2 sentence matches and 17 regex matches removed."))
+                waitForText("Text Cleanup Complete", exact = true)
+                val message = waitForText("Removed 19 matches from 2 chapters").text.toString()
+                assertTrue(message, message.contains("2 sentences from the sentence removal list"))
+                assertTrue(message, message.contains("17 regex rule matches"))
                 val repository = context.appContainer.repository
                 assertFalse(runBlocking { repository.readChapter(fixture.chapters[0]) }!!.contains("------"))
                 assertFalse(runBlocking { repository.readChapter(fixture.chapters[1]) }!!.contains("******"))
                 assertTrue(repository.story(ID)!!.epubStale == true)
                 clickText("OK")
+                // Model a current EPUB before reapplying cleanup to the already-clean files.
+                runBlocking { repository.updateStory(ID) { it?.copy(epubStale = false) } }
                 applyCleanupFromMenu()
-                val secondMessage = waitForText("Successfully applied text cleanup").text.toString()
-                assertTrue(secondMessage, secondMessage.contains("0 removals. 0 sentence matches and 0 regex matches removed."))
+                waitForText("Text Cleanup: Nothing to Remove", exact = true)
+                val secondMessage = waitForText("No rule matched any text").text.toString()
+                assertTrue(secondMessage, secondMessage.contains("no chapters were changed"))
+                assertFalse(secondMessage, secondMessage.contains("Regenerate the EPUB"))
+                assertEquals(false, repository.story(ID)!!.epubStale)
                 clickText("OK")
             }
         }
@@ -47,8 +54,12 @@ class CleanupCountDeviceTest {
             ActivityScenario.launch<MainActivity>(launchIntent(context)).use {
                 waitForText(fixture.title)
                 applyCleanupFromMenu()
-                val message = waitForText("Processed 2 chapters; 1 had errors.").text.toString()
-                assertTrue(message, message.contains("19 removals. 2 sentence matches and 17 regex matches removed."))
+                waitForText("Text Cleanup Finished with Errors", exact = true)
+                val message = waitForText("Checked 2 of 3 chapters").text.toString()
+                assertTrue(message, message.contains("1 chapter couldn't be processed"))
+                assertTrue(message, message.contains("Removed 19 matches from 2 chapters"))
+                assertTrue(message, message.contains("2 sentences from the sentence removal list"))
+                assertTrue(message, message.contains("17 regex rule matches"))
                 clickText("OK")
             }
         }
@@ -59,6 +70,7 @@ class CleanupCountDeviceTest {
     ) {
         val context = ApplicationProvider.getApplicationContext<Context>()
         assertTrue("Device tests must never touch the debug library", context.packageName.endsWith(".instrumentation"))
+        runBlocking { context.appContainer.awaitRepositoryReady() }
         val repository = context.appContainer.repository
         val sentences = repository.sentenceRemovalList.get()
         val rules = repository.regexRules.get()

@@ -73,13 +73,13 @@ object PatreonCreatorPlanning {
     /**
      * A Patreon link scraped from a source page, with tracking parameters dropped. Creators without
      * a custom page name are linked only as `patreon.com/user?u=<id>`, so that id is kept; a
-     * `/user` or `/profile` link without one names nobody and yields null.
+     * link naming no creator yields null, so it cannot outrank a creator link on the same page.
      */
     fun sourceLink(url: String): String? {
+        val uri = patreonUri(url) ?: return null
+        if (uri.scheme?.lowercase() !in setOf("http", "https") || creatorKey(url) == null) return null
         userId(url)?.let { return "https://www.patreon.com/user?u=$it" }
-        val stripped = url.substringBefore('#').substringBefore('?')
-        val first = patreonUri(stripped)?.let(::pathSegments)?.firstOrNull()?.lowercase()
-        return stripped.takeUnless { first in USER_ID_PATHS }
+        return url.substringBefore('#').substringBefore('?')
     }
 
     /** Whether both links lead to one creator, so stats and early-access links stay valid across them. */
