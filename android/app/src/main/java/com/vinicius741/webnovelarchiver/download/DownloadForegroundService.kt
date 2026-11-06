@@ -8,7 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -31,7 +33,14 @@ import timber.log.Timber
 
 class DownloadForegroundService : Service() {
     private lateinit var engine: DownloadEngine
+
+    // Main-thread state. Engine progress arrives on IO and is posted here, so foreground entry and
+    // exit are serialized with onStartCommand: a start racing a "queue drained" stop must still see
+    // whether the service is foreground right now, or Android kills the app for a missed startForeground.
     private var foregroundStarted = false
+    private var latestStartId = 0
+    private var destroyed = false
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
@@ -43,13 +52,15 @@ class DownloadForegroundService : Service() {
         // loop and honors the configured parallel-source cap.
         val container = appContainer
         engine = DownloadEngine(container.repository, container.network, container.downloadPacer, time = container.time)
-        engine.onProgress = ::updateNotification
+        engine.onProgress = { progress -> mainHandler.post { if (!destroyed) updateNotification(progress) } }
         engine.onSourceBlocked = { _, url -> showSourceBlockedNotification(url) }
         engine.onNoticeMarkerMissing = ::showNoticeMarkerMissingNotification
         AppNotificationChannels.ensureCreated(this)
     }
 
     override fun onDestroy() {
+        destroyed = true
+        mainHandler.removeCallbacksAndMessages(null)
         serviceScope.cancel()
         engine.close()
         super.onDestroy()
@@ -60,6 +71,7 @@ class DownloadForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        latestStartId = startId
         when (intent?.action ?: ACTION_START) {
             ACTION_PREPARE -> {
                 startForegroundIfNeeded(
@@ -94,15 +106,11 @@ class DownloadForegroundService : Service() {
                     try {
                         engine.pauseAll()
                     } finally {
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
+                        mainHandler.post { if (!destroyed) leaveForegroundAndStop(STOP_FOREGROUND_REMOVE) }
                     }
                 }
             }
-            ACTION_ABORT_PREPARE -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+            ACTION_ABORT_PREPARE -> leaveForegroundAndStop(STOP_FOREGROUND_REMOVE)
         }
         return START_STICKY
     }
@@ -143,6 +151,17 @@ class DownloadForegroundService : Service() {
         )
     }
 
+    /**
+     * Leaves the foreground and stops, unless a newer start (such as a Resume sent through
+     * startForegroundService) is already queued: stopping then would bring the service down
+     * before that start's required startForeground call, which Android punishes with a crash.
+     */
+    private fun leaveForegroundAndStop(notificationBehavior: Int) {
+        stopForeground(notificationBehavior)
+        foregroundStarted = false
+        stopSelf(latestStartId)
+    }
+
     private fun startForegroundIfNeeded(progress: DownloadProgress) {
         if (foregroundStarted) return
         startForeground(NOTIFICATION_ID, buildNotification(progress))
@@ -172,10 +191,7 @@ class DownloadForegroundService : Service() {
             progress.sourceBlocked == 0 && progress.blockedPending > 0 ->
                 progress.blockedPendingUrl?.let(::showSourceBlockedNotification)
         }
-        if (progress.unfinished == 0) {
-            stopForeground(STOP_FOREGROUND_DETACH)
-            stopSelf()
-        }
+        if (progress.unfinished == 0) leaveForegroundAndStop(STOP_FOREGROUND_DETACH)
     }
 
     /**
@@ -215,10 +231,6 @@ class DownloadForegroundService : Service() {
         runCatching {
             NotificationManagerCompat.from(this).notify(SOURCE_BLOCKED_NOTIFICATION_ID, notification)
         }.onFailure { Timber.w(it, "Could not post source-blocked notification") }
-    }
-
-    private fun cancelSourceBlockedNotification() {
-        runCatching { NotificationManagerCompat.from(this).cancel(SOURCE_BLOCKED_NOTIFICATION_ID) }
     }
 
     private fun buildNotification(progress: DownloadProgress): Notification {
@@ -273,7 +285,6 @@ class DownloadForegroundService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1001
-        private const val SOURCE_BLOCKED_NOTIFICATION_ID = 1002
         const val ACTION_START = "com.vinicius741.webnovelarchiver.download.START"
         const val ACTION_PREPARE = "com.vinicius741.webnovelarchiver.download.PREPARE"
         const val ACTION_ABORT_PREPARE = "com.vinicius741.webnovelarchiver.download.ABORT_PREPARE"
@@ -311,7 +322,12 @@ class DownloadForegroundService : Service() {
     }
 }
 
+private const val SOURCE_BLOCKED_NOTIFICATION_ID = 1002
 private const val NOTICE_MARKER_MISSING_NOTIFICATION_ID = 1005
+
+private fun Context.cancelSourceBlockedNotification() {
+    runCatching { NotificationManagerCompat.from(this).cancel(SOURCE_BLOCKED_NOTIFICATION_ID) }
+}
 
 /** The source's markup may have changed; tapping opens the sentence list that now does the cleaning. */
 private fun Context.showNoticeMarkerMissingNotification(providerId: String) {
