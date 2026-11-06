@@ -62,6 +62,7 @@ private fun ScreenHost.runCleanup(
             var changed = 0
             var sentencesRemoved = 0
             var regexMatchesRemoved = 0
+            val startedAt = System.nanoTime()
             downloaded.forEachIndexed { index, chapter ->
                 withContext(Dispatchers.Main) {
                     setStoryOperation(
@@ -94,6 +95,12 @@ private fun ScreenHost.runCleanup(
                     errors += 1
                 }
             }
+            Timber.i(
+                "Text cleanup of %d chapters (%d changed) took %d ms",
+                downloaded.size,
+                changed,
+                (System.nanoTime() - startedAt) / NANOS_PER_MILLI,
+            )
             withContext(Dispatchers.Main) {
                 clearStoryOperation(story.id, StoryOperationKind.CLEANUP, rerender = false)
                 showDetails(story.id)
@@ -122,6 +129,8 @@ private fun ScreenHost.runCleanup(
         }
     }
 }
+
+private const val NANOS_PER_MILLI = 1_000_000L
 
 private class CleanupStoryRemovedException : IllegalStateException("Story was removed while cleanup was running")
 

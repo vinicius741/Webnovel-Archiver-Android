@@ -20,11 +20,11 @@ class CleanupEngine {
         val source: RegexCleanupRule,
     )
 
-    /** Immutable snapshot of compiled rules + sentence patterns for a given settings version. */
+    /** Immutable snapshot of compiled rules + the prepared sentence list for a given settings version. */
     data class CompiledCleanup(
         val downloadRules: List<CompiledRule>,
         val ttsRules: List<CompiledRule>,
-        val sentencePatterns: List<Regex>,
+        val sentences: SentenceList,
     )
 
     private val current = AtomicReference<Pair<Int, CompiledCleanup>?>(null)
@@ -75,12 +75,7 @@ class CleanupEngine {
                     Regex(rule.pattern, RegexRuleCleanup.regexOptions(rule.flags))
                 }.getOrNull()?.let { compiled -> CompiledRule(compiled, rule) }
             }
-        val sentencePatterns =
-            sentences.mapNotNull { sentence ->
-                val escaped = Regex.escape(sentence.trim()).replace("\\ ", "\\s+")
-                if (escaped.isBlank()) null else runCatching { Regex(escaped, setOf(RegexOption.IGNORE_CASE)) }.getOrNull()
-            }
-        return CompiledCleanup(downloadRules, ttsRules, sentencePatterns)
+        return CompiledCleanup(downloadRules, ttsRules, SentenceList(sentences))
     }
 
     /** Convenience: apply the cached download cleanup to chapter HTML. */
@@ -91,9 +86,12 @@ class CleanupEngine {
     ): String = applyDownloadWithStats(html, sentences, rules).html
 
     /**
-     * Reports nonempty matches actually deleted by sentence and download-scoped regex rules. A chapter
-     * [noticeMarker] recognizes skips the sentence list, and skips parsing when no regex rule applies;
-     * its removed notices count as sentence matches.
+     * Reports nonempty matches actually deleted by sentence and download-scoped regex rules. Notices
+     * a chapter's [noticeMarker] removes count as sentence matches; the sentence list still runs on
+     * marked chapters, since it also holds entries that are not notices.
+     *
+     * A marked chapter is only parsed when a list entry might occur in it or a regex rule is active,
+     * and is only re-serialized when something was removed, so a clean chapter comes back unchanged.
      */
     @Suppress("TooGenericExceptionCaught")
     fun applyDownloadWithStats(
@@ -104,26 +102,18 @@ class CleanupEngine {
     ): CleanupResult {
         val compiled = compiled(sentences, rules)
         val marked = noticeMarker?.strip(html)
-        if (marked != null && compiled.downloadRules.all { RegexCircuitBreaker.isDisabled(it.source) }) {
+        val candidates = compiled.sentences.candidatesIn(marked?.html ?: html)
+        val rulesActive = compiled.downloadRules.any { !RegexCircuitBreaker.isDisabled(it.source) }
+        if (marked != null && candidates.isEmpty() && !rulesActive) {
             return CleanupResult(marked.html, marked.noticesRemoved)
         }
         val doc = Jsoup.parseBodyFragment(marked?.html ?: html)
         var sentencesRemoved = marked?.noticesRemoved ?: 0
         var regexMatchesRemoved = 0
-        doc.select("script,style,noscript,iframe").remove()
+        val tagsRemoved = doc.select("script,style,noscript,iframe").also { it.remove() }.isNotEmpty()
         val textNodes = traverseTextNodes(doc.body())
-        // Sentence-blocklist patterns are author-controlled (escaped literals), not user regex, so
-        // they are not ReDoS candidates and are not circuit-breaker-tracked.
-        if (marked == null) {
-            textNodes.forEach { node ->
-                var text = node.text()
-                compiled.sentencePatterns.forEach { pattern ->
-                    sentencesRemoved += pattern.findAll(text).count()
-                    text = pattern.replace(text, "")
-                }
-                node.text(text)
-            }
-        }
+        val listSentencesRemoved = removeSentences(textNodes, candidates, compiled.sentences.entries)
+        sentencesRemoved += listSentencesRemoved
         // Apply each user regex rule across all text nodes, timing it for the circuit breaker.
         // A pathological pattern most often blows up on a single long node, so timing per-rule across
         // the whole document captures the worst case without re-traversing per rule.
@@ -140,17 +130,7 @@ class CleanupEngine {
             val start = System.nanoTime()
             var threw = false
             try {
-                textNodes.forEach { node ->
-                    var nodeMatchesRemoved = 0
-                    val cleaned =
-                        compiledRule.regex.replace(node.text()) { match ->
-                            if (match.value.isNotEmpty()) nodeMatchesRemoved += 1
-                            ""
-                        }
-                    node.text(cleaned)
-                    // Count only completed node edits, including earlier nodes if a later one fails.
-                    regexMatchesRemoved += nodeMatchesRemoved
-                }
+                textNodes.forEach { node -> regexMatchesRemoved += removeRegexMatches(node, compiledRule.regex) }
             } catch (e: Throwable) {
                 threw = true
                 // Keep completed edits and continue with other rules; the breaker tracks the failure.
@@ -158,8 +138,67 @@ class CleanupEngine {
             }
             RegexCircuitBreaker.report(rule, System.nanoTime() - start, failed = threw)
         }
-        return CleanupResult(doc.body().html(), sentencesRemoved, regexMatchesRemoved)
+        val edited = tagsRemoved || listSentencesRemoved > 0 || regexMatchesRemoved > 0
+        val cleaned =
+            when {
+                edited -> settled(doc.body().html())
+                // A stored chapter is Jsoup output already; serializing it again would only cost time.
+                marked != null -> marked.html
+                else -> doc.body().html()
+            }
+        return CleanupResult(cleaned, sentencesRemoved, regexMatchesRemoved)
     }
+
+    /**
+     * Sentence entries are literals, not user regex, so they cannot backtrack and are not
+     * circuit-breaker-tracked. Only nodes holding one of the chapter's [candidates] are edited, and
+     * those get the whole list in order, since one removal can join text into another entry.
+     */
+    private fun removeSentences(
+        textNodes: List<TextNode>,
+        candidates: List<String>,
+        entries: List<String>,
+    ): Int {
+        if (candidates.isEmpty()) return 0
+        var removed = 0
+        // When nothing was ruled out, probing with the candidates would only repeat the full pass.
+        val probe = candidates.size < entries.size
+        textNodes.forEach { node ->
+            val text = node.text()
+            if (probe && SentenceMatching.remove(text, candidates) == null) return@forEach
+            val removal = SentenceMatching.remove(text, entries) ?: return@forEach
+            removed += removal.removed
+            node.text(removal.text)
+        }
+        return removed
+    }
+
+    /**
+     * Returns the nonempty matches deleted from [node]. Counts only a completed node edit, so a later
+     * node that throws still leaves earlier nodes counted.
+     */
+    private fun removeRegexMatches(
+        node: TextNode,
+        regex: Regex,
+    ): Int {
+        var removed = 0
+        val text = node.text()
+        val cleaned =
+            regex.replace(text) { match ->
+                if (match.value.isNotEmpty()) removed += 1
+                ""
+            }
+        if (cleaned != text) node.text(cleaned)
+        return removed
+    }
+
+    /**
+     * Jsoup's pretty-printer can lay out an edited spot differently the next time the chapter is
+     * parsed (a separator that sat alone before a line break, for example), which would make every
+     * later cleanup rewrite the chapter for whitespace alone. One more round trip reaches the settled
+     * form.
+     */
+    private fun settled(html: String): String = Jsoup.parseBodyFragment(html).body().html()
 
     private fun traverseTextNodes(root: Node): List<TextNode> {
         val result = mutableListOf<TextNode>()

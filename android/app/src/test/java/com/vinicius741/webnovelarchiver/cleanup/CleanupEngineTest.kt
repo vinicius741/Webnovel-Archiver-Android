@@ -40,13 +40,59 @@ class CleanupEngineTest {
         }
 
     @Test
-    fun markedChapterSkipsSentenceListAndKeepsItsExactHtml() {
-        val html = "<p>Listed line.  </p><span></span>\n\n<p>Story.</p>"
+    fun markedChapterWithNothingElseToRemoveKeepsItsExactHtml() {
+        val html = "<p>Story.  </p><span></span>\n\n<p>More.</p>"
 
-        val result = CleanupEngine().applyDownloadWithStats(html, listOf("Listed line."), emptyList(), noticeMarker)
+        val result = CleanupEngine().applyDownloadWithStats(html, emptyList(), emptyList(), noticeMarker)
 
         assertSame(html, result.html)
         assertEquals(0, result.sentencesRemoved)
+    }
+
+    @Test
+    fun markedChapterStillAppliesSentenceList() {
+        val result =
+            CleanupEngine().applyDownloadWithStats(
+                "<span>Notice</span><p>Story.</p><p>${"-".repeat(40)}</p><p>More.</p>",
+                listOf("-".repeat(40)),
+                emptyList(),
+                noticeMarker,
+            )
+
+        assertEquals(2, result.sentencesRemoved)
+        assertFalse(result.html.contains("-----"))
+        assertFalse(result.html.contains("Notice"))
+        assertTrue(result.html.contains("More."))
+    }
+
+    @Test
+    fun cleanChapterWithoutMatchesSerializesBackUnchanged() {
+        val html = Jsoup.parseBodyFragment("<p>Story  text.</p>\n<span></span>\n<p>More <b>text</b>.</p>").body().html()
+
+        val result = CleanupEngine().applyDownloadWithStats(html, listOf("Absent line."), emptyList(), noticeMarker)
+
+        assertEquals(html, result.html)
+        assertEquals(0, result.sentencesRemoved)
+    }
+
+    @Test
+    fun removingASeparatorLeavesHtmlThatALaterCleanupKeeps() {
+        val preset = requireNotNull(RegexCleanupPresets.generate(RegexCleanupPresets.Preset.SEPARATOR_LINES))
+        val rules = listOf(RegexCleanupRule(id = "separator", name = preset.name, pattern = preset.pattern, flags = preset.flags))
+        val stored =
+            Jsoup
+                .parseBodyFragment(
+                    "<p>Before.</p><span><em>—${"-".repeat(60)} \n<br> \n<br>-80°C</em></span><br><p>After.</p>",
+                ).body()
+                .html()
+        val engine = CleanupEngine()
+
+        val first = engine.applyDownloadWithStats(stored, emptyList(), rules)
+        val second = engine.applyDownloadWithStats(first.html, emptyList(), rules)
+
+        assertEquals(1, first.regexMatchesRemoved)
+        assertFalse(first.html.contains("-----"))
+        assertEquals(first.html, second.html)
     }
 
     @Test

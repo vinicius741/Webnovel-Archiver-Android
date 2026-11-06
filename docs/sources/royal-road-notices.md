@@ -27,15 +27,54 @@ used the browser's rendered page, which is also what the app's Cloudflare render
 ## Behavior
 
 - **Downloads:** `RoyalRoadProvider.parseChapterContent` empties the marker. The sentence list and
-  regex rules still run afterward, so custom sentences keep working on new chapters.
-- **Apply Text Cleanup:** a chapter with a marker skips the sentence list and is only parsed when a
-  download-scoped regex rule is active. Blank markers are left alone, so clean files are not rewritten.
-  Chapters without a marker, including Patreon copies, use the full sentence list.
-- **The marker is kept, emptied.** Removing it would make later cleanup treat the chapter as unmarked
-  and fall back to the slow sentence pass.
+  regex rules still run afterward.
+- **Apply Text Cleanup:** the marker empties the notice, then the sentence list and regex rules run
+  on every chapter, marked or not. The list is not only notices: it also holds entries such as
+  separator lines, and skipping it on marked chapters (as the first version did) silently stopped
+  those from being removed. Patreon copies and other chapters without a marker get the same pass.
+- **The marker is kept, emptied.** Blank markers are left alone, and text nodes nothing matched are
+  not rewritten, so an already clean chapter serializes back to the same HTML and is not rewritten.
 
-A sentence added to the list for non-notice text is therefore applied to new Royal Road downloads,
-but Apply Text Cleanup does not remove it from existing chapters that have a marker.
+### Why the sentence list is cheap enough to run everywhere
+
+The slow part of the old cleanup was not parsing the chapter. It was compiling each entry into its
+own case-insensitive regex and running every one over every text node. `cleanup/SentenceMatching`
+replaces that in two steps:
+
+1. `SentenceList.candidatesIn` makes one pass over the chapter's HTML and looks for every entry's
+   anchors, its runs of printable ASCII other than `& < > " '`. An entry whose anchors are not all
+   present cannot be in the chapter. Requiring all of them matters: an entry's longest word alone
+   ("support", "official") is in nearly every chapter. The scan skips the characters Jsoup's
+   `TextNode.text()` drops (zero-width space, soft hyphen, NUL), and any entity Jsoup never writes
+   (such as `&#112;`) makes every entry a candidate, since it could spell an anchor.
+2. Only when an entry might be present is the chapter parsed. Each text node that holds a candidate
+   then gets the whole list removed in order, by case-folded substring search.
+
+This removes the same text as the old regexes, which a randomized test against the old pass checks.
+The one deliberate difference: whitespace inside an entry matches a single space. The chapter text
+is already whitespace-collapsed by Jsoup, so an entry with a double space or a line break used to
+match nothing.
+
+A marked chapter with no candidate and no active download-scoped regex rule is not parsed at all,
+and a chapter nothing was removed from is never re-serialized.
+
+Apply Text Cleanup on 107 chapters of one Royal Road novel with a 96-entry list, debug build on the
+`webnovel_api36` emulator (2026-11-06). Debug builds run app code much slower than release, so
+compare rows, not absolute times:
+
+| Path | Time |
+| --- | --- |
+| Marker only, sentence list skipped (first marker version) | ~0.25 s |
+| Substring search over every chapter, no candidate pass | ~2.8 s |
+| Candidate pass, then substring search (current) | ~0.48 s |
+| Current, plus the "Remove separator lines" preset | ~1.1 s |
+
+On a desktop JVM the old one-regex-per-entry pass took ~1,850 ms for the same chapters, against
+~60 ms now.
+
+Separators drawn with a run of dashes vary in length from chapter to chapter, and a sentence entry
+is an exact match. One dash entry left a dash run behind in 103 of the novel's 107 chapters. The
+"Remove separator lines" regex preset removed all 461 separator lines.
 
 ## If Royal Road changes the markup
 
