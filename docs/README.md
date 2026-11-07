@@ -64,6 +64,7 @@ Emulator-based functional QA reports for the native Android app.
 
 | File | Description |
 |------|-------------|
+| `native-app-emulator-qa-2026-11-07.md` | Emulator QA and independent retest on 1.0.6-native: confirmed Trends player overlap and Patreon earnings inconsistency; Library count and AI Settings grouping are design observations; the AI key finding was retracted and the banner observation remains unconfirmed. Evidence in `assets/qa-2026-11-07/`. |
 | `offline-simulation.md` | Offline agent QA commands, scenario catalog, timing/hold controls, disposable storage, fail-closed networking, reports, replay fixtures, and validation. |
 | `offline-simulation-plan.md` | Original design and options for offline agent QA, with implementation references. |
 | `pre-release-review-2026-11-06.md` | Review since 1.0.4-native, Patreon link fix, cleanup instrumentation updates, passing host checks, and emulator coverage blocked by a stale device session. |
