@@ -20,7 +20,7 @@ internal interface RestoreFileOperations {
     fun deleteTree(file: File): Boolean = file.deleteRecursively()
 }
 
-private object DefaultRestoreFileOperations : RestoreFileOperations
+internal object DefaultRestoreFileOperations : RestoreFileOperations
 
 /** Filesystem transaction primitive used by full restore and fault-injected JVM tests. */
 internal class RestoreRootSwap(
@@ -72,10 +72,16 @@ internal class RestoreRootSwap(
         files.deleteTree(snapshot)
     }
 
+    /**
+     * Moves the snapshot back over the live root. [onPhase] receives `ROLLED_BACK` once the live
+     * root holds the snapshot's data, before the snapshot is deleted, so a death during that
+     * delete is never mistaken for an unfinished swap.
+     */
     fun rollback(
         liveRoot: File,
         snapshot: File,
         initializeRoot: () -> Unit,
+        onPhase: (RestoreTransactionJournal.Phase) -> Unit = {},
     ): Boolean {
         if (!snapshot.exists()) return false
         return runCatching {
@@ -93,6 +99,7 @@ internal class RestoreRootSwap(
                 files.copyTree(snapshot, liveRoot)
                 check(liveRoot.exists()) { "Snapshot rollback copy did not create the live root" }
             }
+            onPhase(RestoreTransactionJournal.Phase.ROLLED_BACK)
             initializeRoot()
             check(liveRoot.exists()) { "Live storage root is missing after rollback initialization" }
             if (snapshot.exists()) {

@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.download
 
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.DownloadStatus
@@ -22,14 +23,10 @@ object DownloadQueueMaintenance {
         val affectedStoryIds = linkedSetOf<String>()
         var cleaned = 0
         jobs.forEach { job ->
-            val status = DownloadJobStatus.parse(job.status)
-            if (status != DownloadJobStatus.Pending && status != DownloadJobStatus.Downloading) return@forEach
             if (providerNameForJob(job) != null) return@forEach
-            job.status = DownloadJobStatus.Failed.wire
-            job.error = NO_PROVIDER_MESSAGE
-            job.errorCategory = NO_PROVIDER_CATEGORY
-            job.errorCode = NO_PROVIDER_CODE
-            job.nextRetryAt = null
+            if (!DownloadJobTransitions.failUnsupportedSource(job, NO_PROVIDER_MESSAGE, NO_PROVIDER_CATEGORY, NO_PROVIDER_CODE)) {
+                return@forEach
+            }
             affectedStoryIds.add(job.storyId)
             cleaned += 1
         }

@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.data.storage.foldLegacyArchivesOnDisk
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
@@ -506,17 +507,7 @@ class AppRepository private constructor(
             retiredCopies.forEach { copy -> runCatching { requiredStorage.deleteChapterFile(marked.id, copy.filePath) } }
             val updated =
                 queue.map { current ->
-                    if (current.id != job.id) {
-                        current
-                    } else {
-                        current.copy(
-                            status = DownloadJobStatus.Completed.wire,
-                            error = null,
-                            errorCategory = null,
-                            errorCode = null,
-                            nextRetryAt = null,
-                        )
-                    }
+                    if (current.id != job.id) current else DownloadJobTransitions.completed(current) ?: current
                 }
             storyStore.saveQueue(updated)
             queueJobs = updated.map(::snapshotJob)

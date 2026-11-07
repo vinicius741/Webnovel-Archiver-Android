@@ -91,53 +91,70 @@ class RestoreStartupRecoveryTest {
     }
 
     @Test
-    fun oldRootMovedPhaseWithIntactRootAndMissingSnapshotFailsClosedWithoutDeletingRoot() {
-        val liveRoot = File(tmp.root, "live")
-        liveRoot.mkdirs()
-        File(liveRoot, "old_library.json").writeText("data")
-        val journal = RestoreTransactionJournal(File(tmp.root, RestoreTransactionJournal.FILE_NAME))
-        journal.write(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED)
+    fun oldRootMovedPhaseWithIntactRootAndMissingSnapshotKeepsRootAndUnblocksRestore() {
+        // Only a finished rollback move empties the snapshot during this phase, so the root is the
+        // pre-restore library and only the journal clear was lost.
+        val journal = state(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, liveContent = "old_library.json")
 
-        try {
-            RestoreStartupRecovery.recoverState(
-                liveRoot,
-                File(tmp.root, "durable_snapshot"),
-                File(tmp.root, "cache_snapshot"),
-                journal,
-            )
-            fail("Expected recovery to fail closed when the snapshot is missing")
-        } catch (expected: IllegalStateException) {
-            // Fail closed: the journal stays for manual recovery.
+        assertEquals("old_library.json", File(tmp.root, "live").listFiles()!!.single().name)
+        assertFalse(journal.exists())
+    }
+
+    @Test
+    fun movedRootWithNothingLeftClearsJournalSoABackupCanBeRestored() {
+        for (phase in listOf(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, RestoreTransactionJournal.Phase.PREPARED)) {
+            File(tmp.root, "live").deleteRecursively()
+            val journal = state(phase, liveContent = null)
+
+            assertFalse(File(tmp.root, "live").exists())
+            assertFalse("$phase journal must not block restore forever", journal.exists())
         }
+    }
 
-        assertEquals("old_library.json", liveRoot.listFiles()!!.single().name)
-        assertEquals(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, journal.read())
+    @Test
+    fun rolledBackPhaseKeepsRestoredRootAndDeletesHalfDeletedSnapshot() {
+        val journal =
+            state(
+                journalPhase = RestoreTransactionJournal.Phase.ROLLED_BACK,
+                liveContent = "old_library.json",
+                durableSnapshotContent = "old_library_partial.json",
+            )
+
+        assertEquals("old_library.json", File(tmp.root, "live").listFiles()!!.single().name)
+        assertFalse(File(tmp.root, "durable_snapshot").exists())
+        assertFalse(journal.exists())
+    }
+
+    @Test
+    fun rolledBackPhaseWithoutLiveRootPreservesSnapshot() {
+        try {
+            state(RestoreTransactionJournal.Phase.ROLLED_BACK, null, durableSnapshotContent = "original.json")
+            fail("A missing rolled-back root must prevent snapshot cleanup")
+        } catch (expected: IllegalStateException) {
+            assertTrue(File(tmp.root, "durable_snapshot/original.json").isFile)
+        }
     }
 
     @Test
     fun recoveryFailureRecordsDiagnosticsAndStillFailsClosed() {
         LocalDiagnostics.clear()
         val liveRoot = File(tmp.root, "live")
-        liveRoot.mkdirs()
-        File(liveRoot, "old_library.json").writeText("data")
+        val snapshot = File(tmp.root, "durable_snapshot")
+        snapshot.mkdirs()
+        File(snapshot, "original.json").writeText("data")
         val journal = RestoreTransactionJournal(File(tmp.root, RestoreTransactionJournal.FILE_NAME))
-        journal.write(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED)
+        journal.write(RestoreTransactionJournal.Phase.COMMITTED)
 
         // The production entry point swallows the failure (startup must not crash) but records it.
-        RestoreStartupRecovery.recoverSafely(
-            liveRoot,
-            File(tmp.root, "durable_snapshot"),
-            File(tmp.root, "cache_snapshot"),
-            journal,
-        )
+        RestoreStartupRecovery.recoverSafely(liveRoot, snapshot, File(tmp.root, "cache_snapshot"), journal)
 
-        // Fail closed: root and journal stay untouched for manual recovery.
-        assertEquals("old_library.json", liveRoot.listFiles()!!.single().name)
-        assertEquals(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED, journal.read())
+        // Fail closed: snapshot and journal stay untouched for manual recovery.
+        assertTrue(File(snapshot, "original.json").isFile)
+        assertEquals(RestoreTransactionJournal.Phase.COMMITTED, journal.read())
         // The WARN ring keeps the exception class; the operation record names the failed phase.
         assertEquals("IllegalStateException", LocalDiagnostics.snapshot().single().throwableType)
         val operation = LocalDiagnostics.snapshotOperations().single()
-        assertEquals("restore_recovery_failed_old_root_moved", operation.operation)
+        assertEquals("restore_recovery_failed_committed", operation.operation)
         assertEquals(Log.WARN, operation.priority)
         assertTrue(operation.failed)
     }

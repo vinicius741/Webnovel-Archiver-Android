@@ -97,7 +97,7 @@ class RestoreRootSwapTest {
                 }
             }
 
-        val restored = RestoreRootSwap(operations).rollback(live, snapshot) { }
+        val restored = RestoreRootSwap(operations).rollback(live, snapshot, initializeRoot = { })
 
         assertFalse(restored)
         assertTrue(snapshot.exists())
@@ -110,7 +110,7 @@ class RestoreRootSwapTest {
         // must never remove the live root.
         val live = tree("live", "old")
 
-        val restored = RestoreRootSwap().rollback(live, File(dir, "snapshot")) { }
+        val restored = RestoreRootSwap().rollback(live, File(dir, "snapshot"), initializeRoot = { })
 
         assertFalse(restored)
         assertEquals("old", File(live, "value.txt").readText())
@@ -122,7 +122,7 @@ class RestoreRootSwapTest {
         val live = tree("live", "partial")
         val snapshot = File(dir, "snapshot").apply { mkdirs() }
 
-        val restored = RestoreRootSwap().rollback(live, snapshot) { }
+        val restored = RestoreRootSwap().rollback(live, snapshot, initializeRoot = { })
 
         assertFalse(restored)
         assertEquals("partial", File(live, "value.txt").readText())

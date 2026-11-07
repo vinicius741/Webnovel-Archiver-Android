@@ -23,8 +23,8 @@ internal fun ScreenHost.startSourceCheck(
     url: String,
 ) {
     SourceCheckOutcomes.launched(providerId)
-    SourceAccessRetryCoordinator.arm { startDownloadForegroundService() }
-    CloudflareSolveActivity.launch(app, url)
+    val token = SourceAccessRetryCoordinator.arm { startDownloadForegroundService() }
+    CloudflareSolveActivity.launch(app, url, token)
 }
 
 /** A blocked site that holds this novel's chapters, for the novel page's banner. */

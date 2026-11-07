@@ -7,6 +7,7 @@ import com.google.gson.reflect.TypeToken
 import com.vinicius741.webnovelarchiver.cleanup.DefaultCleanup
 import com.vinicius741.webnovelarchiver.cleanup.RegexRuleCleanup
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.domain.model.AiSettings
@@ -358,10 +359,7 @@ class AppStorage(
         val jobs: MutableList<DownloadJob> = read(queueFile) ?: return
         var changed = false
         jobs.forEach { job ->
-            if (job.status == DownloadJobStatus.Downloading.wire) {
-                job.status = DownloadJobStatus.Pending.wire
-                changed = true
-            }
+            if (DownloadJobTransitions.recoverInterrupted(job)) changed = true
         }
         if (changed) write(queueFile, jobs)
     }

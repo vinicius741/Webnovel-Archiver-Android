@@ -27,6 +27,14 @@ internal class RestoreTransactionJournal(
 
         /** The new root is installed and initialized. Any leftover snapshot is deletable, never restorable. */
         COMMITTED,
+
+        /**
+         * The snapshot is back in the live root (rollback or startup recovery). The live root is the
+         * pre-restore library; any leftover snapshot is a partial delete, never restorable. Without
+         * this phase a death while deleting a copied-back snapshot would look like `OLD_ROOT_MOVED`
+         * and the next startup would replace the complete library with the half-deleted snapshot.
+         */
+        ROLLED_BACK,
     }
 
     fun write(phase: Phase) {
@@ -54,18 +62,34 @@ internal class RestoreTransactionJournal(
 /**
  * Runs once at process start, BEFORE [AppStorage] creates or hydrates the live root.
  *
- * - `COMMITTED`: the new library is good; a leftover partially deleted snapshot is removed, never
- *   restored over it.
- * - `OLD_ROOT_MOVED`: the process died mid-swap (the live root is missing or a half-copied
- *   install); the snapshot — the only rollback copy, kept in durable app files — is moved back.
- * - `PREPARED`: inspect the roots, since the old root may have moved before the phase write.
- *   Recover a missing live root from the snapshot; otherwise clear only an empty snapshot.
- * - Legacy journal-less states (snapshot from a pre-journal build): the live root's presence is
- *   the discriminator — present means the commit had completed (keep it), missing means the swap
- *   died mid-move (restore the snapshot).
+ * Decision table. "live"/"snapshot" are the durable directories beside each other in filesDir.
+ * Every row resolves to exactly one outcome; rows marked *fail closed* keep the journal and every
+ * directory so nothing is deleted and the next restore refuses to run.
  *
- * Ambiguous or unreadable states fail closed: nothing is deleted except a journal-less committed
- * case, and the next restore's swap refuses to run over a non-empty snapshot.
+ * | Journal         | Live    | Snapshot | Outcome                                                        |
+ * |-----------------|---------|----------|----------------------------------------------------------------|
+ * | unreadable      | any     | any      | fail closed                                                    |
+ * | COMMITTED       | present | any      | keep live, delete snapshot debris, clear journal               |
+ * | COMMITTED       | missing | any      | fail closed                                                    |
+ * | ROLLED_BACK     | present | any      | keep live, delete snapshot debris, clear journal               |
+ * | ROLLED_BACK     | missing | any      | fail closed                                                    |
+ * | OLD_ROOT_MOVED  | any     | present  | move snapshot back over live (write ROLLED_BACK), then as above |
+ * | OLD_ROOT_MOVED  | present | missing  | a rollback move finished; keep live, clear journal             |
+ * | OLD_ROOT_MOVED  | missing | missing  | nothing left to recover; clear journal so restore can run      |
+ * | PREPARED        | present | missing  | died before the swap; clear journal                            |
+ * | PREPARED        | present | empty    | died before the swap; delete empty snapshot, clear journal     |
+ * | PREPARED        | present | non-empty| ambiguous; fail closed                                         |
+ * | PREPARED        | missing | present  | the old root moved before the phase write; as OLD_ROOT_MOVED   |
+ * | PREPARED        | missing | missing  | nothing left to recover; clear journal so restore can run      |
+ * | none            | any     | present  | durable snapshot without a journal; fail closed                |
+ * | none            | any     | missing  | legacy cache-snapshot rules ([recoverLegacyState])             |
+ *
+ * Each step that moves data writes the next phase first, so re-running recovery after a death
+ * inside recovery lands on a later row of the same table. `RestoreCrashRecoveryTest` kills the
+ * swap, rollback, and recovery at every filesystem operation and checks this property.
+ *
+ * Once no journal remains, staging copies left beside the live root by a killed restore are swept;
+ * they are never read by recovery and can be as large as the whole library.
  */
 internal object RestoreStartupRecovery {
     fun recover(context: android.content.Context) {
@@ -75,6 +99,9 @@ internal object RestoreStartupRecovery {
         val legacyCacheSnapshot = File(appContext.cacheDir, SNAPSHOT_DIR_NAME)
         val journal = RestoreTransactionJournal(File(appContext.filesDir, RestoreTransactionJournal.FILE_NAME))
         recoverSafely(liveRoot, durableSnapshot, legacyCacheSnapshot, journal)
+        if (!journal.exists()) {
+            sweepOrphanedStaging(appContext.filesDir, File(appContext.cacheDir, RESTORE_WORK_DIR_NAME))
+        }
     }
 
     /**
@@ -101,11 +128,29 @@ internal object RestoreStartupRecovery {
             }
     }
 
+    /**
+     * Process start is the only moment no restore can be running, so every staging copy beside
+     * the live root and every extraction directory is debris from a killed attempt.
+     */
+    internal fun sweepOrphanedStaging(
+        filesDir: File,
+        restoreWorkDir: File,
+    ) {
+        filesDir
+            .listFiles { file -> file.name.startsWith(SWAP_CANDIDATE_PREFIX) }
+            .orEmpty()
+            .forEach { candidate ->
+                if (!candidate.deleteRecursively()) Timber.w("Could not remove an orphaned restore staging copy")
+            }
+        restoreWorkDir.listFiles().orEmpty().forEach { it.deleteRecursively() }
+    }
+
     internal fun recoverState(
         liveRoot: File,
         durableSnapshot: File,
         legacyCacheSnapshot: File,
         journal: RestoreTransactionJournal,
+        files: RestoreFileOperations = DefaultRestoreFileOperations,
     ) {
         val phase = journal.read()
         check(phase != null || !journal.exists()) { "Restore journal is unreadable; preserving recovery data" }
@@ -113,37 +158,30 @@ internal object RestoreStartupRecovery {
             RestoreTransactionJournal.Phase.COMMITTED -> {
                 // New data is authoritative; a leftover snapshot is cleanup debris, not a rollback.
                 check(liveRoot.isDirectory) { "Committed restore root is missing; preserving recovery data" }
-                check(durableSnapshot.deleteRecursively()) { "Could not clean the committed restore snapshot" }
-                check(legacyCacheSnapshot.deleteRecursively()) { "Could not clean the legacy restore snapshot" }
+                check(files.deleteTree(durableSnapshot)) { "Could not clean the committed restore snapshot" }
+                check(files.deleteTree(legacyCacheSnapshot)) { "Could not clean the legacy restore snapshot" }
                 journal.clear()
                 Timber.i("Recovered an interrupted restore: committed root kept, leftover snapshot removed")
             }
-            RestoreTransactionJournal.Phase.OLD_ROOT_MOVED -> {
-                // The snapshot is the only rollback copy, so it must be confirmed present before
-                // anything is deleted — a missing snapshot with an intact root must fail closed,
-                // never remove the root.
-                check(durableSnapshot.exists()) { "Restore died mid-swap and the snapshot is missing; failing closed" }
-                if (liveRoot.exists()) {
-                    check(liveRoot.deleteRecursively()) { "Could not remove the half-installed restore root" }
-                }
-                check(durableSnapshot.renameTo(liveRoot) || copyBack(durableSnapshot, liveRoot)) {
-                    "Could not restore the pre-restore snapshot; failing closed"
-                }
-                durableSnapshot.deleteRecursively()
+            RestoreTransactionJournal.Phase.ROLLED_BACK -> {
+                // The pre-restore library is already back in place; the snapshot is a partial delete.
+                check(liveRoot.isDirectory) { "Rolled-back restore root is missing; preserving recovery data" }
+                check(files.deleteTree(durableSnapshot)) { "Could not clean the rolled-back restore snapshot" }
                 journal.clear()
-                Timber.w("Recovered an interrupted restore: pre-restore snapshot moved back into place")
+                Timber.i("Recovered an interrupted restore: rollback finished, leftover snapshot removed")
             }
+            RestoreTransactionJournal.Phase.OLD_ROOT_MOVED -> recoverMovedRoot(liveRoot, durableSnapshot, journal, files)
             RestoreTransactionJournal.Phase.PREPARED -> {
                 if (!liveRoot.exists()) {
-                    check(durableSnapshot.isDirectory) { "Prepared restore has no live root or snapshot" }
-                    // Persist the recovery phase before copying, so another crash cannot make a
-                    // partial copy look like the intact pre-swap root.
-                    journal.write(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED)
-                    recoverState(liveRoot, durableSnapshot, legacyCacheSnapshot, journal)
+                    // The old root may have moved before the phase write. Persist the recovery
+                    // phase before copying, so another crash cannot make a partial copy look like
+                    // the intact pre-swap root.
+                    if (durableSnapshot.isDirectory) journal.write(RestoreTransactionJournal.Phase.OLD_ROOT_MOVED)
+                    recoverMovedRoot(liveRoot, durableSnapshot, journal, files)
                 } else {
                     if (durableSnapshot.exists()) {
                         check(durableSnapshot.listFiles()?.isEmpty() == true) { "Prepared restore has ambiguous roots" }
-                        check(durableSnapshot.delete()) { "Could not remove the empty restore snapshot" }
+                        check(files.deleteTree(durableSnapshot)) { "Could not remove the empty restore snapshot" }
                     }
                     journal.clear()
                     Timber.i("Recovered an interrupted restore: it died before the swap; live root untouched")
@@ -151,6 +189,44 @@ internal object RestoreStartupRecovery {
             }
             null -> recoverLegacyState(liveRoot, durableSnapshot, legacyCacheSnapshot)
         }
+    }
+
+    private fun recoverMovedRoot(
+        liveRoot: File,
+        durableSnapshot: File,
+        journal: RestoreTransactionJournal,
+        files: RestoreFileOperations,
+    ) {
+        if (!durableSnapshot.exists()) {
+            if (liveRoot.isDirectory) {
+                // A snapshot only leaves this phase by moving into the live root, so the root is
+                // the pre-restore library and only the journal clear was lost. Keeping the journal
+                // would refuse every future restore without protecting any data.
+                Timber.w("Recovered an interrupted restore: rollback move had finished; live root kept")
+            } else {
+                // Nothing exists to preserve. Keeping the journal would only block restoring a backup.
+                LocalDiagnostics.recordOperation(operation = "restore_recovery_no_data", durationMillis = 0L, failed = true)
+                Timber.e("Interrupted restore left neither a live root nor a snapshot")
+            }
+            journal.clear()
+            return
+        }
+        if (liveRoot.exists()) {
+            check(files.deleteTree(liveRoot) && !liveRoot.exists()) { "Could not remove the half-installed restore root" }
+        }
+        val moved =
+            files.rename(durableSnapshot, liveRoot) ||
+                runCatching {
+                    check(!liveRoot.exists()) { "Snapshot rename created a partial live root" }
+                    files.copyTree(durableSnapshot, liveRoot)
+                }.isSuccess
+        check(moved && liveRoot.isDirectory) { "Could not restore the pre-restore snapshot; failing closed" }
+        // From here the live root is authoritative; a death while deleting the snapshot must not
+        // let the next startup restore the half-deleted copy over it.
+        journal.write(RestoreTransactionJournal.Phase.ROLLED_BACK)
+        check(files.deleteTree(durableSnapshot)) { "Could not clean the restored snapshot" }
+        journal.clear()
+        Timber.w("Recovered an interrupted restore: pre-restore snapshot moved back into place")
     }
 
     /** Pre-journal builds left the snapshot under cacheDir with no phase record. */
@@ -190,4 +266,10 @@ internal object RestoreStartupRecovery {
         }.isSuccess
 
     private const val SNAPSHOT_DIR_NAME = "webnovel_restore_snapshot"
+
+    /** Must match the staging copy name chosen by [RestoreRootCommitter.stageBesideLiveRoot]. */
+    internal const val SWAP_CANDIDATE_PREFIX = "webnovel_restore_swap_"
+
+    /** Must match [AppStorage.restoreRoot]. */
+    private const val RESTORE_WORK_DIR_NAME = "webnovel_restore"
 }

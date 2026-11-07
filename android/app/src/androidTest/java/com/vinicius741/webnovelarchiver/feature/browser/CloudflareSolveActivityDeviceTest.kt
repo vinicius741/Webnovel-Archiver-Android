@@ -22,15 +22,16 @@ import org.junit.runner.RunWith
 class CloudflareSolveActivityDeviceTest {
     @Test
     fun doneWithoutClearanceOffersConfirmedRetryEscapeHatch() {
+        var retried = false
+        val token = SourceAccessRetryCoordinator.arm { retried = true }
         val intent =
             Intent(
                 ApplicationProvider.getApplicationContext(),
                 CloudflareSolveActivity::class.java,
             ).apply {
                 putExtra("cloudflare_solve_url", "https://example.invalid/cloudflare-test")
+                putExtra("cloudflare_solve_retry_token", token)
             }
-        var retried = false
-        SourceAccessRetryCoordinator.arm { retried = true }
 
         ActivityScenario.launch<CloudflareSolveActivity>(intent).use { scenario ->
             scenario.onActivity { activity ->

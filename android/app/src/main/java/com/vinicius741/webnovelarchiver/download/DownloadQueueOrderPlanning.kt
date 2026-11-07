@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.download
 
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 
@@ -61,17 +62,7 @@ object DownloadQueueOrderPlanning {
             jobs.map { original ->
                 val job = original.copy(chapter = original.chapter.copy())
                 if (providerIdForJob(job) != providerId) return@map job
-                if (DownloadQueueSectionPlanning.isBlockedFailure(job)) {
-                    job.status = DownloadJobStatus.Pending.wire
-                    job.error = null
-                    job.errorCategory = null
-                    job.errorCode = null
-                    job.nextRetryAt = null
-                    resumed += 1
-                } else if (job.status == DownloadJobStatus.Pending.wire) {
-                    job.nextRetryAt = null
-                    resumed += 1
-                }
+                if (DownloadJobTransitions.releaseAfterVerification(job)) resumed += 1
                 job
             }
         return VerificationResume(updated, resumed)

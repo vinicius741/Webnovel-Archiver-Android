@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.download
 
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 
@@ -73,9 +74,7 @@ object DownloadQueueSectionPlanning {
     /** How long the "Verified" card stays after a check passes. */
     const val VERIFIED_CARD_MILLIS = 6_000L
 
-    private const val SOURCE_BLOCKED = "source_blocked"
-
-    fun isBlockedFailure(job: DownloadJob): Boolean = job.status == DownloadJobStatus.Failed.wire && job.errorCategory == SOURCE_BLOCKED
+    fun isBlockedFailure(job: DownloadJob): Boolean = DownloadJobTransitions.isAwaitingVerification(job)
 
     private fun isPendingLike(job: DownloadJob): Boolean = job.status == DownloadJobStatus.Pending.wire || isBlockedFailure(job)
 
