@@ -25,12 +25,19 @@
 - Use unqualified `adb devices -l` only to discover targets. For every device-targeting ADB operation, resolve a healthy serial whose name starts with `emulator-` and pass it with `adb -s "$EMULATOR_SERIAL" ...`.
 - Never run an unqualified device-targeting `adb` command. If no emulator is available, or multiple emulators are running and no serial was explicitly selected, stop instead of falling back to another device.
 
-### T3 Device panel sessions
+### T3 Device panel sessions: always release the emulator
 
-- A T3 `device_open` session holds an exclusive lock on the emulator. T3 does not release it when the thread's turn ends or the thread settles; it stays held until that thread calls `device_close`. A forgotten session blocks every later thread with `DEVICE_IN_USE`.
-- Before your final reply in any turn that called `device_open`, call `device_close` (no `shutdown`, so the emulator keeps running) once you no longer need the device. Keep it open only if the user asked to keep watching it. Close it on failure or abort too, not just on success.
-- Never silence `agent-device` output (`>/dev/null 2>&1` and similar), especially for `open`. If `open` returns `DEVICE_IN_USE`, stop driving the device. Other commands in that session still reach the emulator even though `open` failed, so continuing means two threads drive the same device at once.
-- On `DEVICE_IN_USE`, report the holding session from the error. Don't close or reuse another thread's session. The user can free it from the owning thread's Device panel (`…` menu → Power off device; on 2026-11-06 that released the stale session, while closing the panel alone is reported not to). Then restart the emulator with `scripts/emulator/start_emulator.sh`. Upstream: pingdotgg/t3code#17470 and #31303.
+> **Mandatory.** Every thread shares one emulator. If a thread opens it with `device_open` and never releases it, every other thread gets `DEVICE_IN_USE` until the user steps in. This blocked QA on 2026-11-06 and again on 2026-11-07.
+
+- A `device_open` session holds an exclusive claim on the emulator. Ending the turn, settling the thread, or killing the emulator does not release it. It stays until that thread calls `device_close` or the idle timeout below expires.
+- Release it before your final reply in every turn that called `device_open`, whether the work succeeded, failed, or was aborted. Keep it only if the user asked to keep watching the device.
+- To release it:
+  1. Call `device_close` with the **exact `device.id` and `hostId` that `device_open` returned**, without `shutdown`. Once the emulator is booted, that id is the serial `emulator-5554`. `webnovel_api36` is the id only while the emulator is stopped.
+  2. Call `device_list` and check that `open` is empty. `device_close` returns `{}` even when the id matched nothing and nothing was released. On 2026-11-07 a QA thread opened `emulator-5554`, closed `webnovel_api36`, got `{}`, and left the claim held. If `open` still lists a device, close it using the id shown there.
+  3. Only after that, stop the emulator if needed (`adb -s emulator-5554 emu kill`).
+- Never silence `agent-device` output (`>/dev/null 2>&1` and similar), especially for `open`. If `open` returns `DEVICE_IN_USE`, stop driving the device. Your other commands still reach the emulator even though `open` failed, so two threads would end up driving the same device.
+- On `DEVICE_IN_USE`, report the holding session named in the error. Don't close or reuse another thread's session. The user can free it from the owning thread's Device panel (`…` menu → Power off device; closing the panel alone does not free it). Then restart the emulator with `scripts/emulator/start_emulator.sh`. Upstream: pingdotgg/t3code#17470 and #31303.
+- Idle-timeout backstop: `~/.t3/service.env` sets `AGENT_DEVICE_SESSION_IDLE_TIMEOUT_MS=3600000`, which the T3 service passes to the agent-device daemon. agent-device then drops an emulator claim after 1 hour with no device commands. A dropped session's next command fails with `SESSION_NOT_FOUND` (`SESSION_IDLE_EXPIRED`); call `device_open` again. This is a safety net, not a substitute for `device_close`. A change to the value takes effect only after `systemctl --user restart t3code.service`, which also stops running threads.
 
 ### Build variant per target
 

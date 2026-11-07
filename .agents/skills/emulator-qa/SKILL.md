@@ -31,10 +31,13 @@ prevents the common agent failure mode: screenshotting too early (spinner /
   (note the `.app.` segment — wrong path launches nothing useful)
 - Unqualified `adb devices -l` is discovery-only. Every device op uses
   `adb -s "$SERIAL" …`.
-- If you used T3 `device_open`, call `device_close` (no shutdown) before the
-  final report, whether or not QA succeeded. Never pipe `agent-device` to
-  `/dev/null`, and stop if `open` says `DEVICE_IN_USE`. See "T3 Device panel
-  sessions" in the root `AGENTS.md`.
+- If you used T3 `device_open`, release it before the final report, whether or
+  not QA succeeded: `device_close` (no shutdown) with the exact `device.id`
+  `device_open` returned (`emulator-5554` once booted, not `webnovel_api36`),
+  then confirm `device_list` shows `open` empty. `device_close` returns `{}`
+  even when it released nothing. Never pipe `agent-device` to `/dev/null`, and
+  stop if `open` says `DEVICE_IN_USE`. See "T3 Device panel sessions" in the
+  root `AGENTS.md`.
 - Prefer **local** flows. Do **not** run live Royal Road / Scribble Hub import,
   full followed-novel sync, or mass downloads unless the user asked — those
   mutate the emulator library and depend on third-party sites.
