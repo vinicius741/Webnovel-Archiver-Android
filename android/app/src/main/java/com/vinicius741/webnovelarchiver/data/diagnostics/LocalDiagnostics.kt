@@ -3,53 +3,62 @@ package com.vinicius741.webnovelarchiver.data.diagnostics
 import android.util.Log
 import timber.log.Timber
 
-/** Process-local, metadata-only rings: WARN+ log events plus operation timings. Log messages are intentionally never retained. */
+/**
+ * App-wide diagnostic producers: WARN+ log events (with redacted message, origin, and stack
+ * trace), operation timings, process starts, and uncaught crashes. Everything lands in the
+ * persistent [DiagnosticJournal]; [DiagnosticReportExporter] turns a time window of it into the
+ * shareable report. With no journal installed (unit tests) recording is a no-op.
+ */
 object LocalDiagnostics {
-    const val MAX_EVENTS = 200
-    private val events = ArrayDeque<DiagnosticEvent>(MAX_EVENTS)
-
-    // R30: operation timings are INFO-level and high-frequency (queue_save, reader_prepare);
-    // a separate small ring keeps them from evicting genuine warnings before an export.
-    const val MAX_OPERATION_EVENTS = 50
-    private val operations = ArrayDeque<DiagnosticEvent>(MAX_OPERATION_EVENTS)
-
-    @Synchronized
     fun record(
         priority: Int,
         throwable: Throwable?,
         timestampMillis: Long = System.currentTimeMillis(),
+        message: String? = null,
+        origin: String? = null,
     ) {
         if (priority < Log.WARN) return
-        if (events.size == MAX_EVENTS) events.removeFirst()
-        events.addLast(
-            DiagnosticEvent(
-                timestampMillis = timestampMillis,
-                priority = priority,
-                throwableType = safeToken(throwable?.javaClass?.simpleName),
-            ),
-        )
+        val journal = DiagnosticJournal.active ?: return
+        journal.append(logRecord(journal.sessionId, priority, throwable, timestampMillis, message, origin))
     }
+
+    internal fun logRecord(
+        sessionId: String,
+        priority: Int,
+        throwable: Throwable?,
+        timestampMillis: Long,
+        message: String?,
+        origin: String?,
+    ): LinkedHashMap<String, Any?> =
+        linkedMapOf(
+            "k" to DiagnosticRecordKind.LOG,
+            "ts" to timestampMillis,
+            "sid" to sessionId,
+            "level" to levelName(priority),
+            "origin" to safeToken(origin, MAX_ORIGIN_LENGTH),
+            "msg" to DiagnosticRedactor.redact(message),
+            "error" to throwable?.let { DiagnosticRedactor.throwable(it) },
+        )
 
     /**
      * Records one timed operation: privacy-safe static [operation] name, duration, and a
      * failure flag — enough to distinguish slow-but-successful from failing boundaries after the
      * fact, without retaining text, prompts, keys, or URLs.
      */
-    @Synchronized
     fun recordOperation(
         operation: String,
         durationMillis: Long,
         failed: Boolean = false,
     ) {
-        if (operations.size == MAX_OPERATION_EVENTS) operations.removeFirst()
-        operations.addLast(
-            DiagnosticEvent(
-                timestampMillis = System.currentTimeMillis(),
-                priority = if (failed) Log.WARN else Log.INFO,
-                throwableType = null,
-                operation = safeToken(operation),
-                durationMillis = durationMillis.coerceAtLeast(0L),
-                failed = failed,
+        val journal = DiagnosticJournal.active ?: return
+        journal.append(
+            linkedMapOf(
+                "k" to DiagnosticRecordKind.OPERATION,
+                "ts" to System.currentTimeMillis(),
+                "sid" to journal.sessionId,
+                "op" to safeToken(operation),
+                "ms" to durationMillis.coerceAtLeast(0L),
+                "failed" to failed.takeIf { it },
             ),
         )
     }
@@ -68,29 +77,76 @@ object LocalDiagnostics {
         }
     }
 
-    @Synchronized
-    fun snapshot(): List<DiagnosticEvent> = events.toList()
-
-    @Synchronized
-    fun snapshotOperations(): List<DiagnosticEvent> = operations.toList()
-
-    @Synchronized
-    internal fun clear() {
-        events.clear()
-        operations.clear()
+    /** One record per process start, so a report shows restarts between events. */
+    fun recordSessionStart(fields: Map<String, Any?>) {
+        val journal = DiagnosticJournal.active ?: return
+        journal.append(
+            linkedMapOf<String, Any?>(
+                "k" to DiagnosticRecordKind.SESSION,
+                "ts" to System.currentTimeMillis(),
+                "sid" to journal.sessionId,
+            ) + fields,
+        )
     }
 
-    internal fun safeToken(value: String?): String? =
+    /** Synchronous: the process is about to die, so the record is fsynced before returning. */
+    fun recordCrash(
+        thread: Thread,
+        throwable: Throwable,
+    ) {
+        val journal = DiagnosticJournal.active ?: return
+        journal.appendBlocking(
+            linkedMapOf(
+                "k" to DiagnosticRecordKind.CRASH,
+                "ts" to System.currentTimeMillis(),
+                "sid" to journal.sessionId,
+                "thread" to safeToken(thread.name),
+                "error" to DiagnosticRedactor.throwable(throwable),
+            ),
+        )
+    }
+
+    /**
+     * Chains a crash recorder in front of the existing default handler (which still shows the
+     * system crash dialog / kills the process). Recording failures never block the original handler.
+     */
+    fun installCrashHandler() {
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            runCatching { recordCrash(thread, throwable) }
+            previous?.uncaughtException(thread, throwable)
+        }
+    }
+
+    internal fun levelName(priority: Int): String =
+        when (priority) {
+            Log.WARN -> "W"
+            Log.ERROR -> "E"
+            Log.ASSERT -> "A"
+            else -> priority.toString()
+        }
+
+    internal fun safeToken(
+        value: String?,
+        maxLength: Int = MAX_TOKEN_LENGTH,
+    ): String? =
         value
-            ?.take(MAX_TOKEN_LENGTH)
+            ?.take(maxLength)
             ?.map { character -> if (character.isLetterOrDigit() || character in SAFE_PUNCTUATION) character else '_' }
             ?.joinToString("")
             ?.takeIf(String::isNotBlank)
 
     private const val MAX_TOKEN_LENGTH = 64
-    private val SAFE_PUNCTUATION = setOf('.', '_', '-', '$')
+    private const val MAX_ORIGIN_LENGTH = 160
+    private val SAFE_PUNCTUATION = setOf('.', '_', '-', '$', ':', '(', ')')
 }
 
+/**
+ * Feeds WARN+ Timber logs into [LocalDiagnostics]. Timber appends the stack trace to [message]
+ * when a throwable is present; that copy is stripped because the throwable is stored structured.
+ * The origin is the first stack frame outside Timber, so release reports show where the warning
+ * was logged (retrace with the release's R8 mapping file).
+ */
 class LocalDiagnosticTree : Timber.Tree() {
     override fun isLoggable(
         tag: String?,
@@ -103,6 +159,26 @@ class LocalDiagnosticTree : Timber.Tree() {
         message: String,
         t: Throwable?,
     ) {
-        LocalDiagnostics.record(priority, t)
+        val text =
+            if (t !=
+                null
+            ) {
+                message.substringBefore("\n${t.javaClass.name}").takeUnless { it.startsWith(t.javaClass.name) }
+            } else {
+                message
+            }
+        LocalDiagnostics.record(priority, t, message = text, origin = tag ?: callerOrigin())
     }
+
+    private fun callerOrigin(): String? =
+        Thread
+            .currentThread()
+            .stackTrace
+            .firstOrNull { frame ->
+                !frame.className.startsWith("java.lang.Thread") &&
+                    !frame.className.startsWith("dalvik.system.") &&
+                    !frame.className.startsWith("timber.log.") &&
+                    !frame.className.startsWith(LocalDiagnosticTree::class.java.name) &&
+                    !frame.className.startsWith(LocalDiagnostics::class.java.name)
+            }?.let { frame -> "${frame.className.substringAfterLast('.')}.${frame.methodName}:${frame.lineNumber}" }
 }

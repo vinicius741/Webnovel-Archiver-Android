@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.diagnostics
 
+import com.google.gson.JsonObject
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.data.storage.AtomicFileWrites
 import com.vinicius741.webnovelarchiver.data.storage.SharedGson
@@ -12,8 +13,10 @@ import java.io.File
 
 /**
  * Builds and writes the shareable source-access log: one JSON header line describing the format,
- * then one JSON object per recorded bypass event (JSON Lines). Pure assembly lives in
- * [BypassLogExportPlanning] so size-trimming and line validity are unit-testable.
+ * then one JSON object per source-access event in the chosen [DiagnosticWindow] (JSON Lines).
+ * Events come from the persistent [DiagnosticJournal], so they survive app restarts and crashes.
+ * Pure assembly lives in [BypassLogExportPlanning] so size-trimming and line validity are
+ * unit-testable.
  */
 object BypassLogExportPlanning {
     const val MAX_EXPORT_BYTES = 256 * 1024
@@ -22,15 +25,23 @@ object BypassLogExportPlanning {
         appInfo: DiagnosticAppInfo,
         reliability: List<SourceReliabilitySnapshot>,
         queueSummary: DiagnosticQueueSummary,
-        droppedCount: Long,
+        window: DiagnosticWindow,
+        truncatedCount: Int,
         eventCount: Int,
         generatedAtMillis: Long,
     ): Map<String, Any?> =
         linkedMapOf(
             "format" to "wna-source-access-log",
-            "version" to 1,
+            "version" to 2,
             "generatedAt" to generatedAtMillis,
-            "droppedCount" to droppedCount,
+            "window" to
+                linkedMapOf(
+                    "label" to window.label,
+                    "hours" to window.hours,
+                    "from" to generatedAtMillis - window.millis,
+                    "to" to generatedAtMillis,
+                ),
+            "truncatedCount" to truncatedCount,
             "eventCount" to eventCount,
             "app" to appInfo,
             "context" to
@@ -49,11 +60,11 @@ object BypassLogExportPlanning {
      */
     fun documentLines(
         header: Map<String, Any?>,
-        events: List<BypassEvent>,
+        events: List<JsonObject>,
         serialize: (Any?) -> String,
     ): Pair<List<String>, Int> {
         val headerLine = serialize(header)
-        val eventLines = events.map { event -> serialize(event.toJsonMap()) }
+        val eventLines = events.map { event -> serialize(event.deepCopy().apply { remove("k") }) }
         val eventLineBytes = eventLines.map { line -> line.toByteArray().size }
         // The document is lines joined with "\n": total bytes = Σ line bytes + one per separator,
         // so dropping the oldest event removes its bytes plus its separator.
@@ -67,9 +78,11 @@ object BypassLogExportPlanning {
     }
 
     const val AGENT_INSTRUCTIONS =
-        "You are reading a Webnovel Archiver source-access log. Each following line is one JSON " +
-            "event: ts is epoch ms; seq is monotonic per app process (gaps mean the bounded ring " +
-            "dropped oldest events; droppedCount in this header counts them). cat 'net' is the " +
+        "You are reading a Webnovel Archiver source-access log covering the time window in this " +
+            "header. Each following line is one JSON event: ts is epoch ms; sid identifies one app " +
+            "process and seq is monotonic within it (a new sid means the app restarted; seq gaps within " +
+            "a sid mean events were lost). truncatedCount counts the oldest in-window events omitted " +
+            "to fit the size limit. cat 'net' is the " +
             "OkHttp request lifecycle (correlate by attemptId), 'cf' is the Cloudflare bypass " +
             "(sticky Chromium transport, detached-WebView renders polling the DOM every 500ms; " +
             "correlate by renderId), 'dl' is the download queue. Host names are the only location " +
@@ -91,32 +104,39 @@ object BypassLogExportPlanning {
             "Correlate attempts within the same process and host; do not combine unrelated renders. " +
             "Report the observed failure, cite event seq/attemptId/renderId and timestamps, separate " +
             "confirmed facts from hypotheses, then suggest the smallest relevant next check. " +
-            "Account for dropped events: missing history cannot prove that an action never occurred. " +
+            "Account for omitted events: missing history cannot prove that an action never occurred. " +
             "Do not infer HTTP outcomes from stale polls or claim a cause unsupported by the log."
 }
 
 object BypassLogExporter {
+    private const val FILE_PREFIX = "webnovel_source_access_log_"
     private const val KEEP_DUMPS = 3
+    private const val MAX_STREAMED_EVENTS = 5000
     private val gson = SharedGson.plain
 
     /**
      * Writes the dump into [directory] (the app's backups folder, already share-whitelisted).
-     * Suspends and shifts to IO: the snapshot, size-trim, and fsync'd write must never run on
+     * Suspends and shifts to IO: the journal read, size-trim, and fsync'd write must never run on
      * the caller's thread (Settings invokes this from the main scope).
      */
     suspend fun export(
         directory: File,
         network: NetworkClient,
         queue: List<DownloadJob>,
+        window: DiagnosticWindow,
         generatedAtMillis: Long = System.currentTimeMillis(),
     ): File =
         withContext(Dispatchers.IO) {
-            val events = BypassEventLog.snapshot()
+            val journal = checkNotNull(DiagnosticJournal.active) { "Diagnostics are unavailable" }
+            // Only the newest events can fit MAX_EXPORT_BYTES, so streaming keeps a bounded tail.
+            val streamed = DiagnosticReportPlanning.BoundedList(MAX_STREAMED_EVENTS)
+            journal.forEachRecord(generatedAtMillis - window.millis) { record ->
+                if (record.get("k")?.asString == DiagnosticRecordKind.SOURCE) streamed += record
+            }
+            val events = streamed.toList()
+            val notStreamed = streamed.seen - events.size
 
-            fun headerWith(
-                droppedCount: Long,
-                eventCount: Int,
-            ): Map<String, Any?> =
+            fun headerWith(truncatedCount: Int): Map<String, Any?> =
                 BypassLogExportPlanning.header(
                     appInfo =
                         DiagnosticAppInfo(
@@ -127,38 +147,18 @@ object BypassLogExporter {
                         ),
                     reliability = network.reliabilitySnapshots(),
                     queueSummary = DiagnosticExportPlanning.queueSummary(queue),
-                    droppedCount = droppedCount,
-                    eventCount = eventCount,
+                    window = window,
+                    truncatedCount = notStreamed + truncatedCount,
+                    eventCount = events.size - truncatedCount,
                     generatedAtMillis = generatedAtMillis,
                 )
 
-            val (provisionalLines, extraDropped) =
-                BypassLogExportPlanning.documentLines(
-                    header = headerWith(BypassEventLog.droppedCount(), events.size),
-                    events = events,
-                    serialize = gson::toJson,
-                )
-            val lines =
-                if (extraDropped == 0) {
-                    provisionalLines
-                } else {
-                    listOf(
-                        gson.toJson(
-                            headerWith(BypassEventLog.droppedCount() + extraDropped, events.size - extraDropped),
-                        ),
-                    ) + provisionalLines.drop(1)
-                }
-            val file = File(directory, "webnovel_source_access_log_$generatedAtMillis.json")
+            val (provisionalLines, truncated) =
+                BypassLogExportPlanning.documentLines(header = headerWith(0), events = events, serialize = gson::toJson)
+            val lines = if (truncated == 0) provisionalLines else listOf(gson.toJson(headerWith(truncated))) + provisionalLines.drop(1)
+            val file = File(directory, "$FILE_PREFIX$generatedAtMillis.json")
             AtomicFileWrites.writeText(file, lines.joinToString("\n") + "\n")
-            pruneOldDumps(directory)
+            pruneOldReports(directory, FILE_PREFIX, KEEP_DUMPS)
             file
         }
-
-    private fun pruneOldDumps(directory: File) {
-        directory
-            .listFiles { file -> file.name.startsWith("webnovel_source_access_log_") }
-            ?.sortedByDescending { it.name }
-            ?.drop(KEEP_DUMPS)
-            ?.forEach { it.delete() }
-    }
 }

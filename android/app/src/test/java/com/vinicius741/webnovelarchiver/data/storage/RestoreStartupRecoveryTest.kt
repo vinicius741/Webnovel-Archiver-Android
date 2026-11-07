@@ -1,7 +1,6 @@
 package com.vinicius741.webnovelarchiver.data.storage
 
-import android.util.Log
-import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics
+import com.vinicius741.webnovelarchiver.data.diagnostics.DiagnosticJournal
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -137,7 +136,8 @@ class RestoreStartupRecoveryTest {
 
     @Test
     fun recoveryFailureRecordsDiagnosticsAndStillFailsClosed() {
-        LocalDiagnostics.clear()
+        val diagnostics = DiagnosticJournal(File(tmp.root, "diagnostics"), background = false)
+        DiagnosticJournal.active = diagnostics
         val liveRoot = File(tmp.root, "live")
         val snapshot = File(tmp.root, "durable_snapshot")
         snapshot.mkdirs()
@@ -151,12 +151,15 @@ class RestoreStartupRecoveryTest {
         // Fail closed: snapshot and journal stay untouched for manual recovery.
         assertTrue(File(snapshot, "original.json").isFile)
         assertEquals(RestoreTransactionJournal.Phase.COMMITTED, journal.read())
-        // The WARN ring keeps the exception class; the operation record names the failed phase.
-        assertEquals("IllegalStateException", LocalDiagnostics.snapshot().single().throwableType)
-        val operation = LocalDiagnostics.snapshotOperations().single()
-        assertEquals("restore_recovery_failed_committed", operation.operation)
-        assertEquals(Log.WARN, operation.priority)
-        assertTrue(operation.failed)
+        // The error record keeps the exception; the operation record names the failed phase.
+        val records = ArrayList<com.google.gson.JsonObject>().also { list -> diagnostics.forEachRecord(0L) { list += it } }
+        DiagnosticJournal.active = null
+        val error = records.single { it["k"].asString == "log" }
+        assertEquals("E", error["level"].asString)
+        assertEquals("java.lang.IllegalStateException", error.getAsJsonObject("error")["type"].asString)
+        val operation = records.single { it["k"].asString == "op" }
+        assertEquals("restore_recovery_failed_committed", operation["op"].asString)
+        assertTrue(operation["failed"].asBoolean)
     }
 
     @Test

@@ -23,6 +23,7 @@ A local-first Android app for downloading, archiving, and reading webnovels offl
 - **Smart Updates** — New-chapter detection with intelligent merge, stale-EPUB marking, and source-availability tracking that preserves local chapters when a fiction disappears upstream. Downloaded chapters a source removes stay in the novel in reading order, labeled "Removed from source", with a chapter filter and an option to discard them.
 - **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
 - **In-App Updates** — Settings → App Updates checks GitHub Releases (automatically at most twice a day, or on demand), then downloads, verifies, and installs a newer signed release in place. See `docs/release/in-app-updates.md`.
+- **Diagnostic Reports** — Settings → Share Diagnostic Report exports a JSON report covering the last hour to 3 days: crashes, Android process-exit reasons (ANRs, low-memory kills), warnings and errors with stack traces, operation timings, source-access events, and app, library, and queue state. URLs, file paths, and secrets are redacted. See `docs/diagnostics/diagnostic-reports.md`.
 - **Notifications Settings** — Dedicated screen for Android 13+ notification permission and channel guidance (downloads vs TTS media controls).
 - **Obsidian Theme** — A single warm dark theme with gold accents and custom typography.
 
@@ -187,7 +188,7 @@ android/
             repository/        # AppRepository — single owner of library/queue/settings
             storage/           # AppStorage + atomic writes, recovery, backup orchestration
             backup/            # Backup/restore planning and validation
-            diagnostics/       # Local diagnostics export + shareable Cloudflare bypass event log
+            diagnostics/       # Persistent diagnostic journal, diagnostic report + source-access log exports
           source/              # Provider descriptors, registry, parsers, and source-owned loading
             network/           # OkHttp client, Cloudflare cookie jar + Chromium fallback
           sync/                # Story sync engine + merge planning, Patreon early-access step

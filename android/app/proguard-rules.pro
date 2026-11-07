@@ -16,6 +16,11 @@
 # "Parameter specified as non-null is null: ... publicationStatus".
 -keepattributes Signature
 -keepattributes *Annotation*
+
+# Keep line numbers so stack traces in diagnostic reports (Settings → Share Diagnostic Report)
+# point at real lines once retraced with the release's mapping.txt (published next to the APK).
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 -keep class com.vinicius741.webnovelarchiver.domain.model.** {
     <init>(...);
     <fields>;
@@ -37,6 +42,10 @@
 }
 -keep class com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore$PersistedReliabilityDocument {
     <init>(...);
+    <fields>;
+}
+# Serialized by field name into diagnostic exports (source log header, diagnostic report "sources").
+-keepclassmembers class com.vinicius741.webnovelarchiver.source.network.SourceReliabilitySnapshot {
     <fields>;
 }
 

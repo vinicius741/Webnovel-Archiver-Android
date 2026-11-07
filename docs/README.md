@@ -45,7 +45,15 @@ serves a browser challenge instead of content.
 
 | File | Description |
 |------|-------------|
-| `source-reliability-implementation.md` | Current implemented architecture: source-wide pacing/circuit state, sticky Chromium transport, typed render-outcome escalation, circuit pausing (no queue drain), persisted reliability state, bulk preflight, retry semantics, the Downloads screen's per-site verification card with automatic resume, the shareable bypass event log, and reset behavior. |
+| `source-reliability-implementation.md` | Current implemented architecture: source-wide pacing/circuit state, sticky Chromium transport, typed render-outcome escalation, circuit pausing (no queue drain), persisted reliability state, bulk preflight, retry semantics, the Downloads screen's per-site verification card with automatic resume, the shareable source-access event log, and reset behavior. |
+
+### `diagnostics/`
+
+User-shareable diagnostic exports and the persistent journal that feeds them.
+
+| File | Description |
+|------|-------------|
+| `diagnostic-reports.md` | Share Diagnostic Report and Share Source Access Logs: the user-picked time windows, the persistent `DiagnosticJournal` (retention, threading, record kinds), producers (crash handler, Timber tree, operations, source events), redaction rules, report layout and size trimming, Android exit reasons, and retracing release stack traces with the published R8 mapping. |
 
 ### `tts/`
 

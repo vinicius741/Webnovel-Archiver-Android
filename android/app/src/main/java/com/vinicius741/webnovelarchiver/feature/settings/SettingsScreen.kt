@@ -10,6 +10,8 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
+import com.vinicius741.webnovelarchiver.data.diagnostics.DiagnosticReportExporter
+import com.vinicius741.webnovelarchiver.data.diagnostics.DiagnosticWindow
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
@@ -39,6 +41,7 @@ import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
 import com.vinicius741.webnovelarchiver.ui.settingRow
 import com.vinicius741.webnovelarchiver.ui.settingRowWithLoading
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.spacer
 import com.vinicius741.webnovelarchiver.ui.styledCheckBox
@@ -108,6 +111,24 @@ internal fun ScreenHost.showSettings() {
         val appUpdates = app.appContainer.appUpdates
         val appUpdateTitle = if (appUpdateNeedsAttention(appUpdates)) "App Updates •" else "App Updates"
         settingRow(R.drawable.wna_refresh, appUpdateTitle, appUpdateSummary(appUpdates)) { showAppUpdate() }
+        settingRow(
+            R.drawable.wna_bug_report,
+            "Share Diagnostic Report",
+            "Recent errors, crashes, and app state to help fix a problem",
+        ) {
+            chooseDiagnosticWindow("Share Diagnostic Report") { window ->
+                val container = app.appContainer
+                exportAndShare({
+                    DiagnosticReportExporter.export(
+                        context = app,
+                        directory = container.repository.storage.backupRoot,
+                        repository = container.repository,
+                        network = container.network,
+                        window = window,
+                    )
+                })
+            }
+        }
         // Cap and center the content on large screens (expanded 840dp, medium 720dp); no-op on
         // compact widths. Runs inside the content builder, where the view has no layoutParams yet —
         // set fresh FrameLayout.LayoutParams, exactly what the scaffold assigns to ScrollView content.
@@ -206,9 +227,13 @@ internal fun ScreenHost.showDataBackup() {
         settingRow(
             R.drawable.wna_share,
             "Share Source Access Logs",
-            "Export a diagnostic log of source-access events (no URLs, titles, or cookies)",
+            "Recent source-access events (no URLs, titles, or cookies)",
         ) {
-            exportAndShare({ BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue()) })
+            chooseDiagnosticWindow("Share Source Access Logs") { window ->
+                exportAndShare({
+                    BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue(), window)
+                })
+            }
         }
         settingRow(R.drawable.wna_star, "Patreon Account", patreonAccountSummary()) {
             showPatreonAccount()
@@ -379,4 +404,12 @@ internal fun ScreenHost.showDownloadSettings() {
             }
         }
     }
+}
+
+/** Diagnostic exports cover a recent window, not the whole retained history; the user picks how far back. */
+private fun ScreenHost.chooseDiagnosticWindow(
+    title: String,
+    onChoose: (DiagnosticWindow) -> Unit,
+) {
+    showStyledOptionsDialog(title, DiagnosticWindow.entries.map { window -> window.label to { onChoose(window) } })
 }

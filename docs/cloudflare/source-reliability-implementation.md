@@ -117,14 +117,18 @@ Settings shows the active WebView version and aggregate, process-local source co
 challenge, rate-limit, and browser-render counts. It also reports whether Chromium transport,
 cooldown, or manual verification is active.
 
-“Share Source Access Logs” exports the bounded, process-local bypass event log
-(`data/diagnostics/BypassEventLog`) as a JSON Lines file into the app's backups folder and shares
-it through the system sheet. The first line is a self-describing header with app info, the
+“Share Source Access Logs” asks for a time window (last hour, 6 hours, 24 hours, or 3 days) and
+exports the source-access events recorded in that window by `data/diagnostics/BypassEventLog`. The
+events are stored in the persistent `DiagnosticJournal`, so they survive restarts and crashes (see
+`docs/diagnostics/diagnostic-reports.md`). The export is a JSON Lines file, written to the app's
+backups folder and shared through the system sheet. The first line is a self-describing header with app info, the
 aggregate reliability snapshots, a queue summary, and embedded instructions so an AI agent can
 interpret the file cold; each following line is one structured event (request lifecycle, challenge
 detection, sticky-transport window, WebView render polls and outcomes, circuit and cooldown
 transitions, download-queue failures, interactive-solve flow) correlated by attempt, render, and
-job ids. The ring is trimmed to the newest 1500 events and the export to 256 KiB.
+job ids, plus a per-process `sid`. The export keeps the newest events that fit 256 KiB; the
+header's `truncatedCount` counts the in-window events it left out. The full Share Diagnostic
+Report includes the same events alongside crashes, errors, and app state.
 
 “Reset Source Web Session” destroys persistent solver WebViews, clears WebView storage and source
 cookies, closes the circuit, and disables sticky mode. The next request begins a fresh source session.

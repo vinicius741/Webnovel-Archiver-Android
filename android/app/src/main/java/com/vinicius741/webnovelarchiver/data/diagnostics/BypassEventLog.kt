@@ -3,56 +3,46 @@ package com.vinicius741.webnovelarchiver.data.diagnostics
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Bounded, process-local ring of Cloudflare-bypass events, recorded directly at pipeline call
- * sites (not via Timber, so events stay structured and lossless). The dump for diagnostics is
- * [BypassLogExporter]; the Settings "Share Source Access Logs" row is the user surface.
+ * Structured Cloudflare-bypass / source-access events, recorded directly at pipeline call sites
+ * (not via Timber, so events stay structured and lossless) and persisted in the shared
+ * [DiagnosticJournal] as `k = "src"` records. The dump for diagnostics is [BypassLogExporter];
+ * the Settings "Share Source Access Logs" row is the user surface, and the full
+ * [DiagnosticReportExporter] report includes the same events.
  *
  * Privacy by omission: events carry hosts, enums, decisions, timings, and fixed-vocabulary notes.
  * There are no URLs, paths, story/chapter titles, cookies, or bodies — callers must not pass them,
  * and [sanitize] strips anything but a small character set as a backstop.
  */
 object BypassEventLog {
-    const val MAX_EVENTS = 1500
-
-    private val events = ArrayDeque<BypassEvent>(MAX_EVENTS)
-    private val droppedEvents = AtomicLong(0)
     private val sequence = AtomicLong(0)
     private val ids = AtomicLong(0)
 
-    @Synchronized
     fun record(
         category: BypassEventCategory,
         type: String,
         host: String? = null,
         vararg fields: Pair<String, Any?>,
     ) {
-        if (events.size == MAX_EVENTS) {
-            events.removeFirst()
-            droppedEvents.incrementAndGet()
-        }
-        events.addLast(
-            BypassEvent(
-                seq = sequence.incrementAndGet(),
-                timestampMillis = System.currentTimeMillis(),
-                category = category,
-                type = sanitizeText(type),
-                host = host?.let(::sanitizeHost),
-                fields = fields.toMap().filterValues { it != null }.mapValues { (_, value) -> sanitize(value) },
-            ),
+        val journal = DiagnosticJournal.active ?: return
+        val event = build(category, type, host, *fields)
+        journal.append(linkedMapOf<String, Any?>("k" to DiagnosticRecordKind.SOURCE, "sid" to journal.sessionId) + event.toJsonMap())
+    }
+
+    /** Builds the sanitized event without recording it; [record] is the production entry point. */
+    internal fun build(
+        category: BypassEventCategory,
+        type: String,
+        host: String? = null,
+        vararg fields: Pair<String, Any?>,
+    ): BypassEvent =
+        BypassEvent(
+            seq = sequence.incrementAndGet(),
+            timestampMillis = System.currentTimeMillis(),
+            category = category,
+            type = sanitizeText(type),
+            host = host?.let(::sanitizeHost),
+            fields = fields.toMap().filterValues { it != null }.mapValues { (_, value) -> sanitize(value) },
         )
-    }
-
-    @Synchronized
-    fun snapshot(): List<BypassEvent> = events.toList()
-
-    @Synchronized
-    fun droppedCount(): Long = droppedEvents.get()
-
-    @Synchronized
-    internal fun clear() {
-        events.clear()
-        droppedEvents.set(0)
-    }
 
     /** Short correlation ids: one per HTTP attempt (`a…`), one per WebView render (`r…`). */
     fun nextId(prefix: String): String = "$prefix${ids.incrementAndGet()}"

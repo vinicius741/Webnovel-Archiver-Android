@@ -5,7 +5,9 @@ import android.content.Context
 import android.os.StrictMode
 import android.webkit.CookieManager
 import com.vinicius741.webnovelarchiver.BuildConfig
+import com.vinicius741.webnovelarchiver.data.diagnostics.DiagnosticJournal
 import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnosticTree
+import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnostics
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.SourceUserAgent
@@ -36,6 +38,7 @@ class WebnovelArchiverApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        installDiagnostics()
         DevEnvironment.requested = DevEnvironmentFactory.requested(this)
         if (DevEnvironment.requested) {
             // Choose the profile before Coil, reader WebViews, UA resolution, or CookieManager.
@@ -82,6 +85,23 @@ class WebnovelArchiverApp : Application() {
         // CookieManager.getInstance() also lazy-loads the WebView provider; defer seeding to the
         // background. OkHttp's cookie jar reads CookieManager lazily per request, so seeds land in time.
         if (!DevEnvironment.requested) startupScope.launch { enableAndSeedCookies() }
+    }
+
+    /**
+     * First thing in onCreate so startup failures and crashes are captured. The journal does all
+     * disk work on its own thread; applicationInfo.dataDir avoids the filesDir mkdir on this one.
+     */
+    private fun installDiagnostics() {
+        DiagnosticJournal.active = DiagnosticJournal(java.io.File(applicationInfo.dataDir, "files/diagnostics"))
+        LocalDiagnostics.installCrashHandler()
+        LocalDiagnostics.recordSessionStart(
+            linkedMapOf(
+                "versionName" to BuildConfig.VERSION_NAME,
+                "versionCode" to BuildConfig.VERSION_CODE.toLong(),
+                "buildType" to BuildConfig.BUILD_TYPE,
+                "pid" to android.os.Process.myPid(),
+            ),
+        )
     }
 
     private fun enableDebugStrictMode() {

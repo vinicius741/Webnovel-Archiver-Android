@@ -7,16 +7,6 @@ data class DiagnosticAppInfo(
     val sdkInt: Int,
 )
 
-data class DiagnosticEvent(
-    val timestampMillis: Long,
-    val priority: Int,
-    val throwableType: String?,
-    /** Privacy-safe static operation name for timed operations; null for plain log events. */
-    val operation: String? = null,
-    val durationMillis: Long? = null,
-    val failed: Boolean = false,
-)
-
 data class DiagnosticStorageIssue(
     val document: String,
     val kind: String,
@@ -29,14 +19,10 @@ data class DiagnosticQueueSummary(
     val byErrorCategory: Map<String, Int>,
 )
 
-data class DiagnosticExportPayload(
-    val format: String = "webnovel-archiver-diagnostics",
-    val version: Int = 1,
-    val generatedAtMillis: Long,
-    val app: DiagnosticAppInfo,
-    val storageIssues: List<DiagnosticStorageIssue>,
-    val queue: DiagnosticQueueSummary,
-    val warningAndErrorEvents: List<DiagnosticEvent>,
-    /** INFO-level operation timings; kept in a separate ring so they cannot evict warnings. */
-    val operationEvents: List<DiagnosticEvent> = emptyList(),
+data class DiagnosticLibrarySummary(
+    val stories: Int,
+    val chapters: Int,
+    val downloadedChapters: Int,
+    val bySource: Map<String, Int>,
+    val byStatus: Map<String, Int>,
 )

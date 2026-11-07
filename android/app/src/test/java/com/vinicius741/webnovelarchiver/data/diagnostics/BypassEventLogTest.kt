@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.data.diagnostics
 
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilitySnapshot
@@ -8,38 +10,49 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class BypassEventLogTest {
-    // The log is process-global; earlier test classes in the same JVM pollute it.
-    @Before fun resetState() {
-        BypassEventLog.clear()
-    }
+    @get:Rule val folder = TemporaryFolder()
 
     @After fun tearDown() {
-        BypassEventLog.clear()
+        DiagnosticJournal.active = null
     }
 
     @Test
-    fun ringDropsOldestEventsAndCountsThem() {
-        repeat(BypassEventLog.MAX_EVENTS + 25) { index ->
-            BypassEventLog.record(BypassEventCategory.NET, "net_request_start", "example.test", "n" to index)
-        }
+    fun recordedEventsPersistAsSourceRecordsWithSession() {
+        val journal = DiagnosticJournal(folder.newFolder("diagnostics"), background = false)
+        DiagnosticJournal.active = journal
 
-        val snapshot = BypassEventLog.snapshot()
+        BypassEventLog.record(BypassEventCategory.NET, "net_request_start", "Example.Test", "n" to 1)
 
-        assertEquals(BypassEventLog.MAX_EVENTS, snapshot.size)
-        assertEquals(25L, BypassEventLog.droppedCount())
-        assertEquals(25, snapshot.first().fields["n"])
-        assertEquals(BypassEventLog.MAX_EVENTS + 24, snapshot.last().fields["n"])
+        val records = ArrayList<JsonObject>().also { list -> journal.forEachRecord(0L) { list += it } }
+        val record = records.single()
+        assertEquals("src", record["k"].asString)
+        assertEquals(journal.sessionId, record["sid"].asString)
+        assertEquals("net", record["cat"].asString)
+        assertEquals("example.test", record["host"].asString)
+        assertEquals(1, record["n"].asInt)
+    }
+
+    @Test
+    fun recordingWithoutAJournalIsANoOp() {
+        BypassEventLog.record(BypassEventCategory.NET, "net_request_start", "example.test")
+    }
+
+    @Test
+    fun sequenceIsMonotonic() {
+        val first = BypassEventLog.build(BypassEventCategory.NET, "a")
+        val second = BypassEventLog.build(BypassEventCategory.NET, "b")
+
+        assertEquals(first.seq + 1, second.seq)
     }
 
     @Test
     fun nullFieldValuesAndNullHostAreOmitted() {
-        BypassEventLog.record(BypassEventCategory.CF, "render_finished", null, "code" to null, "ok" to true)
-
-        val event = BypassEventLog.snapshot().single()
+        val event = BypassEventLog.build(BypassEventCategory.CF, "render_finished", null, "code" to null, "ok" to true)
 
         assertEquals(null, event.host)
         assertFalse(event.fields.containsKey("code"))
@@ -49,15 +62,16 @@ class BypassEventLogTest {
 
     @Test
     fun sanitizationKeepsUrlsAndPathsOutOfEveryField() {
-        BypassEventLog.record(
-            BypassEventCategory.NET,
-            "net_request_start",
-            "https://evil.example/path?q=1",
-            "path" to "https://www.scribblehub.com/read/12345/chapter/67890",
-            "title" to "Some Story Title!!",
-        )
+        val event =
+            BypassEventLog.build(
+                BypassEventCategory.NET,
+                "net_request_start",
+                "https://evil.example/path?q=1",
+                "path" to "https://www.scribblehub.com/read/12345/chapter/67890",
+                "title" to "Some Story Title!!",
+            )
 
-        val json = Gson().toJson(BypassEventLog.snapshot().single().toJsonMap())
+        val json = Gson().toJson(event.toJsonMap())
 
         assertFalse("scheme separators must not survive", json.contains("://"))
         assertFalse("path separators must not survive", json.contains("/"))
@@ -78,10 +92,6 @@ class BypassEventLogTest {
 }
 
 class BypassLogExportPlanningTest {
-    @After fun tearDown() {
-        BypassEventLog.clear()
-    }
-
     @Test
     fun documentIsJsonLinesWithASelfDescribingHeaderFirst() {
         val header =
@@ -89,13 +99,14 @@ class BypassLogExportPlanningTest {
                 appInfo = DiagnosticAppInfo("1.0.0", 1, "debug", 36),
                 reliability = listOf(snapshot()),
                 queueSummary = DiagnosticExportPlanning.queueSummary(listOf(job())),
-                droppedCount = 0,
+                window = DiagnosticWindow.LAST_6_HOURS,
+                truncatedCount = 0,
                 eventCount = 1,
                 generatedAtMillis = 1_000L,
             )
-        BypassEventLog.record(BypassEventCategory.CF, "render_poll", "example.test", "pollN" to 3)
+        val event = sourceRecord(BypassEventLog.build(BypassEventCategory.CF, "render_poll", "example.test", "pollN" to 3))
 
-        val (lines, extraDropped) = BypassLogExportPlanning.documentLines(header, BypassEventLog.snapshot(), Gson()::toJson)
+        val (lines, extraDropped) = BypassLogExportPlanning.documentLines(header, listOf(event), Gson()::toJson)
 
         assertEquals(0, extraDropped)
         assertEquals(2, lines.size)
@@ -103,8 +114,10 @@ class BypassLogExportPlanningTest {
         val headerObject = gson.fromJson(lines[0], Map::class.java)
         val eventObject = gson.fromJson(lines[1], Map::class.java)
         assertEquals("wna-source-access-log", headerObject["format"])
+        assertEquals(6.0, (headerObject["window"] as Map<*, *>)["hours"])
         assertTrue(headerObject.containsKey("agentInstructions"))
         assertEquals("cf", eventObject["cat"])
+        assertFalse("the journal kind is internal", eventObject.containsKey("k"))
         assertEquals(3.0, eventObject["pollN"])
     }
 
@@ -113,13 +126,15 @@ class BypassLogExportPlanningTest {
         val header = minimalHeader()
         val events =
             (1..500).map { index ->
-                BypassEvent(
-                    seq = index.toLong(),
-                    timestampMillis = index.toLong(),
-                    category = BypassEventCategory.NET,
-                    type = "net_request_start",
-                    host = "example.test",
-                    fields = mapOf("padding" to "x".repeat(500)),
+                sourceRecord(
+                    BypassEvent(
+                        seq = index.toLong(),
+                        timestampMillis = index.toLong(),
+                        category = BypassEventCategory.NET,
+                        type = "net_request_start",
+                        host = "example.test",
+                        fields = mapOf("padding" to "x".repeat(500)),
+                    ),
                 )
             }
 
@@ -130,8 +145,8 @@ class BypassLogExportPlanningTest {
         val gson = Gson()
         assertEquals("net_request_start", gson.fromJson(lines[1], Map::class.java)["type"])
         // Trimming drops a prefix, so the newest event always survives as the last line.
-        assertEquals(events.last().seq.toDouble(), gson.fromJson(lines.last(), Map::class.java)["seq"])
-        assertEquals(events[extraDropped].seq.toDouble(), gson.fromJson(lines[1], Map::class.java)["seq"])
+        assertEquals(events.last()["seq"].asDouble, gson.fromJson(lines.last(), Map::class.java)["seq"])
+        assertEquals(events[extraDropped]["seq"].asDouble, gson.fromJson(lines[1], Map::class.java)["seq"])
     }
 
     private fun minimalHeader(): Map<String, Any?> =
@@ -139,10 +154,14 @@ class BypassLogExportPlanningTest {
             appInfo = DiagnosticAppInfo("1.0.0", 1, "debug", 36),
             reliability = emptyList(),
             queueSummary = DiagnosticQueueSummary(0, emptyMap(), emptyMap()),
-            droppedCount = 0,
+            window = DiagnosticWindow.LAST_HOUR,
+            truncatedCount = 0,
             eventCount = 0,
             generatedAtMillis = 0L,
         )
+
+    private fun sourceRecord(event: BypassEvent): JsonObject =
+        JsonParser.parseString(Gson().toJson(mapOf("k" to "src") + event.toJsonMap())).asJsonObject
 
     private fun snapshot() =
         SourceReliabilitySnapshot(
