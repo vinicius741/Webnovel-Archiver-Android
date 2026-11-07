@@ -182,7 +182,7 @@ android/
           feature/             # UI by flow: library, details, reader, player (TTS mini-player
                                # + Now Playing), browser, downloads, updates, settings, cleanup,
                                # ai (screen state and progress binding), shared manual story sync
-          domain/              # Models + pure domain rules (story, archive)
+          domain/              # Models + pure domain rules (story, archive, download job lifecycle)
           data/
             repository/        # AppRepository — single owner of library/queue/settings
             storage/           # AppStorage + atomic writes, recovery, backup orchestration

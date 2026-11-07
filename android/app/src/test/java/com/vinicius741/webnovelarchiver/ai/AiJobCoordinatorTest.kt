@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -103,6 +105,41 @@ class AiJobCoordinatorTest {
             }
             assertEquals(listOf<TestEvent>(TestEvent.Done("a"), TestEvent.Done("b")), events.toList())
             assertFalse(coordinator.isBusy())
+        }
+
+    @Test
+    fun handoffNeverHidesTheNextJobFromObservers() =
+        runTest {
+            val gates = listOf("a", "b", "c").associateWith { CompletableDeferred<Unit>() }
+            val coordinator = coordinator(backgroundScope, queueEnabled = true)
+            val unfinished = mutableSetOf<String>()
+            val hidden = CopyOnWriteArrayList<String>()
+            // Unconfined observers run inside each StateFlow write, so they see every intermediate view.
+            val observer = UnconfinedTestDispatcher(testScheduler)
+
+            fun check() {
+                val visible = coordinator.jobs.value.keys + coordinator.queue.value.map { it.storyId }
+                unfinished.filterNot(visible::contains).forEach { hidden += it }
+            }
+            backgroundScope.launch(observer) { coordinator.queue.collect { check() } }
+            backgroundScope.launch(observer) { coordinator.jobs.collect { check() } }
+
+            gates.forEach { (key, gate) ->
+                unfinished += key
+                coordinator.submit(TestJob(key, "queued")) {
+                    gate.await()
+                    unfinished -= key
+                    TestEvent.Done(key)
+                }
+            }
+            gates.values.forEach { gate ->
+                gate.complete(Unit)
+                // runCurrent, not advanceUntilIdle: the coordinator's jobs run on backgroundScope.
+                testScheduler.runCurrent()
+            }
+
+            assertFalse(coordinator.isBusy())
+            assertEquals("A queued job vanished from both jobs and queue mid-handoff", emptyList<String>(), hidden.toList())
         }
 
     @Test

@@ -6,6 +6,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vinicius741.webnovelarchiver.app.DevEnvironment
 import com.vinicius741.webnovelarchiver.app.WebnovelArchiverApp
 import com.vinicius741.webnovelarchiver.feature.browser.CloudflareSolveActivity
+import com.vinicius741.webnovelarchiver.feature.browser.SourceAccessRetryCoordinator
 import kotlinx.coroutines.launch
 
 /** Emulator runner entry point. It cannot open a URL or operate outside an enabled session. */
@@ -24,6 +25,7 @@ class SimulationControlActivity : AppCompatActivity() {
                     CloudflareSolveActivity.launch(
                         this@SimulationControlActivity,
                         "${SimulationFixtures.STORY_URL}/chapter/99000101/the-missing-hour",
+                        SourceAccessRetryCoordinator.NO_RETRY,
                     )
                 }
             } finally {

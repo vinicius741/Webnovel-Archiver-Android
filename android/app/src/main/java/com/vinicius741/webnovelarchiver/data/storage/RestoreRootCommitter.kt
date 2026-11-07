@@ -34,7 +34,7 @@ internal class RestoreRootCommitter(
         // replace it directly. Otherwise copy beside the live root first (cache vs filesDir).
         if (sharesParentDirectory(staged, liveRoot)) return staged
         val parent = checkNotNull(liveRoot.parentFile) { "Live storage root has no parent" }
-        val candidate = File(parent, "webnovel_restore_swap_${System.currentTimeMillis()}")
+        val candidate = File(parent, "${RestoreStartupRecovery.SWAP_CANDIDATE_PREFIX}${System.currentTimeMillis()}")
         val stagedBytes = directoryByteCount(staged)
         check(BackupInputLimits.hasSwapSpace(parent.usableSpace, stagedBytes)) {
             "Not enough free app-storage space to commit this restore"
@@ -93,6 +93,7 @@ internal class RestoreRootCommitter(
                 liveRoot = liveRoot,
                 snapshot = snapshot,
                 initializeRoot = initializeRoot,
+                onPhase = journal::write,
             )
         if (restored) {
             rollbackRequired = false

@@ -3,6 +3,8 @@ package com.vinicius741.webnovelarchiver.download
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobFailure
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -114,12 +116,30 @@ internal class DownloadSourceReliability(
         storage.mutateQueueInPlace { current ->
             queue = current
             if (!acceptsWorkerResults()) return@mutateQueueInPlace current
-            val failedJob = current.find { it.id == job.id }
-            failedJob?.let { queuedJob -> updateFailedJob(queuedJob, classified) }
+            // Applied only while the queued row is still downloading, inside this transaction: a
+            // pause or cancel that landed mid-request wins over the late failure.
+            val failedJob =
+                current.find { it.id == job.id }?.takeIf { queuedJob ->
+                    DownloadJobTransitions.recordWorkerFailure(
+                        queuedJob,
+                        DownloadJobFailure(classified.message, classified.category, classified.code),
+                        nowMillis(),
+                    ) { counted ->
+                        if (DownloadErrorClassifier.shouldAutoRetry(counted, classified)) {
+                            DownloadErrorClassifier.retryDelayMs(counted, classified)
+                        } else {
+                            null
+                        }
+                    }
+                }
             if (classified.category == "rate_limit" && providerName != null) {
+                // Back off as for the attempt that just failed, even when the row rejected the
+                // failure (paused or cancelled mid-request) and so never counted it.
+                val counted =
+                    failedJob ?: job.copy(retryCount = (current.find { it.id == job.id }?.retryCount ?: job.retryCount) + 1)
                 val retryAt =
                     failedJob?.nextRetryAt
-                        ?: (nowMillis() + DownloadErrorClassifier.retryDelayMs(job, classified))
+                        ?: (nowMillis() + DownloadErrorClassifier.retryDelayMs(counted, classified))
                 DownloadSourceFailurePlanning.deferPendingJobs(current, providerName, retryAt, ::providerNameForJob)
             }
             accepted = true
@@ -153,28 +173,6 @@ internal class DownloadSourceReliability(
             onSourceBlocked(providerName, error.blockedUrl)
         }
         return if (accepted) DownloadQueueMutation(queue) else null
-    }
-
-    private fun updateFailedJob(
-        job: DownloadJob,
-        classified: ClassifiedDownloadError,
-    ) {
-        job.retryCount += 1
-        job.error = classified.message
-        job.errorCategory = classified.category
-        job.errorCode = classified.code
-        if (DownloadErrorClassifier.shouldAutoRetry(job, classified)) {
-            job.status = DownloadJobStatus.Pending.wire
-            job.nextRetryAt = nowMillis() + DownloadErrorClassifier.retryDelayMs(job, classified)
-        } else {
-            job.status =
-                if (classified.category == "cancelled") {
-                    DownloadJobStatus.Cancelled.wire
-                } else {
-                    DownloadJobStatus.Failed.wire
-                }
-            job.nextRetryAt = null
-        }
     }
 
     private fun providerNameForJob(job: DownloadJob): String? = SourceRegistry.getProvider(job.sourceId, job.chapter.url)?.id

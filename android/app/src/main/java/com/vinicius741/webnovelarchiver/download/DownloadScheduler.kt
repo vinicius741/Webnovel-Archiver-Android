@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.download
 
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobPhase
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -36,10 +38,11 @@ object DownloadScheduler {
         val queuedSourceOrder = linkedSetOf<String>()
         val eligibleBySource = linkedMapOf<String, DownloadJob>()
         jobs.forEach { job ->
-            if (job.status != DownloadJobStatus.Pending.wire) return@forEach
+            val phase = DownloadJobTransitions.phase(job, now)
+            if (phase != DownloadJobPhase.Runnable && phase !is DownloadJobPhase.WaitingForRetry) return@forEach
             val source = providerNameForJob(job) ?: return@forEach
             queuedSourceOrder += source
-            if (job.nextRetryAt != null && job.nextRetryAt!! > now) return@forEach
+            if (phase != DownloadJobPhase.Runnable) return@forEach
             // Blocked sources keep jobs pending rather than letting each start, hit the open circuit, and fail terminally.
             if (source in activeSources || source in blockedSources || (nextAllowedAt[source] ?: 0L) > now) return@forEach
             eligibleBySource.putIfAbsent(source, job)
@@ -66,7 +69,7 @@ object DownloadScheduler {
     ): Long? {
         var next: Long? = null
         jobs.filter { it.status == DownloadJobStatus.Pending.wire }.forEach { job ->
-            val retryAt = job.nextRetryAt?.takeIf { it > now }
+            val retryAt = (DownloadJobTransitions.phase(job, now) as? DownloadJobPhase.WaitingForRetry)?.atMillis
             val providerAt = providerNameForJob(job)?.let { nextAllowedAt[it] }?.takeIf { it > now }
             listOfNotNull(retryAt, providerAt).forEach { candidate ->
                 next = minOf(next ?: candidate, candidate)
@@ -132,7 +135,7 @@ object DownloadErrorClassifier {
         if (error is SourceAccessBlockedException) {
             return ClassifiedDownloadError(
                 error.message ?: "Source blocked automated access",
-                "source_blocked",
+                DownloadJobTransitions.SOURCE_BLOCKED_CATEGORY,
                 "SOURCE_BLOCKED",
                 false,
             )
@@ -228,15 +231,7 @@ object DownloadSourceFailurePlanning {
     ): List<DownloadJob> =
         jobs.onEach { job ->
             if (providerNameForJob(job) != providerName) return@onEach
-            if (job.status == DownloadJobStatus.Downloading.wire) {
-                job.status = DownloadJobStatus.Failed.wire
-                job.error = message
-                job.errorCategory = "source_blocked"
-                job.errorCode = "SOURCE_BLOCKED"
-                job.nextRetryAt = null
-            } else if (job.status == DownloadJobStatus.Pending.wire) {
-                job.nextRetryAt = maxOf(job.nextRetryAt ?: 0L, recheckAtMillis)
-            }
+            if (!DownloadJobTransitions.failSourceBlocked(job, message)) DownloadJobTransitions.deferUntil(job, recheckAtMillis)
         }
 
     fun deferPendingJobs(
@@ -246,9 +241,7 @@ object DownloadSourceFailurePlanning {
         providerNameForJob: (DownloadJob) -> String?,
     ): List<DownloadJob> =
         jobs.onEach { job ->
-            if (job.status == DownloadJobStatus.Pending.wire && providerNameForJob(job) == providerName) {
-                job.nextRetryAt = maxOf(job.nextRetryAt ?: 0L, retryAt)
-            }
+            if (providerNameForJob(job) == providerName) DownloadJobTransitions.deferUntil(job, retryAt)
         }
 }
 

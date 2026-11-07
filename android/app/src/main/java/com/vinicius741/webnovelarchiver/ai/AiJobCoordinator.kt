@@ -218,11 +218,13 @@ class AiJobCoordinator<S : AiJobModel, E : AiJobEvent>(
                 _jobs.update { it - jobKey }
                 return
             }
-            pending.removeAt(0)
-            _queue.update { it - next.state }
+            // Register before dequeuing, as launchNextLocked does: an observer reading between the
+            // two writes must still find the next job in one of the collections.
             _jobs.update {
                 (it - jobKey) + (keyOf(next.state) to startShape(next.state))
             }
+            pending.removeAt(0)
+            _queue.update { it - next.state }
             activeHandle = scope.launch { runJob(keyOf(next.state), next.state, next.runRequest) }
         }
     }

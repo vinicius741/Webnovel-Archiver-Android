@@ -311,24 +311,25 @@ class MainActivity :
         intent: Intent,
         startupState: InitialStartupState,
     ) {
-        val browserImportUrl = browserImportUrl(intent)
-        val resumeTarget = startupState.resumeTarget
-        val devTarget = startupState.devTarget
-        // A restored stack already holds whatever the launch intent's notification tap opened; only
-        // a tap delivered since then is new.
-        val notificationRoute = intent.openRoute()?.takeUnless { restoredNavigation && !intentArrivedBeforeUiReady }
-        when {
-            devTarget != null -> openDeepRoute(devTarget)
-            browserImportUrl != null -> {
+        val route =
+            StartupPlanning.initialRoute(
+                devTarget = startupState.devTarget,
+                browserImportUrl = browserImportUrl(intent),
+                notificationRoute = intent.openRoute(),
+                restoredNavigation = restoredNavigation,
+                intentArrivedBeforeUiReady = intentArrivedBeforeUiReady,
+                readerResumeTarget = startupState.resumeTarget?.let { AppRoute.Reader(it.storyId, it.chapterId) },
+            )
+        when (route) {
+            is StartupPlanning.InitialRoute.Dev -> openDeepRoute(route.route)
+            is StartupPlanning.InitialRoute.BrowserImport -> {
                 showLibrary()
-                importFromBrowser(browserImportUrl)
+                importFromBrowser(route.url)
             }
-            // Same as a live tap: on top of the restored screen, so Back returns there.
-            notificationRoute != null && restoredNavigation -> renderRoute(notificationRoute)
-            notificationRoute != null -> openDeepRoute(notificationRoute)
-            restoredNavigation -> renderRoute(navigator.current)
-            resumeTarget != null -> openDeepRoute(AppRoute.Reader(resumeTarget.storyId, resumeTarget.chapterId))
-            else -> showLibrary()
+            is StartupPlanning.InitialRoute.OnRestoredStack -> renderRoute(route.route)
+            is StartupPlanning.InitialRoute.Deep -> openDeepRoute(route.route)
+            StartupPlanning.InitialRoute.Restored -> renderRoute(navigator.current)
+            StartupPlanning.InitialRoute.Library -> showLibrary()
         }
     }
 

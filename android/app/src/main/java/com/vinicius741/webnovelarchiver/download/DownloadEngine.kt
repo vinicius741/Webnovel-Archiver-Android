@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
@@ -297,8 +298,8 @@ class DownloadEngine(
                 )
             if (!acceptsWorkerResults.get()) return
             if (startedGeneration != repository.libraryGeneration()) return
-            // Cancelled or removed mid-download: do not publish the chapter. A paused job is
-            // deliberately allowed to finish its in-flight chapter — pause keeps the work.
+            // Cancelled or removed mid-download: do not publish the chapter. A job paused
+            // mid-download is rejected by the commit below, which accepts only downloading rows.
             if (isCancelledOrGone(job.id, repository.queue())) return
             // Chapter + queue commit is one transaction that re-verifies job status and the
             // library generation, so a cancel/remove/restore landing between the fetch and
@@ -342,8 +343,8 @@ class DownloadEngine(
     }
 
     /**
-     * A job counts as no longer publishable when it was cancelled *or removed* from the queue
-     *: a removed job must not reappear as a completion. A paused job stays publishable.
+     * Early exit for a job that was cancelled *or removed* from the queue. The authoritative checks
+     * run inside the commit and failure transactions, which accept only rows still downloading.
      */
     private fun isCancelledOrGone(
         id: String,
@@ -379,7 +380,7 @@ class DownloadEngine(
             paused = counts.paused,
             total = counts.total,
             activeTitle = activeJob?.let { "${it.storyTitle}: ${it.chapter.title}" },
-            sourceBlocked = queue.count { it.errorCategory == "source_blocked" },
+            sourceBlocked = queue.count(DownloadJobTransitions::isAwaitingVerification),
             blockedPending = blockedEvidence.pendingCount,
             blockedPendingUrl = blockedEvidence.sampleUrl,
         )

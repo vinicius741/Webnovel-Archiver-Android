@@ -62,10 +62,12 @@ class CloudflareSolveActivity : AppCompatActivity() {
     private var statusText: TextView? = null
     private var continueWithoutVerificationDialog: AlertDialog? = null
     private var solved = false
+    private var retryToken = SourceAccessRetryCoordinator.NO_RETRY
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         url = intent.getStringExtra(EXTRA_URL).orEmpty()
+        retryToken = intent.getLongExtra(EXTRA_RETRY_TOKEN, SourceAccessRetryCoordinator.NO_RETRY)
         if (url.isBlank()) {
             finish()
             return
@@ -244,7 +246,7 @@ class CloudflareSolveActivity : AppCompatActivity() {
         CloudflareWebViewSolver.destroySessions()
         appContainer.network.clearSourceAccess(url, keepBrowserTransport = true)
         resumeDownloadsAfterSourceCheck(this, url)
-        SourceAccessRetryCoordinator.markReadyToRetry()
+        SourceAccessRetryCoordinator.markReadyToRetry(retryToken)
         statusText?.text = "Retrying source access — returning to the app…"
         setResult(Activity.RESULT_OK)
         // Brief delay so the user sees confirmation before the activity closes.
@@ -351,6 +353,8 @@ class CloudflareSolveActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // A fold or rotation recreates this screen with the same token; only a real close abandons it.
+        if (isFinishing && !solved) SourceAccessRetryCoordinator.abandon(retryToken)
         continueWithoutVerificationDialog?.dismiss()
         continueWithoutVerificationDialog = null
         super.onDestroy()
@@ -367,18 +371,21 @@ class CloudflareSolveActivity : AppCompatActivity() {
             "(function(){return JSON.stringify({documentUrl:location.href,readyState:document.readyState," +
                 "html:document.documentElement?document.documentElement.outerHTML:''})})()"
         const val EXTRA_URL = "cloudflare_solve_url"
+        private const val EXTRA_RETRY_TOKEN = "cloudflare_solve_retry_token"
         private const val MENU_DONE = 1
         private const val MENU_OPEN_BROWSER = 2
         private const val SOLVE_POLL_INTERVAL_MILLIS = 1500L
 
-        /** Launches the solver for [url]. The caller arms its retry via [SourceAccessRetryCoordinator]. */
+        /** Launches the solver for [url]; [retryToken] comes from [SourceAccessRetryCoordinator.arm]. */
         fun launch(
             context: Context,
             url: String,
+            retryToken: Long,
         ) {
             val intent =
                 Intent(context, CloudflareSolveActivity::class.java).apply {
                     putExtra(EXTRA_URL, url)
+                    putExtra(EXTRA_RETRY_TOKEN, retryToken)
                 }
             context.startActivity(intent)
         }

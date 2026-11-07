@@ -154,8 +154,8 @@ internal fun ScreenHost.handleEarlyAccessPrompt(
             val verifyUrl =
                 story.effectivePatreonUrl?.let { url -> runCatching { PatreonStatsFetcher.aboutUrl(url) }.getOrNull() }
                     ?: PATREON_HOME_URL
-            SourceAccessRetryCoordinator.arm { syncStory(story) }
-            CloudflareSolveActivity.launch(app, verifyUrl)
+            val token = SourceAccessRetryCoordinator.arm { syncStory(story) }
+            CloudflareSolveActivity.launch(app, verifyUrl, token)
         }
     }
 }

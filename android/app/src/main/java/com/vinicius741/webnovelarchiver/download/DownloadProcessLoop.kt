@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobPhase
+import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -64,10 +66,8 @@ internal class DownloadProcessLoop(
                     // no scheduled work and the loop would exit with jobs stranded as pending.
                     queue.forEach { job ->
                         val source = sourceIdForJob(job) ?: return@forEach
-                        if (job.status == DownloadJobStatus.Pending.wire && source in blockedSources &&
-                            (job.nextRetryAt == null || job.nextRetryAt!! <= now)
-                        ) {
-                            job.nextRetryAt = now + DownloadScheduler.BLOCKED_SOURCE_RECHECK_MILLIS
+                        if (source in blockedSources && DownloadJobTransitions.phase(job, now) == DownloadJobPhase.Runnable) {
+                            DownloadJobTransitions.deferUntil(job, now + DownloadScheduler.BLOCKED_SOURCE_RECHECK_MILLIS)
                             redeferredBlockedJobs = true
                         }
                     }
@@ -84,7 +84,7 @@ internal class DownloadProcessLoop(
                             blockedSources = blockedSources,
                         )
                     if (pending.isNotEmpty()) {
-                        pending.forEach { it.status = DownloadJobStatus.Downloading.wire }
+                        pending.forEach(DownloadJobTransitions::claim)
                         storage.saveQueue(queue)
                     }
                 }
