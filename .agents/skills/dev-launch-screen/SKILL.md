@@ -94,8 +94,9 @@ scripts/dev_library.sh open 5 --chapter 1 --rebuild
 | `addstory`     | Add Story           | no                  |
 | `reader`       | Chapter reader      | yes (story+chapter) |
 | `details`      | Story details       | yes (story)         |
+| `trends`       | Story Trends charts | yes (story)         |
 
-`reader` and `details` auto-pick the first story in the persisted library (and the first chapter for `reader`) unless you pass `dev_start_story` / `dev_start_chapter` — which `dev_library.sh open` does for you. If the emulator's library is empty (or the ids don't resolve), they fall back to the normal library start rather than rendering a blank screen — so add a story first if you need to test the reader/details.
+`reader`, `details`, and `trends` auto-pick the first story in the persisted library (and the first chapter for `reader`) unless you pass `dev_start_story` / `dev_start_chapter` — which `dev_library.sh open` does for you. If the emulator's library is empty (or the ids don't resolve), they fall back to the normal library start rather than rendering a blank screen — so add a story first if you need to test the reader/details.
 
 ## Which token for the feature I'm verifying?
 
@@ -107,6 +108,7 @@ A quick lookup so you don't have to reason about where a change surfaces:
 | Reading/typography (font, theme, cleanup)                         | `reader`   |
 | Library list, story cards, filters/sort, progress                 | `library`  |
 | Story details (download banner, EPUB actions, per-story)          | `details`  |
+| Trends charts and filters (score/Patreon/engagement history)      | `trends`   |
 | Download manager / queue screen                                   | `queue`    |
 | Settings (TTS voice, chunk size, theme, text-cleanup rules)       | `settings` |
 | AI settings (OpenRouter API key, description model)               | `aisettings` |

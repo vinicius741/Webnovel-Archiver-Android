@@ -58,6 +58,14 @@ class TrendAxisPlanningTest {
     }
 
     @Test
+    fun flatSeriesHonoursAnExplicitHalfWindow() {
+        // A flat 4.86 score centres in a tight band instead of the generic ±1.0 window.
+        val range = TrendAxisPlanning.yAxisRange(seriesOf(4.86, 4.86), hardMin = 0.0, hardMax = 5.0, flatHalfWindow = 0.05)!!
+        assertEquals(4.81, range.first, EPS)
+        assertEquals(4.91, range.second, EPS)
+    }
+
+    @Test
     fun outOfDomainDataFallsBackToUnclampedWindow() {
         // A provider bug storing a 6.0 score must not produce an inverted (min > max) axis.
         val range = TrendAxisPlanning.yAxisRange(seriesOf(6.0, 6.0), hardMin = 0.0, hardMax = 5.0)!!

@@ -27,6 +27,7 @@ object DevLaunchPlanning {
         UPDATES("updates"),
         READER("reader"),
         DETAILS("details"),
+        TRENDS("trends"),
         AI_CONTROLS("aicontrols"),
         ADD_STORY("addstory"),
         FOLLOW_UPDATES("followupdates"),
@@ -64,6 +65,7 @@ object DevLaunchPlanning {
             DevStartScreen.ADD_STORY -> AppRoute.AddStory
             DevStartScreen.FOLLOW_UPDATES -> AppRoute.UpdateFollowSelection
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
+            DevStartScreen.TRENDS -> pickStory(storyOverride, libraryProvider)?.let { AppRoute.Trends(it.id, null) }
             DevStartScreen.AI_CONTROLS -> resolveAiControls(storyOverride, libraryProvider)
             DevStartScreen.READER -> resolveReader(storyOverride, chapterOverride, libraryProvider)
         }

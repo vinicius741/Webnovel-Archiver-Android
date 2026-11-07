@@ -17,15 +17,22 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-/** Builds a fully themed [LineChart] for a trend series; pure view construction, no Android lifecycle. */
+/**
+ * Builds a fully themed [LineChart] for a trend series; pure view construction, no Android
+ * lifecycle. [points] should already be windowed and downsampled (see `TrendFilterPlanning`);
+ * [xRange] pins the X axis to the selected time window so every card spans the same dates.
+ */
 internal fun buildTrendChart(
     context: Context,
     points: List<MetricPoint>,
     kind: TrendMetricKind,
+    xRange: Pair<Long, Long>? = null,
 ): LineChart {
     val colors = ThemeManager.colors
     val chart = LineChart(context)
     val entries = points.map { (x, y) -> Entry(x.toFloat(), y.toFloat()) }
+    // Point markers only while they read as discrete samples; dense series draw a plain line.
+    val drawCircles = entries.size <= MAX_POINTS_WITH_CIRCLES
     val dataSet =
         if (entries.isEmpty()) {
             null
@@ -34,9 +41,10 @@ internal fun buildTrendChart(
                 // No per-point value labels; the summary line above the chart carries the current value.
                 color = colors.primary
                 lineWidth = 2.5f
-                isDrawCirclesEnabled = true
+                isDrawCirclesEnabled = drawCircles
+                isDrawCircleHoleEnabled = false
                 circleColors = listOf(colors.primary)
-                circleRadius = 3f
+                circleRadius = 2.5f
                 isDrawValuesEnabled = false
                 isDrawFilledEnabled = true
                 fillColor = colors.primary
@@ -53,9 +61,10 @@ internal fun buildTrendChart(
     chart.setBackgroundColor(0)
     chart.noDataText = "Not enough data to chart yet."
     chart.noDataTextColor = colors.onSurfaceVariant
-    // Horizontal pan only; zoom gestures must not swallow the screen's vertical scroll.
-    chart.isTouchEnabled = true
-    chart.isDragEnabled = true
+    // Static plot: with zoom off a pan has nothing to move, and touch handling would only compete
+    // with the screen's vertical scroll.
+    chart.isTouchEnabled = false
+    chart.isDragEnabled = false
     chart.isScaleEnabled = false
     chart.isPinchZoomEnabled = false
     chart.isDoubleTapToZoomEnabled = false
@@ -74,6 +83,11 @@ internal fun buildTrendChart(
     // One point per calendar day; day granularity keeps a short history's labels from repeating.
     xAxis.granularity = MILLIS_PER_DAY_FLOAT
     xAxis.isAvoidFirstLastClippingEnabled = true
+    // A carry-in point before the window start is clipped at the left edge (clip-to-content is on).
+    xRange?.let { (start, end) ->
+        xAxis.axisMinimum = start.toFloat()
+        xAxis.axisMaximum = end.toFloat()
+    }
 
     val yAxis = chart.axisLeft
     yAxis.valueFormatter = YAxisFormatter(kind)
@@ -88,6 +102,9 @@ internal fun buildTrendChart(
     if (kind == TrendMetricKind.PATREON_MEMBERS || kind == TrendMetricKind.COUNT) {
         // Whole counts: fractional grid lines would format to duplicate integers.
         yAxis.granularity = 1f
+    } else if (kind == TrendMetricKind.SCORE) {
+        // Labels show two decimals; a finer step (a 4.86–4.88 range) repeated "4.88" and "4.86".
+        yAxis.granularity = SCORE_GRANULARITY
     }
     // Fit the Y range to the data so small movements stay visible; a fixed 0–5 axis flattened them.
     val range =
@@ -95,6 +112,8 @@ internal fun buildTrendChart(
             points = points,
             hardMin = 0.0,
             hardMax = if (kind == TrendMetricKind.SCORE) SCORE_MAX else Double.POSITIVE_INFINITY,
+            // A flat score (common in a 7-day window) centres in a narrow band instead of hugging the 5.0 edge.
+            flatHalfWindow = if (kind == TrendMetricKind.SCORE) SCORE_FLAT_HALF_WINDOW else null,
         )
     if (range != null) {
         yAxis.axisMinimum = range.first.toFloat()
@@ -104,15 +123,22 @@ internal fun buildTrendChart(
     }
     chart.axisRight.isEnabled = false
 
-    // Animate the draw-in; short so repeated opens don't feel slow.
-    chart.animateX(400)
-
+    // No draw-in animation: MPAndroidChart rasterizes lines into a software bitmap, so animating
+    // every card at once redrew each chart per frame and dropped frames on open.
     // Height is set by the Trends screen; WRAP_CONTENT would collapse a LineChart inside a ScrollView.
-    chart.invalidate()
     return chart
 }
 
 private const val MILLIS_PER_DAY_FLOAT = 24f * 60f * 60f * 1000f
+
+/** Half-height of the Y band around a flat score series. */
+private const val SCORE_FLAT_HALF_WINDOW = 0.05
+
+/** Smallest score step the two-decimal Y labels can tell apart. */
+private const val SCORE_GRANULARITY = 0.01f
+
+/** Above this many drawn points the per-point circles are dropped. */
+private const val MAX_POINTS_WITH_CIRCLES = 45
 
 /** Score metrics live on a 0–5 scale; used as the hard domain for the fitted Y range. */
 private const val SCORE_MAX = 5.0
@@ -188,6 +214,8 @@ internal fun formatCompactCount(value: Long): String {
             scaled >= 10 -> 1
             else -> 2
         }
-    val formatted = String.format(Locale.US, "%.${decimals}f", scaled).trimEnd('0').trimEnd('.')
+    val rounded = String.format(Locale.US, "%.${decimals}f", scaled)
+    // Trim only fractional zeros: "100" (100K) must not lose its integer zeros.
+    val formatted = if (decimals > 0) rounded.trimEnd('0').trimEnd('.') else rounded
     return "$formatted$suffix"
 }

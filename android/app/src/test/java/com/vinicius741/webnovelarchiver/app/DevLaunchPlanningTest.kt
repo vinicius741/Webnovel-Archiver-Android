@@ -176,6 +176,18 @@ class DevLaunchPlanningTest {
     }
 
     @Test
+    fun trendsHonorsStoryOverrideWithoutFocus() {
+        val library =
+            listOf(
+                story("s1", "Story One", listOf(chapter("c1", "Chapter 1"))),
+                story("s2", "Story Two", listOf(chapter("c2", "Chapter 2"))),
+            )
+        assertEquals(AppRoute.Trends("s1", null), DevLaunchPlanning.resolve("trends", null, null) { library })
+        assertEquals(AppRoute.Trends("s2", null), DevLaunchPlanning.resolve("trends", "s2", null) { library })
+        assertNull(DevLaunchPlanning.resolve("trends", "missing", null) { library })
+    }
+
+    @Test
     fun aiControlsPicksFirstStoryByDefault() {
         val library =
             listOf(

@@ -134,22 +134,54 @@ The screen uses MPAndroidChart 4's `MPChartLib` Android Views module from JitPac
 implement `IAxisValueFormatter`, and chart options use the library's Kotlin properties.
 Trends owns its redraw callback so fold/unfold keeps the same novel and focused series.
 The screen renders one `LineChart` per available series, each in a card with a
-summary line ("Current 4.84 (+0.12 since last sync) · range 4.2–4.9"). Beyond score and the two
-Patreon series, `TrendMetricCards.addSourceMetricChartCards` appends one card per metric in the
+summary line ("Current 4.84 (+0.12 since last sync)") and a window line ("+0.20 in the last 30 days ·
+range 4.62–4.84"). `TrendSeriesModel.buildTrendsModel` extracts every series once per open, on
+`Dispatchers.Default`. Beyond score and the two Patreon series, it adds one series per metric in the
 story's source `descriptor.featuredMetrics` that has recorded points — so SpaceBattles charts
 Watchers/Replies/Views/Likes, FanFiction.net charts Favorites/Follows/Reviews/Words, and
 RoyalRoad/ScribbleHub additionally chart Followers/Views/Pages and Readers/Views/Words. A series
 needs at least two points to draw a line; with fewer it shows an explanatory card. The empty state
 ("No trend data yet") appears for a novel that has never been synced since the feature shipped.
 
+### Filters
+
+Two chip rows sit above the cards; both are single-select and rebuild only the card list:
+
+- **Range** — 7D / 30D / 90D / 1Y / All time. `TrendFilterPlanning.availableRanges` offers only ranges
+  shorter than the recorded span, and hides the row when only All time is left. Windows end at the
+  newest recorded point, not the wall clock, so a novel that has not synced lately still shows its
+  last weeks. A window carries in the last value from before its start so the line enters from the
+  left edge and the window change covers the whole period; the X axis is pinned to the window. A
+  series with no value inside the window shows "No values recorded in the last N days."
+- **Metric family** — All metrics / Score / Patreon / Engagement, shown only when at least two
+  families have data.
+
+The selection is kept per history entry in `RouteViewMemory.queries`, so Back restores it (and the
+focus scroll only applies on a first open). The chosen range also carries over to other novels for
+the rest of the process.
+
+### Rendering cost
+
+Charts are cheap to keep on screen but expensive to first-draw: MPAndroidChart rasterizes each data
+set into a software bitmap. The screen therefore does not animate charts (a 400 ms `animateX` on
+every card re-rasterized all of them each frame and dropped most frames on open), disables chart
+touch handling (zoom is off, so panning had nothing to move), and attaches charts to fixed-height
+slots one per animation frame (`postOnAnimation`) after the card list is laid out. Series longer
+than `TrendFilterPlanning.MAX_CHART_POINTS` are thinned with Largest-Triangle-Three-Buckets before
+charting, and per-point circles are dropped above 45 drawn points. On the `webnovel_api36` emulator,
+opening a five-chart SpaceBattles novel went from a 22 ms to a 16 ms median frame, and from about 60%
+to 12% of frames over budget (`dumpsys gfxinfo`, legacy jank count).
+
 Chart axes are fitted to the recorded data, not pinned to the metric's full domain: week-to-week
 movement in these metrics is small (a score wobbling 4.6→4.8, members creeping 1200→1250), and a
 fixed 0–5 / 0-based axis rendered that as a flat line. `TrendAxisPlanning.yAxisRange` computes the
 Y range from the series with a padding margin, clamped to the valid domain (score 0–5, counts/cents
-≥ 0), with a synthetic window for flat series. Each chart is laid out at a fixed height
+≥ 0), with a synthetic window for flat series (a tight ±0.05 band for score, so a flat week sits
+mid-chart instead of against 5.0). Each chart is laid out at a fixed height
 (`TREND_CHART_HEIGHT_DP`) — a `LineChart` has no intrinsic height and collapses to a few dozen px
 under `WRAP_CONTENT` inside the ScrollView — and the Y label count/format precision are chosen so a
-narrow range cannot produce duplicate, overlapping axis labels. The X axis uses one-day granularity,
+narrow range cannot produce duplicate, overlapping axis labels (score uses a 0.01 granularity to match
+its two-decimal labels). The X axis uses one-day granularity,
 matching the per-calendar-day snapshot resolution.
 
 ## Trend indicator on the detail page
@@ -176,5 +208,6 @@ Two paths exist:
   until the next sync populates it.
 
 The chart helper (`buildTrendChart` / `TrendMetricKind`), the axis-range planner
-(`TrendAxisPlanning`), and the series extractors in `MetricSnapshotPlanning` are the only other
-places that need a new entry per metric.
+(`TrendAxisPlanning`), the series extractors in `MetricSnapshotPlanning`, and `buildTrendsModel`
+(which assigns each series its title, focus tag, and filter family) are the only other places that
+need a new entry per metric.

@@ -23,13 +23,14 @@ object TrendAxisPlanning {
     /**
      * `[min, max]` for the Y axis fitted to [points], clamped to `[hardMin, hardMax]` — the
      * metric's valid domain (score 0–5; counts/cents never below 0). A flat series gets a
-     * symmetric window; the result always has `max > min`. Null when empty — the caller keeps the
-     * chart's auto-range.
+     * symmetric window ([flatHalfWindow] when given, e.g. a tight band for a 0–5 score); the
+     * result always has `max > min`. Null when empty — the caller keeps the chart's auto-range.
      */
     fun yAxisRange(
         points: List<MetricPoint>,
         hardMin: Double,
         hardMax: Double,
+        flatHalfWindow: Double? = null,
     ): Pair<Double, Double>? {
         if (points.isEmpty()) return null
         val values = points.map { it.second }
@@ -40,7 +41,7 @@ object TrendAxisPlanning {
             if (span > 0.0) {
                 span * RANGE_PADDING_FRACTION
             } else {
-                max(abs(dataMax) * FLAT_WINDOW_FRACTION, FLAT_WINDOW_MIN)
+                flatHalfWindow ?: max(abs(dataMax) * FLAT_WINDOW_FRACTION, FLAT_WINDOW_MIN)
             }
         val clampedMin = max(hardMin, dataMin - pad)
         val clampedMax = min(hardMax, dataMax + pad)

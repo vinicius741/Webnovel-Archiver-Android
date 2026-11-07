@@ -4,54 +4,41 @@ import android.graphics.Typeface
 import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
-import com.vinicius741.webnovelarchiver.domain.metrics.MetricPoint
-import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
-import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
+import com.vinicius741.webnovelarchiver.domain.metrics.TrendFilterPlanning
+import com.vinicius741.webnovelarchiver.domain.metrics.TrendGroup
+import com.vinicius741.webnovelarchiver.domain.metrics.TrendRange
+import com.vinicius741.webnovelarchiver.domain.metrics.TrendWindow
 import com.vinicius741.webnovelarchiver.domain.model.Story
-import com.vinicius741.webnovelarchiver.domain.model.StoryMetricHistory
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.findScrollView
 import com.vinicius741.webnovelarchiver.ui.makeCard
+import com.vinicius741.webnovelarchiver.ui.makeChip
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.screen
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.text.NumberFormat
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import kotlinx.coroutines.withContext
 
 // Per-novel metric Trends sub-screen: one line chart per recorded series (score, Patreon members /
-// USD, source engagement metrics) with a current/delta/range summary. Retention policy (same-day
-// coalescing, downsampling, point cap) lives in [MetricSnapshotPlanning].
+// USD, source engagement metrics) with range and metric-family filters. Series are extracted once
+// per open ([buildTrendsModel]); a filter change rebuilds only the card list. Retention policy
+// (same-day coalescing, downsampling, point cap) lives in MetricSnapshotPlanning, filter math in
+// [TrendFilterPlanning].
 
-internal const val FOCUS_SCORE = "score"
-
-internal const val FOCUS_PATREON_MEMBERS = "patreon_members"
-
-internal const val FOCUS_PATREON_USD = "patreon_usd"
-
-/** Card config for [addChartCard]; [chartProvider] is lazy and only invoked when [showChart] is true. */
-internal data class TrendChartCard(
-    val title: String,
-    val focusTag: String,
-    val emphasize: Boolean,
-    val summary: String,
-    val showChart: Boolean,
-    val chartProvider: () -> View,
-    val emptyMessage: String,
-)
+/** Last range picked on any novel this process, so a preferred window carries across novels. */
+private var preferredTrendRange: TrendRange = TrendRange.ALL
 
 internal fun ScreenHost.showTrends(
     storyId: String,
@@ -59,7 +46,9 @@ internal fun ScreenHost.showTrends(
 ) {
     val story = repository.story(storyId) ?: return showDetails(storyId)
     rerender = { showTrends(storyId, focus) }
-    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, scrollable = true) {
+    // Not scrollable: a scrolling placeholder would record its own zero offset over the remembered
+    // one when the populated screen replaces it, so fold/unfold and Back would land at the top.
+    screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title) {
         addView(
             makeEmptyState(
                 app,
@@ -75,26 +64,31 @@ internal fun ScreenHost.showTrends(
         val history = repository.getMetricHistory(storyId)
         // Patreon figures belong to the creator, so novels sharing one chart a single merged series.
         val siblings = PatreonCreatorPlanning.siblings(story, repository.library())
-        val patreonHistory =
-            if (siblings.isEmpty()) {
-                history
-            } else {
-                PatreonCreatorPlanning.mergedPatreonHistory(story.id, listOf(history) + siblings.map { repository.getMetricHistory(it.id) })
+        val siblingHistories = siblings.map { repository.getMetricHistory(it.id) }
+        val model =
+            withContext(Dispatchers.Default) {
+                val patreonHistory =
+                    if (siblings.isEmpty()) {
+                        history
+                    } else {
+                        PatreonCreatorPlanning.mergedPatreonHistory(story.id, listOf(history) + siblingHistories)
+                    }
+                buildTrendsModel(story, history, patreonHistory)
             }
         // Render only if the loading tree is still on screen (the user may have navigated away).
-        if (loadingRoot.parent === frame) renderTrends(story, history, patreonHistory, focus)
+        if (loadingRoot.parent === frame) renderTrends(story, model, focus)
     }
 }
 
 private fun ScreenHost.renderTrends(
     story: Story,
-    history: StoryMetricHistory,
-    patreonHistory: StoryMetricHistory,
+    model: TrendsModel,
     focus: String?,
 ) {
+    var scrollTarget: String? = null
     screen(route = AppRoute.Trends(story.id, focus), title = "Trends", subtitle = story.title, scrollable = true) {
-        addTrendsHeader(this, story, history)
-        if (history.snapshots.isEmpty() && patreonHistory.snapshots.isEmpty()) {
+        addTrendsHeader(this, story, model)
+        if (model.snapshotCount == 0 && model.series.isEmpty()) {
             addView(
                 makeEmptyState(
                     app,
@@ -108,72 +102,7 @@ private fun ScreenHost.renderTrends(
             )
             return@screen
         }
-
-        val scorePoints = MetricSnapshotPlanning.scoreSeries(history)
-        val memberPoints = MetricSnapshotPlanning.patreonSeries(patreonHistory, MetricSnapshotPlanning.PatreonField.MEMBERS)
-        val usdPoints = MetricSnapshotPlanning.patreonSeries(patreonHistory, MetricSnapshotPlanning.PatreonField.MONTHLY_USD)
-
-        // Cards are tagged for focus scrolling; under two points an explanatory card replaces a degenerate chart.
-        if (scorePoints.isNotEmpty()) {
-            addChartCard(
-                this,
-                TrendChartCard(
-                    title = "Score",
-                    focusTag = FOCUS_SCORE,
-                    emphasize = focus == FOCUS_SCORE,
-                    summary = scoreSummary(scorePoints),
-                    showChart = scorePoints.size >= 2,
-                    chartProvider = { buildTrendChart(app, scorePoints, TrendMetricKind.SCORE) },
-                    emptyMessage = "Score will be charted after the next sync adds a second point.",
-                ),
-            )
-        }
-        if (memberPoints.isNotEmpty()) {
-            addChartCard(
-                this,
-                TrendChartCard(
-                    title = "Patreon members",
-                    focusTag = FOCUS_PATREON_MEMBERS,
-                    emphasize = focus == FOCUS_PATREON_MEMBERS,
-                    summary =
-                        patreonSummary(
-                            points = memberPoints,
-                            suffix = " members",
-                            formatValue = { value -> NumberFormat.getIntegerInstance(Locale.US).format(value.toInt()) },
-                            // Members are stored and displayed as counts, so the raw numeric delta is correct.
-                            formatDelta = { MetricSnapshotPlanning.formatDelta(memberPoints, asScore = false) },
-                        ),
-                    showChart = memberPoints.size >= 2,
-                    chartProvider = { buildTrendChart(app, memberPoints, TrendMetricKind.PATREON_MEMBERS) },
-                    emptyMessage = "Members will be charted after the next sync adds a second point.",
-                ),
-            )
-        }
-        if (usdPoints.isNotEmpty()) {
-            addChartCard(
-                this,
-                TrendChartCard(
-                    title = "Patreon monthly earnings",
-                    focusTag = FOCUS_PATREON_USD,
-                    emphasize = focus == FOCUS_PATREON_USD,
-                    summary =
-                        patreonSummary(
-                            points = usdPoints,
-                            suffix = "/mo",
-                            formatValue = { value -> formatUsd(value.toLong(), signed = false) },
-                            // USD points are in cents; format the delta in dollars so the units match the value.
-                            formatDelta = {
-                                MetricSnapshotPlanning.delta(usdPoints)?.toLong()?.let { cents -> formatUsd(cents, signed = true) }
-                            },
-                        ),
-                    showChart = usdPoints.size >= 2,
-                    chartProvider = { buildTrendChart(app, usdPoints, TrendMetricKind.PATREON_USD) },
-                    emptyMessage = "Earnings will be charted after the next sync adds a second point.",
-                ),
-            )
-        }
-        val metricCardsAdded = addSourceMetricChartCards(this, story, history, focus)
-        if (scorePoints.isEmpty() && memberPoints.isEmpty() && usdPoints.isEmpty() && metricCardsAdded == 0) {
+        if (model.series.isEmpty()) {
             addView(
                 makeText(
                     app,
@@ -186,15 +115,241 @@ private fun ScreenHost.renderTrends(
                     topMargin = dp(Space.MD)
                 },
             )
+            return@screen
+        }
+        val memoryKey = navigator.current.stableKey
+        val saved = routeMemory.queries[memoryKey]
+        // A first open honours the focus card; Back restores the user's filters and scroll instead.
+        if (saved == null) scrollTarget = focus
+        TrendsBody(this@renderTrends, this, model, focus, memoryKey, saved).render()
+    }
+    scrollTarget?.let { scrollToFocus(it) }
+}
+
+/** Filter rows plus the card list; owns the selection and rebuilds the cards when it changes. */
+private class TrendsBody(
+    private val host: ScreenHost,
+    private val content: LinearLayout,
+    private val model: TrendsModel,
+    private val focus: String?,
+    private val memoryKey: String,
+    savedSelection: String?,
+) {
+    private val ranges = TrendFilterPlanning.availableRanges(model.earliestAt, model.anchorAt)
+    private val groups = TrendFilterPlanning.availableGroups(model.series.mapTo(mutableSetOf()) { it.group })
+    private var range: TrendRange
+    private var group: TrendGroup
+    private val filters = LinearLayout(host.app).apply { orientation = LinearLayout.VERTICAL }
+    private val cards = LinearLayout(host.app).apply { orientation = LinearLayout.VERTICAL }
+
+    // Bumped on every rebuild so a pending staggered chart attach from an old card list stops.
+    private var generation = 0
+
+    init {
+        val (savedRange, savedGroup) = TrendFilterPlanning.decodeSelection(savedSelection)
+        range = (savedRange ?: preferredTrendRange).takeIf { it in ranges } ?: TrendRange.ALL
+        group = savedGroup?.takeIf { it in groups } ?: TrendGroup.ALL
+        // Record the first open's selection so a redraw (fold/unfold) counts as a return, not a new
+        // open, and keeps the user's scroll instead of jumping back to the focus card.
+        host.routeMemory.queries[memoryKey] = TrendFilterPlanning.encodeSelection(range, group)
+    }
+
+    fun render() {
+        content.addView(filters, matchWrap())
+        content.addView(cards, matchWrap())
+        renderFilters()
+        renderCards()
+    }
+
+    private fun select(
+        newRange: TrendRange = range,
+        newGroup: TrendGroup = group,
+    ) {
+        if (newRange == range && newGroup == group) return
+        if (newRange != range) preferredTrendRange = newRange
+        range = newRange
+        group = newGroup
+        host.routeMemory.queries[memoryKey] = TrendFilterPlanning.encodeSelection(range, group)
+        renderFilters()
+        renderCards()
+    }
+
+    private fun renderFilters() {
+        // Keep each row's horizontal scroll across the rebuild so the tapped chip stays put.
+        val previousScroll = (0 until filters.childCount).map { (filters.getChildAt(it) as? HorizontalScrollView)?.scrollX ?: 0 }
+        filters.removeAllViews()
+        val rows = mutableListOf<HorizontalScrollView>()
+        if (ranges.size > 1) {
+            rows +=
+                chipRow(
+                    ranges.map {
+                        (
+                            if (it ==
+                                TrendRange.ALL
+                            ) {
+                                "All time"
+                            } else {
+                                it.label
+                            }
+                        ) to (it == range)
+                    },
+                ) { select(newRange = ranges[it]) }
+        }
+        if (groups.size > 1) {
+            rows +=
+                chipRow(
+                    groups.map {
+                        (
+                            if (it ==
+                                TrendGroup.ALL
+                            ) {
+                                "All metrics"
+                            } else {
+                                it.label
+                            }
+                        ) to (it == group)
+                    },
+                ) { select(newGroup = groups[it]) }
+        }
+        rows.forEachIndexed { index, row ->
+            filters.addView(
+                row,
+                matchWrap().apply {
+                    bottomMargin = host.app.dp(if (index == rows.lastIndex) Space.MD else Space.SM)
+                },
+            )
+            previousScroll.getOrNull(index)?.takeIf { it > 0 }?.let { x -> row.post { row.scrollTo(x, 0) } }
         }
     }
-    focus?.let { scrollToFocus(it) }
+
+    private fun chipRow(
+        chips: List<Pair<String, Boolean>>,
+        onSelect: (Int) -> Unit,
+    ): HorizontalScrollView {
+        val row = LinearLayout(host.app).apply { orientation = LinearLayout.HORIZONTAL }
+        chips.forEachIndexed { index, (label, selected) ->
+            row.addView(
+                makeChip(host.app, label, selected) { onSelect(index) },
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginEnd = host.app.dp(Space.SM)
+                },
+            )
+        }
+        return HorizontalScrollView(host.app).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(row)
+        }
+    }
+
+    private fun renderCards() {
+        val current = ++generation
+        cards.removeAllViews()
+        val anchor = model.anchorAt ?: return
+        val pendingCharts = ArrayDeque<Pair<FrameLayout, () -> View>>()
+        model.series
+            .filter { group == TrendGroup.ALL || it.group == group }
+            .forEach { series ->
+                val window = TrendFilterPlanning.window(series.points, range, anchor)
+                val slot = addCard(series, window)
+                if (slot != null) {
+                    val drawn = TrendFilterPlanning.downsample(window.points)
+                    // A ranged window pins the X axis so every card spans the same dates.
+                    val bounds = window.startAt?.let { start -> start to (window.endAt ?: anchor) }
+                    pendingCharts.addLast(slot to { buildTrendChart(host.app, drawn, series.kind, bounds) })
+                }
+            }
+        attachChartsOnePerFrame(pendingCharts, current)
+    }
+
+    /**
+     * Charts go in one per animation frame: building and first-drawing every LineChart in the
+     * frame that also lays out the screen is what dropped frames on open. Slots keep a fixed height,
+     * so nothing shifts as charts arrive.
+     */
+    private fun attachChartsOnePerFrame(
+        queue: ArrayDeque<Pair<FrameLayout, () -> View>>,
+        current: Int,
+    ) {
+        if (queue.isEmpty()) return
+        cards.postOnAnimation {
+            // A filter change (new generation) or a replaced screen (detached list) abandons the chain.
+            if (current != generation || !cards.isAttachedToWindow) return@postOnAnimation
+            val (slot, build) = queue.removeFirst()
+            slot.addView(build(), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            attachChartsOnePerFrame(queue, current)
+        }
+    }
+
+    /** Adds the card and returns its empty chart slot, or null when it shows a message instead of a chart. */
+    private fun addCard(
+        series: TrendSeries,
+        window: TrendWindow,
+    ): FrameLayout? {
+        val app = host.app
+        val colors = ThemeManager.colors
+        val emphasize = series.focusTag == focus
+        val card =
+            makeCard(app).apply {
+                tag = series.focusTag
+                addView(
+                    makeText(app, series.title, Type.TITLE_SMALL, if (emphasize) colors.primary else colors.onSurface).apply {
+                        setTypeface(typeface, Typeface.BOLD)
+                        letterSpacing = 0.04f
+                    },
+                )
+                addView(
+                    makeText(app, currentSummary(series), Type.BODY_MEDIUM, colors.onSurfaceVariant),
+                    matchWrap().apply { topMargin = app.dp(Space.XS) },
+                )
+                if (window.isChartable) {
+                    windowSummary(series, window, range)?.let { line ->
+                        addView(makeText(app, line, Type.BODY_SMALL, colors.onSurfaceVariant), matchWrap().apply { topMargin = app.dp(2) })
+                    }
+                }
+            }
+        cards.addView(
+            card,
+            matchWrap().apply {
+                bottomMargin = app.dp(Space.MD)
+                topMargin = if (emphasize) app.dp(Space.SM) else 0
+            },
+        )
+        if (!window.isChartable) {
+            card.addView(
+                makeText(app, emptyMessage(series, window), Type.BODY_SMALL, colors.onSurfaceVariant),
+                matchWrap().apply { topMargin = app.dp(Space.SM) },
+            )
+            return null
+        }
+        card.addView(makeDivider(app))
+        // WRAP_CONTENT gives a LineChart in a ScrollView almost no height; fixed height avoids a squished plot.
+        val slot = FrameLayout(app)
+        card.addView(
+            slot,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(TREND_CHART_HEIGHT_DP)).apply {
+                topMargin = app.dp(Space.SM)
+            },
+        )
+        return slot
+    }
+
+    private fun emptyMessage(
+        series: TrendSeries,
+        window: TrendWindow,
+    ): String =
+        when {
+            window.inWindowCount > 0 || series.points.size < 2 -> "${series.title} will be charted after the next sync adds a second point."
+            range == TrendRange.YEAR -> "No values recorded in the last year."
+            else -> "No values recorded in the last ${range.days} days."
+        }
+
+    private fun matchWrap() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 }
 
 private fun ScreenHost.addTrendsHeader(
     content: LinearLayout,
     story: Story,
-    history: StoryMetricHistory,
+    model: TrendsModel,
 ) {
     val colors = ThemeManager.colors
     content.addView(
@@ -210,14 +365,15 @@ private fun ScreenHost.addTrendsHeader(
             topMargin = dp(2)
         },
     )
-    val count = history.snapshots.size
-    val firstAt = history.snapshots.firstOrNull()?.capturedAt
-    val lastAt = history.snapshots.lastOrNull()?.capturedAt
+    val count = model.snapshotCount
+    val noun = if (count == 1) "snapshot" else "snapshots"
+    val firstAt = model.firstSnapshotAt
+    val lastAt = model.lastSnapshotAt
     val range =
         if (firstAt != null && lastAt != null) {
-            "Recording $count · since ${formatDate(firstAt)} · updated ${formatDate(lastAt)}"
+            "$count $noun · since ${formatTrendDate(firstAt)} · updated ${formatTrendDate(lastAt)}"
         } else {
-            "Recording $count snapshots"
+            "$count $noun"
         }
     content.addView(
         makeText(app, range, Type.BODY_SMALL, colors.onSurfaceVariant),
@@ -226,52 +382,6 @@ private fun ScreenHost.addTrendsHeader(
             bottomMargin = dp(Space.MD)
         },
     )
-}
-
-internal fun ScreenHost.addChartCard(
-    content: LinearLayout,
-    card: TrendChartCard,
-) {
-    val colors = ThemeManager.colors
-    val view =
-        makeCard(app).apply {
-            tag = card.focusTag
-            layoutParams =
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(Space.MD)
-                    topMargin = if (card.emphasize) dp(Space.SM) else 0
-                }
-            addView(
-                makeText(app, card.title, Type.TITLE_SMALL, if (card.emphasize) colors.primary else colors.onSurface).apply {
-                    setTypeface(typeface, Typeface.BOLD)
-                    letterSpacing = 0.04f
-                },
-            )
-            addView(
-                makeText(app, card.summary, Type.BODY_MEDIUM, colors.onSurfaceVariant),
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(Space.XS)
-                },
-            )
-            if (card.showChart) {
-                addView(makeDivider(app))
-                // WRAP_CONTENT gives a LineChart in a ScrollView almost no height; fixed height avoids a squished plot.
-                addView(
-                    card.chartProvider(),
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(TREND_CHART_HEIGHT_DP)).apply {
-                        topMargin = dp(Space.SM)
-                    },
-                )
-            } else {
-                addView(
-                    makeText(app, card.emptyMessage, Type.BODY_SMALL, colors.onSurfaceVariant),
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                        topMargin = dp(Space.SM)
-                    },
-                )
-            }
-        }
-    content.addView(view)
 }
 
 /** Scrolls the focus-tagged card into view once the ScrollView has measured; no-op if absent. */
@@ -289,121 +399,11 @@ private fun ScreenHost.scrollToFocus(focus: String) {
     }
     scrollView.post {
         val target = findTagged(scrollView) ?: return@post
-        scrollView.smoothScrollTo(0, target.top)
+        // Cards sit inside the card list, so offset by its own top within the scrolled content.
+        val parentTop = (target.parent as? View)?.top ?: 0
+        scrollView.smoothScrollTo(0, parentTop + target.top)
     }
 }
-
-private fun scoreSummary(points: List<Pair<Long, Double>>): String {
-    val base =
-        seriesSummary(
-            points = points,
-            formatValue = { value -> String.format(Locale.US, "%.2f", value) },
-            formatDelta = { MetricSnapshotPlanning.formatDelta(points, asScore = true) },
-        )
-    // Score has an extra min–max range line that the count/currency series don't.
-    val summary = MetricSnapshotPlanning.summary(points)
-    val range =
-        if (summary.min != null && summary.max != null && summary.min != summary.max) {
-            " · range ${String.format(Locale.US, "%.2f", summary.min)}–${String.format(Locale.US, "%.2f", summary.max)}"
-        } else {
-            ""
-        }
-    return base + range
-}
-
-/** [formatDelta] is injected so the delta matches the value's unit (USD is stored in cents, shown in dollars). */
-private fun patreonSummary(
-    points: List<Pair<Long, Double>>,
-    suffix: String,
-    formatValue: (Double) -> String,
-    formatDelta: () -> String?,
-): String = seriesSummary(points = points, suffix = suffix, formatValue = formatValue, formatDelta = formatDelta)
-
-internal fun seriesSummary(
-    points: List<Pair<Long, Double>>,
-    suffix: String = "",
-    formatValue: (Double) -> String,
-    formatDelta: () -> String?,
-): String {
-    val summary = MetricSnapshotPlanning.summary(points)
-    val current = summary.last?.let(formatValue) ?: "—"
-    val delta = formatDelta()?.let { " ($it since last sync)" } ?: ""
-    return "Current $current$suffix$delta"
-}
-
-private fun formatUsd(
-    cents: Long,
-    signed: Boolean,
-): String {
-    val dollars = (if (signed) kotlin.math.abs(cents) else cents) / 100.0
-    val prefix =
-        if (signed && cents >= 0) {
-            "+"
-        } else if (signed) {
-            "-"
-        } else {
-            ""
-        }
-    return "$prefix$${NumberFormat.getIntegerInstance(Locale.US).format(dollars.toLong())}"
-}
-
-private fun formatDate(epochMillis: Long): String =
-    DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US).format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
 
 /** Fixed chart height (dp) inside a trend card. */
 private const val TREND_CHART_HEIGHT_DP = 180
-
-// Per-source engagement chart cards. Sources without a rating (SpaceBattles, FanFiction.net) still
-// report engagement counts (watchers, favorites, follows…) on every sync; those are snapshotted
-// into the metric history and charted here, one card per metric the source's descriptor features.
-
-/** Focus token that opens the Trends screen scrolled to one metric's chart card. */
-internal fun metricFocusTag(kind: SourceMetricKind): String = "metric_${kind.name}"
-
-/**
- * Adds one chart card per featured metric that has at least one recorded point, in the source's
- * featured order. Returns how many cards were added so the caller can decide whether the
- * "nothing recorded" note still applies. Mirrors the score/Patreon cards: a one-point series gets
- * the explanatory message instead of a degenerate chart.
- */
-internal fun ScreenHost.addSourceMetricChartCards(
-    content: LinearLayout,
-    story: Story,
-    history: StoryMetricHistory,
-    focus: String?,
-): Int {
-    val featured =
-        SourceRegistry
-            .getProvider(story.sourceId, story.sourceUrl)
-            ?.descriptor
-            ?.featuredMetrics
-            .orEmpty()
-    var added = 0
-    featured.forEach { kind ->
-        val points = MetricSnapshotPlanning.metricSeries(history, kind)
-        if (points.isEmpty()) return@forEach
-        addChartCard(
-            content,
-            TrendChartCard(
-                title = kind.label,
-                focusTag = metricFocusTag(kind),
-                emphasize = focus == metricFocusTag(kind),
-                summary = countSummary(points),
-                showChart = points.size >= 2,
-                chartProvider = { buildTrendChart(app, points, TrendMetricKind.COUNT) },
-                emptyMessage = "${kind.label} will be charted after the next sync adds a second point.",
-            ),
-        )
-        added++
-    }
-    return added
-}
-
-// "Current 85.2K (+120 since last sync)" — compact value so views-scale counts stay readable, raw
-// numeric delta (counts are stored and displayed in the same unit).
-private fun countSummary(points: List<MetricPoint>): String =
-    seriesSummary(
-        points = points,
-        formatValue = { value -> formatCompactCount(value.toLong()) },
-        formatDelta = { MetricSnapshotPlanning.formatDelta(points, asScore = false) },
-    )
