@@ -62,6 +62,33 @@ coredumpctl debug <PID> --debugger-arguments="-batch -ex 'x/2gx \$rsp' -ex 'info
 A return address inside `.../emulator/lib64/gles_swiftshader/libGLESv2.so` (or SwiftShader /
 lavapipe mappings) means this is the renderer crash. Use `-gpu host`.
 
+## Known failure: SDK image not mounted (fixed 2026-11-07)
+
+Symptoms:
+- Gradle stops at once with `JAVA_HOME is set to an invalid directory: /home/bazzite/Android/jdk-17`.
+- `start_emulator.sh` reports `Emulator binary not found`, or `emulator`/`adb` are missing.
+- `ls ~/Android` is empty.
+
+Cause: the SDK, JDK and AVD all live on the ext4 image
+`/var/home/bazzite/Android-avd-ext4/avd.ext4`, loop-mounted at `/var/mnt/android-avd`
+(`~/Android` and `/mnt/android-avd` are symlinks to it). Its `/etc/fstab` entry had been
+written without the image path and mount point (`  ext4 loop,rw,relatime,nofail 0 0`), so it
+never mounted at boot.
+
+Confirm: `findmnt /var/mnt/android-avd` prints nothing, and `tail -1 /etc/fstab` lacks a source
+or target.
+
+Fix (needs root; the entry now in `/etc/fstab`):
+
+```
+/var/home/bazzite/Android-avd-ext4/avd.ext4 /var/mnt/android-avd ext4 loop,rw,relatime,nofail,x-systemd.requires-mounts-for=/var/home 0 0
+```
+
+Then `sudo systemctl daemon-reload && sudo systemctl start 'var-mnt-android\x2davd.mount'`.
+For a one-off mount without fstab:
+`sudo mount -o loop /var/home/bazzite/Android-avd-ext4/avd.ext4 /var/mnt/android-avd`.
+Never format or recreate the image: it holds the user's debug library.
+
 ## If the fast path still fails
 
 Work through these in order. Read the log after each attempt.

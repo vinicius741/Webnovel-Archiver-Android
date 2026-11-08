@@ -44,6 +44,13 @@ fi
 if running; then
   echo "• $AVD is starting; waiting for boot"
 else
+  if [ ! -x "$EMULATOR" ]; then
+    # On the dev host the SDK lives on a loop-mounted ext4 image; an unmounted image looks like
+    # an empty ~/Android. See the emulator-recovery skill.
+    echo "✗ Emulator binary not found at $EMULATOR" >&2
+    echo "  Is the SDK image mounted? findmnt /var/mnt/android-avd" >&2
+    exit 1
+  fi
   mkdir -p "$(dirname "$LOG")"
   args=(-avd "$AVD" -port "$PORT" -gpu host -no-audio -no-boot-anim -dns-server 8.8.8.8,1.1.1.1 "${window_args[@]}")
   if command -v systemd-run >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
