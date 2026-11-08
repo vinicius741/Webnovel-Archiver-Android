@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.PublicationStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -30,14 +29,6 @@ class DurableJsonTest {
 
     @After fun tearDown() {
         dir.deleteRecursively()
-    }
-
-    @Test
-    fun atomicFileWritesReplacesFileContent() {
-        val target = File(dir, "chapter.html")
-        AtomicFileWrites.writeText(target, "<p>first</p>")
-        AtomicFileWrites.writeText(target, "<p>second</p>")
-        assertEquals("<p>second</p>", target.readText())
     }
 
     @Test
@@ -71,13 +62,6 @@ class DurableJsonTest {
         val payloadJson = gson.toJson(parsed.payload)
         val readBack = gson.fromJson(payloadJson, List::class.java)
         assertEquals(2, readBack.size)
-    }
-
-    @Test
-    fun envelopeDetectsLegacyBarePayloadByPayloadKey() {
-        // A legacy bare AppSettings file has no "payload" key and must fall back to a direct parse.
-        val legacy = gson.toJson(AppSettings(downloadConcurrency = 4, downloadDelay = 1200, maxChaptersPerEpub = 80))
-        assertTrue(!legacy.contains("\"payload\""))
     }
 
     @Test

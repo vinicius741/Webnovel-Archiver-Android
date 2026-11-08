@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.download
 
-import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobPhase
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
@@ -17,7 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** Completion-driven coordinator for fair, independent source download lanes. */
 @Suppress("LongParameterList")
 internal class DownloadProcessLoop(
-    private val storage: AppStorage,
+    private val storage: DownloadQueueStore,
     private val wakeSignals: ReceiveChannel<Unit>,
     private val cleanupUnsupportedSourceJobs: () -> Unit,
     private val processJob: suspend (DownloadJob) -> Unit,
@@ -38,7 +37,6 @@ internal class DownloadProcessLoop(
             var lastScheduledSource: String? = null
 
             while (true) {
-                val settings = storage.settingsDoc.get()
                 cleanupUnsupportedSourceJobs()
                 lateinit var queue: MutableList<DownloadJob>
                 lateinit var pending: List<DownloadJob>
@@ -46,8 +44,8 @@ internal class DownloadProcessLoop(
                 // Selection and wake planning must share a timestamp: a deadline can pass while
                 // publishing progress, and dropping it then would exit with runnable jobs pending.
                 val now = nowMillis()
-                synchronized(storage) {
-                    queue = storage.getQueue()
+                synchronized(storage.lock) {
+                    queue = storage.queue()
                     val activeCounts = activeWorkers.values.groupingBy(ActiveWorker::sourceId).eachCount()
                     // Sources under manual verification keep their jobs pending; without this the
                     // loop would start each one, hit the open circuit, and fail it without any
@@ -76,7 +74,7 @@ internal class DownloadProcessLoop(
                         DownloadScheduler.selectEligibleJobs(
                             jobs = queue,
                             now = now,
-                            maxParallelSources = settings.maxParallelSources ?: 2,
+                            maxParallelSources = storage.maxParallelSources() ?: 2,
                             activeCounts = activeCounts,
                             nextAllowedAt = emptyMap(),
                             lastScheduledSource = lastScheduledSource,

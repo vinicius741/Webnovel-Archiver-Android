@@ -2,7 +2,6 @@ package com.vinicius741.webnovelarchiver.download
 
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
-import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobFailure
 import com.vinicius741.webnovelarchiver.domain.download.DownloadJobTransitions
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
@@ -26,7 +25,7 @@ internal data class BulkPreflightResult(
 
 /** Owns source-wide preflight and failure transitions without expanding DownloadEngine's process loop. */
 internal class DownloadSourceReliability(
-    private val storage: AppStorage,
+    private val storage: DownloadQueueStore,
     private val network: NetworkClient,
     private val acceptsWorkerResults: () -> Boolean,
     private val nowMillis: () -> Long = System::currentTimeMillis,

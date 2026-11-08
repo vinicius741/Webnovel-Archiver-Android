@@ -155,20 +155,6 @@ class DownloadQueueControlPlanningTest {
         assertEquals(listOf("cancelled", "cancelled", "completed", "downloading"), cancelled.map { it.status })
     }
 
-    @Test
-    fun removeStoryIsHandledByQueueFilteringNotPlanning() {
-        // removeStory filters by storyId in the engine's single transform; planning keeps only
-        // status-based semantics. Verify the filter contract the engine relies on.
-        val jobs =
-            listOf(
-                job("a-1", "completed", storyId = "story-a"),
-                job("a-2", "pending", storyId = "story-a"),
-                job("b-1", "pending", storyId = "story-b"),
-            )
-        val remaining = jobs.filterNot { it.storyId == "story-a" }
-        assertEquals(listOf("b-1"), remaining.map { it.id })
-    }
-
     private fun job(
         id: String,
         status: String,

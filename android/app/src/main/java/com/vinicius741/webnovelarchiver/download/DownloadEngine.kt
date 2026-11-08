@@ -50,12 +50,17 @@ class DownloadEngine(
     private val requestGateFactory = DownloadRequestGateFactory(repository, downloadPacer)
     private val noticeMarkerMonitor = InsertedNoticeMarkerMonitor()
     private val sourceReliability =
-        DownloadSourceReliability(storage, network, acceptsWorkerResults::get, nowMillis = time::nowMillis) { providerId, url ->
+        DownloadSourceReliability(
+            storage.downloadQueueStore(),
+            network,
+            acceptsWorkerResults::get,
+            nowMillis = time::nowMillis,
+        ) { providerId, url ->
             onSourceBlocked?.invoke(providerId, url)
         }
     private val processLoop =
         DownloadProcessLoop(
-            storage = storage,
+            storage = storage.downloadQueueStore(),
             wakeSignals = processLoopWakeSignals,
             cleanupUnsupportedSourceJobs = ::cleanupUnsupportedSourceJobs,
             processJob = ::processJob,
