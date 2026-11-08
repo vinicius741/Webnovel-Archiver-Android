@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
 import com.vinicius741.webnovelarchiver.ui.BOTTOM_BAR_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.FAB_VIEW_TAG
+import com.vinicius741.webnovelarchiver.ui.SCROLL_BODY_VIEW_TAG
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -220,7 +221,7 @@ internal const val TTS_MINI_PLAYER_TAG = "wna_tts_mini_player"
 
 /**
  * Keeps the current screen's FAB and bottom action bar clear of the bar by lifting their bottom
- * margins while it is visible.
+ * margins while it is visible, and pads a scrollable body so its last content can scroll clear.
  */
 private fun liftScreenFabAboveBar(
     root: ViewGroup,
@@ -235,6 +236,9 @@ private fun liftScreenFabAboveBar(
         }
         // The screen column already reserves the system bar, so only the lift applies.
         frame.findViewWithTag<View>(BOTTOM_BAR_VIEW_TAG)?.let { setBottomMargin(it, lift) }
+        frame.findViewWithTag<View>(SCROLL_BODY_VIEW_TAG)?.let { body ->
+            if (body.paddingBottom != lift) body.setPadding(body.paddingLeft, body.paddingTop, body.paddingRight, lift)
+        }
     }
 }
 

@@ -132,7 +132,7 @@ internal fun ScreenHost.showTtsSettings() {
             )
         }
         addView(ttsSampleCard { draftSettings() })
-        fullButton("Save TTS", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = MINI_PLAYER_CLEARANCE_DP) {
+        fullButton("Save TTS", Btn.FILLED, R.drawable.wna_check) {
             val saved = draftSettings()
             scope.launch {
                 repository.ttsSettings.save(saved)
@@ -143,8 +143,6 @@ internal fun ScreenHost.showTtsSettings() {
     }
 }
 
-/** Keeps Save reachable at the end of the scroll while the mini-player floats over the screen. */
-private const val MINI_PLAYER_CLEARANCE_DP = 88
 private const val PAUSE_STEP_MS = 50L
 private const val MS_PER_SECOND = 1_000.0
 private var sampleTextDraft: String? = null

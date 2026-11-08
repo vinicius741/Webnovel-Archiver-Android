@@ -24,4 +24,12 @@ class CompactCountFormatTest {
         assertEquals("+100K", formatTrendDelta(TrendMetricKind.COUNT, 100_000.0))
         assertEquals("-1.2K", formatTrendDelta(TrendMetricKind.COUNT, -1_200.0))
     }
+
+    @Test
+    fun patreonDollarsRoundLikeTheDetailsAndLibraryCards() {
+        // QA 2026-11-07 F2: 13,860 cents showed $138 in Trends but $139 elsewhere.
+        assertEquals("$139", formatTrendValue(TrendMetricKind.PATREON_USD, 13_860.0))
+        assertEquals("$138", formatTrendValue(TrendMetricKind.PATREON_USD, 13_849.0))
+        assertEquals("+$2", formatTrendDelta(TrendMetricKind.PATREON_USD, 150.0))
+    }
 }

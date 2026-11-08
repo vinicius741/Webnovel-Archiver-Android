@@ -130,6 +130,10 @@ internal fun ScreenHost.screen(
             // always be reached instead of being clipped by the fixed-weight content area.
             ScrollView(app).apply {
                 isFillViewport = true
+                tag = SCROLL_BODY_VIEW_TAG
+                // The TTS mini-player pads this scroller while it floats over the screen; drawing
+                // into the padding keeps content visible behind the bar until scrolled clear.
+                clipToPadding = false
                 addView(content)
                 // Restore the scroll position captured before the re-render. `post` runs after this
                 // ScrollView is attached and measured, so scrollTo sees the real scrollable range.
@@ -177,6 +181,9 @@ internal fun ScreenHost.setAppBarTitle(title: String) {
 
 /** Tags a bottom action bar (e.g. Library selection) so the TTS mini-player can lift it clear. */
 internal const val BOTTOM_BAR_VIEW_TAG = "wna_screen_bottom_bar"
+
+/** Tags a scrollable screen body so the TTS mini-player can pad its end clear of the bar. */
+internal const val SCROLL_BODY_VIEW_TAG = "wna_screen_scroll_body"
 
 /** Tags the screen FAB so the TTS mini-player can lift it out of the bar's way. */
 internal const val FAB_VIEW_TAG = "wna_screen_fab"

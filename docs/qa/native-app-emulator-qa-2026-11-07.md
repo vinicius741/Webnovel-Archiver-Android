@@ -80,6 +80,11 @@ is up.
   lifts only views tagged `FAB_VIEW_TAG` and `BOTTOM_BAR_VIEW_TAG`; a screen whose only
   scrollable column is neither (Trends) gets no bottom inset, so its content is laid out
   underneath the mini-player.
+- **Fixed in 1.0.7-native:** the scaffold's scrollable body is tagged, and the mini-player
+  pads its end by the bar's height while visible (`clipToPadding = false`), so every
+  scrollable screen can scroll its last content clear. Voice & Speech's fixed 88dp
+  clearance under Save TTS was removed as redundant. Verified on the emulator: Trends'
+  last card and Save TTS both sit above the bar with TTS playing.
 
 ### F2 (P3) — Patreon monthly earnings rendered inconsistently across screens
 
@@ -91,6 +96,9 @@ One of the two should be canonical.
 - Evidence: `09-details-top.png` and `06-library-coverview.png` ($139) vs
   `11-trends-patreon.png` / `12-trends-7d.png` ($138).
 - Independent retest: confirmed $139 in Library and $138 in Trends for the same story.
+- **Fixed in 1.0.7-native:** Trends now rounds cents to whole dollars like Details and
+  Library (`formatTrendValue`, covered by `CompactCountFormatTest`); the same story shows
+  $139/mo on all three screens.
 
 ### F3 (product judgment) — Library header count does not reflect the active search filter
 

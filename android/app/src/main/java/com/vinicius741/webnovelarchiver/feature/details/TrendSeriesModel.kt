@@ -15,6 +15,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToLong
 
 // Data behind the Trends screen, extracted once per open (off the main thread) so filter changes
 // only re-cut ready-made series instead of re-parsing the snapshot history.
@@ -154,8 +155,8 @@ internal fun formatTrendValue(
     when (kind) {
         TrendMetricKind.SCORE -> String.format(Locale.US, "%.2f", value)
         TrendMetricKind.PATREON_MEMBERS -> NumberFormat.getIntegerInstance(Locale.US).format(value.toLong())
-        // Stored in cents, shown in whole dollars.
-        TrendMetricKind.PATREON_USD -> "$" + NumberFormat.getIntegerInstance(Locale.US).format(value.toLong() / 100)
+        // Stored in cents, shown in whole dollars rounded like the Details and Library cards.
+        TrendMetricKind.PATREON_USD -> "$" + NumberFormat.getIntegerInstance(Locale.US).format((value / 100.0).roundToLong())
         TrendMetricKind.COUNT -> formatCompactCount(value.toLong())
     }
 
