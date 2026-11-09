@@ -81,6 +81,7 @@ How releases reach installed apps.
 
 | File | Description |
 |------|-------------|
+| [build-and-publish.md](release/build-and-publish.md) | Local release builds, signing setup, GitHub Actions secrets, publishing, and installation troubleshooting. |
 | `in-app-updates.md` | In-app updates from GitHub Releases: Settings → App Updates, throttled startup check and prompt, the release-notes `versionCode` marker, checksum and signature verification, `PackageInstaller` hand-off, and why only the release build installs. |
 
 ### `sources/`

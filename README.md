@@ -1,219 +1,64 @@
-# Webnovel Archiver (Android)
+# Webnovel Archiver for Android
 
-A local-first Android app for downloading, archiving, and reading webnovels offline. Built with **native Kotlin**.
+A local-first Android app for downloading, archiving, and reading webnovels offline. Built with native Kotlin. Requires Android 8.0 or newer.
 
-> **Note:** This app was originally developed with React Native / Expo and has since been fully rewritten in native Kotlin. The legacy React Native source has been removed; active development targets the native app under `android/`.
+Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFiction.net, and Archive of Our Own (AO3)**.
 
-## Key Features
+## Main features
 
-- **Multi-Source Support** — Extensible `SourceProvider` architecture with stable source descriptors for Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFiction.net, and Archive of Our Own (AO3). Providers own URL matching, fetching, parsing, network/browser policy, capabilities, and featured metadata. SpaceBattles and Sufficient Velocity imports use main Threadmarks and Reader pages, excluding forum replies and optional threadmark categories. FanFiction.net imports accept any chapter URL and discover the complete work from its chapter selector. AO3 imports accept work URLs and work/chapter URLs, use the full chapter index for updates, and preserve fandoms, warnings, tags, and engagement metrics. Public works are supported; login-restricted works currently report an error.
-- **In-App Source Browser** — Source picker plus Chrome Custom Tabs for browsing supported sites and importing novels. Cloudflare challenges use a persistent shared-session WebView, with sticky Chromium transport when the native HTTP fingerprint is rejected.
-- **Offline Library** — Download chapters for reading without an internet connection.
-- **Patreon Early Access** — Link a novel to a collection on its creator's Patreon (or all their posts, for creators without collections) and each sync stores the paid chapters your own Patreon account can read after the public ones; each copy is replaced once the public chapter downloads. A guided Settings → Data & Backup → Patreon Account screen walks through signing in with Firefox (Google works) and pastes the session in one tap; a novel's Patreon card offers sign-in, a fresh check, or the creator's tiers when early-access chapters stay locked.
-- **Built-in Reader** — WebView-based reader with sentence-level TTS highlighting, image support, last-read position tracking, and a floating TTS transport.
-- **Text-to-Speech** — Audiobook-style playback: sentences render ahead to audio for exact pause and resume, real time left, scrubbing, 15/30-second skips and natural pauses you can adjust and try on a sample in Voice & Speech, with context replay after long breaks, a listening history and Continue listening. A foreground service with MediaSession, notification/media-button controls, audio focus, and a live-speech fallback keeps narration running while you navigate the app or leave it entirely. Every story remembers where you stopped, so Read aloud resumes at the exact sentence (even from a different chapter); a floating mini-player and a full Now Playing screen (cover art, chapter/sentence skip, speed presets) control playback anywhere in the app. Story descriptions can also be read aloud from the detail page (Listen button), using the same voice settings.
-- **Updates Tracker** — Novels are followed automatically while your bookmark is within an adjustable threshold (default 5 chapters) of their latest chapter, and batch-synced concurrently for new chapters with nested chapter rows under each novel; a Following Review screen shows each novel's distance from the end and why it is or isn't followed.
-- **EPUB Export** — Generate EPUB 2.0 files with volume splitting, configurable chapter ranges, timestamped outputs, and an EPUB Files screen for leftovers.
-- **Background Downloads** — Foreground service with a persistent queue, two parallel source lanes, sequential per-source pacing, isolated bulk preflight and Cloudflare circuit breaking, `Retry-After` cooldowns, and automatic recovery. The Downloads screen shows novels in download order (Downloading now, Up next, Paused, Finished), lets you drag Up next novels to reorder them, and leads with one "needs a quick check" card per Cloudflare-blocked site; passing the check resumes that site's chapters automatically.
-- **Text Cleanup** — Automatic removal of the anti-piracy notices Royal Road inserts into chapters, separate full-sentence and regex tabs, adjustable presets for repeated punctuation, dashes, characters and separator lines, scoped targets (download, TTS, or both), live sample previews, and circuit-breaking for pathological user regex.
-- **AI Features** — Per-novel AI-generated synopses and cover art through the user's own OpenRouter key: per-task model pickers with saved per-model reasoning levels limited to the model's supported options, preview-then-apply drafts, covers and synopses with independent chapter selection and cached decision-model passage selection (Jev or any OpenRouter decision model) — visual evidence across the book for covers, premise-establishing opening chapters for descriptions — through the same OpenRouter key, saved cover versions with prompt reuse and comparison, background generation that survives navigation/app exit, exact per-request cost receipts and local spend totals, live current-key usage/limits, a Cover/Description tabbed AI screen where one strip of covers (source + saved versions) picks the displayed cover and a single prompt box decides between AI-written and hand-edited prompts, model choices in AI Settings, and an app-wide job chip plus Library/Details markers that lead back to a running or finished generation. Routine AI progress updates keep the current screen attached.
-- **Library Organization** — Custom tabs with swipe-between-tabs navigation, search, source and tag filtering with a Clear filters button, persisted sort controls (including Patreon earnings/members), and a list or large-cover grid view toggled from the app bar.
-- **Trends** — Per-novel metric history captured on every sync (score, Patreon members, monthly earnings, plus per-source engagement metrics — Watchers/Replies/Views/Likes on SpaceBattles, Favorites/Follows/Reviews on FanFiction.net, Followers/Readers on Royal Road/ScribbleHub) and graphed over time on a Trends sub-screen reached from the detail page's score row, Patreon card, tappable engagement chips, and overflow menu, with time-range (7D–1Y/All time) and metric-family filters, current-value/delta/range summaries, and same-day coalescing + bounded retention.
-- **Publication Status** — Colored status badges derived from source metadata and chapter publish dates (including outdated/hiatus lifecycle).
-- **Smart Updates** — New-chapter detection with intelligent merge, stale-EPUB marking, and source-availability tracking that preserves local chapters when a fiction disappears upstream. Downloaded chapters a source removes stay in the novel in reading order, labeled "Removed from source", with a chapter filter and an option to discard them.
-- **Backup & Restore** — JSON metadata export/import with atomic merge-on-import and rollback, plus full ZIP backup/restore.
-- **In-App Updates** — Settings → App Updates checks GitHub Releases (automatically at most twice a day, or on demand), then downloads, verifies, and installs a newer signed release in place. See `docs/release/in-app-updates.md`.
-- **Notifications Settings** — Dedicated screen for Android 13+ notification permission and channel guidance (downloads vs TTS media controls).
-- **Obsidian Theme** — A single warm dark theme with gold accents and custom typography.
+- Offline reading with saved progress, images, and background chapter downloads.
+- Text-to-speech with sentence highlighting, playback controls, and per-story resume.
+- New-chapter tracking, library tabs, search, filters, and novel popularity trends.
+- EPUB export, text cleanup, and full library backup and restore.
+- Patreon early-access chapters available through your own account.
+- Optional AI cover art and synopses using your own OpenRouter API key, with cost tracking.
 
-## Tech Stack
+## Install
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Kotlin 2.4.21 |
-| UI | Programmatic Android Views (no XML layouts) |
-| Build | Gradle 9.8.2 + AGP 9.4.1 |
-| HTTP Client | OkHttp 5.5.1 + shared source coordinator + sticky Chromium transport for challenged hosts |
-| HTML Parsing | Jsoup 1.23 |
-| JSON | Gson 2.15 |
-| Async | Kotlin Coroutines 1.11 |
-| Images | Coil 3.6 |
-| Charts | MPAndroidChart 4.0.1 (trend graphs; JitPack MPChartLib) |
-| Logging | Timber 5 (debug-gated in release) |
-| Storage | File-based JSON via `AppStorage` / `AppRepository` (no Room/SQLite) |
-| TTS | Android TextToSpeech rendered to cached audio, AudioTrack playback, MediaSession |
-| Services | Foreground Services (dataSync, mediaPlayback) |
-| Browser | AndroidX Browser Custom Tabs |
-| Testing | JUnit 4, MockWebServer, coroutines-test; instrumentation build type for device tests |
-| Quality | kotlinter, detekt, Android lint, Kotlin file-size budget, R8 minify/shrink on release |
+Download the APK from the [latest release](https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest) and open it on your Android device. Allow installation from your browser if prompted.
 
-## Getting Started
+After installation, use **Settings → App Updates** to check for new versions. Install updates over the existing app to keep your library.
 
-### Prerequisites
+## Development
 
-- Android Studio (latest)
-- JDK 17
-- Android SDK with compileSdk 37
+Open `android/` in Android Studio. You need JDK 17 and Android SDK platform 37.
 
-### Build an APK to Install on a Phone
+Run from the repository root:
 
 ```bash
-cd android
-./gradlew :app:assembleRelease
+# Build the debug app for the emulator
+android/gradlew -p android :app:assembleDebug
+
+# Run unit tests
+android/gradlew -p android :app:testDebugUnitTest
+
+# Run the full local quality gate
+android/gradlew -p android :app:lintKotlin :app:ci
 ```
 
-Install the signed release APK from `android/app/build/outputs/apk/release/app-release.apk`. To skip the optional convenience copy, add `-x copyReleaseApkToProjectRoot` to the build command.
+The debug APK is at `android/app/build/outputs/apk/debug/app-debug.apk`. Debug and release builds have separate app IDs and libraries. Use debug on the emulator and a signed release on your phone.
 
-Its package ID is `com.vinicius741.webnovelarchiver.nativeapp`, and its launcher name is `Webnovel Archiver Native`.
+For release builds, signing, and GitHub Actions publishing, see the [release guide](docs/release/build-and-publish.md).
 
-If Android shows `App not installed`, check the signing certificate and version code. An update must use the original signing key and must not have a lower version code. Do not uninstall to work around this: uninstalling deletes the app's local data. Use the fresh Gradle output above rather than an older copy in `apk-output/`.
+### Code layout
 
-Do not use `./gradlew :app:assembleDebug` for the APK you send to your phone. That command creates `apk-output/WebnovelArchiver-Test-debug.apk`, which is a development build signed with the Android debug key and labeled `Webnovel Archiver Native Test`. When sideloaded, Play Protect is expected to warn that it has not seen the developer before.
+The app uses Android Views, Kotlin coroutines, OkHttp, Jsoup, and file-based JSON storage. Production packages live under `android/app/src/main/java/com/vinicius741/webnovelarchiver/`:
 
-Sideloaded release APKs can still receive a Play Protect "unknown developer" warning until the signing certificate/app gains reputation or the app is distributed through Google Play testing/production channels, but `assembleRelease` is the correct command for a normal signed APK.
+| Packages | Purpose |
+|----------|---------|
+| `app/`, `navigation/` | Startup, shared dependencies, and navigation |
+| `feature/`, `ui/` | Screens, shared widgets, and theme |
+| `domain/`, `data/` | Models, domain rules, persistence, and backups |
+| `source/`, `sync/`, `download/` | Site providers, story updates, and download queue |
+| `tts/`, `epub/`, `cleanup/`, `ai/` | Narration, export, text cleanup, and AI generation |
+| `appupdate/`, `notification/`, `perf/` | App updates, notifications, and debug performance tracking |
 
-### First-Time Release Signing Setup
+Unit tests live in `android/app/src/test/`; device tests live in `android/app/src/androidTest/` and use an isolated instrumentation app.
 
-Release signing is configured on the owner's Mac through `android/local.properties`. Other machines need their own signing setup. To update an existing installation, transfer the original keystore securely and reuse its alias and passwords. Keep a backup outside the repository; generating a replacement key will not let you update an app signed with the original key.
+## Documentation and contributing
 
-For a new app that has never been distributed, create the keystore:
+Read the [repository instructions](AGENTS.md) and [Android development guide](android/AGENTS.md) before contributing. Active development targets `android/`.
 
-```bash
-keytool -genkeypair -v \
-  -keystore "$HOME/.android/webnovel-archiver-release.jks" \
-  -alias webnovel-archiver \
-  -keyalg RSA \
-  -keysize 2048 \
-  -validity 10000
-```
-
-Then add these values to `android/local.properties`, or export them before running Gradle:
-
-```bash
-WEBNOVEL_RELEASE_STORE_FILE=$HOME/.android/webnovel-archiver-release.jks
-WEBNOVEL_RELEASE_STORE_PASSWORD=your-keystore-password
-WEBNOVEL_RELEASE_KEY_ALIAS=webnovel-archiver
-WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
-```
-
-### Build and publish with GitHub Actions
-
-The manual workflow in [android-release.yml](.github/workflows/android-release.yml) builds and publishes a signed APK without needing the Mac online. It runs only on `main`, runs the full quality gate, verifies the APK signature and package/version, and publishes a GitHub Release. It does not run automatically on pushes or pull requests.
-
-One-time setup on the Mac that holds the original signing key:
-
-1. In the repository's **Settings → Secrets and variables → Actions**, add these repository secrets using the existing release signing values:
-
-   | Secret | Value |
-   |--------|-------|
-   | `WEBNOVEL_RELEASE_KEYSTORE_BASE64` | Base64 encoding of the original `.jks` file |
-   | `WEBNOVEL_RELEASE_STORE_PASSWORD` | Existing keystore password |
-   | `WEBNOVEL_RELEASE_KEY_ALIAS` | Existing signing alias |
-   | `WEBNOVEL_RELEASE_KEY_PASSWORD` | Existing key password |
-
-   On macOS, copy the keystore encoding directly to the clipboard with `base64 -i /path/to/original-release.jks | tr -d '\n' | pbcopy`, then paste it into the secret field. Base64 is an encoding, not encryption. Never commit it, the keystore, or passwords to the repository or paste them into chat.
-
-2. Once the workflow is committed and pushed to `main`, open **Actions → Publish Android APK → Run workflow**, select `main`, and run it.
-3. After it succeeds, open [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) on the phone, download the **WebnovelArchiver-v<version>-<run-id>-<attempt>.apk** asset, and open it. Allow installation from the browser if Android asks. Keep the existing app installed to preserve its library.
-
-For each subsequent release, increase both `versionCode` and `versionName` in `android/app/build.gradle`, commit and push the intended changes, then run the workflow again. Each version gets a `v<versionName>` tag; existing tags are never overwritten. The first run can publish the current version if it has no tag yet. A failed run that already created a release must be checked before retrying.
-
-Each published APK filename includes the app version, GitHub Actions run ID, and run attempt so different runs and retries use different filenames. The workflow summary links directly to that run's APK. The latest release page is available without a GitHub login:
-
-https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest
-
-After the first install, the release app updates itself: it finds new releases through **Settings → App Updates** (and an automatic startup check) and installs them in place. The workflow adds a hidden `<!-- app-update versionCode=N -->` marker to the release notes for this; do not remove it when editing a release.
-
-### Development
-
-Open the `android/` directory in Android Studio. The project uses:
-- `compileSdk` 37, `minSdk` 26, `targetSdk` 36
-- Kotlin 2.4.21, AGP 9.4.1, Gradle wrapper 9.8.2
-
-For a side-by-side development build:
-
-```bash
-cd android
-./gradlew :app:assembleDebug
-```
-
-This produces `apk-output/WebnovelArchiver-Test-debug.apk` with package ID `com.vinicius741.webnovelarchiver.nativeapp.debug`.
-
-There is also an `instrumentation` build type (`…nativeapp.instrumentation`) used for connected tests so they do not share the debug app’s library sandbox.
-
-For emulator redeploy scripts and the debug-only “cold-start into a screen” helper, see `android/AGENTS.md`.
-
-Offline agent QA can exercise AI generation, downloads, and Cloudflare recovery without API
-charges or live sites. Run `python3 scripts/simulate.py list`, then select a scenario such as
-`python3 scripts/simulate.py run ai-cover --until completed`. Sessions use disposable storage,
-dummy credentials, configurable delays, and held requests. See
-[Offline agent testing](docs/qa/offline-simulation.md) for manual checks, reports, and cleanup.
-
-The default `webnovel_api36` emulator approximates the Galaxy Z Fold7's cover and inner displays.
-Use its fold/unfold controls to check both layouts. The reproducible profile and migration helpers
-live under `scripts/emulator/`; they preserve the existing debug library. See `android/AGENTS.md`
-for setup and screenshot selection. The emulator uses Google's Android image and approximate
-display scaling, so Samsung One UI still requires a separate device check.
-
-### Testing
-
-```bash
-cd android
-./gradlew :app:testDebugUnitTest              # All unit tests
-./gradlew :app:testDebugUnitTest --tests "*.TextCleanupTest"  # Single test class
-./gradlew :app:lintKotlin                     # Kotlin formatting check
-./gradlew :app:detekt                         # Static analysis
-./gradlew :app:lintDebug                      # Android lint
-./gradlew :app:lintKotlin :app:ci             # Full local quality gate
-```
-
-See `AGENTS.md` (repo-wide rules) and `android/AGENTS.md` (architecture, coding standards, emulator workflow) before contributing.
-
-## Project Structure
-
-```
-android/
-  app/
-    src/
-      main/
-        java/com/vinicius741/webnovelarchiver/
-          app/                 # Application, MainActivity, AppContainer, startup recovery
-          navigation/          # AppRoute, AppNavigator, ScreenHost
-          feature/             # UI by flow: library, details, reader, player (TTS mini-player
-                               # + Now Playing), browser, downloads, updates, settings, cleanup,
-                               # ai (screen state and progress binding), shared manual story sync
-          domain/              # Models + pure domain rules (story, archive, download job lifecycle)
-          data/
-            repository/        # AppRepository — single owner of library/queue/settings
-            storage/           # AppStorage + atomic writes, recovery, backup orchestration
-            backup/            # Backup/restore planning and validation
-            diagnostics/       # Local diagnostics export + shareable Cloudflare bypass event log
-          source/              # Provider descriptors, registry, parsers, and source-owned loading
-            network/           # OkHttp client, Cloudflare cookie jar + Chromium fallback
-          sync/                # Story sync engine + merge planning, Patreon early-access step
-          download/            # Download engine, queue, foreground service
-          epub/                # EPUB generation
-          cleanup/             # Text cleanup for download + TTS
-          tts/                 # TTS engine, audio rendering + player, foreground service
-          ai/                  # OpenRouter client + decision-model chapter selection, AI engines and background jobs
-          appupdate/           # In-app updates: GitHub release check, verified APK download, installer session
-          notification/        # Notification channels + permission helpers
-          ui/                  # Programmatic View DSL, shared form spacing, the Obsidian theme, widgets
-        AndroidManifest.xml
-      debug/                   # Offline simulation scenarios, fixtures, runner control activity
-      release/                 # Inert development-environment factory
-      testInstrumentation/     # Simulation unit and local HTTP tests for the instrumentation variant
-      test/                    # Unit tests mirroring production packages
-      androidTest/             # Instrumentation tests
-    build.gradle
-  build.gradle
-  gradle/quality.gradle        # detekt, file-size budget, :app:ci gate
-  settings.gradle
-docs/                          # Long-form docs by subject (see docs/README.md)
-scripts/                       # redeploy.sh, watch-redeploy.sh, simulate.py, emulator/start_emulator.sh (emulator only)
-.agents/skills/                # Agent skills (build/install, dev launch, emulator QA/recovery, multi-model review)
-```
-
-## Contributing
-
-Contributions are welcome! Please read `AGENTS.md` and `android/AGENTS.md` before submitting a PR. All changes should target the native Kotlin app under `android/`.
+- [Documentation index](docs/README.md) for feature details and architecture notes.
+- [Adding a source](docs/sources/adding-a-source.md) for new novel sites.
+- [Offline testing](docs/qa/offline-simulation.md) for testing without live sites or API charges.
