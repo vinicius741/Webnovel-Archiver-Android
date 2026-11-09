@@ -24,6 +24,7 @@ under `android/`.
 
 | File | Description |
 |------|-------------|
+| `implicit-state-machines-2026-11-07.md` | Static inventory of 75 implicit and partially explicit workflow boundaries, their state fields, transitions, source locations, and refactoring priorities. |
 | `simplification-roadmap-2026-10-06.md` | Structural simplification roadmap with checklists: file-cap and planning-rule cleanup, one AI job pipeline, generic settings documents, screen architecture (Compose or per-screen controllers), Room for library/queue, and TTS on Media3; includes baseline measurements and a progress log. |
 | `ui-spacing.md` | Shared spacing scale, form layout defaults, concise control copy, and foldable visual checks for new screens and dialogs. |
 | `simplification-implementation-handoff-2026-09-07.md` | Implementation plan and execution record for simpler cover controls, shared manual sync and AI notifications, in-place AI progress, and the bounded immutable source-state pilot; includes regression tests and emulator evidence. |
