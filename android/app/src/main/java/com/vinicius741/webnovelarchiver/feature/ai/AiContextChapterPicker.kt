@@ -1,20 +1,24 @@
 package com.vinicius741.webnovelarchiver.feature.ai
 
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.widget.doAfterTextChanged
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.ai.AiCoverContextPlanning
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.setAiCoverContextChapters
 import com.vinicius741.webnovelarchiver.data.storage.EvidenceSelectionKind
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
@@ -119,20 +123,26 @@ private fun ScreenHost.showAiContextChapterDialog(
             setPadding(0, app.dp(Space.MD), 0, app.dp(Space.SM))
         }
     dialogView.addView(resultCount)
-    val list = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    val adapter = ContextChapterAdapter(checked)
+    val emptyState =
+        makeText(app, "No chapters match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant).apply {
+            setPadding(0, app.dp(Space.LG), 0, app.dp(Space.LG))
+            visibility = View.GONE
+        }
+    dialogView.addView(emptyState)
     val maxListHeight = minOf(app.dp(380), (app.resources.displayMetrics.heightPixels * 0.48f).toInt())
-    dialogView.addView(
-        ScrollView(app).apply {
-            isFillViewport = true
-            addView(list)
-        },
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, maxListHeight),
-    )
+    val list =
+        RecyclerView(app).apply {
+            layoutManager = LinearLayoutManager(app)
+            this.adapter = adapter
+            itemAnimator = null
+        }
+    dialogView.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, maxListHeight))
 
     var dialogRef: AlertDialog? = null
 
-    // Long novels can list over a thousand downloaded chapters; render only search matches (capped)
-    // so the dialog never inflates one subtree per chapter on the main thread.
+    // Long novels can list over a thousand downloaded chapters; the RecyclerView binds only the
+    // rows on screen, so the full list stays scrollable without inflating one subtree per chapter.
     fun renderRows() {
         val query = search.text.toString().trim()
         val filtered =
@@ -140,60 +150,11 @@ private fun ScreenHost.showAiContextChapterDialog(
                 matchesChapterQuery(index, chapter.title, query)
             }
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "chapter" else "chapters"}"
-        list.removeAllViews()
-        filtered.take(MAX_RENDERED_CHAPTERS).forEach { (index, chapter) ->
-            val checkBox =
-                CheckBox(app).apply {
-                    text = ""
-                    isChecked = index in checked
-                }
-            styledCheckBox(checkBox)
-            checkBox.setOnCheckedChangeListener { _, isChecked ->
-                if (isChecked) checked.add(index) else checked.remove(index)
-            }
-            list.addView(
-                LinearLayout(app).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, app.dp(Space.SM), 0, app.dp(Space.SM))
-                    isClickable = true
-                    addView(
-                        checkBox,
-                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
-                    )
-                    addView(
-                        LinearLayout(app).apply {
-                            orientation = LinearLayout.VERTICAL
-                            addView(makeText(app, "Chapter ${index + 1}", Type.BODY_LARGE, colors.onSurface))
-                            chapter.title.takeIf { it.isNotBlank() }?.let { title ->
-                                addView(
-                                    makeText(app, title, Type.BODY_SMALL, colors.onSurfaceVariant).apply {
-                                        setPadding(0, app.dp(Space.XS), 0, 0)
-                                    },
-                                )
-                            }
-                        },
-                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                    )
-                    setOnClickListener { checkBox.toggle() }
-                },
-            )
-        }
-        if (filtered.size > MAX_RENDERED_CHAPTERS) {
-            list.addView(
-                makeText(
-                    app,
-                    "...and ${filtered.size - MAX_RENDERED_CHAPTERS} more — refine your search",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ).apply { setPadding(0, app.dp(Space.SM), 0, app.dp(Space.SM)) },
-            )
-        } else if (filtered.isEmpty()) {
-            list.addView(
-                makeText(app, "No chapters match your search.", Type.BODY_MEDIUM, colors.onSurfaceVariant)
-                    .apply { setPadding(0, app.dp(Space.LG), 0, app.dp(Space.LG)) },
-            )
-        }
+        adapter.submit(filtered)
+        list.scrollToPosition(0)
+        val empty = filtered.isEmpty()
+        emptyState.visibility = if (empty) View.VISIBLE else View.GONE
+        list.visibility = if (empty) View.GONE else View.VISIBLE
     }
 
     search.doAfterTextChanged { renderRows() }
@@ -245,8 +206,81 @@ private fun ScreenHost.showAiContextChapterDialog(
     dialogRef.show()
 }
 
-// Render cap for the dialog list; scrolling hundreds of rows on a phone dialog gets sluggish.
-private const val MAX_RENDERED_CHAPTERS = 80
+/** Recycled checkbox rows over the filtered chapters; [checked] is the dialog's live selection. */
+private class ContextChapterAdapter(
+    private val checked: MutableSet<Int>,
+) : RecyclerView.Adapter<ContextChapterAdapter.Holder>() {
+    private var items: List<IndexedValue<Chapter>> = emptyList()
+
+    class Holder(
+        row: LinearLayout,
+        val checkBox: CheckBox,
+        val number: TextView,
+        val title: TextView,
+    ) : RecyclerView.ViewHolder(row)
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun submit(next: List<IndexedValue<Chapter>>) {
+        items = next
+        notifyDataSetChanged()
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    override fun onCreateViewHolder(
+        parent: ViewGroup,
+        viewType: Int,
+    ): Holder {
+        val context = parent.context
+        val colors = ThemeManager.colors
+        val checkBox = CheckBox(context).apply { text = "" }
+        styledCheckBox(checkBox)
+        val number = makeText(context, "", Type.BODY_LARGE, colors.onSurface)
+        val title =
+            makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+                setPadding(0, context.dp(Space.XS), 0, 0)
+            }
+        val row =
+            LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, context.dp(Space.SM), 0, context.dp(Space.SM))
+                isClickable = true
+                layoutParams =
+                    RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                addView(
+                    checkBox,
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+                )
+                addView(
+                    LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(number)
+                        addView(title)
+                    },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                setOnClickListener { checkBox.toggle() }
+            }
+        return Holder(row, checkBox, number, title)
+    }
+
+    override fun onBindViewHolder(
+        holder: Holder,
+        position: Int,
+    ) {
+        val (index, chapter) = items[position]
+        holder.number.text = "Chapter ${index + 1}"
+        holder.title.text = chapter.title
+        holder.title.visibility = if (chapter.title.isBlank()) View.GONE else View.VISIBLE
+        // Detach before restoring state so a recycled row never writes its old chapter's toggle.
+        holder.checkBox.setOnCheckedChangeListener(null)
+        holder.checkBox.isChecked = index in checked
+        holder.checkBox.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) checked.add(index) else checked.remove(index)
+        }
+    }
+}
 
 private data class ContextPickerConfig(
     val checked: MutableSet<Int>,
