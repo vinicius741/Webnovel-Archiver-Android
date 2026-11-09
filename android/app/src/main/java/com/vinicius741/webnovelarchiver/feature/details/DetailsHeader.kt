@@ -5,6 +5,7 @@ import android.net.Uri
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -13,6 +14,7 @@ import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning.TrendDirection
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.ReleaseCadencePlanning
 import com.vinicius741.webnovelarchiver.domain.story.SourceMetadataPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -100,6 +102,7 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
         }
         col.addView(badgeRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
+    releaseForecastLine(story)?.let(col::addView)
     // Tap opens Trends on the score series. The trend arrow loads async (metric history is not in
     // the repository's in-memory cache) and stays hidden without a meaningful direction.
     story.score?.takeIf { it.isNotBlank() }?.let { score ->
@@ -156,6 +159,45 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
         )
     }
     return DetailsHeader(col, progressSummary)
+}
+
+/**
+ * Small next-chapter prediction from recent release dates; null when the story has too few dated
+ * releases. The copy depends on the clock, so it re-renders whenever the window regains focus
+ * (resume, dialog dismissal) or the header reattaches, rather than freezing at build time.
+ */
+private fun ScreenHost.releaseForecastLine(story: Story): TextView? {
+    if (ReleaseCadencePlanning.forecast(story) == null) return null
+    return makeText(app, "", Type.BODY_SMALL).apply {
+        gravity = Gravity.CENTER
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(Space.SM)
+            }
+
+        fun render() {
+            val now = System.currentTimeMillis()
+            // Availability depends only on the story, so a forecast present at build stays present.
+            val forecast = ReleaseCadencePlanning.forecast(story, now) ?: return
+            text = ReleaseCadencePlanning.describe(forecast, now)
+            val late = forecast is ReleaseCadencePlanning.Forecast.Late
+            setTextColor(if (late) ThemeManager.colors.tertiary else ThemeManager.colors.onSurfaceVariant)
+        }
+        render()
+        val onFocus = ViewTreeObserver.OnWindowFocusChangeListener { hasFocus -> if (hasFocus) render() }
+        addOnAttachStateChangeListener(
+            object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {
+                    v.viewTreeObserver.addOnWindowFocusChangeListener(onFocus)
+                    render()
+                }
+
+                override fun onViewDetachedFromWindow(v: View) {
+                    v.viewTreeObserver.removeOnWindowFocusChangeListener(onFocus)
+                }
+            },
+        )
+    }
 }
 
 /** Patches the trend arrow in place from metric history (not held in the repository's in-memory cache). */
