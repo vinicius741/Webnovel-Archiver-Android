@@ -1,8 +1,8 @@
 package com.vinicius741.webnovelarchiver.appupdate
 
-// Pure decisions for in-app updates from GitHub Releases: version ordering, asset/checksum
-// selection, and automatic-check timing. Android, network, and file I/O live in
-// AppUpdateCoordinator, GitHubReleaseClient, and AppUpdateInstaller.
+// Pure decisions for in-app update checks against GitHub Releases: version ordering, asset
+// selection, and automatic-check timing. Android and network I/O live in AppUpdateCoordinator and
+// GitHubReleaseClient.
 
 sealed interface UpdateEvaluation {
     data class UpToDate(
@@ -13,7 +13,7 @@ sealed interface UpdateEvaluation {
         val update: AvailableUpdate,
     ) : UpdateEvaluation
 
-    /** A newer release exists but has nothing this app can install. */
+    /** A newer release exists but has no APK attached. */
     data class Unusable(
         val latestTag: String,
         val reason: String,
@@ -22,11 +22,9 @@ sealed interface UpdateEvaluation {
 
 object AppUpdatePlanning {
     const val AUTO_CHECK_INTERVAL_MILLIS: Long = 12L * 60 * 60 * 1000
-    const val CHECKSUM_FILE_NAME = "SHA256SUMS.txt"
     private const val PREFERRED_APK_PREFIX = "WebnovelArchiver"
     private val VERSION_CODE_MARKER = Regex("""<!--\s*app-update\s+versionCode=(\d+)\s*-->""")
     private val NUMERIC_VERSION = Regex("""^\d+(?:\.\d+)*""")
-    internal val SHA256_HEX = Regex("^[0-9a-f]{64}$")
 
     fun versionNameFromTag(tag: String): String = tag.trim().removePrefix("v").removePrefix("V")
 
@@ -62,7 +60,7 @@ object AppUpdatePlanning {
             ?.map { it.toLongOrNull() ?: 0L }
             .orEmpty()
 
-    /** The installable APK: the workflow's `WebnovelArchiver*.apk` when present, otherwise the only APK. */
+    /** The APK the browser downloads: the workflow's `WebnovelArchiver*.apk` when present, otherwise the only APK. */
     fun selectApk(assets: List<ReleaseAsset>): ReleaseAsset? {
         val apks = assets.filter { it.name.endsWith(".apk", ignoreCase = true) }
         return apks.firstOrNull { it.name.startsWith(PREFERRED_APK_PREFIX) } ?: apks.singleOrNull()
@@ -92,23 +90,10 @@ object AppUpdatePlanning {
                 versionName = versionName,
                 versionCode = versionCode,
                 apk = apk,
-                checksumAsset = release.assets.firstOrNull { it.name.equals(CHECKSUM_FILE_NAME, ignoreCase = true) },
                 releaseUrl = release.htmlUrl,
             ),
         )
     }
-
-    /** Finds [fileName]'s hash in `sha256sum` output (`<hex>  <name>` or `<hex> *<name>`). */
-    fun checksumFromSums(
-        sums: String,
-        fileName: String,
-    ): String? =
-        sums.lineSequence().firstNotNullOfOrNull { line ->
-            val parts = line.trim().split(Regex("\\s+"), limit = 2)
-            val hash = parts.getOrNull(0)?.lowercase()
-            val name = parts.getOrNull(1)?.removePrefix("*")
-            hash?.takeIf { name == fileName && SHA256_HEX.matches(it) }
-        }
 
     fun shouldAutoCheck(
         enabled: Boolean,
@@ -127,20 +112,4 @@ object AppUpdatePlanning {
         promptedTag: String?,
         skippedTag: String?,
     ): Boolean = updateTag != promptedTag && updateTag != skippedTag
-
-    /** Why a downloaded APK must not be handed to the installer, or `null` when it may proceed. */
-    fun archiveRejection(
-        archivePackage: String?,
-        archiveVersionCode: Long?,
-        installedPackage: String,
-        installedVersionCode: Long,
-        signaturesMatch: Boolean,
-    ): String? =
-        when {
-            archivePackage == null || archiveVersionCode == null -> "The downloaded file is not a valid app"
-            archivePackage != installedPackage -> "The downloaded app is a different app ($archivePackage)"
-            archiveVersionCode <= installedVersionCode -> "The downloaded app is not newer than the installed one"
-            !signaturesMatch -> "The downloaded app is not signed with this app's release key"
-            else -> null
-        }
 }

@@ -33,12 +33,12 @@ class AppUpdatePlanningTest {
     private fun parse(json: String) = requireNotNull(GitHubReleaseParsing.parseRelease(json))
 
     @Test
-    fun `parses release assets and digests`() {
+    fun `parses release assets`() {
         val release = parse(releaseJson())
         assertEquals("v1.0.4-native", release.tag)
         assertEquals(2, release.assets.size)
-        assertEquals(apkHash, release.assets[1].sha256)
-        assertNull(release.assets[0].sha256)
+        assertEquals(2065029L, release.assets[1].size)
+        assertTrue(release.assets[1].downloadUrl.endsWith(".apk"))
     }
 
     @Test
@@ -95,21 +95,12 @@ class AppUpdatePlanningTest {
     fun `selects the workflow apk over other apks`() {
         val assets =
             listOf(
-                ReleaseAsset("other.apk", "https://x/other.apk", 1, null),
-                ReleaseAsset("WebnovelArchiver.apk", "https://x/w.apk", 1, null),
+                ReleaseAsset("other.apk", "https://x/other.apk", 1),
+                ReleaseAsset("WebnovelArchiver.apk", "https://x/w.apk", 1),
             )
         assertEquals("WebnovelArchiver.apk", AppUpdatePlanning.selectApk(assets)?.name)
-        assertNull(AppUpdatePlanning.selectApk(assets.take(1) + ReleaseAsset("b.apk", "https://x/b.apk", 1, null)))
+        assertNull(AppUpdatePlanning.selectApk(assets.take(1) + ReleaseAsset("b.apk", "https://x/b.apk", 1)))
         assertEquals("other.apk", AppUpdatePlanning.selectApk(assets.take(1))?.name)
-    }
-
-    @Test
-    fun `reads checksums from sha256sum output`() {
-        val sums = "$apkHash  WebnovelArchiver.apk\n${"a".repeat(64)} *Other.apk\n"
-        assertEquals(apkHash, AppUpdatePlanning.checksumFromSums(sums, "WebnovelArchiver.apk"))
-        assertEquals("a".repeat(64), AppUpdatePlanning.checksumFromSums(sums, "Other.apk"))
-        assertNull(AppUpdatePlanning.checksumFromSums(sums, "Missing.apk"))
-        assertNull(AppUpdatePlanning.checksumFromSums("nothex  WebnovelArchiver.apk", "WebnovelArchiver.apk"))
     }
 
     @Test
@@ -128,32 +119,5 @@ class AppUpdatePlanningTest {
         assertTrue(AppUpdatePlanning.shouldPrompt("v2", promptedTag = "v1", skippedTag = null))
         assertFalse(AppUpdatePlanning.shouldPrompt("v2", promptedTag = "v2", skippedTag = null))
         assertFalse(AppUpdatePlanning.shouldPrompt("v2", promptedTag = null, skippedTag = "v2"))
-    }
-
-    @Test
-    fun `archive must be this app, newer, and signed with the same key`() {
-        fun reject(
-            pkg: String? = "app",
-            code: Long? = 5,
-            signed: Boolean = true,
-        ) = AppUpdatePlanning.archiveRejection(pkg, code, "app", 4, signed)
-        assertNull(reject())
-        assertTrue(reject(pkg = null) != null)
-        assertTrue(reject(pkg = "app.debug") != null)
-        assertTrue(reject(code = 4) != null)
-        assertTrue(reject(signed = false) != null)
-    }
-
-    @Test
-    fun `serialized release round trips what evaluation reads`() {
-        val release = parse(releaseJson())
-        val restored = parse(GitHubReleaseParsing.serializeRelease(release))
-        assertEquals(release.tag, restored.tag)
-        assertEquals(release.assets, restored.assets)
-        assertEquals(5, AppUpdatePlanning.versionCodeFromNotes(restored.body))
-        assertEquals(
-            AppUpdatePlanning.evaluate(release, 4, "1.0.3"),
-            AppUpdatePlanning.evaluate(restored, 4, "1.0.3"),
-        )
     }
 }

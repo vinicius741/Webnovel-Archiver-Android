@@ -9,8 +9,6 @@ data class ReleaseAsset(
     val name: String,
     val downloadUrl: String,
     val size: Long,
-    /** Lowercase hex SHA-256 from GitHub's asset `digest` field, when present. */
-    val sha256: String?,
 )
 
 data class LatestRelease(
@@ -30,7 +28,6 @@ data class AvailableUpdate(
     /** Declared by the release workflow's marker; `null` for releases published before it existed. */
     val versionCode: Int?,
     val apk: ReleaseAsset,
-    val checksumAsset: ReleaseAsset?,
     val releaseUrl: String,
 )
 
@@ -61,13 +58,7 @@ object GitHubReleaseParsing {
     private fun parseAsset(asset: JsonObject): ReleaseAsset? {
         val name = asset.string("name")?.takeIf { it.isNotBlank() } ?: return null
         val url = asset.string("browser_download_url")?.takeIf { it.startsWith("https://") } ?: return null
-        val digest =
-            asset
-                .string("digest")
-                ?.lowercase()
-                ?.removePrefix("sha256:")
-                ?.takeIf(AppUpdatePlanning.SHA256_HEX::matches)
-        return ReleaseAsset(name = name, downloadUrl = url, size = asset.long("size"), sha256 = digest)
+        return ReleaseAsset(name = name, downloadUrl = url, size = asset.long("size"))
     }
 
     /** Re-serializes only the fields [parseRelease] reads, so the cached copy stays small. */
@@ -90,7 +81,6 @@ object GitHubReleaseParsing {
                     addProperty("name", asset.name)
                     addProperty("browser_download_url", asset.downloadUrl)
                     addProperty("size", asset.size)
-                    asset.sha256?.let { addProperty("digest", "sha256:$it") }
                 },
             )
         }

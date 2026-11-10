@@ -1,90 +1,51 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
 import android.app.AlertDialog
+import android.content.Intent
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.appupdate.AppUpdateCoordinator
-import com.vinicius741.webnovelarchiver.appupdate.AppUpdateInstaller
 import com.vinicius741.webnovelarchiver.appupdate.AppUpdateState
 import com.vinicius741.webnovelarchiver.appupdate.AvailableUpdate
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.applyAppTheme
-import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
 
 // App-update entry points used outside the App Updates screen (Settings row, startup dialog) and
-// the download -> install hand-off both surfaces share.
+// the browser hand-off both surfaces share.
 
-/**
- * Release tag whose download should continue straight into the installer once verified (set by
- * "Download and install" or the startup dialog). Process memory only: after a restart the user
- * taps Install on the downloaded update instead.
- */
-private var installWhenReadyTag: String? = null
-
-/** Settings row summary: installed version plus anything that needs the user's attention. */
+/** Settings row summary: installed version plus a found release. */
 internal fun appUpdateSummary(updates: AppUpdateCoordinator): String {
-    val status =
-        when (val state = updates.state.value) {
-            is AppUpdateState.Available -> "Version ${state.update.versionName} available"
-            is AppUpdateState.Downloading -> "Downloading update"
-            is AppUpdateState.ReadyToInstall, is AppUpdateState.AwaitingConfirmation -> "Update ready to install"
-            else -> null
-        }
+    val status = (updates.state.value as? AppUpdateState.Available)?.let { "Version ${it.update.versionName} available" }
     return listOfNotNull("Version ${updates.installedVersionName}", status).joinToString(" · ")
 }
 
-internal fun appUpdateNeedsAttention(updates: AppUpdateCoordinator): Boolean =
-    when (val state = updates.state.value) {
-        is AppUpdateState.Available -> updates.installSupported && state.update.tag != updates.preferences.skippedTag
-        is AppUpdateState.ReadyToInstall, is AppUpdateState.AwaitingConfirmation -> true
-        else -> false
-    }
-
-internal fun ScreenHost.downloadAndInstall(
-    updates: AppUpdateCoordinator,
-    update: AvailableUpdate,
-) {
-    installWhenReadyTag = update.tag
-    updates.download(update)
+internal fun appUpdateNeedsAttention(updates: AppUpdateCoordinator): Boolean {
+    val state = updates.state.value as? AppUpdateState.Available ?: return false
+    return updates.releaseBuild && state.update.tag != updates.preferences.skippedTag
 }
 
-internal fun cancelAppUpdateDownload(updates: AppUpdateCoordinator) {
-    installWhenReadyTag = null
-    updates.cancelDownload()
+/**
+ * Opens the release APK in the browser. The browser downloads it and Android's package installer
+ * installs it over this app, which keeps the install-packages permission out of this app.
+ */
+internal fun ScreenHost.openUpdateDownload(update: AvailableUpdate) {
+    openExternal(update.apk.downloadUrl.ifBlank { update.releaseUrl }, "Could not open the browser")
 }
 
-/** Continues a requested install once the download is verified and Android lets this app install. */
-internal fun ScreenHost.continueInstallIfReady(
-    updates: AppUpdateCoordinator,
-    state: AppUpdateState,
+internal fun ScreenHost.openExternal(
+    url: String,
+    failure: String,
 ) {
-    if (state !is AppUpdateState.ReadyToInstall || state.update.tag != installWhenReadyTag) return
-    if (!app.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
-    // Cleared first: declining the settings prompt must not reopen it on every render.
-    installWhenReadyTag = null
-    startInstall(updates, state)
-}
-
-internal fun ScreenHost.startInstall(
-    updates: AppUpdateCoordinator,
-    state: AppUpdateState.ReadyToInstall,
-) {
-    if (AppUpdateInstaller.canRequestInstalls(app)) {
-        updates.install(state.update, state.apk)
+    if (url.isBlank()) {
+        toast(failure)
         return
     }
-    confirm(
-        "To install updates, allow Webnovel Archiver to install apps in Android settings, then come back.",
-        confirmLabel = "Open settings",
-    ) {
-        // Back on the App Updates screen, the resumed render continues into the installer.
-        installWhenReadyTag = state.update.tag
-        runCatching { app.startActivity(AppUpdateInstaller.unknownSourcesSettingsIntent(app)) }
-            .onFailure { toast("Could not open Android settings") }
-    }
+    runCatching { app.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
+        .onFailure { toast(failure) }
 }
 
 /**
@@ -101,11 +62,11 @@ internal fun ScreenHost.maybePromptForAppUpdate() {
         AlertDialog
             .Builder(app)
             .setTitle("Update available")
-            .setMessage("Version ${update.versionName} is available. You have ${updates.installedVersionName}.")
-            .setPositiveButton("Update") { _, _ ->
-                downloadAndInstall(updates, update)
-                showAppUpdate()
-            }.setNegativeButton("Later", null)
+            .setMessage(
+                "Version ${update.versionName} is available. You have ${updates.installedVersionName}.\n\n" +
+                    "Update downloads it in your browser. Open the downloaded file to install it over this app.",
+            ).setPositiveButton("Update") { _, _ -> openUpdateDownload(update) }
+            .setNegativeButton("Later", null)
             .setNeutralButton("Skip this version") { _, _ -> updates.preferences.skippedTag = update.tag }
             .show()
             .also { it.applyAppTheme() }

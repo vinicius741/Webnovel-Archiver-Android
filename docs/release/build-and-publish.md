@@ -70,4 +70,4 @@ Each published APK filename includes the app version, GitHub Actions run ID, and
 
 https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest
 
-After the first install, the release app updates itself: it finds new releases through **Settings → App Updates** (and an automatic startup check) and installs them in place. The workflow adds a hidden `<!-- app-update versionCode=N -->` marker to the release notes for this; do not remove it when editing a release.
+After the first install, the release app finds new releases through **Settings → App Updates** (and an automatic startup check) and opens the new APK in the browser, so Android's installer installs it over the existing app. The app does not install APKs itself (see [in-app-updates.md](in-app-updates.md)). The workflow adds a hidden `<!-- app-update versionCode=N -->` marker to the release notes for this; do not remove it when editing a release.

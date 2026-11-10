@@ -1,14 +1,13 @@
 package com.vinicius741.webnovelarchiver.appupdate
 
 import android.content.Context
-import android.content.Intent
 import androidx.core.content.edit
 
 sealed interface AppUpdateState {
     /** The release this state refers to, when there is one. */
     val update: AvailableUpdate? get() = null
 
-    /** True while a check, download, or install is running; a new check must wait. */
+    /** True while a check is running; a new check must wait. */
     val isBusy: Boolean get() = false
 
     data object Idle : AppUpdateState
@@ -24,33 +23,6 @@ sealed interface AppUpdateState {
     data class Available(
         override val update: AvailableUpdate,
     ) : AppUpdateState
-
-    data class Downloading(
-        override val update: AvailableUpdate,
-        val downloadedBytes: Long,
-        val totalBytes: Long,
-    ) : AppUpdateState {
-        override val isBusy: Boolean get() = true
-    }
-
-    data class ReadyToInstall(
-        override val update: AvailableUpdate,
-        val apk: java.io.File,
-    ) : AppUpdateState
-
-    data class Installing(
-        override val update: AvailableUpdate,
-    ) : AppUpdateState {
-        override val isBusy: Boolean get() = true
-    }
-
-    /** Android needs the user to confirm; [confirmIntent] opens its install dialog. */
-    data class AwaitingConfirmation(
-        override val update: AvailableUpdate,
-        val confirmIntent: Intent,
-    ) : AppUpdateState {
-        override val isBusy: Boolean get() = true
-    }
 
     data class Failed(
         val message: String,

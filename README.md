@@ -17,7 +17,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 
 Download the APK from the [latest release](https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest) and open it on your Android device. Allow installation from your browser if prompted.
 
-After installation, use **Settings → App Updates** to check for new versions. Install updates over the existing app to keep your library.
+After installation, use **Settings → App Updates** to check for new versions. *Download update* opens the new APK in your browser; install it over the existing app to keep your library.
 
 ## Development
 

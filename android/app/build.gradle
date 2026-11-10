@@ -38,7 +38,7 @@ android {
         versionCode 10
         versionName '1.0.9-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        // GitHub repository whose latest release the in-app updater installs (owner/name).
+        // GitHub repository whose latest release the in-app update check reads (owner/name).
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"vinicius741/Webnovel-Archiver-Android"'
     }
 

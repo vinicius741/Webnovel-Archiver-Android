@@ -119,7 +119,7 @@ class AppContainer internal constructor(
     val aiCoverArtEngine: AiCoverArtEngine =
         AiCoverArtEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence)
 
-    /** In-app updates from GitHub Releases; checks are disabled in the offline simulation. */
+    /** Update checks against GitHub Releases; disabled in the offline simulation. */
     val appUpdates: AppUpdateCoordinator =
         AppUpdateCoordinator(
             context = appContext,
@@ -134,7 +134,7 @@ class AppContainer internal constructor(
                     null
                 },
             installedVersionName = com.vinicius741.webnovelarchiver.BuildConfig.VERSION_NAME,
-            installSupported = com.vinicius741.webnovelarchiver.BuildConfig.BUILD_TYPE == "release",
+            releaseBuild = com.vinicius741.webnovelarchiver.BuildConfig.BUILD_TYPE == "release",
             nowMillis = time::nowMillis,
         )
 

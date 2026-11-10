@@ -363,7 +363,7 @@ class MainActivity :
         if (uiReady && navigator.current == AppRoute.Notifications) showNotifications()
         // Returning from Firefox: refresh which setup steps are done.
         if (uiReady && navigator.current is AppRoute.PatreonAccount) rerender?.invoke()
-        // Returning from the "install unknown apps" setting or Android's installer.
+        // Returning from the browser: refresh the "checked" time and state.
         if (uiReady && navigator.current == AppRoute.AppUpdate) rerender?.invoke()
         if (uiReady) maybePromptForAppUpdate()
     }
