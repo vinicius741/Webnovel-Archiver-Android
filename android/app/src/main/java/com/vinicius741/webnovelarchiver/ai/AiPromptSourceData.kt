@@ -6,7 +6,10 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 
 /** Builds a clearly delimited JSON payload so novel text is data, never part of the instructions. */
 internal object AiPromptSourceData {
-    const val METADATA_GUIDANCE = """
+    val METADATA_GUIDANCE =
+        """
+        Reading the title and tags
+
         Interpret metadata before using it. The title field may include website labels rather than title words.
         Exclude appended or prefixed genre/trope lists, fandom/crossover labels, SI/OC/CYOA labels,
         release notices, and promotional suffixes from the title you use. Examples:
@@ -24,7 +27,7 @@ internal object AiPromptSourceData {
         labels in the result or treat them as events, character traits, or visual objects.
         Relevant genre tags can inform tone; they do not prove a plot, appearance, or setting detail.
         A fandom label is not permission to import remembered canon that is absent from the excerpts.
-    """
+        """.trimIndent()
 
     fun build(
         story: Story,

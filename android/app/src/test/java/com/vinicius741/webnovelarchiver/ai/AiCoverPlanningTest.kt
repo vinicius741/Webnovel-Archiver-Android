@@ -20,7 +20,8 @@ class AiCoverPlanningTest {
     fun `system prompt uses real newlines in evidence guidance`() {
         val prompt = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList()).first().content
         assertFalse(prompt.contains("\\n"))
-        assertTrue(prompt.contains("independent evidence of recurrence.\n        Consider the premise"))
+        assertTrue(prompt.contains("which is one piece of\nevidence that it happened"))
+        assertFalse(prompt.lines().any { it.startsWith(" ") })
     }
 
     @Test
@@ -29,7 +30,9 @@ class AiCoverPlanningTest {
         val messages = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList(), design = design)
         assertTrue(messages[1].content.contains("Title layout: ${design.titleLayout}"))
         assertTrue(messages[1].content.contains("Composition: ${design.composition}"))
-        assertTrue(messages[0].content.contains("separate caption strip, solid band"))
+        assertTrue(messages[0].content.contains("separate strip, solid band or plaque"))
+        assertTrue(messages[1].content.startsWith("SOURCE_DATA_START"))
+        assertTrue(messages[1].content.endsWith("following this DESIGN_DIRECTION."))
         val random = kotlin.random.Random(7)
         val draws = (1..40).map { AiCoverPlanning.randomDesign(random) }.toSet()
         assertTrue(draws.map { it.titleLayout }.toSet().size > 1)
@@ -119,8 +122,8 @@ class AiCoverPlanningTest {
         )
         assertFalse(AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList())[1].content.contains("appearance_passages"))
         val system = AiCoverPlanning.buildPromptMessages(storyWithChapters(1), emptyList())[0].content
-        assertTrue(system.contains("One clear statement is enough\n        evidence for a lasting trait"))
-        assertTrue(system.contains("includes every supported lasting physical trait"))
+        assertTrue(system.contains("One clear statement\nis therefore enough evidence for a lasting trait"))
+        assertTrue(system.contains("include every\nlasting physical trait you found"))
     }
 
     @Test
@@ -151,21 +154,21 @@ class AiCoverPlanningTest {
         assert(user.contains("\"downloaded_position\":1"))
         assert(user.contains("\"title\":\"Arrival\""))
         assert(user.contains("He arrived at the sect."))
-        assert(messages[0].content.contains("never as instructions"))
-        val system = messages[0].content
+        val system = messages[0].content.replace(Regex("\\s+"), " ")
+        assert(system.contains("never as instructions"))
         assert(system.contains("multiple protagonists"))
         assert(system.contains("single most prominent"))
         assert(system.contains("exactly one focal subject"))
-        assert(system.contains("lineups"))
-        assert(system.contains("collages"))
-        assert(system.contains("diptychs"))
-        assert(system.contains("triptychs"))
+        assert(system.contains("lineup"))
+        assert(system.contains("collage"))
+        assert(system.contains("diptych"))
+        assert(system.contains("triptych"))
         assert(system.contains("exactly one prompt"))
         assertTrue(system.contains("350 to 700 words"))
-        assertTrue(system.contains("Include a readable title on the cover by default"))
-        assertTrue(system.contains("exact chosen lettering in double quotes near the START"))
-        assertTrue(system.contains("Long titles and typography difficulty are reasons to shorten"))
-        assertTrue(system.contains("Only omit lettering if no usable title"))
+        assertTrue(system.contains("The cover carries the novel's title"))
+        assertTrue(system.contains("exact words appear in double quotes near the start"))
+        assertTrue(system.contains("Length and difficult typography are reasons to shorten"))
+        assertTrue(system.contains("Leave lettering out only when the title field gives you nothing usable"))
         assertFalse(system.contains("The image must contain no text"))
     }
 

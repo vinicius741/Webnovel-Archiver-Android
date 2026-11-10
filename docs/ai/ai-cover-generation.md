@@ -64,7 +64,11 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
   The prompt-writing system prompt treats all novel fields as untrusted data, requires supported
   visual facts, and asks for the cleaned novel title rendered as large lettering inside the artwork
   (never a separate caption band under or around it), excluding other text, logos, watermarks,
-  borders, and mockups. Each prompt-writing call also receives a `DESIGN_DIRECTION` drawn at random
+  borders, and mockups. It is written as prose that states the reason behind each requirement (who
+  sees the image, that the image model sees only the prompt) and asks the writer to describe what
+  is on the cover instead of listing exclusions. The user message carries `SOURCE_DATA` first and
+  the `DESIGN_DIRECTION` plus the request last, so a regeneration that only redraws the design
+  shares its long prefix with the previous call. Each prompt-writing call also receives a `DESIGN_DIRECTION` drawn at random
   in code (`AiCoverPlanning.randomDesign`): one of six title layouts (top third, lower third over
   the scene, centered in negative space, stacked on one side, built into the scene, split top/bottom)
   and one of six compositions (close portrait, wide establishing, low angle, back view, mid-action,

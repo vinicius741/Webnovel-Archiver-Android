@@ -33,6 +33,8 @@ the layer is built to grow tag and cover-image generation later.
   selection, as plain text (each capped at ~12k chars, ~60k chars total) plus title/author/tags to
   the selected model, which writes a 120 to 180 word synopsis. The source payload is delimited JSON,
   and the system prompt treats every source field as untrusted story data rather than instructions.
+  The system prompt also says who reads the synopsis and where it is shown, and states the 260-word
+  rejection cap; the request sentence follows the source payload in the user message.
   The result is a **draft**: the
   screen shows a preview card with the draft text and `Apply` / `Discard` actions — nothing is
   persisted until `Apply` (which stores it and switches the displayed synopsis to the AI text; an
