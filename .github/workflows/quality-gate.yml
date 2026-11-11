@@ -1,0 +1,91 @@
+name: Quality Gate
+
+# Runs the release gate on every push to main, off the release path, so publishing an APK never
+# waits on it. A failure opens (or comments on) one tracking issue; the next green run closes it.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run quality gate
+        run: >-
+          android/gradlew -p android :app:lintKotlin :app:releaseCheck
+          -x copyDebugApkToProjectRoot --no-daemon
+
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-gate-reports
+          path: android/app/build/reports/
+          if-no-files-found: ignore
+
+  report:
+    needs: quality-gate
+    if: always() && github.ref == 'refs/heads/main' && needs.quality-gate.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULT: ${{ needs.quality-gate.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      TITLE: Quality gate failing on main
+    steps:
+      - name: Open, update, or close the tracking issue
+        shell: bash
+        run: |
+          gh label create quality-gate --color B60205 \
+            --description "Automated quality gate failure on main" 2>/dev/null || true
+          issue=$(gh issue list --label quality-gate --state open --json number,title \
+            -q ".[] | select(.title == env.TITLE) | .number" | head -n1)
+          if [[ "$RESULT" == success ]]; then
+            if [[ -n "$issue" ]]; then
+              gh issue close "$issue" --comment "Quality gate passes again at $SHA: $RUN_URL"
+            fi
+            exit 0
+          fi
+          body="The quality gate (\`:app:lintKotlin :app:releaseCheck\`) failed on \`main\` at $SHA.
+
+          Run: $RUN_URL
+
+          Failed reports (lint, detekt, tests) are attached to the run as \`quality-gate-reports\`.
+          This issue closes automatically when the gate passes again."
+          if [[ -n "$issue" ]]; then
+            gh issue comment "$issue" --body "Still failing at $SHA: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --label quality-gate --body "$body"
+          fi

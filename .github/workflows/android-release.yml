@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
+      actions: read
       contents: write
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +63,26 @@ jobs:
             exit 1
           fi
 
+      # The quality gate runs separately on every push to main (quality-gate.yml) so releases do not
+      # wait on it. Surface its result for this commit as a warning; it never blocks the release.
+      - name: Report quality gate status for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow quality-gate.yml --commit "$GITHUB_SHA" \
+            --json status,conclusion,url -q '.[0] | "\(.status) \(.conclusion) \(.url)"' 2>/dev/null || true)
+          read -r status conclusion url <<< "$result"
+          if [[ "$conclusion" == success ]]; then
+            echo "Quality gate passed for $GITHUB_SHA: $url"
+          elif [[ -z "$status" ]]; then
+            echo "::warning::No quality gate run found for $GITHUB_SHA."
+          elif [[ "$status" != completed ]]; then
+            echo "::warning::Quality gate for $GITHUB_SHA is still running: $url"
+          else
+            echo "::warning::Quality gate for $GITHUB_SHA ended with '$conclusion': $url"
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -75,11 +96,6 @@ jobs:
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
-
-      - name: Run quality gate
-        run: >-
-          android/gradlew -p android :app:lintKotlin :app:releaseCheck
-          -x copyDebugApkToProjectRoot --no-daemon
 
       - name: Build signed release
         env:

@@ -87,7 +87,7 @@ All packages below are rooted at `app/src/main/java/com/vinicius741/webnovelarch
 - Static analysis: `android/gradlew -p android :app:detekt`. Existing findings are listed in `app/detekt-baseline.xml`, so any finding detekt prints is new and fails the build. Fix it rather than adding it to the baseline; when you fix a baselined finding, delete its `<ID>` line. Regenerate the baseline (`:app:detektBaseline`) only by deliberate decision.
 - Android lint: `android/gradlew -p android :app:lintDebug`
 - Per-change gate: `android/gradlew -p android :app:lintKotlin :app:ci` (formatting, unit tests, detekt, debug build).
-- Release gate: `android/gradlew -p android :app:lintKotlin :app:releaseCheck` (`ci` plus `lintDebug` and `checkKotlinFileSize`). The release workflow runs it; run it locally before a release or after changing manifests, resources, or Android API usage.
+- Release gate: `android/gradlew -p android :app:lintKotlin :app:releaseCheck` (`ci` plus `lintDebug` and `checkKotlinFileSize`). The Quality Gate workflow (`.github/workflows/quality-gate.yml`) runs it on every push to `main` and opens or updates a `quality-gate` GitHub issue when it fails. Releases do not wait on it. Run it locally after changing manifests, resources, or Android API usage.
 
 Choose validation based on the change:
 
@@ -99,7 +99,7 @@ Choose validation based on the change:
 
 Run `:app:assembleRelease` only when the user explicitly requests a release artifact. Release signing requires local credentials and is not a routine validation step.
 
-The manual `Publish Android APK` GitHub Actions workflow runs the release gate (`:app:releaseCheck`) and builds a signed release on `main`. It reads `versionName` and `versionCode` from `app/build.gradle`; increase both before a new release. It publishes tag `v<versionName>` and refuses to overwrite existing tags. Signing secrets must use the original release key; setup is in the root `README.md`. The workflow does not install onto devices.
+The manual `Publish Android APK` GitHub Actions workflow builds a signed release on `main`. It does not run the release gate. It only warns when the Quality Gate run for that commit failed or is still pending. Check open `quality-gate` issues before releasing. It reads `versionName` and `versionCode` from `app/build.gradle`; increase both before a new release. It publishes tag `v<versionName>` and refuses to overwrite existing tags. Signing secrets must use the original release key; setup is in the root `README.md`. The workflow does not install onto devices.
 
 Before publishing or retrying a GitHub release, follow the release preflight in `.agents/skills/build-and-install-apk/SKILL.md`: inspect recent workflow runs, remote tags, and published releases before choosing a version. A local APK rebuild alone does not require a version bump. For a new published release, use an unused `versionName` and a `versionCode` greater than previous releases, then verify the authorized changes are on remote `main` before dispatching. Re-running an old workflow uses its original commit, not a later version bump. An existing tag is a safety check, not a reason to delete a release or suppress failure notifications. Commit, push, and workflow dispatch still require the user's authorization; this checklist grants none.
 

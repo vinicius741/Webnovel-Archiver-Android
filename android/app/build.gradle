@@ -97,6 +97,12 @@ android {
     }
 
     testBuildType 'instrumentation'
+
+    // Full Android lint (lintDebug) runs in :app:releaseCheck via the Quality Gate workflow on every
+    // push to main, so skip the duplicate lintVital pass that would otherwise slow assembleRelease.
+    lint {
+        checkReleaseBuilds false
+    }
 }
 
 kotlin {
@@ -130,7 +136,8 @@ tasks.register('ci') {
 }
 
 // Release gate: everything in ci plus the slower, rarely failing checks (Android lint is the most
-// memory-hungry step; the file-size cap overlaps detekt's size rules). The release workflow runs it.
+// memory-hungry step; the file-size cap overlaps detekt's size rules). The Quality Gate workflow runs
+// it on every push to main; the release workflow does not wait on it.
 tasks.register('releaseCheck') {
     group = 'verification'
     description = 'Runs the ci gate plus Android lint and the Kotlin file-size cap.'

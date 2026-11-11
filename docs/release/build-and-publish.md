@@ -46,7 +46,9 @@ WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
 
 ## Publish with GitHub Actions
 
-The manual workflow in [android-release.yml](../../.github/workflows/android-release.yml) builds and publishes a signed APK without needing the Mac online. It runs only on `main`, runs the release quality gate (`:app:lintKotlin :app:releaseCheck`), verifies the APK signature and package/version, and publishes a GitHub Release. It does not run automatically on pushes or pull requests.
+The manual workflow in [android-release.yml](../../.github/workflows/android-release.yml) builds and publishes a signed APK without needing the Mac online. It runs only on `main`, builds the signed APK, verifies its signature and package/version, and publishes a GitHub Release. It does not run automatically on pushes or pull requests.
+
+The release workflow does not run the quality gate, so publishing takes about half as long. The [Quality Gate workflow](../../.github/workflows/quality-gate.yml) runs `:app:lintKotlin :app:releaseCheck` on every push to `main`. When it fails, it opens one `quality-gate` issue, or comments on the open one, with the run link and reports. The next passing run closes the issue. The release workflow logs a warning when the gate for the released commit failed, is still running, or has no run, but it still publishes. `assembleRelease` also skips Android's `lintVital` pass (`lint { checkReleaseBuilds false }`), because `lintDebug` in the gate already covers it.
 
 One-time setup on the Mac that holds the original signing key:
 
