@@ -46,6 +46,11 @@ sealed class AppRoute(
         val focus: String? = null,
     ) : AppRoute("trends")
 
+    /** Other library novels by the same author as [storyId]; reached by tapping the author on Details. */
+    data class AuthorNovels(
+        val storyId: String,
+    ) : AppRoute("author_novels")
+
     data class Reader(
         val storyId: String,
         val chapterId: String,
@@ -97,6 +102,7 @@ sealed class AppRoute(
                 is Reader -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${AppRouteCodec.encodeArgument(chapterId)}"
                 is LegacyEpubs -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is AiControls -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
+                is AuthorNovels -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is ChapterSelection -> "$name:${AppRouteCodec.encodeArgument(storyId)}"
                 is Trends -> "$name:${AppRouteCodec.encodeArgument(storyId)}:${focus ?: ""}"
                 is PatreonAccount -> "$name:${storyId?.let(AppRouteCodec::encodeArgument).orEmpty()}"
@@ -115,6 +121,7 @@ sealed class AppRoute(
                 is ChapterSelection -> Details(storyId)
                 is LegacyEpubs -> Details(storyId)
                 is AiControls -> Details(storyId)
+                is AuthorNovels -> Details(storyId)
                 is Trends -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
                 UpdateFollowSelection -> Updates
@@ -134,6 +141,7 @@ object AppRouteCodec {
                 is AppRoute.Reader -> listOf(route.storyId, route.chapterId)
                 is AppRoute.LegacyEpubs -> listOf(route.storyId)
                 is AppRoute.AiControls -> listOf(route.storyId)
+                is AppRoute.AuthorNovels -> listOf(route.storyId)
                 is AppRoute.Trends -> listOf(route.storyId) + listOfNotNull(route.focus?.takeIf { it.isNotBlank() })
                 is AppRoute.ChapterSelection -> listOf(route.storyId) + route.selectedChapterIds.sorted()
                 is AppRoute.PatreonAccount -> listOfNotNull(route.storyId)
@@ -177,6 +185,7 @@ object AppRouteCodec {
             "chapter_selection" -> arguments.firstOrNull()?.let { AppRoute.ChapterSelection(it, arguments.drop(1).toSet()) }
             "legacy_epubs" -> arguments.singleOrNull()?.let(AppRoute::LegacyEpubs)
             "ai_controls" -> arguments.singleOrNull()?.let(AppRoute::AiControls)
+            "author_novels" -> arguments.singleOrNull()?.let(AppRoute::AuthorNovels)
             "trends" -> arguments.firstOrNull()?.let { AppRoute.Trends(it, arguments.getOrNull(1)) }
             "patreon_account" -> if (arguments.size <= 1) AppRoute.PatreonAccount(arguments.firstOrNull()) else null
             "reader" -> if (arguments.size == 2) AppRoute.Reader(arguments[0], arguments[1]) else null

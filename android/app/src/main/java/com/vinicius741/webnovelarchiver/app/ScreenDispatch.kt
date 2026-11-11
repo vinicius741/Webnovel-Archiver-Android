@@ -8,6 +8,7 @@ import com.vinicius741.webnovelarchiver.feature.details.showLegacyEpubs
 import com.vinicius741.webnovelarchiver.feature.details.showTrends
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.library.showAddStory
+import com.vinicius741.webnovelarchiver.feature.library.showAuthorNovels
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.player.showPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -34,12 +35,6 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
     when (route) {
         AppRoute.Library -> showLibrary()
         AppRoute.AddStory -> showAddStory()
-        is AppRoute.Details -> showDetails(route.storyId)
-        is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
-        is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)
-        is AppRoute.Trends -> showTrends(route.storyId, route.focus)
-        is AppRoute.AiControls -> showAiControls(route.storyId)
-        is AppRoute.Reader -> showReader(route.storyId, route.chapterId)
         AppRoute.Queue -> showQueue()
         AppRoute.Player -> showPlayer()
         AppRoute.Updates -> showUpdates()
@@ -55,5 +50,20 @@ internal fun ScreenHost.renderRouteDispatch(route: AppRoute) {
         AppRoute.AppUpdate -> showAppUpdate()
         is AppRoute.PatreonAccount -> showPatreonAccount(route.storyId)
         AppRoute.Working -> showLibrary()
+        else -> renderStoryRouteDispatch(route)
+    }
+}
+
+/** Per-novel routes, split out so [renderRouteDispatch] stays under detekt's complexity budget. */
+private fun ScreenHost.renderStoryRouteDispatch(route: AppRoute) {
+    when (route) {
+        is AppRoute.Details -> showDetails(route.storyId)
+        is AppRoute.ChapterSelection -> showChapterSelection(route.storyId, route.selectedChapterIds)
+        is AppRoute.LegacyEpubs -> showLegacyEpubs(route.storyId)
+        is AppRoute.Trends -> showTrends(route.storyId, route.focus)
+        is AppRoute.AiControls -> showAiControls(route.storyId)
+        is AppRoute.AuthorNovels -> showAuthorNovels(route.storyId)
+        is AppRoute.Reader -> showReader(route.storyId, route.chapterId)
+        else -> showLibrary()
     }
 }

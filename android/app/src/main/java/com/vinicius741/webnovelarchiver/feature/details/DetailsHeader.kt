@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import android.content.Intent
+import android.graphics.Paint
 import android.net.Uri
 import android.view.Gravity
 import android.view.View
@@ -14,9 +15,11 @@ import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning.TrendDirection
 import com.vinicius741.webnovelarchiver.domain.model.SourceMetricKind
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.AuthorPlanning
 import com.vinicius741.webnovelarchiver.domain.story.ReleaseCadencePlanning
 import com.vinicius741.webnovelarchiver.domain.story.SourceMetadataPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
+import com.vinicius741.webnovelarchiver.feature.library.showAuthorNovels
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -56,14 +59,7 @@ internal fun ScreenHost.buildDetailsHeader(story: Story): DetailsHeader {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         },
     )
-    col.addView(
-        makeText(app, story.author, Type.TITLE_MEDIUM, ThemeManager.colors.secondary).apply {
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            setPadding(0, dp(2), 0, dp(Space.MD))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        },
-    )
+    col.addView(buildAuthorLine(story))
     val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
     val publicationStatusBadge = publicationStatusBadge(story)
     val sourceAvailabilityBadge = sourceAvailabilityBadge(story)
@@ -228,6 +224,35 @@ private fun ScreenHost.observeScoreTrend(
             }
             else -> Unit
         }
+    }
+}
+
+/** Author name; a known author is tappable and opens the other library novels by them. */
+private fun ScreenHost.buildAuthorLine(story: Story): TextView {
+    val authorText =
+        makeText(app, story.author, Type.TITLE_MEDIUM, ThemeManager.colors.secondary).apply {
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+        }
+    if (!AuthorPlanning.hasKnownAuthor(story)) {
+        return authorText.apply {
+            setPadding(0, dp(2), 0, dp(Space.MD))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+    }
+    // Wrap-content so the ripple hugs the name instead of spanning the header width.
+    return authorText.apply {
+        paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+        setPadding(dp(Space.SM), dp(Space.XS), dp(Space.SM), dp(Space.XS))
+        background = selectableRipple(ThemeManager.colors.onSurface)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "Author ${story.author}. Tap to see other novels by this author."
+        setOnClickListener { showAuthorNovels(story.id) }
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.MD) - dp(Space.XS)
+            }
     }
 }
 

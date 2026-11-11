@@ -125,7 +125,7 @@ internal fun patchLibraryProgress(
 }
 
 /** Horizontal library card content: 80×120 cover + stacked text. */
-private fun ScreenHost.buildStoryCard(
+internal fun ScreenHost.buildStoryCard(
     story: Story,
     contentGravity: Int,
     selected: Boolean?,

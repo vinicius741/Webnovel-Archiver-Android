@@ -8,7 +8,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 
 - Offline reading with saved progress, images, and background chapter downloads.
 - Text-to-speech with sentence highlighting, playback controls, and per-story resume.
-- New-chapter tracking with a next-release estimate from each novel's recent release dates (flagged in the library when a sync may find it), library tabs, search, filters, and novel popularity trends.
+- New-chapter tracking with a next-release estimate from each novel's recent release dates (flagged in the library when a sync may find it), library tabs, search, filters, a tap-the-author view of their other novels in your library, and novel popularity trends.
 - EPUB export, text cleanup, and full library backup and restore.
 - Patreon early-access chapters available through your own account.
 - Optional AI cover art and synopses using your own OpenRouter API key, with cost tracking.
