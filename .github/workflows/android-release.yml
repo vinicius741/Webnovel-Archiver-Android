@@ -78,7 +78,7 @@ jobs:
 
       - name: Run quality gate
         run: >-
-          android/gradlew -p android :app:lintKotlin :app:ci
+          android/gradlew -p android :app:lintKotlin :app:releaseCheck
           -x copyDebugApkToProjectRoot --no-daemon
 
       - name: Build signed release

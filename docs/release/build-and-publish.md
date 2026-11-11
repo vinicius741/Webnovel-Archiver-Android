@@ -46,7 +46,7 @@ WEBNOVEL_RELEASE_KEY_PASSWORD=your-key-password
 
 ## Publish with GitHub Actions
 
-The manual workflow in [android-release.yml](../../.github/workflows/android-release.yml) builds and publishes a signed APK without needing the Mac online. It runs only on `main`, runs the full quality gate, verifies the APK signature and package/version, and publishes a GitHub Release. It does not run automatically on pushes or pull requests.
+The manual workflow in [android-release.yml](../../.github/workflows/android-release.yml) builds and publishes a signed APK without needing the Mac online. It runs only on `main`, runs the release quality gate (`:app:lintKotlin :app:releaseCheck`), verifies the APK signature and package/version, and publishes a GitHub Release. It does not run automatically on pushes or pull requests.
 
 One-time setup on the Mac that holds the original signing key:
 

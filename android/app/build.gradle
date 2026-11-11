@@ -106,11 +106,13 @@ kotlin {
 }
 
 // Tooling recommendations: detekt (maintainability/complexity checks) + kotlinter (format).
-// Both start permissive so the existing codebase adopts them without a hard fail.
+// Existing detekt findings live in detekt-baseline.xml, so only new findings fail the build and
+// its output lists only them. Fixing a baselined finding? Delete its <ID> line from the baseline.
 detekt {
     buildUponDefaultConfig = true
     allRules = false
     config = files("$projectDir/detekt.yml")
+    baseline = file("$projectDir/detekt-baseline.xml")
     parallel = true
 }
 
@@ -120,11 +122,19 @@ dependencyLocking {
     lockAllConfigurations()
 }
 
-// Canonical local/CI quality gate: formatting, architecture budgets, tests, analysis, and build.
+// Per-change local gate: formatting, unit tests, static analysis, and debug build.
 tasks.register('ci') {
     group = 'verification'
-    description = 'Runs the complete local and CI verification gate.'
-    dependsOn 'lintKotlin', 'checkKotlinFileSize', 'testInstrumentationUnitTest', 'detekt', 'lintDebug', 'assembleDebug'
+    description = 'Runs the per-change local verification gate.'
+    dependsOn 'lintKotlin', 'testInstrumentationUnitTest', 'detekt', 'assembleDebug'
+}
+
+// Release gate: everything in ci plus the slower, rarely failing checks (Android lint is the most
+// memory-hungry step; the file-size cap overlaps detekt's size rules). The release workflow runs it.
+tasks.register('releaseCheck') {
+    group = 'verification'
+    description = 'Runs the ci gate plus Android lint and the Kotlin file-size cap.'
+    dependsOn 'ci', 'checkKotlinFileSize', 'lintDebug'
 }
 
 dependencies {

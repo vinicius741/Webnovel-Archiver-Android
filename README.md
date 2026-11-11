@@ -32,8 +32,11 @@ android/gradlew -p android :app:assembleDebug
 # Run unit tests
 android/gradlew -p android :app:testDebugUnitTest
 
-# Run the full local quality gate
+# Run the per-change quality gate (formatting, unit tests, detekt, debug build)
 android/gradlew -p android :app:lintKotlin :app:ci
+
+# Run the release gate (adds Android lint and the Kotlin file-size cap)
+android/gradlew -p android :app:lintKotlin :app:releaseCheck
 ```
 
 The debug APK is at `android/app/build/outputs/apk/debug/app-debug.apk`. Debug and release builds have separate app IDs and libraries. Use debug on the emulator and a signed release on your phone.

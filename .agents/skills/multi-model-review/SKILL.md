@@ -207,7 +207,7 @@ Pick validation from `android/AGENTS.md` → "Build and Validation":
 - Planning/core logic: narrowest relevant tests first
   (`android/gradlew -p android :app:testInstrumentationUnitTest --tests "…"`).
 - Kotlin production changes: relevant tests + `:app:lintKotlin` + `:app:detekt`.
-- Broad or cross-cutting changes: the full gate
+- Broad or cross-cutting changes: the per-change gate
   `android/gradlew -p android :app:lintKotlin :app:ci`.
 - UI, navigation, lifecycle, foldable, or service changes: also build the
   debug APK and exercise the flow on the emulator (`build-and-install-apk`,
