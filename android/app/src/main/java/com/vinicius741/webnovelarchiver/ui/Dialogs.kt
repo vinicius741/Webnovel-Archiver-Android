@@ -231,7 +231,9 @@ internal fun ScreenHost.showTtsVoiceDialog(
         resultCount.text = "${filtered.size} ${if (filtered.size == 1) "voice" else "voices"}"
         results.removeAllViews()
         if (languageCode == null && search.text.isBlank()) {
-            results.addView(voiceRow("System default", "Use Android's preferred voice", selectedIdentifier == null) { onSelected(null) })
+            results.addView(
+                voiceRow("Engine default", "The voice the speech engine picks", selectedIdentifier == null) { onSelected(null) },
+            )
             results.addView(makeDivider(app))
         }
         filtered.forEach { voice ->

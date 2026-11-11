@@ -42,7 +42,7 @@ Chapter HTML
 - Always rendered at 1x. The speed setting is applied at playback by `AudioTrack` time stretching,
   so one rendered chapter works at any speed. Pitch is applied at render time.
 - Order: listening position to the end of the chapter, then backward, then the next chapter.
-- Cache keys hash voice + pitch + text, so renumbering cannot invalidate them and repeated lines
+- Cache keys hash engine + voice + pitch + text, so renumbering cannot invalidate them and repeated lines
   render once. Files live in `cacheDir/tts_audio/` (never in backups), capped at 500 MB by least
   recent use. At 24 kHz mono that is about three hours.
 - If a needed file disappears, playback requests it again ahead of queued render-ahead work.
@@ -132,6 +132,23 @@ starts audio.
   "Listen from this chapter". Double-tapping a paragraph still starts there.
 - **Library:** a "Continue listening" card appears when nothing is loaded in the player. Its close
   button hides it across restarts, without forgetting any saved place, until something is played again.
+
+## Engines and profiles
+
+Voice & Speech has an **Engine** setting: the phone's preferred engine (`enginePackage = null`), or
+any installed TTS app, listed from `TTS_SERVICE` services (the manifest declares that `<queries>`
+intent, or Android hides other apps' engines). `TtsSpeechEngineHost` creates `TextToSpeech` for the
+chosen package. A chosen engine that is no longer installed falls back to the phone's, and the cache
+key names the engine that really speaks; the phone-default key is unchanged from before engines
+could be chosen. Changing engine clears the voice, since voices belong to one engine. The voice
+picker asks the selected engine, not the one playing, for its voices.
+
+**Profiles** are named snapshots of engine, voice, pitch, rate and the four pauses
+(`TtsSettings.profiles`, `TtsProfilePlanning`). Chapter announcements, context replay and skip
+buttons are not part of a profile. Profiles live in `tts_settings.json`, so backups carry them.
+Saving under an existing name updates that profile. Saved settings and switched profiles reach a
+loaded chapter through `TtsEngine.applySettings`: new pauses and rate apply in place, and a new
+engine, voice or pitch restarts the output from the current point in the new voice.
 
 ## Fallback
 

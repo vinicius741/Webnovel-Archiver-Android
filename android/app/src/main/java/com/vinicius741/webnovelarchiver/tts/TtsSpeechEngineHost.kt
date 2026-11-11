@@ -11,7 +11,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
-/** Owns the Android [TextToSpeech] instance: creating it lazily, waiting for it, applying a voice. */
+/**
+ * Owns the Android [TextToSpeech] instance: creating it lazily for the chosen engine, waiting for it,
+ * applying a voice.
+ */
 internal class TtsSpeechEngineHost(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -19,24 +22,58 @@ internal class TtsSpeechEngineHost(
     private val listeners: TtsEventListeners,
     private val onReady: () -> Unit,
     private val onFailed: () -> Unit,
-) : TextToSpeech.OnInitListener {
+) {
     var engine: TextToSpeech? = null
         private set
     var initialized = false
         private set
 
+    /** The engine package asked for; null follows the phone's preferred engine. */
+    private var requestedPackage: String? = null
+
+    /** The package [engine] was created for; null when it is the phone's preferred engine. */
+    var enginePackage: String? = null
+        private set
+
+    /** Tells a replaced engine's late init callback apart from the current one's. */
+    private var generation = 0L
+
     /** Bounded initialization wait; cancelled on successful init and every terminal path. */
     private var initWatchdog: Job? = null
+
+    /**
+     * Speaks with [packageName] from the next [ensureEngine] on. A different engine than the current
+     * one shuts the current one down; returns whether that happened.
+     */
+    fun selectEngine(packageName: String?): Boolean {
+        if (packageName == requestedPackage) return false
+        requestedPackage = packageName
+        val replaced = engine != null
+        if (replaced) shutdown()
+        return replaced
+    }
 
     fun ensureEngine(): TextToSpeech {
         engine?.let { return it }
         initialized = false
-        return TextToSpeech(context, this).also { engine = it }
+        val packageName =
+            requestedPackage?.let { requested ->
+                TtsEnginePlanning.resolve(requested, TtsEngineCatalog.installedPackages(context)).also {
+                    if (it == null) Timber.w("TTS engine %s is not installed; using the phone's engine", requested)
+                }
+            }
+        enginePackage = packageName
+        val created = ++generation
+        return TextToSpeech(context, { status -> onInit(created, status) }, packageName).also { engine = it }
     }
 
-    override fun onInit(status: Int) {
+    private fun onInit(
+        created: Long,
+        status: Int,
+    ) {
         scope.launch {
             stateMutex.withLock {
+                if (created != generation) return@withLock
                 if (status != TextToSpeech.SUCCESS) {
                     initialized = false
                     onFailed()
@@ -90,6 +127,7 @@ internal class TtsSpeechEngineHost(
 
     fun shutdown() {
         cancelInitWatchdog()
+        generation++
         engine?.stop()
         engine?.shutdown()
         engine = null

@@ -5,6 +5,7 @@ import com.vinicius741.webnovelarchiver.domain.model.AppSettings
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.domain.model.TtsProfile
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 
 /** Canonicalizes persisted settings at every storage boundary. */
@@ -91,14 +92,37 @@ object PreferenceNormalization {
             libraryViewMode = preferences.libraryViewMode.takeIf { it in libraryViewModes } ?: DisplayPreferences().libraryViewMode,
         )
 
-    fun ttsSettings(settings: TtsSettings): TtsSettings =
-        settings.copy(
+    fun ttsSettings(settings: TtsSettings): TtsSettings {
+        // Gson leaves a list null when a file says so explicitly, whatever the Kotlin type claims.
+        @Suppress("USELESS_ELVIS")
+        val profiles =
+            (settings.profiles ?: emptyList())
+                .filter { it.id.isNotBlank() && it.name.isNotBlank() }
+                .distinctBy { it.id }
+                .map(::ttsProfile)
+        return settings.copy(
             pitch = settings.pitch.coerceIn(TTS_MIN, TTS_MAX),
             rate = settings.rate.coerceIn(TTS_MIN, TTS_MAX),
             phrasePauseMs = settings.phrasePauseMs.coerceIn(0L, TtsSettings.MAX_PHRASE_PAUSE_MS),
             sentencePauseMs = settings.sentencePauseMs.coerceIn(0L, TtsSettings.MAX_SENTENCE_PAUSE_MS),
             paragraphPauseMs = settings.paragraphPauseMs.coerceIn(0L, TtsSettings.MAX_PARAGRAPH_PAUSE_MS),
             scenePauseMs = settings.scenePauseMs.coerceIn(0L, TtsSettings.MAX_SCENE_PAUSE_MS),
+            enginePackage = settings.enginePackage?.trim()?.takeIf { it.isNotBlank() },
+            profiles = profiles,
+            activeProfileId = settings.activeProfileId?.takeIf { id -> profiles.any { it.id == id } },
+        )
+    }
+
+    private fun ttsProfile(profile: TtsProfile): TtsProfile =
+        profile.copy(
+            name = profile.name.trim(),
+            enginePackage = profile.enginePackage?.trim()?.takeIf { it.isNotBlank() },
+            pitch = profile.pitch.coerceIn(TTS_MIN, TTS_MAX),
+            rate = profile.rate.coerceIn(TTS_MIN, TTS_MAX),
+            phrasePauseMs = profile.phrasePauseMs.coerceIn(0L, TtsSettings.MAX_PHRASE_PAUSE_MS),
+            sentencePauseMs = profile.sentencePauseMs.coerceIn(0L, TtsSettings.MAX_SENTENCE_PAUSE_MS),
+            paragraphPauseMs = profile.paragraphPauseMs.coerceIn(0L, TtsSettings.MAX_PARAGRAPH_PAUSE_MS),
+            scenePauseMs = profile.scenePauseMs.coerceIn(0L, TtsSettings.MAX_SCENE_PAUSE_MS),
         )
 
     fun aiSettings(settings: AiSettings): AiSettings =

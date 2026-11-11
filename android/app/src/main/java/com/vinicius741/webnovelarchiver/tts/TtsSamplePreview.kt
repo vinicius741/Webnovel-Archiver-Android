@@ -87,6 +87,7 @@ internal class TtsSamplePreview(
                     else -> {
                         pending = Sample(TtsTimeline(items, settings.phrasePauseMs), settings)
                         onPlayingChanged(true)
+                        speech.selectEngine(settings.enginePackage)
                         speech.ensureEngine()
                         if (speech.initialized) loadLocked() else speech.watchInit()
                     }
@@ -125,7 +126,7 @@ internal class TtsSamplePreview(
                 offsetMs = 0L,
                 rate = sample.settings.rate,
                 playWhenReady = true,
-                voiceKey = ttsVoiceKey(engine, sample.settings),
+                voiceKey = ttsVoiceKey(engine, speech.enginePackage, sample.settings),
             ),
         )
         outputs.loaded = true

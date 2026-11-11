@@ -12,19 +12,26 @@ import androidx.appcompat.widget.SwitchCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.clearTtsSession
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
+import com.vinicius741.webnovelarchiver.domain.model.TtsProfile
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
+import com.vinicius741.webnovelarchiver.tts.TtsEngineInfo
+import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
+import com.vinicius741.webnovelarchiver.tts.TtsProfilePlanning
 import com.vinicius741.webnovelarchiver.tts.TtsSampleFailure
 import com.vinicius741.webnovelarchiver.tts.TtsSamplePreview
 import com.vinicius741.webnovelarchiver.tts.VoiceInfo
 import com.vinicius741.webnovelarchiver.ui.Btn
+import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.card
+import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.flow
 import com.vinicius741.webnovelarchiver.ui.fullButton
@@ -32,14 +39,17 @@ import com.vinicius741.webnovelarchiver.ui.labeledField
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeCard
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.prompt
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scrollTextInsideParent
+import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
 import com.vinicius741.webnovelarchiver.ui.showTtsVoiceDialog
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /** Voice & Speech settings, reached from Settings and from the reader's settings menu. */
 internal fun ScreenHost.showTtsSettings() {
@@ -68,22 +78,17 @@ internal fun ScreenHost.showTtsSettings() {
                 },
             )
         }
+        lateinit var draftSettings: () -> TtsSettings
+        addView(ttsProfileCard(ttsSettings) { draftSettings() })
         val pitch = labeledField("Pitch", ttsSettings.pitch.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
         val rate = labeledField("Rate", ttsSettings.rate.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        val voiceLabel = ttsSettings.voiceIdentifier ?: "System default"
-        lateinit var draftSettings: () -> TtsSettings
-        row {
-            addView(
-                makeText(context, "Voice", Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant),
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-            )
-            val voiceBtn = makeButton(context, voiceLabel, Btn.TEXT, R.drawable.wna_speaker) { showTtsVoicePicker { draftSettings() } }
-            addView(
-                voiceBtn,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = dp(Space.MD)
-                },
-            )
+        val engines = TtsEngineCatalog.installed(app)
+        val phoneEngine = TtsEngineCatalog.phoneDefault(app)
+        settingButtonRow("Engine", TtsEnginePlanning.label(ttsSettings.enginePackage, engines, phoneEngine), R.drawable.wna_settings) {
+            showTtsEnginePicker(engines, phoneEngine) { draftSettings() }
+        }
+        settingButtonRow("Voice", ttsSettings.voiceIdentifier ?: "Engine default", R.drawable.wna_speaker) {
+            showTtsVoicePicker { draftSettings() }
         }
         val contextReplay =
             ttsSwitch("Replay a little after long breaks", ttsSettings.contextReplay)
@@ -135,12 +140,160 @@ internal fun ScreenHost.showTtsSettings() {
         fullButton("Save TTS", Btn.FILLED, R.drawable.wna_check) {
             val saved = draftSettings()
             scope.launch {
-                repository.ttsSettings.save(saved)
-                ttsEngine.applyPacing(saved)
+                persistTtsSettings(saved)
                 toast("TTS settings saved")
+                // The profile line above reflects what is saved.
+                showTtsSettings()
             }
         }
     }
+}
+
+/** Saves [settings] and hands them to the loaded chapter, which picks up a new voice in place. */
+private suspend fun ScreenHost.persistTtsSettings(settings: TtsSettings) {
+    repository.ttsSettings.save(settings)
+    ttsEngine.applySettings(repository.ttsSettings.get())
+}
+
+/** A label on the left and a text button showing the current value on the right. */
+private fun LinearLayout.settingButtonRow(
+    label: String,
+    value: String,
+    icon: Int,
+    onClick: () -> Unit,
+) {
+    row {
+        addView(
+            makeText(context, label, Type.LABEL_MEDIUM, ThemeManager.colors.onSurfaceVariant),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        addView(
+            makeButton(context, value, Btn.TEXT, icon) { onClick() },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = context.dp(Space.MD)
+            },
+        )
+    }
+}
+
+/** Named voice setups: switch to one, save the screen's values as one, or delete one. */
+private fun ScreenHost.ttsProfileCard(
+    saved: TtsSettings,
+    draft: () -> TtsSettings,
+): View {
+    val active = TtsProfilePlanning.active(saved)
+    val status =
+        when {
+            active == null && saved.profiles.isEmpty() -> "Save these settings as a profile to come back to them later."
+            active == null -> "These settings are not saved as a profile."
+            TtsProfilePlanning.matches(active, saved) -> "Using \"${active.name}\"."
+            else -> "Based on \"${active.name}\", with changes not saved to it."
+        }
+    return makeCard(app).apply {
+        text("Profile", Type.TITLE_SMALL)
+        text(status, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant)
+            .also { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(Space.XS) }
+        flow {
+            if (saved.profiles.isNotEmpty()) {
+                button("Switch", Btn.TONAL, R.drawable.wna_bookmark) { showTtsProfileSwitcher(saved) }
+            }
+            button("Save as profile", Btn.TEXT, R.drawable.wna_check) { saveTtsProfile(active, draft) }
+            if (saved.profiles.isNotEmpty()) {
+                button("Delete", Btn.TEXT, R.drawable.wna_delete) { showTtsProfileDeleter(saved) }
+            }
+        }
+        layoutParams =
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(Space.MD)
+            }
+    }
+}
+
+private fun ScreenHost.showTtsProfileSwitcher(saved: TtsSettings) {
+    showStyledOptionsDialog(
+        "Switch profile",
+        saved.profiles.map { profile ->
+            val label = if (profile.id == saved.activeProfileId) "\u2713  ${profile.name}" else profile.name
+            OptionsDialogItem.Option(label) {
+                scope.launch {
+                    persistTtsSettings(TtsProfilePlanning.apply(repository.ttsSettings.get(), profile))
+                    toast("Using profile \"${profile.name}\"")
+                    showTtsSettings()
+                }
+            }
+        },
+    )
+}
+
+/** Saves what the screen shows under a name; reusing a name updates that profile. */
+private fun ScreenHost.saveTtsProfile(
+    active: TtsProfile?,
+    draft: () -> TtsSettings,
+) {
+    prompt("Profile name", active?.name.orEmpty()) { raw ->
+        val name = TtsProfilePlanning.cleanName(raw)
+        if (name == null) {
+            toast("Enter a name for the profile")
+            return@prompt
+        }
+        val current = draft()
+        val save = {
+            scope.launch {
+                persistTtsSettings(TtsProfilePlanning.save(current, name) { UUID.randomUUID().toString() })
+                toast("Saved profile \"$name\"")
+                showTtsSettings()
+            }
+        }
+        val existing = TtsProfilePlanning.named(current.profiles, name)
+        if (existing != null && existing.id != active?.id) {
+            confirm("Replace the profile \"${existing.name}\" with these settings?", "Replace") { save() }
+        } else {
+            save()
+        }
+    }
+}
+
+private fun ScreenHost.showTtsProfileDeleter(saved: TtsSettings) {
+    showStyledOptionsDialog(
+        "Delete profile",
+        saved.profiles.map { profile ->
+            OptionsDialogItem.Option(profile.name, destructive = true) {
+                confirm("Delete the profile \"${profile.name}\"? Your current settings stay as they are.", "Delete") {
+                    scope.launch {
+                        repository.ttsSettings.save(TtsProfilePlanning.delete(repository.ttsSettings.get(), profile.id))
+                        toast("Deleted profile \"${profile.name}\"")
+                        showTtsSettings()
+                    }
+                }
+            }
+        },
+    )
+}
+
+/** Picks which installed speech engine the app speaks with; its voices differ, so the voice resets. */
+private fun ScreenHost.showTtsEnginePicker(
+    engines: List<TtsEngineInfo>,
+    phoneEngine: String?,
+    draft: () -> TtsSettings,
+) {
+    val selected = repository.ttsSettings.get().enginePackage
+
+    fun option(
+        packageName: String?,
+        label: String,
+    ) = OptionsDialogItem.Option(if (packageName == selected) "\u2713  $label" else label) {
+        if (packageName == selected) return@Option
+        scope.launch {
+            persistTtsSettings(draft().copy(enginePackage = packageName, voiceIdentifier = null))
+            toast("Engine changed. Pick a voice from it, or keep its default.")
+            showTtsSettings()
+        }
+    }
+    showStyledOptionsDialog(
+        "Speech engine",
+        listOf(option(null, TtsEnginePlanning.label(null, engines, phoneEngine))) +
+            engines.map { option(it.packageName, it.label) },
+    )
 }
 
 private const val PAUSE_STEP_MS = 50L
@@ -320,28 +473,17 @@ private fun LinearLayout.ttsSwitch(
 
 /** [draft] is what the settings screen currently shows, kept when picking a voice rebuilds it. */
 internal fun ScreenHost.showTtsVoicePicker(draft: () -> TtsSettings = { repository.ttsSettings.get() }) {
-    val currentVoice = repository.ttsSettings.get().voiceIdentifier
-
-    fun showLoadedVoices(voices: List<VoiceInfo>) {
-        if (voices.isEmpty()) {
-            toast("No local TTS voices available yet")
-            return
+    val current = draft()
+    val engine = TtsEnginePlanning.resolve(current.enginePackage, TtsEngineCatalog.installedPackages(app))
+    toast("Loading voices")
+    scope.launch {
+        val voices = TtsEngineCatalog.voices(app, engine)
+        when {
+            voices == null -> toast("The speech engine did not start")
+            voices.isEmpty() -> toast("This speech engine has no offline voices")
+            else -> showTtsVoiceDialog(voices, current.voiceIdentifier) { voice -> saveTtsVoice(voice, draft()) }
         }
-        showTtsVoiceDialog(voices, currentVoice) { voice -> saveTtsVoice(voice, draft()) }
     }
-
-    val voices = ttsEngine.availableVoices()
-    if (voices.isEmpty()) {
-        lateinit var listener: (List<VoiceInfo>) -> Unit
-        listener = { loadedVoices ->
-            ttsEngine.removeVoiceAvailabilityListener(listener)
-            app.runOnUiThread { showLoadedVoices(loadedVoices) }
-        }
-        ttsEngine.addVoiceAvailabilityListener(listener)
-        toast("Loading local TTS voices")
-        return
-    }
-    showLoadedVoices(voices)
 }
 
 private fun ScreenHost.saveTtsVoice(
@@ -349,7 +491,7 @@ private fun ScreenHost.saveTtsVoice(
     current: TtsSettings,
 ) {
     scope.launch {
-        repository.ttsSettings.save(current.copy(voiceIdentifier = voice?.identifier))
+        persistTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
         showTtsSettings()
     }
 }

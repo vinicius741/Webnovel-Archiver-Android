@@ -223,15 +223,40 @@ class TtsEngine(
         }
     }
 
-    /** New pause lengths reach the loaded chapter from the next pause heard; nothing restarts. */
-    fun applyPacing(settings: TtsSettings) {
+    /**
+     * Saved settings reach the loaded chapter in place. New pause lengths apply from the next pause
+     * heard and a new rate at once; a new engine, voice or pitch re-renders from where it is.
+     */
+    fun applySettings(settings: TtsSettings) {
         scope.launch {
             stateMutex.withLock {
-                if (loaded.session == null) return@withLock
+                val session = loaded.session ?: return@withLock
+                val previous = activeSettings
+                activeSettings = settings
                 loaded.applyPacing(settings)
-                emitState(isPlaying = isAudibleLocked())
+                if (session.rate != settings.rate) {
+                    val updated = session.copy(rate = settings.rate)
+                    loaded.session = updated
+                    sessionStore.schedule(updated)
+                    outputs.active?.setRate(settings.rate)
+                }
+                if (previous != null && loaded.hasChapter && TtsProfilePlanning.soundsDifferent(previous, settings)) {
+                    reloadVoiceLocked(settings)
+                } else {
+                    emitState(isPlaying = isAudibleLocked())
+                }
             }
         }
+    }
+
+    /** Restarts the output from the current point so what follows is heard in the new voice. */
+    private fun reloadVoiceLocked(settings: TtsSettings) {
+        val point = pointLocked()
+        outputs.stopActive()
+        speech.selectEngine(settings.enginePackage)
+        loaded.currentItem = point.item
+        loaded.currentOffsetMs = point.offsetMs
+        if (output.wantsAudio) loadOutputLocked() else emitState(isPlaying = false)
     }
 
     /** Play after a pause: picks up in place, or from the saved session if nothing is loaded. */
@@ -345,8 +370,9 @@ class TtsEngine(
     ) {
         TtsEngineLogging.sessionStart(prepared.story.id, prepared.chapter.id, prepared.chunks.size, prepared.startIndex, speech.initialized)
         activeSettings = prepared.settings
-        speech.ensureEngine()
         outputs.stopActive()
+        speech.selectEngine(prepared.settings.enginePackage)
+        speech.ensureEngine()
         renderAheadStarted = false
         loaded.load(prepared)
         if (startPaused) {
@@ -390,7 +416,7 @@ class TtsEngine(
                 offsetMs = loaded.currentOffsetMs,
                 rate = loaded.session?.rate ?: settings.rate,
                 playWhenReady = true,
-                voiceKey = ttsVoiceKey(engine, settings),
+                voiceKey = ttsVoiceKey(engine, speech.enginePackage, settings),
             ),
         )
         outputs.loaded = true

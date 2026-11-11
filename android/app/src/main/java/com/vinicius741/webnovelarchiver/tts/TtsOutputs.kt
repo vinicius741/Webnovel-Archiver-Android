@@ -11,11 +11,15 @@ import kotlinx.coroutines.cancel
 import timber.log.Timber
 import java.io.File
 
-/** What a rendered sentence's audio depends on besides its text. */
+/**
+ * What a rendered sentence's audio depends on besides its text. [enginePackage] is the engine the
+ * app chose, null when it follows the phone's; that case keeps the key audio was cached under before.
+ */
 internal fun ttsVoiceKey(
     engine: TextToSpeech,
+    enginePackage: String?,
     settings: TtsSettings,
-): String = "${engine.defaultEngine}|${engine.voice?.name}|${settings.pitch}"
+): String = "${enginePackage ?: engine.defaultEngine}|${engine.voice?.name}|${settings.pitch}"
 
 /** Chooses what narration plays through: rendered audio until a device proves it cannot do that. */
 internal class TtsOutputs(

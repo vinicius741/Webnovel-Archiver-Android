@@ -357,6 +357,12 @@ data class TtsSettings(
     val sentencePauseMs: Long = 500L,
     val paragraphPauseMs: Long = 1_000L,
     val scenePauseMs: Long = 2_000L,
+    /** Speech engine (TTS app) package the app speaks with; null follows the phone's preferred engine. */
+    val enginePackage: String? = null,
+    /** Saved voice setups to switch between in one tap. */
+    val profiles: List<TtsProfile> = emptyList(),
+    /** The profile last applied or saved; the settings may have changed since. */
+    val activeProfileId: String? = null,
 ) {
     companion object {
         const val MAX_PHRASE_PAUSE_MS = 1_500L
@@ -365,6 +371,20 @@ data class TtsSettings(
         const val MAX_SCENE_PAUSE_MS = 8_000L
     }
 }
+
+/** A named snapshot of how narration sounds: engine, voice, pitch, rate and pauses. */
+data class TtsProfile(
+    val id: String = "",
+    val name: String = "",
+    val enginePackage: String? = null,
+    val voiceIdentifier: String? = null,
+    val pitch: Float = 1.0f,
+    val rate: Float = 1.0f,
+    val phrasePauseMs: Long = 0L,
+    val sentencePauseMs: Long = 500L,
+    val paragraphPauseMs: Long = 1_000L,
+    val scenePauseMs: Long = 2_000L,
+)
 
 /**
  * OpenRouter-backed AI feature settings: generation and decision-model cover selection share one API key;
