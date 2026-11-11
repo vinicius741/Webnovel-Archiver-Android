@@ -49,6 +49,13 @@ internal object TtsEngineCatalog {
         return packages
     }
 
+    /** The engine that speaks for [requested]: it, while usable, else null (the phone's engine). */
+    fun usableEngine(
+        context: Context,
+        requested: String?,
+        kokoroInstalled: Boolean,
+    ): String? = requested?.let { TtsEnginePlanning.resolve(it, usablePackages(context, kokoroInstalled)) }
+
     /** The engine chosen in the phone's text-to-speech settings, when Android says. */
     fun phoneDefault(context: Context): String? =
         runCatching { Settings.Secure.getString(context.contentResolver, Settings.Secure.TTS_DEFAULT_SYNTH) }
@@ -75,8 +82,9 @@ internal object TtsEngineCatalog {
                         tts?.shutdown()
                         if (continuation.isActive) continuation.resume(voices)
                     }
-                tts = TextToSpeech(context.applicationContext, listener, enginePackage)
-                continuation.invokeOnCancellation { tts?.shutdown() }
+                val engine = TextToSpeech(context.applicationContext, listener, enginePackage)
+                tts = engine
+                continuation.invokeOnCancellation { engine.shutdown() }
             }
         }
     }

@@ -18,6 +18,12 @@ internal class TtsAudioCache(
     private val lock = Object()
     private var writesSinceTrim = 0
 
+    /**
+     * Playback and the settings sample each have a cache on the same folder; their own temporary
+     * names keep them from writing into one file when both render the same sentence.
+     */
+    private val tempTag = java.lang.Long.toHexString(System.nanoTime())
+
     fun keyFor(
         voiceKey: String,
         text: String,
@@ -59,7 +65,7 @@ internal class TtsAudioCache(
         clip: TtsPcmClip,
     ) {
         dir.mkdirs()
-        val temporary = File(dir, "$key.tmp")
+        val temporary = File(dir, "$key.$tempTag.tmp")
         val header =
             ByteBuffer
                 .allocate(HEADER_BYTES)
@@ -93,10 +99,16 @@ internal class TtsAudioCache(
 
     fun temporaryFile(name: String): File {
         dir.mkdirs()
-        return File(dir, "$name.wav.tmp")
+        return File(dir, "$name.$tempTag.wav.tmp")
     }
 
     private fun trim() {
+        // A temporary file outlives its write only if the process died mid-write.
+        val staleBefore = System.currentTimeMillis() - STALE_TEMP_MS
+        dir
+            .listFiles { candidate ->
+                candidate.extension == TEMP_EXTENSION && candidate.lastModified() < staleBefore
+            }?.forEach { it.delete() }
         val files = dir.listFiles { candidate -> candidate.extension == EXTENSION }.orEmpty()
         var total = files.sumOf { it.length() }
         if (total <= maxBytes) return
@@ -114,6 +126,8 @@ internal class TtsAudioCache(
         const val HEADER_BYTES = 4
         const val EXTENSION = "pcm"
         const val WRITES_BETWEEN_TRIMS = 64
+        const val TEMP_EXTENSION = "tmp"
+        const val STALE_TEMP_MS = 60L * 60L * 1000L
 
         /** About three hours of speech at 24 kHz. */
         const val DEFAULT_MAX_BYTES = 500L * 1024L * 1024L

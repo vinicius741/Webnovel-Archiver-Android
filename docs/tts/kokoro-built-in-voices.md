@@ -85,11 +85,12 @@ the cache key.
 
 ## Native code and release builds
 
-- The app ships native code for `arm64-v8a` (phones) and `x86_64` (emulator) only. This is set by
-  `abiFilters` in `app/build.gradle`.
-- On other ABIs the app still installs. Kokoro is simply not offered there
-  (`KokoroModelFiles.isDeviceSupported`), and a failed native load reports "cannot load" instead of
-  crashing.
+- The app ships native code for `arm64-v8a` and `armeabi-v7a` (phones) and `x86_64` (emulator). This
+  is set by `abiFilters` in `app/build.gradle`.
+- An APK with native code cannot install on a device that matches none of its ABIs, so the filter
+  must keep every phone ABI. Only 32-bit x86 devices, which are all but extinct, are left out.
+- If the native library still fails to load, Kokoro reports "cannot load" instead of crashing, and
+  `KokoroModelFiles.isDeviceSupported` hides Kokoro on any ABI outside the list.
 - sherpa-onnx's JNI reads the Kotlin config classes' fields by name, and the AAR ships no ProGuard
   rules. `proguard-rules.pro` therefore keeps `com.k2fsa.sherpa.onnx.**`. A local R8 release build
   confirmed that those classes and fields keep their names.

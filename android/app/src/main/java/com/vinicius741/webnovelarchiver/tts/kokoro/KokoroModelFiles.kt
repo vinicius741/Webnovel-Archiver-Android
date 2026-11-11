@@ -33,7 +33,7 @@ internal class KokoroModelFiles(
         const val INSTALLED_MARKER = ".installed"
 
         /** The app ships Kokoro's native code for these ABIs only (see `abiFilters` in build.gradle). */
-        private val supportedAbis = setOf("arm64-v8a", "x86_64")
+        private val supportedAbis = setOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
         val isDeviceSupported: Boolean get() = Build.SUPPORTED_ABIS.any { it in supportedAbis }
     }

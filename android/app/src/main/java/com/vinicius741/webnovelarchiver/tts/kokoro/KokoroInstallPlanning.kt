@@ -55,6 +55,9 @@ internal object KokoroInstallPlanning {
     fun bytesNeeded(downloadedBytes: Long): Long =
         (KokoroModel.ARCHIVE_BYTES - downloadedBytes).coerceAtLeast(0L) + KokoroModel.UNPACKED_BYTES + FREE_SPACE_MARGIN_BYTES
 
+    /** Downloaded bytes the install can keep: a partial or complete archive, but never an oversized one. */
+    fun reusableBytes(partialBytes: Long): Long = if (partialBytes in 1..KokoroModel.ARCHIVE_BYTES) partialBytes else 0L
+
     /** A partial download is only worth resuming while it is shorter than the whole archive. */
     fun resumeFrom(partialBytes: Long): Long = if (partialBytes in 1 until KokoroModel.ARCHIVE_BYTES) partialBytes else 0L
 

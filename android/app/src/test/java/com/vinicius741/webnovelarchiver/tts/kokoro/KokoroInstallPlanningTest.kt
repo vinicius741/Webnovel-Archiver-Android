@@ -46,6 +46,17 @@ class KokoroInstallPlanningTest {
     }
 
     @Test
+    fun `a complete archive left by an interrupted unpack counts as downloaded for the space check`() {
+        val complete = KokoroInstallPlanning.reusableBytes(KokoroModel.ARCHIVE_BYTES)
+
+        assertEquals(KokoroModel.ARCHIVE_BYTES, complete)
+        assertEquals(KokoroInstallPlanning.bytesNeeded(KokoroModel.ARCHIVE_BYTES), KokoroInstallPlanning.bytesNeeded(complete))
+        assertEquals(0L, KokoroInstallPlanning.reusableBytes(KokoroModel.ARCHIVE_BYTES + 1))
+        assertEquals(0L, KokoroInstallPlanning.reusableBytes(0L))
+        assertEquals(500L, KokoroInstallPlanning.reusableBytes(500L))
+    }
+
+    @Test
     fun `progress reads as percent and megabytes`() {
         assertEquals(
             "Downloading 50% (159 MB of 319 MB)",

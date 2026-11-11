@@ -4,8 +4,13 @@ import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** One generated clip: mono float samples in -1..1. */
 internal class KokoroAudio(
@@ -40,6 +45,27 @@ class KokoroRuntime(
             users++
             true
         }
+
+    /**
+     * [acquire] on the IO dispatcher for a caller that may be cancelled or replaced meanwhile. The load
+     * cannot be interrupted, so its result is kept: if the caller is cancelled, or [stillWanted] (read
+     * back on the caller's thread) says no, the reference is released instead of leaked.
+     */
+    internal suspend fun acquireFor(
+        files: KokoroModelFiles,
+        stillWanted: () -> Boolean,
+    ): Boolean {
+        val loaded = AtomicBoolean(false)
+        try {
+            withContext(Dispatchers.IO) { loaded.set(acquire(files)) }
+        } finally {
+            if (loaded.get() && !(currentCoroutineContext().isActive && stillWanted())) {
+                loaded.set(false)
+                releaseLater()
+            }
+        }
+        return loaded.get()
+    }
 
     internal fun releaseLater() {
         releaser.execute {

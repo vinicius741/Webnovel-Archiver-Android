@@ -7,13 +7,11 @@ import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
@@ -81,11 +79,17 @@ internal class TtsSpeechEngineHost(
         return replaced
     }
 
-    /** Whether speaking with [packageName] means replacing the running engine. */
-    fun needsRestart(packageName: String?): Boolean = packageName != requestedPackage || (started && resolve(packageName) != enginePackage)
-
-    private fun resolve(requested: String?): String? =
-        requested?.let { TtsEnginePlanning.resolve(it, TtsEngineCatalog.usablePackages(context, kokoro.isModelInstalled)) }
+    /**
+     * Whether speaking with [packageName] means replacing the running engine. Asking Android which
+     * engines exist only matters while a stand-in speaks for an engine that could not, so that is the
+     * only time this queries it (it runs on the main thread at every chapter change).
+     */
+    fun needsRestart(packageName: String?): Boolean =
+        packageName != requestedPackage ||
+            (
+                started && enginePackage != packageName &&
+                    TtsEngineCatalog.usableEngine(context, packageName, kokoro.isModelInstalled) != enginePackage
+            )
 
     /** Starts the chosen engine unless one is running; [onReady] follows once it can speak. */
     fun ensureEngine() {
@@ -93,7 +97,7 @@ internal class TtsSpeechEngineHost(
         started = true
         initialized = false
         val packageName =
-            resolve(requestedPackage).also {
+            TtsEngineCatalog.usableEngine(context, requestedPackage, kokoro.isModelInstalled).also {
                 if (it == null &&
                     requestedPackage != null
                 ) {
@@ -104,25 +108,14 @@ internal class TtsSpeechEngineHost(
         isBuiltin = KokoroVoices.isEngine(packageName)
         val created = ++generation
         if (isBuiltin) {
-            startKokoro(created)
+            // Loading the model takes seconds, so it happens off the main thread.
+            scope.launch {
+                val loaded = kokoro.acquireFor(KokoroModelFiles(context)) { created == generation }
+                if (loaded) holdsKokoro = true
+                onInit(created, if (loaded) TextToSpeech.SUCCESS else TextToSpeech.ERROR)
+            }
         } else {
             engine = TextToSpeech(context, { status -> onInit(created, status) }, packageName)
-        }
-    }
-
-    /** Loading the model takes seconds, so it happens off the main thread. */
-    private fun startKokoro(created: Long) {
-        scope.launch {
-            val loaded = withContext(Dispatchers.IO) { kokoro.acquire(KokoroModelFiles(context)) }
-            if (loaded) {
-                // An engine replaced while it loaded must not keep the model in memory.
-                if (created != generation) {
-                    kokoro.releaseLater()
-                    return@launch
-                }
-                holdsKokoro = true
-            }
-            onInit(created, if (loaded) TextToSpeech.SUCCESS else TextToSpeech.ERROR)
         }
     }
 

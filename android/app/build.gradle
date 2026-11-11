@@ -38,10 +38,11 @@ android {
         versionCode 12
         versionName '1.0.11-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-        // The built-in Kokoro voices ship native code: arm64 for phones, x86_64 for the emulator.
-        // Other devices install fine and simply do not offer Kokoro.
+        // The built-in Kokoro voices ship native code: arm64 and 32-bit ARM for phones, x86_64 for
+        // the emulator. An APK with native code cannot install on a device matching none of these
+        // (only 32-bit x86 devices, which are all but extinct), so keep every real phone ABI here.
         ndk {
-            abiFilters 'arm64-v8a', 'x86_64'
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
         }
         // GitHub repository whose latest release the in-app update check reads (owner/name).
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"vinicius741/Webnovel-Archiver-Android"'
