@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.tts
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroSynthesizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,12 +32,18 @@ internal class TtsOutputs(
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
-    private val synthesizer = TtsFileSynthesizer { host.engine }
+    private val fileSynthesizer = TtsFileSynthesizer { host.engine }
+    private val kokoroSynthesizer = KokoroSynthesizer(host.kokoro) { host.kokoroSpeaker }
+    private val synthesizer =
+        TtsSpeechSynthesizer { text, output ->
+            if (host.isBuiltin) kokoroSynthesizer.synthesize(text, output) else fileSynthesizer.synthesize(text, output)
+        }
     private var rendered: RenderedTtsOutput? = null
     private var live: LiveTtsOutput? = null
+    private var liveRequested = false
 
-    var useLive = false
-        private set
+    /** Live speech, once rendering proved impossible; the built-in model has no live mode. */
+    val useLive: Boolean get() = liveRequested && !host.isBuiltin
 
     /** Whether the current chapter has been handed to the output. */
     var loaded = false
@@ -69,7 +76,7 @@ internal class TtsOutputs(
                     listener = listener,
                     dispatch = dispatch,
                 ).also { rendered = it }
-        engine?.setOnUtteranceProgressListener(synthesizer.progressListener)
+        engine?.setOnUtteranceProgressListener(fileSynthesizer.progressListener)
         return output
     }
 
@@ -82,7 +89,7 @@ internal class TtsOutputs(
         Timber.w("TTS rendered audio unavailable; continuing with live speech")
         rendered?.release()
         rendered = null
-        useLive = true
+        liveRequested = true
         loaded = false
     }
 

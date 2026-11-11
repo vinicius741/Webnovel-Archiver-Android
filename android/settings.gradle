@@ -13,6 +13,18 @@ dependencyResolutionManagement {
         mavenCentral()
         // MPAndroidChart (trend graphs on the per-novel Trends screen) is only published on JitPack.
         maven { url 'https://jitpack.io' }
+        // sherpa-onnx (the built-in Kokoro voices) publishes its Android AAR only as a GitHub
+        // release asset; this repository serves that one module and nothing else.
+        exclusiveContent {
+            forRepository {
+                ivy {
+                    url 'https://github.com/k2-fsa/sherpa-onnx/releases/download/'
+                    patternLayout { artifact 'v[revision]/[module]-[revision].[ext]' }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeModule('com.k2fsa', 'sherpa-onnx') }
+        }
     }
 }
 

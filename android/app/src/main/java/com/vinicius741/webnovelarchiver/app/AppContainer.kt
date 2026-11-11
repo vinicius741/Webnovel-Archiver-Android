@@ -27,6 +27,9 @@ import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityStore
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.sync.storyChapterKey
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelInstaller
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelState
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -196,15 +199,32 @@ class AppContainer internal constructor(
             }
             simulation?.prepareRepository(repository)
         }
+
+    /**
+     * Downloads and unpacks the Kokoro model on demand; the files stay on the device. The offline
+     * simulation's guarded client denies the download, so QA sessions never fetch it.
+     */
+    internal val kokoroModel: KokoroModelInstaller =
+        simulation?.aiClient()?.let { KokoroModelInstaller(appContext, applicationScope, it) }
+            ?: KokoroModelInstaller(appContext, applicationScope)
+
+    /** The built-in Kokoro voice model, loaded once and shared by playback and the settings sample. */
+    val kokoroRuntime: KokoroRuntime = KokoroRuntime(modelInstalled = { kokoroModel.isInstalled })
+
     val ttsEngine: TtsEngine =
         TtsEngine(
             context = appContext,
             repository = repository,
             awaitRepositoryReady = repositoryStartup::awaitReady,
+            kokoro = kokoroRuntime,
         )
 
     /** Starts migration/recovery/hydration on the process IO scope without blocking Application. */
     fun init() {
+        // A chapter that started while Kokoro was still downloading switches to it once installed.
+        applicationScope.launch {
+            kokoroModel.state.collect { if (it is KokoroModelState.Installed) ttsEngine.refreshEngine() }
+        }
         runCatching {
             (appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager)
                 .registerDefaultNetworkCallback(networkCallback)

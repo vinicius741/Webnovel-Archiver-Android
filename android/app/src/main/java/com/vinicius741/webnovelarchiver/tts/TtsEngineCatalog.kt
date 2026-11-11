@@ -7,6 +7,8 @@ import android.content.pm.ResolveInfo
 import android.os.Build
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
@@ -17,6 +19,7 @@ internal object TtsEngineCatalog {
     /** Neural engines load their model before they answer, which can take a while. */
     private const val VOICE_LOAD_TIMEOUT_MS = 30_000L
 
+    /** Speech engines installed as Android TTS apps. */
     fun installed(context: Context): List<TtsEngineInfo> {
         val pm = context.packageManager
         val services =
@@ -28,7 +31,30 @@ internal object TtsEngineCatalog {
         )
     }
 
-    fun installedPackages(context: Context): Set<String> = installed(context).mapTo(mutableSetOf()) { it.packageName }
+    /** Everything the engine setting can offer: the built-in Kokoro voices first, then installed apps. */
+    fun choices(context: Context): List<TtsEngineInfo> =
+        if (KokoroModelFiles.isDeviceSupported) {
+            listOf(TtsEngineInfo(KokoroVoices.ENGINE_ID, KokoroVoices.ENGINE_LABEL)) + installed(context)
+        } else {
+            installed(context)
+        }
+
+    /** Engines that can speak right now: installed apps, plus Kokoro once its model is downloaded. */
+    fun usablePackages(
+        context: Context,
+        kokoroInstalled: Boolean,
+    ): Set<String> {
+        val packages = installed(context).mapTo(mutableSetOf()) { it.packageName }
+        if (KokoroModelFiles.isDeviceSupported && kokoroInstalled) packages += KokoroVoices.ENGINE_ID
+        return packages
+    }
+
+    /** The engine that speaks for [requested]: it, while usable, else null (the phone's engine). */
+    fun usableEngine(
+        context: Context,
+        requested: String?,
+        kokoroInstalled: Boolean,
+    ): String? = requested?.let { TtsEnginePlanning.resolve(it, usablePackages(context, kokoroInstalled)) }
 
     /** The engine chosen in the phone's text-to-speech settings, when Android says. */
     fun phoneDefault(context: Context): String? =
@@ -40,8 +66,9 @@ internal object TtsEngineCatalog {
     suspend fun voices(
         context: Context,
         enginePackage: String?,
-    ): List<VoiceInfo>? =
-        withTimeoutOrNull(VOICE_LOAD_TIMEOUT_MS) {
+    ): List<VoiceInfo>? {
+        if (KokoroVoices.isEngine(enginePackage)) return KokoroVoices.voiceInfos()
+        return withTimeoutOrNull(VOICE_LOAD_TIMEOUT_MS) {
             suspendCancellableCoroutine { continuation ->
                 var tts: TextToSpeech? = null
                 val listener =
@@ -55,10 +82,12 @@ internal object TtsEngineCatalog {
                         tts?.shutdown()
                         if (continuation.isActive) continuation.resume(voices)
                     }
-                tts = TextToSpeech(context.applicationContext, listener, enginePackage)
-                continuation.invokeOnCancellation { tts?.shutdown() }
+                val engine = TextToSpeech(context.applicationContext, listener, enginePackage)
+                tts = engine
+                continuation.invokeOnCancellation { engine.shutdown() }
             }
         }
+    }
 
     private fun queryEngines(pm: PackageManager): List<ResolveInfo> {
         val intent = Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)

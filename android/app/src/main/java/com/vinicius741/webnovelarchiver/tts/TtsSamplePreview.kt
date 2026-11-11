@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.tts
 import android.content.Context
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ import kotlinx.coroutines.withContext
  */
 internal class TtsSamplePreview(
     context: Context,
+    kokoro: KokoroRuntime,
     private val onPlayingChanged: (Boolean) -> Unit,
     private val onFailed: (TtsSampleFailure) -> Unit,
 ) {
@@ -33,6 +35,7 @@ internal class TtsSamplePreview(
             scope = scope,
             stateMutex = stateMutex,
             listeners = TtsEventListeners(),
+            kokoro = kokoro,
             onReady = ::loadLocked,
             onFailed = { endLocked(TtsSampleFailure.Engine) },
         )
@@ -48,6 +51,8 @@ internal class TtsSamplePreview(
                     override fun onEnded() = endLocked()
 
                     override fun onUnavailable() {
+                        // The built-in model has no live mode to fall back to.
+                        if (speech.isBuiltin) return endLocked(TtsSampleFailure.Engine)
                         outputs.switchToLive()
                         loadLocked()
                     }
@@ -113,7 +118,7 @@ internal class TtsSamplePreview(
 
     private fun loadLocked() {
         val sample = pending ?: return
-        val engine = speech.ensureEngine()
+        speech.ensureEngine()
         val synthesisRate = if (outputs.useLive) sample.settings.rate else 1f
         val applied = speech.applySettings(sample.settings, synthesisRate) { endLocked(TtsSampleFailure.Engine) }
         if (!applied) return
@@ -126,7 +131,7 @@ internal class TtsSamplePreview(
                 offsetMs = 0L,
                 rate = sample.settings.rate,
                 playWhenReady = true,
-                voiceKey = ttsVoiceKey(engine, speech.enginePackage, sample.settings),
+                voiceKey = speech.voiceKey(sample.settings),
             ),
         )
         outputs.loaded = true
