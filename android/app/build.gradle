@@ -35,8 +35,8 @@ android {
         applicationId 'com.vinicius741.webnovelarchiver.nativeapp'
         minSdk 26
         targetSdk 36
-        versionCode 16
-        versionName '1.0.15-native'
+        versionCode 17
+        versionName '1.0.16-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         // The built-in Kokoro voices ship native code: arm64 and 32-bit ARM for phones, x86_64 for
         // the emulator. An APK with native code cannot install on a device matching none of these
