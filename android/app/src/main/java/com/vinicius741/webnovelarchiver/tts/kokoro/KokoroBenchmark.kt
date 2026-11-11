@@ -58,11 +58,11 @@ internal class KokoroBenchmark(
                     device = device,
                     voiceName = voiceName,
                     listeningRate = listeningRate,
-                    appThreads = KokoroRuntime.NUM_THREADS,
+                    appThreads = KokoroRuntime.threads,
                     narrationModelLoaded = narrationModelLoaded,
                     atStart = headroom(),
                 )
-            val steps = KokoroBenchmarkPlanning.plan(device.cores, KokoroRuntime.NUM_THREADS)
+            val steps = KokoroBenchmarkPlanning.plan(device.cores, KokoroRuntime.threads)
             val runs = mutableListOf<KokoroBenchmarkRun>()
             for ((index, step) in steps.withIndex()) {
                 if (shouldStop()) break
@@ -142,7 +142,7 @@ internal class KokoroBenchmark(
         onProgress: (String) -> Unit,
     ): Measured =
         coroutineScope {
-            val sampler = CpuSampler(coreCount())
+            val sampler = CpuSampler(KokoroCpu.coreCount())
             val cpuStart = Process.getElapsedCpuTime()
             val wallStart = SystemClock.elapsedRealtime()
             val sampling =
@@ -189,8 +189,8 @@ internal class KokoroBenchmark(
     }
 
     private fun device(): KokoroBenchmarkDevice {
-        val cores = coreCount()
-        val maxKhz = (0 until cores).map { readLong("$CPU_DIR/cpu$it/cpufreq/cpuinfo_max_freq") }
+        val cores = KokoroCpu.coreCount()
+        val maxKhz = KokoroCpu.coreMaxKhz(cores)
         return KokoroBenchmarkDevice(
             manufacturer = Build.MANUFACTURER,
             model = Build.MODEL,
@@ -198,7 +198,15 @@ internal class KokoroBenchmark(
             androidRelease = Build.VERSION.RELEASE,
             sdk = Build.VERSION.SDK_INT,
             cores = cores,
-            coreMaxMhz = if (maxKhz.all { it != null && it >= KHZ_PER_MHZ }) maxKhz.map { (it!! / KHZ_PER_MHZ).toInt() } else emptyList(),
+            coreMaxMhz =
+                if (maxKhz.all {
+                        it != null && it >= KokoroCpu.KHZ_PER_MHZ
+                    }
+                ) {
+                    maxKhz.map { (it!! / KokoroCpu.KHZ_PER_MHZ).toInt() }
+                } else {
+                    emptyList()
+                },
             totalRamMb = memoryInfo().totalMem / BYTES_PER_MB,
         )
     }
@@ -221,12 +229,6 @@ internal class KokoroBenchmark(
     private fun memoryInfo(): ActivityManager.MemoryInfo =
         ActivityManager.MemoryInfo().also { (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
 
-    /** Counts cores that are switched off too, which the runtime's count leaves out. */
-    private fun coreCount(): Int {
-        val listed = File(CPU_DIR).listFiles { file -> CORE_NAME.matches(file.name) }?.size ?: 0
-        return maxOf(listed, Runtime.getRuntime().availableProcessors())
-    }
-
     /**
      * Records which core each of the app's threads runs on and how fast each core is clocked. Work a
      * thread did since the last sample is credited to the core it is on now, which is close enough
@@ -237,12 +239,12 @@ internal class KokoroBenchmark(
     ) {
         private val lastTicks = HashMap<String, Long>()
         private val ticksByCore = HashMap<Int, Long>()
-        private val maxKhz = (0 until cores).map { readLong("$CPU_DIR/cpu$it/cpufreq/cpuinfo_max_freq") }
+        private val maxKhz = KokoroCpu.coreMaxKhz(cores)
         private val clockPercentSums = LongArray(cores)
         private var clockSamples = 0
 
         /** Emulators report placeholder top clocks below 1 MHz, which say nothing about the chip. */
-        private var clocksReadable = maxKhz.all { it != null && it >= KHZ_PER_MHZ }
+        private var clocksReadable = maxKhz.all { it != null && it >= KokoroCpu.KHZ_PER_MHZ }
 
         fun sample() {
             File("/proc/self/task").listFiles()?.forEach { task ->
@@ -253,7 +255,7 @@ internal class KokoroBenchmark(
                 if (delta > 0L) ticksByCore[parsed.core] = (ticksByCore[parsed.core] ?: 0L) + delta
             }
             if (!clocksReadable) return
-            val current = (0 until cores).map { readLong("$CPU_DIR/cpu$it/cpufreq/scaling_cur_freq") }
+            val current = KokoroCpu.coreCurrentKhz(cores)
             if (current.any { it == null }) {
                 clocksReadable = false
                 return
@@ -276,16 +278,11 @@ internal class KokoroBenchmark(
     }
 
     private companion object {
-        const val CPU_DIR = "/sys/devices/system/cpu"
-        val CORE_NAME = Regex("cpu\\d+")
         const val SAMPLE_EVERY_MS = 100L
         const val MS_PER_SECOND = 1_000L
         const val KB_PER_MB = 1_024L
-        const val KHZ_PER_MHZ = 1_000L
         const val BYTES_PER_MB = 1_024L * 1_024L
         const val PERCENT = 100L
         val THERMAL_NAMES = listOf("none", "light", "moderate", "severe", "critical", "emergency", "shutdown")
     }
 }
-
-private fun readLong(path: String): Long? = runCatching { File(path).readText().trim().toLong() }.getOrNull()

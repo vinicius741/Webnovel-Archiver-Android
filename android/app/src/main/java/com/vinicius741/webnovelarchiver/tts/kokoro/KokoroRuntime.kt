@@ -96,11 +96,14 @@ class KokoroRuntime(
     /** Whether narration or the settings sample currently holds the model in memory. */
     internal val isLoaded: Boolean get() = synchronized(lock) { tts != null }
 
-    private fun load(files: KokoroModelFiles): OfflineTts? = loadKokoroTts(files, NUM_THREADS)
+    private fun load(files: KokoroModelFiles): OfflineTts? = loadKokoroTts(files, threads)
 
     internal companion object {
-        /** Leaves cores for playback and the UI while still generating well ahead of real time. */
-        const val NUM_THREADS = 4
+        /**
+         * One per fast core (see [KokoroThreads]). Playback barely uses the CPU, and its thread runs at
+         * audio priority, so it is not starved by generation on every core.
+         */
+        val threads: Int get() = KokoroThreads.forThisPhone
     }
 }
 

@@ -77,6 +77,13 @@ the cache key.
   - The model loads off the main thread when playback, or the settings sample, first needs it. The
     engine-start watchdog allows 90 s for the load instead of 15 s.
   - It is freed on a background thread when no host holds it. A sentence in progress finishes first.
+- **Threads:** the model computes on one thread per fast core, capped at 8 and at least 2
+  (`KokoroThreads.forClocks`). A core counts as fast when its top clock is at least 70% of the
+  fastest core's. The engine splits each sentence evenly across threads, so a thread on a slow
+  efficiency core holds the rest back. Unreadable clocks (and emulators, which report placeholders)
+  fall back to 4, the fixed count used before 1.0.16. On the Galaxy Z Fold7 (Snapdragon 8 Elite,
+  eight fast cores), the speed test measured 1.72x real time at 4 threads, below the owner's 1.8x
+  listening speed, so playback paused between sentences. It measured 2.51x at 8 threads.
 - **Measured on the x86_64 emulator (debug build):**
   - Rendering stayed ahead of 1.8x playback.
   - The app used about 1.3 GB of memory while Kokoro was speaking (native heap about 1.2 GB).
@@ -92,8 +99,8 @@ gaps between sentences come from generation speed, and how much of the phone it 
 - **What runs** (`KokoroBenchmark`, plan in `KokoroBenchmarkPlanning.plan`): narration stops (a
   paused chapter keeps rendering ahead, which would share the CPU). The test then loads its own
   copies of the model, one step at a time:
-  - the app's setting (`KokoroRuntime.NUM_THREADS`, 4 threads) first, while the phone is coolest;
-  - 2, 6 and 8 threads, up to the core count;
+  - the app's setting (`KokoroRuntime.threads`) first, while the phone is coolest;
+  - 2, 4, 6 and 8 threads (except the app's setting), up to the core count;
   - two copies generating at once (half the cores each, at most 4 threads), which tests whether
     rendering sentences in parallel would beat one at a time. It is skipped below 1.5 GB of free RAM;
   - the app's setting again, so heat throttling shows as a drop between its two runs.
@@ -111,6 +118,13 @@ gaps between sentences come from generation speed, and how much of the phone it 
 - **Export:** the results dialog has **Share** (plain text through the share sheet) and **Copy**. The
   text ends with a `--- data ---` JSON block (`KokoroBenchmarkJson`, `format` 1) for analysis. The
   last report is kept in `files/kokoro_speed_test.txt` and reopens from **Last results**.
+- **Galaxy Z Fold7 (2026-11-11, release 1.0.15, 1.8x listening):**
+  - Speed: 4 threads 1.72x (3.5 cores busy, about 70% of top clock), 2 threads 1.36x, 6 threads
+    1.73x, 8 threads 2.51x (6.8 cores busy).
+  - Two copies at 4 threads each made 2.45x combined. That is no better than one copy at 8 threads,
+    and it costs a second ~700 MB copy and slower sentences, so narration keeps one copy.
+  - Thermal headroom rose from 0.70 to 0.96 during the two-minute test, with no measurable
+    throttling. Free RAM was 4.7 GB; one copy uses about 730 MB.
 - **Emulator check (2026-11-11, `webnovel_api36`, 4 cores):** the app's setting ran at 2.47x, with
   3.8 of 4 cores busy. 2 threads ran at 1.67x. One model copy added about 718 MB, so the parallel
   step was skipped for lack of free RAM.
