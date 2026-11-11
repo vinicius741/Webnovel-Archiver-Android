@@ -61,6 +61,11 @@ the cache key.
 
 ## Playback
 
+Since 2026-11-11, Kokoro generates chapter audio ahead of time in the background, and chapters
+play from that audio without loading the model (see `narration-pregeneration-plan.md`). The
+real-time path below still serves story descriptions and the settings sample. The speed test
+pauses generation while it runs.
+
 - **Engine selection:**
   - Choosing Kokoro before its model is downloaded saves the choice. Until the install finishes, the
     phone's engine speaks. `TtsEnginePlanning.resolve` treats Kokoro as available only once installed.

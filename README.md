@@ -8,6 +8,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 
 - Offline reading with saved progress, images, and background chapter downloads.
 - Text-to-speech with sentence highlighting, playback controls, per-story resume, a choice of speech engine (any installed TTS app, or the built-in Kokoro neural voices downloaded on demand, with an on-device speed test whose report can be shared), and saved voice profiles.
+- Pre-generated narration: chapter audio is generated in full, in the background, before it plays (bulk queue, keep the next chapters ready while listening, per-chapter voice, regenerate and delete from the Narration screen), so playback never waits on the voice model.
 - New-chapter tracking with a next-release estimate from each novel's recent release dates (flagged in the library when a sync may find it), library tabs, search, filters, a tap-the-author view of their other novels in your library, and novel popularity trends.
 - EPUB export, text cleanup, full library backup and restore, and recovery of lost chapters from a full backup.
 - A shareable activity log of the last 7 days (syncs, downloads, library changes, errors) for troubleshooting.
@@ -54,7 +55,7 @@ The app uses Android Views, Kotlin coroutines, OkHttp, Jsoup, and file-based JSO
 | `feature/`, `ui/` | Screens, shared widgets, and theme |
 | `domain/`, `data/` | Models, domain rules, persistence, and backups |
 | `source/`, `sync/`, `download/` | Site providers, story updates, and download queue |
-| `tts/`, `epub/`, `cleanup/`, `ai/` | Narration, export, text cleanup, and AI generation |
+| `tts/`, `narration/`, `epub/`, `cleanup/`, `ai/` | Playback, generated chapter audio, export, text cleanup, and AI generation |
 | `appupdate/`, `notification/`, `perf/` | App updates, notifications, and debug performance tracking |
 
 Unit tests live in `android/app/src/test/`; device tests live in `android/app/src/androidTest/` and use an isolated instrumentation app.

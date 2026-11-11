@@ -8,6 +8,8 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
 import com.vinicius741.webnovelarchiver.feature.library.LibrarySelectionPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.story.applyCleanup
 import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
 import com.vinicius741.webnovelarchiver.feature.story.syncStory
@@ -68,6 +70,7 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
     // Pure navigation (no story mutation), so no busy guard is needed.
     items += OptionsDialogItem.Option("Trends") { showTrends(story.id, null) }
     items += OptionsDialogItem.Option("AI Controls") { showAiControls(story.id) }
+    items += OptionsDialogItem.Option("Narration audio") { showNarrationStory(story.id) }
     items += OptionsDialogItem.Divider
     items +=
         OptionsDialogItem.Option("Delete Novel", destructive = true) {
@@ -78,6 +81,7 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
                 confirm("Delete \"${story.title}\"? This action cannot be undone.$warning", confirmLabel = "Delete") {
                     scope.launch {
                         repository.deleteStory(story.id)
+                        narration.deleteStory(story.id)
                         showLibrary()
                     }
                 }

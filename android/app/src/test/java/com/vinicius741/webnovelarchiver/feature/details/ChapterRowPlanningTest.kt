@@ -86,6 +86,10 @@ class ChapterRowPlanningTest {
             "Index 7",
             ChapterRowPlanning.metadataLabel(6, null, downloaded = false, downloadedAt = null),
         )
+        assertEquals(
+            "Index 7  •  Audio  •  Available offline",
+            ChapterRowPlanning.metadataLabel(6, null, downloaded = true, downloadedAt = null, hasAudio = true),
+        )
     }
 
     @Test

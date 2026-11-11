@@ -17,6 +17,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.feature.narration.narration
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -343,6 +344,7 @@ class ChapterListAdapter(
                 waitingForDelay,
                 patreonCopy = chapter.isPatreonCopy,
                 removedFromSource = chapter.isRemovedFromSource,
+                hasAudio = host.narration.store.pack(story.id, chapter.id) != null,
             )
         val color =
             when (liveStatus) {

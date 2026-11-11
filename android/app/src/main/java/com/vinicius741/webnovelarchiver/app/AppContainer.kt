@@ -23,6 +23,8 @@ import com.vinicius741.webnovelarchiver.data.storage.migrateSourceIdentities
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadRequestPacer
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
+import com.vinicius741.webnovelarchiver.narration.NarrationCoordinator
+import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.source.network.NetworkClient
 import com.vinicius741.webnovelarchiver.source.network.SourceReliabilityCoordinator
@@ -226,12 +228,25 @@ class AppContainer internal constructor(
     /** The built-in Kokoro voice model, loaded once and shared by playback and the settings sample. */
     val kokoroRuntime: KokoroRuntime = KokoroRuntime(modelInstalled = { kokoroModel.isInstalled })
 
+    /** Generated chapter audio: the queue, the background generator and the packs chapters play from. */
+    val narration: NarrationCoordinator =
+        NarrationCoordinator(
+            context = appContext,
+            repository = repository,
+            kokoro = kokoroRuntime,
+            startService = { NarrationForegroundService.start(appContext) },
+        )
+
     val ttsEngine: TtsEngine =
         TtsEngine(
             context = appContext,
             repository = repository,
-            awaitRepositoryReady = repositoryStartup::awaitReady,
+            awaitRepositoryReady = {
+                repositoryStartup.awaitReady()
+                narration.awaitLoaded()
+            },
             kokoro = kokoroRuntime,
+            narration = narration,
         )
 
     /** Starts migration/recovery/hydration on the process IO scope without blocking Application. */
@@ -255,6 +270,7 @@ class AppContainer internal constructor(
         runCatching { sourceReliability.restore(reliabilityStore.load()) }
             .onFailure { Timber.e(it, "Failed to restore source reliability state") }
         repositoryStartup.start(applicationScope)
+        narration.init(repositoryStartup::awaitReady)
         applicationScope.launch { appUpdates.restoreCachedRelease() }
     }
 
