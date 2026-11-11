@@ -127,7 +127,11 @@ internal fun ScreenHost.kokoroModelCard(): View {
                             button("Download", Btn.TONAL, R.drawable.wna_download) { confirmKokoroDownload {} }
                         }
                     is KokoroModelState.Failed -> button("Try again", Btn.TONAL, R.drawable.wna_download) { installer.install() }
-                    is KokoroModelState.Installed -> button("Remove", Btn.TEXT, R.drawable.wna_delete) { confirmKokoroRemoval() }
+                    is KokoroModelState.Installed -> {
+                        button("Test speed", Btn.TONAL, R.drawable.wna_chart) { confirmKokoroSpeedTest() }
+                        if (hasKokoroSpeedTest) button("Last results", Btn.TEXT, R.drawable.wna_share) { showLastKokoroSpeedTest() }
+                        button("Remove", Btn.TEXT, R.drawable.wna_delete) { confirmKokoroRemoval() }
+                    }
                     else -> button("Cancel", Btn.TEXT, R.drawable.wna_stop) { installer.cancel() }
                 }
             }

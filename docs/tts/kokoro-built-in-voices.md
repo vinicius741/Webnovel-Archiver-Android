@@ -83,6 +83,38 @@ the cache key.
   - Phones are expected to be similar or better. The owner's sherpa-onnx test on the Fold 7 measured
     an RTF of 0.54.
 
+## Speed test
+
+Settings → Voice & Speech → Kokoro voices → **Test speed** measures whether Kokoro can generate
+faster than the listener plays it, on the phone itself (release builds included). It answers whether
+gaps between sentences come from generation speed, and how much of the phone it leaves unused.
+
+- **What runs** (`KokoroBenchmark`, plan in `KokoroBenchmarkPlanning.plan`): narration stops (a
+  paused chapter keeps rendering ahead, which would share the CPU). The test then loads its own
+  copies of the model, one step at a time:
+  - the app's setting (`KokoroRuntime.NUM_THREADS`, 4 threads) first, while the phone is coolest;
+  - 2, 6 and 8 threads, up to the core count;
+  - two copies generating at once (half the cores each, at most 4 threads), which tests whether
+    rendering sentences in parallel would beat one at a time. It is skipped below 1.5 GB of free RAM;
+  - the app's setting again, so heat throttling shows as a drop between its two runs.
+
+  Each step speaks one warm-up sentence, then five novel-style test sentences (about 30 s of audio).
+- **What it records:**
+  - Speed: seconds of audio per second of real time. Below the listening rate, playback must wait.
+  - Load time, the first and the slowest sentence.
+  - Cores busy (process CPU time over real time).
+  - Which cores the work ran on, from sampling each thread's core in `/proc/self/task/*/stat`.
+  - Each core's average clock relative to its top clock (left out where unreadable, or on emulators,
+    which report placeholder clocks).
+  - Free RAM and the memory one model copy adds (PSS).
+  - Android's thermal status and headroom at start and end.
+- **Export:** the results dialog has **Share** (plain text through the share sheet) and **Copy**. The
+  text ends with a `--- data ---` JSON block (`KokoroBenchmarkJson`, `format` 1) for analysis. The
+  last report is kept in `files/kokoro_speed_test.txt` and reopens from **Last results**.
+- **Emulator check (2026-11-11, `webnovel_api36`, 4 cores):** the app's setting ran at 2.47x, with
+  3.8 of 4 cores busy. 2 threads ran at 1.67x. One model copy added about 718 MB, so the parallel
+  step was skipped for lack of free RAM.
+
 ## Native code and release builds
 
 - The app ships native code for `arm64-v8a` and `armeabi-v7a` (phones) and `x86_64` (emulator). This

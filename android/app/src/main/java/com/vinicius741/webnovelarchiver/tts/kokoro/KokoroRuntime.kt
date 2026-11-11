@@ -93,36 +93,48 @@ class KokoroRuntime(
                 ?.let { KokoroAudio(it.samples, it.sampleRate) }
         }
 
-    // UnsatisfiedLinkError (a device without the native code) must surface as "cannot load", not a crash.
-    @Suppress("TooGenericExceptionCaught")
-    private fun load(files: KokoroModelFiles): OfflineTts? =
-        try {
-            OfflineTts(
-                assetManager = null,
-                config =
-                    OfflineTtsConfig(
-                        model =
-                            OfflineTtsModelConfig(
-                                kokoro =
-                                    OfflineTtsKokoroModelConfig(
-                                        model = files.model.absolutePath,
-                                        voices = files.voices.absolutePath,
-                                        tokens = files.tokens.absolutePath,
-                                        dataDir = files.dataDir.absolutePath,
-                                    ),
-                                numThreads = NUM_THREADS,
-                                debug = false,
-                                provider = "cpu",
-                            ),
-                    ),
-            )
-        } catch (error: Throwable) {
-            Timber.e(error, "Kokoro model failed to load")
-            null
-        }
+    /** Whether narration or the settings sample currently holds the model in memory. */
+    internal val isLoaded: Boolean get() = synchronized(lock) { tts != null }
 
-    private companion object {
+    private fun load(files: KokoroModelFiles): OfflineTts? = loadKokoroTts(files, NUM_THREADS)
+
+    internal companion object {
         /** Leaves cores for playback and the UI while still generating well ahead of real time. */
         const val NUM_THREADS = 4
     }
 }
+
+/**
+ * Loads a Kokoro engine that computes on [numThreads] threads (seconds; off the main thread); null
+ * if it cannot load. An UnsatisfiedLinkError, on a device without the native code, must surface as
+ * "cannot load", not a crash.
+ */
+@Suppress("TooGenericExceptionCaught")
+internal fun loadKokoroTts(
+    files: KokoroModelFiles,
+    numThreads: Int,
+): OfflineTts? =
+    try {
+        OfflineTts(
+            assetManager = null,
+            config =
+                OfflineTtsConfig(
+                    model =
+                        OfflineTtsModelConfig(
+                            kokoro =
+                                OfflineTtsKokoroModelConfig(
+                                    model = files.model.absolutePath,
+                                    voices = files.voices.absolutePath,
+                                    tokens = files.tokens.absolutePath,
+                                    dataDir = files.dataDir.absolutePath,
+                                ),
+                            numThreads = numThreads,
+                            debug = false,
+                            provider = "cpu",
+                        ),
+                ),
+        )
+    } catch (error: Throwable) {
+        Timber.e(error, "Kokoro model failed to load")
+        null
+    }
