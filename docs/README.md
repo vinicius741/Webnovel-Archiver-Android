@@ -39,6 +39,15 @@ under `android/`.
 | `metric-trends.md` | Per-novel metric Trends feature: snapshot capture on sync, retention/downsampling, JSON history-store layout, and the Trends screen. |
 | `source-metadata-opportunity-audit-2026-07-31.html` | Source-by-source audit of missing public novel metadata across Royal Road, Scribble Hub, SpaceBattles, and FanFiction.net, with retrieval paths and prioritized implementation guidance. |
 
+### `msc-for-me-chat/`
+
+Reverse-engineering research for the MSC for Me cruise app's free ship-Wi-Fi guest chat,
+aimed at building a custom UI on the same backend.
+
+| File | Description |
+|------|-------------|
+| `protocol-research-2026-11-10.md` | Static-analysis findings for `com.msccruises.mscforme`: ChatSDK/Smack XMPP stack, bootstrap-based server discovery, JSON-RPC 2.0 chat API (`msc.chat`), message stanza format, MUC groups, file transfer, integration recipe, and onboard verification checklist. |
+
 ### `cloudflare/`
 
 Implementation record for keeping source sync and downloads reliable when a source
