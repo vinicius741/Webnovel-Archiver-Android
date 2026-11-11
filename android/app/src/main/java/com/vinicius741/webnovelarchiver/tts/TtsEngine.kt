@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +31,8 @@ class TtsEngine(
     private val context: Context,
     private val repository: AppRepository,
     private val awaitRepositoryReady: suspend () -> Unit = {},
+    /** The shared built-in Kokoro model (see `AppContainer`). */
+    kokoro: KokoroRuntime = KokoroRuntime(),
     /**
      * Coroutine scope that owns all TTS state mutations (R8). Output callbacks and the public
      * control methods (play/pause/next/...) are routed through [stateMutex] on this scope's
@@ -69,6 +72,7 @@ class TtsEngine(
             scope = scope,
             stateMutex = stateMutex,
             listeners = listeners,
+            kokoro = kokoro,
             onReady = {
                 if (output == TtsOutputPhase.WaitingForEngine) loadOutputLocked()
             },
@@ -240,11 +244,25 @@ class TtsEngine(
                     sessionStore.schedule(updated)
                     outputs.active?.setRate(settings.rate)
                 }
-                if (previous != null && loaded.hasChapter && TtsProfilePlanning.soundsDifferent(previous, settings)) {
+                val newVoice = previous != null && TtsProfilePlanning.soundsDifferent(previous, settings)
+                if (loaded.hasChapter && (newVoice || speech.needsRestart(settings.enginePackage))) {
                     reloadVoiceLocked(settings)
                 } else {
                     emitState(isPlaying = isAudibleLocked())
                 }
+            }
+        }
+    }
+
+    /**
+     * The chosen engine may have become able to speak (Kokoro finished downloading) while a stand-in
+     * spoke for it: move the loaded chapter over in place.
+     */
+    fun refreshEngine() {
+        scope.launch {
+            stateMutex.withLock {
+                val settings = activeSettings ?: return@withLock
+                if (loaded.hasChapter && speech.needsRestart(settings.enginePackage)) reloadVoiceLocked(settings)
             }
         }
     }
@@ -395,7 +413,7 @@ class TtsEngine(
     /** Starts the output at the current point; deferred until the speech engine has initialized. */
     private fun loadOutputLocked() {
         val timeline = loaded.timeline ?: return
-        val engine = speech.ensureEngine()
+        speech.ensureEngine()
         if (!speech.initialized) {
             output = TtsOutputPhase.WaitingForEngine
             speech.watchInit()
@@ -416,7 +434,7 @@ class TtsEngine(
                 offsetMs = loaded.currentOffsetMs,
                 rate = loaded.session?.rate ?: settings.rate,
                 playWhenReady = true,
-                voiceKey = ttsVoiceKey(engine, speech.enginePackage, settings),
+                voiceKey = speech.voiceKey(settings),
             ),
         )
         outputs.loaded = true
@@ -427,6 +445,11 @@ class TtsEngine(
     /** Rendering does not work on this device or voice, so speak live from the same place. */
     private fun switchToLiveOutputLocked() {
         if (outputs.useLive) return
+        if (speech.isBuiltin) {
+            // The built-in model has no live mode to fall back to.
+            handlePlaybackErrorLocked(TtsPlaybackError(TtsPlaybackErrorKind.SynthesisFailed, detail = "Kokoro"))
+            return
+        }
         val point = pointLocked()
         outputs.switchToLive()
         loaded.currentItem = point.item

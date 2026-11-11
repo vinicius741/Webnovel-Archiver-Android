@@ -135,8 +135,9 @@ starts audio.
 
 ## Engines and profiles
 
-Voice & Speech has an **Engine** setting: the phone's preferred engine (`enginePackage = null`), or
-any installed TTS app, listed from `TTS_SERVICE` services (the manifest declares that `<queries>`
+Voice & Speech has an **Engine** setting: the phone's preferred engine (`enginePackage = null`), the
+built-in Kokoro model (`builtin:kokoro-en-v0_19`, see `kokoro-built-in-voices.md`), or any installed
+TTS app, listed from `TTS_SERVICE` services (the manifest declares that `<queries>`
 intent, or Android hides other apps' engines). `TtsSpeechEngineHost` creates `TextToSpeech` for the
 chosen package. A chosen engine that is no longer installed falls back to the phone's, and the cache
 key names the engine that really speaks; the phone-default key is unchanged from before engines

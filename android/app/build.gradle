@@ -38,6 +38,11 @@ android {
         versionCode 12
         versionName '1.0.11-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // The built-in Kokoro voices ship native code: arm64 for phones, x86_64 for the emulator.
+        // Other devices install fine and simply do not offer Kokoro.
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
         // GitHub repository whose latest release the in-app update check reads (owner/name).
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"vinicius741/Webnovel-Archiver-Android"'
     }
@@ -156,6 +161,11 @@ dependencies {
     // remote cover URLs.
     implementation 'io.coil-kt.coil3:coil:3.6.3'
     implementation 'io.coil-kt.coil3:coil-network-okhttp:3.6.3'
+    // sherpa-onnx — runs the built-in Kokoro neural voices on the device (GitHub release AAR, see
+    // settings.gradle). Its Kotlin config classes are read by JNI, so proguard-rules.pro keeps them.
+    implementation 'com.k2fsa:sherpa-onnx:1.12.21@aar'
+    // Commons Compress — unpacks the Kokoro model, published only as a .tar.bz2.
+    implementation 'org.apache.commons:commons-compress:1.28.0'
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.squareup.okhttp3:mockwebserver:5.5.1'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'

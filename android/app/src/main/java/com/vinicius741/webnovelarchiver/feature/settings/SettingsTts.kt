@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import androidx.appcompat.widget.SwitchCompat
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.clearTtsSession
 import com.vinicius741.webnovelarchiver.data.repository.getTtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsProfile
@@ -17,13 +18,12 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
-import com.vinicius741.webnovelarchiver.tts.TtsEngineInfo
 import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsProfilePlanning
 import com.vinicius741.webnovelarchiver.tts.TtsSampleFailure
 import com.vinicius741.webnovelarchiver.tts.TtsSamplePreview
-import com.vinicius741.webnovelarchiver.tts.VoiceInfo
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -44,7 +44,6 @@ import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.scrollTextInsideParent
 import com.vinicius741.webnovelarchiver.ui.showStyledOptionsDialog
-import com.vinicius741.webnovelarchiver.ui.showTtsVoiceDialog
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
@@ -80,16 +79,23 @@ internal fun ScreenHost.showTtsSettings() {
         }
         lateinit var draftSettings: () -> TtsSettings
         addView(ttsProfileCard(ttsSettings) { draftSettings() })
-        val pitch = labeledField("Pitch", ttsSettings.pitch.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+        // Kokoro has no pitch control, so its field would do nothing.
+        val pitch =
+            if (KokoroVoices.isEngine(ttsSettings.enginePackage)) {
+                null
+            } else {
+                labeledField("Pitch", ttsSettings.pitch.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
+            }
         val rate = labeledField("Rate", ttsSettings.rate.toString(), InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        val engines = TtsEngineCatalog.installed(app)
+        val engines = TtsEngineCatalog.choices(app)
         val phoneEngine = TtsEngineCatalog.phoneDefault(app)
         settingButtonRow("Engine", TtsEnginePlanning.label(ttsSettings.enginePackage, engines, phoneEngine), R.drawable.wna_settings) {
             showTtsEnginePicker(engines, phoneEngine) { draftSettings() }
         }
-        settingButtonRow("Voice", ttsSettings.voiceIdentifier ?: "Engine default", R.drawable.wna_speaker) {
+        settingButtonRow("Voice", ttsVoiceLabel(ttsSettings.voiceIdentifier), R.drawable.wna_speaker) {
             showTtsVoicePicker { draftSettings() }
         }
+        if (showsKokoroCard(ttsSettings)) addView(kokoroModelCard())
         val contextReplay =
             ttsSwitch("Replay a little after long breaks", ttsSettings.contextReplay)
         val announceChapters =
@@ -125,7 +131,7 @@ internal fun ScreenHost.showTtsSettings() {
             pauseSlider("At scene breaks", ttsSettings.scenePauseMs, TtsSettings.MAX_SCENE_PAUSE_MS)
         draftSettings = {
             repository.ttsSettings.get().copy(
-                pitch = SettingsValidation.ttsScalar(pitch.text.toString(), ttsSettings.pitch),
+                pitch = pitch?.let { SettingsValidation.ttsScalar(it.text.toString(), ttsSettings.pitch) } ?: ttsSettings.pitch,
                 rate = SettingsValidation.ttsScalar(rate.text.toString(), ttsSettings.rate),
                 contextReplay = contextReplay.isChecked,
                 announceChapters = announceChapters.isChecked,
@@ -147,12 +153,6 @@ internal fun ScreenHost.showTtsSettings() {
             }
         }
     }
-}
-
-/** Saves [settings] and hands them to the loaded chapter, which picks up a new voice in place. */
-private suspend fun ScreenHost.persistTtsSettings(settings: TtsSettings) {
-    repository.ttsSettings.save(settings)
-    ttsEngine.applySettings(repository.ttsSettings.get())
 }
 
 /** A label on the left and a text button showing the current value on the right. */
@@ -270,32 +270,6 @@ private fun ScreenHost.showTtsProfileDeleter(saved: TtsSettings) {
     )
 }
 
-/** Picks which installed speech engine the app speaks with; its voices differ, so the voice resets. */
-private fun ScreenHost.showTtsEnginePicker(
-    engines: List<TtsEngineInfo>,
-    phoneEngine: String?,
-    draft: () -> TtsSettings,
-) {
-    val selected = repository.ttsSettings.get().enginePackage
-
-    fun option(
-        packageName: String?,
-        label: String,
-    ) = OptionsDialogItem.Option(if (packageName == selected) "\u2713  $label" else label) {
-        if (packageName == selected) return@Option
-        scope.launch {
-            persistTtsSettings(draft().copy(enginePackage = packageName, voiceIdentifier = null))
-            toast("Engine changed. Pick a voice from it, or keep its default.")
-            showTtsSettings()
-        }
-    }
-    showStyledOptionsDialog(
-        "Speech engine",
-        listOf(option(null, TtsEnginePlanning.label(null, engines, phoneEngine))) +
-            engines.map { option(it.packageName, it.label) },
-    )
-}
-
 private const val PAUSE_STEP_MS = 50L
 private const val MS_PER_SECOND = 1_000.0
 private var sampleTextDraft: String? = null
@@ -402,6 +376,7 @@ private fun ScreenHost.ttsSampleCard(draft: () -> TtsSettings): View {
                     val player =
                         preview ?: TtsSamplePreview(
                             context = app,
+                            kokoro = app.appContainer.kokoroRuntime,
                             onPlayingChanged = { isPlaying ->
                                 playing = isPlaying
                                 playButton.showSampleState(isPlaying)
@@ -470,28 +445,3 @@ private fun LinearLayout.ttsSwitch(
                 },
             )
         }
-
-/** [draft] is what the settings screen currently shows, kept when picking a voice rebuilds it. */
-internal fun ScreenHost.showTtsVoicePicker(draft: () -> TtsSettings = { repository.ttsSettings.get() }) {
-    val current = draft()
-    val engine = TtsEnginePlanning.resolve(current.enginePackage, TtsEngineCatalog.installedPackages(app))
-    toast("Loading voices")
-    scope.launch {
-        val voices = TtsEngineCatalog.voices(app, engine)
-        when {
-            voices == null -> toast("The speech engine did not start")
-            voices.isEmpty() -> toast("This speech engine has no offline voices")
-            else -> showTtsVoiceDialog(voices, current.voiceIdentifier) { voice -> saveTtsVoice(voice, draft()) }
-        }
-    }
-}
-
-private fun ScreenHost.saveTtsVoice(
-    voice: VoiceInfo?,
-    current: TtsSettings,
-) {
-    scope.launch {
-        persistTtsSettings(current.copy(voiceIdentifier = voice?.identifier))
-        showTtsSettings()
-    }
-}

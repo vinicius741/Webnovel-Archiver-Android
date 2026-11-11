@@ -7,7 +7,7 @@ Supports **Royal Road, Scribble Hub, SpaceBattles, Sufficient Velocity, FanFicti
 ## Main features
 
 - Offline reading with saved progress, images, and background chapter downloads.
-- Text-to-speech with sentence highlighting, playback controls, per-story resume, a choice of installed speech engine, and saved voice profiles.
+- Text-to-speech with sentence highlighting, playback controls, per-story resume, a choice of speech engine (any installed TTS app, or the built-in Kokoro neural voices downloaded on demand), and saved voice profiles.
 - New-chapter tracking with a next-release estimate from each novel's recent release dates (flagged in the library when a sync may find it), library tabs, search, filters, a tap-the-author view of their other novels in your library, and novel popularity trends.
 - EPUB export, text cleanup, and full library backup and restore.
 - Patreon early-access chapters available through your own account.

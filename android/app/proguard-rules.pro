@@ -47,3 +47,14 @@
 -keep public class com.vinicius741.webnovelarchiver.download.DownloadForegroundService { public <init>(); }
 -keep public class com.vinicius741.webnovelarchiver.tts.TtsForegroundService { public <init>(); }
 -keep public class com.vinicius741.webnovelarchiver.appupdate.AppUpdateInstallReceiver { public <init>(); }
+
+# sherpa-onnx (built-in Kokoro voices): native code reads the Kotlin config classes' fields by name
+# and calls back into the API classes, so none of them may be renamed or stripped.
+-keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# Commons Compress references optional codecs the Kokoro unpacker never uses.
+-dontwarn org.brotli.dec.**
+-dontwarn com.github.luben.zstd.**
+-dontwarn org.tukaani.xz.**
+-dontwarn org.objectweb.asm.**
+-dontwarn org.osgi.**
