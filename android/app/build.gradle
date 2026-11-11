@@ -35,8 +35,8 @@ android {
         applicationId 'com.vinicius741.webnovelarchiver.nativeapp'
         minSdk 26
         targetSdk 36
-        versionCode 11
-        versionName '1.0.10-native'
+        versionCode 12
+        versionName '1.0.11-native'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         // GitHub repository whose latest release the in-app update check reads (owner/name).
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"vinicius741/Webnovel-Archiver-Android"'
