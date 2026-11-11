@@ -17,6 +17,7 @@ class AppRouteTest {
                 AppRoute.Reader("story:1", "chapter/2"),
                 AppRoute.ChapterSelection("story", setOf("chapter:2", "chapter 1")),
                 AppRoute.AiControls("story:/ ünicode"),
+                AppRoute.AuthorNovels("story:/ ünicode"),
                 AppRoute.Notifications,
                 AppRoute.CleanupRules,
                 AppRoute.AppUpdate,
@@ -98,5 +99,11 @@ class AppRouteTest {
         restored.reset()
         assertEquals(AppRoute.Library, restored.current)
         assertFalse(restored.canGoBack)
+    }
+
+    @Test
+    fun `author novels route returns to its story details`() {
+        assertEquals(AppRoute.Details("story:1"), AppRoute.AuthorNovels("story:1").parent)
+        assertNotEquals(AppRoute.AuthorNovels("a").stableKey, AppRoute.AuthorNovels("b").stableKey)
     }
 }
