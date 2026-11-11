@@ -42,6 +42,7 @@ internal fun ScreenHost.bindLibraryCoverTile(
         },
     )
     if (hasUnseenAiResult(story)) frame.addView(aiResultBadge())
+    if (mayHaveNewChapter(story)) frame.addView(newChapterCoverBadge())
     if (selected != null) addSelectionBadge(frame)
 
     val content =

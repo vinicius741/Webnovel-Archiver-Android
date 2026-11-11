@@ -84,6 +84,15 @@ object ReleaseCadencePlanning {
         return forecast(datedTail, story.lastChapterSyncAt?.coerceAtMost(now), now)
     }
 
+    /**
+     * True when the next chapter came due after the last chapter sync, so syncing would likely find
+     * it. The Library flags these; a known-late author (checked past the usual gap) is not flagged.
+     */
+    fun mayHaveNewChapter(
+        story: Story,
+        now: Long = System.currentTimeMillis(),
+    ): Boolean = forecast(story, now) is Forecast.MaybeOut
+
     /** [checkedAt] is the last source check, or null when there is no record of one. */
     fun forecast(
         releaseTimes: List<Long>,

@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.model.SourceSyncState
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.ReleaseCadencePlanning.Forecast
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -129,6 +130,23 @@ class ReleaseCadencePlanningTest {
 
         assertTrue(ReleaseCadencePlanning.forecast(story, now) is Forecast.MaybeOut)
         assertTrue(ReleaseCadencePlanning.forecast(weekly, checkedAt = null, now = now) is Forecast.MaybeOut)
+    }
+
+    @Test
+    fun libraryFlagsOnlyAReleaseThatCameDueAfterTheLastSync() {
+        val chapters = weekly.mapIndexed { i, t -> Chapter(id = "c$i", publishedAt = t) }.toMutableList()
+        val story = Story(chapters = chapters)
+        val due = lastWeekly + 8 * DAY_MS
+
+        // Synced before it came due: a sync may find the chapter.
+        assertTrue(ReleaseCadencePlanning.mayHaveNewChapter(story.copy(lastChapterSyncAt = lastWeekly + DAY_MS), due))
+        // Not due yet.
+        assertFalse(ReleaseCadencePlanning.mayHaveNewChapter(story.copy(lastChapterSyncAt = lastWeekly + DAY_MS), lastWeekly + 3 * DAY_MS))
+        // Synced after it came due and found nothing: already checked.
+        assertFalse(ReleaseCadencePlanning.mayHaveNewChapter(story.copy(lastChapterSyncAt = due), due))
+        // The author is late: the last sync was well past the usual gap.
+        val lateCheck = lastWeekly + 20 * DAY_MS
+        assertFalse(ReleaseCadencePlanning.mayHaveNewChapter(story.copy(lastChapterSyncAt = lateCheck), lateCheck))
     }
 
     private companion object {

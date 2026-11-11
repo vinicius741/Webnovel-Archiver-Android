@@ -13,7 +13,6 @@ import com.vinicius741.webnovelarchiver.domain.story.StoryBookmarkPlanning
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.library.LibraryQuery
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -22,12 +21,10 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeChapterCoverageSummary
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.publicationStatusBadge
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.scoreRow
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
-import com.vinicius741.webnovelarchiver.ui.sourceAvailabilityBadge
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
@@ -153,46 +150,7 @@ private fun ScreenHost.buildStoryCard(
                     setPadding(0, dp(Space.XS), 0, 0)
                 },
             )
-            val provider = SourceRegistry.getProvider(story.sourceId, story.sourceUrl)
-            val publicationStatusBadge = publicationStatusBadge(story)
-            val sourceAvailabilityBadge = sourceAvailabilityBadge(story)
-            if (provider != null || publicationStatusBadge != null || sourceAvailabilityBadge != null) {
-                addView(
-                    LinearLayout(app).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, dp(Space.XS), 0, 0)
-                        provider?.let {
-                            addView(makeText(app, it.name, Type.LABEL_SMALL, ThemeManager.colors.primary))
-                        }
-                        publicationStatusBadge?.let {
-                            val badgeLayoutParams =
-                                LinearLayout.LayoutParams(
-                                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                                )
-                            if (provider != null) {
-                                badgeLayoutParams.marginStart = dp(Space.SM)
-                            }
-                            addView(
-                                it,
-                                badgeLayoutParams,
-                            )
-                        }
-                        sourceAvailabilityBadge?.let {
-                            val badgeLayoutParams =
-                                LinearLayout
-                                    .LayoutParams(
-                                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                                    ).apply {
-                                        if (provider != null || publicationStatusBadge != null) marginStart = dp(Space.SM)
-                                    }
-                            addView(it, badgeLayoutParams)
-                        }
-                    },
-                )
-            }
+            libraryBadgeRow(story)?.let(::addView)
             story.score?.takeIf { it.isNotBlank() }?.let { score ->
                 addView(scoreRow(score))
             }
