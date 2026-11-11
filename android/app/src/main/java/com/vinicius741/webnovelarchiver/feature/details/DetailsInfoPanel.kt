@@ -9,6 +9,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiDescriptionPlanning
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
 import com.vinicius741.webnovelarchiver.download.DownloadPacingUiStatus
@@ -84,7 +85,8 @@ internal fun ScreenHost.buildDetailsInfoPanel(
     if (story.isArchived != true && story.sourceSyncState.availability != SourceAvailability.available) {
         infoPanel.addView(buildSourceAvailabilityNotice(story))
     }
-    if (story.chapters.any { it.isRemovedFromSource }) {
+    val removedNoticeHiddenThrough = repository.getDisplayPreferences().removedChaptersNoticeHiddenThrough?.get(story.id)
+    if (RemovedChapterPlanning.showsRemovedNotice(story, removedNoticeHiddenThrough)) {
         infoPanel.addView(buildRemovedChaptersNotice(story))
     }
     if (StoryActionGuards.canSync(story)) {

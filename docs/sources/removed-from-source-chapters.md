@@ -29,24 +29,29 @@ A table of contents that failed to load completely (for example, a blocked page)
 look removed. When that happens, the chapters are flagged instead of lost, and the next complete
 sync clears the flags.
 
-The concurrent-sync fold (`StorySyncMergePlanning`) does not bring back a kept chapter the user
-discarded while the sync was running. A JSON backup merge (`BackupMergePlanning`) keeps local
+The concurrent-sync fold (`StorySyncMergePlanning`) does not bring back a kept chapter that left
+the stored story while the sync was running. A JSON backup merge (`BackupMergePlanning`) keeps local
 flagged chapters that the backup lacks.
 
 **Safety net.** `AppRepository.commitSyncedStory` runs `RemovedChapterPlanning.restoreLostDownloads`
 on every sync commit. Any downloaded source chapter the stored story has and the committed story
 lacks is put back, flagged, at its old position. Patreon copies are excluded, because a sync
-retires them on purpose. Only the explicit **Discard** action removes downloaded text. When the
+retires them on purpose. No code path deletes downloaded text implicitly. When the
 net catches something, a merge path has a bug: it logs a warning and a
 `sync_safety_net_kept_chapters` activity-log event.
 
 ## UI and output
 
 - **Chapter rows:** the subtitle includes "Removed from source".
-- **Details:** a notice with the count and a **Discard** action
-  (`AppRepository.discardRemovedChapters`). Discarding deletes the files, moves a bookmark on a
-  discarded chapter back to the nearest earlier chapter, and remaps EPUB ranges and AI chapter
-  picks by chapter identity (`RemovedChapterPlanning.remapPositions`).
+- **Details:** a notice with the count and a **Hide** action. Hide only dismisses the notice: it
+  stores the newest `removedFromSourceAt` it covered, per novel, in
+  `DisplayPreferences.removedChaptersNoticeHiddenThrough`, and the notice returns when a later sync
+  removes another chapter (`RemovedChapterPlanning.showsRemovedNotice`). Nothing on the notice
+  deletes chapters. Versions 1.0.4 to 1.0.13 had a
+  **Discard** button that deleted every kept chapter. It was easy to mistake for dismissing the
+  notice, and it cost the owner 88 downloaded chapters, so 1.0.14 removed it with the code behind
+  it. The only way to lose kept chapters now is to delete the whole novel, and that confirmation
+  warns about them.
 - **Chapter filter:** a "Removed from source (N)" chip appears only for novels that have kept
   chapters.
 - **Deleting a novel:** the confirmation (Details or Library selection) says how many removed

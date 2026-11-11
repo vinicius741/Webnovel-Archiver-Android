@@ -90,6 +90,7 @@ object PreferenceNormalization {
                     ?.let { if (it == "updated") "lastUpdated" else it }
                     ?: DisplayPreferences().librarySortOption,
             libraryViewMode = preferences.libraryViewMode.takeIf { it in libraryViewModes } ?: DisplayPreferences().libraryViewMode,
+            removedChaptersNoticeHiddenThrough = preferences.removedChaptersNoticeHiddenThrough?.takeIf { it.isNotEmpty() },
         )
 
     fun ttsSettings(settings: TtsSettings): TtsSettings {

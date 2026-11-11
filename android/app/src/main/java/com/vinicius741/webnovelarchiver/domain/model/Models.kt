@@ -329,6 +329,10 @@ data class DisplayPreferences(
     /** The newest listening position when the Library's "Continue listening" card was dismissed.
      *  Positions up to this time are no longer offered; listening again writes a newer one. */
     var continueListeningDismissedThrough: Long = 0L,
+    /** Per story id: the newest `removedFromSourceAt` the Details "removed from source" notice
+     *  showed when the user hid it. A later removal is newer, so the notice returns. Nullable
+     *  because Gson writes an explicit JSON null straight into the field. */
+    var removedChaptersNoticeHiddenThrough: Map<String, Long>? = null,
 )
 
 data class RegexCleanupRule(

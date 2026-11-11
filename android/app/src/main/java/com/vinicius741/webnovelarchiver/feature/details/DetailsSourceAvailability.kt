@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.domain.model.SourceAvailability
 import com.vinicius741.webnovelarchiver.domain.model.Story
+import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
 import com.vinicius741.webnovelarchiver.feature.ai.rerenderDetailsIfVisible
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -13,7 +14,6 @@ import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeText
@@ -40,7 +40,10 @@ internal fun ScreenHost.buildSourceAvailabilityNotice(story: Story): LinearLayou
 
 /**
  * Shown while the novel keeps chapters its source no longer lists. They read like any other
- * chapter; the notice explains the row label and offers to drop them.
+ * chapter; the notice only explains the row label, and Hide dismisses it until a later sync
+ * removes another chapter. There is deliberately no action that deletes them: the local copy is
+ * the only one left, and a former "Discard" button here was mistaken for dismissing the notice
+ * and cost the owner 88 downloaded chapters.
  */
 internal fun ScreenHost.buildRemovedChaptersNotice(story: Story): LinearLayout {
     val removed = story.chapters.filter { it.isRemovedFromSource }
@@ -53,15 +56,16 @@ internal fun ScreenHost.buildRemovedChaptersNotice(story: Story): LinearLayout {
             "${if (count == 1) "It stays" else "They stay"} in your copy, in reading order."
     return detailsNoticeCard(title, message, ThemeManager.colors.tertiary).apply {
         addView(
-            makeButton(app, "Discard", Btn.TEXT) {
-                confirm(
-                    "Discard the $count $noun removed from $providerName? The source can't provide them again.",
-                    confirmLabel = "Discard",
-                ) {
-                    scope.launch {
-                        repository.discardRemovedChapters(story.id)
-                        rerenderDetailsIfVisible(story.id)
+            makeButton(app, "Hide", Btn.TEXT) {
+                val newest = RemovedChapterPlanning.newestRemovalAt(story) ?: return@makeButton
+                scope.launch {
+                    repository.updateDisplayPreferences { preferences ->
+                        preferences.copy(
+                            removedChaptersNoticeHiddenThrough =
+                                preferences.removedChaptersNoticeHiddenThrough.orEmpty() + (story.id to newest),
+                        )
                     }
+                    rerenderDetailsIfVisible(story.id)
                 }
             },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

@@ -240,4 +240,14 @@ class PreferenceNormalizationTest {
         assertEquals(AiSettings.DEFAULT_DECISION_MODEL, PreferenceNormalization.aiSettings(AiSettings(decisionModel = " ")).decisionModel)
         assertEquals("liquid/d1", PreferenceNormalization.aiSettings(AiSettings(decisionModel = " liquid/d1 ")).decisionModel)
     }
+
+    @Test
+    fun removedChaptersNoticeHiddenMapToleratesNullAndDropsEmpty() {
+        val fromNull = PreferenceNormalization.displayPreferences(DisplayPreferences(removedChaptersNoticeHiddenThrough = null))
+        assertEquals(null, fromNull.removedChaptersNoticeHiddenThrough)
+        val fromEmpty = PreferenceNormalization.displayPreferences(DisplayPreferences(removedChaptersNoticeHiddenThrough = emptyMap()))
+        assertEquals(null, fromEmpty.removedChaptersNoticeHiddenThrough)
+        val kept = PreferenceNormalization.displayPreferences(DisplayPreferences(removedChaptersNoticeHiddenThrough = mapOf("rr_1" to 9L)))
+        assertEquals(mapOf("rr_1" to 9L), kept.removedChaptersNoticeHiddenThrough)
+    }
 }

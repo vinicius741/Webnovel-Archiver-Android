@@ -417,39 +417,6 @@ class AppRepository private constructor(
             StoryMutations.snapshot(updated)
         }
 
-    /**
-     * Drops removed-from-source chapters (all of them when [chapterIds] is null) and deletes their
-     * files; see [RemovedChapterPlanning.discard]. The source cannot provide them again. The
-     * deletion runs in the same transaction as the write, so a restore can never land in between
-     * and have its freshly restored files deleted. A file another remaining row still points at
-     * is kept.
-     */
-    suspend fun discardRemovedChapters(
-        storyId: String,
-        chapterIds: Set<String>? = null,
-    ): Story? =
-        storageTransaction {
-            val current = storyStore.story(storyId) ?: return@storageTransaction null
-            val result = RemovedChapterPlanning.discard(current, chapterIds)
-            if (result.removed.isEmpty()) return@storageTransaction StoryMutations.snapshot(current)
-            ActivityLog.record(
-                ActivityCategory.LIBRARY,
-                "removed_chapters_discarded",
-                "storyId" to storyId,
-                "title" to current.title,
-                "discarded" to result.removed.size,
-                "chapterTitles" to result.removed.map { it.title },
-            )
-            storyStore.addOrUpdateStory(result.story)
-            publishStoryLocked(result.story)
-            val stillReferenced = result.story.chapters.mapNotNullTo(HashSet()) { it.filePath }
-            result.removed
-                .mapNotNull { it.filePath }
-                .filterNot { it in stillReferenced }
-                .forEach { path -> runCatching { requiredStorage.deleteChapterFile(storyId, path) } }
-            StoryMutations.snapshot(result.story)
-        }
-
     private suspend fun updateExistingStory(
         storyId: String,
         block: (Story) -> Story?,

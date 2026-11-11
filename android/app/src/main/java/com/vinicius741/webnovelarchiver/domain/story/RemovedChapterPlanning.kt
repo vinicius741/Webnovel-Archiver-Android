@@ -107,7 +107,7 @@ object RemovedChapterPlanning {
      * Safety net for writes that replace a story's chapter list (a sync commit): every downloaded
      * source chapter of [before] that [after] no longer holds is put back, flagged removed from the
      * source (keeping an earlier flag), in its old reading position. Downloaded text is never dropped
-     * implicitly; only an explicit [discard] removes it. Patreon copies are excluded because a sync
+     * implicitly: no code path deletes it. Patreon copies are excluded because a sync
      * legitimately retires them. Returns [after] unchanged (same instance) when nothing was lost.
      */
     fun restoreLostDownloads(
@@ -137,44 +137,18 @@ object RemovedChapterPlanning {
         )
     }
 
-    data class Discarded(
-        val story: Story,
-        val removed: List<Chapter>,
-    )
+    /** The newest removal time among the story's removed-from-source chapters, or null if it has none. */
+    fun newestRemovalAt(story: Story): Long? = story.chapters.mapNotNull { it.removedFromSourceAt }.maxOrNull()
 
     /**
-     * Drops the removed-from-source chapters among [chapterIds] (all of them when null). Chapters
-     * the source still lists are never touched. A bookmark on a dropped chapter moves to the
-     * nearest earlier chapter that stays.
+     * Whether Details shows the "removed from source" notice. Hiding it records the newest removal
+     * it covered ([hiddenThrough]); it stays hidden until a later sync removes another chapter.
      */
-    fun discard(
+    fun showsRemovedNotice(
         story: Story,
-        chapterIds: Set<String>? = null,
-    ): Discarded {
-        val drop = story.chapters.filter { it.isRemovedFromSource && (chapterIds == null || it.id in chapterIds) }
-        if (drop.isEmpty()) return Discarded(story, emptyList())
-        val dropIds = drop.mapTo(HashSet()) { it.id }
-        val remaining = story.chapters.filterNot { it.id in dropIds }.toMutableList()
-        val bookmark =
-            story.lastReadChapterId?.let { id ->
-                if (id !in dropIds) {
-                    id
-                } else {
-                    story.chapters
-                        .take(story.chapters.indexOfFirst { it.id == id }.coerceAtLeast(0))
-                        .lastOrNull { it.id !in dropIds }
-                        ?.id
-                }
-            }
-        val hasEpub = story.epubPath != null || !story.epubPaths.isNullOrEmpty()
-        val updated =
-            remapPositions(story, story.chapters, remaining).copy(
-                chapters = remaining,
-                totalChapters = remaining.size,
-                downloadedChapters = remaining.count { it.downloaded },
-                lastReadChapterId = bookmark,
-                epubStale = if (hasEpub) true else story.epubStale,
-            )
-        return Discarded(updated, drop)
+        hiddenThrough: Long?,
+    ): Boolean {
+        val newest = newestRemovalAt(story) ?: return false
+        return hiddenThrough == null || newest > hiddenThrough
     }
 }

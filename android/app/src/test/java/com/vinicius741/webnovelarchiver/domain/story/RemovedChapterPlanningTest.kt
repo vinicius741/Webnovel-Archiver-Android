@@ -4,6 +4,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.EpubConfig
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -91,35 +92,6 @@ class RemovedChapterPlanningTest {
     }
 
     @Test
-    fun discardDropsOnlyRemovedChaptersAndMovesTheBookmarkBack() {
-        val story =
-            Story(
-                id = "s",
-                chapters = mutableListOf(ch("a"), ch("b", 1L), ch("c", 1L), ch("d")),
-                lastReadChapterId = "c",
-                epubPath = "s.epub",
-            )
-
-        val result = RemovedChapterPlanning.discard(story)
-
-        assertEquals(listOf("a", "d"), ids(result.story.chapters))
-        assertEquals(listOf("b", "c"), ids(result.removed))
-        assertEquals("a", result.story.lastReadChapterId)
-        assertEquals(2, result.story.totalChapters)
-        assertTrue(result.story.epubStale == true)
-    }
-
-    @Test
-    fun discardOfOneChapterLeavesTheOthers() {
-        val story = Story(chapters = mutableListOf(ch("a", 1L), ch("b", 1L)), lastReadChapterId = "a")
-
-        val result = RemovedChapterPlanning.discard(story, setOf("a"))
-
-        assertEquals(listOf("b"), ids(result.story.chapters))
-        assertNull(result.story.lastReadChapterId)
-    }
-
-    @Test
     fun restoreLostDownloadsPutsBackDownloadedChaptersACommitDropped() {
         val before = Story(id = "s", chapters = mutableListOf(ch("1"), ch("2"), ch("3"), ch("4")), lastReadChapterId = "3")
         val after = Story(id = "s", chapters = mutableListOf(ch("1"), ch("4"), ch("5")))
@@ -164,5 +136,20 @@ class RemovedChapterPlanningTest {
         val restored = RemovedChapterPlanning.restoreLostDownloads(before, after, { it.url }, removedAt = 9L)
 
         assertTrue(restored === after)
+    }
+
+    @Test
+    fun theRemovedNoticeStaysHiddenUntilALaterRemoval() {
+        val story = Story(id = "s", chapters = mutableListOf(ch("1"), ch("2", removedAt = 5L), ch("3", removedAt = 9L)))
+
+        assertEquals(9L, RemovedChapterPlanning.newestRemovalAt(story))
+        assertTrue(RemovedChapterPlanning.showsRemovedNotice(story, hiddenThrough = null))
+        assertFalse(RemovedChapterPlanning.showsRemovedNotice(story, hiddenThrough = 9L))
+        // A later sync removed another chapter: the notice returns.
+        val later = story.copy(chapters = (story.chapters + ch("4", removedAt = 12L)).toMutableList())
+        assertTrue(RemovedChapterPlanning.showsRemovedNotice(later, hiddenThrough = 9L))
+        // No removed chapters: never shown.
+        assertFalse(RemovedChapterPlanning.showsRemovedNotice(Story(id = "s", chapters = mutableListOf(ch("1"))), null))
+        assertNull(RemovedChapterPlanning.newestRemovalAt(Story(id = "s")))
     }
 }

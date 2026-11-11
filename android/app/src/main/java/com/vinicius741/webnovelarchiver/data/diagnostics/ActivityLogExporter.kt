@@ -109,7 +109,7 @@ object ActivityLogExportPlanning {
             "sync_commit_rejected; sync_merged counts chapters the source stopped listing: newlyRemovedKept stay flagged " +
             "'Removed from source', droppedNeverDownloaded are deleted rows; sync_committed.lostDownloadedVsBefore must " +
             "be 0), dl (enqueued, chapter_committed/skipped/blocked/failed, run_finished), library (story_deleted with " +
-            "counts before deletion, removed_chapters_discarded = the user's Discard action, plus safety-net and fold " +
+            "counts before deletion, plus safety-net and fold " +
             "events), backup (json_/full_ export, import, restore started/finished/failed with library counts " +
             "before/after), recovery (chapters restored from a backup), reader/tts, net (source-access events: OkHttp " +
             "request lifecycle and the Cloudflare bypass, correlate by attemptId/renderId; src tells net/cf/dl), log " +

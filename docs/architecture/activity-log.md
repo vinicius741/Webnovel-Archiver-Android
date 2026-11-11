@@ -38,7 +38,7 @@ Line format (JSON Lines):
 | `app` | `process_start` (version, build type, SDK, device, pid), `app_upgraded` (from/to), `crash` (thread, error, 30-line stack, flushed before the process dies), `startup_library_loaded` (story/chapter/downloaded/removed counts, legacy archives loaded and left), `activity_log_exported` |
 | `sync` | `sync_started`, `sync_merged`, `sync_patreon`, `sync_committed`, `sync_failed`, `sync_commit_rejected` (details below) |
 | `dl` | `enqueued`, `chapter_committed`, `chapter_skipped`, `chapter_blocked`, `chapter_failed` (story, chapter, index, attempt, error), `run_finished` |
-| `library` | `story_deleted` (counts before deletion), `removed_chapters_discarded` (the Discard action, with titles), plus the sync safety-net event |
+| `library` | `story_deleted` (counts before deletion), plus the sync safety-net event. Logs from 1.0.13 may also contain `removed_chapters_discarded` (the Discard action, removed in 1.0.14) |
 | `backup` | `json_export`, `full_export`, `json_import`, and `full_restore`, each with `_started`, `_finished` (result, library counts before and after), or `_failed` |
 | `recovery` | Chapters recovered from a full backup |
 | `reader`, `tts` | `chapter_opened`, `play`, `stop` |
