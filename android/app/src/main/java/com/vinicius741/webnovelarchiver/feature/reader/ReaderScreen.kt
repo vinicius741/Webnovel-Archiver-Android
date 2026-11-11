@@ -1,11 +1,11 @@
 package com.vinicius741.webnovelarchiver.feature.reader
 
 import android.view.Gravity
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.BuildConfig
@@ -16,6 +16,8 @@ import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayerBar
+import com.vinicius741.webnovelarchiver.feature.player.showPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
 import com.vinicius741.webnovelarchiver.feature.story.navigateChapter
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -29,6 +31,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsPlaybackState
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.button
 import com.vinicius741.webnovelarchiver.ui.copyToClipboard
@@ -39,7 +42,6 @@ import com.vinicius741.webnovelarchiver.ui.layout.readerSidePadding
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.showReaderSettingsPanel
 import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -209,8 +211,34 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
     var transportSnapshot: TtsPlaybackSnapshot? =
         currentReaderSnapshot(document.persistedSession, story.id, chapter.id, annotated.chunks.size)
     ttsBridge.activeChunk = transportSnapshot?.chunkIndex ?: -1
-    var transportPlayPause: ImageView? = null
-    var transportBar: LinearLayout? = null
+    // While this chapter is read aloud the bottom chrome swaps to the mini-player card: chapter
+    // navigation and per-sentence skip buttons are too easy to hit by accident and break playback.
+    val ttsBar =
+        TtsMiniPlayerBar(
+            context = app,
+            onPlayPause = {
+                // Cold start seeds the bar from the persisted session, so a "playing" seed with no
+                // live engine session shows a phantom Pause icon — resume then.
+                val live = ttsEngine.playbackState.value.snapshot
+                val action =
+                    if (live == null || transportSnapshot?.isPaused != false) {
+                        TtsForegroundService.ACTION_RESUME_SESSION
+                    } else {
+                        TtsForegroundService.ACTION_PAUSE
+                    }
+                TtsForegroundService.command(app, action)
+            },
+            onOpenPlayer = { showPlayer() },
+            onClose = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
+        )
+    ttsBar.applySnapshot(transportSnapshot)
+    var ttsDock: View? = null
+    var chapterNav: View? = null
+
+    fun applyBottomChrome(ttsActive: Boolean) {
+        ttsDock?.visibility = if (ttsActive) View.VISIBLE else View.GONE
+        chapterNav?.visibility = if (ttsActive) View.GONE else View.VISIBLE
+    }
     activeReaderTtsStateJob?.cancel()
     activeReaderTtsStateJob =
         scope.launch {
@@ -237,18 +265,9 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
                     )
                 transportSnapshot = relevant
                 ttsBridge.activeChunk = relevant?.chunkIndex ?: -1
-                // Toggled (not add/remove) so a session starting after this build reveals the bar live.
-                transportBar?.visibility = if (relevant != null) android.view.View.VISIBLE else android.view.View.GONE
-                transportPlayPause?.let { button ->
-                    val isPaused = relevant?.isPaused != false
-                    button.setImageDrawable(
-                        app.tintedIcon(
-                            if (isPaused) R.drawable.wna_play else R.drawable.wna_pause,
-                            ThemeManager.colors.primary,
-                        ),
-                    )
-                    button.contentDescription = if (isPaused) "Play TTS" else "Pause TTS"
-                }
+                // Toggled (not add/remove) so a session starting after this build swaps the chrome live.
+                if (relevant != null) ttsBar.applySnapshot(relevant)
+                applyBottomChrome(relevant != null)
                 // Async + non-reloading, so no page flash; a null snapshot clears the highlight.
                 applyHighlight(reader, relevant?.chunkIndex, relevant?.totalChunks ?: 0)
             }
@@ -283,40 +302,30 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f),
         )
 
-        addView(
+        val nav =
             readerChapterNav(
                 context,
                 story.chapters.size,
                 currentIndex,
                 onPrevious = { navigateChapter(story, chapter, -1) },
                 onNext = { navigateChapter(story, chapter, 1) },
-            ),
-        )
-
-        // Docked above the nav; stays in the tree with toggled visibility so late sessions appear live.
-        val transport =
-            readerTtsTransport(
-                snapshot = transportSnapshot,
-                onPlayPause = { transportPlayPause = it },
-                onPrev = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PREVIOUS) },
-                onPlayPauseTap = {
-                    // Cold start seeds the transport from the persisted session, so a "playing"
-                    // seed with no live engine session shows a phantom Pause icon — resume then.
-                    val live = ttsEngine.playbackState.value.snapshot
-                    val action =
-                        if (live == null || transportSnapshot?.isPaused != false) {
-                            TtsForegroundService.ACTION_RESUME_SESSION
-                        } else {
-                            TtsForegroundService.ACTION_PAUSE
-                        }
-                    TtsForegroundService.command(app, action)
-                },
-                onNext = { TtsForegroundService.command(app, TtsForegroundService.ACTION_NEXT) },
-                onStop = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
             )
-        transport.visibility = if (transportSnapshot != null) android.view.View.VISIBLE else android.view.View.GONE
-        transportBar = transport
-        addView(transport, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        chapterNav = nav
+        addView(nav)
+
+        // Same card as the app-level mini-player, docked (not floating) so it never covers text.
+        val dock =
+            FrameLayout(context).apply {
+                clipToPadding = false
+                setPadding(dp(Spacing.MD), dp(Spacing.SM), dp(Spacing.MD), dp(Spacing.SM))
+                addView(
+                    ttsBar.view,
+                    FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT),
+                )
+            }
+        ttsDock = dock
+        addView(dock, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        applyBottomChrome(transportSnapshot != null)
     }
 }
 

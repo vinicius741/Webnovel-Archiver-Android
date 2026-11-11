@@ -66,11 +66,11 @@ inline content); otherwise the viewed chapter plays from the top.
 
 ## Player surfaces
 
-- **Mini-player** (`feature/player/TtsMiniPlayer.kt`): floating bar pinned above every screen
+- **Mini-player** (`feature/player/TtsMiniPlayer.kt`, card in `TtsMiniPlayerBar.kt`): floating bar pinned above every screen
   while a session is loaded — play/pause, chapter + story title, sentence progress; chevron-up
   opens the player, ✕ closes the session (stop; per-story position kept). Smooth enter/exit
-  animations (`translationY` and `alpha`). Hidden on the Reader route (which has its own
-  transport + highlight). The current screen's FAB is lifted above the bar while visible.
+  animations (`translationY` and `alpha`). Hidden on the Reader route, which docks its own copy
+  of the card (see below). The current screen's FAB is lifted above the bar while visible.
 - **Now Playing screen** (`feature/player/PlayerScreen.kt`, `AppRoute.Player`): cover, story +
   chapter titles, "Chapter n / N", interactive `SeekBar` scrubber with touch isolation and live
   seeking, prev/next chapter, prev/next sentence, play/pause, speed chip (0.75–2.0 presets, applied
@@ -83,11 +83,15 @@ inline content); otherwise the viewed chapter plays from the top.
   dropped, so the injected script pulls the speaking sentence once on load through
   `AndroidBridge.activeTtsGroup()` and scrolls it to the centre without animating. Later sentences
   arrive via `WnaTts.setActive` as before, and the reader follows chapter changes on its own.
-- **Reader transport** (unchanged location): sentence-level prev/next + play/pause + stop for the
-  visible chapter. Its play/pause resumes the persisted session when the engine has no live
-  session (cold-start phantom-pause fix).
+- **Reader TTS bar**: while the visible chapter is being read aloud (playing or paused), the
+  Reader replaces its bottom chrome entirely with a docked copy of the mini-player card
+  (play/pause, title + time left, progress, open player, stop). Chapter prev/next navigation and
+  sentence skip buttons are hidden so stray taps cannot jump chapters or break playback; the
+  chapter nav returns when the session stops. Sentence/chapter skips live in Now Playing.
+  Play/pause resumes the persisted session when the engine has no live session (cold-start
+  phantom-pause fix).
 - **Notification + media buttons**: short skips by default, or **chapter** skips with the setting on;
-  sentence skipping stays available in the reader transport.
+  sentence skipping stays available in Now Playing.
 
 ## Engine additions
 
