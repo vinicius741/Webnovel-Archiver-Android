@@ -52,6 +52,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.captureScreenViewState
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
@@ -182,6 +183,26 @@ class MainActivity :
                 } else {
                     showLibrary()
                 }
+            }
+        }
+
+    override val recoverChaptersLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri ?: return@registerForActivityResult
+            runUiOperation(
+                "recover chapters from backup",
+                onExpectedError = { error ->
+                    toast(error.message ?: "Recovery failed")
+                    showDataBackup()
+                },
+            ) {
+                toast("Recovering chapters from the backup...")
+                val result = repository.recoverChaptersFromBackup(uri)
+                showDataBackup()
+                alert(
+                    if (result.succeeded) "Chapter recovery" else "Chapter recovery incomplete",
+                    (listOf(result.message) + result.details).joinToString("\n"),
+                )
             }
         }
 

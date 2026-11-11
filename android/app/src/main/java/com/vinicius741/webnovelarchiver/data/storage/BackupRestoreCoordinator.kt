@@ -2,6 +2,8 @@ package com.vinicius741.webnovelarchiver.data.storage
 
 import android.net.Uri
 import com.vinicius741.webnovelarchiver.data.storage.MaintenanceOperation.ExportFull
+import com.vinicius741.webnovelarchiver.domain.model.Chapter
+import com.vinicius741.webnovelarchiver.domain.model.Story
 import java.io.File
 
 /**
@@ -15,6 +17,7 @@ class BackupRestoreCoordinator(
     private val exporter by lazy { BackupExporter(storage) }
     private val jsonImporter by lazy { JsonBackupImporter(storage) }
     private val fullRestorer by lazy { FullBackupRestorer(storage) }
+    private val chapterRecovery by lazy { BackupChapterRecovery(storage) }
 
     fun exportBackup(): File = runMaintenance(MaintenanceOperation.ExportJson, exporter::exportJson)
 
@@ -25,6 +28,11 @@ class BackupRestoreCoordinator(
     fun importBackupUri(uri: Uri): String = runMaintenance(MaintenanceOperation.ImportJson) { jsonImporter.import(uri) }
 
     fun importFullBackupUri(uri: Uri): String = runMaintenance(MaintenanceOperation.RestoreFull) { fullRestorer.import(uri) }
+
+    fun recoverChaptersFromBackup(
+        uri: Uri,
+        keyFor: (Story) -> (Chapter) -> String,
+    ): BackupChapterRecoveryResult = runMaintenance(MaintenanceOperation.RecoverChapters) { chapterRecovery.recover(uri, keyFor) }
 
     private fun <T> runMaintenance(
         operation: MaintenanceOperation,

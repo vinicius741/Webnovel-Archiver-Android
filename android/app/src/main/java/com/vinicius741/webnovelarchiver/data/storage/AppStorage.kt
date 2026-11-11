@@ -548,7 +548,10 @@ class AppStorage(
     /**
      * Copies a chapter file that lives in another story's folder into [storyId]'s folder under a
      * name derived from the chapter id, which index-based download names never use, and returns
-     * the new relative path. Null when the source file is missing.
+     * the new relative path. Null when the source file is missing. An existing file is never
+     * overwritten: two ids can sanitize to the same name (`a/b`, `a?b`), so a name already taken
+     * by different text gets a numbered suffix, and one holding the same text is reused (a fold
+     * re-run after a crash).
      */
     @Synchronized
     fun adoptChapterFile(
@@ -557,13 +560,24 @@ class AppStorage(
     ): String? {
         val source = resolveChapterPath(chapter.filePath)?.let { File(it) }?.takeIf(File::exists) ?: return null
         val dir = File(chapterRoot, safeName(storyId)).apply { mkdirs() }
-        val destination = File(dir, "kept_${safeName(chapter.id).ifBlank { chapter.url.hashCode().toString() }}.html")
-        if (source.canonicalPath == destination.canonicalPath) return relativize(destination)
+        val stem = "kept_${safeName(chapter.id).ifBlank { chapter.url.hashCode().toString() }}"
+        val destination =
+            generateSequence(0) { it + 1 }
+                .map { suffix -> File(dir, if (suffix == 0) "$stem.html" else "${stem}_$suffix.html") }
+                .first { candidate -> !candidate.exists() || sameContent(candidate, source) }
+        if (source.canonicalPath == destination.canonicalPath || destination.exists()) return relativize(destination)
         // Streamed temp + fsync + rename: a failed copy must not truncate the destination, which a
         // direct copyTo(overwrite = true) could.
         AtomicFileWrites.copyAtomically(source, destination)
         return relativize(destination)
     }
+
+    private fun sameContent(
+        a: File,
+        b: File,
+    ): Boolean =
+        a.canonicalPath == b.canonicalPath ||
+            (a.isFile && b.isFile && a.length() == b.length() && a.readBytes().contentEquals(b.readBytes()))
 
     @Synchronized
     fun readChapter(chapter: Chapter): String? {
@@ -695,6 +709,12 @@ class AppStorage(
     fun importBackupUri(uri: Uri): String = backupRestore.importBackupUri(uri)
 
     fun importFullBackupUri(uri: Uri): String = backupRestore.importFullBackupUri(uri)
+
+    /** Merges downloaded chapters from a full backup into the live library; see [BackupChapterRecovery]. */
+    fun recoverChaptersFromBackup(
+        uri: Uri,
+        keyFor: (Story) -> (Chapter) -> String,
+    ): BackupChapterRecoveryResult = backupRestore.recoverChaptersFromBackup(uri, keyFor)
 
     private fun saveStoryOnly(story: Story) {
         story.totalChapters = story.chapters.size

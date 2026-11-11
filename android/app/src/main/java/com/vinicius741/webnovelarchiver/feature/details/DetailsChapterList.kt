@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.feature.ai.showAiControls
+import com.vinicius741.webnovelarchiver.feature.library.LibrarySelectionPlanning
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.story.applyCleanup
 import com.vinicius741.webnovelarchiver.feature.story.showEpubConfigDialog
@@ -73,7 +74,8 @@ internal fun ScreenHost.showDetailsOverflow(story: Story) {
             if (isBusy) {
                 busyMessage()
             } else {
-                confirm("Delete \"${story.title}\"? This action cannot be undone.") {
+                val warning = LibrarySelectionPlanning.removedChaptersWarning(story.chapters.count { it.isRemovedFromSource })
+                confirm("Delete \"${story.title}\"? This action cannot be undone.$warning", confirmLabel = "Delete") {
                     scope.launch {
                         repository.deleteStory(story.id)
                         showLibrary()

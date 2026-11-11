@@ -1,6 +1,7 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibrarySelectionPlanningTest {
@@ -38,6 +39,15 @@ class LibrarySelectionPlanningTest {
         assertEquals("1 selected", LibrarySelectionPlanning.title(1))
         assertEquals("Delete this novel?", LibrarySelectionPlanning.deletePrompt(1))
         assertEquals("Delete 3 novels?", LibrarySelectionPlanning.deletePrompt(3))
+    }
+
+    @Test
+    fun `delete prompt warns when the novels hold chapters the source removed`() {
+        val prompt = LibrarySelectionPlanning.deletePrompt(1, removedFromSourceChapters = 88)
+        assertTrue(prompt.startsWith("Delete this novel?"))
+        assertTrue(prompt.contains("88 chapters the source no longer lists"))
+        assertEquals("", LibrarySelectionPlanning.removedChaptersWarning(0))
+        assertTrue(LibrarySelectionPlanning.removedChaptersWarning(1).contains("1 chapter the source"))
     }
 
     @Test

@@ -107,7 +107,8 @@ internal fun ScreenHost.makeLibrarySelectionBar(): View =
 
 private fun ScreenHost.confirmDeleteStories(storyIds: List<String>) {
     if (storyIds.isEmpty()) return
-    confirm(LibrarySelectionPlanning.deletePrompt(storyIds.size), confirmLabel = "Delete") {
+    val removedFromSource = storyIds.sumOf { id -> repository.story(id)?.chapters?.count { it.isRemovedFromSource } ?: 0 }
+    confirm(LibrarySelectionPlanning.deletePrompt(storyIds.size, removedFromSource), confirmLabel = "Delete") {
         scope.launch {
             storyIds.forEach { repository.deleteStory(it) }
             exitLibrarySelection()

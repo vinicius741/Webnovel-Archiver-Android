@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.vinicius741.webnovelarchiver.app.DevEnvironment
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.download.downloadQueueStore
 import com.vinicius741.webnovelarchiver.platform.WebViewSafety
 import com.vinicius741.webnovelarchiver.source.network.CloudflareRenderOutcome
 import com.vinicius741.webnovelarchiver.source.network.CloudflareWebViewRequest
@@ -51,7 +52,7 @@ class OfflineBrowserDeviceTest {
             try {
                 val loop =
                     com.vinicius741.webnovelarchiver.download.DownloadProcessLoop(
-                        storage = storage,
+                        storage = storage.downloadQueueStore(),
                         wakeSignals = wake,
                         cleanupUnsupportedSourceJobs = {},
                         processJob = { active ->

@@ -5,6 +5,8 @@ import android.content.Context
 import android.os.StrictMode
 import android.webkit.CookieManager
 import com.vinicius741.webnovelarchiver.BuildConfig
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogTree
 import com.vinicius741.webnovelarchiver.data.diagnostics.LocalDiagnosticTree
 import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
@@ -61,6 +63,8 @@ class WebnovelArchiverApp : Application() {
             }
         }
         Timber.plant(LocalDiagnosticTree())
+        startActivityLog()
+        Timber.plant(ActivityLogTree())
         if (BuildConfig.DEBUG) enableDebugStrictMode()
         // Must exist before Settings opens system controls; creation is idempotent and does not
         // trigger the Android 13 runtime permission prompt.
@@ -82,6 +86,25 @@ class WebnovelArchiverApp : Application() {
         // CookieManager.getInstance() also lazy-loads the WebView provider; defer seeding to the
         // background. OkHttp's cookie jar reads CookieManager lazily per request, so seeds land in time.
         if (!DevEnvironment.requested) startupScope.launch { enableAndSeedCookies() }
+    }
+
+    /**
+     * The activity log lives in the real app files dir (never the dev simulation's), outside the
+     * `webnovel_archiver` root that Clear Local Storage and a full restore replace.
+     */
+    private fun startActivityLog() {
+        ActivityLog.init(
+            logDirectory = java.io.File(filesDir, "activity_logs"),
+            version =
+                ActivityLog.AppVersion(
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE.toLong(),
+                    buildType = BuildConfig.BUILD_TYPE,
+                    sdkInt = android.os.Build.VERSION.SDK_INT,
+                    device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+                    pid = android.os.Process.myPid(),
+                ),
+        )
     }
 
     private fun enableDebugStrictMode() {

@@ -14,6 +14,19 @@ object BackupInputLimits {
     private const val MAX_EXTRACTED_BYTES = 2_000_000_000L
     private const val FREE_SPACE_RESERVE_BYTES = 64L * 1024L * 1024L
 
+    /**
+     * Extraction budget for chapter recovery, which keeps only the raw extraction plus the chapter
+     * files it copies into the library (never a staged root or a swap candidate), so it budgets
+     * for two copies instead of the restore's three.
+     */
+    fun recoveryExtractionBudget(usableBytes: Long): Long {
+        val afterReserve = usableBytes - FREE_SPACE_RESERVE_BYTES
+        check(afterReserve > 0L) { "Not enough free space to read this backup" }
+        return minOf(MAX_EXTRACTED_BYTES, afterReserve / 2L).also {
+            check(it > 0L) { "Not enough free space to read this backup" }
+        }
+    }
+
     fun extractionBudget(usableBytes: Long): Long {
         val afterReserve = usableBytes - FREE_SPACE_RESERVE_BYTES
         check(afterReserve > 0L) { "Not enough free cache space to restore this backup" }

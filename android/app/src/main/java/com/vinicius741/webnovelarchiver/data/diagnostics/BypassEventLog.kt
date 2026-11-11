@@ -40,6 +40,16 @@ object BypassEventLog {
                 fields = fields.toMap().filterValues { it != null }.mapValues { (_, value) -> sanitize(value) },
             ),
         )
+        val recorded = events.last()
+        // The persistent activity log keeps the same privacy-safe fields, so one export covers
+        // everything except routine per-request noise, which would evict older history.
+        if (ActivityLogPlanning.mirrorsSourceAccessEvent(recorded.type, recorded.fields)) {
+            ActivityLog.recordAll(
+                ActivityCategory.NET,
+                recorded.type,
+                listOf("src" to category.wire, "host" to recorded.host) + recorded.fields.toList(),
+            )
+        }
     }
 
     @Synchronized

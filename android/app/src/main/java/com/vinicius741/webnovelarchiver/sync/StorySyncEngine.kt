@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.sync
 
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.metrics.MetricSnapshotPlanning
 import com.vinicius741.webnovelarchiver.domain.metrics.PatreonCreatorPlanning
@@ -59,6 +61,7 @@ class StorySyncEngine(
         // Patreon step below.
         val existingPublic = existing?.chapters.orEmpty().filterNot { it.isPatreonCopy }
         val existingPatreon = existing?.chapters.orEmpty().filter { it.isPatreonCopy }
+        recordSyncStarted(storyId, existing, provider.id, mode, existingPatreon.size)
         status("Fetching from ${provider.name}...")
         val loaded =
             try {
@@ -122,11 +125,13 @@ class StorySyncEngine(
                     existing?.lastReadChapterId,
                     removedAt = syncedAt,
                 )
+        recordSyncMerged(storyId, metadata.title, latestMerge != null, incoming.size, existingPublic.size, merge)
         val patreonResult =
             existing?.patreonEarlyAccess?.let { link ->
                 // JSON parsing and cleanup of a page of chapter bodies must stay off the main thread.
                 withContext(Dispatchers.Default) { patreonChapters.sync(storyId, link, merge.chapters, existingPatreon, status) }
             }
+        patreonResult?.let { recordPatreonStep(storyId, it) }
         val reconciled =
             PatreonCopyPlanning.reconcile(
                 merge.chapters + (patreonResult?.chapters ?: existingPatreon),
@@ -225,12 +230,98 @@ class StorySyncEngine(
                     PatreonCopyPlanning.reconcileStory(StorySyncMergePlanning.foldConcurrentChanges(story, current, provider, fresh)).first
                 }
             } catch (error: Throwable) {
+                ActivityLog.record(ActivityCategory.SYNC, "sync_commit_rejected", "storyId" to storyId, "error" to error)
                 // The commit was rejected: Patreon files stored by this sync are referenced by nothing.
                 deleteUnreferencedPatreonFiles(storyId, story.chapters.filter { it.id in patreonResult?.storedChapterIds.orEmpty() }, null)
                 throw error
             }
         deleteUnreferencedPatreonFiles(storyId, existingPatreon + story.chapters.filter { it.isPatreonCopy }, persisted)
+        recordSyncCommitted(existingPublic, persisted)
         return persisted
+    }
+
+    private fun recordSyncStarted(
+        storyId: String,
+        existing: Story?,
+        sourceId: String,
+        mode: StorySyncMode,
+        patreonCopies: Int,
+    ) = ActivityLog.record(
+        ActivityCategory.SYNC,
+        "sync_started",
+        "storyId" to storyId,
+        "title" to existing?.title,
+        "source" to sourceId,
+        "mode" to mode.name,
+        "isNew" to (existing == null),
+        "chapters" to existing?.chapters?.size,
+        "downloaded" to existing?.chapters?.count { it.downloaded },
+        "removedFlagged" to existing?.chapters?.count { it.isRemovedFromSource },
+        "patreonCopies" to patreonCopies,
+        "patreonLinked" to (existing?.patreonEarlyAccess != null),
+    )
+
+    @Suppress("LongParameterList")
+    private fun recordSyncMerged(
+        storyId: String,
+        title: String,
+        latestOnly: Boolean,
+        incoming: Int,
+        existingPublic: Int,
+        merge: ChapterMergeResult,
+    ) {
+        val newlyRemoved = merge.removedChapters
+        ActivityLog.record(
+            ActivityCategory.SYNC,
+            "sync_merged",
+            "storyId" to storyId,
+            "title" to title,
+            "listKind" to if (latestOnly) "latest_only" else "full",
+            "incoming" to incoming,
+            "existingPublic" to existingPublic,
+            "merged" to merge.chapters.size,
+            "new" to merge.newChapterIds.size,
+            "newlyRemoved" to newlyRemoved.size,
+            "newlyRemovedKept" to newlyRemoved.count { it.downloaded },
+            "droppedNeverDownloaded" to newlyRemoved.count { !it.downloaded },
+            "removedFlagged" to merge.chapters.count { it.isRemovedFromSource },
+            "newlyRemovedTitles" to newlyRemoved.map { it.title },
+        )
+    }
+
+    private fun recordPatreonStep(
+        storyId: String,
+        result: PatreonChapterSync.Result,
+    ) = ActivityLog.record(
+        ActivityCategory.SYNC,
+        "sync_patreon",
+        "storyId" to storyId,
+        "copies" to result.chapters.size,
+        "stored" to result.storedChapterIds.size,
+        "locked" to result.link.lockedCount,
+        // Only the app's own wording: a raw parse-exception message after the colon can quote post JSON.
+        "error" to result.link.lastError?.substringBefore(": "),
+        "signInIssue" to result.link.signInIssue,
+    )
+
+    /** lostDownloadedVsBefore counts downloaded source chapters the commit no longer holds; it should be 0. */
+    private fun recordSyncCommitted(
+        existingPublic: List<Chapter>,
+        persisted: Story,
+    ) {
+        // Match by id or URL: a merge may re-key a chapter to its stable id.
+        val persistedKeys = persisted.chapters.flatMapTo(HashSet()) { listOf(it.id, it.url) }
+        ActivityLog.record(
+            ActivityCategory.SYNC,
+            "sync_committed",
+            "storyId" to persisted.id,
+            "title" to persisted.title,
+            "chapters" to persisted.chapters.size,
+            "downloaded" to persisted.chapters.count { it.downloaded },
+            "removedFlagged" to persisted.chapters.count { it.isRemovedFromSource },
+            "patreonCopies" to persisted.chapters.count { it.isPatreonCopy },
+            "lostDownloadedVsBefore" to existingPublic.count { it.downloaded && it.id !in persistedKeys && it.url !in persistedKeys },
+        )
     }
 
     /** Removes files of Patreon copies that the committed story (or nothing, when null) no longer references. */
@@ -259,6 +350,16 @@ class StorySyncEngine(
     ): Throwable {
         if (error is CancellationException) return error
         val failure = SourceSyncFailurePlanning.classify(error)
+        ActivityLog.record(
+            ActivityCategory.SYNC,
+            "sync_failed",
+            "storyId" to existing?.id,
+            "title" to existing?.title,
+            "source" to sourceName,
+            "kind" to failure.kind,
+            "httpStatus" to failure.httpStatus,
+            "error" to error,
+        )
         if (existing != null) {
             val checkedAt = System.currentTimeMillis()
             repository.updateStory(existing.id) { latest ->

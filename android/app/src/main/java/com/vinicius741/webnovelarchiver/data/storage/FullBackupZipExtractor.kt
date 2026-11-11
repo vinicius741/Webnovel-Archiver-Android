@@ -15,8 +15,9 @@ internal object FullBackupZipExtractor {
         zipFile: File,
         destination: File,
         usableBytes: Long,
+        budgetBytes: Long = BackupInputLimits.extractionBudget(usableBytes),
     ): ExtractedBackupEntries {
-        val state = ExtractionState(BackupInputLimits.extractionBudget(usableBytes))
+        val state = ExtractionState(budgetBytes)
         ZipInputStream(zipFile.inputStream()).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break

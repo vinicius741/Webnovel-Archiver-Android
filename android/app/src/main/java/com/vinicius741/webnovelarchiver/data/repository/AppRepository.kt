@@ -3,9 +3,13 @@ package com.vinicius741.webnovelarchiver.data.repository
 import android.net.Uri
 import com.vinicius741.webnovelarchiver.ai.AiCoverDraft
 import com.vinicius741.webnovelarchiver.ai.AiCoverPlanning
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogLibraryStats
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverDraftRecord
 import com.vinicius741.webnovelarchiver.data.storage.AiCoverResultKind
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
+import com.vinicius741.webnovelarchiver.data.storage.BackupChapterRecoveryResult
 import com.vinicius741.webnovelarchiver.data.storage.LocalImageRevision
 import com.vinicius741.webnovelarchiver.data.storage.StorageHealthSnapshot
 import com.vinicius741.webnovelarchiver.data.storage.foldLegacyArchivesOnDisk
@@ -305,16 +309,60 @@ class AppRepository private constructor(
         path: String,
     ): Boolean = withContext(ioDispatcher) { requiredStorage.deleteEpubFile(storyId, path) }
 
-    suspend fun exportBackup(): File = withContext(ioDispatcher) { requiredStorage.exportBackup() }
+    suspend fun exportBackup(): File = loggedBackup("json_export") { withContext(ioDispatcher) { requiredStorage.exportBackup() } }
 
     suspend fun exportCleanupRules(): File = withContext(ioDispatcher) { requiredStorage.exportCleanupRules() }
 
     suspend fun exportFullBackup(onProgress: (String) -> Unit = {}): File =
-        withContext(ioDispatcher) { requiredStorage.exportFullBackup(onProgress) }
+        loggedBackup("full_export") { withContext(ioDispatcher) { requiredStorage.exportFullBackup(onProgress) } }
 
-    suspend fun importBackupUri(uri: Uri): String = replaceLibrary { requiredStorage.importBackupUri(uri) }
+    suspend fun importBackupUri(uri: Uri): String = loggedBackup("json_import") { replaceLibrary { requiredStorage.importBackupUri(uri) } }
 
-    suspend fun importFullBackupUri(uri: Uri): String = replaceLibrary { requiredStorage.importFullBackupUri(uri) }
+    suspend fun importFullBackupUri(uri: Uri): String =
+        loggedBackup("full_restore") { replaceLibrary { requiredStorage.importFullBackupUri(uri) } }
+
+    /**
+     * Records the start and outcome of a backup action with the library's size before and after,
+     * so an activity log shows exactly what an import or restore changed.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun <T> loggedBackup(
+        action: String,
+        block: suspend () -> T,
+    ): T {
+        val before = ActivityLogLibraryStats.of(published.library).fields("before")
+        ActivityLog.recordAll(ActivityCategory.BACKUP, "${action}_started", before)
+        return try {
+            block().also { result ->
+                ActivityLog.recordAll(
+                    ActivityCategory.BACKUP,
+                    "${action}_finished",
+                    listOf("result" to if (result is File) result.name else result) +
+                        before +
+                        ActivityLogLibraryStats.of(published.library).fields("after"),
+                )
+            }
+        } catch (error: Throwable) {
+            ActivityLog.record(ActivityCategory.BACKUP, "${action}_failed", "error" to error)
+            throw error
+        }
+    }
+
+    /**
+     * Adds back downloaded chapters a full backup has and the live library lacks, without replacing
+     * anything. Unlike a restore it does not invalidate the library generation: the library and the
+     * download queue stay, so an in-flight download must still be able to commit (a rejected one
+     * would sit in Downloading until the next cold start). A sync that started before it is covered
+     * by [keepDownloadedChapters], which keeps the recovered chapters its stale list lacks.
+     */
+    suspend fun recoverChaptersFromBackup(uri: Uri): BackupChapterRecoveryResult =
+        storageTransaction {
+            try {
+                requiredStorage.recoverChaptersFromBackup(uri, ::storyChapterKey)
+            } finally {
+                refresh()
+            }
+        }
 
     suspend fun clearAll() = replaceLibrary { requiredStorage.clearAll() }
 
@@ -384,6 +432,14 @@ class AppRepository private constructor(
             val current = storyStore.story(storyId) ?: return@storageTransaction null
             val result = RemovedChapterPlanning.discard(current, chapterIds)
             if (result.removed.isEmpty()) return@storageTransaction StoryMutations.snapshot(current)
+            ActivityLog.record(
+                ActivityCategory.LIBRARY,
+                "removed_chapters_discarded",
+                "storyId" to storyId,
+                "title" to current.title,
+                "discarded" to result.removed.size,
+                "chapterTitles" to result.removed.map { it.title },
+            )
             storyStore.addOrUpdateStory(result.story)
             publishStoryLocked(result.story)
             val stillReferenced = result.story.chapters.mapNotNullTo(HashSet()) { it.filePath }
@@ -537,7 +593,7 @@ class AppRepository private constructor(
             if (requireExisting) {
                 check(current != null) { "Story ${story.id} was deleted while it was syncing; discarding the sync result" }
             }
-            val committed = merge(current)
+            val committed = keepDownloadedChapters(current, merge(current))
             storyStore.addOrUpdateStory(committed)
             libraryById[committed.id] = StoryMutations.snapshot(committed)
             committed.patreonStats?.takeIf { metricSnapshot?.patreonRaw != null }?.let { fresh ->
@@ -551,6 +607,38 @@ class AppRepository private constructor(
             publishDownloadStateLocked(libraryChanged = true, queueChanged = false)
             StoryMutations.snapshot(committed)
         }
+
+    /**
+     * Last line of defense for a sync commit: a downloaded chapter the stored story has and the
+     * committed one lacks is put back as removed from source instead of silently disappearing.
+     * Reaching this means a merge path dropped downloaded text, so it is logged as a warning.
+     */
+    private fun keepDownloadedChapters(
+        current: Story?,
+        committed: Story,
+    ): Story {
+        if (current == null) return committed
+        val restored =
+            RemovedChapterPlanning.restoreLostDownloads(
+                current,
+                committed,
+                storyChapterKey(committed),
+                System.currentTimeMillis(),
+            )
+        if (restored === committed) return committed
+        val kept = restored.chapters.size - committed.chapters.size
+        Timber.w("Sync commit would have dropped %d downloaded chapter(s) of %s; kept them", kept, committed.id)
+        ActivityLog.record(
+            ActivityCategory.SYNC,
+            "sync_safety_net_kept_chapters",
+            "storyId" to committed.id,
+            "title" to committed.title,
+            "kept" to kept,
+            "chaptersBefore" to current.chapters.size,
+            "chaptersCommitted" to committed.chapters.size,
+        )
+        return restored
+    }
 
     /**
      * Patreon stats belong to the creator: a fresh refresh updates every story sharing it, unless
@@ -582,6 +670,18 @@ class AppRepository private constructor(
 
     suspend fun deleteStory(id: String) {
         storageTransaction {
+            libraryById[id]?.let { story ->
+                ActivityLog.record(
+                    ActivityCategory.LIBRARY,
+                    "story_deleted",
+                    "storyId" to story.id,
+                    "title" to story.title,
+                    "chapters" to story.chapters.size,
+                    "downloaded" to story.chapters.count { it.downloaded },
+                    "removedFlagged" to story.chapters.count { it.isRemovedFromSource },
+                    "archived" to story.isArchived,
+                )
+            }
             storyStore.deleteStory(id)
             libraryById.remove(id)
             queueJobs = storyStore.queue().map(::snapshotJob)

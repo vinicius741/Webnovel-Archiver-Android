@@ -107,7 +107,13 @@ object LegacyArchiveFoldPlanning {
         )
     }
 
-    private fun foldOne(
+    /**
+     * Folds one [archive] snapshot into [story]: downloaded snapshot chapters the story lacks become
+     * removed-from-source chapters in their old position, and story rows that are not downloaded
+     * take the snapshot's copy. Ids of chapters whose file still lives outside the story's folder
+     * are added to [adopted]. Also used by [BackupChapterRecoveryPlanning].
+     */
+    internal fun foldOne(
         story: Story,
         archive: Story,
         key: (Chapter) -> String,

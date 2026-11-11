@@ -90,6 +90,13 @@ class BackupInputLimitsTest {
     }
 
     @Test
+    fun recoveryExtractionBudgetReservesSpaceForRawTreeAndAdoptedCopies() {
+        val usable = 264L * 1024L * 1024L
+        assertEquals((200L * 1024L * 1024L) / 2L, BackupInputLimits.recoveryExtractionBudget(usable))
+        assertTrue(BackupInputLimits.recoveryExtractionBudget(usable) > BackupInputLimits.extractionBudget(usable))
+    }
+
+    @Test
     fun extractionBudgetReservesSpaceForRawAndStagedTrees() {
         val usable = 264L * 1024L * 1024L
         assertEquals((200L * 1024L * 1024L) / 3L, BackupInputLimits.extractionBudget(usable))

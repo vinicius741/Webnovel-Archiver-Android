@@ -33,6 +33,13 @@ The concurrent-sync fold (`StorySyncMergePlanning`) does not bring back a kept c
 discarded while the sync was running. A JSON backup merge (`BackupMergePlanning`) keeps local
 flagged chapters that the backup lacks.
 
+**Safety net.** `AppRepository.commitSyncedStory` runs `RemovedChapterPlanning.restoreLostDownloads`
+on every sync commit. Any downloaded source chapter the stored story has and the committed story
+lacks is put back, flagged, at its old position. Patreon copies are excluded, because a sync
+retires them on purpose. Only the explicit **Discard** action removes downloaded text. When the
+net catches something, a merge path has a bug: it logs a warning and a
+`sync_safety_net_kept_chapters` activity-log event.
+
 ## UI and output
 
 - **Chapter rows:** the subtitle includes "Removed from source".
@@ -42,6 +49,8 @@ flagged chapters that the backup lacks.
   picks by chapter identity (`RemovedChapterPlanning.remapPositions`).
 - **Chapter filter:** a "Removed from source (N)" chip appears only for novels that have kept
   chapters.
+- **Deleting a novel:** the confirmation (Details or Library selection) says how many removed
+  chapters it holds, because the local copy is the only one left.
 - **Downloads:** kept chapters are always downloaded, so nothing queues them.
 - **Reader, TTS, and EPUB:** they read straight through, and EPUBs include kept chapters.
 
@@ -71,3 +80,35 @@ Adopted files are copied into the live story's folder as `kept_<chapterId>.html`
 deleted only after the live story is written and every downloaded, readable chapter of every
 snapshot is verified as readable in it. A failure keeps that story's snapshots for the next run.
 The fold is idempotent.
+
+## Recovering chapters from a full backup
+
+**Settings → Data & Backup → Recover Chapters from Backup** merges a full-backup ZIP into the
+library without replacing anything. Unlike **Restore Full Backup**, it keeps every current novel,
+setting, bookmark, and download.
+
+- **Planning:** `BackupChapterRecoveryPlanning` treats each backup novel, and each legacy archive
+  snapshot the backup still holds, as a snapshot of the live novel with the same base id. It runs
+  them through `LegacyArchiveFoldPlanning.foldOne`, so the rules match the startup fold:
+  - **Downloaded backup chapters the live novel no longer lists** come back as removed-from-source
+    chapters, in their old reading position.
+  - **Live rows with no readable text** take the backup's copy.
+  - **Chapters the live novel already has readable** are left alone.
+- **Removal time:** recovered chapters keep an earlier `removedFromSourceAt`, or a snapshot's
+  `archivedAt`. Otherwise they get the backup's `exportDate`.
+- **Deleted novels:** novels missing from the live library are skipped and counted, never
+  recreated.
+- **Execution:** `data/storage/BackupChapterRecovery.kt` validates the ZIP with the restore's own
+  manifest and index checks and extracts it to cache. Per novel, it copies adopted files in as
+  `kept_<chapterId>.html` and verifies that every readable backup chapter is readable in the
+  result. Only then does it write the novel; a failed novel is left unchanged and its copied
+  files are removed.
+- **Locking:** it runs as `MaintenanceOperation.RecoverChapters` inside one repository
+  transaction. Unlike a restore, it keeps the library generation: an in-flight download still
+  commits instead of being stranded. A sync that started earlier commits through the safety net,
+  which keeps the recovered chapters its older list lacks.
+- **File names:** adopted files never overwrite an existing file. If another chapter's id
+  sanitizes to the same `kept_` name, the copy gets a numbered suffix.
+- **Result:** a dialog lists the recovered chapter count per novel. Activity-log events use the
+  `recovery` category.
+

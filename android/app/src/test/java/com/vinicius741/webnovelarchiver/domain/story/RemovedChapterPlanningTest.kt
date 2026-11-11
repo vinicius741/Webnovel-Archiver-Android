@@ -118,4 +118,51 @@ class RemovedChapterPlanningTest {
         assertEquals(listOf("b"), ids(result.story.chapters))
         assertNull(result.story.lastReadChapterId)
     }
+
+    @Test
+    fun restoreLostDownloadsPutsBackDownloadedChaptersACommitDropped() {
+        val before = Story(id = "s", chapters = mutableListOf(ch("1"), ch("2"), ch("3"), ch("4")), lastReadChapterId = "3")
+        val after = Story(id = "s", chapters = mutableListOf(ch("1"), ch("4"), ch("5")))
+
+        val restored = RemovedChapterPlanning.restoreLostDownloads(before, after, { it.id }, removedAt = 9L)
+
+        assertEquals(listOf("1", "2", "3", "4", "5"), ids(restored.chapters))
+        assertEquals(listOf(null, 9L, 9L, null, null), restored.chapters.map { it.removedFromSourceAt })
+        assertEquals(5, restored.totalChapters)
+        assertEquals(5, restored.downloadedChapters)
+        // A bookmark the dropped list lost comes back with its chapter.
+        assertEquals("3", restored.lastReadChapterId)
+    }
+
+    @Test
+    fun restoreLostDownloadsKeepsAnEarlierRemovalTime() {
+        val before = Story(id = "s", chapters = mutableListOf(ch("1"), ch("2", removedAt = 3L)))
+        val after = Story(id = "s", chapters = mutableListOf(ch("1")))
+
+        val restored = RemovedChapterPlanning.restoreLostDownloads(before, after, { it.id }, removedAt = 9L)
+
+        assertEquals(3L, restored.chapters.single { it.id == "2" }.removedFromSourceAt)
+    }
+
+    @Test
+    fun restoreLostDownloadsIgnoresPatreonCopiesAndRowsWithoutText() {
+        val notDownloaded = ch("2").copy(downloaded = false, filePath = null)
+        val before = Story(id = "s", chapters = mutableListOf(ch("1"), notDownloaded, ch("p", patreon = true)))
+        val after = Story(id = "s", chapters = mutableListOf(ch("1")))
+
+        val restored = RemovedChapterPlanning.restoreLostDownloads(before, after, { it.id }, removedAt = 9L)
+
+        assertTrue(restored === after)
+    }
+
+    @Test
+    fun restoreLostDownloadsMatchesChaptersByStableKeyNotRawId() {
+        // The commit re-keyed a chapter (same URL, new id); it was not lost.
+        val before = Story(id = "s", chapters = mutableListOf(ch("1"), ch("old")))
+        val after = Story(id = "s", chapters = mutableListOf(ch("1"), ch("old").copy(id = "new")))
+
+        val restored = RemovedChapterPlanning.restoreLostDownloads(before, after, { it.url }, removedAt = 9L)
+
+        assertTrue(restored === after)
+    }
 }

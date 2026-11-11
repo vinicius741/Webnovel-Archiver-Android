@@ -80,7 +80,7 @@ internal class FullBackupRestorer(
         }
     }
 
-    private fun readAndValidateManifest(raw: File): FullBackupManifest {
+    internal fun readAndValidateManifest(raw: File): FullBackupManifest {
         val manifest = File(raw, "manifest.json")
         check(manifest.exists()) { FullBackupManifestValidation.MISSING_MANIFEST_MESSAGE }
         val text =
@@ -93,7 +93,7 @@ internal class FullBackupRestorer(
         return FullBackupManifestValidation.parseValidated(gson, payload)
     }
 
-    private fun verifyZipIndex(
+    internal fun verifyZipIndex(
         extractedFiles: Set<String>,
         chapterFiles: List<RestoredChapterFileIndex>,
         metricFiles: List<RestoredMetricFileIndex>,

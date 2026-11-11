@@ -10,6 +10,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -56,6 +58,7 @@ internal fun ScreenHost.showReader(
 ) {
     detachReaderTtsListener()
     lastRequestedReaderChapterId = chapterId
+    ActivityLog.record(ActivityCategory.READER, "chapter_opened", "storyId" to storyId, "chapterId" to chapterId)
     rerender = { showReader(storyId, chapterId) }
     val palette = readerDocumentColors().let { ReaderDocumentPalette(normal = it, forcedDark = it) }
     screen(

@@ -10,6 +10,7 @@ enum class MaintenanceOperation {
     ExportFull,
     ImportJson,
     RestoreFull,
+    RecoverChapters,
 }
 
 sealed interface MaintenanceState {

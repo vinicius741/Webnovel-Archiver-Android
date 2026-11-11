@@ -12,6 +12,9 @@ import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.appupdate.AppUpdateCoordinator
 import com.vinicius741.webnovelarchiver.appupdate.GitHubReleaseClient
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogLibraryStats
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.data.storage.AppStorage
 import com.vinicius741.webnovelarchiver.data.storage.ChapterEvidenceStore
@@ -185,6 +188,18 @@ class AppContainer internal constructor(
                     migrationsFinishedAt - loadFinishedAt,
                     readyAt - migrationsFinishedAt,
                     readyAt - startedAt,
+                )
+                val loaded = ActivityLogLibraryStats.of(load.stories)
+                val ready = ActivityLogLibraryStats.of(stories)
+                ActivityLog.recordAll(
+                    ActivityCategory.APP,
+                    "startup_library_loaded",
+                    listOf(
+                        "legacyArchivesLoaded" to loaded.legacyArchives,
+                        "legacyArchivesLeft" to ready.legacyArchives,
+                        "changedOnLoad" to changedIds.size,
+                        "totalMs" to readyAt - startedAt,
+                    ) + ready.fields("ready"),
                 )
                 if (com.vinicius741.webnovelarchiver.BuildConfig.DEBUG) {
                     com.vinicius741.webnovelarchiver.perf.PerfInstrumentation.recordStartupPass(

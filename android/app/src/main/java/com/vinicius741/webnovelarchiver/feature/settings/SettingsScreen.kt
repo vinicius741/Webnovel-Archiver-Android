@@ -9,6 +9,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogExporter
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
@@ -162,6 +163,13 @@ internal fun ScreenHost.showDataBackup() {
         settingRow(R.drawable.wna_unarchive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
             importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
         }
+        settingRow(
+            R.drawable.wna_unarchive,
+            "Recover Chapters from Backup",
+            "Add back downloaded chapters a full ZIP backup has and your novels lost; nothing is replaced",
+        ) {
+            recoverChaptersLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+        }
         addBackupFilesSection(this)
         divider()
         section("Sources & Storage")
@@ -202,6 +210,20 @@ internal fun ScreenHost.showDataBackup() {
                     }
                 }
             toast(detail)
+        }
+        settingRow(
+            R.drawable.wna_share,
+            "Share Activity Logs",
+            "Export everything the app did in the last 7 days (syncs, downloads, library changes, errors) to send for troubleshooting",
+        ) {
+            exportAndShare({
+                ActivityLogExporter.export(
+                    directory = app.appContainer.repository.storage.backupRoot,
+                    library = repository.library(),
+                    queue = repository.queue(),
+                    reliability = sourceNetwork.reliabilitySnapshots(),
+                )
+            })
         }
         settingRow(
             R.drawable.wna_share,

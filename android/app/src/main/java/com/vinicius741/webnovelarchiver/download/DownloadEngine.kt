@@ -4,6 +4,8 @@ import com.vinicius741.webnovelarchiver.app.AppContainer
 import com.vinicius741.webnovelarchiver.app.AppTime
 import com.vinicius741.webnovelarchiver.cleanup.CleanupEngine
 import com.vinicius741.webnovelarchiver.cleanup.InsertedNoticeMarkerMonitor
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.BypassEventLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
@@ -110,6 +112,14 @@ class DownloadEngine(
                 readStory = storage::getStory,
                 persist = storage::saveEnqueue,
             )
+        ActivityLog.record(
+            ActivityCategory.DOWNLOAD,
+            "enqueued",
+            "storyId" to story.id,
+            "title" to story.title,
+            "requested" to indexes.size,
+            "runnable" to plan.hasRunnableWork,
+        )
         if (plan.hasRunnableWork) {
             if (startNow) {
                 start()
@@ -200,6 +210,7 @@ class DownloadEngine(
                     processLoop.run()
                 } finally {
                     running.set(false)
+                    ActivityLog.record(ActivityCategory.DOWNLOAD, "run_finished")
                 }
             }
     }
@@ -317,9 +328,9 @@ class DownloadEngine(
                     startedGeneration,
                 )
             ) {
-                AppRepository.ChapterCommit.COMMITTED -> Unit
+                AppRepository.ChapterCommit.COMMITTED -> recordChapter("chapter_committed", job)
                 // Cancelled, removed, cleared, restored, or the story vanished: drop silently.
-                AppRepository.ChapterCommit.SKIPPED -> return
+                AppRepository.ChapterCommit.SKIPPED -> return recordChapter("chapter_skipped", job)
                 // The story exists but the chapter id no longer matches (sync changed the list).
                 AppRepository.ChapterCommit.CHAPTER_MISSING -> error("Chapter not found")
             }
@@ -328,6 +339,7 @@ class DownloadEngine(
             Timber.d("Download job %s cancelled (story=%s)", job.id, job.storyId)
             throw error
         } catch (error: SourceAccessBlockedException) {
+            recordChapter("chapter_blocked", job, error)
             if (!isCancelledOrGone(job.id, repository.queue())) {
                 val mutation =
                     providerName?.let { sourceReliability.blockSourceJobs(it, error) }
@@ -336,10 +348,28 @@ class DownloadEngine(
             }
         } catch (error: Exception) {
             // Exception, not Throwable, so OutOfMemoryError and StackOverflowError propagate.
+            recordChapter("chapter_failed", job, error)
             if (!isCancelledOrGone(job.id, repository.queue())) {
                 sourceReliability.handleJobError(job, error, providerName)?.let(::publishQueueMutation)
             }
         }
+    }
+
+    private fun recordChapter(
+        type: String,
+        job: DownloadJob,
+        error: Throwable? = null,
+    ) {
+        ActivityLog.record(
+            ActivityCategory.DOWNLOAD,
+            type,
+            "storyId" to job.storyId,
+            "chapterId" to job.chapter.id,
+            "chapterTitle" to job.chapter.title,
+            "index" to job.chapterIndex,
+            "attempt" to job.retryCount,
+            "error" to error,
+        )
     }
 
     private fun publishQueueMutation(mutation: DownloadQueueMutation) {

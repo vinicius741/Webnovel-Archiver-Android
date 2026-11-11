@@ -1,6 +1,8 @@
 package com.vinicius741.webnovelarchiver.tts
 
 import android.content.Context
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
+import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.data.repository.AppRepository
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -132,6 +134,7 @@ class TtsEngine(
         chapterId: String,
         chunkIndex: Int? = null,
     ) {
+        ActivityLog.record(ActivityCategory.TTS, "play", "storyId" to storyId, "chapterId" to chapterId, "chunk" to chunkIndex)
         val request = commandVersion.incrementAndGet()
         scope.launch {
             val prepared =
@@ -652,6 +655,7 @@ class TtsEngine(
         forgetPosition: Boolean = false,
         fallbackStoryId: String? = null,
     ) {
+        ActivityLog.record(ActivityCategory.TTS, "stop", "forgetPosition" to forgetPosition)
         commandVersion.incrementAndGet()
         scope.launch {
             val lastSession = stateMutex.withLock { stopLocked() }

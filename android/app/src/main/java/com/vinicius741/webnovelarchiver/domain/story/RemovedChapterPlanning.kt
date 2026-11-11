@@ -103,6 +103,40 @@ object RemovedChapterPlanning {
         )
     }
 
+    /**
+     * Safety net for writes that replace a story's chapter list (a sync commit): every downloaded
+     * source chapter of [before] that [after] no longer holds is put back, flagged removed from the
+     * source (keeping an earlier flag), in its old reading position. Downloaded text is never dropped
+     * implicitly; only an explicit [discard] removes it. Patreon copies are excluded because a sync
+     * legitimately retires them. Returns [after] unchanged (same instance) when nothing was lost.
+     */
+    fun restoreLostDownloads(
+        before: Story,
+        after: Story,
+        key: (Chapter) -> String,
+        removedAt: Long,
+    ): Story {
+        val afterKeys = after.chapters.mapTo(HashSet(), key)
+        val lost =
+            before.chapters
+                .filter { chapter ->
+                    chapter.downloaded &&
+                        !chapter.isPatreonCopy &&
+                        (chapter.filePath != null || chapter.content != null) &&
+                        key(chapter) !in afterKeys
+                }.map { it.copy(removedFromSourceAt = it.removedFromSourceAt ?: removedAt) }
+        if (lost.isEmpty()) return after
+        val chapters = placeKept(before.chapters, after.chapters, lost, key).toMutableList()
+        val hasEpub = after.epubPath != null || !after.epubPaths.isNullOrEmpty()
+        return remapPositions(after, after.chapters, chapters).copy(
+            chapters = chapters,
+            totalChapters = chapters.size,
+            downloadedChapters = chapters.count { it.downloaded },
+            lastReadChapterId = after.lastReadChapterId ?: before.lastReadChapterId?.takeIf { id -> lost.any { it.id == id } },
+            epubStale = if (hasEpub) true else after.epubStale,
+        )
+    }
+
     data class Discarded(
         val story: Story,
         val removed: List<Chapter>,
