@@ -105,10 +105,10 @@ class AppNavigatorTest {
     @Test
     fun `back from history keeps the path the user took`() {
         val navigator = AppNavigator()
-        navigator.navigate(AppRoute.Updates)
+        navigator.navigate(AppRoute.Queue)
         navigator.navigate(AppRoute.Reader("story", "chapter"))
 
-        assertEquals(AppRoute.Updates, navigator.back())
+        assertEquals(AppRoute.Queue, navigator.back())
     }
 
     @Test
@@ -165,7 +165,6 @@ class AppNavigatorTest {
         assertEquals(AppRoute.Details("story"), AppRoute.Trends("story", "score").parent)
         assertEquals(AppRoute.Details("story"), AppRoute.PatreonAccount("story").parent)
         assertEquals(AppRoute.DataBackup, AppRoute.PatreonAccount().parent)
-        assertEquals(AppRoute.Updates, AppRoute.UpdateFollowSelection.parent)
         assertEquals(AppRoute.Settings, AppRoute.CleanupRules.parent)
         assertEquals(AppRoute.Library, AppRoute.Player.parent)
     }

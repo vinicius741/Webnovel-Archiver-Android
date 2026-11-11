@@ -15,7 +15,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
-import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import java.io.File
 import java.lang.reflect.Type
@@ -108,12 +107,6 @@ internal class RestoreStagingWriter(
         payload["regexCleanupRules"]?.let {
             val rules = normalize<List<RegexCleanupRule>>(it, object : TypeToken<MutableList<RegexCleanupRule>>() {}.type)
             writeEnvelope(File(root, "regex_cleanup_rules.json"), RegexRuleCleanup.sanitizeRegexRules(rules))
-        }
-        payload["updateFollowSettings"]?.let {
-            writeEnvelope(
-                File(root, "update_follow_settings.json"),
-                PreferenceNormalization.updateFollowSettings(normalize(it, UpdateFollowSettings::class.java)),
-            )
         }
     }
 

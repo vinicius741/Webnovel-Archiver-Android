@@ -104,7 +104,7 @@ same key/model/preview-apply layer as descriptions (see `ai-description-generati
 ## Where the AI cover applies
 
 Applying a cover selects Generated. While Generated is selected, the app displays the local
-cover file in library cards, the Details header, the Follow Updates list, and the full-screen
+cover file in library cards, the Details header, and the full-screen
 zoom viewer (which also becomes available for stories that never had a source cover). Generated
 EPUBs embed the AI cover bytes in place of the source URL's image. Choosing Source switches all of
 those surfaces — EPUBs included — back to the source cover without deleting anything. Syncs carry

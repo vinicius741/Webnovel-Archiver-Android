@@ -105,7 +105,7 @@ app data to exit simulation.
 
 ### Cold-start screens (do not tap-navigate to arrive)
 
-Tokens: `library` · `queue` · `settings` · `updates` · `followupdates` · `addstory` · `details` · `reader`
+Tokens: `library` · `queue` · `settings` · `addstory` · `details` · `reader`
 
 Always:
 
@@ -126,8 +126,6 @@ Then **settle** (next section) before any screenshot.
 | `library` | ~2s | Title `Library`, novel count or cards | blank body, no title |
 | `queue` | ~1.5s | `Downloads` + empty state or queue rows | — |
 | `settings` | ~1.5s | `Settings` + `Appearance` / Large Screen Layout | — |
-| `updates` | ~2s | `Updates` + followed count or empty state | — |
-| `followupdates` | ~2s | `Follow Updates` + search/filters or empty state | — |
 | `addstory` | ~1.5s | `Add Story` + `Fetch Story` | — |
 | `details` | ~2–3s | Story title in app bar + cover or action buttons | generic "Details" only, blank |
 | **`reader`** | **~4–5s, then poll** | App bar `Chapter …` **and** body text (or WebView text nodes); bottom `N / M` nav | Title `Reader` + `Preparing chapter…`, spinner only, tiny PNG (~40KB) |
@@ -178,7 +176,6 @@ Do these on top of static screenshots. Use dump bounds for taps.
 | Reader Settings | Tap **Voice settings** — dialog must dismiss (known P2 if it stays) |
 | Settings | Download Settings; Voice & Speech; Manage Tabs; Text Cleanup; scroll for Backup |
 | Add Story | Empty URL → Fetch Story stays on form (toast may die fast; form stay = pass) |
-| Updates | Choose novels (check archive duplicates) |
 | Queue | Use disposable simulation data to exercise ordering, pause/resume/cancel, failures, and verification; keep live downloads explicitly separate |
 
 After sticky bottom bars (Select Novels Move/Delete), **scroll the list** before
@@ -240,7 +237,7 @@ These were fixed after the 2026-07-10 QA pass. Confirm they stay fixed; re-open 
    reader must return to the reader (not main Settings).
 2. Settings must **not** show a dead “EPUB Volume Folding” Cover/Inner control
    (`foldLayoutMode` is legacy storage only).
-3. Select Novels labels archives (`· Archived`); Follow Updates excludes archives.
+3. Select Novels labels archives (`· Archived`).
 4. Reader HTML has extra bottom padding so the last line clears the chapter nav bar.
 
 ## Anti-patterns (from past failed QA)

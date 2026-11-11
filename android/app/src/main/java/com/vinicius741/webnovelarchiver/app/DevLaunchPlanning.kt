@@ -24,13 +24,11 @@ object DevLaunchPlanning {
         QUEUE("queue"),
         SETTINGS("settings"),
         NOTIFICATIONS("notifications"),
-        UPDATES("updates"),
         READER("reader"),
         DETAILS("details"),
         TRENDS("trends"),
         AI_CONTROLS("aicontrols"),
         ADD_STORY("addstory"),
-        FOLLOW_UPDATES("followupdates"),
         AI_SETTINGS("aisettings"),
         CLEANUP("cleanup"),
         PATREON("patreon"),
@@ -61,9 +59,7 @@ object DevLaunchPlanning {
             DevStartScreen.PATREON -> AppRoute.PatreonAccount()
             DevStartScreen.APP_UPDATE -> AppRoute.AppUpdate
             DevStartScreen.NOTIFICATIONS -> AppRoute.Notifications
-            DevStartScreen.UPDATES -> AppRoute.Updates
             DevStartScreen.ADD_STORY -> AppRoute.AddStory
-            DevStartScreen.FOLLOW_UPDATES -> AppRoute.UpdateFollowSelection
             DevStartScreen.DETAILS -> resolveDetails(storyOverride, libraryProvider)
             DevStartScreen.TRENDS -> pickStory(storyOverride, libraryProvider)?.let { AppRoute.Trends(it.id, null) }
             DevStartScreen.AI_CONTROLS -> resolveAiControls(storyOverride, libraryProvider)

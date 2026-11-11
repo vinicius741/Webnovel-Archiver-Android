@@ -56,10 +56,6 @@ sealed class AppRoute(
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
     data object Player : AppRoute("player")
 
-    data object Updates : AppRoute("updates")
-
-    data object UpdateFollowSelection : AppRoute("update_follow_selection")
-
     data object Settings : AppRoute("settings")
 
     data object Notifications : AppRoute("notifications")
@@ -117,7 +113,6 @@ sealed class AppRoute(
                 is AiControls -> Details(storyId)
                 is Trends -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
-                UpdateFollowSelection -> Updates
                 Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
@@ -150,8 +145,6 @@ object AppRouteCodec {
             "add_story" -> AppRoute.AddStory
             "queue" -> AppRoute.Queue
             "player" -> AppRoute.Player
-            "updates" -> AppRoute.Updates
-            "update_follow_selection" -> AppRoute.UpdateFollowSelection
             "settings" -> AppRoute.Settings
             "notifications" -> AppRoute.Notifications
             "download_settings" -> AppRoute.DownloadSettings

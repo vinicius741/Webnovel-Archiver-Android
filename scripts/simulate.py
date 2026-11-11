@@ -23,7 +23,7 @@ ACTIVITY = "com.vinicius741.webnovelarchiver.app.MainActivity"
 CONTROL = "com.vinicius741.webnovelarchiver.simulation.SimulationControlActivity"
 BASE = "files/dev_simulation"
 IDENTIFIER = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}\Z")
-SCREENS = {"library", "queue", "settings", "notifications", "aisettings", "aicontrols", "updates", "followupdates", "cleanup", "patreon", "reader", "details", "addstory"}
+SCREENS = {"library", "queue", "settings", "notifications", "aisettings", "aicontrols", "cleanup", "patreon", "reader", "details", "addstory"}
 
 
 def identifier(value):

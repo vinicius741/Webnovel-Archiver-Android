@@ -47,33 +47,6 @@ class AddStoryScreenState {
     var urlText: String? = null
 }
 
-class UpdateTrackerScreenState {
-    var syncing: Boolean = false
-    var completed: Int = 0
-    var total: Int = 0
-
-    // One entry per story currently being synced. Bulk sync runs several stories concurrently, so a
-    // single "current story" slot would be clobbered; this map tracks each in-flight story instead.
-    // Insertion-ordered so progress text can show a stable representative story.
-    val inFlight: MutableMap<String, InFlightStorySync> = linkedMapOf()
-    val errors: MutableMap<String, String> = mutableMapOf()
-    val syncedUpdatedChapterIds: MutableMap<String, List<String>> = mutableMapOf()
-
-    fun reset(total: Int) {
-        syncing = true
-        completed = 0
-        this.total = total
-        inFlight.clear()
-        errors.clear()
-        syncedUpdatedChapterIds.clear()
-    }
-
-    fun finish() {
-        syncing = false
-        inFlight.clear()
-    }
-}
-
 enum class BackupExportKind {
     JSON,
     FULL,
@@ -102,24 +75,6 @@ class BackupExportState {
             progressSlot = null
         }
     }
-}
-
-/** Mutable progress holder for a story being synced in [UpdateTrackerScreenState.inFlight]. */
-class InFlightStorySync(
-    val title: String,
-) {
-    var status: String = "Starting..."
-}
-
-/**
- * Transient UI state for the Following Review screen: the typed query, the active tab filter, and
- * the persisted [com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences.showCoversOnUpdates]
- * toggle. The followed set itself is always derived from bookmarks, never stored here.
- */
-class UpdateFollowSelectionState {
-    var query: String = ""
-    var selectedTabId: String? = "__all__"
-    var showCovers: Boolean = false
 }
 
 /**
@@ -219,19 +174,10 @@ interface ScreenHost {
      */
     val addStoryScreenState: AddStoryScreenState
 
-    val updateTrackerScreenState: UpdateTrackerScreenState
-
     val backupExportState: BackupExportState
 
     /** Pending AI-description drafts for the AI Controls screen (see [AiControlsScreenState]). */
     val aiControlsScreenState: AiControlsScreenState
-
-    /**
-     * Transient state for the Follow Updates selection screen's library filters, selected-only
-     * review toggle, and show-covers preference (see [UpdateFollowSelectionState]). Lives here so
-     * those choices survive the screen's in-place list re-renders.
-     */
-    val updateFollowSelectionState: UpdateFollowSelectionState
 
     /** Library view memory (query/tags/per-tab scroll) surviving navigation; see [LibraryScreenState]. */
     val libraryScreenState: LibraryScreenState

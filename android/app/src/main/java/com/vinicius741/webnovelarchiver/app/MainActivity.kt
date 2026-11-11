@@ -44,8 +44,6 @@ import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
-import com.vinicius741.webnovelarchiver.navigation.UpdateFollowSelectionState
-import com.vinicius741.webnovelarchiver.navigation.UpdateTrackerScreenState
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.perf.PerfRecorder
@@ -90,18 +88,10 @@ class MainActivity :
     override val navigator = AppNavigator()
     override val routeMemory: RouteViewMemory = RouteViewMemory()
     override val addStoryScreenState: AddStoryScreenState = AddStoryScreenState()
-    override val updateTrackerScreenState: UpdateTrackerScreenState = UpdateTrackerScreenState()
     override val backupExportState: BackupExportState = BackupExportState()
     override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
     override val libraryScreenState: LibraryScreenState = LibraryScreenState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
-
-    // Lazy: seeded from cached DisplayPreferences after repository startup hydration.
-    override val updateFollowSelectionState: UpdateFollowSelectionState by lazy {
-        UpdateFollowSelectionState().apply {
-            showCovers = repository.getDisplayPreferences().showCoversOnUpdates
-        }
-    }
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */

@@ -63,7 +63,6 @@ object DiagnosticExportPlanning {
             "sentence_removal.json",
             "regex_cleanup_rules.json",
             "download_queue.json",
-            "update_follow_settings.json",
             "tts_settings.json",
             "tts_session.json",
         )

@@ -200,7 +200,6 @@ internal class BackupExporter(
             "tabs" to storage.tabsDoc.get(),
             "sentenceRemovalList" to storage.sentencesDoc.get(),
             "regexCleanupRules" to storage.regexRulesDoc.get(),
-            "updateFollowSettings" to storage.updateFollowSettingsDoc.get(),
             "ttsSettings" to storage.ttsSettingsDoc.get(),
             "ttsSession" to storage.getTtsSession(),
             // R11: per-story resume positions, so stories whose playback was explicitly stopped
