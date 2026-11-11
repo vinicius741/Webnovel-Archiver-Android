@@ -5,6 +5,7 @@ import android.speech.tts.TextToSpeech
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroModelFiles
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroTextPlanning
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -202,7 +203,7 @@ internal class TtsSpeechEngineHost(
     fun voiceKey(settings: TtsSettings): String =
         if (isBuiltin) {
             // Kokoro has no pitch control, so pitch does not split its cache.
-            "${KokoroVoices.ENGINE_ID}|speaker=$kokoroSpeaker"
+            "${KokoroVoices.ENGINE_ID}|speaker=$kokoroSpeaker|text=${KokoroTextPlanning.VERSION}"
         } else {
             engine?.let { ttsVoiceKey(it, enginePackage, settings) }.orEmpty()
         }

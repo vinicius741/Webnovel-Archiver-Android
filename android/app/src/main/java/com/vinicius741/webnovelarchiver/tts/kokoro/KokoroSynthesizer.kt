@@ -20,7 +20,7 @@ internal class KokoroSynthesizer(
         output: File,
     ): Boolean {
         currentCoroutineContext().ensureActive()
-        val audio = runtime.generate(text, speakerId()) ?: return false
+        val audio = runtime.generate(KokoroTextPlanning.spokenText(text), speakerId()) ?: return false
         // A voice change stops rendering before it changes the speaker, so audio that finished after
         // the stop may be in the new voice: never let it reach the cache under the old voice's key.
         currentCoroutineContext().ensureActive()

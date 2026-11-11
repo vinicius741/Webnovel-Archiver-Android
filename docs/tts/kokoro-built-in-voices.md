@@ -69,8 +69,17 @@ the cache key.
 - **Rendering:**
   - Kokoro renders through the same cached pipeline as Android engines (see
     `tts-audiobook-playback.md`): one sentence at a time, at 1x, with speed applied at playback.
-  - The cache key is `builtin:kokoro-en-v0_19|speaker=<id>`. Kokoro has no pitch control, so pitch is
-    not part of the key, and the Pitch field is hidden while Kokoro is selected.
+  - The cache key is `builtin:kokoro-en-v0_19|speaker=<id>|text=<KokoroTextPlanning.VERSION>`. Kokoro
+    has no pitch control, so pitch is not part of the key, and the Pitch field is hidden while Kokoro is
+    selected. Bump the version when the text sent to the model changes, so old clips re-render.
+  - Text cleanup (`KokoroTextPlanning.spokenText`, measured with sherpa-onnx on 2026-11-11):
+    - sherpa-onnx treats anything after a sentence's final `.`, `!` or `?` as one more sentence. The
+      closing quote of `“Go home.”` (also `’`, `"`, `)`, `]`, `』`, and spaced dots like `. . .`)
+      rendered about 0.2 s of noise that ended at full volume. Listeners heard a glitch at the end of
+      the line, then a hard cut into the pause. About 14% of sentences in the owner's library end this
+      way. The trailing run is reduced to its terminators, for example `“Go home.`.
+    - Kokoro voices `*` (about 0.5 s each), so asterisks are removed.
+    - Quotes and brackets inside a sentence render cleanly and are kept.
   - There is no live-speech fallback for Kokoro. If rendering fails, playback stops with a synthesis
     error.
 - **Loading:**
