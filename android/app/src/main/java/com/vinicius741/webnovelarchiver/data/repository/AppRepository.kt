@@ -30,7 +30,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
-import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.domain.story.PatreonCopyPlanning
 import com.vinicius741.webnovelarchiver.domain.story.RemovedChapterPlanning
@@ -275,7 +274,6 @@ class AppRepository private constructor(
     val regexRules = Setting({ requiredStorage.regexRulesDoc }) { rules -> rules.map { it.copy() } }
     val ttsSettings = Setting({ requiredStorage.ttsSettingsDoc }) { it.copy() }
     val aiSettings = Setting({ requiredStorage.aiSettingsDoc }) { it.copy() }
-    val updateFollowSettings = Setting({ requiredStorage.updateFollowSettingsDoc })
 
     fun getDisplayPreferences(): DisplayPreferences = storyStore.displayPreferences().copy()
 

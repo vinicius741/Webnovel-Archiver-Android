@@ -7,7 +7,6 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
-import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -135,15 +134,6 @@ class PreferenceNormalizationTest {
     fun unknownLibraryViewModeFallsBackToList() {
         assertEquals("list", PreferenceNormalization.displayPreferences(DisplayPreferences(libraryViewMode = "shelf")).libraryViewMode)
         assertEquals("covers", PreferenceNormalization.displayPreferences(DisplayPreferences(libraryViewMode = "covers")).libraryViewMode)
-    }
-
-    @Test
-    fun updateFollowSettingsClampThresholdIntoPickerRange() {
-        assertEquals(5, PreferenceNormalization.updateFollowSettings(UpdateFollowSettings()).thresholdChapters)
-        assertEquals(1, PreferenceNormalization.updateFollowSettings(UpdateFollowSettings(thresholdChapters = 0)).thresholdChapters)
-        assertEquals(25, PreferenceNormalization.updateFollowSettings(UpdateFollowSettings(thresholdChapters = 99)).thresholdChapters)
-        val legacyJson = Gson().fromJson("""{"thresholdChapters":10}""", UpdateFollowSettings::class.java)
-        assertEquals(10, PreferenceNormalization.updateFollowSettings(legacyJson).thresholdChapters)
     }
 
     @Test

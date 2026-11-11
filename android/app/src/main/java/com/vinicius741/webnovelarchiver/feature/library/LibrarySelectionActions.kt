@@ -6,7 +6,6 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
-import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.BOTTOM_BAR_VIEW_TAG
@@ -71,7 +70,6 @@ internal fun ScreenHost.libraryAppBarActions(
             } else {
                 AppBarAction(R.drawable.wna_list, "List view") { switchLibraryViewMode(viewMode.toggled) }
             },
-            AppBarAction(R.drawable.wna_refresh, "Updates") { showUpdates() },
             AppBarAction(R.drawable.wna_download, "Downloads") { showQueue() },
             AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
         )

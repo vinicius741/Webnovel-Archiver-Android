@@ -20,8 +20,8 @@ transaction:
 | `metrics` | every sync | copy of the sync's `Story.sourceMetadata.metrics` (`SourceMetric` list — watchers, replies, views, likes, favorites, follows, …, with `isEstimated` flags). Empty for histories recorded before the field existed. |
 | `patreonRaw` | only when Patreon was refreshed | `PatreonRawStats` — measured data only (member counts, exact pledge sum when public, tier ladder with USD-at-capture prices); `null` otherwise |
 
-`patreonRaw` stays `null` on **batch "Follow Updates" syncs** (which pass `refreshPatreonStats = false`)
-and on stories without a Patreon URL. A `null` therefore reads as "not measured this sync" — never as
+`patreonRaw` stays `null` on syncs that pass `refreshPatreonStats = false` (the former batch
+"Follow Updates" sync, removed in November 2026, did this) and on stories without a Patreon URL. A `null` therefore reads as "not measured this sync" — never as
 "zero" — so a chart correctly shows the gap rather than a fabricated zero point. (A *measured* zero —
 a campaign publicly showing $0/0 — is stored and displayed as such; only null means unmeasured.)
 

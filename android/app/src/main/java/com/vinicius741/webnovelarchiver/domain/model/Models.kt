@@ -322,10 +322,6 @@ data class DisplayPreferences(
     /** Persisted Library sort direction: true = ascending, false = descending. Survives app restarts;
      *  defaults to false (descending) to match the pre-persistence default. */
     var librarySortAscending: Boolean = false,
-    /** When true the Follow Updates list shows a cover thumbnail next to each novel. Survives app
-     *  restarts; defaults to false so persisted JSON written before this field exists keeps the
-     *  compact row look. */
-    var showCoversOnUpdates: Boolean = false,
     /** Library layout: "list" (cover thumbnail beside full details) or "covers" (large cover grid
      *  with title and progress only). Defaults to "list" so persisted JSON written before this field
      *  exists keeps the original look. */

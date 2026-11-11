@@ -60,9 +60,7 @@ class AppLaunchSmokeTest {
                 "queue" to "Downloads",
                 "settings" to "Settings",
                 "notifications" to "Notifications",
-                "updates" to "Updates",
                 "addstory" to "Add Story",
-                "followupdates" to "Following Review",
             )
 
         routes.forEach { (route, title) ->

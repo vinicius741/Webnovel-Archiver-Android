@@ -6,7 +6,6 @@ import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
 import com.vinicius741.webnovelarchiver.domain.model.DisplayPreferences
 import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
-import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 
 /** Canonicalizes persisted settings at every storage boundary. */
 object PreferenceNormalization {
@@ -37,9 +36,6 @@ object PreferenceNormalization {
 
     const val READER_FONT_SCALE_MIN = 0.8f
     const val READER_FONT_SCALE_MAX = 1.6f
-
-    const val FOLLOW_THRESHOLD_MIN = 1
-    const val FOLLOW_THRESHOLD_MAX = 25
 
     fun appSettings(settings: AppSettings): AppSettings {
         val minDelay = settings.downloadDelay.takeIf { it >= 0 } ?: AppSettings().downloadDelay
@@ -80,9 +76,6 @@ object PreferenceNormalization {
 
     fun chapterFilterSettings(settings: ChapterFilterSettings): ChapterFilterSettings =
         settings.copy(filterMode = settings.filterMode.takeIf { it in chapterFilterModes } ?: ChapterFilterSettings().filterMode)
-
-    fun updateFollowSettings(settings: UpdateFollowSettings): UpdateFollowSettings =
-        settings.copy(thresholdChapters = settings.thresholdChapters.coerceIn(FOLLOW_THRESHOLD_MIN, FOLLOW_THRESHOLD_MAX))
 
     fun displayPreferences(preferences: DisplayPreferences): DisplayPreferences =
         preferences.copy(

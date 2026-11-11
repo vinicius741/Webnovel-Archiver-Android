@@ -2,7 +2,7 @@
 
 ---
 name: dev-launch-screen
-description: Cold-starts the Webnovel-Archiver-Android debug app directly onto a chosen screen (reader, queue/download-manager, settings, notifications, updates, details, add-story, library) on the webnovel_api36 emulator via the debug-only `dev_start_screen` intent extra — skipping all manual UI navigation. THIS IS THE CANONICAL WAY TO REACH ANY SCREEN ON THE EMULATOR FOR AGENT QA. It also lists and filters the novels installed on the emulator and opens the app directly onto a SPECIFIC novel (its details) or a SPECIFIC chapter inside that novel (the reader), instead of always landing on the first library entry. USE THIS instead of `android_launch_app` or a bare `am start -n …/MainActivity` whenever you are about to (re)launch the debug app on the emulator to verify, check, QA, screenshot, or exercise a feature — i.e. the post-build/post-install launch step is the exact trigger point. If your plan is "install the APK, launch the app, then tap through to <screen>", invoke this skill and pass the screen token instead; do not tap through the UI to reach a screen you could have cold-started onto. Trigger phrases include "build and check the reader", "install and verify settings", "screenshot the queue after rebuilding", "launch into reader", "open on settings", "QA the reader", "verify on the emulator/device", "exercise the flow", any "test <feature> on the emulator" where the feature lives on a reachable screen, AND the novel-specific ones: "list the novels on the emulator", "which novels are installed", "open novel <X>", "open on a specific story/novel", "open chapter <N> of <novel>", "open the reader on <novel> chapter <N>". Do NOT trigger for legacy React Native work, the release/phone variant (debug-only, no-op in release), a pure build with no emulator QA, or a launch with no specific destination.
+description: Cold-starts the Webnovel-Archiver-Android debug app directly onto a chosen screen (reader, queue/download-manager, settings, notifications, details, add-story, library) on the webnovel_api36 emulator via the debug-only `dev_start_screen` intent extra — skipping all manual UI navigation. THIS IS THE CANONICAL WAY TO REACH ANY SCREEN ON THE EMULATOR FOR AGENT QA. It also lists and filters the novels installed on the emulator and opens the app directly onto a SPECIFIC novel (its details) or a SPECIFIC chapter inside that novel (the reader), instead of always landing on the first library entry. USE THIS instead of `android_launch_app` or a bare `am start -n …/MainActivity` whenever you are about to (re)launch the debug app on the emulator to verify, check, QA, screenshot, or exercise a feature — i.e. the post-build/post-install launch step is the exact trigger point. If your plan is "install the APK, launch the app, then tap through to <screen>", invoke this skill and pass the screen token instead; do not tap through the UI to reach a screen you could have cold-started onto. Trigger phrases include "build and check the reader", "install and verify settings", "screenshot the queue after rebuilding", "launch into reader", "open on settings", "QA the reader", "verify on the emulator/device", "exercise the flow", any "test <feature> on the emulator" where the feature lives on a reachable screen, AND the novel-specific ones: "list the novels on the emulator", "which novels are installed", "open novel <X>", "open on a specific story/novel", "open chapter <N> of <novel>", "open the reader on <novel> chapter <N>". Do NOT trigger for legacy React Native work, the release/phone variant (debug-only, no-op in release), a pure build with no emulator QA, or a launch with no specific destination.
 ---
 
 ## What this skill does
@@ -89,8 +89,6 @@ scripts/dev_library.sh open 5 --chapter 1 --rebuild
 | `notifications`| Notifications       | no                  |
 | `aisettings`   | AI Settings         | no                  |
 | `appupdate`    | App Updates         | no                  |
-| `updates`      | Updates tracker     | no                  |
-| `followupdates`| Follow Updates picker | no                |
 | `addstory`     | Add Story           | no                  |
 | `reader`       | Chapter reader      | yes (story+chapter) |
 | `details`      | Story details       | yes (story)         |
@@ -114,8 +112,6 @@ A quick lookup so you don't have to reason about where a change surfaces:
 | AI settings (OpenRouter API key, description model)               | `aisettings` |
 | Notifications settings                                            | `notifications` |
 | App Updates (release check, download/install)                     | `appupdate` |
-| Updates tracker                                                   | `updates`  |
-| Follow Updates novel picker                                       | `followupdates` |
 | Add-story flow                                                    | `addstory` |
 
 Not sure which screen a change affects? Open the changed file's `feature/<x>/` directory — the directory name maps to the token.
@@ -159,7 +155,7 @@ You just built/installed the debug APK (`assembleDebug` / `build-and-install-apk
 
    | Token | Typical settle | Ready signal | Still loading if |
    |-------|----------------|--------------|------------------|
-    | Most (`library`, `queue`, `settings`, `notifications`, `updates`, `followupdates`, `addstory`) | 1.5–2s | Correct app-bar title + primary content | blank / wrong title |
+    | Most (`library`, `queue`, `settings`, `notifications`, `addstory`) | 1.5–2s | Correct app-bar title + primary content | blank / wrong title |
    | `details` | 2–3s | Story title + cover or action buttons | empty body |
    | **`reader`** | **4–5s minimum, poll** | App bar `Chapter …` **and** body text / TTS controls | Title is `Reader` + `Preparing chapter…`, spinner only |
 
@@ -198,7 +194,7 @@ ACTIVITY=com.vinicius741.webnovelarchiver.app.MainActivity
 
 adb -s "$SERIAL" shell am force-stop "$PKG"
 adb -s "$SERIAL" shell am start -n "$PKG/$ACTIVITY" --es dev_start_screen reader
-# other tokens: queue, settings, notifications, updates, followupdates, details, addstory, library
+# other tokens: queue, settings, notifications, details, addstory, library
 # then settle (see table above) before screenshot / interaction
 ```
 

@@ -26,7 +26,6 @@ import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.domain.model.TtsStoryPosition
-import com.vinicius741.webnovelarchiver.domain.model.UpdateFollowSettings
 import com.vinicius741.webnovelarchiver.domain.settings.PreferenceNormalization
 import com.vinicius741.webnovelarchiver.domain.story.StoryNormalization
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -103,7 +102,6 @@ class AppStorage(
     private val sentencesFile = File(root, "sentence_removal.json")
     private val regexFile = File(root, "regex_cleanup_rules.json")
     private val queueFile = File(root, "download_queue.json")
-    private val updateFollowSettingsFile = File(root, "update_follow_settings.json")
     private val ttsFile = File(root, "tts_settings.json")
     private val sessionFile = File(root, "tts_session.json")
     private val ttsPositionsFile = File(root, "tts_positions.json")
@@ -182,11 +180,6 @@ class AppStorage(
             mutableListOf()
         }, RegexRuleCleanup::sanitizeRegexRules)
 
-    internal val updateFollowSettingsDoc =
-        JsonDocument(updateFollowSettingsFile, typeOf<UpdateFollowSettings>(), {
-            UpdateFollowSettings()
-        }, PreferenceNormalization::updateFollowSettings)
-
     internal val ttsSettingsDoc = JsonDocument(ttsFile, typeOf<TtsSettings>(), { TtsSettings() }, PreferenceNormalization::ttsSettings)
 
     internal val aiSettingsDoc = JsonDocument(aiSettingsFile, typeOf<AiSettings>(), { AiSettings() }, PreferenceNormalization::aiSettings)
@@ -203,7 +196,6 @@ class AppStorage(
         tabsDoc.reload()
         sentencesDoc.reload()
         regexRulesDoc.reload()
-        updateFollowSettingsDoc.reload()
         ttsSettingsDoc.reload()
         aiSettingsDoc.reload()
     }
