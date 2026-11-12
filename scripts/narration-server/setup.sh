@@ -21,19 +21,29 @@ LABEL=com.webnovelarchiver.narration-server
 UNIT=webnovel-narration.service
 PORT="${NARRATION_PORT:-8790}"
 
+case "${1:-}" in
+  "" | --service | --uninstall) ;;
+  *) echo "Unknown option $1. Use --service, --uninstall, or nothing." >&2; exit 2 ;;
+esac
+
+# SERVICE_FILE: what starts the server in the background (a launchd agent or a systemd user unit).
 case "$(uname -s)" in
-  Darwin) DATA="$HOME/Library/Application Support/WebnovelNarration"; OS=mac ;;
-  Linux) DATA="${XDG_DATA_HOME:-$HOME/.local/share}/webnovel-narration"; OS=linux ;;
+  Darwin)
+    DATA="$HOME/Library/Application Support/WebnovelNarration"; OS=mac
+    SERVICE_FILE="$HOME/Library/LaunchAgents/$LABEL.plist" ;;
+  Linux)
+    DATA="${XDG_DATA_HOME:-$HOME/.local/share}/webnovel-narration"; OS=linux
+    SERVICE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT" ;;
   *) echo "Unsupported system: $(uname -s)" >&2; exit 1 ;;
 esac
 
 uninstall() {
   if [ "$OS" = mac ]; then
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-    rm -f "$HOME/Library/LaunchAgents/$LABEL.plist"
+    rm -f "$SERVICE_FILE"
   else
     systemctl --user disable --now "$UNIT" 2>/dev/null || true
-    rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$UNIT"
+    rm -f "$SERVICE_FILE"
     systemctl --user daemon-reload 2>/dev/null || true
   fi
   echo "Service removed. Data (model, token, server) is still in: $DATA"
@@ -87,8 +97,13 @@ SHERPA_ONNX_LIB_DIR="$DATA/lib" CARGO_TARGET_DIR="$DATA/build" \
 install -m 755 "$DATA/build/release/narration-server" "$DATA/bin/narration-server.new"
 mv -f "$DATA/bin/narration-server.new" "$DATA/bin/narration-server"
 BIN="$DATA/bin/narration-server"
-# The Python server this replaces (protocol 1 is unchanged, so the app keeps working).
-rm -rf "$DATA/venv" "$DATA/narration_server.py" "$DATA/requirements.txt"
+# The Python server this replaces (protocol 1 is unchanged, so the app keeps working). A service
+# installed for it keeps running it until --service rewrites that service, so it stays until then.
+if [ "${1:-}" != "--service" ] && grep -q narration_server.py "$SERVICE_FILE" 2>/dev/null; then
+  echo "The background service still runs the old Python server. Run this script with --service to switch it."
+else
+  rm -rf "$DATA/venv" "$DATA/narration_server.py" "$DATA/requirements.txt"
+fi
 
 if [ ! -f "$DATA/models/$MODEL/model.onnx" ]; then
   echo "Downloading $MODEL (about 330 MB)..."
@@ -111,8 +126,12 @@ RUN=("$BIN" --model-dir "$DATA/models/$MODEL" --token-file "$DATA/token" --port 
 
 if [ "${1:-}" = "--service" ]; then
   if [ "$OS" = mac ]; then
-    PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+    PLIST="$SERVICE_FILE"
     mkdir -p "$(dirname "$PLIST")"
+    # The server watches memory itself (see the docs); macOS has no per-service memory limit to add
+    # as a backstop. Interactive keeps the work on the performance cores (as a background process
+    # it is held to the efficiency cores: 0.22x real time against 5.1x, measured on an M1 Pro). Nice
+    # lets the apps in use go first when the processor is contended, at no cost otherwise (measured).
     {
       echo '<?xml version="1.0" encoding="UTF-8"?>'
       echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
@@ -124,6 +143,7 @@ if [ "${1:-}" = "--service" ]; then
       echo '  <key>RunAtLoad</key><true/>'
       echo '  <key>KeepAlive</key><true/>'
       echo '  <key>ProcessType</key><string>Interactive</string>'
+      echo '  <key>Nice</key><integer>10</integer>'
       echo "  <key>StandardOutPath</key><string>$DATA/server.log</string>"
       echo "  <key>StandardErrorPath</key><string>$DATA/server.log</string>"
       echo '</dict></plist>'
@@ -137,14 +157,13 @@ if [ "${1:-}" = "--service" ]; then
     launchctl bootstrap "gui/$(id -u)" "$PLIST"
     echo "Service installed: it starts at login and restarts if it stops. Log: $DATA/server.log"
   else
-    UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-    mkdir -p "$UNIT_DIR"
+    mkdir -p "$(dirname "$SERVICE_FILE")"
     EXEC=""
     for arg in "${RUN[@]}"; do EXEC+="\"$arg\" "; done
     # The server watches memory itself (see the docs). These are the kernel's backstops: if memory
     # still runs out, the OOM killer takes this server before anything else (it restarts in 5 s),
     # and it can never grow past 35% of RAM. Nice keeps games and the desktop responsive.
-    cat > "$UNIT_DIR/$UNIT" <<EOF
+    cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Webnovel Archiver Kokoro narration server
 After=network-online.target

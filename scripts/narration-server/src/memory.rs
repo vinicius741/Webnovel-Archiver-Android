@@ -12,7 +12,8 @@ pub const MIB: u64 = 1024 * 1024;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Snapshot {
     pub total: u64,
-    /// Memory the machine can hand out without swapping (Linux MemAvailable).
+    /// Memory the machine can hand out without swapping (Linux MemAvailable); on macOS, memory
+    /// neither wired nor compressed (see [AVAILABLE_INCLUDES_OWN]).
     pub available: u64,
     /// Room left under this process's cgroup memory limit, when it has one (a systemd MemoryMax,
     /// a container). Hitting it throttles or kills only this server, so it caps slots but never
@@ -129,6 +130,11 @@ fn decide_machine(s: &Snapshot, p: &Policy, previous: Level, grown: usize, slot_
     let slots = (grown as u64 + spare).clamp(1, p.max_slots as u64) as usize;
     Budget { level: Level::Normal, slots }
 }
+
+/// Whether [Snapshot::available] counts this process's own memory as available. True on macOS,
+/// whose figure is the memory neither wired nor compressed, whoever holds it: loading or unloading
+/// the model does not move it (measured). Linux's MemAvailable drops as the server grows.
+pub const AVAILABLE_INCLUDES_OWN: bool = cfg!(target_os = "macos");
 
 /// How long a client should wait before asking again.
 pub fn retry_after(level: Level) -> Duration {
@@ -333,7 +339,8 @@ mod mac {
 }
 
 /// Hands freed heap pages back to the system (glibc keeps them otherwise; measured 1.3 GiB kept
-/// after unloading four model copies).
+/// after unloading four model copies). On macOS this returns the small blocks; the large ones go
+/// back as they are freed, see [tune_allocator].
 pub fn release_free_heap() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
@@ -343,10 +350,26 @@ pub fn release_free_heap() {
         // SAFETY: plain libc call.
         unsafe { malloc_trim(0) };
     }
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn malloc_zone_pressure_relief(zone: *mut std::ffi::c_void, goal: usize) -> usize;
+        }
+        // SAFETY: plain libc call; a null zone means every zone, goal 0 means as much as possible.
+        unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) };
+    }
 }
 
-/// glibc tuning, applied once at start: few malloc arenas, so memory freed by one thread is reused
-/// by the next instead of stranded in a per-thread arena.
+/// Allocator tuning, applied once at start, before any other thread exists.
+///
+/// glibc: few malloc arenas, so memory freed by one thread is reused by the next instead of
+/// stranded in a per-thread arena.
+///
+/// macOS: no cache of freed large blocks. With the cache, an unloaded model's memory stays
+/// charged to the process and nothing gives it back on request (measured on an M1 Pro, macOS 26:
+/// 1560 MB held after unloading; without the cache 16 MB, 250 MB less while generating, and the
+/// same speed). The allocator reads `MallocLargeCache` only as the process starts, so the server
+/// starts itself again with it set.
 pub fn tune_allocator() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     {
@@ -356,6 +379,19 @@ pub fn tune_allocator() {
         const M_ARENA_MAX: i32 = -8;
         // SAFETY: plain libc call, before any worker thread starts.
         unsafe { mallopt(M_ARENA_MAX, 2) };
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::process::CommandExt;
+        const LARGE_CACHE: &str = "MallocLargeCache";
+        if std::env::var_os(LARGE_CACHE).is_none() {
+            if let Ok(exe) = std::env::current_exe() {
+                // Replaces this process (same pid, so launchd keeps tracking it). It returns only
+                // when it fails; then carry on with the cache.
+                let error = std::process::Command::new(exe).args(std::env::args_os().skip(1)).env(LARGE_CACHE, "0").exec();
+                eprintln!("Could not restart with {LARGE_CACHE}=0 ({error}); freed memory will be returned late.");
+            }
+        }
     }
 }
 

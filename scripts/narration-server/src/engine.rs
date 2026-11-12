@@ -83,7 +83,8 @@ struct State {
     load_cost: u64,
     critical_since: Option<Instant>,
     low_since: Option<Instant>,
-    cleared_at: Instant,
+    /// When memory last left the critical zone; None until it has been there.
+    cleared_at: Option<Instant>,
     cooldown: Duration,
     loaded_at: Option<Instant>,
     load_failures: u32,
@@ -151,7 +152,7 @@ impl Engine {
                 cooldown: CRITICAL_COOLDOWN,
                 loaded_at: None,
                 load_failures: 0,
-                cleared_at: Instant::now() - CRITICAL_COOLDOWN,
+                cleared_at: None,
                 counters: Counters::default(),
             }),
             changed: Condvar::new(),
@@ -228,7 +229,7 @@ impl Engine {
     /// Why loading the model now would push the machine too far, if it would.
     fn load_refusal(&self, state: &State) -> Option<Busy> {
         let policy = &self.settings.policy;
-        let since_cleared = state.cleared_at.elapsed();
+        let since_cleared = state.cleared_at.map_or(Duration::MAX, |at| at.elapsed());
         let cooling = since_cleared < state.cooldown && state.counters.unloads > 0 && state.critical_since.is_none();
         let mut room = state.snapshot.available.saturating_sub(policy.critical);
         if let Some(limit_room) = state.snapshot.limit_room {
@@ -247,6 +248,20 @@ impl Engine {
             memory::retry_after(if state.critical_since.is_some() { Level::Critical } else { Level::Low })
         };
         Some(busy)
+    }
+
+    /// Whether the model could load again right after an unload made to shrink it. Without this,
+    /// shrinking just above the critical line would turn "one sentence at a time" into a stop:
+    /// the unload would go through and the reload be refused.
+    fn reload_would_fit(&self, state: &State) -> bool {
+        let freed = state.snapshot.own.saturating_sub(state.before_load);
+        // The unload raises Linux's available memory by what it frees; macOS's figure never moved.
+        let returned = if memory::AVAILABLE_INCLUDES_OWN { 0 } else { freed };
+        let mut room = (state.snapshot.available + returned).saturating_sub(self.settings.policy.critical);
+        if let Some(limit_room) = state.snapshot.limit_room {
+            room = room.min(limit_room + freed);
+        }
+        room >= state.load_cost + memory::HYSTERESIS
     }
 
     /// Loads the model with the lock released, so status requests keep answering.
@@ -299,6 +314,11 @@ impl Engine {
     /// Frees the model now; only called with no sentence running.
     fn unload(&self, why: &str) {
         let mut state = self.lock();
+        // A sentence may have taken a slot since the governor looked (a new chapter arriving just as
+        // the idle timer ran out): the model stays, and a second copy is not loaded beside it.
+        if state.active > 0 {
+            return;
+        }
         state.draining = false;
         let Some(tts) = state.tts.take() else { return };
         state.grown = 0;
@@ -343,14 +363,15 @@ impl Engine {
             }
             _ => {
                 if state.critical_since.take().is_some() {
-                    state.cleared_at = now;
+                    state.cleared_at = Some(now);
                 }
             }
         }
         let loaded = state.tts.is_some();
         // Stop: unload as soon as running sentences finish. Low: give back what extra slots grew.
         let low_for_long = state.low_since.is_some_and(|since| now - since >= LOW_BEFORE_SHRINK);
-        let shed = loaded && (budget.level == Level::Critical || (low_for_long && state.grown > 1));
+        let shrink = low_for_long && state.grown > 1 && self.reload_would_fit(&state);
+        let shed = loaded && (budget.level == Level::Critical || shrink);
         let idle = loaded && state.active == 0 && state.waiting == 0 && state.last_used.elapsed() >= self.settings.idle_unload;
         if shed && !state.draining {
             state.draining = true;
@@ -433,4 +454,34 @@ impl Engine {
 
 pub fn log(message: &str) {
     eprintln!("{message}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn engine() -> Engine {
+        let policy = Policy { reserve: 4096 * MIB, critical: 1024 * MIB, max_slots: 4 };
+        Engine::new(Settings { model_dir: PathBuf::from("/nonexistent"), threads: 1, policy, idle_unload: Duration::MAX, verbose: false })
+    }
+
+    #[test]
+    fn shrinking_needs_room_to_load_again() {
+        let engine = engine();
+        let mut state = engine.lock();
+        state.before_load = 20 * MIB;
+        state.snapshot = Snapshot { total: 16384 * MIB, available: 3000 * MIB, own: 1220 * MIB, ..Snapshot::default() };
+        assert!(engine.reload_would_fit(&state));
+        // Just above the critical line: only what the unload itself gives back makes room.
+        state.snapshot.available = 1100 * MIB;
+        assert_eq!(engine.reload_would_fit(&state), !memory::AVAILABLE_INCLUDES_OWN);
+        state.snapshot.own = 300 * MIB;
+        assert!(!engine.reload_would_fit(&state));
+        // Under a memory limit the unload always gives its memory back.
+        state.snapshot =
+            Snapshot { total: 16384 * MIB, available: 8000 * MIB, own: 1220 * MIB, limit_room: Some(100 * MIB), ..Snapshot::default() };
+        assert!(engine.reload_would_fit(&state));
+        state.snapshot.own = 500 * MIB;
+        assert!(!engine.reload_would_fit(&state));
+    }
 }

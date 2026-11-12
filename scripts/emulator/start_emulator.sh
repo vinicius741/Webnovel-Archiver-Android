@@ -17,7 +17,11 @@ set -euo pipefail
 AVD="${AVD:-webnovel_api36}"
 PORT="${EMULATOR_PORT:-5554}"
 SERIAL="emulator-${PORT}"
-SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android}}"
+# The SDK: the environment's, else the one Gradle builds with on this machine (android/local.properties,
+# e.g. Homebrew's on the Mac), else the Linux dev host's ~/Android.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+GRADLE_SDK="$(sed -n 's/^sdk\.dir=//p' "$REPO/android/local.properties" 2>/dev/null | head -n 1)"
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-${GRADLE_SDK:-$HOME/Android}}}"
 EMULATOR="${EMULATOR:-$SDK/emulator/emulator}"
 ADB="${ADB:-$(command -v adb || echo "$SDK/platform-tools/adb")}"
 LOG="${EMULATOR_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/webnovel-emulator/emulator.log}"
@@ -52,7 +56,7 @@ else
     exit 1
   fi
   mkdir -p "$(dirname "$LOG")"
-  args=(-avd "$AVD" -port "$PORT" -gpu host -no-audio -no-boot-anim -dns-server 8.8.8.8,1.1.1.1 "${window_args[@]}")
+  args=(-avd "$AVD" -port "$PORT" -gpu host -no-audio -no-boot-anim -dns-server 8.8.8.8,1.1.1.1 ${window_args[@]+"${window_args[@]}"})
   if command -v systemd-run >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
     unit="webnovel-emulator-$PORT"
     systemctl --user reset-failed "$unit" >/dev/null 2>&1 || true
@@ -65,7 +69,12 @@ else
       /bin/sh -c 'exec "$0" "$@" >>"'"$LOG"'" 2>&1' "$EMULATOR" "${args[@]}"
     echo "• Started $AVD as user unit $unit (log: $LOG)"
   else
-    setsid nohup "$EMULATOR" "${args[@]}" >>"$LOG" 2>&1 < /dev/null &
+    # macOS has no setsid; nohup alone keeps the emulator running after this shell.
+    if command -v setsid >/dev/null; then
+      setsid nohup "$EMULATOR" "${args[@]}" >>"$LOG" 2>&1 < /dev/null &
+    else
+      nohup "$EMULATOR" "${args[@]}" >>"$LOG" 2>&1 < /dev/null &
+    fi
     echo "• Started $AVD (pid $!, log: $LOG)"
   fi
 fi

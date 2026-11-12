@@ -163,11 +163,8 @@ fn performance_cores() -> usize {
 }
 
 fn host_name() -> String {
-    let from_command = std::process::Command::new("hostname")
-        .arg("-s")
-        .output()
-        .ok()
-        .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    let from_command = output_within(std::process::Command::new("hostname").arg("-s"), Duration::from_secs(3))
+        .map(|name| name.trim().to_string())
         .filter(|name| !name.is_empty());
     from_command
         .or_else(|| std::fs::read_to_string("/etc/hostname").ok().map(|name| name.trim().to_string()))
@@ -187,14 +184,46 @@ fn addresses() -> Vec<(String, String)> {
             }
         }
     }
-    if let Ok(out) = std::process::Command::new("tailscale").args(["ip", "-4"]).output() {
-        for line in String::from_utf8_lossy(&out.stdout).lines().map(str::trim).filter(|l| !l.is_empty()) {
+    // On a Mac the command lives inside the app and is on no PATH. Started by launchd, the app's
+    // command never returns (seen on macOS 26), hence the time limit.
+    let tailscale =
+        ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale", "/opt/homebrew/bin/tailscale", "/usr/local/bin/tailscale"];
+    let listed =
+        tailscale.iter().find_map(|command| output_within(std::process::Command::new(command).args(["ip", "-4"]), Duration::from_secs(3)));
+    for line in listed.unwrap_or_default().lines().map(str::trim) {
+        // Only addresses: a stopped Tailscale may print a message instead.
+        if line.parse::<std::net::Ipv4Addr>().is_ok() {
             found.push(("Tailscale".to_string(), line.to_string()));
         }
     }
     found.retain(|(_, address)| !address.starts_with("127."));
     found.dedup();
     found
+}
+
+/// Runs a command and returns what it printed when it succeeded. A command still running after
+/// [limit] is killed, so a helper that hangs cannot hang the server.
+fn output_within(command: &mut std::process::Command, limit: Duration) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let deadline = Instant::now() + limit;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // A few lines at most, so they fit in the pipe and reading after the exit is safe.
+                let mut text = String::new();
+                child.stdout.take()?.read_to_string(&mut text).ok()?;
+                return status.success().then_some(text);
+            }
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
 }
 
 fn policy(args: &Args) -> Policy {
@@ -275,9 +304,13 @@ fn main() {
         policy.reserve / MIB,
         policy.critical / MIB
     ));
-    for (kind, address) in addresses() {
-        log(&format!("  App address ({kind}): {address}:{}", args.port));
-    }
+    // Looked up beside the server, never before it: finding them runs other programs.
+    let port = args.port;
+    let _ = std::thread::Builder::new().name("addresses".into()).spawn(move || {
+        for (kind, address) in addresses() {
+            log(&format!("  App address ({kind}): {address}:{port}"));
+        }
+    });
     http::serve(listener, shared);
 }
 

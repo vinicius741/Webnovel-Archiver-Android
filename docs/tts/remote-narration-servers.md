@@ -15,6 +15,7 @@ generated per second:
 | MacBook Pro M1 Pro, 4 model copies x 2 threads | 6.6x (6.9x over HTTP) | about 3 min |
 | Bazzite (Ryzen Z1 Extreme), 4 copies x 2 threads | 7.1x | about 3 min |
 | Emulator → Mac server, in the app (network and emulator included) | 5.4x | about 4 min |
+| The same with the Rust server (2026-11-12, below) | 6.0x | about 3.5 min |
 
 The owner listens at 1.8x. A warm phone generates 1.56x, so it falls behind even when it generates
 continuously. A computer stays about 3.5x ahead, and the phone stays cool. GPUs do not help with this
@@ -33,7 +34,7 @@ library as the phone's. The Python server ran the PyPI build 1.12.26.
 | `src/engine.rs` | **One shared model** and its generation slots: load on first use, recycle, unload when idle or short of memory. |
 | `src/memory.rs` | Memory probes (Linux: `/proc/meminfo`, PSI, cgroup v2 limits; macOS: `host_statistics64`, the kernel's memory-pressure level, own footprint) and the pure `decide` policy. |
 | `src/http.rs` | HTTP/1.1 with keep-alive, one thread per connection, bounded reads. |
-| `setup.sh` | Installs into one folder per user: Rust (rustup) when missing, the sherpa-onnx 1.12.21 shared libraries (`lib/`), the built server (`bin/narration-server`), the model (downloaded once) and a token. `--service` adds a launchd agent (macOS) or a systemd user unit (Linux). `--uninstall` removes the service. Re-running it upgrades a Python install in place and keeps the token. |
+| `setup.sh` | Installs into one folder per user: Rust (rustup) when missing, the sherpa-onnx 1.12.21 shared libraries (`lib/`), the built server (`bin/narration-server`), the model (downloaded once) and a token. `--service` adds a launchd agent (macOS) or a systemd user unit (Linux). `--uninstall` removes the service. Re-running it upgrades a Python install in place and keeps the token; without `--service` it leaves the Python files alone while a service still runs them. |
 
 Data folders: `~/Library/Application Support/WebnovelNarration` on macOS,
 `~/.local/share/webnovel-narration` on Linux. Logs: `server.log` there on macOS,
@@ -66,6 +67,27 @@ Over HTTP with five sentences in flight (as the app sends them) and `Nice=10`: 6
 The Python server held about 3 GB from start to stop. The Rust server holds ~10 MB before the model
 loads, and ~60 MB after an idle unload.
 
+Measured on the MacBook Pro (M1 Pro, 8 performance + 2 efficiency cores, 32 GB, macOS 26) with
+`--bench` (16 sentences), 2026-11-12. Speeds are from runs on a quiet machine:
+
+| Layout | Speed | Peak memory |
+|---|---|---|
+| 4 model copies × 2 threads (the Python server, measured the day before) | 6.6x | 3.9 GB, held from start to stop |
+| 1 model, 1 slot × 8 threads | 5.1x | 0.58 GB |
+| 1 model, 2 slots × 8 threads | 6.4x | 0.66 GB |
+| 1 model, 4 slots × 8 threads (default) | **7.3x** | **0.78 GB** |
+| 1 model, 6 slots × 8 threads | 7.5x | 0.91 GB |
+| 1 model, 5 slots × 10 threads (efficiency cores too) | 6.7x | 0.83 GB |
+| 1 model, 8 slots × 2 threads | 6.4x | 1.16 GB |
+
+So the defaults hold on Apple silicon: one thread per **performance** core (the efficiency cores slow
+the rest down) and four slots; more slots add 2-3%. Over HTTP with five in flight: 7.2-7.4x from a
+terminal and 6.9x as the launchd service at `Nice` 10, with other work on the machine. Real chapters have
+longer sentences than the benchmark, so the server holds 1.3-1.7 GB while it generates them, 2 MB
+before the model loads and 16-18 MB after an idle unload. As a background-priority process macOS holds
+it to the efficiency cores (0.22x against 5.1x on one slot), so the agent runs as `ProcessType`
+`Interactive`.
+
 ### Memory
 
 The server checks memory every second and adapts. Thresholds come from the machine's RAM:
@@ -75,7 +97,7 @@ The server checks memory every second and adapts. Thresholds come from the machi
 | Level | When | What the server does |
 |---|---|---|
 | Normal | Available above the reserve | Slots = those already paid for + as many more as fit above the reserve (learned cost per slot, 256 MB to start), up to `--max-slots`. |
-| Low | Available below the reserve, Linux PSI `some` ≥ 20%, swap (zram) three-quarters used, or macOS pressure "warning" | One slot. After 10 s at Low, it reloads the model once to give back what extra slots made ONNX Runtime keep. Its arena never shrinks on its own; measured 932 → 489 MB. |
+| Low | Available below the reserve, Linux PSI `some` ≥ 20%, swap (zram) three-quarters used, or macOS pressure "warning" | One slot. After 10 s at Low, it reloads the model once to give back what extra slots made ONNX Runtime keep. Its arena never shrinks on its own; measured 932 → 489 MB on Linux, 1030 → 520 MB on the Mac. It skips that reload when memory is so close to the critical line that the model could not load again, and keeps the one slot. |
 | Critical | Available below critical, PSI `full` ≥ 10%, swap almost gone while low, or macOS pressure "critical" | **Stops generating.** Requests get `503` + `Retry-After: 20`. The model is unloaded as soon as running sentences finish (→ ~40-60 MB), and `malloc_trim` hands the heap back. |
 
 Hysteresis: a level is left only when memory clears its line by 384 MB, so zram holding memory right at a
@@ -90,12 +112,29 @@ reserve. An idle model is unloaded after 5 minutes. It reloads in about a second
 the next request, and `/v1/info` starts loading it ahead of the first sentence. A sentence whose client
 hung up while it waited for a slot (the app paused or switched) is dropped instead of generated.
 
-On macOS, "available" is the kernel's own estimate (`kern.memorystatus_level`), and the kernel's pressure
-level drives Low and Critical. Swap does not count there: macOS grows swap on demand, so nearly full
-swapfiles are normal.
-
 Kernel backstops in the systemd unit: `OOMScoreAdjust=500` (if memory still runs out, the OOM killer takes
 this server before the desktop or a game, and systemd restarts it in 5 s), `MemoryMax=35%`, and `Nice=10`.
+
+#### macOS
+
+- **Available** is the kernel's own figure (`kern.memorystatus_level`): the share of memory that is
+  neither wired nor compressed. It counts memory apps hold, the server's own included, so loading or
+  unloading the model does not move it, and it stays high until the Mac really is short. The kernel's
+  pressure level (`kern.memorystatus_vm_pressure_level`) is what usually drives Low ("warning") and
+  Critical ("critical") there. Swap does not count: macOS grows swap on demand, so nearly full
+  swapfiles are normal.
+- **Freed memory goes back at once.** macOS's allocator caches freed large blocks, and they stay charged
+  to the process: after unloading the model the server still held 1560 MB, and no call releases them.
+  The allocator reads `MallocLargeCache` only as a process starts, so the server starts itself again
+  with `MallocLargeCache=0` (same pid, so launchd is unaffected). Measured: 16 MB after an unload,
+  about 250 MB less while generating, and the same speed.
+- **No kernel backstop.** launchd offers no memory limit or kill-first setting for an agent, so the
+  governor is the only protection. The agent sets `Nice` 10 (apps in use go first when the processor
+  is contended; no cost otherwise) and `ProcessType` `Interactive` (see the table above).
+- **Addresses.** Tailscale's command lives inside the app (`/Applications/Tailscale.app`), on no
+  `PATH`. `setup.sh` finds it and prints the Tailscale address. Started by launchd, that command
+  never returns, so the server gives it 3 seconds and looks addresses up beside serving, never
+  before it; the service's log lists only the LAN address.
 
 ### Protocol 1
 
@@ -151,3 +190,18 @@ port 8790 open for LAN access.
   `503` with `Retry-After` instead of loading, and reloaded and finished the run once memory returned. No
   request failed in any run. Forced into Critical, it stopped within a second (0 slots, `503`), unloaded to 37 MB once its two running sentences finished, and resumed by itself. `NarrationServerClientTest` covers kept-alive reuse, a server-closed
   connection and `503` parsing.
+- Rust server (2026-11-12, MacBook Pro M1 Pro, macOS 26): built and installed with `setup.sh --service`
+  over the Python install (token kept), 14 unit tests, clippy clean (also for Linux x64 and arm64).
+  The launchd service generated 48 sentences with five in flight at 6.9x with no failure, and unloaded
+  its idle model after 5 minutes (1713 → 18 MB). The levels
+  were walked for real during load tests, by wiring memory (`mlock`) with the thresholds set just
+  under what was available: below the reserve it dropped to one slot and reloaded to shrink
+  (1030 → 520 MB); close to the critical line it kept its one slot instead of unloading; below critical
+  it stopped within a second, answered `503` + `Retry-After: 20`, unloaded to 16 MB, and resumed by
+  itself when the memory came back. 96 of 96 sentences arrived; none failed. The idle-sleep assertion
+  (`caffeinate`) showed in `pmset -g assertions` during requests.
+- Emulator on the Mac, end to end, with the app built from the same change (2026-11-12): a queued
+  chapter (370 sentences) generated on the launchd service at 6.0x real time in the app and was
+  published. With a test instance forced into Critical mid-chapter, the banner read "Waiting for Mac
+  Pro · 56%" with the server's reason, the notification "waiting for Mac Pro", and generation resumed by
+  itself when the memory came back.
