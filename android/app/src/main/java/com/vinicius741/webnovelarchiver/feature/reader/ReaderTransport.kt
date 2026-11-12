@@ -15,14 +15,23 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.iconButton
 
-internal fun readerDocumentColors(): ReaderDocumentColors {
-    val colors = ThemeManager.colors
-    return ReaderDocumentColors(
-        background = colors.background.toCssHex(),
-        foreground = colors.onBackground.toCssHex(),
-        ttsHighlight = colors.primary.toCssHex(),
+/** The v3 reading page: a warm near-black sheet with soft ivory text and the gold highlight. */
+internal fun readerDocumentColors(): ReaderDocumentColors =
+    ReaderDocumentColors(
+        background = READER_PAGE,
+        foreground = READER_TEXT,
+        ttsHighlight = ThemeManager.colors.primary.toCssHex(),
     )
+
+/** The reader's colors for each "Pure black" setting (the stored dark-reader preference). */
+internal fun readerDocumentPalette(): ReaderDocumentPalette {
+    val normal = readerDocumentColors()
+    return ReaderDocumentPalette(normal = normal, forcedDark = normal.copy(background = PURE_BLACK))
 }
+
+private const val READER_PAGE = "#13110D"
+private const val READER_TEXT = "#E6DED0"
+private const val PURE_BLACK = "#000000"
 
 private fun Int.toCssHex(): String = "#%06X".format(this and 0xFFFFFF)
 

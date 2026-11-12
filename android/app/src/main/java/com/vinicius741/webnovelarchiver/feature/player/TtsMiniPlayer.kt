@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
+import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
@@ -23,6 +24,7 @@ internal fun ScreenHost.attachTtsMiniPlayer(slot: ViewGroup): Job {
             onPlayPause = { TtsForegroundService.command(app, TtsForegroundService.ACTION_PLAY_PAUSE) },
             onOpenPlayer = { showPlayer() },
             onClose = { TtsForegroundService.command(app, TtsForegroundService.ACTION_STOP) },
+            coverFor = { storyId -> repository.story(storyId)?.let { coverImage(it, COVER_WIDTH_DP, COVER_HEIGHT_DP, tapToOpen = false) } },
         )
     bar.applySnapshot(ttsEngine.playbackState.value.snapshot)
     bar.view.tag = TTS_MINI_PLAYER_TAG
@@ -69,6 +71,9 @@ internal fun ScreenHost.attachTtsMiniPlayer(slot: ViewGroup): Job {
         }
     }
 }
+
+private const val COVER_WIDTH_DP = 34
+private const val COVER_HEIGHT_DP = 50
 
 /** Lets other floating chrome find the bar. */
 internal const val TTS_MINI_PLAYER_TAG = "wna_tts_mini_player"

@@ -144,11 +144,31 @@ internal class ReaderDocumentPreparer(
                             input.display.readerFontScale,
                             colors,
                             includeTtsScript = true,
+                            frame = readerFrame(input.story, input.chapterIndex),
                         ),
                 ),
             )
         }
     }
+}
+
+/** The kicker above the chapter and what follows it: the next downloaded chapter, or why there is none. */
+internal fun readerFrame(
+    story: Story,
+    chapterIndex: Int,
+): ReaderContentRenderer.ReaderFrame {
+    val later = story.chapters.drop(chapterIndex + 1)
+    val next = later.firstOrNull { it.downloaded }
+    return ReaderContentRenderer.ReaderFrame(
+        kicker = "${story.title} · Chapter ${chapterIndex + 1}",
+        nextChapterTitle = next?.title,
+        endNote =
+            when {
+                later.isEmpty() -> "You're at the latest chapter."
+                next == null -> "The next chapter isn't downloaded yet."
+                else -> null
+            },
+    )
 }
 
 private data class ReaderDocumentInput(
