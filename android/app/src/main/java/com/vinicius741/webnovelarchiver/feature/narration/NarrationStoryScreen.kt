@@ -82,6 +82,12 @@ internal fun ScreenHost.showNarrationStory(
     val story = repository.story(storyId) ?: return showNarration()
     val route = AppRoute.NarrationStory(storyId, chapterId)
     val state = chapterAudioStates.getOrPut(storyId) { ChapterAudioViewState() }
+    // A selection belongs to the visit that made it: arriving from another tab or screen starts without one.
+    if (frame.tag != route.stableKey && state.selecting) {
+        state.selecting = false
+        state.selected.clear()
+        state.anchor = null
+    }
     rerender = { showNarrationStory(storyId, chapterId) }
     val host = this
     val playable = story.chapters.filter(TtsContinueListening::isPlayable)

@@ -85,7 +85,7 @@ class ChapterListAdapter internal constructor(
         val previousBookmarkId = this.story.lastReadChapterId
         val previousStatuses = chapterStatuses
         val previousWaiting = waitingChapterIds
-        val next = filterDetailsChapters(story, query, filter)
+        val next = ChapterFilterPlanning.filter(story, query, filter)
         val wasEmpty = previous.isEmpty()
         this.story = story
         this.query = query

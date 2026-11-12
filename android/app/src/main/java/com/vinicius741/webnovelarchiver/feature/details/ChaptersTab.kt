@@ -1,20 +1,18 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.core.widget.doAfterTextChanged
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.ChapterFilterSettings
+import com.vinicius741.webnovelarchiver.domain.model.DownloadJobStatus
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.story.StoryActionGuards
 import com.vinicius741.webnovelarchiver.download.DownloadDetailsPlanning
@@ -39,11 +37,15 @@ import kotlinx.coroutines.launch
  * recycled chapter rows. The header rides as the list's first item so the whole tab scrolls as one.
  */
 
-/** Controls the Chapters tab header; [clearSearch] backs the screen's Back intercept. */
+/**
+ * Controls the Chapters tab header; [clearSearch] backs the screen's Back intercept, and [refresh]
+ * takes a download event's story so the rows, chip counts and shown count stay current together.
+ */
 internal class ChaptersTab(
     val list: RecyclerView,
     val hasQuery: () -> Boolean,
     val clearSearch: () -> Unit,
+    val refresh: (Story, Map<String, DownloadJobStatus>, Set<String>) -> Unit,
 )
 
 @Suppress("LongMethod") // One linear tab build; its helpers are the chips and the tools row.
@@ -107,7 +109,12 @@ internal fun ScreenHost.buildChaptersTab(
             )
         }
     lateinit var adapter: ChapterListAdapter
-    lateinit var render: () -> Unit
+    lateinit var renderHeader: () -> Unit
+
+    fun render() {
+        adapter.show(story, query, filter)
+        renderHeader()
+    }
 
     fun pick(mode: String) {
         filter = mode
@@ -125,6 +132,12 @@ internal fun ScreenHost.buildChaptersTab(
         val position = adapter.positionOf(id)
         if (position >= 0) (list.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(position + 1, dp(Spacing.XL * 2))
     }
+    renderHeader = {
+        renderChapterChips(chips, story, filter, ::pick)
+        val shown = adapter.shownCount()
+        countLine.text = "%,d chapter%s".format(shown, if (shown == 1) "" else "s")
+        renderChapterTools(tools, story, ::jumpToBookmark)
+    }
     adapter =
         ChapterListAdapter(this, story) { chapter ->
             scope.launch {
@@ -132,15 +145,8 @@ internal fun ScreenHost.buildChaptersTab(
                 render()
             }
         }
-    render = {
-        adapter.show(story, query, filter)
-        renderChapterChips(chips, story, filter, ::pick)
-        val shown = adapter.shownCount()
-        countLine.text = "%,d chapter%s".format(shown, if (shown == 1) "" else "s")
-        renderChapterTools(tools, story, ::jumpToBookmark)
-    }
     adapter.show(story, query, filter, statuses, waiting)
-    render()
+    renderHeader()
     search.doAfterTextChanged {
         query = it?.toString().orEmpty()
         routeMemory.queries[memoryKey] = query
@@ -157,7 +163,11 @@ internal fun ScreenHost.buildChaptersTab(
             (app.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(search, 0)
         }
     }
-    return ChaptersTab(list, { query.isNotEmpty() }, { search.setText("") })
+    return ChaptersTab(list, { query.isNotEmpty() }, { search.setText("") }) { latest, latestStatuses, latestWaiting ->
+        story = latest
+        adapter.show(latest, query, filter, latestStatuses, latestWaiting)
+        renderHeader()
+    }
 }
 
 /** The shown count's row: jump to the bookmark (ivory) and Select chapters. */
@@ -194,7 +204,7 @@ private fun ScreenHost.renderChapterChips(
     val total = story.chapters.size
     val downloaded = story.chapters.count { it.downloaded }
     val removed = story.chapters.count { it.isRemovedFromSource }
-    val fromBookmark = fromBookmarkCount(story)
+    val fromBookmark = ChapterFilterPlanning.fromBookmarkCount(story)
     val chips =
         buildList {
             add(Triple(ALL_FILTER, "All", total))
@@ -215,41 +225,6 @@ private fun ScreenHost.renderChapterChips(
     }
 }
 
-/**
- * Pure chapter filter for the Chapters tab, shared by the first render, filter and search changes,
- * and the in-place download refresh so they all apply the identical view. A filter that does not
- * apply to this novel (no bookmark, nothing removed) shows every chapter.
- */
-internal fun filterDetailsChapters(
-    story: Story,
-    query: String,
-    filter: String,
-): List<Pair<Int, Chapter>> {
-    val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
-    val hasRemoved = story.chapters.any { it.isRemovedFromSource }
-    val trimmed = query.trim()
-    return story.chapters
-        .mapIndexed { index, chapter -> index to chapter }
-        .filter { (index, chapter) ->
-            trimmed.isEmpty() || chapter.title.contains(trimmed, ignoreCase = true) ||
-                (index + 1).toString() == trimmed
-        }.filter { (index, chapter) ->
-            when (filter) {
-                DOWNLOADED_FILTER -> chapter.downloaded
-                FROM_BOOKMARK_FILTER -> bookmarkIndex < 0 || index >= bookmarkIndex
-                NOT_DOWNLOADED_FILTER -> !chapter.downloaded
-                REMOVED_FROM_SOURCE_FILTER -> chapter.isRemovedFromSource || !hasRemoved
-                else -> true
-            }
-        }
-}
-
-/** Chapters from the bookmark onward (inclusive); 0 without a valid bookmark. */
-internal fun fromBookmarkCount(story: Story): Int {
-    val bookmarkIndex = story.lastReadChapterId?.let { id -> story.chapters.indexOfFirst { it.id == id } } ?: -1
-    return if (bookmarkIndex < 0) 0 else story.chapters.size - bookmarkIndex
-}
-
 /** The filter to open with: this run's choice for the story, else the saved preference. */
 private fun ScreenHost.chapterFilterFor(storyId: String): String =
     StoryTabMemory.chapterFilters[storyId] ?: repository.chapterFilterSettings.get().filterMode
@@ -266,9 +241,3 @@ private fun ScreenHost.rememberChapterFilter(
     StoryTabMemory.chapterFilters.remove(storyId)
     scope.launch { repository.chapterFilterSettings.save(ChapterFilterSettings(mode)) }
 }
-
-internal const val ALL_FILTER = "all"
-internal const val DOWNLOADED_FILTER = "hideNonDownloaded"
-internal const val FROM_BOOKMARK_FILTER = "hideAboveBookmark"
-internal const val NOT_DOWNLOADED_FILTER = "notDownloaded"
-internal const val REMOVED_FROM_SOURCE_FILTER = "removedFromSource"
