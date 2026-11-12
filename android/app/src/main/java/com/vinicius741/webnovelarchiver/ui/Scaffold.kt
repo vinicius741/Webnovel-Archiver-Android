@@ -134,6 +134,7 @@ internal fun ScreenHost.screen(
                 setPadding(side, dp(Spacing.MD), side, dp(Spacing.XL))
             }
             block()
+            dropUnusedBaselineAlignment()
         }
     val body: View =
         if (scrollable) {

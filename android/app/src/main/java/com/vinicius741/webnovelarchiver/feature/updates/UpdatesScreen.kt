@@ -26,6 +26,7 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
+import com.vinicius741.webnovelarchiver.ui.dropUnusedBaselineAlignment
 import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeCountedChip
 import com.vinicius741.webnovelarchiver.ui.makeEmptyState
@@ -72,7 +73,9 @@ internal fun ScreenHost.showUpdates() {
     rerender = { showUpdates() }
     val host = this
     val state = updatesState
-    val stories = repository.library()
+    // The published snapshot, not repository.library(): that deep-copies every chapter of every
+    // novel, and Updates only reads them (row actions re-read the story they act on).
+    val stories = repository.downloadState.value.library
     screen(AppRoute.Updates, "Updates", chrome = ScreenChrome.IMMERSIVE) {
         val appBar =
             makeTopLevelAppBar(
@@ -158,9 +161,11 @@ private class UpdatesScreenView(
 
     fun refresh() {
         val now = System.currentTimeMillis()
-        val stories = host.repository.library()
-        val overview = UpdatesPlanning.overview(stories, now)
-        jobsByStory = host.repository.queue().groupBy { it.storyId }
+        val stories = host.repository.downloadState.value.library
+        val overview = host.updatesState.overviewCache.overview(stories, now)
+        jobsByStory =
+            host.repository.downloadState.value.queue
+                .groupBy { it.storyId }
         setSubtitle(forecastSubtitle(stories.size))
         renderChips(overview)
         val filter = host.updatesState.filter
@@ -170,10 +175,13 @@ private class UpdatesScreenView(
             overview.sections.forEach { (section, entries) ->
                 entries.forEach { entry -> rowBinders[rowKey(section, entry.story.id)]?.bind(entry) }
             }
-            return
+        } else {
+            structure = nextStructure
+            rebuild(overview, filter)
         }
-        structure = nextStructure
-        rebuild(overview, filter)
+        // Rebuilds after the first render happen outside screen(), which tidies only the first build.
+        body.dropUnusedBaselineAlignment()
+        chipScroll.dropUnusedBaselineAlignment()
     }
 
     /** Binders read the live status from updatesState, so rebinding just this novel's rows is enough. */

@@ -37,6 +37,8 @@ private const val PILL_HEIGHT_DP = 32
 private const val FADE_HEIGHT_DP = 20
 private const val BADGE_MAX = 99
 private const val BADGE_OVERHANG_DP = 24
+private const val INDICATOR_PRESSED_SCALE = 0.5f
+private const val INDICATOR_EXPAND_MS = 250L
 
 /**
  * The app's frame around every screen (v3): the screen itself, then a solid bottom shelf holding
@@ -194,6 +196,34 @@ class AppShell internal constructor(
         applyChrome()
     }
 
+    /**
+     * Marks [destination] selected straight away, its indicator still partly collapsed, so a tap
+     * shows on the next frame even though the destination's screen builds after it.
+     * [playDestinationEnter] (or [settleIndicators]) expands it.
+     */
+    fun preselect(destination: ShellDestination) {
+        barItems.forEach { (dest, item) -> item.setSelected(dest == destination, pressed = true) }
+        railItems.forEach { (dest, item) -> item.setSelected(dest == destination, pressed = true) }
+    }
+
+    /** Expands the selected indicator, e.g. after a tap on the destination already showing. */
+    fun settleIndicators() {
+        (barItems.values + railItems.values).forEach(NavItem::expandIndicator)
+    }
+
+    /**
+     * Plays a destination switch: the selected indicator expands while [content] (the new screen's
+     * root) fades in and slides from the side of the destination it came from, along the bar's
+     * axis (horizontal) or the rail's (vertical). [direction] 0 fades without sliding.
+     */
+    fun playDestinationEnter(
+        content: View?,
+        direction: Int,
+    ) {
+        settleIndicators()
+        content?.playDestinationEnter(direction, vertical = railMode)
+    }
+
     /** Count badge (or a dot when [count] is 0 and [dot] is true) on a destination; null clears it. */
     fun setBadge(
         destination: ShellDestination,
@@ -262,6 +292,9 @@ class AppShell internal constructor(
         private val colors = ThemeManager.colors
         private val icon = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_INSIDE }
         private val pill = FrameLayout(context)
+
+        // The selected indicator, apart from the icon and badge so it can grow without squashing them.
+        private val indicator = View(context)
         private val label =
             TextView(context).apply {
                 text = destination.label()
@@ -291,6 +324,7 @@ class AppShell internal constructor(
                 isFocusable = true
                 contentDescription = destination.label()
                 background = selectableRipple(colors.onSurface)
+                pill.addView(indicator, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 pill.addView(icon, FrameLayout.LayoutParams(context.dp(24), context.dp(24), Gravity.CENTER))
                 pill.addView(
                     badge,
@@ -315,13 +349,31 @@ class AppShell internal constructor(
                 setOnClickListener { onClick() }
             }
 
-        fun setSelected(selected: Boolean) {
+        /** [pressed] starts a newly selected indicator partly collapsed; [expandIndicator] grows it. */
+        fun setSelected(
+            selected: Boolean,
+            pressed: Boolean = false,
+        ) {
+            if (!selected || (pressed && !view.isSelected)) {
+                indicator.animate().cancel()
+                indicator.scaleX = if (selected) INDICATOR_PRESSED_SCALE else 1f
+            }
             val fg = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
             icon.setImageDrawable(view.context.tintedIcon(iconRes, fg))
-            pill.background = if (selected) roundedBg(colors.primaryContainer, view.context.dp(16).toFloat()) else null
+            indicator.background = if (selected) roundedBg(colors.primaryContainer, view.context.dp(16).toFloat()) else null
             label.setTextColor(if (selected) colors.onSurface else colors.onSurfaceVariant)
             label.typeface = Typeface.create(Typeface.DEFAULT, if (selected) Typeface.BOLD else Typeface.NORMAL)
             view.isSelected = selected
+        }
+
+        fun expandIndicator() {
+            if (indicator.scaleX == 1f) return
+            indicator
+                .animate()
+                .scaleX(1f)
+                .setDuration(INDICATOR_EXPAND_MS)
+                .setInterpolator(DestinationMotion.emphasized)
+                .start()
         }
 
         fun setBadge(

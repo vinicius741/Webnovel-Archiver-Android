@@ -44,5 +44,14 @@ object ShellNavigationPlanning {
     fun historyFor(destination: ShellDestination): List<AppRoute> =
         if (destination == ShellDestination.LIBRARY) listOf(AppRoute.Library) else listOf(AppRoute.Library, destination.route)
 
+    /**
+     * Which way a destination switch moves along the navigation: 1 toward later destinations (right
+     * on the bar, down on the rail), -1 toward earlier ones, 0 when it stays put or comes from no destination.
+     */
+    fun transitionDirection(
+        from: ShellDestination?,
+        to: ShellDestination,
+    ): Int = if (from == null) 0 else to.ordinal.compareTo(from.ordinal).coerceIn(-1, 1)
+
     private fun rootDestination(route: AppRoute): ShellDestination? = ShellDestination.entries.firstOrNull { it.route == route }
 }

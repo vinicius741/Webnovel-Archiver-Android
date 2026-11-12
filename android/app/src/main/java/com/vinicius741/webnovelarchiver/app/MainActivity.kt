@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Bundle
+import android.view.Choreographer
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
@@ -71,6 +72,7 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.vinicius741.webnovelarchiver.app.notificationPermissionActionLabel as notificationPermissionActionLabelExt
@@ -490,8 +492,19 @@ class MainActivity :
     private fun attachShellBadges(narration: com.vinicius741.webnovelarchiver.narration.NarrationCoordinator) {
         scope.launch {
             repository.downloadState.collect { snapshot ->
-                shell.setBadge(ShellDestination.UPDATES, UpdatesPlanning.badgeCount(snapshot.library, System.currentTimeMillis()))
                 shell.setBadge(ShellDestination.DOWNLOADS, ShellBadgePlanning.downloadsBadge(snapshot.queue))
+            }
+        }
+        // Forecasting every novel is too slow for the main thread on each download tick, so the
+        // Updates overview is planned in the background when the library changes. The Updates
+        // screen reuses that plan, so opening it skips the forecast.
+        scope.launch {
+            val cache = updatesSyncState.overviewCache
+            repository.downloadState.collectLatest { snapshot ->
+                val now = System.currentTimeMillis()
+                if (!cache.needsPlan(snapshot.library, now)) return@collectLatest
+                val overview = withContext(Dispatchers.Default) { cache.plan(snapshot.library, now) }
+                shell.setBadge(ShellDestination.UPDATES, overview.count(UpdatesPlanning.Section.MAY_BE_OUT))
             }
         }
         scope.launch {
@@ -499,9 +512,28 @@ class MainActivity :
         }
     }
 
-    /** A navigation bar / rail tap: start that destination's history over the Library root. */
+    /** A destination tapped while the previous tap's screen has not been built yet. */
+    private var pendingDestination: ShellDestination? = null
+
+    /**
+     * A navigation bar / rail tap: start that destination's history over the Library root. The tapped
+     * item is selected first and that frame drawn before the screen builds, so the tap answers at
+     * once even when the destination takes a moment to build. Taps in that gap retarget it.
+     */
     private fun onDestinationTapped(destination: ShellDestination) {
-        if (uiReady) openDestination(destination)
+        if (!uiReady) return
+        val alreadyPending = pendingDestination != null
+        pendingDestination = destination
+        shell.preselect(destination)
+        if (alreadyPending) return
+        Choreographer.getInstance().postFrameCallback {
+            // Posted from the frame callback, so it runs after this frame's traversal has drawn the selection.
+            frame.post {
+                val target = pendingDestination ?: return@post
+                pendingDestination = null
+                if (!isDestroyed) openDestination(target)
+            }
+        }
     }
 
     private fun applyWindowTheme() {

@@ -44,6 +44,14 @@ class ShellNavigationPlanningTest {
     }
 
     @Test
+    fun `a destination switch moves toward the tapped destination`() {
+        assertEquals(1, ShellNavigationPlanning.transitionDirection(ShellDestination.LIBRARY, ShellDestination.SETTINGS))
+        assertEquals(-1, ShellNavigationPlanning.transitionDirection(ShellDestination.DOWNLOADS, ShellDestination.UPDATES))
+        assertEquals(0, ShellNavigationPlanning.transitionDirection(ShellDestination.LISTEN, ShellDestination.LISTEN))
+        assertEquals(0, ShellNavigationPlanning.transitionDirection(null, ShellDestination.UPDATES))
+    }
+
+    @Test
     fun `the Updates route round-trips through the codec`() {
         assertEquals(AppRoute.Updates, AppRouteCodec.decode(AppRouteCodec.encode(AppRoute.Updates)))
     }

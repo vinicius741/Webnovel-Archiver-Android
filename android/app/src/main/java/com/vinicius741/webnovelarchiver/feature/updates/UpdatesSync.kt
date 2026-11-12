@@ -39,6 +39,9 @@ class UpdatesSyncState {
     internal var lastResult: String? = null
     internal var filter: UpdatesFilter = UpdatesFilter.ALL
 
+    /** The overview planned in the background for the badge, reused when Updates opens. */
+    internal val overviewCache = UpdatesOverviewCache()
+
     /** A finished run's large-update reviews and blocked source, held until the user is on Updates. */
     internal val pendingReviews = mutableListOf<Pair<Story, SyncDownloadPlan>>()
     internal var pendingBlocked: Story? = null
