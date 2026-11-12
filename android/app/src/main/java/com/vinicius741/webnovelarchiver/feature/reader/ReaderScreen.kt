@@ -55,8 +55,12 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
 
 internal var activeReaderTtsStateJob: Job? = null
+
+/** The page of the reader rendered last, so a sheet left open across a re-render reaches the new one. */
+private var activeReaderPage: WeakReference<WebView>? = null
 
 internal fun ScreenHost.detachReaderTtsListener() {
     activeReaderTtsStateJob?.cancel()
@@ -164,6 +168,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
             attachReaderPaintTracking(this)
             setBackgroundColor(pageColor)
         }
+    activeReaderPage = WeakReference(reader)
 
     // Replay + live snapshots drive the highlight and transport; other chapters' snapshots are ignored.
     var transportSnapshot: TtsPlaybackSnapshot? =
@@ -269,7 +274,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
         route = AppRoute.Reader(story.id, chapter.id),
         title = sanitizeTitle(chapter.title),
         subtitle = "${currentIndex + 1} / ${story.chapters.size} · ${story.title}",
-        actions = readerActions(document, reader),
+        actions = readerActions(document),
     ) {
         setBackgroundColor(pageColor)
         reader.loadDataWithBaseURL(null, document.webViewHtml, "text/html", "utf-8", null)
@@ -322,10 +327,7 @@ private fun ScreenHost.renderPreparedReader(document: ReaderDocument) {
 }
 
 /** App-bar actions: bookmark (ivory when this chapter holds it), read aloud, reader settings. */
-private fun ScreenHost.readerActions(
-    document: ReaderDocument,
-    reader: WebView,
-): List<AppBarAction> {
+private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarAction> {
     val story = document.story
     val chapter = document.chapter
     val bookmarkActive = story.lastReadChapterId == chapter.id
@@ -350,11 +352,15 @@ private fun ScreenHost.readerActions(
             showReaderSettingsPanel(
                 display = document.display,
                 voiceSummary = listOfNotNull(voice, rateLabel(rate)).joinToString(" · "),
+                // The sheet outlives a re-render (Pure black, a chapter auto-advance), so both
+                // callbacks act on the reader shown at the time, not the one that opened the sheet.
                 onFontScale = { scale ->
                     val px = (BASE_FONT_PX * scale).toInt()
-                    reader.evaluateJavascript("document.body.style.fontSize='${px}px';", null)
+                    if (readerOfStory(story) != null) {
+                        activeReaderPage?.get()?.evaluateJavascript("document.body.style.fontSize='${px}px';", null)
+                    }
                 },
-                onRerender = { showReader(story.id, chapter.id) },
+                onRerender = { readerOfStory(story)?.let { showReader(it.storyId, it.chapterId) } },
                 onCopy = {
                     copyToClipboard("Chapter text", document.formattedText)
                     toast("Chapter copied")
@@ -364,6 +370,12 @@ private fun ScreenHost.readerActions(
         },
     )
 }
+
+/** The reader route shown now when it is one of [story]'s chapters. */
+private fun ScreenHost.readerOfStory(story: Story): AppRoute.Reader? =
+    (navigator.current as? AppRoute.Reader)?.takeIf { route ->
+        route.storyId == story.id && story.chapters.any { it.id == route.chapterId }
+    }
 
 /**
  * Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap,
@@ -405,7 +417,14 @@ private class ReaderTtsBridge(
     fun onNextChapter() {
         host.app.runOnUiThread {
             val route = host.navigator.current
-            if (route is AppRoute.Reader && route.storyId == story.id && route.chapterId == chapter.id) {
+            if (route !is AppRoute.Reader || route.storyId != story.id || route.chapterId != chapter.id) return@runOnUiThread
+            // With this story's session loaded the reader follows the spoken chapter, so opening the
+            // next one directly would bounce back; move the session instead (it keeps a pause).
+            if (host.ttsEngine.playbackState.value.snapshot
+                    ?.storyId == story.id
+            ) {
+                TtsForegroundService.command(host.app, TtsForegroundService.ACTION_NEXT_CHAPTER)
+            } else {
                 host.navigateChapter(host.repository.story(story.id) ?: story, chapter, 1)
             }
         }

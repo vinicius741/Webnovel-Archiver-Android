@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.coverImage
+import com.vinicius741.webnovelarchiver.ui.confirm
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.iconButton
 import com.vinicius741.webnovelarchiver.ui.makeButton
@@ -159,8 +160,15 @@ private fun LinearLayout.jobRow(
                 colors.onSurfaceVariant,
             ) { host.narrationAction("Could not retry") { retry(job.id) } }
         } else {
-            context.iconButton(R.drawable.wna_close, "Remove from queue", colors.onSurfaceVariant) {
-                host.narrationAction("Could not remove") { remove(setOf(job.id)) }
+            context.iconButton(R.drawable.wna_close, if (isRunning) "Stop and remove from queue" else "Remove from queue", colors.onSurfaceVariant) {
+                // This stops generation mid-chapter, so a stray tap must not do it (the menu asked too).
+                if (isRunning) {
+                    host.confirm("Stop generating this chapter and remove it from the queue?", confirmLabel = "Stop") {
+                        host.narrationAction("Could not remove") { remove(setOf(job.id)) }
+                    }
+                } else {
+                    host.narrationAction("Could not remove") { remove(setOf(job.id)) }
+                }
             }
         }
     if (isRunning) {

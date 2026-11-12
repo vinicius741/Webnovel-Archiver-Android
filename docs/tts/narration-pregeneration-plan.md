@@ -245,7 +245,7 @@ Failure handling:
 
 ### Keep ahead
 
-- Setting in the Narration screen: **Keep ahead while listening**: Off / 1 / 3 / 5 / 10, default 5.
+- Setting in the Listen screen's Setup section: **Chapters ahead** stepper, Off to 30 (`NarrationPlanning.KEEP_AHEAD_MAX`), default 5.
 - Runs when a chapter's audio starts playing (not when a paused session is restored) and when a
   chapter of the playing story finishes generating.
 - `NarrationKeepAheadPlanning.chaptersToQueue(chapters, currentChapterId, n, ready, queued)`

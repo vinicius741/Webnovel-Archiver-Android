@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.narration.NarrationQueueDocument
 import com.vinicius741.webnovelarchiver.narration.NarrationServer
 import com.vinicius741.webnovelarchiver.narration.NarrationServerPlanning
@@ -15,6 +16,7 @@ import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.FormLayout
 import com.vinicius741.webnovelarchiver.ui.OptionsDialogItem
 import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.ui.StepperHandle
 import com.vinicius741.webnovelarchiver.ui.StepperSpec
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
@@ -34,8 +36,10 @@ import com.vinicius741.webnovelarchiver.ui.styledDialogField
 import com.vinicius741.webnovelarchiver.ui.text
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /**
  * The Listen hub's Setup section. Where Kokoro chapters generate: this phone or one of the user's
@@ -117,17 +121,45 @@ private fun LinearLayout.keepAheadSection(
             orientation = LinearLayout.VERTICAL
             setPadding(context.dp(Space.LG), 0, context.dp(Space.SM), 0)
         }
-    holder.stepperRow(
-        "Chapters ahead",
-        "Generated after the chapter you're hearing",
-        keepAhead.toDouble(),
-        StepperSpec(step = 1.0, min = 0.0, max = KEEP_AHEAD_MAX, zeroLabel = "Off", label = "Chapters ahead"),
-    ) { value ->
-        val count = value.toInt()
-        summary.text = keepAheadSummary(count)
-        host.narrationAction("Could not save the setting") { setKeepAhead(count) }
-        null
-    }
+    lateinit var stepper: StepperHandle
+    // A held stepper ticks many times a second: writes run one after another and only the latest
+    // value is stored, and a failed write puts the stored value back on screen.
+    var latest = 0
+    var writes: Job? = null
+    stepper =
+        holder.stepperRow(
+            "Chapters ahead",
+            "Generated after the chapter you're hearing",
+            keepAhead.toDouble(),
+            StepperSpec(
+                step = 1.0,
+                min = 0.0,
+                max = NarrationPlanning.KEEP_AHEAD_MAX.toDouble(),
+                zeroLabel = "Off",
+                label = "Chapters ahead",
+            ),
+        ) { value ->
+            val count = value.toInt()
+            summary.text = keepAheadSummary(count)
+            val ticket = ++latest
+            val previous = writes
+            writes =
+                host.scope.launch {
+                    previous?.join()
+                    if (ticket != latest) return@launch
+                    val failure = withContext(Dispatchers.IO) { runCatching { host.narration.setKeepAhead(count) } }.exceptionOrNull()
+                    if (failure != null) {
+                        Timber.e(failure, "Could not save the keep-ahead setting")
+                        host.toast("Could not save the setting")
+                        if (ticket == latest) {
+                            val stored = host.narration.queueState.value.keepAhead
+                            stepper.show(stored.toDouble())
+                            summary.text = keepAheadSummary(stored)
+                        }
+                    }
+                }
+            null
+        }
     list.addView(holder)
     addView(list)
     addView(summary.apply { setPadding(context.dp(Space.XS), context.dp(Space.SM + 2), context.dp(Space.XS), 0) })
@@ -139,8 +171,6 @@ private fun keepAheadSummary(count: Int): String =
         1 -> "Keeps the next chapter generated while a story plays."
         else -> "Keeps the next $count chapters generated while a story plays."
     }
-
-private const val KEEP_AHEAD_MAX = 30.0
 
 private fun ScreenHost.showServerMenu(
     server: NarrationServer,

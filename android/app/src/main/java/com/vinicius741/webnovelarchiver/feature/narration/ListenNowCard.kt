@@ -22,6 +22,7 @@ import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
@@ -32,6 +33,16 @@ import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 import kotlinx.coroutines.launch
+
+/** The last Continue listening card shown, kept across the hub's rebuilds (main thread only). */
+private var lastContinue: ContinueCard? = null
+
+/** A Continue listening card's content; [key] holds everything it shows, so equal keys need no new card. */
+private class ContinueCard(
+    val target: TtsContinueListening.Target,
+    val sentence: String?,
+    val key: List<Any?>,
+)
 
 /**
  * The Listen hub's top card: what is playing (cover, chapter, story, progress, play/pause; opens
@@ -128,6 +139,34 @@ internal class ListenNowCard(
     }
 
     private fun showIdle() {
+        // The hub rebuilds this card on every queue change; showing the last place found at once
+        // (then checking it again) keeps the taller Continue card from replacing a short note each time.
+        val shown = lastContinue
+        if (shown != null) showContinue(shown) else showNothing()
+        host.scope.launch {
+            val positions = runCatching { host.repository.getTtsStoryPositions() }.getOrDefault(emptyList())
+            val target = TtsContinueListening.target(positions) { host.repository.story(it) }
+            if (mode != Mode.IDLE) return@launch
+            if (target == null) {
+                lastContinue = null
+                if (shown != null) showNothing()
+                return@launch
+            }
+            val position = positions.firstOrNull { it.storyId == target.story.id }
+            val sentence =
+                position
+                    ?.takeIf {
+                        !it.caughtUp && it.chapterId == target.chapter.id
+                    }?.let { "sentence ${it.currentChunkIndex + 1}" }
+            val key =
+                listOf(target.story.id, target.story.title, host.activeCoverSource(target.story), target.chapter.id, target.chapter.title, sentence)
+            val found = ContinueCard(target, sentence, key)
+            lastContinue = found
+            if (shown?.key != key) showContinue(found)
+        }
+    }
+
+    private fun showNothing() {
         view.removeAllViews()
         view.addView(
             makeCard(context).apply {
@@ -136,24 +175,11 @@ internal class ListenNowCard(
                 )
             },
         )
-        host.scope.launch {
-            val positions = runCatching { host.repository.getTtsStoryPositions() }.getOrDefault(emptyList())
-            val target = TtsContinueListening.target(positions) { host.repository.story(it) } ?: return@launch
-            if (mode != Mode.IDLE) return@launch
-            val position = positions.firstOrNull { it.storyId == target.story.id }
-            val sentence =
-                position
-                    ?.takeIf {
-                        !it.caughtUp && it.chapterId == target.chapter.id
-                    }?.let { "sentence ${it.currentChunkIndex + 1}" }
-            showContinue(target, sentence)
-        }
     }
 
-    private fun showContinue(
-        target: TtsContinueListening.Target,
-        sentence: String?,
-    ) {
+    private fun showContinue(card: ContinueCard) {
+        val target = card.target
+        val sentence = card.sentence
         val resume = {
             host.playIfGenerated(target.story.id, target.chapter.id) {
                 TtsForegroundService.start(context, target.story.id, target.chapter.id)
