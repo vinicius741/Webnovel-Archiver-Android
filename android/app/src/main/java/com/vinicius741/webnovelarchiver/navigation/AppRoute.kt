@@ -132,6 +132,20 @@ sealed class AppRoute(
             }
 
     /**
+     * The story whose page this route is a tab of (Overview, Chapters, Audio, Trends, AI), else null.
+     * All tabs of one story count as a single history entry.
+     */
+    val storyTabOf: String?
+        get() =
+            when (this) {
+                is Details -> storyId
+                is NarrationStory -> storyId
+                is Trends -> storyId
+                is AiControls -> storyId
+                else -> null
+            }
+
+    /**
      * The screen Back lands on when nothing in the history precedes this one (the app opened
      * straight into it). `null` only for the [Library] root.
      */
@@ -142,11 +156,8 @@ sealed class AppRoute(
                 is Reader -> Details(storyId)
                 is ChapterSelection -> Details(storyId)
                 is LegacyEpubs -> Details(storyId)
-                is AiControls -> Details(storyId)
                 is AuthorNovels -> Details(storyId)
-                is Trends -> Details(storyId)
                 is PatreonAccount -> storyId?.let(::Details) ?: DataBackup
-                is NarrationStory -> Details(storyId)
                 Notifications, DownloadSettings, TtsSettings, AiSettings, Tabs, CleanupRules, DataBackup, AppUpdate -> Settings
                 else -> Library
             }
@@ -154,6 +165,16 @@ sealed class AppRoute(
 
 /** The [AppRoute.Details] argument that selects the Chapters tab. */
 private const val DETAILS_CHAPTERS_TAB = "chapters"
+
+/** Every tab route of one story page, for view-memory retention across tab switches. */
+internal fun storyTabRoutes(storyId: String): List<AppRoute> =
+    listOf(
+        AppRoute.Details(storyId),
+        AppRoute.Details(storyId, chapters = true),
+        AppRoute.NarrationStory(storyId),
+        AppRoute.Trends(storyId),
+        AppRoute.AiControls(storyId),
+    )
 
 /** Pure, version-tolerant route encoding used by Android saved state and unit tests. */
 object AppRouteCodec {

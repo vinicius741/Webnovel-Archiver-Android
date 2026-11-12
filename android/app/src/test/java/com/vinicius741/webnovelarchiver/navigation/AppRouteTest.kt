@@ -122,13 +122,12 @@ class AppRouteTest {
     }
 
     @Test
-    fun `every story tab returns to the story overview when opened cold`() {
-        val overview = AppRoute.Details("story")
-        assertEquals(AppRoute.Library, overview.parent)
+    fun `every story tab leaves the story for the library when opened cold`() {
+        assertEquals(AppRoute.Library, AppRoute.Details("story").parent)
         assertEquals(AppRoute.Library, AppRoute.Details("story", chapters = true).parent)
-        assertEquals(overview, AppRoute.Trends("story").parent)
-        assertEquals(overview, AppRoute.AiControls("story").parent)
-        assertEquals(overview, AppRoute.NarrationStory("story").parent)
+        assertEquals(AppRoute.Library, AppRoute.Trends("story").parent)
+        assertEquals(AppRoute.Library, AppRoute.AiControls("story").parent)
+        assertEquals(AppRoute.Library, AppRoute.NarrationStory("story").parent)
     }
 
     @Test
