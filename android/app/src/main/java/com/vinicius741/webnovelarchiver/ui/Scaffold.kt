@@ -67,6 +67,13 @@ internal fun ScreenHost.screen(
     if (route !is AppRoute.Reader) detachReaderTtsListener()
     navigator.navigate(route)
     shell.onRoute(navigator.history)
+    // A screen that did not set its own rerender inherits the previous screen's, which on a fold
+    // would re-open that screen. Default to re-rendering this route instead.
+    if (rerender === shell.rerenderAtLastScreen) {
+        val current = navigator.current
+        rerender = { renderRoute(current) }
+    }
+    shell.rerenderAtLastScreen = rerender
     val screenKey = navigator.current.stableKey
     captureScreenViewState()
     routeMemory.trackedList = null

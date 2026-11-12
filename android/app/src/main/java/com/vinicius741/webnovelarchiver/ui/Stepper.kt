@@ -194,22 +194,33 @@ private fun stepButton(
     repeat =
         Runnable {
             if (!button.isEnabled) return@Runnable
+            // Holding: keep the gesture from turning into a scroll while values repeat.
+            if (ticks == 0) button.parent?.requestDisallowInterceptTouchEvent(true)
             ticks++
             onStep(if (ticks > HOLD_BIG_STEP_AFTER) HOLD_BIG_STEP_FACTOR else 1)
             handler.postDelayed(repeat, if (ticks < HOLD_SLOW_TICKS) HOLD_SLOW_DELAY_MS else HOLD_FAST_DELAY_MS)
         }
+    // A tap steps once on release; a hold starts repeating after a delay. Nothing changes on press,
+    // so a scroll that starts on a ± button (it cancels the touch) never nudges the value.
     button.setOnTouchListener { v, event ->
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (!v.isEnabled) return@setOnTouchListener false
                 v.isPressed = true
-                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 ticks = 0
-                onStep(1)
                 handler.postDelayed(repeat, HOLD_FIRST_DELAY_MS)
                 true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
+                v.isPressed = false
+                handler.removeCallbacks(repeat)
+                if (ticks == 0 && v.isEnabled) {
+                    v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onStep(1)
+                }
+                true
+            }
+            MotionEvent.ACTION_CANCEL -> {
                 v.isPressed = false
                 handler.removeCallbacks(repeat)
                 true

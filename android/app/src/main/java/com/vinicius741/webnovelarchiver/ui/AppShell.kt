@@ -209,6 +209,9 @@ class AppShell internal constructor(
         applyChrome()
     }
 
+    /** The `rerender` the last `screen()` call saw, so the scaffold can spot screens that set none. */
+    internal var rerenderAtLastScreen: (() -> Unit)? = null
+
     /** Whether the route currently rendered wants the mini player (it decides its own visibility). */
     val miniPlayerAllowed: Boolean get() = miniWanted
 

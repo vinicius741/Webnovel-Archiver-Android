@@ -49,8 +49,8 @@ import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.ShellBadgePlanning
 import com.vinicius741.webnovelarchiver.navigation.ShellDestination
-import com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
+import com.vinicius741.webnovelarchiver.navigation.openDestination
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.perf.PerfRecorder
@@ -246,7 +246,7 @@ class MainActivity :
                 frame = frame,
                 systemBarBottom = { systemBarBottom() },
                 systemBarTop = { systemBarTop() },
-                onDestination = ::openDestination,
+                onDestination = ::onDestinationTapped,
                 onAddStory = { if (uiReady) showAddStory() },
             )
         val root = shell.overlayHost
@@ -498,13 +498,8 @@ class MainActivity :
     }
 
     /** A navigation bar / rail tap: start that destination's history over the Library root. */
-    private fun openDestination(destination: ShellDestination) {
-        if (!uiReady) return
-        val history = ShellNavigationPlanning.historyFor(destination)
-        if (navigator.history == history) return
-        navigator.reset(history.first())
-        history.drop(1).forEach(navigator::navigate)
-        renderRoute(navigator.current)
+    private fun onDestinationTapped(destination: ShellDestination) {
+        if (uiReady) openDestination(destination)
     }
 
     private fun applyWindowTheme() {

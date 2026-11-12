@@ -26,9 +26,10 @@ import com.vinicius741.webnovelarchiver.download.SourceCheckOutcome
 import com.vinicius741.webnovelarchiver.feature.browser.SourceCheckOutcomes
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.feature.story.showCoverDialog
-import com.vinicius741.webnovelarchiver.feature.updates.showUpdates
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ShellDestination
+import com.vinicius741.webnovelarchiver.navigation.openDestination
 import com.vinicius741.webnovelarchiver.source.SourceRegistry
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.MaxWidthFrameLayout
@@ -232,7 +233,7 @@ private fun ScreenHost.renderQueue(
                     title = "Nothing downloading",
                     iconRes = R.drawable.wna_download_done,
                     actionLabel = "Find new chapters",
-                    onAction = { showUpdates() },
+                    onAction = { openDestination(ShellDestination.UPDATES) },
                 ),
             )
         }
