@@ -2,7 +2,10 @@ package com.vinicius741.webnovelarchiver.feature.settings
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -43,6 +46,12 @@ internal fun LinearLayout.navRow(
     onClick: () -> Unit,
 ): LinearLayout =
     makeListRow(context, title, supporting, leadIcon = icon, leadTint = tint, chevron = chevron, onClick = onClick).also { addView(it) }
+
+/** [text] in [color], e.g. a row's supporting line that should stand out from the muted default. */
+internal fun tinted(
+    text: CharSequence,
+    color: Int,
+): CharSequence = SpannableString(text).apply { setSpan(ForegroundColorSpan(color), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
 
 /** A stepper row padded to sit inside a list group. */
 internal fun LinearLayout.groupStepper(

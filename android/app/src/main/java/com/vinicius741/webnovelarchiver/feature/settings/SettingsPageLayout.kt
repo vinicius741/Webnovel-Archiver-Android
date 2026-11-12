@@ -118,12 +118,20 @@ internal fun ScreenHost.scrollWithDockedBar(
     container.addView(bar.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 }
 
-/** Dims a row (and its children) and stops it taking taps while [enabled] is false. */
+/**
+ * Dims a row and stops it and its children taking taps while [enabled] is false. Only the row
+ * itself is dimmed (alpha multiplies down the tree). Re-enabling turns every child back on, so a
+ * stepper must then re-show its value to disable a ± that sits at its limit.
+ */
 internal fun View.setRowEnabled(enabled: Boolean) {
-    isEnabled = enabled
     alpha = if (enabled) 1f else DISABLED_ALPHA
+    setTreeEnabled(enabled)
+}
+
+private fun View.setTreeEnabled(enabled: Boolean) {
+    isEnabled = enabled
     if (this is ViewGroup) {
-        for (i in 0 until childCount) getChildAt(i).setRowEnabled(enabled)
+        for (i in 0 until childCount) getChildAt(i).setTreeEnabled(enabled)
     }
 }
 

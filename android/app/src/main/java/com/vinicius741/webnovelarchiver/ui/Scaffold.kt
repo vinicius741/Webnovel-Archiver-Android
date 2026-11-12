@@ -191,6 +191,9 @@ internal fun ScreenHost.setAppBarTitle(title: String) {
     frame.findViewWithTag<android.widget.TextView>(APP_BAR_TITLE_TAG)?.text = title
 }
 
+/** Tags the app-bar subtitle (when the screen has one) so a screen can update it in place. */
+internal const val APP_BAR_SUBTITLE_TAG = "wna_app_bar_subtitle"
+
 /** Tags a bottom action bar (e.g. Library selection) so the TTS mini-player can lift it clear. */
 internal const val BOTTOM_BAR_VIEW_TAG = "wna_screen_bottom_bar"
 
@@ -260,6 +263,7 @@ private fun ScreenHost.appBar(
         subtitle?.let {
             titleCol.addView(
                 makeText(app, it, Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                    tag = APP_BAR_SUBTITLE_TAG
                     includeFontPadding = false
                     setPadding(0, dp(2), 0, 0)
                 },

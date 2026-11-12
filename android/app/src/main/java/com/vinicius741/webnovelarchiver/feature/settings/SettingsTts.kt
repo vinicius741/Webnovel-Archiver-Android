@@ -27,9 +27,11 @@ import kotlinx.coroutines.launch
 
 /**
  * What Voice & Speech shows but has not saved. It outlives a fold re-render; opening the screen
- * again starts from the saved settings. Engine and voice picks save straight away (with the draft).
+ * again starts from the saved settings. Engine, voice and profile changes save straight away (with
+ * the draft); the draft holds only the fields the Save bar saves, so it never restores a stale
+ * engine, voice or profile list.
  */
-private var ttsDraft: TtsSettings? = null
+private var ttsDraft: TtsSpeechDraft? = null
 
 private val RATE_SPEC =
     StepperSpec(
@@ -53,15 +55,19 @@ private fun pauseSpec(
 internal fun ScreenHost.showTtsSettings(keepDraft: Boolean = false) {
     rerender = { showTtsSettings(keepDraft = true) }
     val saved = repository.ttsSettings.get()
-    if (!keepDraft || ttsDraft == null) ttsDraft = saved
+    if (!keepDraft || ttsDraft == null) ttsDraft = TtsSpeechDraft.of(saved)
     val engines = TtsEngineCatalog.choices(app)
     val phoneEngine = TtsEngineCatalog.phoneDefault(app)
     val engineLabel = TtsEnginePlanning.label(saved.enginePackage, engines, phoneEngine)
-    val current: () -> TtsSettings = { ttsDraft ?: repository.ttsSettings.get() }
+    // The draft laid over the latest saved settings, so engine, voice and profiles are always current.
+    val current: () -> TtsSettings = {
+        val latest = repository.ttsSettings.get()
+        ttsDraft?.applyTo(latest) ?: latest
+    }
     lateinit var bar: DockedSaveBar
 
     fun update(change: (TtsSettings) -> TtsSettings) {
-        ttsDraft = change(current())
+        ttsDraft = TtsSpeechDraft.of(change(current()))
         bar.show(current() != repository.ttsSettings.get())
     }
     bar =
@@ -123,7 +129,7 @@ internal fun ScreenHost.showTtsSettings(keepDraft: Boolean = false) {
             section("Try it")
             addView(ttsSampleCard(current))
         }
-        bar.show(current() != saved)
+        bar.show(current() != repository.ttsSettings.get())
     }
 }
 

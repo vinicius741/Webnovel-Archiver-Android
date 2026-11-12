@@ -3,7 +3,6 @@ package com.vinicius741.webnovelarchiver.feature.downloads
 import android.app.AlertDialog
 import android.view.View
 import android.view.ViewGroup
-import android.widget.LinearLayout
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
@@ -16,6 +15,7 @@ import com.vinicius741.webnovelarchiver.download.QueueSection
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
 import com.vinicius741.webnovelarchiver.feature.settings.showDownloadSettings
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.ui.APP_BAR_SUBTITLE_TAG
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.BottomSheetHandle
 import com.vinicius741.webnovelarchiver.ui.Spacing
@@ -241,10 +241,6 @@ private fun ScreenHost.showChapterErrorDetails(job: DownloadJob) {
 
 /** Patches the app bar's subtitle in place, so a queue tick never rebuilds the screen for it. */
 internal fun ScreenHost.setQueueSubtitle(text: String) {
-    val title = frame.findViewWithTag<TextView>(APP_BAR_TITLE_TAG) ?: return
-    val subtitle = (title.parent as? LinearLayout)?.getChildAt(1) as? TextView ?: return
+    val subtitle = frame.findViewWithTag<TextView>(APP_BAR_SUBTITLE_TAG) ?: return
     if (subtitle.text != text) subtitle.text = text
 }
-
-// The scaffold tags its app-bar title with this; the subtitle is the next view in that column.
-private const val APP_BAR_TITLE_TAG = "wna_app_bar_title"

@@ -5,12 +5,14 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.appcompat.widget.AppCompatTextView
 import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
@@ -29,6 +31,7 @@ import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.roundCorners
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
+import com.vinicius741.webnovelarchiver.ui.size
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
 
@@ -162,7 +165,13 @@ internal class QueueChapterHolder(
     private val row = itemView as LinearLayout
     private val dot = View(context)
     private val title = makeText(context, "", Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply { textSize = CHAPTER_SP }.singleLine()
-    private val status = makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).singleLine()
+    private val status =
+        RowShareText(context)
+            .apply {
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, Type.BODY_SMALL.size())
+                setTextColor(ThemeManager.colors.onSurfaceVariant)
+                includeFontPadding = false
+            }.singleLine()
     private var bound: QueueChapterItem? = null
     private val retry = context.iconButton(R.drawable.wna_refresh, "Retry", ThemeManager.colors.primary, IconButtonStyle.Compact)
 
@@ -218,6 +227,29 @@ internal class QueueChapterHolder(
     }
 }
 
+/**
+ * A status that never takes more than [MAX_STATUS_SHARE] of its row's width, so a long one ("Site
+ * asked to slow down · retry in 1m 20s", a raw error) ellipsizes instead of squeezing the title out.
+ * Beside a weighted title the row measures it against the row's whole content width.
+ */
+private class RowShareText(
+    context: Context,
+) : AppCompatTextView(context) {
+    override fun onMeasure(
+        widthMeasureSpec: Int,
+        heightMeasureSpec: Int,
+    ) {
+        val available = MeasureSpec.getSize(widthMeasureSpec)
+        val capped =
+            if (MeasureSpec.getMode(widthMeasureSpec) == MeasureSpec.UNSPECIFIED || available == 0) {
+                widthMeasureSpec
+            } else {
+                MeasureSpec.makeMeasureSpec((available * MAX_STATUS_SHARE).toInt(), MeasureSpec.AT_MOST)
+            }
+        super.onMeasure(capped, heightMeasureSpec)
+    }
+}
+
 /** The card's surface; when its chapters are open the bottom corners square off to meet them. */
 private fun storyCardBackground(
     context: Context,
@@ -267,3 +299,4 @@ private const val BAR_DP = 4
 private const val DOT_DP = 8
 private const val ROW_MIN_DP = 40
 private const val CHAPTER_SHADE = 0.45f
+private const val MAX_STATUS_SHARE = 0.45f

@@ -148,20 +148,23 @@ private fun ScreenHost.addSourceRows(group: LinearLayout) {
             sourceSnapshots.any { it.cooldownRemainingMillis > 0L } -> "Cooling down" to colors.secondary
             else -> "Ready" to colors.tertiary
         }
-    val accessRow =
-        group.navRow(R.drawable.wna_verified_user, "Source access status", "$accessStatus · WebView $webViewVersion", chevron = false) {
-            val detail =
-                if (sourceSnapshots.isEmpty()) {
-                    "No protected-source requests in this app session"
-                } else {
-                    sourceSnapshots.joinToString("\n") { snapshot ->
-                        "${snapshot.host}: requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
-                            "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
-                    }
+    group.navRow(
+        R.drawable.wna_verified_user,
+        "Source access status",
+        tinted("$accessStatus · WebView $webViewVersion", accessTint),
+        chevron = false,
+    ) {
+        val detail =
+            if (sourceSnapshots.isEmpty()) {
+                "No protected-source requests in this app session"
+            } else {
+                sourceSnapshots.joinToString("\n") { snapshot ->
+                    "${snapshot.host}: requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
+                        "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
                 }
-            toast(detail)
-        }
-    ((accessRow.getChildAt(1) as? LinearLayout)?.getChildAt(1) as? android.widget.TextView)?.setTextColor(accessTint)
+            }
+        toast(detail)
+    }
     group.navRow(R.drawable.wna_article, "Share activity logs", "The last 7 days of syncs, downloads and errors") {
         exportAndShare({
             ActivityLogExporter.export(

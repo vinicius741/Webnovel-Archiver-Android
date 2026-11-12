@@ -8,6 +8,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import coil3.dispose
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.domain.model.DownloadJob
@@ -323,6 +324,8 @@ private fun ScreenHost.bindQueueCover(
     val story = repository.story(storyId)
     val source = story?.let { activeCoverSource(it) }
     if (source == null) {
+        // The holder may be rebound from a novel whose cover is still loading; stop it landing here.
+        view.dispose()
         view.setImageDrawable(null)
         view.setOnClickListener(null)
         view.isClickable = false

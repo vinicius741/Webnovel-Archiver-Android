@@ -47,13 +47,14 @@ internal fun ScreenHost.showSettings() {
     // Re-render so layout/width toggles re-center the capped content live.
     rerender = { showSettings() }
     val colors = ThemeManager.colors
+    val summaries = lastHubSummaries
     screen(route = AppRoute.Settings, title = "Settings", scrollable = true) {
         capSettingsWidth(this)
         addPhoneSummaryCard(this)
 
         section("Listening & reading")
         settingsGroup {
-            navRow(R.drawable.wna_record_voice, "Voice & Speech", voiceSummary()) { showTtsSettings() }
+            navRow(R.drawable.wna_record_voice, "Voice & Speech", summaries?.voice ?: LOADING) { showTtsSettings() }
             val cleanup = SettingsHubPlanning.cleanupSummary(repository.regexRules.get().size, repository.sentenceRemovalList.get().size)
             navRow(R.drawable.wna_cleaning, "Text cleanup", cleanup) { showCleanupRules() }
         }
@@ -62,7 +63,7 @@ internal fun ScreenHost.showSettings() {
         settingsGroup {
             val tabs = TabPlanning.normalizeOrders(repository.tabs.get())
             navRow(R.drawable.wna_tab, "Manage tabs", SettingsHubPlanning.tabsSummary(tabs.map { it.name })) { showTabs() }
-            val settings = repository.settings.get()
+            val settings = downloadSettingsShown()
             val downloads =
                 SettingsHubPlanning.downloadsSummary(
                     settings.maxParallelSources ?: DEFAULT_PARALLEL_SOURCES,
@@ -70,12 +71,17 @@ internal fun ScreenHost.showSettings() {
                 )
             navRow(R.drawable.wna_download, "Downloads", downloads) { showDownloadSettings() }
             addView(layoutModeRow())
-            navRow(R.drawable.wna_favorite, "Patreon account", patreonAccountSummary(), tint = colors.secondary) { showPatreonAccount() }
+            navRow(
+                R.drawable.wna_favorite,
+                "Patreon account",
+                summaries?.patreon ?: LOADING,
+                tint = colors.secondary,
+            ) { showPatreonAccount() }
         }
 
         section("Intelligence")
         settingsGroup {
-            navRow(R.drawable.wna_auto_awesome, "AI settings", aiSummary(), tint = colors.secondary) { showAiSettings() }
+            navRow(R.drawable.wna_auto_awesome, "AI settings", summaries?.ai ?: LOADING, tint = colors.secondary) { showAiSettings() }
         }
 
         section("System")
@@ -110,12 +116,43 @@ internal fun ScreenHost.showSettings() {
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
         )
     }
+    refreshHubSummaries(summaries)
+}
+
+/** The hub values that need PackageManager, WebView cookie or disk work, so they load off the main thread. */
+private data class HubSummaries(
+    val voice: String,
+    val patreon: String,
+    val ai: String,
+)
+
+/** The last loaded values, shown at once on the next visit while fresh ones load. */
+private var lastHubSummaries: HubSummaries? = null
+
+/** Loads the hub values on IO; the hub re-renders only when they differ from the ones [shown]. */
+private fun ScreenHost.refreshHubSummaries(shown: HubSummaries?) {
+    scope.launch {
+        val fresh = withContext(Dispatchers.IO) { HubSummaries(voiceSummary(), patreonAccountSummary(), aiSummary()) }
+        lastHubSummaries = fresh
+        if (fresh != shown && navigator.current == AppRoute.Settings) showSettings()
+    }
 }
 
 /** "On this phone": novels, chapters offline, generated audio, and the newest backup file. */
 private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
     lateinit var values: List<TextView>
     lateinit var backupLine: TextView
+
+    fun fill(summary: PhoneSummary) {
+        val numbers = NumberFormat.getIntegerInstance()
+        values[0].text = numbers.format(summary.novels)
+        values[1].text = numbers.format(summary.chapters)
+        values[2].text = NarrationPlanning.formatBytes(summary.audioBytes)
+        backupLine.text =
+            summary.lastBackupAt?.let { at ->
+                "Last backup ${BackupFilePlanning.timestampLabel(at)} · ${BackupFilePlanning.sizeLabel(summary.lastBackupBytes ?: 0L)}"
+            } ?: "No backup files yet"
+    }
     container.tintedCard(ThemeManager.colors.primary) {
         addView(makeEyebrow(context, "On this phone"))
         values = statGrid(listOf("novels", "chapters offline", "audio"))
@@ -125,8 +162,9 @@ private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
             }
         addView(backupLine)
     }
+    // A re-render (fold, or fresh hub values) shows the last numbers instead of blanking them.
+    lastPhoneSummary?.let(::fill)
     scope.launch {
-        val numbers = NumberFormat.getIntegerInstance()
         val summary =
             withContext(Dispatchers.IO) {
                 val library = repository.library()
@@ -138,15 +176,12 @@ private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
                 val newest = runCatching { repository.listBackupFiles() }.getOrDefault(emptyList()).maxByOrNull { it.lastModifiedMillis }
                 PhoneSummary(library.size, library.sumOf { it.downloadedChapters }, audio, newest?.lastModifiedMillis, newest?.sizeBytes)
             }
-        values[0].text = numbers.format(summary.novels)
-        values[1].text = numbers.format(summary.chapters)
-        values[2].text = NarrationPlanning.formatBytes(summary.audioBytes)
-        backupLine.text =
-            summary.lastBackupAt?.let { at ->
-                "Last backup ${BackupFilePlanning.timestampLabel(at)} · ${BackupFilePlanning.sizeLabel(summary.lastBackupBytes ?: 0L)}"
-            } ?: "No backup files yet"
+        lastPhoneSummary = summary
+        fill(summary)
     }
 }
+
+private var lastPhoneSummary: PhoneSummary? = null
 
 private data class PhoneSummary(
     val novels: Int,
@@ -231,6 +266,7 @@ private fun ScreenHost.notificationsSummary(): String {
 }
 
 internal const val DEFAULT_PARALLEL_SOURCES = 2
+private const val LOADING = "…"
 private const val FOOTER_LINE_SPACING = 1.4f
 private const val LEAD_DP = 40
 private const val LEAD_RADIUS_DP = 12

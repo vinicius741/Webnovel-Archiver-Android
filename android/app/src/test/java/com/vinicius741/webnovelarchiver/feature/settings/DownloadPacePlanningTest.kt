@@ -16,6 +16,14 @@ class DownloadPacePlanningTest {
     }
 
     @Test
+    fun stepperLimitGrowsToFitALargerSavedDelayButNeverShrinks() {
+        assertEquals(DownloadPacePlanning.STEPPER_MAX_MS, DownloadPacePlanning.stepperMaxMs(PaceRange(800, 2_500)))
+        assertEquals(DownloadPacePlanning.STEPPER_MAX_MS, DownloadPacePlanning.stepperMaxMs(PaceRange(0, 120_000)))
+        assertEquals(300_000L, DownloadPacePlanning.stepperMaxMs(PaceRange(1_000, 300_000)))
+        assertEquals(180_000L, DownloadPacePlanning.stepperMaxMs(PaceRange(180_000, 150_000)))
+    }
+
+    @Test
     fun overrideIsReadByIdThenLegacyName() {
         val byName = mapOf("Royal Road" to SourceDownloadSettings(delay = 1_000, delayMax = 2_000))
         assertEquals(1_000L, DownloadPacePlanning.overrideFor(byName, "royalroad", "Royal Road")?.delay)
