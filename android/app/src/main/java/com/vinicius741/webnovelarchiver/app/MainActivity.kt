@@ -38,6 +38,7 @@ import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
 import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
@@ -106,6 +107,7 @@ class MainActivity :
     override val aiControlsScreenState: AiControlsScreenState = AiControlsScreenState()
     override val libraryScreenState: LibraryScreenState = LibraryScreenState()
     override val cleanupScreenState: CleanupScreenState = CleanupScreenState()
+    override val updatesSyncState: UpdatesSyncState = UpdatesSyncState()
     override val storyExpandOverride: MutableMap<String, Boolean> = mutableMapOf()
 
     /** Re-render the screen currently on [frame]; set by each screen so config changes can reflow it. */

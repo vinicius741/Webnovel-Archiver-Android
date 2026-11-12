@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.domain.story.UpdatesCopy
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Overview
 import com.vinicius741.webnovelarchiver.domain.story.UpdatesPlanning.Section
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -61,6 +62,7 @@ internal fun ScreenHost.makeForecastCard(
                 dp(Spacing.LG)
         },
     )
+    makePendingReviews()?.let { card.addView(it, topGap(Spacing.LG)) }
     val batch = updatesState.batch
     if (batch != null) {
         card.addView(makeBatchProgress(batch), topGap(Spacing.LG))
@@ -92,6 +94,28 @@ internal fun ScreenHost.makeSyncAllBlock(count: Int): View {
     val batch = updatesState.batch
     if (batch != null) return makeBatchProgress(batch)
     return makeFullWidthButton(app, "Sync all $count", Btn.TONAL, R.drawable.wna_sync, 0) { syncAllMayBeOut() }
+}
+
+/** A finished run's large-update reviews and source check that waited for Updates, with a Review action. */
+private fun ScreenHost.makePendingReviews(): View? {
+    val state = updatesState
+    if (state.pendingReviews.isEmpty() && state.pendingBlocked == null) return null
+    val note = UpdatesCopy.pendingReviews(state.pendingReviews.size, blockedSource = state.pendingBlocked != null)
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(
+            makeText(app, note, Type.BODY_MEDIUM, ThemeManager.colors.onSurface),
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+        )
+        addView(
+            makeButton(app, "Review", Btn.TONAL) { showPendingUpdatesReviews() }.apply {
+                minHeight = dp(STOP_HEIGHT_DP)
+                minimumHeight = dp(STOP_HEIGHT_DP)
+                setPadding(dp(Spacing.MD), 0, dp(Spacing.MD), 0)
+            },
+        )
+    }
 }
 
 /** Live progress of a "Sync all" run with a Stop action; stopping lets the current novel finish. */

@@ -12,6 +12,7 @@ import com.vinicius741.webnovelarchiver.download.DownloadEngine
 import com.vinicius741.webnovelarchiver.epub.EpubEngine
 import com.vinicius741.webnovelarchiver.feature.ai.AiControlsScreenState
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
+import com.vinicius741.webnovelarchiver.feature.updates.UpdatesSyncState
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
@@ -183,6 +184,9 @@ interface ScreenHost {
     val libraryScreenState: LibraryScreenState
 
     val cleanupScreenState: CleanupScreenState
+
+    /** Updates sync progress ("Sync all" batch, per-novel syncs, filter); outlives the screen's re-renders. */
+    val updatesSyncState: UpdatesSyncState
 
     /**
      * Per-story expand/collapse choices the user has made on the Download Manager screen, keyed by

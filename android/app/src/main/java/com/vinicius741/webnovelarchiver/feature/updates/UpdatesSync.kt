@@ -1,6 +1,5 @@
 package com.vinicius741.webnovelarchiver.feature.updates
 
-import androidx.appcompat.app.AppCompatActivity
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
 import com.vinicius741.webnovelarchiver.domain.model.Story
@@ -15,6 +14,7 @@ import com.vinicius741.webnovelarchiver.feature.story.clearStoryOperation
 import com.vinicius741.webnovelarchiver.feature.story.handleManualSyncDownloads
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.feature.story.setStoryOperation
+import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationKind
 import com.vinicius741.webnovelarchiver.source.network.SourceAccessBlockedException
@@ -25,23 +25,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.util.WeakHashMap
 
-/** Updates sync progress for one activity; it outlives the screen's re-renders and navigation. */
-internal class UpdatesSyncState {
+/**
+ * Updates sync progress for one activity ([ScreenHost.updatesSyncState]); it outlives the screen's
+ * re-renders and navigation. Owned by the activity, so the screen callbacks it holds die with it.
+ */
+class UpdatesSyncState {
     /** Story id to the sync engine's latest status line, while that novel syncs. */
-    val syncing: MutableMap<String, String> = linkedMapOf()
-    var batch: UpdatesBatch? = null
+    internal val syncing: MutableMap<String, String> = linkedMapOf()
+    internal var batch: UpdatesBatch? = null
 
     /** Summary of the last finished "Sync all", shown in the forecast card until the next one. */
-    var lastResult: String? = null
-    var filter: UpdatesFilter = UpdatesFilter.ALL
+    internal var lastResult: String? = null
+    internal var filter: UpdatesFilter = UpdatesFilter.ALL
+
+    /** A finished run's large-update reviews and blocked source, held until the user is on Updates. */
+    internal val pendingReviews = mutableListOf<Pair<Story, SyncDownloadPlan>>()
+    internal var pendingBlocked: Story? = null
 
     /** Set by the rendered Updates screen; null while it is not showing. */
-    var onChange: (() -> Unit)? = null
-    var onStatus: ((String, String) -> Unit)? = null
+    internal var onChange: (() -> Unit)? = null
+    internal var onStatus: ((String, String) -> Unit)? = null
 
-    fun changed() {
+    internal fun changed() {
         onChange?.invoke()
     }
 }
@@ -55,6 +61,9 @@ internal class UpdatesBatch(
     var novelsWithNew = 0
     var failed = 0
     var stopping = false
+
+    /** The run was cut short (the activity went away) rather than finishing or being stopped. */
+    var cancelled = false
     var currentTitle: String? = null
     val total: Int get() = storyIds.size
 
@@ -62,13 +71,14 @@ internal class UpdatesBatch(
     val deferredReviews = mutableListOf<Pair<Story, SyncDownloadPlan>>()
     var blocked: Story? = null
 
-    fun summary(): String = UpdatesCopy.batchSummary(total, checked, newChapters, novelsWithNew, failed, stopping)
+    fun summary(): String = UpdatesCopy.batchSummary(total, checked, newChapters, novelsWithNew, failed, stopping || cancelled)
 }
 
-private val updatesStates = WeakHashMap<AppCompatActivity, UpdatesSyncState>()
-
 internal val ScreenHost.updatesState: UpdatesSyncState
-    get() = updatesStates.getOrPut(app) { UpdatesSyncState() }
+    get() = updatesSyncState
+
+/** True while Updates syncs [storyId] (row or "Sync all"); Details content actions wait for it. */
+internal fun ScreenHost.isSyncingFromUpdates(storyId: String): Boolean = storyId in updatesSyncState.syncing
 
 private sealed interface UpdatesSyncOutcome {
     data class Synced(
@@ -89,7 +99,7 @@ internal fun ScreenHost.syncFromUpdates(story: Story) {
     if (!StoryActionGuards.canSync(story)) return toast(StoryActionGuards.archivedActionMessage("Sync"))
     if (storyOperation?.storyId == story.id) return toast("This novel is busy. Try again when it finishes.")
     scope.launch {
-        when (val outcome = syncForUpdates(story) { synced, plan -> handleManualSyncDownloads(synced, plan) }) {
+        when (val outcome = syncForUpdates(story, inBatch = false) { synced, plan -> handleManualSyncDownloads(synced, plan) }) {
             is UpdatesSyncOutcome.Synced ->
                 toast(
                     if (outcome.newChapters >
@@ -127,13 +137,16 @@ internal fun ScreenHost.syncAllMayBeOut() {
     scope.launch {
         try {
             runBatch(batch)
+        } catch (cancelled: CancellationException) {
+            batch.cancelled = true
+            throw cancelled
         } finally {
             finishBatch(batch)
         }
     }
 }
 
-/** Asks the running batch to stop once the novel it is checking now finishes. */
+/** Asks the running batch to stop once the novel it is checking now finishes (the card says so). */
 internal fun ScreenHost.stopUpdatesBatch() {
     val batch = updatesState.batch ?: return
     batch.stopping = true
@@ -159,7 +172,7 @@ private suspend fun ScreenHost.runBatch(batch: UpdatesBatch) {
         }
         batch.currentTitle = story.title
         val outcome =
-            syncForUpdates(story) { synced, plan ->
+            syncForUpdates(story, inBatch = true) { synced, plan ->
                 if (plan.action ==
                     SyncDownloadAction.REVIEW
                 ) {
@@ -199,34 +212,62 @@ private fun ScreenHost.finishBatch(batch: UpdatesBatch) {
         "failed" to batch.failed,
         "newChapters" to batch.newChapters,
         "novelsWithNew" to batch.novelsWithNew,
-        "stopped" to batch.stopping,
+        "stopped" to (batch.stopping || batch.cancelled),
+        "cancelled" to batch.cancelled,
     )
     if (app.isFinishing || app.isDestroyed) return
-    state.changed()
+    state.pendingReviews += batch.deferredReviews
+    batch.blocked?.let { state.pendingBlocked = it }
     toast(summary)
-    batch.deferredReviews.forEach { (story, plan) -> handleManualSyncDownloads(story, plan) }
-    batch.blocked?.let { blocked ->
-        showSourceAccessBlockedDialog(blocked.sourceUrl) { repository.story(blocked.id)?.let(::syncFromUpdates) }
+    // The run can end long after the user moved on (the Reader, say): its dialogs wait for Updates,
+    // whose forecast card offers them meanwhile.
+    if (navigator.current == AppRoute.Updates) showPendingUpdatesReviews() else state.changed()
+}
+
+/** Shows a finished run's held large-update reviews and source check, then forgets them. */
+internal fun ScreenHost.showPendingUpdatesReviews() {
+    val state = updatesState
+    val reviews = state.pendingReviews.toList()
+    val blocked = state.pendingBlocked
+    state.pendingReviews.clear()
+    state.pendingBlocked = null
+    state.changed()
+    reviews.forEach { (story, plan) ->
+        val latest = repository.story(story.id) ?: return@forEach
+        val indexes = UpdatesPlanning.pendingReviewIndexes(latest, plan.chapterIds)
+        if (indexes.isNotEmpty()) {
+            handleManualSyncDownloads(latest, plan.copy(chapterIndexes = indexes, chapterIds = indexes.map { latest.chapters[it].id }))
+        }
+    }
+    blocked?.let { story ->
+        showSourceAccessBlockedDialog(story.sourceUrl) { repository.story(story.id)?.let(::syncFromUpdates) }
     }
 }
 
 /**
- * Runs the shared manual sync for one novel. While it runs, the novel also holds the Details
- * operation slot when that slot is free, so opening it shows the live sync and blocks a second one.
+ * Runs the shared manual sync for one novel. A row sync also holds the Details operation slot when
+ * it is free, so opening the novel shows the live sync. "Sync all" items do not take that global
+ * slot (it would block Cleanup and EPUB on every novel for the whole run) and, like the former bulk
+ * sync, skip the Patreon refresh; [isSyncingFromUpdates] keeps Details from starting a second sync.
  */
 @Suppress("TooGenericExceptionCaught", "InstanceOfCheckForException")
 private suspend fun ScreenHost.syncForUpdates(
     story: Story,
+    inBatch: Boolean,
     onPlan: (Story, SyncDownloadPlan) -> Unit,
 ): UpdatesSyncOutcome {
     val state = updatesState
     state.syncing[story.id] = STARTING
-    val ownsSlot = storyOperation == null
+    val ownsSlot = !inBatch && storyOperation == null
     if (ownsSlot) setStoryOperation(story.id, StoryOperationKind.SYNC, STARTING)
     state.changed()
     try {
         val (synced, plan) =
-            ManualStorySync(repository, syncEngine).run(story.sourceUrl, story.tabId, StorySyncMode.Default, story.sourceId) { message ->
+            ManualStorySync(
+                repository,
+                syncEngine,
+                refreshPatreonStats = !inBatch,
+            ).run(story.sourceUrl, story.tabId, StorySyncMode.Default, story.sourceId) { message ->
                 app.runOnUiThread {
                     if (story.id !in state.syncing) return@runOnUiThread
                     state.syncing[story.id] = message

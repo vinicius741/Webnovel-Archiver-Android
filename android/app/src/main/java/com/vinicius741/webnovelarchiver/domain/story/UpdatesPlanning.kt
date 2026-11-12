@@ -121,6 +121,18 @@ object UpdatesPlanning {
     fun missingChapterIndexes(story: Story): List<Int> =
         story.chapters.mapIndexedNotNull { index, chapter -> index.takeIf { !chapter.downloaded } }
 
+    /**
+     * Where the chapters [chapterIds] of a deferred large-update review sit in [story] now, keeping
+     * only those still not downloaded; the review can wait long enough for some to be queued another way.
+     */
+    fun pendingReviewIndexes(
+        story: Story,
+        chapterIds: List<String>,
+    ): List<Int> {
+        val wanted = chapterIds.toSet()
+        return story.chapters.mapIndexedNotNull { index, chapter -> index.takeIf { chapter.id in wanted && !chapter.downloaded } }
+    }
+
     fun mayBeOut(
         forecast: Forecast?,
         checkedAt: Long?,
@@ -209,6 +221,16 @@ object UpdatesCopy {
             )
             if (failed > 0) add("$failed couldn't be checked")
         }.joinToString(" · ")
+
+    /** The forecast card's note for end-of-run prompts that waited for the user to return to Updates. */
+    fun pendingReviews(
+        largeUpdates: Int,
+        blockedSource: Boolean,
+    ): String =
+        listOfNotNull(
+            if (largeUpdates > 0) "${plural(largeUpdates, "large update")} to review" else null,
+            if (blockedSource) "A source needs a check" else null,
+        ).joinToString(" · ")
 
     fun newChaptersFound(
         count: Int,

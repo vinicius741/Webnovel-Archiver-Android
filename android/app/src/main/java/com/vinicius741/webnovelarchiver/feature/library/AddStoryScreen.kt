@@ -43,8 +43,9 @@ internal fun ScreenHost.showAddStory() {
     val tabs = repository.tabs.get().sortedBy { it.order }
     // URL text + fetch status live in ScreenHost state so they survive status-driven re-renders;
     // the flow stays on this screen (button flips to "Fetching...", spinner + status line appear).
-    // Null status = fresh open: clear any leftover URL draft and tab pick.
-    if (addStoryStatus == null) {
+    // A fresh open (from another route, no fetch running) clears any leftover URL draft and tab pick;
+    // re-renders on this route (status ticks, the tab picker, a fold) keep them.
+    if (addStoryStatus == null && navigator.current != AppRoute.AddStory) {
         addStoryUrlText = ""
         libraryExtras.addStoryTabChosen = false
     }
