@@ -5,7 +5,6 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.AppSettings
@@ -39,9 +38,20 @@ private val PARALLEL_SPEC =
         label = "Parallel sources",
     )
 private const val DELAY_STEP_MS = 100.0
-private const val DELAY_MAX_MS = 120_000.0
-private val DELAY_MIN_SPEC = StepperSpec(step = DELAY_STEP_MS, min = 0.0, max = DELAY_MAX_MS, unit = " ms", label = "Delay min")
-private val DELAY_MAX_SPEC = DELAY_MIN_SPEC.copy(label = "Delay max")
+
+/** The delay steppers for [range]; their limit grows to fit a larger delay that is already saved. */
+private fun delaySpecs(range: PaceRange): Pair<StepperSpec, StepperSpec> {
+    val min =
+        StepperSpec(
+            step = DELAY_STEP_MS,
+            min = 0.0,
+            max = DownloadPacePlanning.stepperMaxMs(range).toDouble(),
+            unit = " ms",
+            label = "Delay min",
+        )
+    return min to min.copy(label = "Delay max")
+}
+
 private val EPUB_SPEC =
     StepperSpec(
         step = 10.0,
@@ -51,8 +61,14 @@ private val EPUB_SPEC =
     )
 private const val SAVE_DEBOUNCE_MS = 400L
 
-/** The newest values not yet written, so a quick return to the page never shows older ones. */
+/**
+ * The newest values not yet written, so a quick return to the page (or the Settings hub) never
+ * shows older ones. Cleared once their save finishes, whether or not it succeeded.
+ */
 private var unsavedDownloadSettings: AppSettings? = null
+
+/** What Download settings shows: a change still being saved, else the saved settings. */
+internal fun ScreenHost.downloadSettingsShown(): AppSettings = unsavedDownloadSettings ?: repository.settings.get()
 
 /**
  * Download settings (v3): steppers for parallel sources, the delay range (min stays ≤ max) and EPUB
@@ -60,13 +76,16 @@ private var unsavedDownloadSettings: AppSettings? = null
  */
 internal fun ScreenHost.showDownloadSettings() {
     val host = this
-    var draft = unsavedDownloadSettings ?: repository.settings.get()
+    var draft = downloadSettingsShown()
     val saver =
         DebouncedSaver {
             val toSave = draft
             scope.launch {
-                repository.settings.save(toSave)
-                if (unsavedDownloadSettings === toSave) unsavedDownloadSettings = null
+                try {
+                    repository.settings.save(toSave)
+                } finally {
+                    if (unsavedDownloadSettings === toSave) unsavedDownloadSettings = null
+                }
             }
         }
     val changed = { next: AppSettings ->
@@ -79,6 +98,7 @@ internal fun ScreenHost.showDownloadSettings() {
         section("Queue")
         lateinit var minHandle: StepperHandle
         lateinit var maxHandle: StepperHandle
+        val (delayMinSpec, delayMaxSpec) = delaySpecs(draft.range())
         settingsGroup {
             groupStepper(
                 "Parallel sources",
@@ -90,14 +110,14 @@ internal fun ScreenHost.showDownloadSettings() {
                 null
             }
             minHandle =
-                groupStepper("Delay min", "Wait between chapters", draft.downloadDelay.toDouble(), DELAY_MIN_SPEC) { value ->
+                groupStepper("Delay min", "Wait between chapters", draft.downloadDelay.toDouble(), delayMinSpec) { value ->
                     val range = DownloadPacePlanning.withMin(draft.range(), value.toLong())
                     changed(draft.copy(downloadDelay = range.minMs, downloadDelayMax = range.maxMs))
                     maxHandle.show(range.maxMs.toDouble())
                     null
                 }
             maxHandle =
-                groupStepper("Delay max", "Randomized up to this value", draft.range().maxMs.toDouble(), DELAY_MAX_SPEC) { value ->
+                groupStepper("Delay max", "Randomized up to this value", draft.range().maxMs.toDouble(), delayMaxSpec) { value ->
                     val range = DownloadPacePlanning.withMax(draft.range(), value.toLong())
                     changed(draft.copy(downloadDelay = range.minMs, downloadDelayMax = range.maxMs))
                     minHandle.show(range.minMs.toDouble())
@@ -116,17 +136,12 @@ internal fun ScreenHost.showDownloadSettings() {
         settingsGroup {
             SourceRegistry.all().forEach { provider ->
                 val override = DownloadPacePlanning.overrideFor(overrides, provider.id, provider.name)
-                val row =
-                    navRow(
-                        if (override != null) R.drawable.wna_tune else R.drawable.wna_globe,
-                        provider.name,
-                        DownloadPacePlanning.overrideSummary(override),
-                    ) { host.showSourcePaceSheet(provider) { draft } }
-                if (override !=
-                    null
-                ) {
-                    ((row.getChildAt(1) as? LinearLayout)?.getChildAt(1) as? TextView)?.setTextColor(ThemeManager.colors.primary)
-                }
+                val summary = DownloadPacePlanning.overrideSummary(override)
+                navRow(
+                    if (override != null) R.drawable.wna_tune else R.drawable.wna_globe,
+                    provider.name,
+                    if (override != null) tinted(summary, ThemeManager.colors.primary) else summary,
+                ) { host.showSourcePaceSheet(provider) { draft } }
             }
         }
         settingsNote("Slow a site down if it starts limiting requests. Each site can have its own pace.")
@@ -160,6 +175,7 @@ private fun ScreenHost.showSourcePaceSheet(
     val form = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     lateinit var minHandle: StepperHandle
     lateinit var maxHandle: StepperHandle
+    val (delayMinSpec, delayMaxSpec) = delaySpecs(range)
     val chips =
         WrapLayout(app).apply {
             horizontalSpacingDp = Spacing.SM
@@ -168,7 +184,14 @@ private fun ScreenHost.showSourcePaceSheet(
 
     lateinit var switch: SwitchCompat
 
-    fun renderEnabled() = form.setRowEnabled(custom)
+    fun renderEnabled() {
+        form.setRowEnabled(custom)
+        // Re-enabling turns both ± back on; re-showing the values disables one at its limit.
+        if (custom) {
+            minHandle.show(range.minMs.toDouble())
+            maxHandle.show(range.maxMs.toDouble())
+        }
+    }
 
     fun renderChips() {
         chips.removeAllViews()
@@ -203,14 +226,14 @@ private fun ScreenHost.showSourcePaceSheet(
     switchGroup.layoutParams = (switchGroup.layoutParams as LinearLayout.LayoutParams).apply { bottomMargin = app.dp(Spacing.MD) }
     makeGroupIn(form) {
         minHandle =
-            groupStepper("Delay min", "Wait between chapters", range.minMs.toDouble(), DELAY_MIN_SPEC) { value ->
+            groupStepper("Delay min", "Wait between chapters", range.minMs.toDouble(), delayMinSpec) { value ->
                 range = DownloadPacePlanning.withMin(range, value.toLong())
                 maxHandle.show(range.maxMs.toDouble())
                 renderChips()
                 null
             }
         maxHandle =
-            groupStepper("Delay max", "Randomized up to this value", range.maxMs.toDouble(), DELAY_MAX_SPEC) { value ->
+            groupStepper("Delay max", "Randomized up to this value", range.maxMs.toDouble(), delayMaxSpec) { value ->
                 range = DownloadPacePlanning.withMax(range, value.toLong())
                 minHandle.show(range.minMs.toDouble())
                 renderChips()

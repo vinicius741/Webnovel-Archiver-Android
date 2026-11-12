@@ -68,6 +68,12 @@ internal object DownloadPacePlanning {
         return next
     }
 
+    /**
+     * The delay steppers' upper limit: [STEPPER_MAX_MS], or a larger delay already saved (older
+     * versions allowed any value), so the page shows that value as is instead of clamping it.
+     */
+    fun stepperMaxMs(range: PaceRange): Long = maxOf(STEPPER_MAX_MS, range.minMs, range.maxMs)
+
     fun matchingPreset(range: PaceRange): PacePreset? = presets.firstOrNull { it.range == range }
 
     /** 800 → "0.8", 2000 → "2", 1250 → "1.25". */
@@ -84,6 +90,9 @@ internal object DownloadPacePlanning {
     /** The per-site row's second line. */
     fun overrideSummary(override: SourceDownloadSettings?): String =
         override?.let { "${rangeLabel(PaceRange(it.delay, maxOf(it.delay, it.delayMax)))} delay" } ?: "Uses the defaults"
+
+    /** The delay steppers' usual upper limit: two minutes between chapters. */
+    const val STEPPER_MAX_MS = 120_000L
 
     private const val MS_PER_SECOND = 1_000
 }
