@@ -240,7 +240,7 @@ private fun ScreenHost.showServerMenu(
         items += OptionsDialogItem.Option("Generate here") { narrationAction("Could not save the setting") { setGenerateOn(server.id) } }
     }
     items += OptionsDialogItem.Option("Test connection") { testServer(server) }
-    items += OptionsDialogItem.Option("Edit") { showServerDialog(server) }
+    items += OptionsDialogItem.Option("Rename or edit") { showServerDialog(server) }
     items += OptionsDialogItem.Divider
     items +=
         OptionsDialogItem.Option("Remove", destructive = true) {
