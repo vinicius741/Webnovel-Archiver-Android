@@ -36,6 +36,7 @@ private const val PILL_WIDTH_DP = 60
 private const val PILL_HEIGHT_DP = 32
 private const val FADE_HEIGHT_DP = 20
 private const val BADGE_MAX = 99
+private const val BADGE_OVERHANG_DP = 24
 
 /**
  * The app's frame around every screen (v3): the screen itself, then a solid bottom shelf holding
@@ -275,6 +276,7 @@ class AppShell internal constructor(
                 setTextColor(colors.onPrimary)
                 gravity = Gravity.CENTER
                 includeFontPadding = false
+                isSingleLine = true
                 setPadding(context.dp(4), 0, context.dp(4), 0)
                 minWidth = context.dp(16)
                 background = roundedBg(colors.primary, context.dp(8).toFloat())
@@ -295,6 +297,8 @@ class AppShell internal constructor(
                     FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, context.dp(16), Gravity.TOP or Gravity.START).apply {
                         leftMargin = context.dp(if (rail) 34 else 36)
                         topMargin = context.dp(0)
+                        // Room to measure "99+" past the pill's edge (drawn unclipped).
+                        rightMargin = -context.dp(BADGE_OVERHANG_DP)
                     },
                 )
                 // The badge may overhang the pill ("99+"), so neither clips it.
