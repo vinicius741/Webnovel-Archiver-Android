@@ -1,12 +1,15 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
+import android.content.res.ColorStateList
 import android.view.ViewGroup
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.repository.BackupFileEntry
 import com.vinicius741.webnovelarchiver.data.repository.deleteBackupFile
 import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
+import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
 import com.vinicius741.webnovelarchiver.feature.story.share
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
@@ -76,24 +79,31 @@ internal fun ScreenHost.addFullBackupProgressCard(container: LinearLayout) {
     val state = backupExportState
     if (state.activeKind != BackupExportKind.FULL) return
     val colors = ThemeManager.colors
-    val cardView =
-        container.card {
-            row {
-                addView(
-                    makeText(context, "Creating full backup…", Type.TITLE_SMALL, colors.onSurface),
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                )
-            }
-            spacer(Space.XS)
+    container.tintedCard(colors.primary) {
+        iconColumnRow(R.drawable.wna_archive, colors.primary).apply {
+            addView(makeText(context, "Creating full backup…", Type.TITLE_SMALL, colors.onSurface))
             state.progressSlot =
-                text(state.progressMessage ?: "Preparing…", Type.BODY_SMALL, colors.onSurfaceVariant)
+                makeText(context, state.progressMessage ?: "Preparing…", Type.BODY_SMALL, colors.onSurfaceVariant).apply {
+                    setPadding(0, dp(2), 0, 0)
+                }
+            addView(state.progressSlot)
         }
-    container.addView(cardView)
+        addView(
+            ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
+                isIndeterminate = true
+                indeterminateTintList = ColorStateList.valueOf(colors.primary)
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin =
+                    dp(Space.SM)
+            },
+        )
+    }
 }
 
 internal fun ScreenHost.addBackupFilesSection(container: LinearLayout) {
     val colors = ThemeManager.colors
-    container.section("Backup Files")
+    container.section("Backup files")
     val filesContainer =
         LinearLayout(container.context).apply {
             orientation = LinearLayout.VERTICAL
@@ -118,58 +128,42 @@ private fun ScreenHost.renderBackupFiles(
 ) {
     val colors = ThemeManager.colors
     if (files.isEmpty()) {
-        container.text(
-            "Backups you create are kept here, inside the app's private storage.",
-            Type.BODY_SMALL,
-            colors.onSurfaceVariant,
-        )
+        container.settingsNote("Backups you create are kept here, in the app's private storage.")
         return
     }
-    files.forEach { file -> addBackupFileCard(container, file) }
-}
-
-private fun ScreenHost.addBackupFileCard(
-    container: LinearLayout,
-    entry: BackupFileEntry,
-) {
-    val file = entry.file
-    val colors = ThemeManager.colors
-    val cardView =
-        container.card {
-            row {
-                addView(
-                    makeText(
-                        context,
-                        BackupFilePlanning.artifactLabel(file.name),
-                        Type.TITLE_SMALL,
-                        colors.onSurface,
-                    ),
-                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
-                )
-            }
-            text(
-                "${BackupFilePlanning.sizeLabel(entry.sizeBytes)} · " +
-                    BackupFilePlanning.timestampLabel(entry.lastModifiedMillis),
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            ).apply { setPadding(0, 0, 0, dp(Space.SM)) }
-            row {
-                button("Share", Btn.TONAL, R.drawable.wna_share) { share(file) }
-                button("Delete", Btn.TEXT, R.drawable.wna_delete) {
-                    confirm(
-                        "Delete this backup file from the app's storage?",
-                        confirmLabel = "Delete",
-                    ) {
-                        scope.launch {
-                            if (repository.deleteBackupFile(file)) {
-                                showDataBackup()
-                            } else {
-                                toast("Backup file could not be deleted")
+    container.settingsGroup {
+        files.forEach { entry ->
+            val file = entry.file
+            val actions =
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    addView(
+                        makeRowIconButton(
+                            context,
+                            R.drawable.wna_share,
+                            "Share ${BackupFilePlanning.artifactLabel(file.name)}",
+                        ) { share(file) },
+                    )
+                    addView(
+                        makeRowIconButton(context, R.drawable.wna_delete, "Delete ${BackupFilePlanning.artifactLabel(file.name)}") {
+                            confirm("Delete this backup file? This cannot be undone.", confirmLabel = "Delete") {
+                                scope.launch {
+                                    if (repository.deleteBackupFile(file)) showDataBackup() else toast("Backup file could not be deleted")
+                                }
                             }
-                        }
-                    }
+                        },
+                    )
                 }
-            }
+            addView(
+                makeListRow(
+                    context,
+                    BackupFilePlanning.artifactLabel(file.name),
+                    "${BackupFilePlanning.sizeLabel(entry.sizeBytes)} · ${BackupFilePlanning.timestampLabel(entry.lastModifiedMillis)}",
+                    leadIcon = R.drawable.wna_folder,
+                    leadTint = colors.primary,
+                    trailing = actions,
+                ),
+            )
         }
-    container.addView(cardView)
+    }
 }

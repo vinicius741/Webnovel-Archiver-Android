@@ -1,8 +1,10 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
+import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.ai.AiUsagePeriod
 import com.vinicius741.webnovelarchiver.ai.AiUsagePlanning
@@ -10,6 +12,7 @@ import com.vinicius741.webnovelarchiver.ai.OpenRouterKeyUsage
 import com.vinicius741.webnovelarchiver.app.appContainer
 import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
 import com.vinicius741.webnovelarchiver.domain.model.AiUsageRecord
+import com.vinicius741.webnovelarchiver.feature.narration.makeListRow
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Space
@@ -17,7 +20,7 @@ import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
 import com.vinicius741.webnovelarchiver.ui.card
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.fullButton
+import com.vinicius741.webnovelarchiver.ui.makeButton
 import com.vinicius741.webnovelarchiver.ui.makeDivider
 import com.vinicius741.webnovelarchiver.ui.makeText
 import com.vinicius741.webnovelarchiver.ui.section
@@ -46,117 +49,112 @@ internal fun ScreenHost.showAiUsageSection(
     val allTime = AiUsagePlanning.summaryForPeriod(ledger, AiUsagePeriod.ALL_TIME, now)
 
     container.section("AI spend")
+    val spend =
+        container.card {
+            val values = statGrid(listOf("Today", "This month", "All time"))
+            values[0].text = formatUsd(today.costUsd)
+            values[1].text = formatUsd(month.costUsd)
+            values[2].text = formatUsd(allTime.costUsd)
+            if (allTime.unknownCallCount > 0) {
+                text(
+                    "${allTime.unknownCallCount} calls with unknown cost",
+                    Type.BODY_SMALL,
+                    colors.onSurfaceVariant,
+                ).setPadding(0, dp(Space.SM), 0, 0)
+            }
+        }
+    container.addView(spend)
+
+    container.section("Recent requests")
+    if (ledger.recentRecords.isEmpty()) {
+        container.settingsNote("No AI requests recorded yet.")
+    } else {
+        container.settingsGroup {
+            ledger.recentRecords
+                .asReversed()
+                .take(MAX_RECENT_REQUESTS)
+                .forEach { recentRequestRow(this, it) }
+        }
+    }
+
+    container.section("Current OpenRouter key")
     container.addView(
         container.card {
-            text("This app", Type.TITLE_SMALL)
-            text(
-                "Requests since tracking began.",
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            )
-            spacer(Space.SM)
-            usageRow(this, "Today", formatUsd(today.costUsd))
-            usageRow(this, "This month", formatUsd(month.costUsd))
-            usageRow(this, "All time", formatUsd(allTime.costUsd))
-            usageRow(this, "Calls with unknown cost", allTime.unknownCallCount.toString())
-
-            spacer(Space.MD)
-            text("Recent requests", Type.TITLE_SMALL)
-            spacer(Space.XS)
-            if (ledger.recentRecords.isEmpty()) {
-                text("No AI requests recorded yet.", Type.BODY_SMALL, colors.onSurfaceVariant)
-            } else {
-                val recentRecords = ledger.recentRecords.asReversed().take(MAX_RECENT_REQUESTS)
-                recentRecords.forEachIndexed { index, record ->
-                    recentRequestRow(this, record)
-                    if (index < recentRecords.lastIndex) {
-                        addView(makeDivider(context))
-                    }
-                }
-            }
-
-            spacer(Space.MD)
-            text("Current OpenRouter key", Type.TITLE_SMALL)
-            text(
-                "Includes all usage for this key, across apps.",
-                Type.BODY_SMALL,
-                colors.onSurfaceVariant,
-            )
-            spacer(Space.SM)
-
             val keyStatus = makeText(context, "", Type.BODY_SMALL, colors.onSurfaceVariant)
-            addView(keyStatus)
             val keyRows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-            addView(keyRows)
             var refreshButton: Button? = null
-
-            fun clearKeyRows() {
-                keyRows.removeAllViews()
-            }
-
-            fun renderKeyUnavailable(message: String) {
-                clearKeyRows()
-                keyStatus.text = message
-                // Keep Refresh enabled even in the no-key state: the user may type an unsaved
-                // draft into the field above and then retry without rebuilding this screen.
-                refreshButton?.isEnabled = true
-            }
-
-            fun renderKeyUsage(usage: OpenRouterKeyUsage) {
-                clearKeyRows()
-                keyStatus.text = ""
-                usageRow(keyRows, "Usage", formatKeyCost(usage.usage))
-                usageRow(keyRows, "Today", formatKeyCost(usage.usageDaily))
-                usageRow(keyRows, "This week", formatKeyCost(usage.usageWeekly))
-                usageRow(keyRows, "This month", formatKeyCost(usage.usageMonthly))
-                usageRow(keyRows, "Spending limit", formatKeyCost(usage.limit))
-                usageRow(keyRows, "Remaining", formatKeyCost(usage.limitRemaining))
-                usage.limitReset?.takeIf(String::isNotBlank)?.let { reset ->
-                    usageRow(keyRows, "Limit reset", reset.replaceFirstChar { it.uppercaseChar() })
-                }
-                refreshButton?.isEnabled = true
-            }
-
-            fun refreshKeyUsage() {
-                val apiKey = apiKeyProvider()?.trim().orEmpty()
-                if (apiKey.isBlank()) {
-                    renderKeyUnavailable("Add a key to see usage.")
-                    return
-                }
-                refreshButton?.isEnabled = false
-                keyStatus.text = "Loading usage…"
-                clearKeyRows()
-                scope.launch {
-                    val result = runCatching { app.appContainer.openRouter.fetchCurrentKeyUsage(apiKey) }
-                    app.runOnUiThread {
-                        result
-                            .onSuccess { usage -> renderKeyUsage(usage) }
-                            .onFailure { error ->
-                                clearKeyRows()
-                                keyStatus.text = error.message ?: "Usage unavailable."
-                                refreshButton?.isEnabled = true
-                            }
-                    }
-                }
-            }
-
-            refreshButton =
-                fullButton(
-                    label = "Refresh",
-                    variant = Btn.TEXT,
-                    icon = R.drawable.wna_refresh,
-                    bottomMarginDp = 0,
-                ) {
-                    refreshKeyUsage()
-                }
-
-            if (apiKeyProvider()?.isNullOrBlank() == true) {
-                renderKeyUnavailable("Add a key to see usage.")
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(
+                        LinearLayout(context).apply {
+                            orientation = LinearLayout.VERTICAL
+                            addView(makeText(context, "Key usage", Type.TITLE_SMALL, colors.onSurface))
+                            addView(makeText(context, "All usage for this key, across apps", Type.BODY_SMALL, colors.onSurfaceVariant))
+                        },
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                    )
+                    refreshButton =
+                        makeButton(context, "Refresh", Btn.SURFACE, R.drawable.wna_refresh) {
+                            refreshKeyUsage(keyStatus, keyRows, apiKeyProvider) { refreshButton }
+                        }
+                    addView(refreshButton)
+                },
+            )
+            addView(keyStatus.apply { setPadding(0, dp(Space.SM), 0, 0) })
+            addView(keyRows)
+            if (apiKeyProvider().isNullOrBlank()) {
+                keyStatus.text = "Add a key to see usage."
             } else {
-                refreshKeyUsage()
+                refreshKeyUsage(keyStatus, keyRows, apiKeyProvider) { refreshButton }
             }
         },
     )
+}
+
+private fun ScreenHost.refreshKeyUsage(
+    keyStatus: TextView,
+    keyRows: LinearLayout,
+    apiKeyProvider: () -> String?,
+    refreshButton: () -> Button?,
+) {
+    val apiKey = apiKeyProvider()?.trim().orEmpty()
+    keyRows.removeAllViews()
+    if (apiKey.isBlank()) {
+        // Refresh stays enabled: the user may type a key above and retry without a rebuild.
+        keyStatus.text = "Add a key to see usage."
+        return
+    }
+    refreshButton()?.isEnabled = false
+    keyStatus.text = "Loading usage…"
+    scope.launch {
+        val result = runCatching { app.appContainer.openRouter.fetchCurrentKeyUsage(apiKey) }
+        app.runOnUiThread {
+            refreshButton()?.isEnabled = true
+            result
+                .onSuccess { usage -> renderKeyUsage(keyStatus, keyRows, usage) }
+                .onFailure { error -> keyStatus.text = error.message ?: "Usage unavailable." }
+        }
+    }
+}
+
+private fun renderKeyUsage(
+    keyStatus: TextView,
+    keyRows: LinearLayout,
+    usage: OpenRouterKeyUsage,
+) {
+    keyRows.removeAllViews()
+    keyStatus.text = ""
+    usageRow(keyRows, "Usage", formatUsd(usage.usage))
+    usageRow(keyRows, "Today", formatUsd(usage.usageDaily))
+    usageRow(keyRows, "This week", formatUsd(usage.usageWeekly))
+    usageRow(keyRows, "This month", formatUsd(usage.usageMonthly))
+    usageRow(keyRows, "Spending limit", formatUsd(usage.limit))
+    usageRow(keyRows, "Remaining", formatUsd(usage.limitRemaining))
+    usage.limitReset?.takeIf(String::isNotBlank)?.let { reset ->
+        usageRow(keyRows, "Limit reset", reset.replaceFirstChar { it.uppercaseChar() })
+    }
 }
 
 private fun usageRow(
@@ -179,20 +177,17 @@ private fun usageRow(
     )
 }
 
-private fun formatKeyCost(costString: String?): String = formatUsd(costString)
-
-private fun formatUsd(costString: String?): String =
+internal fun formatUsd(costString: String?): String =
     costString
         ?.takeIf(String::isNotBlank)
         ?.let { runCatching { AiUsagePlanning.formatCostUsd(it) }.getOrDefault("Cost unavailable") }
         ?: "Unavailable"
 
 private fun recentRequestRow(
-    parent: ViewGroup,
+    parent: LinearLayout,
     record: AiUsageRecord,
 ) {
     val context = parent.context
-    val colors = ThemeManager.colors
     val feature =
         when (record.feature) {
             "description" -> "Description"
@@ -205,39 +200,25 @@ private fun recentRequestRow(
     val model = record.model.takeIf(String::isNotBlank) ?: "Model unavailable"
     val outcome =
         when (record.outcome) {
-            "completed" -> "Completed"
+            "completed" -> null
             "empty" -> "Empty reply"
             else -> record.outcome.takeIf(String::isNotBlank)?.replaceFirstChar(Char::uppercaseChar) ?: "Unknown"
         }
-    val requestDetails =
-        buildList {
-            add(formatUsd(record.costUsd))
-            record.totalTokens?.let { add("$it tokens") }
-            add(outcome)
-        }.joinToString(" · ")
-    parent.addView(
-        LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(makeText(context, feature, Type.BODY_MEDIUM, colors.onSurface))
-            addView(
-                makeText(
-                    context,
-                    "$model · ${formatRequestTime(record.timestamp)}",
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ).apply { setPadding(0, context.dp(Space.XS), 0, 0) },
-            )
-            addView(
-                makeText(
-                    context,
-                    requestDetails,
-                    Type.BODY_SMALL,
-                    colors.onSurfaceVariant,
-                ).apply { setPadding(0, context.dp(Space.XS), 0, 0) },
-            )
-            setPadding(0, context.dp(Space.XS), 0, context.dp(Space.XS))
-        },
-    )
+    val details =
+        listOfNotNull(
+            model,
+            record.totalTokens?.let {
+                "$it tokens"
+            },
+            formatRequestTime(record.timestamp),
+            outcome,
+        ).joinToString(" · ")
+    val cost =
+        makeText(context, formatUsd(record.costUsd), Type.BODY_MEDIUM, ThemeManager.colors.onSurfaceVariant).apply {
+            setPadding(context.dp(Space.SM), 0, context.dp(Space.SM), 0)
+        }
+    val icon = if (record.feature.startsWith("cover")) R.drawable.wna_image else R.drawable.wna_notes
+    parent.addView(makeListRow(context, feature, details, leadIcon = icon, leadTint = ThemeManager.colors.secondary, trailing = cost))
 }
 
 private fun formatRequestTime(timestamp: Long): String =

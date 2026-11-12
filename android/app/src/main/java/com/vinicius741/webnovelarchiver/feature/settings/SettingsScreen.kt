@@ -1,404 +1,237 @@
 package com.vinicius741.webnovelarchiver.feature.settings
 
-import android.text.InputType
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.WebView
-import android.widget.CheckBox
-import android.widget.EditText
+import android.view.Gravity
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
+import com.vinicius741.webnovelarchiver.BuildConfig
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.ai.AiUsagePeriod
+import com.vinicius741.webnovelarchiver.ai.AiUsagePlanning
 import com.vinicius741.webnovelarchiver.app.appContainer
-import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLogExporter
-import com.vinicius741.webnovelarchiver.data.diagnostics.BypassLogExporter
-import com.vinicius741.webnovelarchiver.domain.model.SourceDownloadSettings
+import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
+import com.vinicius741.webnovelarchiver.data.repository.getAiUsageLedger
+import com.vinicius741.webnovelarchiver.data.repository.listBackupFiles
 import com.vinicius741.webnovelarchiver.feature.cleanup.showCleanupRules
-import com.vinicius741.webnovelarchiver.feature.library.showLibrary
-import com.vinicius741.webnovelarchiver.feature.settings.SettingsValidation
-import com.vinicius741.webnovelarchiver.feature.story.exportAndShare
+import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
-import com.vinicius741.webnovelarchiver.navigation.BackupExportKind
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.source.SourceRegistry
-import com.vinicius741.webnovelarchiver.ui.Btn
-import com.vinicius741.webnovelarchiver.ui.Space
+import com.vinicius741.webnovelarchiver.notification.AppNotificationCategory
+import com.vinicius741.webnovelarchiver.notification.AppNotificationChannels
+import com.vinicius741.webnovelarchiver.notification.NotificationCategoryStatus
+import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
+import com.vinicius741.webnovelarchiver.tts.TtsEnginePlanning
+import com.vinicius741.webnovelarchiver.ui.SegmentedSelector
+import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
-import com.vinicius741.webnovelarchiver.ui.card
-import com.vinicius741.webnovelarchiver.ui.chip
-import com.vinicius741.webnovelarchiver.ui.confirm
-import com.vinicius741.webnovelarchiver.ui.currentScreenLayout
-import com.vinicius741.webnovelarchiver.ui.divider
 import com.vinicius741.webnovelarchiver.ui.dp
-import com.vinicius741.webnovelarchiver.ui.flow
-import com.vinicius741.webnovelarchiver.ui.fullButton
-import com.vinicius741.webnovelarchiver.ui.labeledField
-import com.vinicius741.webnovelarchiver.ui.layout.settingsMaxWidth
 import com.vinicius741.webnovelarchiver.ui.makeText
-import com.vinicius741.webnovelarchiver.ui.row
+import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.screen
 import com.vinicius741.webnovelarchiver.ui.section
-import com.vinicius741.webnovelarchiver.ui.settingRow
-import com.vinicius741.webnovelarchiver.ui.settingRowWithLoading
-import com.vinicius741.webnovelarchiver.ui.size
-import com.vinicius741.webnovelarchiver.ui.spacer
-import com.vinicius741.webnovelarchiver.ui.styledCheckBox
-import com.vinicius741.webnovelarchiver.ui.text
-import com.vinicius741.webnovelarchiver.ui.toast
+import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.NumberFormat
 
-private data class SourceDownloadInputs(
-    val enabled: CheckBox,
-    val delayMin: EditText,
-    val delayMax: EditText,
-)
+/** Screen-layout modes in the order the segmented control shows them. */
+private val LAYOUT_MODES = listOf("auto" to "Auto", "cover" to "Cover", "inner" to "Inner")
 
+/**
+ * The Settings destination (v3): a summary of what is on this phone, then grouped rows (Listening
+ * & reading, Library, Intelligence, System), each with its current value, and the app version.
+ */
 internal fun ScreenHost.showSettings() {
-    val displayPreferences = repository.getDisplayPreferences()
     // Re-render so layout/width toggles re-center the capped content live.
     rerender = { showSettings() }
-    val layout = currentScreenLayout()
+    val colors = ThemeManager.colors
     screen(route = AppRoute.Settings, title = "Settings", scrollable = true) {
-        section("Appearance")
-        text("Large Screen Layout", Type.TITLE_SMALL)
-        text(
-            "How multi-column layouts behave on large/folded screens. Auto detects the display.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.XS)
-        flow(spacing = Space.MD) {
-            chip("Auto", displayPreferences.screenLayoutMode == "auto") {
-                scope.launch {
-                    repository.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "auto"))
-                    showSettings()
-                }
-            }
-            chip("Cover", displayPreferences.screenLayoutMode == "cover") {
-                scope.launch {
-                    repository.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "cover"))
-                    showSettings()
-                }
-            }
-            chip("Inner", displayPreferences.screenLayoutMode == "inner") {
-                scope.launch {
-                    repository.saveDisplayPreferences(displayPreferences.copy(screenLayoutMode = "inner"))
-                    showSettings()
-                }
-            }
-        }
-        // EPUB volume splitting is per-story in Download Settings. foldLayoutMode stays in
-        // DisplayPreferences for backup compatibility but nothing reads it.
-        divider()
-        section("Reading & Audio")
-        settingRow(R.drawable.wna_speaker, "Voice & Speech", "Voice, rate, pauses, and a sample to try them") { showTtsSettings() }
-        settingRow(R.drawable.wna_cleaning, "Text Cleanup Rules", "Manage sentence removal and regex cleanup rules") { showCleanupRules() }
-        settingRow(R.drawable.wna_auto_awesome, "AI Settings", "OpenRouter API key and models for AI descriptions") { showAiSettings() }
-        divider()
-        // Ungrouped rows avoid single-row section headers; Downloads lives on the Library top bar.
-        settingRow(R.drawable.wna_notifications, "Notifications", "Manage downloads and text-to-speech alerts") {
-            showNotifications()
-        }
-        settingRow(R.drawable.wna_tab, "Manage Tabs", "Create and organize custom tabs for your library") { showTabs() }
-        // Storage issues surface as a title marker instead of occupying their own row.
-        val storageHealth = repository.getStorageHealth()
-        val dataBackupTitle = if (storageHealth.requiresUserAttention) "Data & Backup •" else "Data & Backup"
-        settingRow(R.drawable.wna_folder, dataBackupTitle, "Backups, source access, and storage tools") {
-            showDataBackup()
-        }
-        val appUpdates = app.appContainer.appUpdates
-        val appUpdateTitle = if (appUpdateNeedsAttention(appUpdates)) "App Updates •" else "App Updates"
-        settingRow(R.drawable.wna_refresh, appUpdateTitle, appUpdateSummary(appUpdates)) { showAppUpdate() }
-        // Cap and center the content on large screens (expanded 840dp, medium 720dp); no-op on
-        // compact widths. Runs inside the content builder, where the view has no layoutParams yet —
-        // set fresh FrameLayout.LayoutParams, exactly what the scaffold assigns to ScrollView content.
-        if (layout.widthClass != com.vinicius741.webnovelarchiver.ui.layout.WidthClass.COMPACT) {
-            val contentMaxWidthDp = settingsMaxWidth(layout.widthClass)
-            layoutParams =
-                android.widget.FrameLayout.LayoutParams(
-                    context.dp(contentMaxWidthDp),
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.view.Gravity.CENTER_HORIZONTAL,
-                )
-        }
-    }
-}
+        capSettingsWidth(this)
+        addPhoneSummaryCard(this)
 
-/** Heavy, rarely-used rows: backup/restore, source-session maintenance, storage notices, reset. */
-internal fun ScreenHost.showDataBackup() {
-    backupExportState.reconcile()
-    screen(route = AppRoute.DataBackup, title = "Data & Backup", scrollable = true) {
-        section("Backup")
-        // Host-owned state prevents concurrent exports and survives re-renders; the nullable
-        // holder lets the click lambda update its row.
-        var exportRow: com.vinicius741.webnovelarchiver.ui.SettingActionRow? = null
-        settingRowWithLoading(
-            R.drawable.wna_share,
-            "Export Backup",
-            "Export library metadata and tabs to a JSON file",
-            loading = backupExportState.activeKind == BackupExportKind.JSON,
-        ) {
-            if (backupExportState.activeKind == null) {
-                backupExportState.activeKind = BackupExportKind.JSON
-                exportRow?.render(isLoading = true)
-                backupExportState.activeJob =
-                    exportAndShare({ repository.exportBackup() }) {
-                        backupExportState.activeKind = null
-                        if (navigator.current == AppRoute.DataBackup) showDataBackup()
-                    }
-            }
-        }.also { exportRow = it }
-        settingRow(R.drawable.wna_download, "Import Backup", "Merge novels and tabs from a JSON backup file") {
-            importBackupLauncher.launch(arrayOf("application/json", "text/*"))
+        section("Listening & reading")
+        settingsGroup {
+            navRow(R.drawable.wna_record_voice, "Voice & Speech", voiceSummary()) { showTtsSettings() }
+            val cleanup = SettingsHubPlanning.cleanupSummary(repository.regexRules.get().size, repository.sentenceRemovalList.get().size)
+            navRow(R.drawable.wna_cleaning, "Text cleanup", cleanup) { showCleanupRules() }
         }
-        settingRowWithLoading(
-            R.drawable.wna_archive,
-            "Create Full Backup",
-            "Save settings, tabs, library, and chapters to a local ZIP file",
-            loading = backupExportState.activeKind == BackupExportKind.FULL,
-        ) {
-            startFullBackupExport()
+
+        section("Library")
+        settingsGroup {
+            val tabs = TabPlanning.normalizeOrders(repository.tabs.get())
+            navRow(R.drawable.wna_tab, "Manage tabs", SettingsHubPlanning.tabsSummary(tabs.map { it.name })) { showTabs() }
+            val settings = repository.settings.get()
+            val downloads =
+                SettingsHubPlanning.downloadsSummary(
+                    settings.maxParallelSources ?: DEFAULT_PARALLEL_SOURCES,
+                    PaceRange(settings.downloadDelay, maxOf(settings.downloadDelay, settings.downloadDelayMax)),
+                )
+            navRow(R.drawable.wna_download, "Downloads", downloads) { showDownloadSettings() }
+            addView(layoutModeRow())
+            navRow(R.drawable.wna_favorite, "Patreon account", patreonAccountSummary(), tint = colors.secondary) { showPatreonAccount() }
         }
-        addFullBackupProgressCard(this)
-        settingRow(R.drawable.wna_unarchive, "Restore Full Backup", "Replace local data from a full ZIP backup") {
-            importFullBackupLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
+
+        section("Intelligence")
+        settingsGroup {
+            navRow(R.drawable.wna_auto_awesome, "AI settings", aiSummary(), tint = colors.secondary) { showAiSettings() }
         }
-        settingRow(
-            R.drawable.wna_unarchive,
-            "Recover Chapters from Backup",
-            "Add back downloaded chapters a full ZIP backup has and your novels lost; nothing is replaced",
-        ) {
-            recoverChaptersLauncher.launch(arrayOf("application/zip", "application/octet-stream"))
-        }
-        addBackupFilesSection(this)
-        divider()
-        section("Sources & Storage")
-        val storageHealth = repository.getStorageHealth()
-        if (storageHealth.requiresUserAttention) {
-            settingRow(
-                R.drawable.wna_archive,
-                "Storage recovery notice",
-                "${storageHealth.issues.size} storage issue(s) detected; preserved data was not overwritten",
+
+        section("System")
+        settingsGroup {
+            navRow(R.drawable.wna_notifications, "Notifications", notificationsSummary()) { showNotifications() }
+            val storageHealth = repository.getStorageHealth()
+            val dataSummary = if (storageHealth.requiresUserAttention) "Storage needs attention" else "Backups, sources, storage"
+            navRow(
+                R.drawable.wna_backup,
+                "Data & backup",
+                dataSummary,
+                tint = if (storageHealth.requiresUserAttention) colors.error else colors.primary,
             ) {
-                toast(storageHealth.issues.joinToString("\n") { issue -> "${issue.document}: ${issue.detail}" })
+                showDataBackup()
             }
+            val updates = app.appContainer.appUpdates
+            val updateTint = if (appUpdateNeedsAttention(updates)) colors.tertiary else colors.primary
+            navRow(R.drawable.wna_system_update, "App updates", appUpdateSummary(updates), tint = updateTint) { showAppUpdate() }
         }
-        val sourceNetwork = app.appContainer.network
-        val browserSessionSources = SourceRegistry.all().filter { it.descriptor.managesBrowserSession }
-        val sourceSnapshots =
-            sourceNetwork
-                .reliabilitySnapshots()
-                .filter { snapshot ->
-                    SourceRegistry.providerForHost(snapshot.host)?.descriptor?.managesBrowserSession == true
-                }
-        val webViewPackage = WebView.getCurrentWebViewPackage()
-        val sourceAccessSummary =
-            when {
-                sourceSnapshots.any { it.manualVerificationRequired } -> "Verification required"
-                sourceSnapshots.any { it.browserTransportActive } -> "Chromium transport active"
-                sourceSnapshots.any { it.cooldownRemainingMillis > 0L } -> "Cooling down"
-                else -> "Ready"
-            } + " • WebView ${webViewPackage?.versionName ?: "unavailable"}"
-        settingRow(R.drawable.wna_globe, "Source Access Status", sourceAccessSummary) {
-            val detail =
-                if (sourceSnapshots.isEmpty()) {
-                    "No protected-source requests in this app session"
-                } else {
-                    sourceSnapshots.joinToString("\n") { snapshot ->
-                        "${snapshot.host}: requests ${snapshot.requestCount} • challenges ${snapshot.challengeCount} • " +
-                            "rate limits ${snapshot.rateLimitCount} • browser pages ${snapshot.browserRenderCount}"
-                    }
-                }
-            toast(detail)
-        }
-        settingRow(
-            R.drawable.wna_share,
-            "Share Activity Logs",
-            "Export everything the app did in the last 7 days (syncs, downloads, library changes, errors) to send for troubleshooting",
-        ) {
-            exportAndShare({
-                ActivityLogExporter.export(
-                    directory = app.appContainer.repository.storage.backupRoot,
-                    library = repository.library(),
-                    queue = repository.queue(),
-                    reliability = sourceNetwork.reliabilitySnapshots(),
-                )
-            })
-        }
-        settingRow(
-            R.drawable.wna_share,
-            "Share Source Access Logs",
-            "Export a diagnostic log of source-access events (no URLs, titles, or cookies)",
-        ) {
-            exportAndShare({ BypassLogExporter.export(app.appContainer.repository.storage.backupRoot, sourceNetwork, repository.queue()) })
-        }
-        settingRow(R.drawable.wna_star, "Patreon Account", patreonAccountSummary()) {
-            showPatreonAccount()
-        }
-        settingRow(
-            R.drawable.wna_cleaning,
-            "Reset Source Web Session",
-            "Clear source cookies, browser storage, shared cache, and access cooldowns",
-        ) {
-            confirm("Reset source browser sessions? The next request may require verification.", confirmLabel = "Reset") {
-                resetSourceWebSessions(browserSessionSources)
-            }
-        }
-        divider()
-        section("Danger Zone")
-        settingRow(R.drawable.wna_delete, "Clear Local Storage", "Delete all novels and reset app data") {
-            confirm("Delete all novels, settings, and downloads?", confirmLabel = "Delete") {
-                scope.launch {
-                    repository.clearAll()
-                    showLibrary()
-                }
-            }
-        }
+
+        addView(
+            makeText(
+                context,
+                "Webnovel Archiver ${BuildConfig.VERSION_NAME}\nMade for offline reading and listening",
+                Type.BODY_SMALL,
+                colors.faint,
+            ).apply {
+                gravity = Gravity.CENTER
+                setLineSpacing(0f, FOOTER_LINE_SPACING)
+                setPadding(0, dp(Spacing.XL + 4), 0, dp(Spacing.SM))
+            },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+        )
     }
 }
 
-internal fun ScreenHost.showDownloadSettings() {
-    val settings = repository.settings.get()
-    val sourceSettings = repository.sourceDownloadSettings.get()
-    screen(route = AppRoute.DownloadSettings, title = "Download Settings", scrollable = true) {
-        // Parallelism is across sources; each source runs one sequential lane with its delay between starts.
-        section("Defaults")
-        text(
-            "Download from different sources together. Requests to the same source stay sequential and use its own delay.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
-        )
-        spacer(Space.XS)
-        // One card so the number fields read as a unit; labeledField adds itself to the card and
-        // returns the EditText, so capture via nullable vars.
-        var parallelSources: EditText? = null
-        var delayMin: EditText? = null
-        var delayMax: EditText? = null
-        var maxChapters: EditText? = null
-        addView(
-            card {
-                parallelSources =
-                    labeledField(
-                        "Parallel sources",
-                        (settings.maxParallelSources ?: 2).toString(),
-                        InputType.TYPE_CLASS_NUMBER,
-                    )
-                spacer(Space.SM)
-                delayMin = labeledField("Delay min (ms)", settings.downloadDelay.toString(), InputType.TYPE_CLASS_NUMBER)
-                spacer(Space.SM)
-                delayMax = labeledField("Delay max (ms)", settings.downloadDelayMax.toString(), InputType.TYPE_CLASS_NUMBER)
-                spacer(Space.SM)
-                maxChapters = labeledField("Max chapters per EPUB", settings.maxChaptersPerEpub.toString(), InputType.TYPE_CLASS_NUMBER)
-            },
-        )
+/** "On this phone": novels, chapters offline, generated audio, and the newest backup file. */
+private fun ScreenHost.addPhoneSummaryCard(container: LinearLayout) {
+    lateinit var values: List<TextView>
+    lateinit var backupLine: TextView
+    container.tintedCard(ThemeManager.colors.primary) {
+        addView(makeEyebrow(context, "On this phone"))
+        values = statGrid(listOf("novels", "chapters offline", "audio"))
+        backupLine =
+            makeText(context, "", Type.BODY_SMALL, ThemeManager.colors.onSurfaceVariant).apply {
+                setPadding(0, dp(Spacing.SM + 2), 0, 0)
+            }
+        addView(backupLine)
+    }
+    scope.launch {
+        val numbers = NumberFormat.getIntegerInstance()
+        val summary =
+            withContext(Dispatchers.IO) {
+                val library = repository.library()
+                val audio =
+                    runCatching {
+                        app.appContainer.narration.store
+                            .totalBytes()
+                    }.getOrDefault(0L)
+                val newest = runCatching { repository.listBackupFiles() }.getOrDefault(emptyList()).maxByOrNull { it.lastModifiedMillis }
+                PhoneSummary(library.size, library.sumOf { it.downloadedChapters }, audio, newest?.lastModifiedMillis, newest?.sizeBytes)
+            }
+        values[0].text = numbers.format(summary.novels)
+        values[1].text = numbers.format(summary.chapters)
+        values[2].text = NarrationPlanning.formatBytes(summary.audioBytes)
+        backupLine.text =
+            summary.lastBackupAt?.let { at ->
+                "Last backup ${BackupFilePlanning.timestampLabel(at)} · ${BackupFilePlanning.sizeLabel(summary.lastBackupBytes ?: 0L)}"
+            } ?: "No backup files yet"
+    }
+}
 
-        // Overrides affect pacing only; per-source concurrency is deliberately fixed at one.
-        section("Source Delay Overrides")
-        text(
-            "Replace the delay defaults for a specific source. Fields appear when you enable an override.",
-            Type.BODY_SMALL,
-            ThemeManager.colors.onSurfaceVariant,
+private data class PhoneSummary(
+    val novels: Int,
+    val chapters: Int,
+    val audioBytes: Long,
+    val lastBackupAt: Long?,
+    val lastBackupBytes: Long?,
+)
+
+/** Auto / Cover / Inner: how multi-column layouts behave on the inner screen. */
+private fun ScreenHost.layoutModeRow(): LinearLayout {
+    val colors = ThemeManager.colors
+    val display = repository.getDisplayPreferences()
+    val selected = LAYOUT_MODES.indexOfFirst { it.first == display.screenLayoutMode }.coerceAtLeast(0)
+    return LinearLayout(app).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setPadding(dp(Spacing.LG), dp(Spacing.MD), dp(Spacing.LG), dp(Spacing.MD))
+        addView(
+            ImageView(app).apply {
+                setImageDrawable(app.tintedIcon(R.drawable.wna_smartphone, colors.primary))
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                background = roundedBg(colors.elevation3, dp(LEAD_RADIUS_DP).toFloat())
+            },
+            LinearLayout.LayoutParams(dp(LEAD_DP), dp(LEAD_DP)).apply { marginEnd = dp(Spacing.MD + 2) },
         )
-        spacer(Space.XS)
-        val sourceInputs =
-            SourceRegistry.all().associate { provider ->
-                val override = sourceSettings[provider.id] ?: sourceSettings[provider.name]
-                var toggle: CheckBox? = null
-                var sourceDelayMin: EditText? = null
-                var sourceDelayMax: EditText? = null
-                // row/labeledField add themselves to the receiver ViewGroup — build inside card { }
-                // so they end up as children of the card, not the screen content.
+        addView(
+            LinearLayout(app).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(makeText(app, "Large screen layout", Type.TITLE_SMALL, colors.onSurface).apply { textSize = ROW_TITLE_SP })
                 addView(
-                    card {
-                        row {
-                            addView(
-                                makeText(context, provider.name, Type.TITLE_MEDIUM, ThemeManager.colors.onSurface),
-                                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                    makeText(
+                        app,
+                        "How the inner screen is used",
+                        Type.BODY_SMALL,
+                        colors.onSurfaceVariant,
+                    ).apply { setPadding(0, dp(2), 0, 0) },
+                )
+                val control =
+                    SegmentedSelector(app, LAYOUT_MODES.map { it.second }, selected) { index ->
+                        scope.launch {
+                            repository.saveDisplayPreferences(
+                                repository.getDisplayPreferences().copy(screenLayoutMode = LAYOUT_MODES[index].first),
                             )
-                            // No switch component exists; the label-less themed checkbox acts as the toggle.
-                            val cb =
-                                CheckBox(context).apply {
-                                    text = ""
-                                    isChecked = override != null
-                                }
-                            styledCheckBox(cb)
-                            addView(cb)
-                            toggle = cb
+                            showSettings()
                         }
-                        val fieldsContainer =
-                            LinearLayout(context).apply {
-                                orientation = LinearLayout.VERTICAL
-                                visibility = if (override != null) View.VISIBLE else View.GONE
-                            }
-                        fieldsContainer.apply {
-                            sourceDelayMin =
-                                labeledField(
-                                    "Delay min (ms)",
-                                    (override?.delay ?: settings.downloadDelay).toString(),
-                                    InputType.TYPE_CLASS_NUMBER,
-                                )
-                            sourceDelayMax =
-                                labeledField(
-                                    "Delay max (ms)",
-                                    (override?.delayMax ?: settings.downloadDelayMax).toString(),
-                                    InputType.TYPE_CLASS_NUMBER,
-                                )
-                        }
-                        addView(fieldsContainer)
-                        // Reveal/hide without re-render so typed values survive while checked.
-                        toggle!!.setOnCheckedChangeListener { _, isChecked ->
-                            fieldsContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
-                        }
+                    }
+                addView(
+                    control.view,
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = dp(Spacing.SM + 2)
                     },
                 )
-                provider.id to SourceDownloadInputs(toggle!!, sourceDelayMin!!, sourceDelayMax!!)
-            }
-
-        fullButton("Save", Btn.FILLED, R.drawable.wna_check, bottomMarginDp = Space.SM) {
-            val delayRange =
-                SettingsValidation.delayRange(
-                    delayMin!!.text.toString(),
-                    delayMax!!.text.toString(),
-                    settings.downloadDelay,
-                    settings.downloadDelayMax,
-                )
-            val updatedSettings =
-                settings.copy(
-                    maxParallelSources =
-                        SettingsValidation.concurrency(
-                            parallelSources!!.text.toString(),
-                            settings.maxParallelSources ?: 2,
-                        ),
-                    downloadDelay = delayRange.first,
-                    downloadDelayMax = delayRange.second,
-                    maxChaptersPerEpub = SettingsValidation.maxChaptersPerEpub(maxChapters!!.text.toString(), settings.maxChaptersPerEpub),
-                )
-            val updatedSourceSettings =
-                sourceInputs
-                    .mapNotNull { (name, inputs) ->
-                        if (!inputs.enabled.isChecked) {
-                            null
-                        } else {
-                            val sourceDelayRange =
-                                SettingsValidation.delayRange(
-                                    inputs.delayMin.text.toString(),
-                                    inputs.delayMax.text.toString(),
-                                    settings.downloadDelay,
-                                    settings.downloadDelayMax,
-                                )
-                            name to
-                                SourceDownloadSettings(
-                                    concurrency = 1,
-                                    delay = sourceDelayRange.first,
-                                    delayMax = sourceDelayRange.second,
-                                )
-                        }
-                    }.toMap()
-            scope.launch {
-                repository.settings.save(updatedSettings)
-                repository.sourceDownloadSettings.save(updatedSourceSettings)
-                toast("Download settings saved")
-            }
-        }
+            },
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+        )
     }
 }
+
+private fun ScreenHost.voiceSummary(): String {
+    val tts = repository.ttsSettings.get()
+    val engine = TtsEnginePlanning.label(tts.enginePackage, TtsEngineCatalog.choices(app), TtsEngineCatalog.phoneDefault(app))
+    return SettingsHubPlanning.voiceSummary(engine, ttsVoiceLabel(tts.voiceIdentifier), tts.rate)
+}
+
+private fun ScreenHost.aiSummary(): String {
+    if (repository.aiSettings
+            .get()
+            .apiKey
+            .isNullOrBlank()
+    ) {
+        return "Add an OpenRouter key"
+    }
+    val month = AiUsagePlanning.summaryForPeriod(repository.getAiUsageLedger(), AiUsagePeriod.CURRENT_MONTH, System.currentTimeMillis())
+    return "OpenRouter · ${formatUsd(month.costUsd)} this month"
+}
+
+private fun ScreenHost.notificationsSummary(): String {
+    if (!AppNotificationChannels.hasPostNotificationsPermission(app)) return "Not allowed for downloads"
+    if (!AppNotificationChannels.areAppNotificationsEnabled(app)) return "Blocked in Android settings"
+    val on = AppNotificationCategory.entries.count { AppNotificationChannels.status(app, it) == NotificationCategoryStatus.ENABLED }
+    return "Allowed · $on of ${AppNotificationCategory.entries.size} categories on"
+}
+
+internal const val DEFAULT_PARALLEL_SOURCES = 2
+private const val FOOTER_LINE_SPACING = 1.4f
+private const val LEAD_DP = 40
+private const val LEAD_RADIUS_DP = 12
+private const val ROW_TITLE_SP = 15f

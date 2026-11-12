@@ -36,53 +36,6 @@ import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/**
- * Compact single-line rule row used by the sentence-removal list: one line of truncated text that
- * opens an edit prompt on tap, with a trailing delete icon. Avoids the repetitive full-card +
- * button-row wall that 10+ default rules produced (audit C1).
- */
-internal fun ScreenHost.compactRuleRow(
-    text: String,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-): LinearLayout {
-    val radiusPx = dp(8).toFloat()
-    val row =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(12), dp(6), dp(12))
-            background = ripple(roundedBg(ThemeManager.colors.elevation1, radiusPx), radiusPx, ThemeManager.colors.onSurface)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { onEdit() }
-            layoutParams =
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    bottomMargin = dp(Space.SM + 2)
-                }
-        }
-    row.addView(
-        makeText(app, text, Type.BODY_MEDIUM, ThemeManager.colors.onSurface).apply {
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        },
-    )
-    row.addView(
-        ImageView(app).apply {
-            setImageDrawable(app.tintedIcon(R.drawable.wna_delete, ThemeManager.colors.onSurfaceVariant))
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = selectableRipple(ThemeManager.colors.onSurface)
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { onDelete() }
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-        },
-    )
-    return row
-}
-
 internal fun ScreenHost.showRegexRuleDialog(existing: RegexCleanupRule?) {
     val view = FormLayout(app, dialog = true)
     val name = makeField(app, existing?.name.orEmpty(), "Rule name", InputType.TYPE_CLASS_TEXT)
