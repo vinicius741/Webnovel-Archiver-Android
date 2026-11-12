@@ -1,0 +1,4 @@
+<resources>
+  <!-- Purple instead of the stable app's navy, so the two launcher icons are told apart at a glance. -->
+  <color name="iconBackground">#4A2C6E</color>
+</resources>

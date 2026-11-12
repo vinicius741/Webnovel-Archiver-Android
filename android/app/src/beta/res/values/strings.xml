@@ -1,0 +1,5 @@
+<resources>
+  <!-- The beta app installs beside the stable one, so its launcher name and startup title say so. -->
+  <string name="app_name">Webnovel Archiver Beta</string>
+  <string name="startup_app_name">Webnovel Archiver Beta</string>
+</resources>

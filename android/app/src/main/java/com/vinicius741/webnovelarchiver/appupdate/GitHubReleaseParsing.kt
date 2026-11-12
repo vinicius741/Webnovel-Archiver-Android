@@ -37,7 +37,17 @@ object GitHubReleaseParsing {
     fun parseRelease(json: String): LatestRelease? {
         val root = runCatching { JsonParser.parseString(json) }.getOrNull()
         if (root == null || !root.isJsonObject) return null
-        val release = root.asJsonObject
+        return releaseFrom(root.asJsonObject)
+    }
+
+    /** Parses GitHub's `GET /repos/{owner}/{repo}/releases` listing; `null` when it is not a list. */
+    fun parseReleaseList(json: String): List<LatestRelease>? {
+        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
+        if (root == null || !root.isJsonArray) return null
+        return root.asJsonArray.mapNotNull { element -> element.takeIf { it.isJsonObject }?.asJsonObject?.let(::releaseFrom) }
+    }
+
+    private fun releaseFrom(release: JsonObject): LatestRelease? {
         val tag = release.string("tag_name")?.takeIf { it.isNotBlank() } ?: return null
         val assets =
             release
@@ -66,9 +76,11 @@ object GitHubReleaseParsing {
         val json = JsonObject()
         json.addProperty("tag_name", release.tag)
         json.addProperty("name", release.title)
+        val versionCode = AppUpdatePlanning.versionCodeFromNotes(release.body)
+        val channel = AppUpdatePlanning.channelFromNotes(release.body)
         json.addProperty(
             "body",
-            AppUpdatePlanning.versionCodeFromNotes(release.body)?.let { "<!-- app-update versionCode=$it -->" }.orEmpty(),
+            if (versionCode != null && channel != null) channel.marker(versionCode) else "",
         )
         json.addProperty("html_url", release.htmlUrl)
         json.addProperty("published_at", release.publishedAt)

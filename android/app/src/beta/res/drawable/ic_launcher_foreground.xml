@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Beta launcher foreground: the stable mark (src/main/res/drawable/ic_launcher_foreground.xml)
+     with an orange beta badge. Keep the book paths in sync with the stable file. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+    <path
+        android:fillColor="#C9A84C"
+        android:pathData="M96,252 L122,252 L136,284 L296,284 L310,252 L336,252 L336,322 Q336,340 318,340 L114,340 Q96,340 96,322 Z" />
+    <path
+        android:fillColor="#8B6914"
+        android:pathData="M136,284 L296,284 L286,304 L146,304 Z" />
+    <path
+        android:fillColor="#D4A88C"
+        android:pathData="M112,120 Q174,112 216,150 L216,286 Q174,258 112,270 Z" />
+    <path
+        android:fillColor="#A65D3C"
+        android:pathData="M320,120 Q258,112 216,150 L216,286 Q258,258 320,270 Z" />
+    <path
+        android:fillColor="#F2E4C4"
+        android:pathData="M122,104 Q178,100 210,132 L210,270 Q176,246 122,254 Z" />
+    <path
+        android:fillColor="#FFFDF9"
+        android:pathData="M310,104 Q254,100 222,132 L222,270 Q256,246 310,254 Z" />
+    <path
+        android:fillColor="#C9A84C"
+        android:pathData="M204,128 L228,128 L228,230 L216,218 L204,230 Z" />
+    <path
+        android:fillColor="#4A2C6E"
+        android:pathData="M188,312 L244,312 Q250,312 250,318 Q250,324 244,324 L188,324 Q182,324 182,318 Q182,312 188,312 Z" />
+    <!-- Beta badge, inside the adaptive-icon safe zone: a background-colored halo separates the
+         orange disc from the book, and a stroked beta glyph sits on the disc. -->
+    <path
+        android:fillColor="#4A2C6E"
+        android:pathData="M286,224 A48,48 0 1,1 286,320 A48,48 0 1,1 286,224 Z" />
+    <path
+        android:fillColor="#F08A24"
+        android:pathData="M286,232 A40,40 0 1,1 286,312 A40,40 0 1,1 286,232 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M269,302 L269,262 C269,250 277,244 286,244 C295,244 301,250 301,258 C301,266 295,271 286,271 C297,271 304,277 304,286 C304,295 297,300 288,300 C280,300 274,297 269,292" />
+</vector>

@@ -1,0 +1,174 @@
+name: Publish Android Beta APK
+
+# Publishes the beta app (application id ...nativeapp.beta, launcher name "Webnovel Archiver Beta")
+# as a GitHub prerelease. Unlike the stable workflow it runs from any branch, so large changes can
+# be tried on a phone without touching the stable app or its "latest" release.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-beta
+  cancel-in-progress: false
+
+jobs:
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The beta number is this workflow's run number, which only ever increases (renaming this file
+      # would reset it). It must match android/app/build.gradle: versionName gets "-beta.<n>" and
+      # versionCode is 1000000 + n, independent of the branch's stable versionCode.
+      - name: Read beta version
+        id: version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          source = Path('android/app/build.gradle').read_text()
+          stable_name = re.search(r"versionName '([A-Za-z0-9][A-Za-z0-9._-]*)'", source).group(1)
+          number = int(os.environ['GITHUB_RUN_NUMBER'])
+          name = f'{stable_name}-beta.{number}'
+          code = 1000000 + number
+          apk_name = f"WebnovelArchiverBeta-v{name}-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}.apk"
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'number={number}\nname={name}\ncode={code}\ntag=v{name}\n')
+              output.write(f'apk_name={apk_name}\n')
+          PY
+
+      - name: Check signing secrets and release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          WEBNOVEL_RELEASE_KEYSTORE_BASE64: ${{ secrets.WEBNOVEL_RELEASE_KEYSTORE_BASE64 }}
+          WEBNOVEL_RELEASE_STORE_PASSWORD: ${{ secrets.WEBNOVEL_RELEASE_STORE_PASSWORD }}
+          WEBNOVEL_RELEASE_KEY_ALIAS: ${{ secrets.WEBNOVEL_RELEASE_KEY_ALIAS }}
+          WEBNOVEL_RELEASE_KEY_PASSWORD: ${{ secrets.WEBNOVEL_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          for name in WEBNOVEL_RELEASE_KEYSTORE_BASE64 WEBNOVEL_RELEASE_STORE_PASSWORD WEBNOVEL_RELEASE_KEY_ALIAS WEBNOVEL_RELEASE_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing Actions secret: $name"
+              exit 1
+            fi
+          done
+          tags=$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")
+          if [[ -n "$tags" ]]; then
+            echo "::error::Beta tag already exists. Dispatch the workflow again for a new beta number."
+            exit 1
+          fi
+
+      # The quality gate runs on pushes to main (quality-gate.yml). A beta from another branch has no
+      # gate run unless Quality Gate was dispatched on that branch, so expect a warning then. It never
+      # blocks the beta.
+      - name: Report quality gate status for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          result=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow quality-gate.yml --commit "$GITHUB_SHA" \
+            --json status,conclusion,url -q '.[0] | "\(.status) \(.conclusion) \(.url)"' 2>/dev/null || true)
+          read -r status conclusion url <<< "$result"
+          if [[ "$conclusion" == success ]]; then
+            echo "Quality gate passed for $GITHUB_SHA: $url"
+          elif [[ -z "$status" ]]; then
+            echo "::warning::No quality gate run found for $GITHUB_SHA."
+          elif [[ "$status" != completed ]]; then
+            echo "::warning::Quality gate for $GITHUB_SHA is still running: $url"
+          else
+            echo "::warning::Quality gate for $GITHUB_SHA ended with '$conclusion': $url"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build signed beta
+        env:
+          WEBNOVEL_BETA_NUMBER: ${{ steps.version.outputs.number }}
+          WEBNOVEL_RELEASE_KEYSTORE_BASE64: ${{ secrets.WEBNOVEL_RELEASE_KEYSTORE_BASE64 }}
+          WEBNOVEL_RELEASE_STORE_FILE: ${{ runner.temp }}/webnovel-release.jks
+          WEBNOVEL_RELEASE_STORE_PASSWORD: ${{ secrets.WEBNOVEL_RELEASE_STORE_PASSWORD }}
+          WEBNOVEL_RELEASE_KEY_ALIAS: ${{ secrets.WEBNOVEL_RELEASE_KEY_ALIAS }}
+          WEBNOVEL_RELEASE_KEY_PASSWORD: ${{ secrets.WEBNOVEL_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          umask 077
+          printf '%s' "$WEBNOVEL_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$WEBNOVEL_RELEASE_STORE_FILE"
+          android/gradlew -p android :app:assembleBeta --no-daemon
+
+      - name: Verify and package APK
+        env:
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        shell: bash
+        run: |
+          apk=android/app/build/outputs/apk/beta/app-beta.apk
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$apk"
+          analyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          test "$("$analyzer" manifest application-id "$apk")" = com.vinicius741.webnovelarchiver.nativeapp.beta
+          test "$("$analyzer" manifest version-name "$apk")" = "$VERSION_NAME"
+          test "$("$analyzer" manifest version-code "$apk")" = "$VERSION_CODE"
+          test "$("$analyzer" manifest debuggable "$apk")" = false
+          mkdir -p release-assets
+          cp "$apk" "release-assets/$APK_NAME"
+          cd release-assets
+          sha256sum "$APK_NAME" > SHA256SUMS.txt
+
+      - name: Publish GitHub prerelease
+        env:
+          BRANCH: ${{ github.ref_name }}
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Beta build from \`$BRANCH\` at $GITHUB_SHA.
+
+          Download **$APK_NAME** below on your Android phone and open it to install.
+
+          This is **Webnovel Archiver Beta**, a separate app from the stable Webnovel Archiver. It installs beside it with its own icon and its own, initially empty, library; installing it never changes the stable app or its data. To try your library in the beta, export a full backup from the stable app and restore it in the beta.
+
+          Android may ask you to allow installation from your browser. The source-code ZIP and tarball are not app installers.
+
+          Already installed? Open Settings → App Updates in the beta app to update in place.
+
+          <!-- app-update channel=beta versionCode=$VERSION_CODE -->
+          EOF
+          gh release create "$RELEASE_TAG" "release-assets/$APK_NAME" release-assets/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Webnovel Archiver Beta $VERSION_NAME" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease --latest=false
+          printf 'Download: https://github.com/%s/releases/download/%s/%s\n' "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$APK_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing key
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/webnovel-release.jks"

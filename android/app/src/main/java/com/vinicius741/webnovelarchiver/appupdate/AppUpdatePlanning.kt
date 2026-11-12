@@ -20,10 +20,59 @@ sealed interface UpdateEvaluation {
     ) : UpdateEvaluation
 }
 
+/**
+ * The release track an installed build follows. Stable and beta are separate apps (different
+ * application ids), so each only ever offers its own track's releases: a stable release would
+ * install beside a beta app instead of updating it, and the reverse.
+ */
+enum class UpdateChannel(
+    /** The `channel=` value in the release-notes marker; stable releases omit it. */
+    val markerName: String,
+) {
+    STABLE("stable"),
+    BETA("beta"),
+    ;
+
+    /**
+     * Whether [release] belongs to this track. Stable takes published, non-prerelease releases
+     * (GitHub's "latest" already excludes prereleases) and also refuses a beta marker, in case a beta
+     * loses its prerelease flag on GitHub. Beta takes only prereleases whose marker says
+     * `channel=beta`, so an unrelated prerelease is never offered to the beta app.
+     */
+    fun includes(release: LatestRelease): Boolean {
+        if (release.draft) return false
+        return when (this) {
+            STABLE -> !release.prerelease && AppUpdatePlanning.channelFromNotes(release.body) != BETA
+            BETA -> release.prerelease && AppUpdatePlanning.channelFromNotes(release.body) == BETA
+        }
+    }
+
+    /** The newest of this track's releases in a GitHub listing, by marker version code; `null` when none. */
+    fun newest(releases: List<LatestRelease>): LatestRelease? =
+        releases
+            .filter(::includes)
+            .maxByOrNull { AppUpdatePlanning.versionCodeFromNotes(it.body) ?: 0 }
+
+    /** The release-notes marker the publish workflow writes for this track. */
+    fun marker(versionCode: Int): String =
+        when (this) {
+            STABLE -> "<!-- app-update versionCode=$versionCode -->"
+            BETA -> "<!-- app-update channel=beta versionCode=$versionCode -->"
+        }
+
+    companion object {
+        /** Reads `BuildConfig.UPDATE_CHANNEL`; anything unknown follows the stable track. */
+        fun fromBuildConfig(value: String): UpdateChannel = entries.firstOrNull { it.markerName == value } ?: STABLE
+    }
+}
+
 object AppUpdatePlanning {
     const val AUTO_CHECK_INTERVAL_MILLIS: Long = 12L * 60 * 60 * 1000
     private const val PREFERRED_APK_PREFIX = "WebnovelArchiver"
-    private val VERSION_CODE_MARKER = Regex("""<!--\s*app-update\s+versionCode=(\d+)\s*-->""")
+
+    // Stable releases write `<!-- app-update versionCode=N -->`, the exact form that already
+    // installed stable apps read; beta releases add `channel=beta` before the version code.
+    private val VERSION_CODE_MARKER = Regex("""<!--\s*app-update\s+(?:channel=([A-Za-z]+)\s+)?versionCode=(\d+)\s*-->""")
     private val NUMERIC_VERSION = Regex("""^\d+(?:\.\d+)*""")
 
     fun versionNameFromTag(tag: String): String = tag.trim().removePrefix("v").removePrefix("V")
@@ -32,8 +81,15 @@ object AppUpdatePlanning {
         VERSION_CODE_MARKER
             .find(body)
             ?.groupValues
-            ?.get(1)
+            ?.get(2)
             ?.toIntOrNull()
+
+    /** The track a release's marker names: no `channel=` means stable, no marker means none. */
+    fun channelFromNotes(body: String): UpdateChannel? {
+        val marker = VERSION_CODE_MARKER.find(body) ?: return null
+        val name = marker.groupValues[1].ifEmpty { UpdateChannel.STABLE.markerName }
+        return UpdateChannel.entries.firstOrNull { it.markerName.equals(name, ignoreCase = true) }
+    }
 
     /**
      * Compares the leading dotted numbers of two version names (`1.0.10-native` > `1.0.9-native`).
@@ -70,8 +126,9 @@ object AppUpdatePlanning {
         release: LatestRelease,
         installedVersionCode: Long,
         installedVersionName: String,
+        channel: UpdateChannel = UpdateChannel.STABLE,
     ): UpdateEvaluation {
-        if (release.draft || release.prerelease) return UpdateEvaluation.UpToDate(release.tag)
+        if (!channel.includes(release)) return UpdateEvaluation.UpToDate(release.tag)
         val versionName = versionNameFromTag(release.tag)
         val versionCode = versionCodeFromNotes(release.body)
         val newer =

@@ -95,8 +95,8 @@ How releases reach installed apps.
 
 | File | Description |
 |------|-------------|
-| [build-and-publish.md](release/build-and-publish.md) | Local release builds, signing setup, GitHub Actions secrets, publishing, and installation troubleshooting. |
-| `in-app-updates.md` | Update checks against GitHub Releases: Settings → App Updates, throttled startup check and prompt, the release-notes `versionCode` marker, the browser download hand-off, and why the app no longer installs APKs itself (Google Play Protect). |
+| [build-and-publish.md](release/build-and-publish.md) | Local release builds, signing setup, GitHub Actions secrets, publishing, installation troubleshooting, and the side-by-side beta track (separate app ID, name, and icon; beta versioning; the any-branch beta prerelease workflow). |
+| `in-app-updates.md` | Update checks against GitHub Releases: Settings → App Updates, throttled startup check and prompt, stable and beta update channels, the release-notes `versionCode` marker, the browser download hand-off, and why the app no longer installs APKs itself (Google Play Protect). |
 
 ### `sources/`
 

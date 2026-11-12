@@ -46,6 +46,7 @@ The native app ships as distinct application IDs — each is a separate app with
 
 - **Simulator / emulator:** always the **debug** variant — `com.vinicius741.webnovelarchiver.nativeapp.debug` (APK: `android/app/build/outputs/apk/debug/app-debug.apk`). This is where the user's in-progress library and test data live; the release variant on the emulator starts empty.
 - **Owner's phone:** always the **release** variant — `com.vinicius741.webnovelarchiver.nativeapp` (APK: `android/app/build/outputs/apk/release/app-release.apk`), and only when phone use is explicitly authorized for the current message.
+- **Beta:** the **beta** variant — `com.vinicius741.webnovelarchiver.nativeapp.beta` (APK: `android/app/build/outputs/apk/beta/app-beta.apk`) — is a separate app beside the stable one, with its own name, icon, and library. Install it on the phone only when the user asks for the beta specifically; never install it in place of, or to replace, the stable release. Its track is described in `docs/release/build-and-publish.md#beta-track`.
 - **Instrumentation tests:** use the **instrumentation** variant — `com.vinicius741.webnovelarchiver.nativeapp.instrumentation` — so connected tests do not read, clear, or overwrite the debug library sandbox.
 
 ## Build and Validation

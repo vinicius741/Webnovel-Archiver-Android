@@ -21,6 +21,8 @@ Download the APK from the [latest release](https://github.com/vinicius741/Webnov
 
 After installation, use **Settings → App Updates** to check for new versions. *Download update* opens the new APK in your browser; install it over the existing app to keep your library.
 
+To try upcoming changes, install **Webnovel Archiver Beta** from a [prerelease](https://github.com/vinicius741/Webnovel-Archiver-Android/releases). It is a separate app with its own purple icon and its own library, so it installs beside the stable app without changing it. See the [beta track](docs/release/build-and-publish.md#beta-track).
+
 ## Development
 
 Open `android/` in Android Studio. You need JDK 17 and Android SDK platform 37.
@@ -41,7 +43,7 @@ android/gradlew -p android :app:lintKotlin :app:ci
 android/gradlew -p android :app:lintKotlin :app:releaseCheck
 ```
 
-The debug APK is at `android/app/build/outputs/apk/debug/app-debug.apk`. Debug and release builds have separate app IDs and libraries. Use debug on the emulator and a signed release on your phone.
+The debug APK is at `android/app/build/outputs/apk/debug/app-debug.apk`. Debug, release, and beta builds have separate app IDs and libraries. Use debug on the emulator and a signed release (or beta) on your phone.
 
 For release builds, signing, and GitHub Actions publishing, see the [release guide](docs/release/build-and-publish.md).
 

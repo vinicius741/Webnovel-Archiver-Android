@@ -21,6 +21,18 @@ def releaseKeyAlias = signingValue('WEBNOVEL_RELEASE_KEY_ALIAS')
 def releaseKeyPassword = signingValue('WEBNOVEL_RELEASE_KEY_PASSWORD')
 def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
 
+// Beta track: a separate app (own application id, name, icon, and library) published as GitHub
+// prereleases. The beta workflow passes its run number as WEBNOVEL_BETA_NUMBER; local beta builds
+// default to 0. A beta's versionCode is 1000000 + that number and does not depend on the branch's
+// stable versionCode: betas are published from any branch, and a branch cut before a stable bump
+// must still produce a higher code than the previous beta. The release workflows read the literal
+// `versionCode`/`versionName` lines in defaultConfig, so keep them literal.
+def betaNumber = (signingValue('WEBNOVEL_BETA_NUMBER') ?: '0').toString().toInteger()
+def betaVersionCode = 1000000 + betaNumber
+if (betaNumber < 0 || betaVersionCode > 2100000000) {
+    throw new GradleException("WEBNOVEL_BETA_NUMBER must be between 0 and 2099000000, got $betaNumber")
+}
+
 android {
     namespace 'com.vinicius741.webnovelarchiver'
     compileSdk 37
@@ -46,6 +58,9 @@ android {
         }
         // GitHub repository whose latest release the in-app update check reads (owner/name).
         buildConfigField 'String', 'UPDATE_REPOSITORY', '"vinicius741/Webnovel-Archiver-Android"'
+        // Release track the in-app update check follows (appupdate/UpdateChannel); beta overrides it.
+        buildConfigField 'String', 'UPDATE_CHANNEL', '"stable"'
+        manifestPlaceholders = [deepLinkScheme: 'webnovel-archiver']
     }
 
     signingConfigs {
@@ -81,6 +96,18 @@ android {
             }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+        // The beta app: the release build (minified, release-signed) under its own application id,
+        // so it installs beside the stable app with a separate library. Its name and icon live in
+        // src/beta/res; it reuses the release-only sources (src/release/java).
+        beta {
+            initWith release
+            applicationIdSuffix '.beta'
+            versionNameSuffix "-beta.$betaNumber"
+            matchingFallbacks = ['release']
+            buildConfigField 'String', 'UPDATE_CHANNEL', '"beta"'
+            // A distinct deep-link scheme keeps links from asking which of the two apps to open.
+            manifestPlaceholders = [deepLinkScheme: 'webnovel-archiver-beta']
+        }
     }
 
     compileOptions {
@@ -93,6 +120,9 @@ android {
             java.srcDir 'src/debug/java'
             assets.srcDir 'src/debug/assets'
         }
+        beta {
+            java.srcDir 'src/release/java'
+        }
         test.resources.srcDir 'src/debug/assets'
     }
 
@@ -102,6 +132,12 @@ android {
     // push to main, so skip the duplicate lintVital pass that would otherwise slow assembleRelease.
     lint {
         checkReleaseBuilds false
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType('beta')) { variant ->
+        variant.outputs.each { output -> output.versionCode.set(betaVersionCode) }
     }
 }
 
@@ -222,6 +258,9 @@ afterEvaluate {
         finalizedBy 'copyDebugApkToProjectRoot'
     }
     tasks.named('preReleaseBuild') {
+        dependsOn 'requireReleaseSigning'
+    }
+    tasks.named('preBetaBuild') {
         dependsOn 'requireReleaseSigning'
     }
     tasks.named('assembleRelease') {

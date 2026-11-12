@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Beta themed-icon mark: the stable silhouette (src/main/res/drawable/ic_launcher_monochrome.xml)
+     with a hole cut around a ringed beta glyph. The clip path's circle winds against the outer
+     rectangle, so the nonzero rule leaves it empty. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="432"
+    android:viewportHeight="432">
+    <group>
+        <clip-path android:pathData="M0,0 L432,0 L432,432 L0,432 Z M286,220 A52,52 0 1,0 286,324 A52,52 0 1,0 286,220 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M96,252 L122,252 L136,284 L296,284 L310,252 L336,252 L336,322 Q336,340 318,340 L114,340 Q96,340 96,322 Z M112,120 Q174,112 216,150 Q258,112 320,120 L320,270 Q258,258 216,286 Q174,258 112,270 Z M122,104 Q178,100 216,132 Q254,100 310,104 L310,254 Q256,246 216,270 Q176,246 122,254 Z M204,128 L228,128 L228,230 L216,218 L204,230 Z" />
+    </group>
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="7"
+        android:pathData="M286,230 A42,42 0 1,1 286,314 A42,42 0 1,1 286,230 Z" />
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M269,302 L269,262 C269,250 277,244 286,244 C295,244 301,250 301,258 C301,266 295,271 286,271 C297,271 304,277 304,286 C304,295 297,300 288,300 C280,300 274,297 269,292" />
+</vector>

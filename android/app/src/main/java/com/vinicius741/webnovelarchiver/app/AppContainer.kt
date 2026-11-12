@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.ai.DecisionClient
 import com.vinicius741.webnovelarchiver.ai.OpenRouterClient
 import com.vinicius741.webnovelarchiver.appupdate.AppUpdateCoordinator
 import com.vinicius741.webnovelarchiver.appupdate.GitHubReleaseClient
+import com.vinicius741.webnovelarchiver.appupdate.UpdateChannel
 import com.vinicius741.webnovelarchiver.data.backup.BackupFilePlanning
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityCategory
 import com.vinicius741.webnovelarchiver.data.diagnostics.ActivityLog
@@ -127,6 +128,8 @@ class AppContainer internal constructor(
     val aiCoverArtEngine: AiCoverArtEngine =
         AiCoverArtEngine(repository, openRouter, chapterEvidenceSelector, chapterEvidence)
 
+    private val updateChannel = UpdateChannel.fromBuildConfig(com.vinicius741.webnovelarchiver.BuildConfig.UPDATE_CHANNEL)
+
     /** Update checks against GitHub Releases; disabled in the offline simulation. */
     val appUpdates: AppUpdateCoordinator =
         AppUpdateCoordinator(
@@ -137,12 +140,14 @@ class AppContainer internal constructor(
                     GitHubReleaseClient(
                         repository = com.vinicius741.webnovelarchiver.BuildConfig.UPDATE_REPOSITORY,
                         userAgent = "WebnovelArchiver-Android/${com.vinicius741.webnovelarchiver.BuildConfig.VERSION_NAME}",
+                        channel = updateChannel,
                     )
                 } else {
                     null
                 },
             installedVersionName = com.vinicius741.webnovelarchiver.BuildConfig.VERSION_NAME,
-            releaseBuild = com.vinicius741.webnovelarchiver.BuildConfig.BUILD_TYPE == "release",
+            releaseBuild = com.vinicius741.webnovelarchiver.BuildConfig.BUILD_TYPE in PUBLISHED_BUILD_TYPES,
+            channel = updateChannel,
             nowMillis = time::nowMillis,
         )
 
@@ -275,4 +280,9 @@ class AppContainer internal constructor(
     }
 
     suspend fun awaitRepositoryReady() = repositoryStartup.awaitReady()
+
+    private companion object {
+        /** Build types published through GitHub Releases; each follows its own update channel. */
+        val PUBLISHED_BUILD_TYPES = setOf("release", "beta")
+    }
 }

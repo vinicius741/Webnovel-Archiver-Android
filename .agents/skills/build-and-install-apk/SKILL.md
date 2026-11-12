@@ -26,6 +26,9 @@ Output APKs (these are the source of truth — always install from here, not fro
 
 - Debug:   `android/app/build/outputs/apk/debug/app-debug.apk`
 - Release: `android/app/build/outputs/apk/release/app-release.apk`
+- Beta:    `android/app/build/outputs/apk/beta/app-beta.apk` (`./gradlew assembleBeta`; only when the user asks for the beta)
+
+The beta (`com.vinicius741.webnovelarchiver.nativeapp.beta`, "Webnovel Archiver Beta") is a separate app with its own library. Never install it in place of the stable release. Beta publishing uses `.github/workflows/android-beta.yml` from any branch that contains it (GitHub only lists it once it is on `main`); it numbers betas by run number, so it needs no version bump and skips the version steps of the preflight below (still check recent runs and that the branch is pushed). See `docs/release/build-and-publish.md#beta-track`.
 
 Release is signed automatically — signing config lives in `android/local.properties` under the `WEBNOVEL_RELEASE_*` keys (store file, store password, key alias, key password). Never print, cat, or expose those values; `build.gradle` reads them via `findProperty`/`System.getenv`/`localProperties` and you never need to handle them directly.
 

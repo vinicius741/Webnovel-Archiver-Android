@@ -18,8 +18,9 @@ import java.io.File
  * install-packages permission (that permission plus self-installing APKs is what Play Protect
  * flags in sideloaded apps).
  *
- * [releaseBuild] is false outside the release build: a debug build can check, but a release APK
- * is a different application id and would install beside it instead of updating it. A null
+ * [releaseBuild] is true for the published builds (release and beta), false for debug ones: a
+ * debug build can check, but a published APK is a different application id and would install
+ * beside it instead of updating it. [channel] keeps each published app on its own track. A null
  * [client] (the offline simulation) disables every request.
  */
 class AppUpdateCoordinator(
@@ -28,6 +29,7 @@ class AppUpdateCoordinator(
     private val client: GitHubReleaseClient?,
     val installedVersionName: String,
     val releaseBuild: Boolean,
+    val channel: UpdateChannel,
     private val nowMillis: () -> Long,
 ) {
     private val appContext = context.applicationContext
@@ -91,6 +93,13 @@ class AppUpdateCoordinator(
                     return
                 }
             preferences.lastCheckedAtMillis = nowMillis()
+            if (release == null) {
+                // The beta track has no release yet (or they were deleted): nothing to offer, which is
+                // not a failure, so the next automatic check waits for the usual interval.
+                preferences.cachedRelease = null
+                _state.value = AppUpdateState.UpToDate(latestTag = "")
+                return
+            }
             preferences.cachedRelease = GitHubReleaseParsing.serializeRelease(release)
             applyEvaluation(release)
         } finally {
@@ -100,7 +109,7 @@ class AppUpdateCoordinator(
 
     private fun applyEvaluation(release: LatestRelease) {
         _state.value =
-            when (val evaluation = AppUpdatePlanning.evaluate(release, installedVersionCode, installedVersionName)) {
+            when (val evaluation = AppUpdatePlanning.evaluate(release, installedVersionCode, installedVersionName, channel)) {
                 is UpdateEvaluation.UpToDate -> AppUpdateState.UpToDate(evaluation.latestTag)
                 is UpdateEvaluation.Available -> AppUpdateState.Available(evaluation.update)
                 is UpdateEvaluation.Unusable -> AppUpdateState.Failed(evaluation.reason, null)

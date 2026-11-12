@@ -12,13 +12,57 @@ android/gradlew -p android :app:assembleRelease
 
 Install the signed release APK from `android/app/build/outputs/apk/release/app-release.apk`. To skip the optional convenience copy, add `-x copyReleaseApkToProjectRoot` to the build command.
 
-Its package ID is `com.vinicius741.webnovelarchiver.nativeapp`, and its launcher name is `Webnovel Archiver Native`.
+Its package ID is `com.vinicius741.webnovelarchiver.nativeapp`, and its launcher name is `Webnovel Archiver Native`. For the separate beta app, see [Beta track](#beta-track).
 
 If Android shows `App not installed`, check the signing certificate and version code. An update must use the original signing key and must not have a lower version code. Do not uninstall to work around this: uninstalling deletes the app's local data. Use the fresh Gradle output above rather than an older copy in `apk-output/`.
 
 Use the release variant for phone installs. `android/gradlew -p android :app:assembleDebug` produces `android/app/build/outputs/apk/debug/app-debug.apk`, which is a development build signed with the Android debug key and labeled `Webnovel Archiver Native Test`. When sideloaded, Play Protect is expected to warn that it has not seen the developer before.
 
 Sideloaded release APKs can still receive a Play Protect "unknown developer" warning until the signing certificate/app gains reputation or the app is distributed through Google Play testing/production channels, but `assembleRelease` is the correct command for a normal signed APK.
+
+## Beta track
+
+The beta app lets large changes reach a phone without touching the stable app. It is a separate app, so the two install side by side:
+
+| | Stable | Beta |
+|---|---|---|
+| Package ID | `com.vinicius741.webnovelarchiver.nativeapp` | `com.vinicius741.webnovelarchiver.nativeapp.beta` |
+| Launcher name | Webnovel Archiver Native | Webnovel Archiver Beta |
+| Launcher icon | Navy background | Purple background with an orange β badge (themed icons get a ringed β) |
+| Gradle build type | `release` | `beta` (`initWith release`: same minification and signing key) |
+| Library and settings | Its own | Its own, empty at first |
+| Published as | GitHub release marked *latest* | GitHub *prerelease*, never *latest* |
+| Workflow | `android-release.yml`, `main` only | `android-beta.yml`, any branch |
+| Updates offered | Stable releases only (never one marked `channel=beta`) | Beta prereleases only |
+
+Installing, updating, or uninstalling one never affects the other's data. To try your real library in the beta, use **Create Full Backup** in the stable app (**Settings → Data & Backup**), then **Restore Full Backup** in the beta. Nothing flows back to the stable app automatically.
+
+### Beta versions
+
+A beta is numbered by the beta workflow's run number `n` (`WEBNOVEL_BETA_NUMBER`; local builds use 0):
+
+- `versionName` is the branch's stable `versionName` plus `-beta.<n>`, for example `1.0.21-native-beta.7`. The tag is `v1.0.21-native-beta.7`.
+- `versionCode` is `1000000 + n`, for example `1000007`. It ignores the branch's stable `versionCode`, so a beta from a branch cut before a stable version bump still updates over the previous beta. The run number only resets if the workflow file is renamed, so keep its name.
+
+Publishing a beta needs no version bump: every run gets a new number. Bumping the stable version in `android/app/build.gradle` stays a stable-release step.
+
+### Build a beta locally
+
+```bash
+android/gradlew -p android :app:assembleBeta
+```
+
+The APK is at `android/app/build/outputs/apk/beta/app-beta.apk`. It uses the same [release signing](#release-signing-setup) as the stable build. Install a beta on a phone only from the workflow or from a build signed with the original key: a beta signed with a different key blocks later beta updates until it is uninstalled, which deletes the beta's library.
+
+### Publish a beta
+
+GitHub lists a manually dispatched workflow only once its file is on the default branch, so `android-beta.yml` must be on `main` before the first beta. After that, any branch that contains the workflow and the `beta` build type can be published; a branch cut before they reached `main` must merge `main` first.
+
+1. Push the branch with the changes to GitHub. It does not have to be `main`.
+2. Open **Actions → Publish Android Beta APK → Run workflow**, choose that branch, and run it.
+3. On the phone, open the new prerelease on the [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) page and install the **WebnovelArchiverBeta-v<version>-<run-id>-<attempt>.apk** asset.
+
+The beta workflow uses the same signing secrets as the stable one and verifies the APK's package ID, version, signature, and that it is not debuggable. Like the stable workflow, it only warns about the Quality Gate: that gate runs on pushes to `main`, so a beta from another branch has no gate run unless you dispatch **Quality Gate** on that branch first. Its release notes carry `<!-- app-update channel=beta versionCode=N -->`, which the beta app's update check reads; do not remove it.
 
 ## Release signing setup
 
