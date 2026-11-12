@@ -39,6 +39,15 @@ object LibrarySelectionPlanning {
             else -> "$totalNovels novel${if (totalNovels == 1) "" else "s"}"
         }
 
+    fun queuedMessage(novels: Int): String =
+        if (novels ==
+            1
+        ) {
+            "Queued missing chapters for 1 novel"
+        } else {
+            "Queued missing chapters for $novels novels"
+        }
+
     fun deletePrompt(
         count: Int,
         removedFromSourceChapters: Int = 0,

@@ -1,8 +1,6 @@
 package com.vinicius741.webnovelarchiver.feature.library
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.widget.HorizontalScrollView
@@ -13,12 +11,13 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
 import com.vinicius741.webnovelarchiver.feature.library.LibraryTabSelection
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
-import com.vinicius741.webnovelarchiver.ui.SCREEN_SIDE_PADDING_DP
 import com.vinicius741.webnovelarchiver.ui.Space
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.countedLabel
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeText
+import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.row
 import com.vinicius741.webnovelarchiver.ui.scroll
 import com.vinicius741.webnovelarchiver.ui.selectableRipple
@@ -84,8 +83,14 @@ internal fun ScreenHost.makeLibraryTabBar(
         tabViews.forEach { tab ->
             val selected = tab.id == id
             tab.text.setTextColor(if (selected) colors.primary else colors.onSurfaceVariant)
-            tab.text.typeface = Typeface.create(tab.text.typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
-            tab.underline.setBackgroundColor(if (selected) colors.primary else Color.TRANSPARENT)
+            tab.text.isSelected = selected
+            tab.underline.background =
+                if (selected) {
+                    val r = dp(TAB_INDICATOR_HEIGHT_DP).toFloat()
+                    roundedBg(colors.primary, floatArrayOf(r, r, 0f, 0f))
+                } else {
+                    null
+                }
         }
         if (scroll.isLaidOut) revealSelection(animated = true)
     }
@@ -103,24 +108,33 @@ internal fun ScreenHost.makeLibraryTabBar(
 
     fun addTab(
         label: String,
+        count: Int,
         id: String?,
     ) {
         val text =
-            makeText(context, label, Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
-                // Symmetric, so labels stay centered; the first one lines up with the content below.
-                setPadding(dp(SCREEN_SIDE_PADDING_DP), dp(Space.SM), dp(SCREEN_SIDE_PADDING_DP), dp(Space.SM))
-                minWidth = dp(60)
+            makeText(context, "", Type.LABEL_LARGE, ThemeManager.colors.onSurfaceVariant).apply {
+                text = countedLabel(label, count, ThemeManager.colors.faint)
+                setPadding(dp(TAB_SIDE_PADDING_DP), 0, dp(TAB_SIDE_PADDING_DP), 0)
                 gravity = Gravity.CENTER
+                minimumHeight = dp(TAB_HEIGHT_DP - TAB_INDICATOR_HEIGHT_DP)
+                contentDescription = "$label, $count novels"
             }
         val underline =
             View(context).apply {
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(TAB_INDICATOR_HEIGHT_DP))
+                layoutParams =
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(TAB_INDICATOR_HEIGHT_DP)).apply {
+                        marginStart = dp(TAB_INDICATOR_INSET_DP)
+                        marginEnd = dp(TAB_INDICATOR_INSET_DP)
+                    }
             }
         val tabContainer =
             LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                addView(text)
+                addView(
+                    text,
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(TAB_HEIGHT_DP - TAB_INDICATOR_HEIGHT_DP)),
+                )
                 addView(underline)
                 isClickable = true
                 isFocusable = true
@@ -132,18 +146,32 @@ internal fun ScreenHost.makeLibraryTabBar(
     }
 
     if (unassignedCount > 0) {
-        addTab("Unassigned ($unassignedCount)", null)
+        addTab("Unassigned", unassignedCount, null)
     }
+    val countsByTab = stories.groupingBy { it.tabId }.eachCount()
     tabs.forEach { tab ->
-        addTab(tab.name, tab.id)
+        addTab(tab.name, countsByTab[tab.id] ?: 0, tab.id)
     }
-    addTab("All", LibraryTabSelection.ALL_TAB_ID)
+    addTab("All", stories.size, LibraryTabSelection.ALL_TAB_ID)
     applySelection(currentSelection)
+    row.setPadding(dp(Space.SM), 0, dp(Space.SM), 0)
     scroll.addView(row)
     scroll.doOnLayout { revealSelection(animated = false) }
-    return LibraryTabBar(scroll, ::applySelection).also { holder ->
+    val bar =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(scroll)
+            addView(
+                View(context).apply { setBackgroundColor(ThemeManager.colors.line) },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1).coerceAtLeast(1)),
+            )
+        }
+    return LibraryTabBar(bar, ::applySelection).also { holder ->
         holderRef = holder
     }
 }
 
 private const val TAB_INDICATOR_HEIGHT_DP = 3
+private const val TAB_HEIGHT_DP = 46
+private const val TAB_SIDE_PADDING_DP = 14
+private const val TAB_INDICATOR_INSET_DP = 12
