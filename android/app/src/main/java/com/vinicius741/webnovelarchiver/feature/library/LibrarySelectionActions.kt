@@ -5,6 +5,8 @@ import android.widget.LinearLayout
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.downloads.showQueue
+import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.feature.narration.showNarration
 import com.vinicius741.webnovelarchiver.feature.settings.showSettings
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
@@ -70,6 +72,7 @@ internal fun ScreenHost.libraryAppBarActions(
             } else {
                 AppBarAction(R.drawable.wna_list, "List view") { switchLibraryViewMode(viewMode.toggled) }
             },
+            AppBarAction(R.drawable.wna_headphones, "Narration") { showNarration() },
             AppBarAction(R.drawable.wna_download, "Downloads") { showQueue() },
             AppBarAction(R.drawable.wna_settings, "Settings") { showSettings() },
         )
@@ -110,7 +113,10 @@ private fun ScreenHost.confirmDeleteStories(storyIds: List<String>) {
     val removedFromSource = storyIds.sumOf { id -> repository.story(id)?.chapters?.count { it.isRemovedFromSource } ?: 0 }
     confirm(LibrarySelectionPlanning.deletePrompt(storyIds.size, removedFromSource), confirmLabel = "Delete") {
         scope.launch {
-            storyIds.forEach { repository.deleteStory(it) }
+            storyIds.forEach {
+                repository.deleteStory(it)
+                narration.deleteStory(it)
+            }
             exitLibrarySelection()
         }
     }

@@ -1,7 +1,15 @@
 # Audiobook-style TTS playback
 
 How narration plays since November 2026. It builds on the session and position model in
-[`tts-podcast-player.md`](tts-podcast-player.md). The goal: pause anywhere, put the device away,
+[`tts-podcast-player.md`](tts-podcast-player.md).
+
+> **Since 2026-11-11, chapters play only from pre-generated audio**
+> ([`narration-pregeneration-plan.md`](narration-pregeneration-plan.md)). Everything below about
+> the timeline, the player, pacing, positions, pause rules and controls still applies to chapters.
+> What changed is where each sentence's audio comes from. A chapter reads its clips from its
+> generated pack (`PackTtsOutput`), with exact durations from the start and no rendering. The
+> real-time rendering, render-ahead, cache and live fallback described here now serve only story
+> descriptions and the Voice & Speech sample. The goal: pause anywhere, put the device away,
 come back days later, and continue without finding your place or hearing unexpected speech.
 
 ## The core change

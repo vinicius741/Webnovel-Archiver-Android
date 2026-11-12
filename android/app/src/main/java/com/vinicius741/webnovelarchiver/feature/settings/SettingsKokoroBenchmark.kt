@@ -58,6 +58,8 @@ private fun ScreenHost.runKokoroSpeedTest() {
         dialog.setMessage("Stopping after the current sentence")
     }
     scope.launch {
+        // Generation shares the model and the CPU: stop it so the test measures Kokoro alone.
+        val resumeNarration = app.appContainer.narration.pauseForSpeedTest()
         val result =
             KokoroBenchmark(app).run(
                 speakerId = voice.speakerId,
@@ -66,6 +68,7 @@ private fun ScreenHost.runKokoroSpeedTest() {
                 narrationModelLoaded = app.appContainer.kokoroRuntime.isLoaded,
                 shouldStop = stopRequested::get,
             ) { progress -> app.runOnUiThread { if (dialog.isShowing && !stopRequested.get()) dialog.setMessage(progress) } }
+        if (resumeNarration) withContext(Dispatchers.IO) { runCatching { app.appContainer.narration.resume() } }
         val report = KokoroBenchmarkReport.report(result)
         Timber.i("Kokoro speed test\n%s", report)
         withContext(Dispatchers.IO) { runCatching { speedTestFile.writeText(report) } }

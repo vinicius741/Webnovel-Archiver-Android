@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPosition
 import com.vinicius741.webnovelarchiver.domain.model.Chapter
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.details.showDetails
+import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
 import com.vinicius741.webnovelarchiver.feature.player.TtsMiniPlayerBar
 import com.vinicius741.webnovelarchiver.feature.player.showPlayer
 import com.vinicius741.webnovelarchiver.feature.settings.showTtsSettings
@@ -351,7 +352,9 @@ private class ReaderTtsBridge(
         host.app.runOnUiThread {
             val latest = host.repository.story(story.id) ?: story
             val currentChapter = latest.chapters.firstOrNull { it.id == chapter.id } ?: return@runOnUiThread
-            TtsForegroundService.startFromChunk(host.app, latest.id, currentChapter.id, clamped)
+            host.playIfGenerated(latest.id, currentChapter.id) {
+                TtsForegroundService.startFromChunk(host.app, latest.id, currentChapter.id, clamped)
+            }
         }
     }
 }
@@ -368,7 +371,7 @@ private fun ScreenHost.startReadAloud(
         val position = repository.getTtsStoryPosition(story.id)
         val saved = TtsSessionPlanning.resolveStartPosition(story, chapter.id, position)
         if (saved.chapterId == chapter.id) {
-            TtsForegroundService.start(app, story.id, chapter.id)
+            playIfGenerated(story.id, chapter.id) { TtsForegroundService.start(app, story.id, chapter.id) }
             return@launch
         }
         val savedTitle =
@@ -381,9 +384,9 @@ private fun ScreenHost.startReadAloud(
             .setTitle("Read aloud")
             .setItems(arrayOf("Continue listening: $savedTitle", "Listen from this chapter")) { _, which ->
                 if (which == 0) {
-                    TtsForegroundService.start(app, story.id, chapter.id)
+                    playIfGenerated(story.id, saved.chapterId) { TtsForegroundService.start(app, story.id, chapter.id) }
                 } else {
-                    TtsForegroundService.startFromChunk(app, story.id, chapter.id, 0)
+                    playIfGenerated(story.id, chapter.id) { TtsForegroundService.startFromChunk(app, story.id, chapter.id, 0) }
                 }
             }.setNegativeButton("Cancel", null)
             .show()

@@ -76,6 +76,13 @@ internal fun ScreenHost.showNotifications() {
         )
         notificationCategoryRow(
             host = host,
+            category = AppNotificationCategory.NARRATION,
+            icon = R.drawable.wna_headphones,
+            title = "Narration audio",
+            description = "Progress while chapter audio is generated in the background.",
+        )
+        notificationCategoryRow(
+            host = host,
             category = AppNotificationCategory.AI_GENERATION,
             icon = R.drawable.wna_auto_awesome,
             title = "AI Generation",

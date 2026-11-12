@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.tts
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.narration.NarrationStore
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroSynthesizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,13 +23,17 @@ internal fun ttsVoiceKey(
     settings: TtsSettings,
 ): String = "${enginePackage ?: engine.defaultEngine}|${engine.voice?.name}|${settings.pitch}"
 
-/** Chooses what narration plays through: rendered audio until a device proves it cannot do that. */
+/**
+ * Chooses what narration plays through: a chapter's generated pack, or, for a story description,
+ * rendered audio until a device proves it cannot do that.
+ */
 internal class TtsOutputs(
     private val context: Context,
     private val host: TtsSpeechEngineHost,
     private val scope: CoroutineScope,
     private val listener: TtsOutput.Listener,
     private val dispatch: (() -> Unit) -> Unit,
+    private val packs: NarrationStore? = null,
 ) {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val renderScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
@@ -40,7 +45,12 @@ internal class TtsOutputs(
         }
     private var rendered: RenderedTtsOutput? = null
     private var live: LiveTtsOutput? = null
+    private var pack: PackTtsOutput? = null
     private var liveRequested = false
+
+    /** The loaded chapter plays from generated audio. */
+    var usingPack = false
+        private set
 
     /** Live speech, once rendering proved impossible; the built-in model has no live mode. */
     val useLive: Boolean get() = liveRequested && !host.isBuiltin
@@ -51,16 +61,26 @@ internal class TtsOutputs(
     /** The output with a chapter loaded, if any. */
     val active: TtsOutput?
         get() =
-            if (!loaded) {
-                null
-            } else if (useLive) {
-                live
-            } else {
-                rendered
+            when {
+                !loaded -> null
+                usingPack -> pack
+                useLive -> live
+                else -> rendered
             }
 
-    /** Readies the output for a new chapter, pointing the engine's callbacks at it. */
+    /** Whether what plays is live speech, whose timing is only estimated. */
+    val isLiveActive: Boolean get() = !usingPack && useLive
+
+    /** Readies the generated-audio output for a chapter. */
+    fun preparePack(): TtsOutput {
+        val store = checkNotNull(packs) { "Generated narration is not available" }
+        usingPack = true
+        return pack ?: PackTtsOutput(store, listener, dispatch).also { pack = it }
+    }
+
+    /** Readies the output for a description, pointing the engine's callbacks at it. */
     fun prepare(): TtsOutput {
+        usingPack = false
         val engine = host.engine
         if (useLive) {
             val output = live ?: LiveTtsOutput({ host.engine }, scope, listener, dispatch).also { live = it }
@@ -97,6 +117,7 @@ internal class TtsOutputs(
         renderScope.cancel()
         rendered?.release()
         live?.release()
+        pack?.release()
     }
 
     private companion object {

@@ -6,6 +6,7 @@ import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
 import com.vinicius741.webnovelarchiver.domain.model.TtsHistoryEntry
 import com.vinicius741.webnovelarchiver.domain.model.TtsSession
 import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
+import com.vinicius741.webnovelarchiver.narration.NarrationPlanning
 
 /** The session and chapter the engine has loaded, and everything derived from them. */
 internal class TtsLoadedSession {
@@ -19,6 +20,15 @@ internal class TtsLoadedSession {
     var currentItem = 0
     var currentOffsetMs = 0L
     private var spokenTitle: String? = null
+
+    /** Identifies the loaded text, to match it with the chapter's generated audio. */
+    var fingerprint: String = ""
+        private set
+
+    /**
+     * A story description speaks through the speech engine; a chapter plays only its generated audio.
+     */
+    val speaksLive: Boolean get() = session?.chapterId?.let(TtsDescriptionPlanning::isDescriptionSession) == true
     private var chapterIndex = -1
     private var chapterCount = 0
 
@@ -31,6 +41,7 @@ internal class TtsLoadedSession {
     fun load(prepared: PreparedTtsPlayback) {
         chunks = prepared.chunks
         narration = prepared.narration
+        fingerprint = NarrationPlanning.fingerprint(prepared.chunks, TtsTextPreparation.CHUNKING_VERSION)
         spokenTitle = prepared.spokenTitle
         val loadedItems = TtsNarrationPlanning.items(prepared.narration, prepared.spokenTitle, prepared.settings)
         timeline = TtsTimeline(loadedItems, prepared.settings.phrasePauseMs)
@@ -65,6 +76,7 @@ internal class TtsLoadedSession {
     }
 
     fun clearChapter() {
+        fingerprint = ""
         chunks = emptyList()
         narration = emptyList()
         timeline = null

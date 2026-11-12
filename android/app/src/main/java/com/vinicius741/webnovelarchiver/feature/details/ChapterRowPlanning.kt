@@ -45,6 +45,7 @@ object ChapterRowPlanning {
         }
 
     /** Compact second line that distinguishes the list position from the source's chapter title. */
+    @Suppress("LongParameterList") // Independent row facts, passed by name from one adapter call.
     fun metadataLabel(
         zeroBasedIndex: Int,
         liveStatus: DownloadJobStatus?,
@@ -53,12 +54,14 @@ object ChapterRowPlanning {
         waitingForDelay: Boolean = false,
         patreonCopy: Boolean = false,
         removedFromSource: Boolean = false,
+        hasAudio: Boolean = false,
     ): String =
         buildString {
             append("Index ")
             append(indexLabel(zeroBasedIndex))
             if (patreonCopy) append("  •  Patreon early access")
             if (removedFromSource) append("  •  Removed from source")
+            if (hasAudio) append("  •  Audio")
             subtitle(liveStatus, downloaded, downloadedAt, waitingForDelay)?.let {
                 append("  •  ")
                 append(it)

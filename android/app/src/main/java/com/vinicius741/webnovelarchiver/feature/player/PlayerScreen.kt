@@ -11,12 +11,16 @@ import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import com.vinicius741.webnovelarchiver.R
+import com.vinicius741.webnovelarchiver.feature.narration.narration
+import com.vinicius741.webnovelarchiver.feature.narration.showNarration
+import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
 import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.tts.TtsTimeFormat
+import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -200,6 +204,14 @@ internal fun ScreenHost.showPlayer() {
     screen(
         route = AppRoute.Player,
         title = "Now Playing",
+        subtitle = initial?.let { narration.store.pack(it.storyId, it.chapterId) }?.let { "Voice: ${it.recipe.voice.label}" },
+        actions =
+            listOf(
+                AppBarAction(R.drawable.wna_headphones, "Chapter audio") {
+                    val snapshot = ttsEngine.playbackState.value.snapshot
+                    if (snapshot != null) showNarrationStory(snapshot.storyId, snapshot.chapterId) else showNarration()
+                },
+            ),
     ) {
         liveViews = buildPlayerBody(this, initial)
     }

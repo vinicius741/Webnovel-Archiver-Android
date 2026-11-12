@@ -11,6 +11,7 @@ import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.data.repository.getTtsStoryPositions
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.domain.model.Tab
+import com.vinicius741.webnovelarchiver.feature.narration.playIfGenerated
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.BackIntercept
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
@@ -315,8 +316,10 @@ private fun ScreenHost.continueListeningCard(): View {
                 Btn.TONAL,
                 R.drawable.wna_play,
             ) {
-                container.visibility = View.GONE
-                TtsForegroundService.start(app, target.story.id, target.chapter.id)
+                playIfGenerated(target.story.id, target.chapter.id) {
+                    container.visibility = View.GONE
+                    TtsForegroundService.start(app, target.story.id, target.chapter.id)
+                }
             },
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )

@@ -1,5 +1,7 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import com.vinicius741.webnovelarchiver.narration.NarrationPack
+
 /** The controls every kind of playback shares. */
 internal interface TtsPlaybackControls {
     fun play()
@@ -52,4 +54,6 @@ internal data class TtsOutputLoad(
     val rate: Float,
     val playWhenReady: Boolean,
     val voiceKey: String,
+    /** The generated audio a chapter plays from; null for rendered or live speech. */
+    val pack: NarrationPack? = null,
 )

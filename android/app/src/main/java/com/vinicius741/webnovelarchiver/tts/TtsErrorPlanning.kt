@@ -17,6 +17,9 @@ enum class TtsPlaybackErrorKind {
 
     /** Next-chapter preparation failed; the session stays resumable at the current position. */
     PreparationFailed,
+
+    /** The chapter has no complete generated audio; it was queued and the session stays paused. */
+    AudioNotGenerated,
 }
 
 data class TtsPlaybackError(
@@ -53,6 +56,7 @@ object TtsErrorPlanning {
             TtsPlaybackErrorKind.SynthesisFailed -> R.string.tts_error_synthesis_failed
             TtsPlaybackErrorKind.Stalled -> R.string.tts_error_stalled
             TtsPlaybackErrorKind.PreparationFailed -> R.string.tts_error_preparation_failed
+            TtsPlaybackErrorKind.AudioNotGenerated -> R.string.tts_error_audio_not_generated
         }
 
     fun logMessage(error: TtsPlaybackError): String {
@@ -71,6 +75,7 @@ object TtsErrorPlanning {
             TtsPlaybackErrorKind.SynthesisFailed -> "TTS synthesis failed (${synthesisCodeName(error.code)})$suffix"
             TtsPlaybackErrorKind.Stalled -> "TTS playback stalled$suffix"
             TtsPlaybackErrorKind.PreparationFailed -> "TTS next-chapter preparation failed; session kept resumable$suffix"
+            TtsPlaybackErrorKind.AudioNotGenerated -> "Chapter audio is not generated$suffix"
         }
     }
 }

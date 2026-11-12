@@ -30,11 +30,13 @@ import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
+import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
 import com.vinicius741.webnovelarchiver.feature.reader.detachReaderTtsListener
 import com.vinicius741.webnovelarchiver.feature.settings.maybePromptForAppUpdate
 import com.vinicius741.webnovelarchiver.feature.settings.showDataBackup
 import com.vinicius741.webnovelarchiver.feature.settings.showNotifications
+import com.vinicius741.webnovelarchiver.narration.NarrationForegroundService
 import com.vinicius741.webnovelarchiver.navigation.AddStoryScreenState
 import com.vinicius741.webnovelarchiver.navigation.AppNavigator
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
@@ -49,6 +51,8 @@ import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
 import com.vinicius741.webnovelarchiver.perf.PerfRecorder
 import com.vinicius741.webnovelarchiver.sync.StorySyncEngine
 import com.vinicius741.webnovelarchiver.tts.TtsEngine
+import com.vinicius741.webnovelarchiver.tts.TtsPlaybackError
+import com.vinicius741.webnovelarchiver.tts.TtsPlaybackErrorKind
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
@@ -253,6 +257,7 @@ class MainActivity :
                             time = container.time,
                         )
                     ttsEngine = container.ttsEngine
+                    ttsEngine.addErrorListener(audioNotGeneratedListener)
                     attachTtsMiniPlayer(root)
                     attachAiJobChip(root)
                     attachAiJobBridges()
@@ -377,6 +382,32 @@ class MainActivity :
         // Returning from the browser: refresh the "checked" time and state.
         if (uiReady && navigator.current == AppRoute.AppUpdate) rerender?.invoke()
         if (uiReady) maybePromptForAppUpdate()
+        // Queued audio starts generating whenever the app is in front, even if a background start was refused.
+        if (uiReady) appContainer.narration.let { if (it.hasRunnableWork()) NarrationForegroundService.start(this) }
+    }
+
+    /**
+     * Play reached a chapter whose audio is not generated (mini-player, Now Playing, a restored
+     * session): say so and open that chapter's audio screen. The engine has already queued it.
+     */
+    private val audioNotGeneratedListener: (TtsPlaybackError) -> Unit = { error ->
+        if (error.kind == TtsPlaybackErrorKind.AudioNotGenerated) {
+            runOnUiThread {
+                val session = ttsEngine.playbackState.value.snapshot
+                if (!uiReady || isFinishing) return@runOnUiThread
+                toast(getString(com.vinicius741.webnovelarchiver.R.string.tts_error_audio_not_generated))
+                // Not while reading (an auto-advance would pull the reader away) or already there.
+                val current = navigator.current
+                if (
+                    session != null &&
+                    current !is AppRoute.Reader &&
+                    current !is AppRoute.NarrationStory &&
+                    lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+                ) {
+                    showNarrationStory(session.storyId, session.chapterId)
+                }
+            }
+        }
     }
 
     override fun onUserInteraction() {
@@ -395,6 +426,7 @@ class MainActivity :
         // (the engine is process-wide; only the listener is dropped).
         detachReaderTtsListener()
         detachDetailsTtsListener()
+        if (::ttsEngine.isInitialized) ttsEngine.removeErrorListener(audioNotGeneratedListener)
         super.onDestroy()
     }
 
