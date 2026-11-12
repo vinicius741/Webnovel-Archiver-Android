@@ -19,6 +19,7 @@ import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.layout.WidthClass
 import com.vinicius741.webnovelarchiver.ui.layout.settingsMaxWidth
 import com.vinicius741.webnovelarchiver.ui.makeButton
+import com.vinicius741.webnovelarchiver.ui.shellContentWidthDp
 import com.vinicius741.webnovelarchiver.ui.verticalFill
 
 // Page-level layout for Settings: the large-screen width cap and the docked Save bar.
@@ -29,7 +30,8 @@ internal fun ScreenHost.capSettingsWidth(content: LinearLayout) {
     if (widthClass == WidthClass.COMPACT) return
     content.layoutParams =
         FrameLayout.LayoutParams(
-            content.context.dp(settingsMaxWidth(widthClass)),
+            // Never wider than the space beside the navigation rail.
+            content.context.dp(minOf(settingsMaxWidth(widthClass), content.context.shellContentWidthDp())),
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER_HORIZONTAL,
         )

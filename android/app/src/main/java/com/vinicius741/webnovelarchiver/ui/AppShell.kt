@@ -18,6 +18,12 @@ import com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
 /** Screens at least this wide (the Fold's inner display) use the right-hand rail instead of the bar. */
 internal const val RAIL_MIN_WIDTH_DP = 600
 
+/** Width (dp) left for screens beside the rail: the window width minus the rail when it shows. */
+internal fun Context.shellContentWidthDp(): Int {
+    val width = resources.configuration.screenWidthDp
+    return if (width >= RAIL_MIN_WIDTH_DP) width - RAIL_WIDTH_DP else width
+}
+
 private const val BAR_HEIGHT_DP = 72
 private const val RAIL_WIDTH_DP = 84
 private const val PILL_WIDTH_DP = 60

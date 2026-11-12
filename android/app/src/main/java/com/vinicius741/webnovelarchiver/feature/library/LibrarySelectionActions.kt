@@ -135,7 +135,13 @@ private fun ScreenHost.selectionBarButton(
             ImageView(app).apply { setImageDrawable(app.tintedIcon(iconRes, color)) },
             LinearLayout.LayoutParams(dp(ICON_DP), dp(ICON_DP)),
         )
-        addView(makeText(app, label, Type.LABEL_MEDIUM, color).apply { setPadding(0, dp(Spacing.XS), 0, 0) })
+        addView(
+            makeText(app, label, Type.LABEL_MEDIUM, color).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, dp(Spacing.XS), 0, 0)
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT),
+        )
         setOnClickListener { onClick() }
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f)
     }
