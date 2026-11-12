@@ -250,4 +250,12 @@ class PreferenceNormalizationTest {
         val kept = PreferenceNormalization.displayPreferences(DisplayPreferences(removedChaptersNoticeHiddenThrough = mapOf("rr_1" to 9L)))
         assertEquals(mapOf("rr_1" to 9L), kept.removedChaptersNoticeHiddenThrough)
     }
+
+    @Test
+    fun `the Chapters tab's not-downloaded filter is kept`() {
+        assertEquals(
+            ChapterFilterSettings(filterMode = "notDownloaded"),
+            PreferenceNormalization.chapterFilterSettings(ChapterFilterSettings(filterMode = "notDownloaded")),
+        )
+    }
 }
