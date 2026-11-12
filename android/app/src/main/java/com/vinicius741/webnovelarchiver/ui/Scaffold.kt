@@ -88,7 +88,13 @@ internal fun ScreenHost.screen(
         }
     screenBack = ScreenBack(close = closeAction, intercept = backIntercept, navigateUp = navigateUp)
     // The app-bar arrow navigates directly; only system Back clears in-screen state first.
-    val appBarBack = closeAction ?: navigateUp?.takeIf { route != AppRoute.Working }
+    // Destinations reached from the navigation bar show no back arrow; system Back still returns.
+    val appBarBack =
+        closeAction ?: navigateUp?.takeIf {
+            route != AppRoute.Working &&
+                !com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
+                    .isDestinationRoot(route)
+        }
     val column =
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL

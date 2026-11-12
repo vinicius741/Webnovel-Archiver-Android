@@ -32,6 +32,9 @@ class ShellNavigationPlanningTest {
         assertTrue(ShellNavigationPlanning.showsNavigation(AppRoute.Details("s")))
         assertFalse(ShellNavigationPlanning.showsMiniPlayer(AppRoute.Reader("s", "c")))
         assertTrue(ShellNavigationPlanning.showsMiniPlayer(AppRoute.Details("s")))
+        assertFalse(ShellNavigationPlanning.showsMiniPlayer(AppRoute.Narration))
+        assertTrue(ShellNavigationPlanning.isDestinationRoot(AppRoute.Queue))
+        assertFalse(ShellNavigationPlanning.isDestinationRoot(AppRoute.TtsSettings))
     }
 
     @Test

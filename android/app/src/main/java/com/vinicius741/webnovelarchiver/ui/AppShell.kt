@@ -65,9 +65,17 @@ class AppShell internal constructor(
             isFocusable = false
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-    private val bottomBar = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+    private val bottomBar =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            clipChildren = false
+        }
     private val shelf = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-    private val rail = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val rail =
+        LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+        }
     private val barItems = mutableMapOf<ShellDestination, NavItem>()
     private val railItems = mutableMapOf<ShellDestination, NavItem>()
     private var navVisible = false
@@ -274,6 +282,10 @@ class AppShell internal constructor(
                         topMargin = context.dp(0)
                     },
                 )
+                // The badge may overhang the pill ("99+"), so neither clips it.
+                clipChildren = false
+                clipToPadding = false
+                pill.clipChildren = false
                 addView(pill, LinearLayout.LayoutParams(context.dp(if (rail) 56 else PILL_WIDTH_DP), context.dp(PILL_HEIGHT_DP)))
                 addView(
                     label,

@@ -31,8 +31,14 @@ object ShellNavigationPlanning {
             else -> true
         }
 
-    /** The Reader docks its own player and Now Playing is the player, so both hide the mini player. */
-    fun showsMiniPlayer(route: AppRoute): Boolean = route !is AppRoute.Reader && route != AppRoute.Player
+    /**
+     * The Reader docks its own player, Now Playing is the player, and Listen leads with a Now
+     * playing card, so all three hide the mini player.
+     */
+    fun showsMiniPlayer(route: AppRoute): Boolean = route !is AppRoute.Reader && route != AppRoute.Player && route != AppRoute.Narration
+
+    /** Destination roots are reached from the navigation, so their app bars show no back arrow. */
+    fun isDestinationRoot(route: AppRoute): Boolean = ShellDestination.entries.any { it.route == route }
 
     /** The history a destination tap starts: the destination over the Library root. */
     fun historyFor(destination: ShellDestination): List<AppRoute> =
