@@ -77,6 +77,7 @@ class NarrationForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        coordinator.setGenerationAllowed(false)
         serviceScope.cancel()
         releaseWakeLock()
         super.onDestroy()
@@ -88,6 +89,7 @@ class NarrationForegroundService : Service() {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
         foregroundStarted = true
+        coordinator.setGenerationAllowed(true)
         refreshWakeLock()
     }
 
@@ -108,6 +110,7 @@ class NarrationForegroundService : Service() {
 
     private fun stopNow() {
         foregroundStarted = false
+        coordinator.setGenerationAllowed(false)
         releaseWakeLock()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()

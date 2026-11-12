@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -47,6 +48,7 @@ class NarrationCoordinator internal constructor(
     val store = NarrationStore(root)
     private val queue = NarrationQueue(File(root, QUEUE_FILE))
     private val source = RepositoryNarrationSource(repository, root)
+    private val generationAllowed = MutableStateFlow(false)
     private val generator =
         NarrationGenerator(
             store = store,
@@ -54,10 +56,11 @@ class NarrationCoordinator internal constructor(
             source = source,
             synthesizers = AndroidNarrationSynthesizers(context, kokoro),
             onPublished = ::onPublished,
+            generationAllowed = generationAllowed,
         )
 
-    /** Fingerprints of chapters with packs, by chapter id + content stamp, so statuses stay cheap. */
-    private val fingerprints = HashMap<String, Pair<String, String?>>()
+    /** Fingerprints of chapters with packs, by story/chapter and library content stamp. */
+    private val fingerprints = HashMap<Pair<String, String>, Pair<String, String?>>()
 
     /** The queue and its settings. */
     val queueState: StateFlow<NarrationQueueDocument> get() = queue.state
@@ -95,6 +98,11 @@ class NarrationCoordinator internal constructor(
 
     suspend fun awaitQueueLoaded() = queueLoaded.await()
 
+    /** Work may run only while the service has successfully entered the foreground. */
+    internal fun setGenerationAllowed(allowed: Boolean) {
+        generationAllowed.value = allowed
+    }
+
     fun hasRunnableWork(): Boolean {
         val document = queue.state.value
         return !document.paused && NarrationPlanning.next(document.jobs) != null
@@ -120,7 +128,7 @@ class NarrationCoordinator internal constructor(
     fun currentVoice(): NarrationVoice = voiceFromSettings(repository.ttsSettings.get())
 
     /** Queues chapters in [voice]; [front] puts them before everything else. */
-    fun enqueue(
+    suspend fun enqueue(
         storyId: String,
         chapterIds: List<String>,
         voice: NarrationVoice = currentVoice(),
@@ -128,6 +136,9 @@ class NarrationCoordinator internal constructor(
         front: Boolean = false,
     ) {
         if (chapterIds.isEmpty()) return
+        awaitQueueLoaded()
+        store.awaitLoaded()
+        val ready = chapterIds.filter { hasCurrentPack(storyId, it) }.toSet()
         val requests = chapterIds.map { NarrationRequest(storyId, it, voice, origin) }
         queue.update { document ->
             document.copy(
@@ -135,7 +146,7 @@ class NarrationCoordinator internal constructor(
                     NarrationPlanning.enqueue(
                         jobs = document.jobs,
                         requests = requests,
-                        hasPack = { story, chapter -> store.pack(story, chapter) != null },
+                        hasPack = { _, chapter -> chapter in ready },
                         front = front,
                         now = System.currentTimeMillis(),
                         newId = { UUID.randomUUID().toString() },
@@ -179,7 +190,7 @@ class NarrationCoordinator internal constructor(
             ?.recipe
             ?.voice
 
-    private fun keepAhead(
+    private suspend fun keepAhead(
         storyId: String,
         chapterId: String,
         voice: NarrationVoice,
@@ -188,19 +199,20 @@ class NarrationCoordinator internal constructor(
         val story = repository.story(storyId) ?: return
         val jobs = queue.state.value.jobs
         val chapters =
-            NarrationPlanning.keepAheadChapters(
-                chapters = story.chapters,
-                currentChapterId = chapterId,
-                count = count,
-                isPlayable = TtsContinueListening::isPlayable,
-                hasPack = { store.pack(storyId, it) != null },
-                hasJob = { id -> jobs.any { it.storyId == storyId && it.chapterId == id } },
-            )
+            NarrationPlanning
+                .keepAheadChapters(
+                    chapters = story.chapters,
+                    currentChapterId = chapterId,
+                    count = count,
+                    isPlayable = TtsContinueListening::isPlayable,
+                    hasPack = { false },
+                    hasJob = { id -> jobs.any { it.storyId == storyId && it.chapterId == id } },
+                ).filterNot { hasCurrentPack(storyId, it) }
         if (chapters.isNotEmpty()) enqueue(storyId, chapters, voice, NarrationOrigin.KEEP_AHEAD)
     }
 
-    private fun onPublished(pack: NarrationPack) {
-        synchronized(fingerprints) { fingerprints.remove(pack.chapterId) }
+    private suspend fun onPublished(pack: NarrationPack) {
+        synchronized(fingerprints) { fingerprints.remove(pack.storyId to pack.chapterId) }
         // Keep-ahead refills only while that story is the one being listened to.
         val listening = listeningTo
         if (listening != null && listening.first == pack.storyId) keepAhead(pack.storyId, listening.second, listening.third)
@@ -226,6 +238,16 @@ class NarrationCoordinator internal constructor(
         store.pack(storyId, chapterId)?.takeIf {
             it.recipe.textFingerprint == fingerprint && it.recipe.chunkingVersion == TtsTextPreparation.CHUNKING_VERSION
         }
+
+    private suspend fun hasCurrentPack(
+        storyId: String,
+        chapterId: String,
+    ): Boolean {
+        if (store.pack(storyId, chapterId) == null) return false
+        val text = source.chapter(storyId, chapterId) ?: return false
+        val pack = readyPack(storyId, chapterId, text.fingerprint) ?: return false
+        return pack.recipe.title == text.spokenTitle
+    }
 
     /** Whether a chapter can play now (reads the chapter's text; call off the main thread). */
     suspend fun isReady(
@@ -279,10 +301,13 @@ class NarrationCoordinator internal constructor(
         chapterId: String,
     ): String? {
         val chapter = story.chapters.firstOrNull { it.id == chapterId } ?: return null
-        val stamp = "${chapter.downloadedAt}|${repository.regexRules.get().hashCode()}|${TtsTextPreparation.CHUNKING_VERSION}"
-        synchronized(fingerprints) { fingerprints[chapterId]?.takeIf { it.first == stamp }?.let { return it.second } }
+        val key = story.id to chapterId
+        val stamp =
+            "${repository.libraryGeneration()}|${repository.downloadState.value.libraryVersion}|" +
+                "${chapter.downloadedAt}|${repository.regexRules.get().hashCode()}|${TtsTextPreparation.CHUNKING_VERSION}"
+        synchronized(fingerprints) { fingerprints[key]?.takeIf { it.first == stamp }?.let { return it.second } }
         val fingerprint = source.chapter(story.id, chapterId)?.fingerprint
-        synchronized(fingerprints) { fingerprints[chapterId] = stamp to fingerprint }
+        synchronized(fingerprints) { fingerprints[key] = stamp to fingerprint }
         return fingerprint
     }
 

@@ -1,6 +1,10 @@
 package com.vinicius741.webnovelarchiver.narration
 
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,6 +17,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class NarrationGeneratorTest {
     @get:Rule
     val folder = TemporaryFolder()
@@ -274,5 +279,110 @@ class NarrationGeneratorTest {
                 queue.state.value.jobs
                     .isEmpty(),
             )
+        }
+
+    @Test
+    fun removalDuringTheFinalReadCannotPublish() =
+        runTest {
+            val job = enqueue()
+            source.beforeRead = { read -> if (read == 1) queue.update { it.copy(jobs = emptyList()) } }
+            generator.runJob(job)
+            assertNull(store.pack("s", "c"))
+            assertTrue(
+                queue.state.value.jobs
+                    .isEmpty(),
+            )
+            assertTrue(
+                store
+                    .chapterDir("s", "c")
+                    .listFiles()
+                    .orEmpty()
+                    .none { it.isDirectory },
+            )
+        }
+
+    @Test
+    fun voiceReplacementDuringTheFinalReadKeepsTheNewRequest() =
+        runTest {
+            val job = enqueue()
+            val replacement = voice.copy(voiceId = "v2")
+            source.beforeRead = { read -> if (read == 1) enqueue(replacement) }
+            generator.runJob(job)
+            assertNull(store.pack("s", "c"))
+            assertEquals(
+                replacement,
+                queue.state.value.jobs
+                    .single()
+                    .voice,
+            )
+            generator.runJob(
+                queue.state.value.jobs
+                    .single(),
+            )
+            assertEquals(replacement, store.pack("s", "c")!!.recipe.voice)
+        }
+
+    @Test
+    fun pauseDuringTheFinalReadDefersPublicationUntilResume() =
+        runTest {
+            val job = enqueue()
+            source.beforeRead = { read -> if (read == 1) queue.update { it.copy(paused = true) } }
+            generator.runJob(job)
+            assertNull(store.pack("s", "c"))
+            assertEquals(1, queue.state.value.jobs.size)
+            synthesizers.spoken.clear()
+            queue.update { it.copy(paused = false) }
+            generator.runJob(
+                queue.state.value.jobs
+                    .single(),
+            )
+            assertTrue(synthesizers.spoken.isEmpty())
+            assertNotNull(store.pack("s", "c"))
+        }
+
+    @Test
+    fun aFailedOldVoiceCannotFailItsReplacement() =
+        runTest {
+            val job = enqueue()
+            val replacement = voice.copy(voiceId = "v2")
+            synthesizers.onSpeak = {
+                enqueue(replacement)
+                error("Old voice failed")
+            }
+            generator.runJob(job)
+            assertEquals(
+                replacement,
+                queue.state.value.jobs
+                    .single()
+                    .voice,
+            )
+            assertEquals(
+                NarrationJobState.QUEUED,
+                queue.state.value.jobs
+                    .single()
+                    .state,
+            )
+        }
+
+    @Test
+    fun workWaitsForTheForegroundServiceAndResumesAfterItReturns() =
+        runTest {
+            enqueue()
+            val allowed = MutableStateFlow(false)
+            val worker = NarrationGenerator(store, queue, source, synthesizers, generationAllowed = allowed)
+            backgroundScope.launch { worker.runLoop() }
+            runCurrent()
+            assertTrue(synthesizers.spoken.isEmpty())
+            synthesizers.onSpeak = { allowed.value = false }
+            allowed.value = true
+            runCurrent()
+            assertEquals(listOf("Chapter One"), synthesizers.spoken)
+            assertNull(store.pack("s", "c"))
+            assertNull(worker.progress.value)
+            synthesizers.onSpeak = {}
+            allowed.value = true
+            runCurrent()
+            assertEquals(listOf("Chapter One", "First sentence.", "Second sentence.", "Third sentence."), synthesizers.spoken)
+            assertNotNull(store.pack("s", "c"))
         }
 }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -58,7 +59,8 @@ internal class NarrationGenerator(
     private val source: NarrationChapterSource,
     private val synthesizers: NarrationSynthesizerFactory,
     private val now: () -> Long = System::currentTimeMillis,
-    private val onPublished: (NarrationPack) -> Unit = {},
+    private val onPublished: suspend (NarrationPack) -> Unit = {},
+    private val generationAllowed: StateFlow<Boolean> = MutableStateFlow(true),
 ) {
     private val _progress = MutableStateFlow<NarrationProgress?>(null)
 
@@ -84,12 +86,14 @@ internal class NarrationGenerator(
         try {
             while (currentCoroutineContext().isActive) {
                 val document = queue.state.value
-                val job = if (document.paused) null else NarrationPlanning.next(document.jobs)
+                val allowed = generationAllowed.value
+                val job = if (document.paused || !allowed) null else NarrationPlanning.next(document.jobs)
                 if (job == null) {
                     // Nothing to do: free the model, then wait for the queue to change.
                     closeSynthesizer()
                     _progress.value = null
-                    queue.state.first { it !== document }
+                    combine(queue.state, generationAllowed) { next, permitted -> next to permitted }
+                        .first { (next, permitted) -> next !== document || permitted != allowed }
                     continue
                 }
                 runJob(job)
@@ -106,7 +110,7 @@ internal class NarrationGenerator(
             when (val outcome = generate(job)) {
                 JobOutcome.Done, JobOutcome.Interrupted -> Unit
                 is JobOutcome.Failed -> fail(job, outcome.reason)
-                JobOutcome.Dropped -> queue.update { it.copy(jobs = it.jobs.filter { other -> other.id != job.id }) }
+                JobOutcome.Dropped -> removeJob(job)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -140,10 +144,12 @@ internal class NarrationGenerator(
     }
 
     private suspend fun generate(job: NarrationJob): JobOutcome {
+        if (!stillWanted(job)) return JobOutcome.Interrupted
         val startedGeneration = source.libraryGeneration()
         val text = source.chapter(job.storyId, job.chapterId) ?: return JobOutcome.Dropped
         if (text.sentences.isEmpty()) return JobOutcome.Failed("The chapter has no text to read")
         val voice = openSynthesizer(job.voice)
+        if (!stillWanted(job)) return JobOutcome.Interrupted
         val recipe =
             NarrationRecipe(
                 storyId = job.storyId,
@@ -172,11 +178,20 @@ internal class NarrationGenerator(
         writeClips(job, text, recipe, versionDir, voice, current, stats)?.let { return it }
         checkBeforePublish(job, recipe, versionDir, startedGeneration)?.let { return it }
         val index = buildIndex(versionDir, recipe) ?: return JobOutcome.Failed("The voice changed sample rate mid-chapter")
-        val pack = store.publish(recipe, versionDir, index)
+        var pack: NarrationPack? = null
+        // Serialize publication with queue edits, including removal and voice replacement.
+        queue.update { document ->
+            if (stillWanted(job, document)) {
+                pack = store.publish(recipe, versionDir, index)
+                document.copy(jobs = document.jobs.filter { it.id != job.id })
+            } else {
+                document
+            }
+        }
+        val published = pack ?: return interrupted(job, versionDir)
         recordStats(job.voice.engine, stats)
-        removeJob(job)
         ActivityLog.record(ActivityCategory.TTS, "narration_published", "storyId" to job.storyId, "chapterId" to job.chapterId)
-        onPublished(pack)
+        onPublished(published)
         return JobOutcome.Done
     }
 
@@ -224,6 +239,7 @@ internal class NarrationGenerator(
     ): JobOutcome? {
         if (!stillWanted(job)) return interrupted(job, versionDir)
         val latest = source.chapter(job.storyId, job.chapterId)
+        if (!stillWanted(job)) return interrupted(job, versionDir)
         if (latest == null || source.libraryGeneration() != startedGeneration) {
             store.discardVersion(versionDir)
             return if (latest == null) JobOutcome.Dropped else JobOutcome.Interrupted
@@ -331,9 +347,11 @@ internal class NarrationGenerator(
         return JobOutcome.Interrupted
     }
 
-    private fun stillWanted(job: NarrationJob): Boolean {
-        val document = queue.state.value
-        if (document.paused) return false
+    private fun stillWanted(
+        job: NarrationJob,
+        document: NarrationQueueDocument = queue.state.value,
+    ): Boolean {
+        if (document.paused || !generationAllowed.value) return false
         val queued = document.jobs.firstOrNull { it.id == job.id } ?: return false
         return queued.voice == job.voice && queued.state == NarrationJobState.QUEUED
     }
@@ -400,7 +418,9 @@ internal class NarrationGenerator(
     }
 
     private fun removeJob(job: NarrationJob) {
-        queue.update { document -> document.copy(jobs = document.jobs.filter { it.id != job.id }) }
+        queue.update { document ->
+            if (stillWanted(job, document)) document.copy(jobs = document.jobs.filter { it.id != job.id }) else document
+        }
     }
 
     private fun fail(
@@ -419,9 +439,7 @@ internal class NarrationGenerator(
             document.copy(
                 jobs =
                     document.jobs.map {
-                        if (it.id ==
-                            job.id
-                        ) {
+                        if (it.id == job.id && it.voice == job.voice) {
                             it.copy(state = NarrationJobState.FAILED, error = reason)
                         } else {
                             it
