@@ -26,7 +26,13 @@ internal class UpdatesOverviewCache {
     fun needsPlan(
         library: List<Story>,
         now: Long,
-    ): Boolean = planned?.let { !isFresh(it.library, it.plannedAt, library, now) } ?: true
+    ): Boolean = fresh(library, now) == null
+
+    /** The kept overview when it is still fresh for [library] at [now], else null; safe to call from any thread. */
+    fun fresh(
+        library: List<Story>,
+        now: Long,
+    ): Overview? = planned?.takeIf { isFresh(it.library, it.plannedAt, library, now) }?.overview
 
     /** Plans the overview for [library] at [now] and keeps it; safe to call from any thread. */
     fun plan(
@@ -38,10 +44,7 @@ internal class UpdatesOverviewCache {
     fun overview(
         library: List<Story>,
         now: Long,
-    ): Overview {
-        val cached = planned
-        return if (cached != null && isFresh(cached.library, cached.plannedAt, library, now)) cached.overview else plan(library, now)
-    }
+    ): Overview = fresh(library, now) ?: plan(library, now)
 
     companion object {
         /** Forecasts drift with the clock ("expected in 3 h", may-be-out cut-offs), so plans expire. */

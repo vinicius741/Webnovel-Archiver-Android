@@ -16,6 +16,7 @@ import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.story.queueDownload
 import com.vinicius741.webnovelarchiver.navigation.AppRoute
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ShellDestination
 import com.vinicius741.webnovelarchiver.ui.AppBarAction
 import com.vinicius741.webnovelarchiver.ui.Btn
 import com.vinicius741.webnovelarchiver.ui.RAIL_MIN_WIDTH_DP
@@ -163,6 +164,8 @@ private class UpdatesScreenView(
         val now = System.currentTimeMillis()
         val stories = host.repository.downloadState.value.library
         val overview = host.updatesState.overviewCache.overview(stories, now)
+        // The badge is otherwise planned only when the library changes, so it can trail the clock.
+        host.shell.setBadge(ShellDestination.UPDATES, overview.count(Section.MAY_BE_OUT))
         jobsByStory =
             host.repository.downloadState.value.queue
                 .groupBy { it.storyId }

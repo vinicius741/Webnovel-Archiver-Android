@@ -2,6 +2,7 @@ package com.vinicius741.webnovelarchiver.feature.updates
 
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,6 +40,16 @@ class UpdatesOverviewCacheTest {
         assertTrue(cache.needsPlan(listOf(a), now + UpdatesOverviewCache.MAX_AGE_MS + 1))
         // A clock that went backwards is not trusted either.
         assertTrue(cache.needsPlan(listOf(a), now - 1))
+    }
+
+    @Test
+    fun `a fresh plan is handed back so an interrupted badge update can still show it`() {
+        val cache = UpdatesOverviewCache()
+        val planned = cache.plan(listOf(a, b), now)
+
+        assertSame(planned, cache.fresh(listOf(a, b), now + 1_000))
+        assertNull(cache.fresh(listOf(a, b.copy()), now + 1_000))
+        assertNull(cache.fresh(listOf(a, b), now + UpdatesOverviewCache.MAX_AGE_MS + 1))
     }
 
     @Test

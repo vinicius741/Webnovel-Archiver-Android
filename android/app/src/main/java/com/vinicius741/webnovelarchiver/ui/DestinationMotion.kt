@@ -40,5 +40,6 @@ internal fun View.playDestinationEnter(
         .translationY(0f)
         .setDuration(DestinationMotion.ENTER_MS)
         .setInterpolator(DestinationMotion.emphasized)
+        .withLayer()
         .start()
 }

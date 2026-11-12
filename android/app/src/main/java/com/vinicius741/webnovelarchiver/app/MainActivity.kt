@@ -502,8 +502,11 @@ class MainActivity :
             val cache = updatesSyncState.overviewCache
             repository.downloadState.collectLatest { snapshot ->
                 val now = System.currentTimeMillis()
-                if (!cache.needsPlan(snapshot.library, now)) return@collectLatest
-                val overview = withContext(Dispatchers.Default) { cache.plan(snapshot.library, now) }
+                // A fresh plan is shown again, not skipped: a plan interrupted by a newer snapshot
+                // is kept by the cache without ever having reached the badge.
+                val overview =
+                    cache.fresh(snapshot.library, now)
+                        ?: withContext(Dispatchers.Default) { cache.plan(snapshot.library, now) }
                 shell.setBadge(ShellDestination.UPDATES, overview.count(UpdatesPlanning.Section.MAY_BE_OUT))
             }
         }
