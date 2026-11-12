@@ -165,6 +165,8 @@ data class NarrationProgress(
     val preparing: Boolean = false,
     /** The computer generating it, or null on this phone. */
     val generatingOn: String? = null,
+    /** Why generation is waiting on that computer (it is low on memory), or null; it resumes by itself. */
+    val waitingFor: String? = null,
 ) {
     val fraction: Float get() = if (total <= 0) 0f else done.toFloat() / total
 }

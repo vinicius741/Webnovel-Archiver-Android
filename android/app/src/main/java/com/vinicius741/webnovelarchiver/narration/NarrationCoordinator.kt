@@ -436,19 +436,23 @@ class NarrationCoordinator internal constructor(
                 NarrationServerEndpoint.parse(server.address)
                     ?: throw NarrationServerProblem("The address is not valid")
             val client = NarrationServerClient(endpoint, server.token, server.name)
-            val info = client.info()
-            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
-            // One sentence per model copy at once, as generation runs, so the speed is the server's total.
-            val started = System.currentTimeMillis()
-            val clips =
-                coroutineScope {
-                    (0 until info.workers.coerceIn(1, NarrationServerPlanning.MAX_IN_FLIGHT))
-                        .map { index ->
-                            async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], KokoroVoices.default.speakerId) }
-                        }.awaitAll()
-                }
-            if (clips.any { it == null }) throw NarrationServerProblem("${server.name} connected but could not generate audio")
-            NarrationServerPlanning.testSummary(info, endpoint, clips.sumOf { it!!.durationMs }, System.currentTimeMillis() - started)
+            try {
+                val info = client.info()
+                NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+                // One sentence per model copy at once, as generation runs, so the speed is the server's total.
+                val started = System.currentTimeMillis()
+                val clips =
+                    coroutineScope {
+                        (0 until info.workers.coerceIn(1, NarrationServerPlanning.MAX_IN_FLIGHT))
+                            .map { index ->
+                                async { client.synthesize(TEST_SENTENCES[index % TEST_SENTENCES.size], KokoroVoices.default.speakerId) }
+                            }.awaitAll()
+                    }
+                if (clips.any { it == null }) throw NarrationServerProblem("${server.name} connected but could not generate audio")
+                NarrationServerPlanning.testSummary(info, endpoint, clips.sumOf { it!!.durationMs }, System.currentTimeMillis() - started)
+            } finally {
+                client.close()
+            }
         }
 
     fun remove(jobIds: Set<String>) {

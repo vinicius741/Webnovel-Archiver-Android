@@ -1,3 +1,0 @@
-# Closest PyPI build to the app's sherpa-onnx 1.12.21 (2.x does not phonemize kokoro-en-v0_19 without a lexicon).
-sherpa-onnx==1.12.26
-numpy

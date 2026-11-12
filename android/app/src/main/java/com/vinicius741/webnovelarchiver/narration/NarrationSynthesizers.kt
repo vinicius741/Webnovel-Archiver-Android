@@ -21,9 +21,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /** Produces mono 16-bit PCM in one fixed voice. Android engines need a temporary WAV file. */
 internal interface NarrationSynthesizer {
@@ -44,6 +48,12 @@ internal interface NarrationSynthesizer {
     /** The computer's name when it generates on one, for the screens. */
     val locationName: String? get() = null
 
+    /**
+     * Why generation is waiting on the engine right now (a computer holding back to protect its
+     * memory), or null while it generates normally. Waiting resumes by itself.
+     */
+    val waitingFor: StateFlow<String?> get() = NOT_WAITING
+
     /** Re-fits the engine to the device between sentences (Kokoro: its thread count to the cores Android allows now). */
     suspend fun fitToDevice() = Unit
 
@@ -59,6 +69,8 @@ internal interface NarrationSynthesizer {
 internal class NarrationVoiceUnavailable(
     message: String,
 ) : Exception(message)
+
+private val NOT_WAITING: StateFlow<String?> = MutableStateFlow(null)
 
 private fun unavailable(message: String): Nothing = throw NarrationVoiceUnavailable(message)
 
@@ -100,9 +112,16 @@ internal class AndroidNarrationSynthesizers(
             NarrationServerEndpoint.parse(server.address)
                 ?: throw NarrationServerProblem("${server.name}'s address \"${server.address}\" is not valid")
         val client = NarrationServerClient(endpoint, server.token, server.name)
-        val info = client.info()
-        NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
-        return RemoteKokoroNarrationSynthesizer(client, voice, speaker.speakerId, server, NarrationServerPlanning.inFlight(info))
+        var opened = false
+        try {
+            val info = client.info()
+            NarrationServerPlanning.incompatibility(info, server.name)?.let { throw NarrationServerProblem(it) }
+            return RemoteKokoroNarrationSynthesizer(client, voice, speaker.speakerId, server, NarrationServerPlanning.inFlight(info))
+                .also { opened = true }
+        } finally {
+            // The synthesizer owns the client's connections from here; on failure, release them now.
+            if (!opened) client.close()
+        }
     }
 
     private fun kokoroSpeaker(voice: NarrationVoice) =
@@ -190,11 +209,30 @@ private class RemoteKokoroNarrationSynthesizer(
     override val voice: NarrationVoice,
     private val speakerId: Int,
     server: NarrationServer,
-    override val parallelism: Int,
+    private val maxInFlight: Int,
+    private val now: () -> Long = System::currentTimeMillis,
 ) : NarrationSynthesizer {
     override val voiceKey: String = KokoroVoices.voiceKey(speakerId)
     override val location: String = server.locationKey
     override val locationName: String = server.name
+    private val waiting = MutableStateFlow<String?>(null)
+    override val waitingFor: StateFlow<String?> = waiting
+
+    /** Sentences waiting out a stopped server, and since when the server has been stopped. */
+    private val stoppedWaiters = AtomicInteger()
+    private val stoppedSince = AtomicLong(0L)
+
+    /**
+     * Follows the server: one sentence more than the slots it allows right now (so a slot never idles
+     * while the next request travels), never more than at the start.
+     */
+    override val parallelism: Int
+        get() = client.serverSlots?.let { (it + 1).coerceIn(1, maxInFlight) } ?: maxInFlight
+
+    /** One sentence's part in [stoppedWaiters]. */
+    private class StopWait {
+        var counted = false
+    }
 
     override suspend fun synthesize(
         text: String,
@@ -203,21 +241,62 @@ private class RemoteKokoroNarrationSynthesizer(
         val spoken = KokoroTextPlanning.spokenText(text)
         // Nothing left to say (only marks): the same empty clip the phone's Kokoro gives.
         if (spoken.isBlank()) return TtsPcmClip(REMOTE_SAMPLE_RATE, ByteArray(0))
-        return try {
-            client.synthesize(spoken, speakerId)
-        } catch (problem: NarrationServerProblem) {
-            if (!problem.transient) throw problem
-            // A dropped connection or a Wi-Fi hiccup gets one more try before generation pauses.
-            delay(TRANSIENT_RETRY_MS)
-            client.synthesize(spoken, speakerId)
+        val stop = StopWait()
+        try {
+            return generate(spoken, stop)
+        } finally {
+            if (stop.counted && stoppedWaiters.decrementAndGet() == 0) waiting.value = null
         }
     }
 
-    override fun close() = Unit
+    private suspend fun generate(
+        spoken: String,
+        stop: StopWait,
+    ): TtsPcmClip? {
+        var retriedTransient = false
+        while (true) {
+            try {
+                return client.synthesize(spoken, speakerId).also { stoppedSince.set(0L) }
+            } catch (busy: NarrationServerBusy) {
+                waitOut(busy, stop)
+            } catch (problem: NarrationServerProblem) {
+                // A dropped connection or a Wi-Fi hiccup gets one more try before generation pauses.
+                if (!problem.transient || retriedTransient) throw problem
+                retriedTransient = true
+                delay(TRANSIENT_RETRY_MS)
+            }
+        }
+    }
+
+    /**
+     * The server protects its machine's memory: wait as long as it asks, as often as it asks. Only a
+     * stop is shown; fewer slots just make sentences take turns. After [MAX_STOPPED_WAIT_MS] of a
+     * stop, generation pauses instead, so hours of waiting do not keep the phone awake and polling.
+     */
+    private suspend fun waitOut(
+        busy: NarrationServerBusy,
+        stop: StopWait,
+    ) {
+        if (busy.stopped) {
+            if (!stop.counted) {
+                stop.counted = true
+                stoppedWaiters.incrementAndGet()
+            }
+            waiting.value = busy.message
+            stoppedSince.compareAndSet(0L, now())
+            if (now() - stoppedSince.get() >= MAX_STOPPED_WAIT_MS) {
+                throw NarrationServerProblem("${busy.message}. Resume when it has memory again", cause = busy)
+            }
+        }
+        delay(busy.retryAfterMs)
+    }
+
+    override fun close() = client.close()
 
     private companion object {
         const val REMOTE_SAMPLE_RATE = 24_000
         const val TRANSIENT_RETRY_MS = 2_000L
+        const val MAX_STOPPED_WAIT_MS = 15 * 60_000L
     }
 }
 

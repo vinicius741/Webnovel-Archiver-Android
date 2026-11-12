@@ -3,6 +3,7 @@ package com.vinicius741.webnovelarchiver.narration
 import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -69,6 +70,10 @@ class NarrationGeneratorTest {
         var inFlight = 1
         var problemOn: String? = null
         var speakDelayMs = 0L
+
+        /** This sentence waits like one sent to a computer that stopped for memory: until cancelled. */
+        var waitOn: String? = null
+        val waiting = MutableStateFlow<String?>(null)
         var running = 0
         var maxRunning = 0
 
@@ -85,6 +90,7 @@ class NarrationGeneratorTest {
                 override val voiceKey = "fake|${voice.voiceId}"
                 override val location = openedAt
                 override val parallelism = openedInFlight
+                override val waitingFor = waiting
 
                 override suspend fun synthesize(
                     text: String,
@@ -92,6 +98,14 @@ class NarrationGeneratorTest {
                 ): TtsPcmClip? {
                     if (text == failOn) return null
                     if (text == problemOn) throw NarrationServerProblem("Can't reach Mac")
+                    if (text == waitOn) {
+                        waiting.value = "Mac is low on memory and has stopped generating"
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            waiting.value = null
+                        }
+                    }
                     running++
                     maxRunning = maxOf(maxRunning, running)
                     try {
@@ -520,6 +534,32 @@ class NarrationGeneratorTest {
             )
             assertNotNull(store.pack("s", "c"))
             assertFalse(synthesizers.spoken.contains("First sentence."))
+        }
+
+    @Test
+    fun pausingInterruptsASentenceWaitingOnAStoppedServer() =
+        runTest {
+            synthesizers.where = "mac"
+            synthesizers.waitOn = "Second sentence."
+            val job = enqueue()
+            val run = launch { generator.runJob(job) }
+            runCurrent()
+            // The wait shows on the progress, and the chapter neither fails nor finishes.
+            assertEquals("Mac is low on memory and has stopped generating", generator.progress.value?.waitingFor)
+            assertTrue(run.isActive)
+            queue.update { it.copy(paused = true) }
+            runCurrent()
+            // Pausing took effect during the wait, not after it; the clips so far are kept.
+            assertFalse(run.isActive)
+            assertEquals(
+                NarrationJobState.QUEUED,
+                queue.state.value.jobs
+                    .single()
+                    .state,
+            )
+            assertNull(store.pack("s", "c"))
+            assertNull(synthesizers.waiting.value)
+            assertEquals(listOf("Chapter One", "First sentence."), synthesizers.spoken)
         }
 
     @Test

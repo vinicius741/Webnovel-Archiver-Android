@@ -140,7 +140,7 @@ internal object NarrationScreenPlanning {
             job != null ->
                 GenerationBanner(
                     GenerationBanner.State.GENERATING,
-                    "Generating" + (progress.generatingOn?.let { " on $it" } ?: "") + " · ${percent(progress.fraction)}",
+                    generatingTitle(progress),
                     chapterTitle = progress.chapterTitle,
                     storyTitle = progress.storyTitle,
                     storyId = job.storyId,
@@ -166,8 +166,23 @@ internal object NarrationScreenPlanning {
         }
     }
 
+    /** "Generating on Mac · 40%", or "Waiting for Mac · 40%" while the computer holds back for memory. */
+    fun generatingTitle(progress: NarrationProgress): String {
+        val where = progress.generatingOn
+        val verb =
+            if (progress.waitingFor != null &&
+                where != null
+            ) {
+                "Waiting for $where"
+            } else {
+                "Generating" + (where?.let { " on $it" } ?: "")
+            }
+        return "$verb · ${percent(progress.fraction)}"
+    }
+
     private fun generatingDetail(progress: NarrationProgress): String =
         buildList {
+            progress.waitingFor?.let { add("$it. It resumes by itself") }
             add("${progress.done} of ${progress.total} sentences")
             progress.speed?.let { add("${speed(it)} real time") }
             progress.chapterEtaMs?.let { add("~${NarrationPlanning.formatDuration(it)} left") }
