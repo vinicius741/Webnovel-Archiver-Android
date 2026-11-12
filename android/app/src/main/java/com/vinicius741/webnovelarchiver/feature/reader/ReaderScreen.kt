@@ -371,12 +371,6 @@ private fun ScreenHost.readerActions(document: ReaderDocument): List<AppBarActio
     )
 }
 
-/** The reader route shown now when it is one of [story]'s chapters. */
-private fun ScreenHost.readerOfStory(story: Story): AppRoute.Reader? =
-    (navigator.current as? AppRoute.Reader)?.takeIf { route ->
-        route.storyId == story.id && story.chapters.any { it.id == route.chapterId }
-    }
-
 /**
  * Minimal JS-to-native surface: the injected script calls onTtsStart(index) on a double-tap,
  * onFollowChanged when the reader drags away from (or back to) the spoken sentence, and

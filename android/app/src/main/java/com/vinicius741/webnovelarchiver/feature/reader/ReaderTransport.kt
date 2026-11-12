@@ -111,3 +111,11 @@ internal fun ScreenHost.readerTtsTransport(
     bar.addView(transportIcon("Stop TTS", R.drawable.wna_stop, onStop))
     return bar
 }
+
+/** The reader route shown now when it is one of [story]'s chapters. */
+internal fun ScreenHost.readerOfStory(
+    story: com.vinicius741.webnovelarchiver.domain.model.Story,
+): com.vinicius741.webnovelarchiver.navigation.AppRoute.Reader? =
+    (navigator.current as? com.vinicius741.webnovelarchiver.navigation.AppRoute.Reader)?.takeIf { route ->
+        route.storyId == story.id && story.chapters.any { it.id == route.chapterId }
+    }

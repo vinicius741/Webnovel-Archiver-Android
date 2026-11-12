@@ -22,8 +22,8 @@ import com.vinicius741.webnovelarchiver.tts.TtsForegroundService
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackSnapshot
 import com.vinicius741.webnovelarchiver.ui.Spacing
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
-import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.Type
+import com.vinicius741.webnovelarchiver.ui.activeCoverSource
 import com.vinicius741.webnovelarchiver.ui.coverImage
 import com.vinicius741.webnovelarchiver.ui.dp
 import com.vinicius741.webnovelarchiver.ui.makeCard
@@ -104,7 +104,7 @@ internal class ListenNowCard(
                 )
             }
         setCard(
-            gradient(PLAYING_START, PLAYING_END, colors.primary),
+            cardGradient(context, PLAYING_START, PLAYING_END, colors.primary),
             host.repository.story(snapshot.storyId),
             texts,
             play,
@@ -159,7 +159,14 @@ internal class ListenNowCard(
                         !it.caughtUp && it.chapterId == target.chapter.id
                     }?.let { "sentence ${it.currentChunkIndex + 1}" }
             val key =
-                listOf(target.story.id, target.story.title, host.activeCoverSource(target.story), target.chapter.id, target.chapter.title, sentence)
+                listOf(
+                    target.story.id,
+                    target.story.title,
+                    host.activeCoverSource(target.story),
+                    target.chapter.id,
+                    target.chapter.title,
+                    sentence,
+                )
             val found = ContinueCard(target, sentence, key)
             lastContinue = found
             if (shown?.key != key) showContinue(found)
@@ -192,7 +199,7 @@ internal class ListenNowCard(
                 line().apply { text = listOfNotNull(target.story.title, sentence).joinToString(" · ") },
             )
         val play = playButton(colors.secondary, colors.onSecondary, resume).apply { contentDescription = "Resume" }
-        setCard(gradient(RESUME_START, RESUME_END, colors.secondary), target.story, texts, play, resume)
+        setCard(cardGradient(context, RESUME_START, RESUME_END, colors.secondary), target.story, texts, play, resume)
     }
 
     private fun setCard(
@@ -243,15 +250,6 @@ internal class ListenNowCard(
         view.addView(row)
     }
 
-    private fun gradient(
-        start: Int,
-        end: Int,
-        accent: Int,
-    ) = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
-        cornerRadius = context.dp(CARD_RADIUS_DP).toFloat()
-        setStroke(context.dp(1).coerceAtLeast(1), accent and BORDER_ALPHA_MASK)
-    }
-
     private fun column(vararg children: View) =
         LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -300,12 +298,24 @@ internal class ListenNowCard(
         const val COVER_HEIGHT_DP = 96
         const val PLAY_SIZE_DP = 52
         const val PLAY_RADIUS_DP = 18
-        const val CARD_RADIUS_DP = 22
         const val EYEBROW_SPACING = 0.08f
-        const val BORDER_ALPHA_MASK = 0x33FFFFFF
         const val PLAYING_START = 0xFF33291A.toInt()
         const val PLAYING_END = 0xFF1D1A14.toInt()
         const val RESUME_START = 0xFF3A2618.toInt()
         const val RESUME_END = 0xFF1F1A15.toInt()
     }
+}
+
+private const val CARD_RADIUS_DP = 22
+private const val BORDER_ALPHA_MASK = 0x33FFFFFF
+
+/** The tinted card background: a diagonal gradient with a faint accent border. */
+private fun cardGradient(
+    context: android.content.Context,
+    start: Int,
+    end: Int,
+    accent: Int,
+) = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
+    cornerRadius = context.dp(CARD_RADIUS_DP).toFloat()
+    setStroke(context.dp(1).coerceAtLeast(1), accent and BORDER_ALPHA_MASK)
 }
