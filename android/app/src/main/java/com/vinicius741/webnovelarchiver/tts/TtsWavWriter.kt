@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
-/** Writes float samples as the mono 16-bit PCM WAV every [TtsSpeechSynthesizer] produces. */
+/** Converts float samples to mono 16-bit PCM, with a WAV header when a file synthesizer needs it. */
 internal object TtsWavWriter {
     private const val HEADER_BYTES = 44
     private const val FMT_CHUNK_BYTES = 16
@@ -33,9 +33,25 @@ internal object TtsWavWriter {
         buffer.putShort(BITS)
         buffer.put("data".toByteArray(Charsets.US_ASCII))
         buffer.putInt(dataBytes)
+        putSamples(buffer, samples)
+        return buffer.array()
+    }
+
+    fun pcm16(
+        samples: FloatArray,
+        sampleRate: Int,
+    ): TtsPcmClip {
+        val buffer = ByteBuffer.allocate(samples.size * BYTES_PER_SAMPLE).order(ByteOrder.LITTLE_ENDIAN)
+        putSamples(buffer, samples)
+        return TtsPcmClip(sampleRate, buffer.array())
+    }
+
+    private fun putSamples(
+        buffer: ByteBuffer,
+        samples: FloatArray,
+    ) {
         samples.forEach { sample ->
             buffer.putShort((sample.coerceIn(-1f, 1f) * Short.MAX_VALUE).roundToInt().toShort())
         }
-        return buffer.array()
     }
 }

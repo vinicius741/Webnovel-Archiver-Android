@@ -1,9 +1,20 @@
 package com.vinicius741.webnovelarchiver.tts
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TtsWavWriterTest {
+    @Test
+    fun rawPcmMatchesTheWavPathIncludingClippingAndEmptyAudio() {
+        listOf(floatArrayOf(-3f, -1f, -0.5f, 0f, 0.5f, 1f, 1.7f), FloatArray(0)).forEach { samples ->
+            val wav = TtsPcmPlanning.parseWav(TtsWavWriter.mono16(samples, 24_000))!!
+            val raw = TtsWavWriter.pcm16(samples, 24_000)
+            assertEquals(wav.sampleRate, raw.sampleRate)
+            assertArrayEquals(wav.pcm, raw.pcm)
+        }
+    }
+
     @Test
     fun `written audio parses back as the same mono 16-bit samples`() {
         val wav = TtsWavWriter.mono16(floatArrayOf(0f, 0.5f, -0.5f, 1f, -1f), 24_000)

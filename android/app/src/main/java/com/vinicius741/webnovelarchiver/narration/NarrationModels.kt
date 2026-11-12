@@ -134,6 +134,14 @@ data class NarrationProgress(
     val total: Int = 0,
     /** Estimated real time left for the whole queue, when known. */
     val etaMs: Long? = null,
+    /** Estimated real time left for this chapter, when known. */
+    val chapterEtaMs: Long? = null,
+    /** Audio generated per second of real time in this chapter so far, once measurable. */
+    val speed: Double? = null,
+    /** Queued chapters waiting behind this one. */
+    val queuedAfter: Int = 0,
+    /** The chapter is about to start: its text is read and the voice is loading. */
+    val preparing: Boolean = false,
 ) {
     val fraction: Float get() = if (total <= 0) 0f else done.toFloat() / total
 }

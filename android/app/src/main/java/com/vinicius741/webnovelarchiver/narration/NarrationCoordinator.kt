@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.narration
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.StatFs
 import com.vinicius741.webnovelarchiver.cleanup.TtsTextPreparation
@@ -11,6 +12,7 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.tts.TtsContinueListening
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
 import com.vinicius741.webnovelarchiver.tts.TtsNarrationPlanning
+import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroCpu
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroRuntime
 import com.vinicius741.webnovelarchiver.tts.kokoro.KokoroVoices
 import kotlinx.coroutines.CoroutineScope
@@ -67,6 +69,9 @@ class NarrationCoordinator internal constructor(
 
     /** The chapter being generated, or null while idle. */
     val progress: StateFlow<NarrationProgress?> get() = generator.progress
+
+    /** Whether the worker may run (its foreground service is up); queued work with this false is waiting on Android. */
+    val generationRunning: StateFlow<Boolean> get() = generationAllowed
 
     /** Bumps when a pack is published or deleted. */
     val packsRevision: StateFlow<Long> get() = store.revision
@@ -365,6 +370,20 @@ class NarrationCoordinator internal constructor(
         queue.update { it.copy(jobs = NarrationPlanning.moveToTop(it.jobs, jobId)) }
     }
 
+    /** Stops everything: removes every job, including the running one (its partial audio is dropped). */
+    fun clearQueue() {
+        queue.update { it.copy(jobs = emptyList()) }
+        ActivityLog.record(ActivityCategory.TTS, "narration_queue_cleared")
+    }
+
+    /**
+     * Puts every job of [storyId] before the rest, so that story generates next. A chapter of another
+     * story stops at its next sentence and resumes from there later.
+     */
+    fun moveStoryToTop(storyId: String) {
+        queue.update { it.copy(jobs = NarrationPlanning.storyFirst(it.jobs, storyId)) }
+    }
+
     fun retry(jobId: String) {
         queue.update { it.copy(jobs = NarrationPlanning.retry(it.jobs, jobId)) }
         if (hasRunnableWork()) startService()
@@ -448,6 +467,12 @@ private class RepositoryNarrationSource(
     }
 
     override fun libraryGeneration(): Long = repository.libraryGeneration()
+
+    /** Logged with each finished chapter, to tell background slowdowns from slow chapters. */
+    override fun environment(): List<Pair<String, Any?>> {
+        val info = ActivityManager.RunningAppProcessInfo().also(ActivityManager::getMyMemoryState)
+        return listOf("cpusAllowed" to KokoroCpu.allowedCoreCount(), "importance" to info.importance)
+    }
 
     override fun freeBytes(): Long =
         runCatching {

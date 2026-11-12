@@ -24,6 +24,17 @@ internal object KokoroThreads {
     /** Read once: core clocks do not change while the app runs. */
     val forThisPhone: Int by lazy { forClocks(KokoroCpu.coreMaxKhz()) }
 
+    /**
+     * [forThisPhone], capped at the cores Android lets this thread run on right now. A background
+     * app can be confined to fewer cores than the phone has; null (unreadable) keeps the phone's count.
+     */
+    fun forNow(): Int = forAllowed(forThisPhone, KokoroCpu.allowedCoreCount())
+
+    fun forAllowed(
+        phone: Int,
+        allowed: Int?,
+    ): Int = if (allowed == null || allowed <= 0) phone else minOf(phone, allowed.coerceAtLeast(MIN))
+
     /** [maxKhz] holds each core's top clock, null where it could not be read. */
     fun forClocks(maxKhz: List<Long?>): Int {
         val known = maxKhz.filterNotNull().filter { it >= KokoroCpu.KHZ_PER_MHZ }
@@ -49,6 +60,30 @@ internal object KokoroCpu {
     fun coreMaxKhz(cores: Int = coreCount()): List<Long?> = (0 until cores).map { readLong("$DIR/cpu$it/cpufreq/cpuinfo_max_freq") }
 
     fun coreCurrentKhz(cores: Int): List<Long?> = (0 until cores).map { readLong("$DIR/cpu$it/cpufreq/scaling_cur_freq") }
+
+    /** Cores the calling thread may run on now (its cpuset), or null when unreadable. */
+    fun allowedCoreCount(): Int? =
+        runCatching {
+            File("/proc/thread-self/status")
+                .readLines()
+                .firstOrNull { it.startsWith("Cpus_allowed_list:") }
+                ?.substringAfter(':')
+                ?.let(::countCpuList)
+        }.getOrNull()
+
+    /** Counts the cores in a Linux CPU list such as `0-3,6,7`; null when it does not parse. */
+    fun countCpuList(list: String): Int? {
+        var count = 0
+        for (part in list.trim().split(',')) {
+            if (part.isBlank()) continue
+            val bounds = part.trim().split('-')
+            val first = bounds[0].toIntOrNull() ?: return null
+            val last = bounds.getOrNull(1)?.toIntOrNull() ?: if (bounds.size == 1) first else return null
+            if (last < first) return null
+            count += last - first + 1
+        }
+        return count.takeIf { it > 0 }
+    }
 
     private fun readLong(path: String): Long? = runCatching { File(path).readText().trim().toLong() }.getOrNull()
 }

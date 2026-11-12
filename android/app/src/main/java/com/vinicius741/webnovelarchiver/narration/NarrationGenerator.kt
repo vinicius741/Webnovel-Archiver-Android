@@ -44,6 +44,9 @@ internal interface NarrationChapterSource {
 
     /** Bytes free where packs are written. */
     fun freeBytes(): Long
+
+    /** Facts about the process logged with each finished chapter (CPUs it may use, foreground or not). */
+    fun environment(): List<Pair<String, Any?>> = emptyList()
 }
 
 /**
@@ -148,6 +151,10 @@ internal class NarrationGenerator(
         val startedGeneration = source.libraryGeneration()
         val text = source.chapter(job.storyId, job.chapterId) ?: return JobOutcome.Dropped
         if (text.sentences.isEmpty()) return JobOutcome.Failed("The chapter has no text to read")
+        // Shown while the voice loads (seconds for Kokoro), so the screens never look idle with work queued.
+        if (_progress.value?.job?.id != job.id) {
+            _progress.value = NarrationProgress(job = job, storyTitle = text.storyTitle, chapterTitle = text.chapterTitle, preparing = true)
+        }
         val voice = openSynthesizer(job.voice)
         if (!stillWanted(job)) return JobOutcome.Interrupted
         val recipe =
@@ -174,8 +181,10 @@ internal class NarrationGenerator(
         }
         val versionDir = versionFor(job, recipe)
         ActivityLog.record(ActivityCategory.TTS, "narration_generate", "storyId" to job.storyId, "chapterId" to job.chapterId)
-        val stats = GenerationStats()
-        writeClips(job, text, recipe, versionDir, voice, current, stats)?.let { return it }
+        val stats = GenerationStats(now())
+        writeClips(job, text, recipe, versionDir, voice, current, stats)?.let {
+            return if (it == JobOutcome.Interrupted) interrupted(job, versionDir) else it
+        }
         checkBeforePublish(job, recipe, versionDir, startedGeneration)?.let { return it }
         val index = buildIndex(versionDir, recipe) ?: return JobOutcome.Failed("The voice changed sample rate mid-chapter")
         var pack: NarrationPack? = null
@@ -190,7 +199,18 @@ internal class NarrationGenerator(
         }
         val published = pack ?: return interrupted(job, versionDir)
         recordStats(job.voice.engine, stats)
-        ActivityLog.record(ActivityCategory.TTS, "narration_published", "storyId" to job.storyId, "chapterId" to job.chapterId)
+        ActivityLog.recordAll(
+            ActivityCategory.TTS,
+            "narration_published",
+            listOf(
+                "storyId" to job.storyId,
+                "chapterId" to job.chapterId,
+                "audioMs" to index.totalDurationMs,
+                "generationMs" to (now() - stats.startedAt),
+                "renderMs" to stats.realMs,
+                "inferenceThreads" to voice.inferenceThreads,
+            ) + source.environment(),
+        )
         onPublished(published)
         return JobOutcome.Done
     }
@@ -202,10 +222,12 @@ internal class NarrationGenerator(
         text: NarrationChapterText,
         recipe: NarrationRecipe,
         versionDir: File,
-        voice: NarrationSynthesizer,
+        opened: NarrationSynthesizer,
         current: NarrationPack?,
         stats: GenerationStats,
     ): JobOutcome? {
+        // Saving a clip takes milliseconds against seconds of inference, so writes stay inline.
+        val voice = opened
         val reuse = if (current != null && current.recipe.voiceKey == recipe.voiceKey) reusableClips(current) else emptyMap()
         val items =
             listOfNotNull(recipe.title?.let { store.titleFile(versionDir) to it }) +
@@ -213,9 +235,11 @@ internal class NarrationGenerator(
         var consecutiveEmpty = 0
         for ((done, item) in items.withIndex()) {
             publishProgress(job, text, done, items.size, recipe, stats)
-            if (!stillWanted(job)) return interrupted(job, versionDir)
+            // Moving another job first switches at the next sentence; this one keeps its clips and resumes later.
+            if (!stillWanted(job) || !isNext(job)) return JobOutcome.Interrupted
             val (target, sentence) = item
             if (target.isFile) continue
+            if (done > 0 && done % REFIT_CHECK_CLIPS == 0) voice.fitToDevice()
             val reused = reuse[sentence]?.let(store::readClip)
             val clip =
                 reused ?: synthesize(voice, sentence, versionDir, stats)
@@ -298,9 +322,7 @@ internal class NarrationGenerator(
         val startedAt = now()
         try {
             // One retry: a single hiccup must not fail a whole chapter.
-            val succeeded = voice.synthesize(sentence, temporary) || voice.synthesize(sentence, temporary)
-            if (!succeeded) return null
-            val parsed = temporary.takeIf(File::isFile)?.readBytes()?.let(TtsPcmPlanning::parseWav) ?: return null
+            val parsed = voice.synthesize(sentence, temporary) ?: voice.synthesize(sentence, temporary) ?: return null
             val trimmed = TtsPcmPlanning.trimSilence(parsed)
             stats.add(sentence.length, trimmed.durationMs, now() - startedAt)
             return trimmed
@@ -356,8 +378,18 @@ internal class NarrationGenerator(
         return queued.voice == job.voice && queued.state == NarrationJobState.QUEUED
     }
 
+    /** Whether [job] is still the one the queue wants generated now (nothing was moved ahead of it). */
+    private fun isNext(job: NarrationJob): Boolean = NarrationPlanning.next(queue.state.value.jobs)?.id == job.id
+
+    /**
+     * The open synthesizer for [voice], re-fitted to the device: Kokoro must not run more threads
+     * than Android currently lets the app use (fewer cores in the background).
+     */
     private suspend fun openSynthesizer(voice: NarrationVoice): NarrationSynthesizer {
-        synthesizer?.takeIf { it.voice == voice }?.let { return it }
+        synthesizer?.takeIf { it.voice == voice }?.let {
+            it.fitToDevice()
+            return it
+        }
         closeSynthesizer()
         return synthesizers.open(voice).also { synthesizer = it }
     }
@@ -367,6 +399,7 @@ internal class NarrationGenerator(
         synthesizer = null
     }
 
+    @Suppress("LongParameterList") // One chapter's generation state, passed through rather than stored.
     private fun publishProgress(
         job: NarrationJob,
         text: NarrationChapterText,
@@ -376,7 +409,8 @@ internal class NarrationGenerator(
         stats: GenerationStats,
     ) {
         val document = queue.state.value
-        val speed = stats.speed() ?: document.speed[job.voice.engine] ?: NarrationPlanning.DEFAULT_SPEED
+        val measuredSpeed = stats.speed(now())
+        val speed = measuredSpeed ?: document.speed[job.voice.engine] ?: NarrationPlanning.DEFAULT_SPEED
         // This chapter's own voice rate, once enough of it is measured, beats the stored average.
         val measured = stats.msPerChar().takeIf { stats.characters >= MIN_STATS_CHARACTERS }
         val chapterAudio =
@@ -391,6 +425,9 @@ internal class NarrationGenerator(
                 done = done,
                 total = total,
                 etaMs = NarrationPlanning.generationMs(remainingHere + others * chapterAudio, speed),
+                chapterEtaMs = NarrationPlanning.generationMs(remainingHere, speed),
+                speed = measuredSpeed,
+                queuedAfter = others,
             )
     }
 
@@ -411,7 +448,7 @@ internal class NarrationGenerator(
             document.copy(
                 msPerChar = document.msPerChar + (engine to NarrationPlanning.blend(document.msPerChar[engine], stats.msPerChar())),
                 speed =
-                    stats.speed()?.let { document.speed + (engine to NarrationPlanning.blend(document.speed[engine], it)) }
+                    stats.speed(now())?.let { document.speed + (engine to NarrationPlanning.blend(document.speed[engine], it)) }
                         ?: document.speed,
             )
         }
@@ -454,7 +491,9 @@ internal class NarrationGenerator(
         queue.update { it.copy(paused = true, pauseReason = reason) }
     }
 
-    private class GenerationStats {
+    private class GenerationStats(
+        val startedAt: Long,
+    ) {
         var characters = 0L
         var audioMs = 0L
         var realMs = 0L
@@ -471,11 +510,17 @@ internal class NarrationGenerator(
 
         fun msPerChar(): Double = if (characters == 0L) 0.0 else audioMs.toDouble() / characters
 
-        fun speed(): Double? = if (realMs < MIN_STATS_REAL_MS) null else audioMs.toDouble() / realMs
+        fun speed(at: Long): Double? {
+            val elapsed = at - startedAt
+            return if (elapsed < MIN_STATS_REAL_MS) null else audioMs.toDouble() / elapsed
+        }
     }
 
     private companion object {
         const val MAX_CONSECUTIVE_EMPTY = 5
+
+        /** How often (in clips) a long chapter re-fits the voice, e.g. after the app went to the background. */
+        const val REFIT_CHECK_CLIPS = 40
         const val FAILED_TEXT_CHARS = 60
         const val DEFAULT_SAMPLE_RATE = 24_000
         const val CLIP_HEADER_BYTES = 4L

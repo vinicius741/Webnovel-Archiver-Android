@@ -1,5 +1,6 @@
 package com.vinicius741.webnovelarchiver.narration
 
+import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,9 +59,14 @@ class NarrationGeneratorTest {
         var failOn: String? = null
         var unavailable = false
         var onSpeak: (String) -> Unit = {}
+        var onOpen: () -> Unit = {}
+        var opened = 0
+        var refits = 0
 
         override suspend fun open(voice: NarrationVoice): NarrationSynthesizer {
             if (unavailable) throw NarrationVoiceUnavailable("Engine missing")
+            opened++
+            onOpen()
             return object : NarrationSynthesizer {
                 override val voice = voice
                 override val voiceKey = "fake|${voice.voiceId}"
@@ -68,12 +74,15 @@ class NarrationGeneratorTest {
                 override suspend fun synthesize(
                     text: String,
                     output: File,
-                ): Boolean {
-                    if (text == failOn) return false
+                ): TtsPcmClip? {
+                    if (text == failOn) return null
                     spoken += text
                     onSpeak(text)
-                    output.writeBytes(TtsWavWriter.mono16(FloatArray(2_400) { 0.5f }, 24_000))
-                    return true
+                    return TtsWavWriter.pcm16(FloatArray(2_400) { 0.5f }, 24_000)
+                }
+
+                override suspend fun fitToDevice() {
+                    refits++
                 }
 
                 override fun close() = Unit
@@ -383,6 +392,68 @@ class NarrationGeneratorTest {
             allowed.value = true
             runCurrent()
             assertEquals(listOf("Chapter One", "First sentence.", "Second sentence.", "Third sentence."), synthesizers.spoken)
+            assertNotNull(store.pack("s", "c"))
+        }
+
+    @Test
+    fun progressShowsTheChapterWhileTheVoiceLoadsThenCountsSentences() =
+        runTest {
+            val seen = mutableListOf<NarrationProgress>()
+            synthesizers.onSpeak = { generator.progress.value?.let(seen::add) }
+            synthesizers.onOpen = { generator.progress.value?.let(seen::add) }
+            generator.runJob(enqueue())
+            assertTrue(seen.first().preparing)
+            assertEquals("Chapter One", seen.first().chapterTitle)
+            assertTrue(seen.drop(1).none { it.preparing })
+            assertEquals(listOf(0, 1, 2, 3), seen.drop(1).map { it.done })
+            assertTrue(seen.drop(1).all { it.total == 4 && it.chapterEtaMs != null })
+        }
+
+    @Test
+    fun aLongChapterRefitsTheVoiceWithoutReopeningIt() =
+        runTest {
+            source.title = null
+            source.sentences = (1..90).map { "Sentence $it." }
+            generator.runJob(enqueue())
+            assertEquals(1, synthesizers.opened)
+            assertEquals(2, synthesizers.refits)
+            assertNotNull(store.pack("s", "c"))
+        }
+
+    @Test
+    fun movingAnotherJobFirstSwitchesAtTheNextSentenceAndTheFirstResumesWhereItStopped() =
+        runTest {
+            val first = enqueue()
+            queue.update {
+                it.copy(
+                    jobs =
+                        NarrationPlanning.enqueue(
+                            it.jobs,
+                            listOf(NarrationRequest("s", "c2", voice, NarrationOrigin.MANUAL)),
+                            { _, _ -> false },
+                            false,
+                            0L,
+                        ) { "other" },
+                )
+            }
+            synthesizers.onSpeak =
+                { if (it == "First sentence.") queue.update { doc -> doc.copy(jobs = NarrationPlanning.moveToTop(doc.jobs, "other")) } }
+            generator.runJob(first)
+            assertEquals(listOf("Chapter One", "First sentence."), synthesizers.spoken)
+            assertNull(store.pack("s", "c"))
+            assertNotNull(
+                queue.state.value.jobs
+                    .first { it.id == first.id }
+                    .version,
+            )
+            synthesizers.spoken.clear()
+            synthesizers.onSpeak = {}
+            queue.update { it.copy(jobs = NarrationPlanning.moveToTop(it.jobs, first.id)) }
+            generator.runJob(
+                queue.state.value.jobs
+                    .first(),
+            )
+            assertEquals(listOf("Second sentence.", "Third sentence."), synthesizers.spoken)
             assertNotNull(store.pack("s", "c"))
         }
 }

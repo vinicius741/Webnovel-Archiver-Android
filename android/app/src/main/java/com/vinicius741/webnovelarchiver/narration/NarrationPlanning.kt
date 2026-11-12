@@ -111,6 +111,12 @@ object NarrationPlanning {
         return listOf(job) + jobs.filter { it.id != jobId }
     }
 
+    /** The story's jobs first (in their order), then everything else, so the whole story generates next. */
+    fun storyFirst(
+        jobs: List<NarrationJob>,
+        storyId: String,
+    ): List<NarrationJob> = jobs.filter { it.storyId == storyId } + jobs.filter { it.storyId != storyId }
+
     fun retry(
         jobs: List<NarrationJob>,
         jobId: String,

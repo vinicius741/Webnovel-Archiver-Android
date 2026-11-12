@@ -158,7 +158,12 @@ data class NarrationJob(
   user chose Regenerate. Re-enqueueing a chapter that already has a job replaces that job only for
   MANUAL and REGENERATE requests. Keep-ahead only adds jobs and never changes existing ones.
 - Order: queue order. "Generate" and "Regenerate" requests go to the end. "Generate next" (and the
-  auto-advance case below) puts a job first. Keep-ahead jobs go to the end.
+  auto-advance case below) puts a job first, and "Generate this story first" puts all of a story's
+  jobs first in their order (`NarrationPlanning.storyFirst`). Keep-ahead jobs go to the end.
+- **Reordering preempts.** The worker checks before every sentence that its job is still the first
+  queued one. When another job moves ahead, the running chapter stops at the next sentence boundary
+  and keeps its version folder, so it resumes at its first missing clip once it is first again.
+  Clear queue removes every job; the running one stops and its unfinished version is discarded.
 - **Voice resolved at enqueue.** "Follow the phone's engine" (`enginePackage = null`) becomes the
   actual default engine package (`Settings.Secure.TTS_DEFAULT_SYNTH`). Kokoro's default voice becomes
   its concrete id. An Android engine's unspecified voice stays unspecified, and the voice the engine
@@ -308,41 +313,54 @@ Regenerate". Regeneration reuses identical sentences (§2 step 4).
 
 ## 4. UI
 
-### Narration screen (`AppRoute.Narration`, `feature/narration/`)
+### Live generation banner (`NarrationLiveStatus`)
 
-Reached from a Library app-bar action ("Narration", headphones icon), Now Playing, Details and the
-generation notification.
+Pinned at the top of both narration screens (it does not scroll away and is not rebuilt), driven by
+`NarrationScreenPlanning.banner` from the worker's progress, the queue and whether the service
+lets generation run:
 
-- **Status card:**
-  - Generating now: story, chapter, progress bar, sentence count, ETA and voice. Or "Paused"
-    with the reason, or "Idle".
-  - Pause / Resume.
-  - Storage used by narration, and free space.
-- **Screen-off banner** while the app is not exempt from battery optimization.
-- **Queue:** jobs in order with their state. Per job: move to top, remove, retry (failed). Clear
-  failed.
-- **Keep ahead** setting.
+- **Generating · 42%**: chapter and story, a progress bar, sentences done, live speed (× real time),
+  time left in this chapter, and how many chapters follow with the total time.
+- **Starting · loading the voice**: the job's text is read and Kokoro is loading (seconds).
+- **Paused** (with the reason), **Waiting to start** (jobs queued but Android has not let the
+  foreground service start), **N failed**, or **Nothing is generating** (hidden on the story screen).
+- **Pause** / **Resume** buttons. Tapping the banner opens the queue (story screen) or the story
+  being generated (queue screen).
+
+### Audio generation screen (`AppRoute.Narration`, `feature/narration/NarrationScreen.kt`)
+
+The global view across stories. Reached from the Library app-bar action (headphones), each story's
+Chapter audio screen (app-bar queue action and overflow), Now Playing, and the generation
+notification.
+
+- The live banner, then the **queue grouped by story** in queue order. Each story card shows its
+  queued/failed counts and up to five chapters (the generating one with a live bar). Story menu:
+  **Generate this story first**, retry failed, open chapter audio, remove the story from the queue.
+  Chapter menu: **Generate next**, retry, open chapter audio, remove (or stop and remove).
+- App-bar **Queue options**: pause/resume, retry/clear failed, **Clear the queue**.
+- Screen-off banner while the app is not exempt from battery optimization, **Keep ahead** setting,
+  storage used and free.
 - **Generated:** stories with packs, showing chapters ready, size and voices. A tap opens the story
   screen. **Detached audio** (packs of stories no longer in the library) can be deleted.
 
-### Story narration screen (`AppRoute.NarrationStory(storyId, chapterId?)`)
+### Chapter audio screen (`AppRoute.NarrationStory(storyId, chapterId?)`)
 
 "Read aloud" opens it when the chapter is not ready.
 
-- Focused chapter card: status (Not generated / Queued / Generating 41% / Ready / Text changed /
-  Failed: reason). When ready it shows a **Play** button, and the user decides when to start.
-- "New audio uses: Bella · Kokoro (current voice)", with a button to open Voice & Speech.
-- Quick actions with estimates (time and size):
-  - **Generate this chapter**
-  - **This + next 5**
-  - **All remaining**
-  - **Select chapters…**
-- Chapter list (downloaded chapters) with a status badge per row and multi-select. Selection
-  actions:
-  - Generate
-  - Regenerate with current voice
-  - Delete audio
-- Story actions: Delete all audio, Regenerate all with current voice.
+- The live banner (pinned), then filter chips: **From bookmark (N)** (the bookmarked chapter and
+  everything after it; the default whenever the story has a bookmark, unless the chapter the screen
+  was opened for lies before it), **All**, **Not generated**, **Ready**. The filter is remembered per
+  story while the app runs.
+- Header: the focused chapter's card (Play / Generate now / Generate it next), a **Generate this
+  story first** card while the story's jobs wait behind another story's, and the voice new audio
+  uses.
+- Chapter list: title, status (with a live bar while generating) and a bookmark marker. Tap opens
+  the chapter's menu. **Long-press starts selection** (as does the app-bar Select action); in
+  selection mode a tap toggles, a long-press selects the whole visible range from the last chapter
+  touched, and the app-bar check selects or clears everything shown. Bottom bar: **Generate**
+  (chapters without current audio), **Regenerate** (in the current voice), **Delete**.
+- Overflow: generate everything not generated, generate this story first, regenerate in the current
+  voice, Voice & Speech, the generation queue, remove this story from the queue, delete all audio.
 
 ### Entry points
 
@@ -384,7 +402,7 @@ New package `narration/`:
 | `NarrationForegroundService.kt` | Foreground service, wake lock, notification. |
 | `tts/PackTtsOutput.kt` | Pack-backed `TtsOutput`. |
 
-UI in `feature/narration/`: `NarrationScreen.kt`, `NarrationStoryScreen.kt`, shared rows.
+UI in `feature/narration/`: `NarrationScreen.kt`, `NarrationStoryScreen.kt`, `ChapterAudioAdapter.kt`, `NarrationLiveStatus.kt`, with the pure rules in `NarrationScreenPlanning.kt`.
 
 ## 7. Tests and verification
 
@@ -501,3 +519,24 @@ Verified on `webnovel_api36` (debug build, Kokoro Bella, 2026-11-11):
   exemption, because an emulator never suspends its CPU.
 - The owner's phone, One UI's background limits, hours-long thermal behavior, and regenerating in
   another voice on device (that is covered by unit tests).
+
+## Generation speed (2026-11-11)
+
+Generation keeps the `kokoro-en-v0_19` model; only how it runs is tuned.
+
+- Inference is nearly all of a chapter's time. Saving a clip takes milliseconds against seconds of
+  inference, so clips are written inline (an asynchronous writer measured no meaningful gain and was
+  dropped). Kokoro output goes straight to 16-bit PCM, without a temporary WAV.
+- The Fold7 speed test (see `kokoro-built-in-voices.md`) showed the CPU nearly saturated in the
+  foreground: one copy on 8 threads made 2.51x, two copies on 4 threads each 2.45x. Running more
+  copies in parallel would cost ~730 MB each for no gain, so generation keeps one copy.
+- **Threads follow the cores Android allows.** In the background Android can confine the app to a
+  smaller cpuset. ONNX Runtime splits every step across its threads and spins while waiting, so more
+  threads than allowed cores makes each step wait for a thread that is not running. The model loads
+  with `KokoroThreads.forNow()` (fast cores, capped by `Cpus_allowed_list` of the calling thread),
+  and the worker re-checks before each chapter and every 40 clips (`KokoroRuntime.refitThreads`),
+  reloading the model (one copy at a time) when the count changes.
+- `narration_published` in the activity log records audio length, wall time, render time, native
+  threads, `cpusAllowed` and the process importance, so a slow chapter on the phone can be told apart
+  from a background-restricted one. The live banner and notification show the measured speed.
+

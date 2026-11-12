@@ -35,12 +35,21 @@ class KokoroRuntime(
     private val lock = Any()
     private var tts: OfflineTts? = null
     private var users = 0
+    private var loadedFiles: KokoroModelFiles? = null
+
+    /** Threads the loaded model computes on; null while it is not loaded. */
+    @Volatile
+    internal var loadedThreads: Int? = null
+        private set
 
     /** Loads the model if needed (seconds; call off the main thread). False if it cannot load. */
     internal fun acquire(files: KokoroModelFiles): Boolean =
         synchronized(lock) {
             if (tts == null) {
-                tts = load(files) ?: return false
+                val count = KokoroThreads.forNow()
+                tts = load(files, count) ?: return false
+                loadedFiles = files
+                loadedThreads = count
             }
             users++
             true
@@ -75,6 +84,7 @@ class KokoroRuntime(
                 if (users == 0) {
                     tts?.release()
                     tts = null
+                    loadedThreads = null
                 }
             }
         }
@@ -96,12 +106,38 @@ class KokoroRuntime(
     /** Whether narration or the settings sample currently holds the model in memory. */
     internal val isLoaded: Boolean get() = synchronized(lock) { tts != null }
 
-    private fun load(files: KokoroModelFiles): OfflineTts? = loadKokoroTts(files, threads)
+    /**
+     * Reloads the model when its thread count no longer fits the cores Android lets the app use
+     * (seconds; off the main thread). In the background Android can confine the app to fewer cores,
+     * and more compute threads than cores makes every step wait for a thread that is not running.
+     * Returns whether it reloaded.
+     */
+    internal fun refitThreads(): Boolean =
+        synchronized(lock) {
+            val engine = tts ?: return false
+            val files = loadedFiles ?: return false
+            val previous = loadedThreads ?: return false
+            val wanted = KokoroThreads.forNow()
+            if (wanted == previous) return false
+            // One copy at a time: two would need over a gigabyte at once.
+            engine.release()
+            val reloaded = load(files, wanted)
+            tts = reloaded ?: load(files, previous)
+            loadedThreads = if (reloaded != null) wanted else previous.takeIf { tts != null }
+            Timber.i("Kokoro reloaded with %d threads (was %d)", loadedThreads ?: 0, previous)
+            reloaded != null
+        }
+
+    private fun load(
+        files: KokoroModelFiles,
+        count: Int,
+    ): OfflineTts? = loadKokoroTts(files, count)
 
     internal companion object {
         /**
          * One per fast core (see [KokoroThreads]). Playback barely uses the CPU, and its thread runs at
-         * audio priority, so it is not starved by generation on every core.
+         * audio priority, so it is not starved by generation on every core. The model loads with
+         * [KokoroThreads.forNow], which also caps this at the cores the app may use at that moment.
          */
         val threads: Int get() = KokoroThreads.forThisPhone
     }

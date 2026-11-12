@@ -137,8 +137,13 @@ class NarrationForegroundService : Service() {
             } else {
                 buildString {
                     append(progress.chapterTitle)
-                    append(" · ${(progress.fraction * PERCENT).toInt()}%")
-                    if (queued > 1) append(" · ${queued - 1} more queued")
+                    if (progress.preparing) {
+                        append(" · starting")
+                    } else {
+                        append(" · ${(progress.fraction * PERCENT).toInt()}%")
+                        progress.speed?.let { append(String.format(java.util.Locale.US, " · %.1f×", it)) }
+                    }
+                    if (progress.queuedAfter > 0) append(" · ${progress.queuedAfter} more queued")
                     progress.etaMs?.let { append(" · ~${NarrationPlanning.formatDuration(it)} left") }
                 }
             }
@@ -158,7 +163,7 @@ class NarrationForegroundService : Service() {
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setSilent(true)
-            .setProgress(PERCENT, progress?.let { (it.fraction * PERCENT).toInt() } ?: 0, progress == null)
+            .setProgress(PERCENT, progress?.let { (it.fraction * PERCENT).toInt() } ?: 0, progress == null || progress.preparing)
             .addAction(R.drawable.wna_pause, "Pause", pause)
             .build()
     }

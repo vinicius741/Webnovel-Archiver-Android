@@ -31,4 +31,25 @@ class KokoroThreadsTest {
         // The emulator reports top clocks below 1 MHz.
         assertEquals(KokoroThreads.FALLBACK, KokoroThreads.forClocks(List(4) { 999L }))
     }
+
+    @Test
+    fun `cpu lists count every listed core`() {
+        assertEquals(8, KokoroCpu.countCpuList("0-7"))
+        assertEquals(7, KokoroCpu.countCpuList("0-2,4-7\n"))
+        assertEquals(3, KokoroCpu.countCpuList("0,3,5"))
+        assertEquals(null, KokoroCpu.countCpuList("garbage"))
+        assertEquals(null, KokoroCpu.countCpuList("5-2"))
+        assertEquals(null, KokoroCpu.countCpuList(""))
+    }
+
+    @Test
+    fun `threads never exceed the cores the app may use now`() {
+        assertEquals(8, KokoroThreads.forAllowed(8, 8))
+        // A background cpuset of six cores caps eight fast cores at six threads.
+        assertEquals(6, KokoroThreads.forAllowed(8, 6))
+        assertEquals(4, KokoroThreads.forAllowed(4, 8))
+        // At least two, and unreadable keeps the phone's count.
+        assertEquals(2, KokoroThreads.forAllowed(8, 1))
+        assertEquals(8, KokoroThreads.forAllowed(8, null))
+    }
 }

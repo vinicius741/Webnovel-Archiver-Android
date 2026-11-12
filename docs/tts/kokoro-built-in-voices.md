@@ -66,6 +66,12 @@ play from that audio without loading the model (see `narration-pregeneration-pla
 real-time path below still serves story descriptions and the settings sample. The speed test
 pauses generation while it runs.
 
+Chapter generation converts Kokoro output directly to 16-bit PCM and writes each clip inline:
+inference is nearly all of the time. The model's thread count is capped at the cores Android lets
+the app use at load time, and generation re-fits it when that changes (see "Generation speed" in
+`narration-pregeneration-plan.md`). Completed jobs log audio length, elapsed generation time,
+rendering time, native thread count, allowed cores and process importance in the activity log.
+
 - **Engine selection:**
   - Choosing Kokoro before its model is downloaded saves the choice. Until the install finishes, the
     phone's engine speaks. `TtsEnginePlanning.resolve` treats Kokoro as available only once installed.
@@ -92,7 +98,8 @@ pauses generation while it runs.
     engine-start watchdog allows 90 s for the load instead of 15 s.
   - It is freed on a background thread when no host holds it. A sentence in progress finishes first.
 - **Threads:** the model computes on one thread per fast core, capped at 8 and at least 2
-  (`KokoroThreads.forClocks`). A core counts as fast when its top clock is at least 70% of the
+  (`KokoroThreads.forClocks`), and never more than the cores the app may use when it loads
+  (`KokoroThreads.forNow`, from `/proc/thread-self/status`). A core counts as fast when its top clock is at least 70% of the
   fastest core's. The engine splits each sentence evenly across threads, so a thread on a slow
   efficiency core holds the rest back. Unreadable clocks (and emulators, which report placeholders)
   fall back to 4, the fixed count used before 1.0.16. On the Galaxy Z Fold7 (Snapdragon 8 Elite,

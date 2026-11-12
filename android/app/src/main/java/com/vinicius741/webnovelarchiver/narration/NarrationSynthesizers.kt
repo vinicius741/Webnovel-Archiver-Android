@@ -6,6 +6,8 @@ import com.vinicius741.webnovelarchiver.domain.model.TtsSettings
 import com.vinicius741.webnovelarchiver.tts.TtsEngineCatalog
 import com.vinicius741.webnovelarchiver.tts.TtsErrorPlanning
 import com.vinicius741.webnovelarchiver.tts.TtsFileSynthesizer
+import com.vinicius741.webnovelarchiver.tts.TtsPcmClip
+import com.vinicius741.webnovelarchiver.tts.TtsPcmPlanning
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackError
 import com.vinicius741.webnovelarchiver.tts.TtsSettingsApplier
 import com.vinicius741.webnovelarchiver.tts.TtsWavWriter
@@ -22,17 +24,23 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
-/** Speaks text into a mono 16-bit WAV in one fixed voice. */
+/** Produces mono 16-bit PCM in one fixed voice. Android engines need a temporary WAV file. */
 internal interface NarrationSynthesizer {
     val voice: NarrationVoice
 
     /** What the audio depends on besides its text; equal keys mean interchangeable clips. */
     val voiceKey: String
 
+    /** Native inference threads, when the app controls the engine's parallelism. */
+    val inferenceThreads: Int? get() = null
+
+    /** Re-fits the engine to the device between sentences (Kokoro: its thread count to the cores Android allows now). */
+    suspend fun fitToDevice() = Unit
+
     suspend fun synthesize(
         text: String,
         output: File,
-    ): Boolean
+    ): TtsPcmClip?
 
     fun close()
 }
@@ -105,17 +113,22 @@ private class KokoroNarrationSynthesizer(
     private val speakerId: Int,
 ) : NarrationSynthesizer {
     override val voiceKey: String = "${KokoroVoices.ENGINE_ID}|speaker=$speakerId|text=${KokoroTextPlanning.VERSION}"
+    override val inferenceThreads: Int? get() = runtime.loadedThreads
+
+    override suspend fun fitToDevice() {
+        withContext(Dispatchers.IO) { runtime.refitThreads() }
+    }
+
     private var released = false
 
     override suspend fun synthesize(
         text: String,
         output: File,
-    ): Boolean {
+    ): TtsPcmClip? {
         currentCoroutineContext().ensureActive()
-        val audio = runtime.generate(KokoroTextPlanning.spokenText(text), speakerId) ?: return false
+        val audio = runtime.generate(KokoroTextPlanning.spokenText(text), speakerId) ?: return null
         currentCoroutineContext().ensureActive()
-        output.writeBytes(TtsWavWriter.mono16(audio.samples, audio.sampleRate))
-        return true
+        return TtsWavWriter.pcm16(audio.samples, audio.sampleRate)
     }
 
     override fun close() {
@@ -145,7 +158,10 @@ private class AndroidEngineSynthesizer(
     override suspend fun synthesize(
         text: String,
         output: File,
-    ): Boolean = files.synthesize(text, output)
+    ): TtsPcmClip? {
+        if (!files.synthesize(text, output)) return null
+        return output.takeIf(File::isFile)?.readBytes()?.let(TtsPcmPlanning::parseWav)
+    }
 
     override fun close() {
         tts?.shutdown()
