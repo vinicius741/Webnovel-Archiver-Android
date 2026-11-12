@@ -42,6 +42,9 @@ import com.vinicius741.webnovelarchiver.ui.ripple
 import com.vinicius741.webnovelarchiver.ui.roundedBg
 import com.vinicius741.webnovelarchiver.ui.strokeBg
 import com.vinicius741.webnovelarchiver.ui.tintedIcon
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 
 /*
  * The story hero: cover, title and pills (DetailsHeader.kt), the release forecast with Sync, the
@@ -84,7 +87,8 @@ internal fun ScreenHost.buildStoryHero(
         }
     }
     val bannerSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
-    renderHeroDownloadBanner(bannerSlot, story, summary)
+    // Seeded with the pacing now: the live observer repaints the banner only when the pacing changes.
+    renderHeroDownloadBanner(bannerSlot, story, summary, currentPacingStatus(story.id))
     column.addView(bannerSlot)
     val ctaSlot = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
     renderDetailsCta(ctaSlot, story, summary, isBusy)
@@ -448,6 +452,9 @@ internal fun ScreenHost.renderHeroDownloadBanner(
         },
     )
 }
+
+/** A date in the device's medium style ("Nov 12, 2026"). */
+internal fun formatSourceDate(value: Long): String = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault()).format(Date(value))
 
 /** "today", "yesterday", "3 days ago", or the date. */
 internal fun formatAgo(

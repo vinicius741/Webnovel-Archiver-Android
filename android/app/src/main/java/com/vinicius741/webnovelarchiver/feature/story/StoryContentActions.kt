@@ -7,6 +7,7 @@ import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.epub.EpubConfigPlanning
 import com.vinicius741.webnovelarchiver.epub.EpubSelection
 import com.vinicius741.webnovelarchiver.feature.details.refreshStoryHero
+import com.vinicius741.webnovelarchiver.feature.details.refreshStoryOperationStrip
 import com.vinicius741.webnovelarchiver.feature.details.renderStoryOperationProgress
 import com.vinicius741.webnovelarchiver.feature.details.showStoryScreen
 import com.vinicius741.webnovelarchiver.feature.reader.showReader
@@ -264,7 +265,10 @@ internal fun ScreenHost.clearStoryOperation(
     if (storyOperation?.storyId == storyId && storyOperation?.kind == kind) {
         storyOperation = null
         detailsOperationSlot = null
-        if (rerender && activeStory?.id == storyId) refreshStoryHero(storyId)
+        if (activeStory?.id == storyId) {
+            // Without a re-render the caller redraws the page itself; only the strip under the tabs is cleared now.
+            if (rerender) refreshStoryHero(storyId) else refreshStoryOperationStrip(storyId)
+        }
     }
 }
 

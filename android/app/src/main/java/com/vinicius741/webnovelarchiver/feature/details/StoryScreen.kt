@@ -1,16 +1,14 @@
 package com.vinicius741.webnovelarchiver.feature.details
 
+import android.content.Context
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
 import androidx.core.widget.NestedScrollView
-import androidx.recyclerview.widget.RecyclerView
 import com.vinicius741.webnovelarchiver.R
 import com.vinicius741.webnovelarchiver.domain.model.Story
 import com.vinicius741.webnovelarchiver.feature.narration.narration
@@ -47,8 +45,15 @@ internal class StoryFrame(
     /** Docked under the tab body, outside its scroller (the description player bar). */
     val footer: LinearLayout,
 ) {
-    /** The Chapters tab's list, so live download events can patch its rows. */
-    var chapterList: RecyclerView? = null
+    /** The Chapters tab, so live download events can refresh its rows, chips and count. */
+    var chaptersTab: ChaptersTab? = null
+}
+
+/** The inner screen's hero pane; [bindings] lets a rebuilt hero take over the live download patches. */
+internal class HeroPane(
+    context: Context,
+) : NestedScrollView(context) {
+    var bindings: DetailsBindings? = null
 }
 
 /** One-shot and remembered choices the story page carries between its tab renders. */
@@ -77,6 +82,8 @@ internal fun ScreenHost.storyScreen(
     val current = navigator.current
     if (current.stableKey != route.stableKey && StoryTabPlanning.storyIdOf(current) == story.id) navigator.replace(route)
     activeStory = story
+    // The Overview's description player re-attaches its collector; other tabs must not keep it.
+    detachDetailsTtsListener()
     val twoPane = currentScreenLayout().isTwoPane
     // Cleared before rebuild so a stale slot cannot be patched after the tree is replaced.
     detailsOperationSlot = null
@@ -100,12 +107,15 @@ internal fun ScreenHost.storyScreen(
         frameRef = frame
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         column.addView(buildStoryTabStrip(story, tab, twoPane))
+        // Without the hero, a running sync / cleanup / EPUB shows in a slim slot under the strip.
+        if (hero == null) column.addView(buildOperationStrip(story.id))
         val body = storyTabBody(scrollable, hero.takeIf { !twoPane }) { block(frame) }
         column.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         column.addView(footer)
         if (twoPane && hero != null) {
             val pane =
-                NestedScrollView(context).apply {
+                HeroPane(context).apply {
+                    tag = HERO_PANE_TAG
                     isVerticalScrollBarEnabled = false
                     addView(hero.view)
                 }
@@ -134,8 +144,10 @@ internal fun ScreenHost.storyScreen(
             if (saved > 0) scroller.post { scroller.scrollTo(0, saved) }
         }
     }
-    if (frame.hero != null || frame.chapterList != null) {
-        observeDetailsDownload(story.id, DetailsBindings(this.frame.getChildAt(0), frame.chapterList, frame.hero))
+    if (frame.hero != null || frame.chaptersTab != null) {
+        val bindings = DetailsBindings(this.frame.getChildAt(0), frame.chaptersTab, frame.hero)
+        this.frame.findViewWithTag<HeroPane>(HERO_PANE_TAG)?.bindings = bindings
+        observeDetailsDownload(story.id, bindings)
     }
 }
 
@@ -275,17 +287,6 @@ internal fun ScreenHost.storyTabShowing(storyId: String): Boolean {
  */
 internal fun ScreenHost.showStoryScreen(storyId: String) {
     if (storyTabShowing(storyId)) renderRoute(navigator.current) else showDetails(storyId)
-}
-
-/**
- * Re-renders the story page when its hero is on screen (an operation started or ended), so the
- * Sync / EPUB state and progress slot appear. Other tabs, and other screens, are left alone.
- */
-internal fun ScreenHost.refreshStoryHero(storyId: String) {
-    if (!storyTabShowing(storyId)) return
-    val current = navigator.current
-    val tab = StoryTabPlanning.tabOf(current) ?: return
-    if (StoryTabPlanning.showsHero(tab, currentScreenLayout().isTwoPane)) renderRoute(current)
 }
 
 /**

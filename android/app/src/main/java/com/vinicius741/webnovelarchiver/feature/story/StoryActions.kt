@@ -125,6 +125,11 @@ internal fun ScreenHost.syncStory(
         toast(StoryActionGuards.archivedActionMessage("Sync"))
         return
     }
+    // One run per story: a second Sync (Trends' "Sync now", a retry) would race the first.
+    if (storyOperation?.storyId == story.id) {
+        toast("Please wait for the current operation to finish")
+        return
+    }
     // Ensure Details is showing so the inline spinner is visible (Sync can be triggered from the
     // Library dialog, where activeStory may differ or be null).
     if (activeStory?.id != story.id) showDetails(story.id)

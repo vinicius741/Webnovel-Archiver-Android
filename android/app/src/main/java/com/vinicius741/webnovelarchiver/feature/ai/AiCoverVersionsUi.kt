@@ -122,6 +122,7 @@ private fun ScreenHost.browseCoverChoices(
     start: Int,
 ) {
     var inUse = choices.indexOfFirst { it.inUse }
+    var committing = false
 
     fun subtitle(index: Int): String? =
         when {
@@ -158,14 +159,21 @@ private fun ScreenHost.browseCoverChoices(
             )
         },
     ) { action, viewer ->
-        if (action != USE_THIS_ACTION) return@showCoverViewer
+        // One choice at a time, so two quick taps cannot commit out of order.
+        if (action != USE_THIS_ACTION || committing) return@showCoverViewer
         val index = viewer.index
-        if (!useCoverChoice(story, choices[index])) return@showCoverViewer
-        val previous = inUse
-        inUse = index
-        listOf(previous, index).filter { it in items.indices }.forEach { items[it] = items[it].copy(subtitle = subtitle(it)) }
-        toast("Using ${items[index].title}")
-        viewer.refresh()
+        committing = true
+        val started =
+            useCoverChoice(story, choices[index]) { used ->
+                committing = false
+                if (!used) return@useCoverChoice
+                val previous = inUse
+                inUse = index
+                listOf(previous, index).filter { it in items.indices }.forEach { items[it] = items[it].copy(subtitle = subtitle(it)) }
+                toast("Using ${items[index].title}")
+                viewer.refresh()
+            }
+        if (!started) committing = false
     }
 }
 
@@ -237,11 +245,12 @@ private fun ScreenHost.coverChoiceView(
 
 /**
  * Makes [choice] the displayed cover; choosing anything also settles a waiting "New cover ready".
- * Returns false when it cannot be used right now.
+ * Returns false when it cannot be used right now; otherwise [onSettled] reports whether it was saved.
  */
 private fun ScreenHost.useCoverChoice(
     story: Story,
     choice: CoverChoice,
+    onSettled: (used: Boolean) -> Unit = {},
 ): Boolean {
     if (story.isArchived == true) {
         toast("Archived snapshots are read-only")
@@ -252,20 +261,26 @@ private fun ScreenHost.useCoverChoice(
         return false
     }
     scope.launch {
-        coverUiAttempt {
-            val version = choice.version
-            if (version == null) {
-                repository.setShowAiCover(story.id, false)
-            } else {
-                val bytes = withContext(Dispatchers.IO) { runCatching { version.image.readBytes() }.getOrNull() }
-                if (bytes == null) {
-                    toast("This cover is no longer available")
-                    return@coverUiAttempt
+        var used = false
+        try {
+            coverUiAttempt {
+                val version = choice.version
+                if (version == null) {
+                    repository.setShowAiCover(story.id, false)
+                } else {
+                    val bytes = withContext(Dispatchers.IO) { runCatching { version.image.readBytes() }.getOrNull() }
+                    if (bytes == null) {
+                        toast("This cover is no longer available")
+                        return@coverUiAttempt
+                    }
+                    repository.setAiCover(story.id, bytes, version.mediaType)
                 }
-                repository.setAiCover(story.id, bytes, version.mediaType)
+                used = true
+                aiControlsScreenState.coverDrafts[story.id]?.let { draft -> closeAiCoverDraft(story.id, draft.prompt) }
+                if (frameIsAiControls(story.id)) showAiControls(story.id)
             }
-            aiControlsScreenState.coverDrafts[story.id]?.let { draft -> closeAiCoverDraft(story.id, draft.prompt) }
-            if (frameIsAiControls(story.id)) showAiControls(story.id)
+        } finally {
+            onSettled(used)
         }
     }
     return true

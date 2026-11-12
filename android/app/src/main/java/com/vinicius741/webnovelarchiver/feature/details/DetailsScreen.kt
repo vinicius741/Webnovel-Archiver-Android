@@ -47,7 +47,7 @@ internal fun ScreenHost.showDetails(
         if (chapters) {
             val tab = buildChaptersTab(this, story, route.stableKey)
             chaptersTab = tab
-            frame.chapterList = tab.list
+            frame.chaptersTab = tab
         } else {
             val listen = addDetailsAbout(this, story, frame.twoPane)
             addDescriptionPlayer(frame.footer, story, listen)
@@ -118,7 +118,11 @@ internal fun ScreenHost.observeDetailsDownload(
                 override fun run() {
                     if (root.parent !== frame) return
                     val scrolling =
-                        bindings.chapters?.scrollState?.let { it != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE } == true
+                        bindings.chapters
+                            ?.list
+                            ?.scrollState
+                            ?.let { it != androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE } ==
+                            true
                     if (scrolling) {
                         handler.postDelayed(this, DETAILS_SCROLL_RETRY_MS)
                         return
@@ -183,7 +187,7 @@ internal fun ScreenHost.observeDetailsDownload(
     )
 }
 
-private fun ScreenHost.currentPacingStatus(
+internal fun ScreenHost.currentPacingStatus(
     storyId: String,
     pacing: Collection<DownloadPacingSnapshot> = app.appContainer.downloadPacer.snapshots.value.values,
     now: Long = app.appContainer.time.nowMillis(),
