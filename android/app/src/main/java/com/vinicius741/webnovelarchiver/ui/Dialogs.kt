@@ -64,92 +64,36 @@ internal fun ScreenHost.showStyledOptionsDialog(
 }
 
 /**
- * Custom options sheet matching the Library sort-by dialog styling:
- * rounded surface, title, selectable rows with ripple, and a text Cancel button.
+ * Every app menu: a v3 bottom sheet with a title, grouped option rows and hairline dividers.
+ * Tap outside, Back, or drag the handle down to cancel.
  */
 internal fun ScreenHost.showStyledOptionsDialog(
     title: String,
     items: List<OptionsDialogItem>,
 ) {
     val colors = ThemeManager.colors
-    val shapes = ThemeManager.shapes
-    val radiusPx = app.dp(shapes.dialogRadius).toFloat()
-
-    val dialogView =
-        LinearLayout(app).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(app.dp(24), app.dp(20), app.dp(24), app.dp(12))
-            background = roundedBg(colors.surface, radiusPx)
-            roundCorners(shapes.dialogRadius.toFloat())
-        }
-
-    dialogView.addView(makeText(app, title, Type.TITLE_LARGE, colors.onSurface))
-    dialogView.addView(
-        View(app).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(16))
-        },
-    )
-
-    var dialogRef: AlertDialog? = null
-
+    val body = LinearLayout(app).apply { orientation = LinearLayout.VERTICAL }
+    var sheet: BottomSheetHandle? = null
     items.forEach { item ->
         when (item) {
-            is OptionsDialogItem.Section ->
-                dialogView.addView(
-                    makeText(app, item.label, Type.LABEL_MEDIUM, colors.primary).apply {
-                        typeface = Typeface.create(typeface, Typeface.BOLD)
-                        includeFontPadding = false
-                        setPadding(0, app.dp(8), 0, app.dp(2))
-                    },
-                )
+            is OptionsDialogItem.Section -> body.addView(makeSheetSection(app, item.label))
             is OptionsDialogItem.Divider ->
-                dialogView.addView(
-                    View(app).apply {
-                        setBackgroundColor(colors.outline)
-                        layoutParams =
-                            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(1)).apply {
-                                setMargins(0, app.dp(8), 0, app.dp(4))
-                            }
+                body.addView(
+                    View(app).apply { setBackgroundColor(colors.line) },
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, app.dp(1)).apply {
+                        setMargins(app.dp(Spacing.SM), app.dp(Spacing.SM), app.dp(Spacing.SM), app.dp(Spacing.SM))
                     },
                 )
-            is OptionsDialogItem.Option -> {
-                val row =
-                    LinearLayout(app).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, app.dp(12), 0, app.dp(12))
-                        isClickable = true
-                        isFocusable = true
-                        background = selectableRipple(colors.onSurface)
-                    }
-                val text = makeText(app, item.label, Type.BODY_LARGE, if (item.destructive) colors.error else colors.onSurface)
-                row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                row.setOnClickListener {
-                    dialogRef?.dismiss()
-                    item.action()
-                }
-                dialogView.addView(row)
-            }
+            is OptionsDialogItem.Option ->
+                body.addView(
+                    makeSheetRow(app, item.label, destructive = item.destructive) {
+                        sheet?.dismiss()
+                        item.action()
+                    },
+                )
         }
     }
-
-    val cancelButton = makeButton(app, "Cancel", Btn.TEXT) { dialogRef?.dismiss() }
-    dialogView.addView(
-        LinearLayout(app).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, app.dp(8), 0, 0)
-            addView(cancelButton)
-        },
-    )
-
-    dialogRef =
-        AlertDialog
-            .Builder(app)
-            .setView(dialogView)
-            .create()
-    dialogRef.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-    dialogRef.show()
+    sheet = showBottomSheet(app, title = title, body = body)
 }
 
 /** Bounded, searchable voice picker. The filter strip and footer remain visible while results scroll. */

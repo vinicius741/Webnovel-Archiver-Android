@@ -58,6 +58,12 @@ sealed class AppRoute(
 
     data object Queue : AppRoute("queue")
 
+    /**
+     * The Updates destination: every novel's release forecast (may be out, expected soon, running
+     * late, recently synced) with per-novel and "sync all that may be out" actions.
+     */
+    data object Updates : AppRoute("updates")
+
     /** Podcast-style Now Playing screen (TTS transport, progress, speed). */
     data object Player : AppRoute("player")
 
@@ -167,6 +173,7 @@ object AppRouteCodec {
             "library" -> AppRoute.Library
             "add_story" -> AppRoute.AddStory
             "queue" -> AppRoute.Queue
+            "updates" -> AppRoute.Updates
             "player" -> AppRoute.Player
             "narration" -> AppRoute.Narration
             "settings" -> AppRoute.Settings

@@ -66,6 +66,9 @@ class AppNavigator(
         return current
     }
 
+    /** The history, oldest first (a copy). */
+    val history: List<AppRoute> get() = routes.toList()
+
     fun encodedStack(): List<String> = routes.map(AppRouteCodec::encode)
 
     fun reset(route: AppRoute = AppRoute.Library) {

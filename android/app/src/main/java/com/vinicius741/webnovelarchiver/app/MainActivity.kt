@@ -29,6 +29,7 @@ import com.vinicius741.webnovelarchiver.feature.browser.importFromBrowser
 import com.vinicius741.webnovelarchiver.feature.cleanup.CleanupScreenState
 import com.vinicius741.webnovelarchiver.feature.details.detachDetailsTtsListener
 import com.vinicius741.webnovelarchiver.feature.library.LibraryScreenStatePersistence
+import com.vinicius741.webnovelarchiver.feature.library.showAddStory
 import com.vinicius741.webnovelarchiver.feature.library.showLibrary
 import com.vinicius741.webnovelarchiver.feature.narration.showNarrationStory
 import com.vinicius741.webnovelarchiver.feature.player.attachTtsMiniPlayer
@@ -45,6 +46,8 @@ import com.vinicius741.webnovelarchiver.navigation.LibraryScreenState
 import com.vinicius741.webnovelarchiver.navigation.RouteViewMemory
 import com.vinicius741.webnovelarchiver.navigation.ScreenBack
 import com.vinicius741.webnovelarchiver.navigation.ScreenHost
+import com.vinicius741.webnovelarchiver.navigation.ShellDestination
+import com.vinicius741.webnovelarchiver.navigation.ShellNavigationPlanning
 import com.vinicius741.webnovelarchiver.navigation.StoryOperationState
 import com.vinicius741.webnovelarchiver.navigation.runUiOperation
 import com.vinicius741.webnovelarchiver.perf.PerfInstrumentation
@@ -54,10 +57,13 @@ import com.vinicius741.webnovelarchiver.tts.TtsEngine
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackError
 import com.vinicius741.webnovelarchiver.tts.TtsPlaybackErrorKind
 import com.vinicius741.webnovelarchiver.tts.TtsSessionPlanning
+import com.vinicius741.webnovelarchiver.ui.AppShell
 import com.vinicius741.webnovelarchiver.ui.FoldTracker
 import com.vinicius741.webnovelarchiver.ui.ThemeManager
 import com.vinicius741.webnovelarchiver.ui.alert
 import com.vinicius741.webnovelarchiver.ui.captureScreenViewState
+import com.vinicius741.webnovelarchiver.ui.systemBarBottom
+import com.vinicius741.webnovelarchiver.ui.systemBarTop
 import com.vinicius741.webnovelarchiver.ui.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -85,6 +91,7 @@ class MainActivity :
     override lateinit var epubEngine: EpubEngine
     override lateinit var ttsEngine: TtsEngine
     override lateinit var frame: FrameLayout
+    override lateinit var shell: AppShell
     override var activeStory: Story? = null
     override var storyOperation: StoryOperationState? = null
     override var aiOperation: StoryOperationState? = null
@@ -228,15 +235,20 @@ class MainActivity :
         super.onCreate(savedInstanceState)
         restoredNavigation = restoreNavigationState(savedInstanceState)
         startPerfSessionIfRequested()
-        // Screens render into `frame`; the TTS mini-player floats above them in `root` so it
-        // survives every screen rebuild.
+        // Screens render into `frame`; the app shell around it docks the TTS mini player and the
+        // navigation bar below it (or the rail beside it on the inner screen) across rebuilds.
         frame = FrameLayout(this)
-        val root = FrameLayout(this)
-        root.addView(
-            frame,
-            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT),
-        )
-        setContentView(root)
+        shell =
+            AppShell(
+                context = this,
+                frame = frame,
+                systemBarBottom = { systemBarBottom() },
+                systemBarTop = { systemBarTop() },
+                onDestination = ::openDestination,
+                onAddStory = { if (uiReady) showAddStory() },
+            )
+        val root = shell.overlayHost
+        setContentView(shell.root)
         holdSplashScreenUntilFirstContent { uiReady }
         onBackPressedDispatcher.addCallback(this, backCallback)
         scope.launch {
@@ -258,7 +270,7 @@ class MainActivity :
                         )
                     ttsEngine = container.ttsEngine
                     ttsEngine.addErrorListener(audioNotGeneratedListener)
-                    attachTtsMiniPlayer(root)
+                    attachTtsMiniPlayer(shell.miniSlot)
                     attachAiJobChip(root)
                     attachAiJobBridges()
                     container.awaitRepositoryReady()
@@ -462,7 +474,18 @@ class MainActivity :
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        shell.onConfigurationChanged()
         rerender?.invoke()
+    }
+
+    /** A navigation bar / rail tap: start that destination's history over the Library root. */
+    private fun openDestination(destination: ShellDestination) {
+        if (!uiReady) return
+        val history = ShellNavigationPlanning.historyFor(destination)
+        if (navigator.history == history) return
+        navigator.reset(history.first())
+        history.drop(1).forEach(navigator::navigate)
+        renderRoute(navigator.current)
     }
 
     private fun applyWindowTheme() {

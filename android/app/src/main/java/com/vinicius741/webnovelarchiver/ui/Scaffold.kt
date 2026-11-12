@@ -66,6 +66,7 @@ internal fun ScreenHost.screen(
     // hijack the screen the user navigated to. showReader re-registers on the next reader build.
     if (route !is AppRoute.Reader) detachReaderTtsListener()
     navigator.navigate(route)
+    shell.onRoute(navigator.history)
     val screenKey = navigator.current.stableKey
     captureScreenViewState()
     routeMemory.trackedList = null
@@ -92,9 +93,7 @@ internal fun ScreenHost.screen(
         LinearLayout(app).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ThemeManager.colors.background)
-            // Edge-to-edge window: reserve the gesture/navigation bar on the non-scrolling root so
-            // content stays clear of it whether the body scrolls or not.
-            setPadding(0, 0, 0, systemBarBottom())
+            // The app shell's bottom shelf below the frame owns the gesture-bar inset.
         }
     if (chrome ==
         ScreenChrome.STANDARD
@@ -154,7 +153,7 @@ internal fun ScreenHost.screen(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM or Gravity.END,
             )
-        lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG) + systemBarBottom())
+        lp.setMargins(dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG), dp(Spacing.LG))
         fabView.tag = FAB_VIEW_TAG
         frame.addView(fabView, lp)
     }

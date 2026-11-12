@@ -22,9 +22,9 @@ fun makeCover(
     widthDp: Int,
     heightDp: Int,
 ): ImageView =
-    ImageView(context).apply {
+    CoverImageView(context).apply {
         contentDescription = "Cover"
-        scaleType = ImageView.ScaleType.CENTER_CROP
+        // The whole cover always shows; odd shapes are letterboxed over a blur (see CoverImageView).
         setBackgroundColor(ThemeManager.colors.surfaceVariant)
         layoutParams =
             LinearLayout.LayoutParams(context.dp(widthDp), context.dp(heightDp)).apply {

@@ -113,7 +113,7 @@ internal fun ScreenHost.attachAiJobChip(root: ViewGroup) {
         val miniPlayer = root.findViewWithTag<View>(TTS_MINI_PLAYER_TAG)?.takeIf { it.visibility == View.VISIBLE }
         val lift = miniPlayer?.let { it.height + dp(Spacing.SM) } ?: 0
         val lp = chip.view.layoutParams as FrameLayout.LayoutParams
-        val bottom = dp(Spacing.LG) + systemBarBottom() + lift
+        val bottom = dp(Spacing.LG) + lift
         // Leave the bottom-end corner to screen FABs (Library's add button).
         val maxWidth = (root.width - dp(FAB_CLEARANCE_DP)).coerceAtLeast(dp(MIN_CHIP_WIDTH_DP))
         if (lp.bottomMargin != bottom || lp.width != minOf(maxWidth, dp(MAX_CHIP_WIDTH_DP))) {

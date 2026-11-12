@@ -207,6 +207,9 @@ interface ScreenHost {
 
     val frame: FrameLayout
 
+    /** The app frame around [frame]: docked mini player, navigation bar / rail, and their badges. */
+    val shell: com.vinicius741.webnovelarchiver.ui.AppShell
+
     /**
      * Re-renders the screen that is currently on the [frame]. Each screen sets this to a lambda that
      * re-invokes its own `showXxx()` (which rebuilds the view tree), so fold/unfold/rotation and the
