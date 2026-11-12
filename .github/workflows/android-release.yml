@@ -35,7 +35,8 @@ jobs:
           source = Path('android/app/build.gradle').read_text()
           name = re.search(r"versionName '([A-Za-z0-9][A-Za-z0-9._-]*)'", source).group(1)
           code = int(re.search(r'versionCode (\d+)', source).group(1))
-          apk_name = f"WebnovelArchiver-v{name}-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}.apk"
+          apk_version = name.removesuffix('-native')
+          apk_name = f'WebnovelArchiver-v{apk_version}.apk'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'name={name}\ncode={code}\ntag=v{name}\n')
               output.write(f'apk_name={apk_name}\n')

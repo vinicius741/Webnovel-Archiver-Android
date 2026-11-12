@@ -43,7 +43,8 @@ jobs:
           number = int(os.environ['GITHUB_RUN_NUMBER'])
           name = f'{stable_name}-beta.{number}'
           code = 1000000 + number
-          apk_name = f"WebnovelArchiverBeta-v{name}-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}.apk"
+          apk_version = f"{stable_name.removesuffix('-native')}-beta.{number}"
+          apk_name = f'WebnovelArchiver-v{apk_version}.apk'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'number={number}\nname={name}\ncode={code}\ntag=v{name}\n')
               output.write(f'apk_name={apk_name}\n')

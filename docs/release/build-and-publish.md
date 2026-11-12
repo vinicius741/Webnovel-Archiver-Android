@@ -60,7 +60,7 @@ GitHub lists a manually dispatched workflow only once its file is on the default
 
 1. Push the branch with the changes to GitHub. It does not have to be `main`.
 2. Open **Actions → Publish Android Beta APK → Run workflow**, choose that branch, and run it.
-3. On the phone, open the new prerelease on the [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) page and install the **WebnovelArchiverBeta-v<version>-<run-id>-<attempt>.apk** asset.
+3. On the phone, open the new prerelease on the [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) page and install the `WebnovelArchiver-v<version>-beta.<n>.apk` asset, for example `WebnovelArchiver-v1.0.22-beta.2.apk`.
 
 The beta workflow uses the same signing secrets as the stable one and verifies the APK's package ID, version, signature, and that it is not debuggable. Like the stable workflow, it only warns about the Quality Gate: that gate runs on pushes to `main`, so a beta from another branch has no gate run unless you dispatch **Quality Gate** on that branch first. Its release notes carry `<!-- app-update channel=beta versionCode=N -->`, which the beta app's update check reads; do not remove it.
 
@@ -108,11 +108,11 @@ One-time setup on the Mac that holds the original signing key:
    On macOS, copy the keystore encoding directly to the clipboard with `base64 -i /path/to/original-release.jks | tr -d '\n' | pbcopy`, then paste it into the secret field. Base64 is an encoding, not encryption. Never commit it, the keystore, or passwords to the repository or paste them into chat.
 
 2. Once the workflow is committed and pushed to `main`, open **Actions → Publish Android APK → Run workflow**, select `main`, and run it.
-3. After it succeeds, open [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) on the phone, download the **WebnovelArchiver-v<version>-<run-id>-<attempt>.apk** asset, and open it. Allow installation from the browser if Android asks. Keep the existing app installed to preserve its library.
+3. After it succeeds, open [Releases](https://github.com/vinicius741/Webnovel-Archiver-Android/releases) on the phone, download the `WebnovelArchiver-v<version>.apk` asset, for example `WebnovelArchiver-v1.0.22.apk`, and open it. Allow installation from the browser if Android asks. Keep the existing app installed to preserve its library.
 
 For each subsequent release, increase both `versionCode` and `versionName` in `android/app/build.gradle`, commit and push the intended changes, then run the workflow again. Each version gets a `v<versionName>` tag; existing tags are never overwritten. The first run can publish the current version if it has no tag yet. A failed run that already created a release must be checked before retrying.
 
-Each published APK filename includes the app version, GitHub Actions run ID, and run attempt so different runs and retries use different filenames. The workflow summary links directly to that run's APK. The latest release page is available without a GitHub login:
+Published APK filenames omit the legacy `-native` suffix and GitHub Actions run IDs and retry numbers. Stable APKs use `WebnovelArchiver-v<version>.apk`; beta APKs use `WebnovelArchiver-v<version>-beta.<n>.apk`. The app's internal version names, version codes, and release tags keep their existing format. The workflow summary links directly to the APK. The latest release page is available without a GitHub login:
 
 https://github.com/vinicius741/Webnovel-Archiver-Android/releases/latest
 
